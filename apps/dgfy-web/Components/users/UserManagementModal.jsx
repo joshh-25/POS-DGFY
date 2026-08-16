@@ -26,7 +26,6 @@ import {
   AlertTriangle,
   Crown,
   ShieldCheck,
-  KeyRound
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -175,45 +174,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
   const [ownershipTransferCode, setOwnershipTransferCode] = useState('');
   const [ownershipTransferOtpSent, setOwnershipTransferOtpSent] = useState(false);
   const [ownershipTransferLoading, setOwnershipTransferLoading] = useState(false);
-  const [approvalPinUser, setApprovalPinUser] = useState(null);
-  const [approvalPin, setApprovalPin] = useState('');
-  const [savingApprovalPin, setSavingApprovalPin] = useState(false);
 
   // Get current user from store
   const currentUser = useStore((state) => state.currentUser);
 
-  const closeApprovalPinDialog = () => {
-    if (savingApprovalPin) return;
-    setApprovalPinUser(null);
-    setApprovalPin('');
-  };
-
-  const saveApprovalPin = async ({ clear = false } = {}) => {
-    if (!approvalPinUser) return;
-    if (!clear && !/^\d{4,12}$/.test(approvalPin)) {
-      toast.error('POS approval PIN must contain 4 to 12 digits.');
-      return;
-    }
-    setSavingApprovalPin(true);
-    try {
-      const updated = await userService.updatePosApprovalPin(approvalPinUser.user_id, {
-        pin: approvalPin,
-        clear
-      });
-      setUsers((previous) => previous.map((user) => (
-        user.user_id === approvalPinUser.user_id
-          ? { ...user, pos_approval_pin_configured: updated.pos_approval_pin_configured === true }
-          : user
-      )));
-      toast.success(clear ? 'POS approval PIN cleared.' : 'POS approval PIN configured.');
-      setApprovalPinUser(null);
-      setApprovalPin('');
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update POS approval PIN.'));
-    } finally {
-      setSavingApprovalPin(false);
-    }
-  };
   const rolePresets = useMemo(() => (
     Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : []
   ), [roleCatalog]);
@@ -1182,21 +1146,6 @@ export default function UserManagementModal({ open, onOpenChange }) {
                               <Crown className="w-4 h-4" />
                             </Button>
                           )}
-                          {currentUser?.is_master_admin === true && user.is_active && ['admin', 'manager'].includes(user.role) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setApprovalPinUser(user);
-                                setApprovalPin('');
-                              }}
-                              className="h-8 w-8 p-1 text-teal-600 hover:bg-teal-50 hover:text-teal-700"
-                              title={user.pos_approval_pin_configured ? 'Reset POS approval PIN' : 'Set POS approval PIN'}
-                            >
-                              <KeyRound className="h-4 w-4" />
-                            </Button>
-                          )}
                           {canRemoveUser(user) && (
                             <Button
                               variant="ghost"
@@ -1242,54 +1191,6 @@ export default function UserManagementModal({ open, onOpenChange }) {
         onSuccess={fetchUsers}
         roleCatalog={roleCatalog}
       />
-
-      <Dialog open={Boolean(approvalPinUser)} onOpenChange={(isOpen) => !isOpen && closeApprovalPinDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-teal-600" />
-              POS Discount Approval PIN
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <p className="font-semibold">{approvalPinUser?.username}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {approvalPinUser?.pos_approval_pin_configured
-                  ? 'A PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure a PIN this approver will enter for Employee and Manual discounts.'}
-              </p>
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-slate-800">New approval PIN</label>
-              <Input
-                value={approvalPin}
-                onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                placeholder="4 to 12 digits"
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-between gap-2 border-t pt-4">
-            <div>
-              {approvalPinUser?.pos_approval_pin_configured && (
-                <Button variant="outline" onClick={() => saveApprovalPin({ clear: true })} disabled={savingApprovalPin} className="text-red-600">
-                  Clear PIN
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={closeApprovalPinDialog} disabled={savingApprovalPin}>Cancel</Button>
-              <Button onClick={() => saveApprovalPin()} disabled={savingApprovalPin} className="bg-teal-600 hover:bg-teal-700">
-                {savingApprovalPin ? 'Saving...' : 'Save PIN'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Ownership Transfer Dialog */}
       <Dialog

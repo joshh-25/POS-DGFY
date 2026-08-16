@@ -14,15 +14,16 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
-import { provisionCashierFromGmail } from '@/services/userService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
-import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
-import { uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
-import { filterCustomerFacingPresets, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import {
+  createDefaultStorefrontBusinessHours,
+  normalizeStorefrontBusinessHours,
+  serializeStorefrontBusinessHours
+} from '@/src/features/settings/storefrontBusinessHours.js';
+import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
@@ -38,7 +39,7 @@ const STEP_CONFIG = {
     title: 'POS Setup',
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
-    description: 'Assign cashier Gmail access, store locations, and register every counter against a canonical business location.'
+    description: 'Register every counter against a canonical business location. Cashier access is managed separately in POS Settings.'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
     title: 'Storefront',
@@ -46,12 +47,6 @@ const STEP_CONFIG = {
     summary: 'Complete the storefront branding required for this tenant.',
     description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.'
   },
-  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: {
-    title: 'Starter Item',
-    icon: Store,
-    summary: 'Create one sellable starter item through the governed onboarding item contract.',
-    description: 'This uses the existing onboarding bulk item API, shared mode taxonomy, row validation, and completion readiness.'
-  }
 };
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -75,8 +70,6 @@ const createTerminalDraft = (entry = {}, isFirst = false, existingEntries = []) 
   terminal_id: sanitizeTerminalId(entry?.terminal_id) || createSuggestedTerminalId(existingEntries),
   label: String(entry?.label || '').trim(),
   location_id: toPositiveInt(entry?.location_id),
-  cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
-  cashier_password: '',
   is_active: entry?.is_active !== false,
   is_default: entry?.is_default === true || (isFirst && entry?.is_default !== false),
   pairing_version: String(entry?.pairing_version || '').trim(),
@@ -111,19 +104,6 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
-const fallbackStarterPreset = Object.freeze({
-  key: 'product',
-  label: 'Product Item'
-});
-
-const resolveStarterPresetOptions = (workflowMode = '') => {
-  const taxonomy = resolveModeItemTaxonomy(workflowMode);
-  const presets = Array.isArray(taxonomy?.presets) && taxonomy.presets.length > 0
-    ? taxonomy.presets
-    : [fallbackStarterPreset];
-  return filterCustomerFacingPresets(workflowMode, presets);
-};
-
 export default function PosTenantSetupModal({
   open = false,
   finishing = false,
@@ -132,11 +112,8 @@ export default function PosTenantSetupModal({
   profileData = {},
   posRequirements = {},
   storefrontRequirements = {},
-  starterItemRequirements = {},
-  workflowMode = '',
   terminalRegistry = [],
   terminalLocations = [],
-  tenantUsers = [],
   onStepSelect = () => {},
   onBack = () => {},
   onContinue = () => {},
@@ -157,24 +134,13 @@ export default function PosTenantSetupModal({
   const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
   const [storefrontAssetPreviewErrors, setStorefrontAssetPreviewErrors] = useState({ profile: false, cover: false });
   const [locationSaving, setLocationSaving] = useState(false);
+  const [hoursSaving, setHoursSaving] = useState(false);
   const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
-  const [starterItemSaving, setStarterItemSaving] = useState(false);
-  const [starterItemImageFile, setStarterItemImageFile] = useState(null);
-  const [starterItemImagePreviewUrl, setStarterItemImagePreviewUrl] = useState('');
-  const [createdStarterItem, setCreatedStarterItem] = useState(null);
-  const starterPresetOptions = useMemo(() => resolveStarterPresetOptions(workflowMode), [workflowMode]);
-  const [starterItemForm, setStarterItemForm] = useState(() => ({
-    mode_item_preset: starterPresetOptions[0]?.key || 'product',
-    name: '',
-    default_sale_price: '',
-    cost_per_unit: '',
-    current_stock: '0'
-  }));
-  const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [storefrontHours, setStorefrontHours] = useState(() => normalizeStorefrontBusinessHours(
+    storefrontRequirements.businessHours || createDefaultStorefrontBusinessHours()
+  ));
 
   const localPreviewUrlsRef = useRef(new Set());
-  const starterItemPreviewUrlRef = useRef('');
-  const starterItemPhotoInputRef = useRef(null);
 
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
@@ -203,27 +169,16 @@ export default function PosTenantSetupModal({
     if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return;
     localPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     localPreviewUrlsRef.current.clear();
-    if (starterItemPreviewUrlRef.current) {
-      URL.revokeObjectURL(starterItemPreviewUrlRef.current);
-      starterItemPreviewUrlRef.current = '';
-    }
   }, []);
 
   useEffect(() => {
     if (!open) return;
     const primaryLocation = resolvePrimaryLocation(terminalLocations);
     setLocationDraft(createLocationDraft(primaryLocation, companyName, { defaultPrimary: primaryLocation == null }));
-  }, [companyName, open, terminalLocations]);
-
-  useEffect(() => {
-    if (!open) return;
-    setStarterItemForm((current) => ({
-      ...current,
-      mode_item_preset: starterPresetOptions.some((preset) => preset.key === current.mode_item_preset)
-        ? current.mode_item_preset
-        : (starterPresetOptions[0]?.key || 'product')
-    }));
-  }, [open, starterPresetOptions]);
+    setStorefrontHours(normalizeStorefrontBusinessHours(
+      storefrontRequirements.businessHours || createDefaultStorefrontBusinessHours()
+    ));
+  }, [companyName, open, storefrontRequirements.businessHours, terminalLocations]);
 
   const normalizedLocations = useMemo(
     () => (Array.isArray(terminalLocations) ? terminalLocations : []).map((location) => ({
@@ -238,33 +193,6 @@ export default function PosTenantSetupModal({
   const primaryLocationId = useMemo(
     () => toPositiveInt(resolvePrimaryLocation(terminalLocations)?.location_id),
     [terminalLocations]
-  );
-
-  const cashierUsers = useMemo(
-    () => (Array.isArray(tenantUsers) ? tenantUsers : []).filter((user) => (
-      String(user?.role || '').trim().toLowerCase() === 'cashier'
-    )),
-    [tenantUsers]
-  );
-
-  const activeCashiers = useMemo(
-    () => cashierUsers.filter((user) => user?.is_active !== false),
-    [cashierUsers]
-  );
-
-  const pendingCashiers = useMemo(
-    () => cashierUsers.filter((user) => (
-      user?.is_active === false
-      || String(user?.invitation_status || '').trim().toLowerCase() === 'pending'
-    )),
-    [cashierUsers]
-  );
-
-  const locationNameById = useMemo(
-    () => new Map(
-      normalizedLocations.map((location) => [location.location_id, location.name])
-    ),
-    [normalizedLocations]
   );
 
   const effectiveStorefrontProfileImageUrl = localStorefrontAssets.profile || storefrontRequirements.profileImageUrl || '';
@@ -361,145 +289,44 @@ export default function PosTenantSetupModal({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
-          cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
-          cashier_password: String(entry?.cashier_password || ''),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || ''),
           rotate_pairing: false
         }))
-        .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.cashier_email || entry.is_default || entry.is_active === false);
+        .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.is_default || entry.is_active === false);
 
-      if (preparedEntries.length === 0) {
-        throw new Error('Add at least one terminal.');
-      }
+      if (preparedEntries.length === 0) throw new Error('Add at least one terminal.');
 
       const seenTerminalIds = new Set();
       let defaultCount = 0;
-      const cashierAssignments = new Map();
       const nextFieldErrors = {};
-
       preparedEntries.forEach((entry, index) => {
         if (!entry.terminal_id || !TERMINAL_ID_PATTERN.test(entry.terminal_id)) {
-          nextFieldErrors[index] = {
-            ...(nextFieldErrors[index] || {}),
-            terminal_id: 'Enter a valid terminal ID.'
-          };
+          nextFieldErrors[index] = { terminal_id: 'Enter a valid terminal ID.' };
           throw new Error(`Invalid terminal ID: ${entry.terminal_id || '(empty)'}`);
         }
         if (seenTerminalIds.has(entry.terminal_id)) {
-          nextFieldErrors[index] = {
-            ...(nextFieldErrors[index] || {}),
-            terminal_id: 'This terminal ID is duplicated.'
-          };
+          nextFieldErrors[index] = { terminal_id: 'This terminal ID is duplicated.' };
           throw new Error(`Duplicate terminal ID: ${entry.terminal_id}`);
         }
         seenTerminalIds.add(entry.terminal_id);
-
-        if (entry.is_default === true) {
-          defaultCount += 1;
-        }
-
-        if (entry.is_active !== false) {
-          if (!entry.location_id) {
-            nextFieldErrors[index] = {
-              ...(nextFieldErrors[index] || {}),
-              location_id: 'Select a store for this active terminal.'
-            };
-            setTerminalFieldErrors(nextFieldErrors);
-            setTerminalSaveFeedback({ type: 'error', message: 'Select a store for each active terminal before saving.' });
-            throw new Error(`Assign a store location for ${entry.terminal_id}.`);
-          }
-        }
-
-        const hasCashierEmail = Boolean(entry.cashier_email);
-        const hasCashierPassword = Boolean(entry.cashier_password);
-        if (hasCashierEmail !== hasCashierPassword) {
-          nextFieldErrors[index] = {
-            ...(nextFieldErrors[index] || {}),
-            cashier_email: 'Enter both cashier Gmail and password.',
-            cashier_password: 'Enter both cashier Gmail and password.'
-          };
+        if (entry.is_default === true) defaultCount += 1;
+        if (entry.is_active !== false && !entry.location_id) {
+          nextFieldErrors[index] = { location_id: 'Select a store for this active terminal.' };
           setTerminalFieldErrors(nextFieldErrors);
-          setTerminalSaveFeedback({ type: 'error', message: 'Cashier Gmail and password must be entered together.' });
-          throw new Error(`Enter both cashier Gmail and password for ${entry.terminal_id}.`);
+          setTerminalSaveFeedback({ type: 'error', message: 'Select a store for each active terminal before saving.' });
+          throw new Error(`Assign a store location for ${entry.terminal_id}.`);
         }
-        if (!hasCashierEmail) return;
-
-        if (!/^[A-Z0-9._%+-]+@gmail\.com$/i.test(entry.cashier_email)) {
-          nextFieldErrors[index] = {
-            ...(nextFieldErrors[index] || {}),
-            cashier_email: 'Cashier email must be a valid Gmail address.'
-          };
-          setTerminalFieldErrors(nextFieldErrors);
-          setTerminalSaveFeedback({ type: 'error', message: 'Use a valid Gmail address before saving terminal setup.' });
-          throw new Error(`Cashier email must be a valid Gmail address: ${entry.cashier_email}.`);
-        }
-        if (entry.cashier_password.length < 8) {
-          nextFieldErrors[index] = {
-            ...(nextFieldErrors[index] || {}),
-            cashier_password: 'Cashier password must be at least 8 characters.'
-          };
-          setTerminalFieldErrors(nextFieldErrors);
-          setTerminalSaveFeedback({ type: 'error', message: 'Cashier passwords must be at least 8 characters.' });
-          throw new Error(`Cashier password for ${entry.cashier_email} must be at least 8 characters.`);
-        }
-        cashierAssignments.set(entry.cashier_email, {
-          password: entry.cashier_password,
-          locationIds: entry.location_id ? [entry.location_id] : [],
-          terminalLabel: entry.label || entry.terminal_id,
-          storeName: locationNameById.get(entry.location_id) || 'Assigned store'
-        });
       });
 
-      if (defaultCount > 1) {
-        throw new Error('Only one default terminal can be configured.');
-      }
+      if (defaultCount > 1) throw new Error('Only one default terminal can be configured.');
 
-      const cashierEmailResults = [];
-      for (const [cashierEmail, assignment] of cashierAssignments.entries()) {
-        const result = await provisionCashierFromGmail({
-          email: cashierEmail,
-          password: assignment.password,
-          locationIds: assignment.locationIds,
-          terminalLabel: assignment.terminalLabel,
-          storeName: assignment.storeName
-        });
-        cashierEmailResults.push({
-          email: cashierEmail,
-          sent: result?.credential_email_sent === true,
-          status: result?.credential_email_status || 'skipped',
-          error: result?.credential_email_error || ''
-        });
-      }
-
-      const payload = preparedEntries.map((entry) => ({
-        terminal_id: entry.terminal_id,
-        label: entry.label,
-        location_id: entry.location_id,
-        cashier_email: entry.cashier_email,
-        is_active: entry.is_active !== false,
-        is_default: entry.is_default === true,
-        pairing_version: entry.pairing_version,
-        rotate_pairing: entry.rotate_pairing === true
-      }));
-
-      await updateSettings({
-        pos_terminal_registry: payload
-      });
+      await updateSettings({ pos_terminal_registry: preparedEntries });
       await onSetupDataChanged({ source: 'terminal' });
       setTerminalFieldErrors({});
-      const undeliveredCount = cashierEmailResults.filter((entry) => entry.sent !== true).length;
-      const emailDeliveryMessage = cashierAssignments.size > 0
-        ? (undeliveredCount === 0
-          ? ' Cashier login credentials were emailed successfully.'
-          : ` ${undeliveredCount} cashier credential email${undeliveredCount === 1 ? ' was' : 's were'} not delivered. Configure SMTP or Brevo to enable automatic cashier emails.`)
-        : '';
-      setTerminalSaveFeedback({
-        type: 'success',
-        message: `${cashierAssignments.size > 0 ? 'Terminal setup and cashier access saved.' : 'Terminal setup saved.'}${emailDeliveryMessage}`.trim()
-      });
-      toast.success(`${cashierAssignments.size > 0 ? 'Terminal setup and cashier access saved.' : 'Terminal setup saved.'}${emailDeliveryMessage}`.trim());
+      setTerminalSaveFeedback({ type: 'success', message: 'Terminal setup saved.' });
+      toast.success('Terminal setup saved.');
     } catch (error) {
       if (!terminalSaveFeedback.message) {
         setTerminalSaveFeedback({
@@ -590,6 +417,23 @@ export default function PosTenantSetupModal({
     if (selected) setLocationDraft(createLocationDraft(selected, companyName));
   };
 
+  const handleSaveStorefrontHours = async () => {
+    setHoursSaving(true);
+    try {
+      await updateSettings({
+        storefront_hours: serializeStorefrontBusinessHours(storefrontHours)
+      });
+      await onSetupDataChanged({ source: 'storefront_hours' });
+      toast.success('Business hours saved.');
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to save business hours.');
+      return false;
+    } finally {
+      setHoursSaving(false);
+    }
+  };
+
   const handleSaveLocation = async () => {
     const name = String(locationDraft.name || '').trim();
     const addressLine = String(locationDraft.address_line || '').trim();
@@ -622,9 +466,12 @@ export default function PosTenantSetupModal({
       const savedLocation = locationDraft.location_id
         ? await updateTenantLocation(locationDraft.location_id, payload)
         : await createTenantLocation(payload);
+      await updateSettings({
+        storefront_hours: serializeStorefrontBusinessHours(storefrontHours)
+      });
       setLocationDraft(createLocationDraft(savedLocation, companyName));
       await onSetupDataChanged({ source: 'location' });
-      toast.success('Business location saved.');
+      toast.success('Business location and hours saved.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save store location.');
     } finally {
@@ -632,134 +479,38 @@ export default function PosTenantSetupModal({
     }
   };
 
-  const handleCreateStarterItem = async () => {
-    const name = String(starterItemForm.name || '').trim();
-    const salePrice = Number(String(starterItemForm.default_sale_price || '').trim());
-    const cost = String(starterItemForm.cost_per_unit || '').trim();
-    const stock = String(starterItemForm.current_stock || '0').trim();
-    const parsedCost = cost === '' ? null : Number(cost);
-    const parsedStock = stock === '' ? 0 : Number(stock);
-    const presetKey = String(starterItemForm.mode_item_preset || starterPresetOptions[0]?.key || 'product').trim();
-
-    if (!name) {
-      toast.error('Starter item name is required.');
-      return;
-    }
-    if (!Number.isFinite(salePrice) || salePrice <= 0) {
-      toast.error('Starter item selling price must be greater than zero.');
-      return;
-    }
-    if (parsedCost !== null && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
-      toast.error('Starter item cost cannot be negative.');
-      return;
-    }
-    if (!Number.isFinite(parsedStock) || parsedStock < 0) {
-      toast.error('Starter item stock cannot be negative.');
-      return;
-    }
-
-    setStarterItemSaving(true);
-    try {
-      const row = {
-        client_row_id: `pos-starter-${Date.now()}`,
-        mode_item_preset: presetKey,
-        name,
-        default_sale_price: salePrice,
-        current_stock: parsedStock
-      };
-      if (parsedCost !== null) row.cost_per_unit = parsedCost;
-      if (primaryLocationId) row.location_id = primaryLocationId;
-
-      const result = await bulkCreateOnboardingItems({ rows: [row] });
-      const failures = Array.isArray(result?.results)
-        ? result.results.filter((entry) => entry?.status === 'failed')
-        : [];
-      if (failures.length > 0) {
-        throw new Error(failures[0]?.message || 'Starter item was rejected by onboarding validation.');
-      }
-
-      const createdRow = Array.isArray(result?.results)
-        ? result.results.find((entry) => entry?.status === 'created' && entry?.item)
-        : null;
-      const createdItem = createdRow?.item || null;
-      const createdItemId = Number(createdItem?.item_id || createdItem?.id || 0);
-      if (!createdItem || !Number.isInteger(createdItemId) || createdItemId <= 0) {
-        throw new Error('Starter item was created but its item record could not be loaded. Refresh and try again.');
-      }
-
-      let uploadedImageUrl = '';
-      if (starterItemImageFile) {
-        try {
-          const uploadedImage = await uploadStorefrontCatalogImage(createdItemId, starterItemImageFile);
-          uploadedImageUrl = String(
-            uploadedImage?.storefront_image_url
-            || uploadedImage?.image_url
-            || uploadedImage?.url
-            || uploadedImage?.path
-            || ''
-          ).trim();
-        } catch (imageError) {
-          toast.error(imageError?.response?.data?.message || 'Starter item was created, but its photo could not be uploaded. You can add it later from Items.');
-        }
-      }
-
-      await onSetupDataChanged({ source: 'starter_item' });
-      setCreatedStarterItem({
-        ...createdItem,
-        item_id: createdItemId,
-        image_url: uploadedImageUrl
-      });
-      setStarterItemForm((current) => ({
-        ...current,
-        name: '',
-        default_sale_price: '',
-        cost_per_unit: '',
-        current_stock: '0'
-      }));
-      setStarterItemImageFile(null);
-      if (starterItemPreviewUrlRef.current) {
-        URL.revokeObjectURL(starterItemPreviewUrlRef.current);
-        starterItemPreviewUrlRef.current = '';
-      }
-      setStarterItemImagePreviewUrl('');
-      toast.success('Starter item created.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to create starter item.');
-    } finally {
-      setStarterItemSaving(false);
-    }
-  };
-
-  const handleStarterItemPhotoChange = (file) => {
-    if (starterItemPreviewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-      URL.revokeObjectURL(starterItemPreviewUrlRef.current);
-      starterItemPreviewUrlRef.current = '';
-    }
-    setStarterItemImageFile(file || null);
-    if (!file || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
-      setStarterItemImagePreviewUrl('');
-      return;
-    }
-    const previewUrl = URL.createObjectURL(file);
-    starterItemPreviewUrlRef.current = previewUrl;
-    setStarterItemImagePreviewUrl(previewUrl);
-  };
-
-  const handleRemoveStarterItemPhoto = () => {
-    handleStarterItemPhotoChange(null);
-    if (starterItemPhotoInputRef.current) {
-      starterItemPhotoInputRef.current.value = '';
-    }
-  };
-
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (finishing) return;
     if (currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
       setStorefrontContinueAttempted(true);
+      // Business hours are persisted opportunistically and remain non-blocking
+      // for onboarding completion, matching the shared Storefront contract.
+      await handleSaveStorefrontHours();
     }
     onContinue({
       storefrontSetupReady: effectiveStorefrontSetupReady
     });
+  };
+
+  const handleDialogKeyDown = (event) => {
+    if (event.key !== 'Enter') return;
+    const target = event.target;
+    if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return;
+    if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT') return;
+    if (target.tagName === 'INPUT' && ['checkbox', 'file', 'radio', 'hidden', 'button', 'submit'].includes(target.type)) return;
+
+    const fields = Array.from(event.currentTarget.querySelectorAll('input, select, textarea'))
+      .filter((field) => {
+        if (typeof HTMLElement === 'undefined' || !(field instanceof HTMLElement) || field.hasAttribute('disabled')) return false;
+        if (field.tagName === 'TEXTAREA') return false;
+        if (field.tagName === 'SELECT') return true;
+        return !['checkbox', 'file', 'radio', 'hidden', 'button', 'submit'].includes(field.type);
+      });
+    const currentIndex = fields.indexOf(target);
+    const nextField = currentIndex >= 0 ? fields[currentIndex + 1] : null;
+    if (!nextField) return;
+    event.preventDefault();
+    nextField.focus();
   };
 
   return (
@@ -769,6 +520,7 @@ export default function PosTenantSetupModal({
         className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[980px] flex-col overflow-hidden border border-slate-200 bg-white px-0 shadow-2xl sm:w-[calc(100vw-2rem)] sm:max-w-[980px]"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
+        onKeyDown={handleDialogKeyDown}
       >
         <DialogHeader className="shrink-0 border-b border-slate-100 pb-4">
           <DialogTitle className="text-[20px] font-black text-[#0F172A]">Tenant Onboarding Setup</DialogTitle>
@@ -855,214 +607,8 @@ export default function PosTenantSetupModal({
                 </div>
               ) : null}
 
-              {currentStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM ? (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                    POS onboarding uses the existing starter-item API and shared mode taxonomy. Create one customer-facing item here, then configure richer catalog details from Items later.
-                  </div>
-                  {starterItemRequirements.starterItemReady ? (
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                      Starter item ready{starterItemRequirements.starterItemId ? `: item #${starterItemRequirements.starterItemId}` : ''}.
-                    </div>
-                  ) : null}
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Starter Type</Label>
-                      <select
-                        value={starterItemForm.mode_item_preset}
-                        onChange={(event) => setStarterItemForm((current) => ({ ...current, mode_item_preset: event.target.value }))}
-                        className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-[#0F172A] outline-none focus:border-[#2563EB]"
-                      >
-                        {starterPresetOptions.map((preset) => (
-                          <option key={preset.key} value={preset.key}>{preset.label || preset.key}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Item Name</Label>
-                      <Input
-                        value={starterItemForm.name}
-                        onChange={(event) => setStarterItemForm((current) => ({ ...current, name: event.target.value }))}
-                        placeholder="Starter menu item"
-                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Selling Price</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={starterItemForm.default_sale_price}
-                        onChange={(event) => setStarterItemForm((current) => ({ ...current, default_sale_price: event.target.value }))}
-                        placeholder="150.00"
-                        className="h-11 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A]"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Initial Stock</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={starterItemForm.current_stock}
-                        onChange={(event) => setStarterItemForm((current) => ({ ...current, current_stock: event.target.value }))}
-                        placeholder="0"
-                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Optional Cost</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={starterItemForm.cost_per_unit}
-                        onChange={(event) => setStarterItemForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
-                        placeholder="Optional"
-                        className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[12px] font-black text-[#0F172A]">Item Photo <span className="font-medium text-slate-500">(optional)</span></Label>
-                      <Input
-                        ref={starterItemPhotoInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="sr-only"
-                        onChange={(event) => {
-                          handleStarterItemPhotoChange(event.target.files?.[0] || null);
-                          event.target.value = '';
-                        }}
-                      />
-                      {starterItemImagePreviewUrl ? (
-                        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                          <img
-                            src={starterItemImagePreviewUrl}
-                            alt="Starter item photo preview"
-                            className="h-12 w-12 rounded-md object-cover"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold text-slate-700">{starterItemImageFile?.name || 'Photo selected'}</p>
-                            <p className="mt-0.5 text-[11px] text-slate-500">One photo per item</p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => starterItemPhotoInputRef.current?.click()}
-                            >
-                              Replace
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleRemoveStarterItemPhoto}
-                              className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => starterItemPhotoInputRef.current?.click()}
-                          className="h-11 justify-start border-dashed border-slate-300 text-slate-700 hover:border-[#1A4E8D] hover:bg-blue-50"
-                        >
-                          <ImagePlus className="mr-2 h-4 w-4" />
-                          Upload item photo
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {createdStarterItem ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                      <p className="text-[12px] font-black uppercase tracking-[0.14em] text-emerald-700">Saved Starter Item</p>
-                      <div className="mt-3 flex items-center gap-3 rounded-xl border border-emerald-100 bg-white p-3">
-                        {createdStarterItem.image_url ? (
-                          <img
-                            src={resolveAssetUrl(createdStarterItem.image_url)}
-                            alt={createdStarterItem.name || 'Starter item'}
-                            className="h-16 w-16 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="grid h-16 w-16 place-items-center rounded-lg bg-slate-100 text-slate-500">
-                            <ImagePlus className="h-5 w-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-black text-[#0F172A]">{createdStarterItem.name}</p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            PHP {Number(createdStarterItem.default_sale_price || 0).toFixed(2)} · Stock {Number(createdStarterItem.current_stock || 0)}
-                          </p>
-                        </div>
-                        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label="Starter item saved" />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
-                      onClick={handleCreateStarterItem}
-                      disabled={starterItemSaving}
-                    >
-                      {starterItemSaving ? 'Creating...' : 'Create Starter Item'}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-
               {currentStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP ? (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="text-[13px] font-black uppercase tracking-[0.14em] text-slate-500">Cashier Account</p>
-                        <p className="mt-1 text-sm text-slate-600">
-                          Invite an existing DGFY account as a cashier and assign its allowed store locations. Company founders are already POS-operator ready.
-                        </p>
-                      </div>
-                      <span className={`rounded-full px-3 py-1 text-[12px] font-black ${
-                        posRequirements.cashierReady ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
-                      }`}>
-                        {posRequirements.cashierReady ? 'Cashier Ready' : 'Cashier Required'}
-                      </span>
-                    </div>
-
-                    {activeCashiers.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        Active cashier: {activeCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}
-                      </div>
-                    ) : null}
-
-                    {pendingCashiers.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Pending cashier invitation: {pendingCashiers.map((user) => user.email || user.username).filter(Boolean).join(', ')}.
-                        The cashier must accept from DGFY My Account &gt; Business before using POS.
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-                      <p className="text-sm text-blue-900">You can still invite an existing DGFY cashier, or enter any cashier Gmail directly under the terminal setup below.</p>
-                      <Button
-                        type="button"
-                        className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
-                        onClick={() => setCashierInvitationOpen(true)}
-                        disabled={normalizedLocations.length === 0}
-                      >
-                        Invite DGFY Cashier
-                      </Button>
-                    </div>
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                      Use a valid Gmail address under each terminal below. If the cashier does not exist yet, the system will still accept it, create the cashier access during save, and email the login credentials plus reset-password instructions automatically.
-                    </div>
-                  </div>
-
                   {(Array.isArray(terminalDrafts) ? terminalDrafts : []).map((terminal, index) => (
                     <div
                       key={terminal.draft_key || `terminal-${index}`}
@@ -1118,37 +664,9 @@ export default function PosTenantSetupModal({
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div className="grid gap-2">
-                          <Label className="text-[12px] font-black text-[#0F172A]">Cashier Gmail</Label>
-                          <Input
-                            type="email"
-                            value={terminal.cashier_email || ''}
-                            onChange={(event) => handleTerminalDraftChange(index, 'cashier_email', event.target.value.toLowerCase())}
-                            placeholder="cashier@gmail.com"
-                            className={`h-11 rounded-lg text-[13px] font-medium text-[#0F172A] ${terminalFieldErrors[index]?.cashier_email ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
-                          />
-                          {terminalFieldErrors[index]?.cashier_email ? (
-                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].cashier_email}</p>
-                          ) : null}
-                        </div>
-                        <div className="grid gap-2">
-                          <Label className="text-[12px] font-black text-[#0F172A]">Cashier Password</Label>
-                          <Input
-                            type="password"
-                            value={terminal.cashier_password || ''}
-                            onChange={(event) => handleTerminalDraftChange(index, 'cashier_password', event.target.value)}
-                            placeholder="Minimum 8 characters"
-                            className={`h-11 rounded-lg text-[13px] font-medium text-[#0F172A] ${terminalFieldErrors[index]?.cashier_password ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
-                          />
-                          {terminalFieldErrors[index]?.cashier_password ? (
-                            <p className="text-xs font-semibold text-rose-600">{terminalFieldErrors[index].cashier_password}</p>
-                          ) : null}
-                        </div>
-                      </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          Create one logical terminal for each counter or station. Enter any cashier Gmail here to create or attach the cashier account, assign branch access, and email the login credentials plus reset-password instructions during onboarding.
+                          Create one logical terminal for each counter or station. Cashier invitations and location permissions are managed from POS Settings.
                         </div>
                         <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-semibold text-[#0F172A]">
                           <input
@@ -1287,6 +805,29 @@ export default function PosTenantSetupModal({
                       ) : null}
                     </div>
                   </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Hours</p>
+                        <p className="mt-1 text-xs text-slate-500">Set the weekly hours used by Storefront availability and checkout.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleSaveStorefrontHours}
+                        disabled={hoursSaving}
+                      >
+                        {hoursSaving ? 'Saving Hours...' : 'Save Business Hours'}
+                      </Button>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <StorefrontBusinessHoursScheduler
+                        value={storefrontHours}
+                        disabled={hoursSaving || locationSaving}
+                        onChange={setStorefrontHours}
+                      />
+                    </div>
+                  </div>
                   <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontLocation ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <Label className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Business Location <span className="text-red-600">*</span></Label>
@@ -1385,14 +926,6 @@ export default function PosTenantSetupModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    <UserInvitationModal
-      open={cashierInvitationOpen}
-      onOpenChange={setCashierInvitationOpen}
-      onSuccess={onSetupDataChanged}
-      fixedRole="cashier"
-      title="Invite DGFY Cashier"
-      submitLabel="Send Cashier Invitation"
-    />
     </>
   );
 }

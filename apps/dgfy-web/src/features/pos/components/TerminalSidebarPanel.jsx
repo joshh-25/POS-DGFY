@@ -9,7 +9,8 @@ import {
   PAYMENT_TYPE_LABELS,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
-  getNextStatusActions
+  getNextStatusActions,
+  isCompletionPaymentPending
 } from './orderFulfillmentUi.js';
 
 const WORKSPACE_VIEW_CONFIG = {
@@ -663,7 +664,7 @@ export default function TerminalSidebarPanel({
                           size="sm"
                           variant={status === 'rejected' ? 'destructive' : 'outline'}
                           className="h-7 text-[11px]"
-                          disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                          disabled={Boolean(actionLoading) || !canTransactPos || locked || (status === 'completed' && isCompletionPaymentPending(order))}
                           onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                         >
                           {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}

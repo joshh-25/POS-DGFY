@@ -33,6 +33,7 @@ const mockListPosSetupCashiersUseCase = jest.fn();
 const mockLoginPosCashierUseCase = jest.fn();
 const mockSwitchTerminalShiftLocationUseCase = jest.fn();
 const mockGetCurrentTerminalShiftUseCase = jest.fn();
+const mockGetCashierShiftHistoryUseCase = jest.fn();
 const mockRecordCashDrawerEventUseCase = jest.fn();
 const mockCloseTerminalShiftUseCase = jest.fn();
 const mockForceCloseStaleTerminalShiftUseCase = jest.fn();
@@ -106,6 +107,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     loginPosCashierUseCase: mockLoginPosCashierUseCase,
     switchTerminalShiftLocationUseCase: mockSwitchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
+    getCashierShiftHistoryUseCase: mockGetCashierShiftHistoryUseCase,
     recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
     closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
     forceCloseStaleTerminalShiftUseCase: mockForceCloseStaleTerminalShiftUseCase,

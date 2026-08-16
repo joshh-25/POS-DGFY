@@ -15,6 +15,23 @@ import { REGISTRATION_INDUSTRIES_DESCRIBED } from '@sieitzz/shared-constants/reg
 let cachedIndustries = null;
 let inFlightRequest = null;
 
+const normalizeNiches = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const normalizeIndustry = (entry) => ({
+  ...entry,
+  niches: normalizeNiches(entry?.niches)
+});
+
 export const fetchRegistrationIndustries = async ({ force = false } = {}) => {
   if (cachedIndustries && !force) return cachedIndustries;
   if (inFlightRequest && !force) return inFlightRequest;
@@ -23,7 +40,7 @@ export const fetchRegistrationIndustries = async ({ force = false } = {}) => {
     .then((response) => {
       const industries = response.data?.data?.industries;
       cachedIndustries = Array.isArray(industries) && industries.length > 0
-        ? industries
+        ? industries.map(normalizeIndustry)
         : REGISTRATION_INDUSTRIES_DESCRIBED;
       return cachedIndustries;
     })

@@ -465,6 +465,14 @@ export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchCashierShiftHistory = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/shifts/history', {
+        params,
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
 export const openTerminalShift = async (payload = {}, requestConfig = {}) => {
     const response = await api.post('/pos/terminal/shifts/open', payload, requestConfig);
     trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_OPENED, {
@@ -752,6 +760,7 @@ export default {
     fetchCurrentXReading,
     incrementGovernedResetCounter,
     fetchCurrentTerminalShift,
+    fetchCashierShiftHistory,
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,

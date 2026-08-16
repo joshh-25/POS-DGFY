@@ -88,7 +88,6 @@ export default function TerminalPageDialogLayer({ model }) {
     postShiftHandoff,
     printClosedShiftSummary,
     printZReading,
-    refreshPostShiftDayCloseReadiness,
     renderUnlockFailurePanel,
     resumeTenantSetupFlow,
     saveMyDayClosePin,
@@ -141,7 +140,6 @@ export default function TerminalPageDialogLayer({ model }) {
     terminalUnlockRequired,
     terminalUser,
     toast,
-    workflowMode,
     zReadingCloseConfirmOpen,
     zReadingClosePin,
     zReadingPrintAutoPrint,
@@ -421,11 +419,11 @@ export default function TerminalPageDialogLayer({ model }) {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
-                {cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start' && (
+                {((cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start') || cashierResumeUnlock) && (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleLock}
+                    onClick={cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock}
                     disabled={submitting || shiftActionLoading.open}
                   >
                     Back to Login
@@ -621,11 +619,8 @@ export default function TerminalPageDialogLayer({ model }) {
           }}
           posRequirements={setupFlowState.posRequirements}
           storefrontRequirements={setupFlowState.storefrontRequirements}
-          starterItemRequirements={setupFlowState.starterItemRequirements}
-          workflowMode={workflowMode}
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
-          tenantUsers={setupFlowState.tenantUsers}
           onStepSelect={openTenantSetupStep}
           onBack={() => {
             const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
@@ -633,25 +628,16 @@ export default function TerminalPageDialogLayer({ model }) {
               openTenantSetupStep(previousStep);
             }
           }}
-          onContinue={async () => {
+          onContinue={async ({ storefrontSetupReady = setupFlowState.storefrontSetupReady } = {}) => {
             const nextStep = getNextTenantSetupStep(tenantSetupStep);
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
               openTenantSetupStep(nextStep);
               return;
             }
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
-              if (!setupFlowState.storefrontSetupReady) {
+              if (!storefrontSetupReady) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
-                return;
-              }
-              openTenantSetupStep(nextStep);
-              return;
-            }
-            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
-              if (!setupFlowState.starterItemReady) {
-                toast.error('Create at least one starter item before continuing to POS Setup.');
-                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
                 return;
               }
               openTenantSetupStep(nextStep);
@@ -706,9 +692,13 @@ export default function TerminalPageDialogLayer({ model }) {
                   </Label>
                   <Input
                     id="settings-access-pin"
-                    type="password"
+                    type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
+                    data-bwignore="true"
+                    style={{ WebkitTextSecurity: 'disc' }}
                     value={settingsAccessPinValue}
                     onChange={(event) => setSettingsAccessPinValue(event.target.value)}
                     placeholder="Enter 4 to 12 digit PIN"
@@ -756,8 +746,8 @@ export default function TerminalPageDialogLayer({ model }) {
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
                 <p>Resolve the following before closing this shift:</p>
                 <ul className="mt-1 list-disc space-y-1 pl-5">
-                  {Number(closeShiftBlocker.activeParkedSaleCount || 0) > 0 && (
-                    <li>{Number(closeShiftBlocker.activeParkedSaleCount)} active parked sale{Number(closeShiftBlocker.activeParkedSaleCount) === 1 ? '' : 's'} on the server. Resume or cancel each one.</li>
+                  {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
+                    <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
                   )}
                   {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
                     <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
@@ -958,16 +948,6 @@ export default function TerminalPageDialogLayer({ model }) {
                   Print Shift Summary
                 </Button>
               ) : null}
-              {postShiftHandoff?.readiness?.authorized !== false ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={refreshPostShiftDayCloseReadiness}
-                  disabled={postShiftHandoff?.loading || shiftActionLoading.zReading || !isOnline}
-                >
-                  {postShiftHandoff?.loading ? 'Checking...' : 'Refresh Status'}
-                </Button>
-              ) : null}
               <Button type="button" variant="outline" onClick={handlePostShiftReturnToLogin} disabled={shiftActionLoading.zReading}>
                 Return to Login
               </Button>
@@ -1047,9 +1027,13 @@ export default function TerminalPageDialogLayer({ model }) {
                   id="z-reading-day-close-pin"
                   value={zReadingClosePin}
                   onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                  type="password"
+                  type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-bwignore="true"
+                  style={{ WebkitTextSecurity: 'disc' }}
                   placeholder="4 to 12 digits"
                   className="mt-1"
                   disabled={shiftActionLoading.zReading || dayCloseReadinessState.loading || dayCloseReadinessState.readiness?.ready !== true}
@@ -1095,11 +1079,11 @@ export default function TerminalPageDialogLayer({ model }) {
               </div>
               <div>
                 <Label htmlFor="my-day-close-pin">New Day Close PIN</Label>
-                <Input id="my-day-close-pin" value={myDayClosePinForm.pin} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="password" inputMode="numeric" autoComplete="new-password" placeholder="4 to 12 digits" className="mt-1" disabled={myDayClosePinSaving} />
+                <Input id="my-day-close-pin" value={myDayClosePinForm.pin} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="text" inputMode="numeric" autoComplete="one-time-code" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: 'disc' }} placeholder="4 to 12 digits" className="mt-1" disabled={myDayClosePinSaving} />
               </div>
               <div>
                 <Label htmlFor="my-day-close-pin-confirmation">Confirm new Day Close PIN</Label>
-                <Input id="my-day-close-pin-confirmation" value={myDayClosePinForm.confirmation} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, confirmation: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="password" inputMode="numeric" autoComplete="new-password" placeholder="Re-enter PIN" className="mt-1" disabled={myDayClosePinSaving} />
+                <Input id="my-day-close-pin-confirmation" value={myDayClosePinForm.confirmation} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, confirmation: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="text" inputMode="numeric" autoComplete="one-time-code" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: 'disc' }} placeholder="Re-enter PIN" className="mt-1" disabled={myDayClosePinSaving} />
               </div>
             </div>
             <DialogFooter>

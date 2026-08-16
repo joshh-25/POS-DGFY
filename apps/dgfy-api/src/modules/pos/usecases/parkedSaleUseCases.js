@@ -252,6 +252,14 @@ const assertParkedSaleScope = (row, scope) => {
     }
 };
 
+const assertParkedSaleLocationScope = (row, scope) => {
+    if (toPositiveInt(row?.location_id) !== scope.locationId) {
+        throw buildParkedSaleError(DomainErrorCode.AUTHORIZATION_FAILED, 'Parked sale location does not match the active shift.', 403, {
+            reason_code: 'PARKED_SALE_LOCATION_MISMATCH'
+        });
+    }
+};
+
 const toPublicParkedSale = (row, extra = {}) => {
     const parkedSale = toPlain(row) || {};
     const snapshot = parseStoredSnapshot(parkedSale.snapshot) || { lines: [] };
@@ -320,6 +328,8 @@ export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ p
             revision: 1,
             cashier_id: scope.userId,
             shift_id: scope.shiftId,
+            origin_cashier_id: scope.userId,
+            origin_shift_id: scope.shiftId,
             terminal_id: scope.terminalId,
             location_id: scope.locationId,
             snapshot,
@@ -327,6 +337,25 @@ export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ p
             quantity_total: requestPayload.quantity_total,
             subtotal_amount: requestPayload.subtotal_amount,
             total_amount: requestPayload.total_amount
+        }, { transaction });
+        await posRepository.createAuditLog({
+            user_id: scope.userId,
+            entity_type: 'pos_parked_sale',
+            entity_id: created?.pos_parked_sale_id || null,
+            action: 'CREATE',
+            event_type: 'pos_parked_sale_created',
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            location_id: scope.locationId,
+            changes: {
+                event: 'pos_parked_sale_created',
+                park_reference: created?.park_reference || null,
+                line_count: requestPayload.line_count,
+                total_amount: requestPayload.total_amount,
+                terminal_id: scope.terminalId,
+                shift_id: scope.shiftId,
+                location_id: scope.locationId
+            }
         }, { transaction });
         await finishTransaction(transaction, 'commit');
         return ok(toPublicParkedSale(created, { idempotent_replay: false }), 'POS sale parked');
@@ -384,6 +413,24 @@ export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             claimed_at: null
         };
         const updated = await posRepository.updateParkedSale(normalizedId, reparkingPayload, { transaction, lock: true });
+        await posRepository.createAuditLog({
+            user_id: scope.userId,
+            entity_type: 'pos_parked_sale',
+            entity_id: normalizedId,
+            action: 'UPDATE',
+            event_type: 'pos_parked_sale_reparked',
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            location_id: scope.locationId,
+            changes: {
+                event: 'pos_parked_sale_reparked',
+                revision: reparkingPayload.revision,
+                total_amount: reparkingPayload.total_amount,
+                terminal_id: scope.terminalId,
+                shift_id: scope.shiftId,
+                location_id: scope.locationId
+            }
+        }, { transaction });
         await finishTransaction(transaction, 'commit');
         return ok(toPublicParkedSale(updated, { idempotent_replay: false }), 'Parked POS sale updated');
     } catch (error) {
@@ -424,11 +471,29 @@ export const buildCompleteClaimedPosParkedSaleUseCase = ({ posRepository }) => a
             reason_code: 'PARKED_SALE_NOT_CLAIMED_BY_TERMINAL'
         });
     }
-    return posRepository.updateParkedSale(normalizedId, {
+    const completed = await posRepository.updateParkedSale(normalizedId, {
         status: 'completed',
         completed_transaction_id: normalizedTransactionId,
         completed_at: new Date()
     }, { transaction, lock: true });
+    await posRepository.createAuditLog({
+        user_id: scope.userId,
+        entity_type: 'pos_parked_sale',
+        entity_id: normalizedId,
+        action: 'UPDATE',
+        event_type: 'pos_parked_sale_completed',
+        terminal_id: scope.terminalId,
+        shift_id: scope.shiftId,
+        location_id: scope.locationId,
+        changes: {
+            event: 'pos_parked_sale_completed',
+            completed_transaction_id: normalizedTransactionId,
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            location_id: scope.locationId
+        }
+    }, { transaction });
+    return completed;
 };
 
 export const buildListPosParkedSalesUseCase = ({ posRepository }) => async ({ query = {}, user }) => {
@@ -441,9 +506,8 @@ export const buildListPosParkedSalesUseCase = ({ posRepository }) => async ({ qu
         });
         const statuses = query.status ? [query.status] : ACTIVE_PARKED_STATUSES;
         const sales = await posRepository.listParkedSales({
-            shiftId: scope.shiftId,
-            cashierId: scope.userId,
             locationId: scope.locationId,
+            sharedLocation: true,
             statuses,
             limit: query.limit
         });
@@ -473,7 +537,7 @@ export const buildClaimPosParkedSaleUseCase = ({ posRepository }) => async ({ pa
         });
         const row = await posRepository.getParkedSaleById(normalizedId, { transaction, lock: true });
         if (!row) throw buildParkedSaleError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Parked POS sale not found.', 404);
-        assertParkedSaleScope(row, scope);
+        assertParkedSaleLocationScope(row, scope);
 
         if (row.status === 'claimed') {
             if (toPositiveInt(row.claimed_by) === scope.userId && normalizeTerminalId(row.claimed_terminal_id) === scope.terminalId) {
@@ -493,10 +557,34 @@ export const buildClaimPosParkedSaleUseCase = ({ posRepository }) => async ({ pa
 
         const claimed = await posRepository.updateParkedSale(normalizedId, {
             status: 'claimed',
+            cashier_id: scope.userId,
+            shift_id: scope.shiftId,
+            terminal_id: scope.terminalId,
             claimed_by: scope.userId,
             claimed_terminal_id: scope.terminalId,
             claimed_at: new Date()
         }, { transaction, lock: true });
+        await posRepository.createAuditLog({
+            user_id: scope.userId,
+            entity_type: 'pos_parked_sale',
+            entity_id: normalizedId,
+            action: 'UPDATE',
+            event_type: 'pos_parked_sale_resumed',
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            location_id: scope.locationId,
+            changes: {
+                event: 'pos_parked_sale_resumed',
+                origin_cashier_id: toPositiveInt(row.origin_cashier_id) || toPositiveInt(row.cashier_id),
+                origin_shift_id: toPositiveInt(row.origin_shift_id) || toPositiveInt(row.shift_id),
+                previous_cashier_id: toPositiveInt(row.cashier_id),
+                previous_shift_id: toPositiveInt(row.shift_id),
+                cashier_id: scope.userId,
+                shift_id: scope.shiftId,
+                claimed_terminal_id: scope.terminalId,
+                location_id: scope.locationId
+            }
+        }, { transaction });
         await finishTransaction(transaction, 'commit');
         return ok(toPublicParkedSale(claimed, { idempotent_replay: false }), 'Parked POS sale claimed');
     } catch (error) {
@@ -539,6 +627,24 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             cancelled_at: new Date(),
             cancel_reason: reason
         }, { transaction, lock: true });
+        await posRepository.createAuditLog({
+            user_id: scope.userId,
+            entity_type: 'pos_parked_sale',
+            entity_id: normalizedId,
+            action: 'UPDATE',
+            event_type: 'pos_parked_sale_cancelled',
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            location_id: scope.locationId,
+            reason,
+            changes: {
+                event: 'pos_parked_sale_cancelled',
+                reason,
+                terminal_id: scope.terminalId,
+                shift_id: scope.shiftId,
+                location_id: scope.locationId
+            }
+        }, { transaction });
         await finishTransaction(transaction, 'commit');
         return ok(toPublicParkedSale(cancelled, { idempotent_replay: false }), 'Parked POS sale cancelled');
     } catch (error) {

@@ -106,7 +106,7 @@ describe('POS manual walk-in tender', () => {
     it.each([
         ['desktop', 1280],
         ['mobile', 390]
-    ])('restores a saved paid sale with its item summary and clears the recovery lock at %s width', async (_viewport, width) => {
+    ])('restores a saved split-payment draft with its item summary at %s width', async (_viewport, width) => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
         window.dispatchEvent(new Event('resize'));
         const recoveredSession = {
@@ -133,19 +133,12 @@ describe('POS manual walk-in tender', () => {
             idempotency_key: 'existing-session-key'
         }));
         serviceMocks.fetchPosPaymentSession.mockResolvedValue(recoveredSession);
-        let finishCompletion;
-        serviceMocks.completePosPaymentSession.mockImplementation(() => new Promise((resolve) => {
-            finishCompletion = () => resolve({
-                session: { ...recoveredSession, status: 'completed' },
-                transaction: { pos_transaction_id: 991, total_amount: 90 }
-            });
-        }));
         const onSessionStateChange = vi.fn();
-        const onCompleted = vi.fn();
+        const onOpenChange = vi.fn();
         render(
             <POSSplitPaymentDialog
                 open
-                onOpenChange={vi.fn()}
+                onOpenChange={onOpenChange}
                 cart={[]}
                 catalog={[{ item_id: 36, name: 'Chai Tea (Hot)' }]}
                 subtotalAmount={0}
@@ -155,26 +148,71 @@ describe('POS manual walk-in tender', () => {
                 terminalId="COUNTER-01"
                 storageScopeKey="refresh-recovery"
                 onSessionStateChange={onSessionStateChange}
-                onCompleted={onCompleted}
             />
         );
 
-        expect(await screen.findByText('Sale awaiting completion')).toBeTruthy();
-        expect(screen.getByText('Chai Tea (Hot)')).toBeTruthy();
-        expect(screen.getByText('Qty 1 × PHP 90.00')).toBeTruthy();
-        expect(screen.getByText('Payment session: PAY-RECOVERY-501')).toBeTruthy();
-        await waitFor(() => expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(1));
-        expect(screen.getByText('Finishing sale…')).toBeTruthy();
+        await waitFor(() => expect(screen.queryByTestId('pos-split-payment-saved-sale')).toBeNull());
+        expect(screen.queryByText('Sale awaiting completion')).toBeNull();
+        expect(screen.queryByTestId('pos-split-payment-cancel-session')).toBeNull();
+        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
+        expect(screen.queryByText('Payment recorded')).toBeNull();
         await waitFor(() => expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({
             active: true,
             recovered: true,
             session: recoveredSession
         })));
 
-        finishCompletion();
-        await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
-        expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({ active: false }));
-        expect(window.localStorage.getItem('pos_split_payment_session:refresh-recovery')).toBeNull();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'Close split payment' }));
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+        expect(window.localStorage.getItem('pos_split_payment_session:refresh-recovery')).not.toBeNull();
+    });
+
+    it('does not restart the session request when the checkout snapshot object changes identity', async () => {
+        const savedSession = {
+            ...openSession,
+            total_amount: 90,
+            remaining_amount: 90
+        };
+        window.localStorage.setItem('pos_split_payment_session:snapshot-rerender', JSON.stringify({
+            session_id: 501,
+            idempotency_key: 'existing-session-key'
+        }));
+        serviceMocks.fetchPosPaymentSession.mockResolvedValue(savedSession);
+
+        const view = render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                cart={[{ item_id: 36, quantity: 1, sale_price: 90 }]}
+                totalAmount={90}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                storageScopeKey="snapshot-rerender"
+                checkoutSnapshot={{ schema_version: 1, lines: [{ item_id: 36, quantity: 1, sale_price: 90 }] }}
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        await waitFor(() => expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalledTimes(1));
+
+        view.rerender(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                cart={[{ item_id: 36, quantity: 1, sale_price: 90 }]}
+                totalAmount={90}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                storageScopeKey="snapshot-rerender"
+                checkoutSnapshot={{ schema_version: 1, lines: [{ item_id: 36, quantity: 1, sale_price: 90 }] }}
+            />
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
     });
 
     it.each([
@@ -236,11 +274,16 @@ describe('POS manual walk-in tender', () => {
             transaction: { pos_transaction_id: 992, total_amount: 300 }
         });
         const user = userEvent.setup();
+        const onOpenChange = vi.fn();
+        const onSessionStateChange = vi.fn();
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
 
         render(
             <POSSplitPaymentDialog
                 open
-                onOpenChange={vi.fn()}
+                onOpenChange={onOpenChange}
+                onSessionStateChange={onSessionStateChange}
+                onReadyToComplete={onReadyToComplete}
                 cart={[{ item_id: 7, quantity: 1, sale_price: 300 }]}
                 subtotalAmount={300}
                 totalAmount={300}
@@ -261,15 +304,14 @@ describe('POS manual walk-in tender', () => {
         expect(cashInput.value).toBe('');
         await user.type(amountInput, '250');
         await user.type(cashInput, '100');
-        expect(screen.getByText(/This does not use PayMongo\./)).toBeTruthy();
-        const preview = screen.getByTestId('pos-payment-rows-preview');
-        expect(preview.textContent).toContain('Non-cash appliedPHP 250.00');
-        expect(preview.textContent).toContain('Cash appliedPHP 50.00');
-        expect(preview.textContent).toContain('Change duePHP 50.00');
-        expect(preview.textContent).toContain('Still duePHP 0.00');
-        const completeButton = screen.getByRole('button', { name: 'Complete Payment' });
-        expect(completeButton.disabled).toBe(true);
-        await user.click(screen.getByTestId('pos-payment-received-1').querySelector('input'));
+        expect(screen.queryByTestId('pos-payment-received-1')).toBeNull();
+        expect(screen.queryByText(/This does not use PayMongo\./)).toBeNull();
+        const summary = screen.getByTestId('pos-split-payment-summary');
+        expect(summary.textContent).toContain('PaidPHP 300.00');
+        expect(summary.textContent).toContain('RemainingPHP 0.00');
+        expect(summary.textContent).toContain('ChangePHP 50.00');
+        expect(screen.queryByTestId('pos-payment-rows-preview')).toBeNull();
+        const completeButton = screen.getByRole('button', { name: 'Record Payment' });
         expect(completeButton.disabled).toBe(false);
         await user.click(completeButton);
 
@@ -286,13 +328,77 @@ describe('POS manual walk-in tender', () => {
             amount: 100,
             payment_handoff_mode: 'internal'
         }));
-        await waitFor(() => expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(1));
-        expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledWith(501, expect.objectContaining({
-            idempotency_key: 'split-complete:501'
+        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
+        expect(onSessionStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+            active: true,
+            recovered: false,
+            session: expect.objectContaining({
+                status: 'ready_to_complete',
+                paid_amount: 300,
+                remaining_amount: 0
+            })
         }));
+        expect(onReadyToComplete).toHaveBeenCalledOnce();
+        expect(onReadyToComplete).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'ready_to_complete',
+            remaining_amount: 0
+        }));
+        expect(screen.queryByText('Payment recorded')).toBeNull();
     });
 
-    it('shows one retry action when automatic completion fails without looping', async () => {
+    it('does not show a finish-sale recovery card when automatic sale completion fails', async () => {
+        const ninetySession = {
+            ...openSession,
+            total_amount: 90,
+            remaining_amount: 90
+        };
+        const readySession = {
+            ...ninetySession,
+            status: 'ready_to_complete',
+            paid_amount: 90,
+            remaining_amount: 0,
+            allocations: [{
+                pos_payment_allocation_id: 705,
+                payment_method: 'gcash',
+                payment_provider: 'merchant_owned',
+                status: 'successful',
+                applied_amount: 90
+            }]
+        };
+        serviceMocks.createPosPaymentSession.mockResolvedValue(ninetySession);
+        serviceMocks.addPosPaymentAllocation.mockResolvedValue({
+            allocation: readySession.allocations[0],
+            session: readySession
+        });
+        const onReadyToComplete = vi.fn().mockResolvedValue(false);
+        const user = userEvent.setup();
+
+        render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                onReadyToComplete={onReadyToComplete}
+                cart={[{ item_id: 36, quantity: 1, sale_price: 90 }]}
+                totalAmount={90}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                storageScopeKey="completion-retry"
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        await user.type(screen.getByRole('spinbutton', { name: 'Amount for GCash' }), '90');
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
+
+        expect(await screen.findByText(/Payment was recorded, but the sale was not completed/)).toBeTruthy();
+        expect(screen.getByTestId('pos-split-payment-dialog')).toBeTruthy();
+        expect(onReadyToComplete).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText('Payment recorded')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Retry Finish Sale' })).toBeNull();
+    });
+
+    it('silently completes a recovered ready payment without showing a recovery card', async () => {
         const recoveredSession = {
             pos_payment_session_id: 501,
             status: 'ready_to_complete',
@@ -307,37 +413,29 @@ describe('POS manual walk-in tender', () => {
             idempotency_key: 'existing-session-key'
         }));
         serviceMocks.fetchPosPaymentSession.mockResolvedValue(recoveredSession);
-        serviceMocks.completePosPaymentSession
-            .mockRejectedValueOnce(new Error('Temporary checkout failure'))
-            .mockResolvedValueOnce({
-                session: { ...recoveredSession, status: 'completed' },
-                transaction: { pos_transaction_id: 993, total_amount: 90 }
-            });
-        const onCompleted = vi.fn();
-        const user = userEvent.setup();
+        const onOpenChange = vi.fn();
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
 
         render(
             <POSSplitPaymentDialog
                 open
-                onOpenChange={vi.fn()}
+                onOpenChange={onOpenChange}
+                onReadyToComplete={onReadyToComplete}
                 cart={[]}
                 catalog={[{ item_id: 36, name: 'Chai Tea (Hot)' }]}
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
                 storageScopeKey="auto-complete-retry"
-                onCompleted={onCompleted}
             />
         );
 
-        expect(await screen.findByRole('button', { name: 'Retry Finish Sale' })).toBeTruthy();
-        expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(1);
-        await new Promise((resolve) => setTimeout(resolve, 25));
-        expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(1);
-
-        await user.click(screen.getByRole('button', { name: 'Retry Finish Sale' }));
-        await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
-        expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalled());
+        expect(screen.queryByText('Payment recorded')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Retry Finish Sale' })).toBeNull();
+        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
+        await waitFor(() => expect(onReadyToComplete).toHaveBeenCalledWith(recoveredSession));
+        expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('adds a third payment row and records the selected Card method', async () => {
@@ -364,11 +462,13 @@ describe('POS manual walk-in tender', () => {
             transaction: { pos_transaction_id: 994, total_amount: 1250 }
         });
         const user = userEvent.setup();
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
 
         render(
             <POSSplitPaymentDialog
                 open
                 onOpenChange={vi.fn()}
+                onReadyToComplete={onReadyToComplete}
                 cart={[{ item_id: 7, quantity: 1, sale_price: 1250 }]}
                 totalAmount={1250}
                 shiftId={41}
@@ -383,8 +483,7 @@ describe('POS manual walk-in tender', () => {
         expect(screen.getByRole('combobox', { name: 'Method of payment 3' }).value).toBe('maya');
         await user.selectOptions(screen.getByRole('combobox', { name: 'Method of payment 3' }), 'card');
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for Card' }), '1250');
-        await user.click(screen.getByTestId('pos-payment-received-3').querySelector('input'));
-        await user.click(screen.getByRole('button', { name: 'Complete Payment' }));
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
 
         await waitFor(() => expect(serviceMocks.addPosPaymentAllocation).toHaveBeenCalledWith(501, expect.objectContaining({
             payment_method: 'card',
@@ -392,7 +491,8 @@ describe('POS manual walk-in tender', () => {
             payment_provider: 'merchant_owned',
             manual_payment_received: true
         })));
-        await waitFor(() => expect(serviceMocks.completePosPaymentSession).toHaveBeenCalledTimes(1));
+        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
+        expect(onReadyToComplete).toHaveBeenCalledWith(readySession);
     });
 
     it('keeps GCash visible and retries only cash when the second field fails', async () => {
@@ -433,14 +533,13 @@ describe('POS manual walk-in tender', () => {
         await screen.findByText('Payment Methods');
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for GCash' }), '500');
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for Cash' }), '750');
-        await user.click(screen.getByTestId('pos-payment-received-1').querySelector('input'));
-        await user.click(screen.getByRole('button', { name: 'Complete Payment' }));
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
 
         expect(await screen.findByText(/GCash was recorded, but the remaining payment was not completed/)).toBeTruthy();
         expect(screen.getAllByText('PHP 500.00').length).toBeGreaterThan(0);
         expect(screen.getByRole('spinbutton', { name: 'Amount for Cash' }).value).toBe('750');
         expect(screen.getByRole('spinbutton', { name: 'Amount for GCash' }).value).toBe('');
-        expect(screen.getByRole('button', { name: 'Complete Payment' }).disabled).toBe(false);
+        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(false);
     });
 
     it('reconciles a persisted digital row when its response is interrupted', async () => {
@@ -478,12 +577,11 @@ describe('POS manual walk-in tender', () => {
         await screen.findByText('Payment Methods');
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for GCash' }), '500');
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for Cash' }), '750');
-        await user.click(screen.getByTestId('pos-payment-received-1').querySelector('input'));
-        await user.click(screen.getByRole('button', { name: 'Complete Payment' }));
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
 
         expect(await screen.findByText(/GCash was recorded, but the remaining payment was not completed/)).toBeTruthy();
         expect(screen.getByRole('spinbutton', { name: 'Amount for GCash' }).value).toBe('');
         expect(screen.getByRole('spinbutton', { name: 'Amount for Cash' }).value).toBe('750');
-        expect(screen.getByRole('button', { name: 'Complete Payment' }).disabled).toBe(false);
+        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(false);
     });
 });

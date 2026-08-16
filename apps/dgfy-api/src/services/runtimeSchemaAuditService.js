@@ -74,7 +74,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260812000007-add-pos-payment-confirmation-and-breakdown.cjs',
     '20260812000008-add-pos-provider-refund-reconciliation.cjs',
     '20260813000001-create-pos-merchant-tender-reconciliations.cjs',
-    '20260813000002-add-pos-parked-sale-revision.cjs'
+    '20260813000002-add-pos-parked-sale-revision.cjs',
+    '20260815000002-add-pos-parked-sale-origin-ownership.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -162,6 +163,8 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'revision',
         'cashier_id',
         'shift_id',
+        'origin_cashier_id',
+        'origin_shift_id',
         'terminal_id',
         'location_id',
         'snapshot'

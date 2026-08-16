@@ -5,6 +5,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { getAllSettingsUseCase } from '../../settings/index.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import dbStore from '../../../utils/dbStore.js';
 
 // Exported so middleware/rateLimiter.js can enforce the same number it
 // advertises to clients in sync_policy/sync_limit_policy - see
@@ -107,6 +108,57 @@ const normalizeSettingsBootstrapPayload = (settings = {}) => ({
     }
 });
 
+const POS_TERMINAL_REGISTRY_KEY = 'pos_terminal_registry';
+
+const parsePositiveLocationId = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
+
+const shouldScopeTerminalRegistryToUser = (user = null) => (
+    Boolean(user)
+    && user?.is_master_admin !== true
+    && !hasEffectivePermission(user, PERMISSIONS.POS.actions.SWITCH_LOCATION_POS)
+);
+
+export const filterPosTerminalRegistryByLocationIds = (settings = {}, allowedLocationIds = []) => {
+    const registrySetting = settings?.[POS_TERMINAL_REGISTRY_KEY];
+    if (!registrySetting || !Array.isArray(registrySetting.value)) {
+        return settings;
+    }
+
+    const allowedLocations = new Set(
+        (Array.isArray(allowedLocationIds) ? allowedLocationIds : [])
+            .map(parsePositiveLocationId)
+            .filter(Boolean)
+    );
+
+    return {
+        ...settings,
+        [POS_TERMINAL_REGISTRY_KEY]: {
+            ...registrySetting,
+            value: registrySetting.value.filter((entry) => {
+                const locationId = parsePositiveLocationId(entry?.location_id);
+                return locationId !== null && allowedLocations.has(locationId);
+            })
+        }
+    };
+};
+
+const getGrantedLocationIdsForUser = async (user = null) => {
+    const userId = parsePositiveLocationId(user?.user_id || user?.id);
+    const UserLocationGrant = dbStore.get('UserLocationGrant');
+    if (!userId || !UserLocationGrant) return [];
+
+    const grants = await UserLocationGrant.findAll({
+        where: { user_id: userId },
+        attributes: ['location_id']
+    });
+    return grants
+        .map((grant) => parsePositiveLocationId(grant?.location_id))
+        .filter(Boolean);
+};
+
 export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase }) => {
     return async ({ query = {}, user }) => {
         try {
@@ -135,9 +187,13 @@ export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase
 };
 
 export const buildGetMobilePosSettingsBootstrapUseCase = () => {
-    return async () => {
+    return async ({ user = null } = {}) => {
         try {
-            const settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            let settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            if (shouldScopeTerminalRegistryToUser(user)) {
+                const grantedLocationIds = await getGrantedLocationIdsForUser(user);
+                settings = filterPosTerminalRegistryByLocationIds(settings, grantedLocationIds);
+            }
             return ok({
                 generated_at: new Date().toISOString(),
                 bootstrap_version: MOBILE_CHECKPOINT_VERSION,

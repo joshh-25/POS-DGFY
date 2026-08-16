@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+    getPosCashPaymentAmount,
     normalizePosPaymentBreakdown,
     resolvePosPaymentCategory
 } from '../src/modules/pos/utils/paymentBreakdown.js';
@@ -39,6 +40,11 @@ describe('POS close-report payment breakdown', () => {
         expect(resolvePosPaymentCategory('credit_card')).toBe('card');
         expect(resolvePosPaymentCategory('debit_card')).toBe('card');
         expect(resolvePosPaymentCategory('employee_credit')).toBe('employee_credit');
+    });
+
+    it('derives cash sales from the normalized payment breakdown', () => {
+        expect(getPosCashPaymentAmount(rawBreakdown)).toBe(100);
+        expect(getPosCashPaymentAmount([{ payment_type: 'gcash', amount: 250 }])).toBe(0);
     });
 
     it('includes zero-value rows and remains stable when normalizing an existing snapshot', () => {

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product_engineering
-last_reviewed: 2026-07-30
+last_reviewed: 2026-08-15
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_settlement
 ---
@@ -19,6 +19,20 @@ records the remaining tenant payable. Tenant funds are released through controll
 Automatic payouts are not production-ready. Manual payout evidence is the only
 supported release mechanism until provider, legal, accounting, tax, contract, and
 regulatory requirements are approved.
+
+### Payment Channel Boundary
+
+- Storefront Card, GCash, Maya, and QR Ph are online payments. Every enabled
+  method must create a landlord-owned PayMongo commerce payment session and may
+  finalize an order only after verified provider confirmation.
+- Walk-in POS GCash uses the merchant's physical QR and is recorded manually as
+  a POS tender. It must not create a PayMongo commerce payment session.
+- Cash remains a direct payment method and must not be submitted through the
+  PayMongo online-payment session endpoint.
+- Production Storefront payment choices are fail-closed: the UI shows an online
+  method only when the catalog's server-resolved `payment_capabilities` marks it
+  enabled. The explicit local QR Ph sandbox override remains a non-production
+  developer aid.
 
 ## Amount Contract
 

@@ -34,6 +34,7 @@ import {
     loginPosCashierUseCase,
     switchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase,
+    getCashierShiftHistoryUseCase,
     recordCashDrawerEventUseCase,
     closeTerminalShiftUseCase,
     forceCloseStaleTerminalShiftUseCase,
@@ -76,13 +77,46 @@ import {
     setTenantSessionCookies
 } from '../../../utils/browserSessionCookies.js';
 import { publishCatalogChange, subscribeCatalogChanges } from '../../shared/services/catalogChangeEventBus.js';
+import dbStore from '../../../utils/dbStore.js';
 
 const timestamp = () => new Date().toISOString();
-const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const requestId = (req, res) => req?.requestId || res?.locals?.requestId || null;
 const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
     const tenantId = req.user?.tenant_id || req.tenant?.id;
     if (!tenantId) return;
     await publishCatalogChange({ tenantId, reason, itemIds });
+};
+
+const persistPosSessionAudit = async (req, result, eventType) => {
+    if (!result?.success) return;
+    try {
+        const AuditLog = dbStore.get('AuditLog');
+        if (!AuditLog) return;
+        const payload = result.data || {};
+        const terminalId = String(
+            req.headers?.['x-pos-terminal-id']
+            || req.body?.terminal_id
+            || ''
+        ).trim().toUpperCase() || null;
+        await AuditLog.create({
+            user_id: Number.parseInt(payload.user_id, 10) || null,
+            entity_type: 'pos_terminal_session',
+            entity_id: Number.parseInt(payload.user_id, 10) || null,
+            action: eventType === 'terminal_login' ? 'CREATE' : 'UPDATE',
+            event_type: eventType,
+            actor_username: String(payload.username || payload.email || req.body?.identifier || '').trim().slice(0, 120) || null,
+            terminal_id: terminalId,
+            request_id: requestId(req),
+            changes: {
+                event: eventType,
+                terminal_id: terminalId,
+                actor_email: String(payload.email || '').trim() || null,
+                request_id: requestId(req)
+            }
+        });
+    } catch {
+        // Session audit must not prevent a valid cashier login response.
+    }
 };
 
 const defaultErrorPayload = (req, res, failure) => ({
@@ -209,6 +243,7 @@ export const loginCashier = async (req, res, next) => {
                 refreshToken: result.data?.refreshToken,
                 tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
             });
+            await persistPosSessionAudit(req, result, 'terminal_login');
         }
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -934,6 +969,26 @@ export const verifyFiscalEventLedger = async (req, res, next) => {
 export const getCurrentTerminalShift = async (req, res, next) => {
     try {
         const result = await getCurrentTerminalShiftUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getCashierShiftHistory = async (req, res, next) => {
+    try {
+        const result = await getCashierShiftHistoryUseCase({
             query: req.validatedQuery || req.query,
             user: req.user
         });
@@ -1911,6 +1966,7 @@ export default {
     uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
+    getCashierShiftHistory,
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,

@@ -21,9 +21,10 @@ import {
   setTenantSessionCookies,
   stripBrowserRefreshToken
 } from '../../../utils/browserSessionCookies.js';
+import dbStore from '../../../utils/dbStore.js';
 
 const timestamp = () => new Date().toISOString();
-const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const requestId = (req, res) => req?.requestId || res?.locals?.requestId || null;
 const defaultErrorPayload = (req, res, failure) => ({
   success: false,
   data: null,
@@ -82,6 +83,37 @@ const persistSecurityAuditEvent = async (req, {
     });
   } catch {
     // Security audit evidence is best-effort and must not block auth flows.
+  }
+};
+
+const persistTenantAuditEvent = async (req, {
+  eventType,
+  action = 'UPDATE',
+  entityType = 'auth_session',
+  metadata = {}
+} = {}) => {
+  try {
+    const AuditLog = dbStore.get('AuditLog');
+    if (!AuditLog || !req?.user) return;
+    const terminalId = String(req.headers?.['x-pos-terminal-id'] || '').trim().toUpperCase() || null;
+    await AuditLog.create({
+      user_id: Number.parseInt(req.user.user_id, 10) || null,
+      entity_type: entityType,
+      entity_id: Number.parseInt(req.user.user_id, 10) || null,
+      action,
+      event_type: eventType,
+      actor_username: String(req.user.username || req.user.email || '').trim().slice(0, 120) || null,
+      terminal_id: terminalId,
+      request_id: requestId(req),
+      changes: {
+        event: eventType,
+        terminal_id: terminalId,
+        request_id: requestId(req),
+        ...metadata
+      }
+    });
+  } catch {
+    // Security audit is best-effort and must not block logout.
   }
 };
 
@@ -267,6 +299,10 @@ export const logout = async (req, res, next) => {
       metadata: {
         actor_email: String(req?.user?.email || '').trim() || null
       }
+    });
+    await persistTenantAuditEvent(req, {
+      eventType: req.headers?.['x-pos-terminal-id'] ? 'terminal_logout' : 'auth_logout',
+      metadata: { actor_email: String(req?.user?.email || '').trim() || null }
     });
 
     return res.status(200).json({

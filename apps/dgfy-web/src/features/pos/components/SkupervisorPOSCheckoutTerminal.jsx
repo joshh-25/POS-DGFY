@@ -2636,9 +2636,13 @@ export default function POSCheckoutTerminal({
                         <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
                         <Input
                             id="skupervisor-day-close-pin"
-                            type="password"
+                            type="text"
                             inputMode="numeric"
                             autoComplete="one-time-code"
+                            data-1p-ignore="true"
+                            data-lpignore="true"
+                            data-bwignore="true"
+                            style={{ WebkitTextSecurity: 'disc' }}
                             value={zReadingClosePin}
                             onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
                             onKeyDown={(event) => {

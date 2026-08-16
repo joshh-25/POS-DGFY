@@ -38,6 +38,26 @@ export const uploadStorefrontCatalogImages = async (itemId, files = []) => {
   return response.data.data;
 };
 
+export const queueStorefrontCatalogImage = async (itemId, file) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  const response = await api.post(`/items/${itemId}/storefront-image/async`, formData);
+  return response.data.data;
+};
+
+export const queueStorefrontCatalogImages = async (itemId, files = []) => {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  const formData = new FormData();
+  normalizedFiles.forEach((file) => formData.append('images', file));
+  const response = await api.post(`/items/${itemId}/storefront-images/async`, formData);
+  return response.data.data;
+};
+
+export const getStorefrontCatalogImageUploadStatus = async (itemId) => {
+  const response = await api.get(`/items/${itemId}/storefront-image/async-status`);
+  return response.data.data;
+};
+
 export const updateStorefrontCatalogGallery = async (itemId, gallery = []) => {
   const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, { gallery });
   return response.data.data;

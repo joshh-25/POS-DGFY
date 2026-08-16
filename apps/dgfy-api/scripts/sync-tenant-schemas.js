@@ -70,6 +70,29 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
         })
     }),
+    audit_logs: Object.freeze({
+        event_type: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `event_type` VARCHAR(100) NULL"
+        }),
+        actor_username: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `actor_username` VARCHAR(120) NULL"
+        }),
+        terminal_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `terminal_id` VARCHAR(100) NULL"
+        }),
+        shift_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `shift_id` BIGINT NULL"
+        }),
+        location_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `location_id` INTEGER NULL"
+        }),
+        reason: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `reason` VARCHAR(500) NULL"
+        }),
+        request_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `request_id` VARCHAR(100) NULL"
+        })
+    }),
     pos_z_reading_snapshots: Object.freeze({
         location_id: Object.freeze({
             sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `location_id` INTEGER NULL"
@@ -184,6 +207,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_parked_sales: Object.freeze({
         revision: Object.freeze({
             sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `revision` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`"
+        }),
+        origin_cashier_id: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `origin_cashier_id` INTEGER NULL AFTER `cashier_id`"
+        }),
+        origin_shift_id: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `origin_shift_id` INTEGER NULL AFTER `shift_id`"
         })
     }),
     pos_payment_allocations: Object.freeze({
@@ -444,6 +473,38 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `workflow_mode_change_log_created_at` (`created_at`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // Created by the original landlord migration 20240101000016-create-audit-logs.js.
+    // Audit rows are tenant-local because the POS audit workspace reads activity from the
+    // active tenant database. Register the complete shape here so older tenant databases
+    // receive the table and the later POS event-context columns through one idempotent path.
+    audit_logs: Object.freeze({
+        sql: "CREATE TABLE `audit_logs` (\n"
+            + "  `log_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `user_id` int DEFAULT NULL,\n"
+            + "  `entity_type` varchar(50) COLLATE utf8mb4_general_ci NOT NULL,\n"
+            + "  `entity_id` int DEFAULT NULL,\n"
+            + "  `action` enum('CREATE','UPDATE','DELETE','VIEW') COLLATE utf8mb4_general_ci NOT NULL,\n"
+            + "  `event_type` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `actor_username` varchar(120) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `terminal_id` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `shift_id` bigint DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `reason` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `request_id` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `changes` json DEFAULT NULL,\n"
+            + "  `ip_address` varchar(45) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `user_agent` text COLLATE utf8mb4_general_ci,\n"
+            + "  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`log_id`),\n"
+            + "  KEY `idx_user_id` (`user_id`),\n"
+            + "  KEY `idx_entity_type` (`entity_type`),\n"
+            + "  KEY `idx_timestamp` (`timestamp`),\n"
+            + "  KEY `idx_audit_event_timestamp` (`event_type`,`timestamp`),\n"
+            + "  KEY `idx_audit_terminal_timestamp` (`terminal_id`,`timestamp`),\n"
+            + "  KEY `idx_audit_shift_timestamp` (`shift_id`,`timestamp`),\n"
+            + "  CONSTRAINT `audit_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // Created by migration 20260812000001-create-pos-parked-sales.cjs.
     // Parked carts are tenant-local work items and must be backfilled onto
     // tenants provisioned before the migration ran.
@@ -457,6 +518,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `revision` int unsigned NOT NULL DEFAULT 1,\n"
             + "  `cashier_id` int NOT NULL,\n"
             + "  `shift_id` int NOT NULL,\n"
+            + "  `origin_cashier_id` int DEFAULT NULL,\n"
+            + "  `origin_shift_id` int DEFAULT NULL,\n"
             + "  `terminal_id` varchar(100) NOT NULL,\n"
             + "  `location_id` int NOT NULL,\n"
             + "  `snapshot` json NOT NULL,\n"
@@ -482,13 +545,17 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_parked_sales_cashier_status` (`cashier_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_location_status` (`location_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_claimed_by_status` (`claimed_by`,`status`),\n"
+            + "  KEY `idx_pos_parked_sales_origin_cashier_status` (`origin_cashier_id`,`status`),\n"
+            + "  KEY `idx_pos_parked_sales_origin_shift_status` (`origin_shift_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_created_at` (`created_at`),\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_1` FOREIGN KEY (`cashier_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_2` FOREIGN KEY (`shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_4` FOREIGN KEY (`claimed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_5` FOREIGN KEY (`completed_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_6` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_4` FOREIGN KEY (`origin_cashier_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_5` FOREIGN KEY (`origin_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_6` FOREIGN KEY (`claimed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_7` FOREIGN KEY (`completed_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_8` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Created by migration 20260812000006-create-pos-split-payment-sessions.cjs.
@@ -1114,6 +1181,25 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         idx_fnb_modifier_groups_parent_option: Object.freeze({
             sql: "ALTER TABLE `fnb_modifier_groups` ADD INDEX `idx_fnb_modifier_groups_parent_option` (`parent_modifier_option_id`)"
         })
+    }),
+    audit_logs: Object.freeze({
+        idx_audit_event_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_event_timestamp` (`event_type`,`timestamp`)"
+        }),
+        idx_audit_terminal_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_terminal_timestamp` (`terminal_id`,`timestamp`)"
+        }),
+        idx_audit_shift_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_shift_timestamp` (`shift_id`,`timestamp`)"
+        })
+    }),
+    pos_parked_sales: Object.freeze({
+        idx_pos_parked_sales_origin_cashier_status: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD INDEX `idx_pos_parked_sales_origin_cashier_status` (`origin_cashier_id`,`status`)"
+        }),
+        idx_pos_parked_sales_origin_shift_status: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD INDEX `idx_pos_parked_sales_origin_shift_status` (`origin_shift_id`,`status`)"
+        })
     })
 });
 
@@ -1173,6 +1259,19 @@ export async function repairItemFolderCategoryLifecycleSchema(connection, tenant
     if (!indexes.some((row) => row.INDEX_NAME === 'uq_item_folders_active_name')) {
         await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD UNIQUE INDEX ${quoteIdentifier('uq_item_folders_active_name')} (${quoteIdentifier('active_name_key')})`);
     }
+}
+
+// Existing parked sales predate the shared-queue handoff columns. Preserve their
+// creator/shift identity before a future cashier claims the sale and the current
+// ownership fields move to the new cashier/shift.
+export async function repairPosParkedSaleOriginOwnership(connection, tenantDb) {
+    await connection.query(
+        `UPDATE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('pos_parked_sales')}
+            SET ${quoteIdentifier('origin_cashier_id')} = COALESCE(${quoteIdentifier('origin_cashier_id')}, ${quoteIdentifier('cashier_id')}),
+                ${quoteIdentifier('origin_shift_id')} = COALESCE(${quoteIdentifier('origin_shift_id')}, ${quoteIdentifier('shift_id')})
+          WHERE ${quoteIdentifier('origin_cashier_id')} IS NULL
+             OR ${quoteIdentifier('origin_shift_id')} IS NULL`
+    );
 }
 
 // MySQL refuses to add a STORED generated column whose base column carries an ON UPDATE
@@ -1276,7 +1375,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-15.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-15.2';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {
@@ -1623,6 +1722,12 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                             await connection.query(repair.sql);
                         }
                         await repairItemFolderCategoryLifecycleSchema(connection, tenant.db_name);
+                        if (missingColumns.some((entry) => (
+                            entry.table === 'pos_parked_sales'
+                            && ['origin_cashier_id', 'origin_shift_id'].includes(entry.column)
+                        ))) {
+                            await repairPosParkedSaleOriginOwnership(connection, tenant.db_name);
+                        }
                     }
 
                     const missingIndexes = await inspectRequiredTenantSchemaIndexes(connection, tenant.db_name);

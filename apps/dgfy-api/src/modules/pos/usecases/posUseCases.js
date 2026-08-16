@@ -56,7 +56,7 @@ import {
     STOREFRONT_PROMOS_SETTING_KEY,
     buildCommercialPromoUsageUpdate
 } from '../../shared/utils/commercialPromoPolicy.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -155,11 +155,6 @@ const LOCATION_SCOPE_REASON_CODES = Object.freeze({
     TERMINAL_HOME_LOCATION_REQUIRED: 'POS_TERMINAL_HOME_LOCATION_REQUIRED',
     SHIFT_LOCATION_MISMATCH: 'POS_SHIFT_LOCATION_MISMATCH'
 });
-const isAdminLikeUser = (user = {}) => {
-    const role = String(user?.role || '').trim().toLowerCase();
-    return user?.is_master_admin === true || role === 'admin';
-};
-
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
     const tenantId = store.tenantId;
@@ -231,6 +226,30 @@ const toCurrencyCents = (value) => Math.max(0, Math.round((Number(value) || 0) *
 const fromCurrencyCents = (value) => round4((Number(value) || 0) / 100);
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const normalizeTrustedDiscountApproval = (approval = null) => {
+    if (!isPlainObject(approval)) return null;
+    const discountType = String(approval.discount_type || '').trim().toLowerCase();
+    if (!['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType)) return null;
+    const approverUserId = parsePositiveInt(approval.approver_user_id);
+    if (!approverUserId) return null;
+    return {
+        discount_type: discountType,
+        approver_user_id: approverUserId,
+        employee_user_id: discountType === 'employee' ? parsePositiveInt(approval.employee_user_id) : null,
+        self_approved: approval.self_approved === true,
+        approved_at: approval.approved_at || null
+    };
+};
+
+const trustedDiscountApprovalMatches = (approval, governedDraft, governedApplication) => {
+    if (!approval || !governedDraft || !governedApplication) return false;
+    if (approval.discount_type !== governedApplication.type) return false;
+    if (approval.approver_user_id !== parsePositiveInt(governedDraft.approver_user_id)) return false;
+    if (approval.discount_type === 'employee') {
+        return approval.employee_user_id === parsePositiveInt(governedApplication.employee_id);
+    }
+    return true;
+};
 const normalizeJsonObject = (value, fallback = {}) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return value;
     if (typeof value !== 'string') return fallback;
@@ -569,6 +588,29 @@ const normalizeZReadingSummary = (summary = {}) => ({
             amount: round4(entry?.amount)
         }))
         : []
+});
+
+const createCatalogAuditLog = async ({
+    posRepository,
+    user,
+    item,
+    eventType,
+    action = 'UPDATE',
+    changes = {}
+}) => posRepository.createAuditLog({
+    user_id: parsePositiveInt(user?.user_id),
+    actor_username: String(user?.username || '').trim() || null,
+    entity_type: eventType.includes('image') ? 'item_catalog_image' : 'pos_catalog_override',
+    entity_id: parsePositiveInt(item?.item_id || changes.item_id),
+    action,
+    event_type: eventType,
+    changes: {
+        event: eventType,
+        item_id: parsePositiveInt(item?.item_id || changes.item_id),
+        item_name: String(item?.name || '').trim() || null,
+        surface: 'pos',
+        ...changes
+    }
 });
 
 const buildPersistedZReadingData = ({
@@ -1708,7 +1750,9 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
                     user_id: Number(row.user_id),
                     username: String(row.username || '').trim(),
                     role: String(row.role || '').trim().toLowerCase(),
-                    is_master_admin: row.is_master_admin === true
+                    is_master_admin: row.is_master_admin === true,
+                    can_authorize_discounts: row.can_authorize_discounts === true,
+                    pos_approval_pin_configured: row.pos_approval_pin_configured === true
                 }))
             });
         } catch (error) {
@@ -1718,20 +1762,8 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
 };
 
 export const buildVerifyPosDiscountApprovalUseCase = ({ posRepository }) => {
-    return async ({ payload = {}, user = null } = {}) => {
+    return async ({ payload = {} } = {}) => {
         try {
-            const bypassEmployeePin = String(payload?.discount_type || '').trim().toLowerCase() === 'employee'
-                && isAdminLikeUser(user);
-            if (bypassEmployeePin) {
-                return ok({
-                    approver: {
-                        user_id: Number(user?.user_id),
-                        username: String(user?.username || '').trim(),
-                        role: String(user?.role || '').trim().toLowerCase(),
-                        bypassed_pin: true
-                    }
-                });
-            }
             const approverId = parsePositiveInt(payload.approver_user_id);
             if (!approverId) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'approver_user_id is required', { statusCode: 422 });
@@ -2393,7 +2425,9 @@ export const buildCheckoutPosUseCase = ({
         user,
         transaction: providedTransaction = null,
         beforeCommit = null,
-        quoteOnly = false
+        quoteOnly = false,
+        discountApproval = null,
+        trustedDiscountApproval = null
     }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -2529,6 +2563,7 @@ export const buildCheckoutPosUseCase = ({
                     amount: payload.governed_discount.amount == null ? null : round4(payload.governed_discount.amount),
                     customer_name: String(payload.governed_discount.customer_name || '').trim() || null,
                     id_number: String(payload.governed_discount.id_number || '').trim() || null,
+                    employee_name: String(payload.governed_discount.employee_name || '').trim() || null,
                     employee_id: String(payload.governed_discount.employee_id || '').trim() || null,
                     approver_user_id: parsePositiveInt(payload.governed_discount.approver_user_id),
                     reason: String(payload.governed_discount.reason || '').trim() || null,
@@ -3031,28 +3066,90 @@ export const buildCheckoutPosUseCase = ({
                 })
                 : null;
             const governedApplication = governedResolution?.application || null;
-            if (governedApplication && ['employee', 'manual'].includes(governedApplication.type)) {
-                const employeeAdminBypass = governedApplication.type === 'employee' && isAdminLikeUser(user);
-                if (employeeAdminBypass) {
-                    governedApplication.manager_approval_id = Number(user?.user_id) || null;
-                    governedApplication.manager_approved_at = new Date();
-                    governedApplication.self_approved = true;
+            const normalizedTrustedDiscountApproval = normalizeTrustedDiscountApproval(trustedDiscountApproval);
+            const normalizedDiscountApproval = isPlainObject(discountApproval)
+                ? {
+                    approver_user_id: parsePositiveInt(discountApproval.approver_user_id),
+                    manager_pin: String(discountApproval.manager_pin || '').trim(),
+                    employee_user_id: parsePositiveInt(discountApproval.employee_user_id),
+                    discount_type: String(discountApproval.discount_type || '').trim().toLowerCase()
+                }
+                : (isPlainObject(payload.discount_approval)
+                    ? {
+                        approver_user_id: parsePositiveInt(payload.discount_approval.approver_user_id),
+                        manager_pin: String(payload.discount_approval.manager_pin || '').trim(),
+                        employee_user_id: parsePositiveInt(payload.discount_approval.employee_user_id),
+                        discount_type: String(payload.discount_approval.discount_type || '').trim().toLowerCase()
+                    }
+                    : null);
+            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual'].includes(governedApplication.type)) {
+                if (normalizedDiscountApproval?.discount_type
+                    && normalizedDiscountApproval.discount_type !== governedApplication.type) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'The discount approval type does not match the applied discount.',
+                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVAL_TYPE_MISMATCH' } }
+                    );
+                }
+                if (normalizedDiscountApproval?.approver_user_id
+                    && governedDraft?.approver_user_id
+                    && normalizedDiscountApproval.approver_user_id !== parsePositiveInt(governedDraft.approver_user_id)) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'The discount approval employee does not match the applied discount.',
+                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_MISMATCH' } }
+                    );
+                }
+                const trustedApprovalMatches = trustedDiscountApprovalMatches(
+                    normalizedTrustedDiscountApproval,
+                    governedDraft,
+                    governedApplication
+                );
+                if (trustedApprovalMatches) {
+                    const activeApprover = await posRepository.findActiveDiscountApproverById(
+                        normalizedTrustedDiscountApproval.approver_user_id,
+                        { transaction }
+                    );
+                    const activeApproverRole = String(activeApprover?.role || '').trim().toLowerCase();
+                    const activeApproverAuthorized = activeApprover?.can_authorize_discounts === true
+                        || activeApprover?.is_master_admin === true
+                        || ['admin', 'manager'].includes(activeApproverRole);
+                    if (!activeApprover || activeApproverAuthorized !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'The saved discount approver is no longer active.',
+                            { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_INACTIVE' } }
+                        );
+                    }
+                    governedApplication.manager_approval_id = activeApprover.user_id;
+                    governedApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
+                    const approvedAt = normalizedTrustedDiscountApproval.approved_at
+                        ? new Date(normalizedTrustedDiscountApproval.approved_at)
+                        : null;
+                    governedApplication.manager_approved_at = approvedAt && !Number.isNaN(approvedAt.getTime())
+                        ? approvedAt
+                        : new Date();
+                    governedApplication.self_approved = false;
                 } else {
-                    const approverId = parsePositiveInt(governedDraft.approver_user_id);
+                    const approverId = parsePositiveInt(
+                        governedDraft.approver_user_id
+                        || normalizedDiscountApproval?.approver_user_id
+                    );
                     if (!approverId) {
                         throw new DomainError(
                             DomainErrorCode.VALIDATION_FAILED,
-                            'A POS discount approver is required.',
+                            'An authorized employee PIN is required for every POS discount.',
                             { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_REQUIRED' } }
                         );
                     }
                     const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
                     const verifiedApprover = await verifyPosDiscountApprover({
                         approver,
-                        pin: governedDraft.manager_pin,
+                        pin: normalizedDiscountApproval?.manager_pin || governedDraft.manager_pin,
                         employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
                     });
                     governedApplication.manager_approval_id = verifiedApprover.user_id;
+                    governedApplication.manager_approval_name = verifiedApprover.username || null;
                     governedApplication.manager_approved_at = new Date();
                     governedApplication.self_approved = false;
                 }
@@ -3074,6 +3171,17 @@ export const buildCheckoutPosUseCase = ({
                 discountRateSnapshot: governedCalculation.rate
             } : resolveCheckoutDiscount({ payload, subtotalAmount, settings });
             const discountAmount = round4(discountResolution.discountAmount);
+            const hasLegacyDiscount = !governedApplication && (
+                discountAmount > 0
+                || discountResolution.discountRateSnapshot != null
+            );
+            if (hasLegacyDiscount) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Every POS discount must be authorized with an employee PIN.',
+                    { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_REQUIRED' } }
+                );
+            }
             const discountBeneficiary = normalizeDiscountBeneficiary({
                 payload,
                 discountLabelSnapshot: discountResolution.discountLabelSnapshot
@@ -3362,10 +3470,20 @@ export const buildCheckoutPosUseCase = ({
                     entity_type: 'pos_discount',
                     entity_id: posTransactionId,
                     action: 'CREATE',
+                    event_type: 'pos_discount_applied',
+                    shift_id: normalizedShiftId,
+                    terminal_id: normalizedTerminalId,
+                    location_id: enforcedCheckoutLocationId,
                     changes: {
+                        event: 'pos_discount_applied',
                         transaction_id: posTransactionId,
+                        invoice_number: invoiceNumber,
                         discount_type: governedApplication.type,
+                        discount_method: governedCalculation.method,
+                        discount_rate: governedCalculation.rate,
                         discount_amount: governedCalculation.discount_amount,
+                        original_total: subtotalAmount,
+                        final_total: totalAmount,
                         selected_employee_id: governedApplication.type === 'employee'
                             ? governedApplication.employee_id || null
                             : null,
@@ -3373,7 +3491,14 @@ export const buildCheckoutPosUseCase = ({
                             ? governedApplication.employee_name || null
                             : null,
                         applied_by_user_id: normalizedUserId,
+                        applied_by_name: String(user?.username || '').trim() || null,
+                        cashier_user_id: normalizedUserId,
+                        cashier_name: String(user?.username || '').trim() || null,
+                        authorized_by_user_id: governedApplication.manager_approval_id || null,
+                        authorized_by_name: governedApplication.manager_approval_name || null,
+                        authorized_at: governedApplication.manager_approved_at || null,
                         approved_by_user_id: governedApplication.manager_approval_id || null,
+                        approved_by_name: governedApplication.manager_approval_name || null,
                         approved_at: governedApplication.manager_approved_at || null,
                         self_approved: governedApplication.self_approved === true
                     }
@@ -3787,6 +3912,30 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 void_reason: reason,
                 fiscal_lifecycle_state: existing.document_type === 'fiscal_invoice' ? 'voided' : existing.fiscal_lifecycle_state,
                 fiscal_void_event_hash: fiscalEvent?.event_hash || existing.fiscal_void_event_hash || null
+            }, { transaction });
+
+            await posRepository.createAuditLog({
+                user_id: actorUserId,
+                entity_type: 'pos_transaction',
+                entity_id: normalizedTransactionId,
+                action: 'UPDATE',
+                event_type: 'pos_transaction_voided',
+                terminal_id: activeTerminalId || existing.terminal_id || null,
+                shift_id: activeShiftId,
+                location_id: existing.location_id || null,
+                reason,
+                changes: {
+                    event: 'pos_transaction_voided',
+                    status: 'voided',
+                    reason,
+                    invoice_number: existing.invoice_number || null,
+                    total_amount: Number(existing.total_amount || 0),
+                    shift_id: activeShiftId,
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    location_id: existing.location_id || null,
+                    stock_reversals: stockReversals,
+                    fiscal_event_hash: fiscalEvent?.event_hash || null
+                }
             }, { transaction });
 
             await transaction.commit();
@@ -5106,6 +5255,23 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                     ? { pos_best_seller_mode: payload.pos_best_seller_mode }
                     : {})
             });
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item,
+                eventType: 'pos_catalog_override_updated',
+                changes: {
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                        ? { pos_visible: payload.pos_visible }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                        ? { pos_always_available: payload.pos_always_available === true }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                        ? { pos_best_seller_mode: payload.pos_best_seller_mode }
+                        : {})
+                }
+            });
             return ok(toSerializable(data));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to update POS catalog override'));
@@ -5230,6 +5396,18 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
                     const updated = await posRepository.upsertCatalogOverride(itemId, {
                         ...(hasPosVisible ? { pos_visible: payload.pos_visible } : {}),
                         ...(hasPosAlwaysAvailable ? { pos_always_available: payload.pos_always_available } : {})
+                    });
+                    await createCatalogAuditLog({
+                        posRepository,
+                        user,
+                        item: readinessEnvelope,
+                        eventType: 'pos_catalog_override_updated',
+                        changes: {
+                            item_id: itemId,
+                            ...(hasPosVisible ? { pos_visible: payload.pos_visible } : {}),
+                            ...(hasPosAlwaysAvailable ? { pos_always_available: payload.pos_always_available } : {}),
+                            bulk_update: true
+                        }
                     });
                     results.push({
                         item_id: itemId,
@@ -5357,6 +5535,17 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             response.pos_image_variants = stored.image_variants || null;
             response.pos_image_original_path = stored.original?.path || null;
             response.pos_image_classification = stored.classification || null;
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item,
+                eventType: 'pos_catalog_image_uploaded',
+                action: 'CREATE',
+                changes: {
+                    original_filename: String(file.originalname || '').slice(0, 180) || null,
+                    replaced_existing_image: Boolean(existing?.pos_image_path)
+                }
+            });
             return ok(response);
         } catch (error) {
             if (stored && !storedCommitted) {
@@ -5505,6 +5694,19 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                     });
                     storedCommitted = true;
 
+                    await createCatalogAuditLog({
+                        posRepository,
+                        user,
+                        item,
+                        eventType: 'pos_catalog_image_uploaded',
+                        action: 'CREATE',
+                        changes: {
+                            original_filename: String(file.originalname || '').slice(0, 180) || null,
+                            replaced_existing_image: Boolean(existing?.pos_image_path),
+                            bulk_upload: true
+                        }
+                    });
+
                     if (existing?.pos_image_path && existing.pos_image_path !== stored.path) {
                         try {
                             await imageStorage.remove({ path: existing.pos_image_path });
@@ -5585,6 +5787,16 @@ export const buildDeletePosCatalogImageUseCase = ({ posRepository, imageStorage 
             }
 
             const data = await posRepository.clearCatalogImage(normalizedItemId);
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item: { item_id: normalizedItemId },
+                eventType: 'pos_catalog_image_deleted',
+                action: 'DELETE',
+                changes: {
+                    had_image: Boolean(existing?.pos_image_path || existing?.pos_image_url)
+                }
+            });
             return ok(toSerializable(data));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to delete POS catalog image'));
@@ -5639,6 +5851,8 @@ const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
         ...eventSummary
     };
 };
+
+const cashSalesFromSalesSummary = (salesSummary) => getPosCashPaymentAmount(salesSummary?.payment_breakdown);
 
 const resolveShiftSalesWindow = (shift = {}) => {
     const startAt = new Date(shift?.opened_at || '');
@@ -6345,12 +6559,12 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 });
             }
 
-            const cashSales = await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id);
             const salesSummary = await buildShiftSalesSummary({
                 posRepository,
                 shiftId: shift.pos_terminal_shift_id,
                 shift
             });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
             return ok({
                 shift: toSerializable(shift),
                 cash_summary: buildShiftCashSummary({ shift: toSerializable(shift), cashSalesAmount: cashSales }),
@@ -6360,6 +6574,82 @@ export const buildGetCurrentTerminalShiftUseCase = ({
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to load current terminal shift'));
+        }
+    };
+};
+
+export const buildGetCashierShiftHistoryUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ query = {}, user }) => {
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view cashier shift history',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: query?.location_id,
+                userId: normalizedUserId,
+                operationLabel: 'POS cashier history read'
+            });
+            const result = await posRepository.listCashierShiftHistory({
+                cashierId: normalizedUserId,
+                locationId: locationScope.location_id,
+                dateFrom: query?.date_from,
+                dateTo: query?.date_to,
+                status: query?.status || 'all',
+                page: query?.page || 1,
+                limit: query?.limit || 20
+            });
+            const rows = Array.isArray(result?.rows) ? result.rows : [];
+            const records = await Promise.all(rows.map(async (row) => {
+                const shift = toSerializable(row);
+                const shiftId = parsePositiveInt(shift?.pos_terminal_shift_id);
+                const salesSummary = shiftId
+                    ? await buildShiftSalesSummary({
+                        posRepository,
+                        shiftId,
+                        shift
+                    })
+                    : null;
+                const cashSales = cashSalesFromSalesSummary(salesSummary);
+                return {
+                    shift,
+                    cash_summary: buildShiftCashSummary({
+                        shift,
+                        cashSalesAmount: cashSales
+                    }),
+                    sales_summary: salesSummary
+                };
+            }));
+
+            return ok({
+                cashier: {
+                    cashier_id: normalizedUserId,
+                    cashier_name: String(user?.username || user?.email || '').trim() || null
+                },
+                records,
+                pagination: result?.pagination || {
+                    page: 1,
+                    limit: 20,
+                    total: records.length,
+                    totalPages: 1
+                },
+                applied_filters: {
+                    location_id: locationScope.location_id,
+                    date_from: normalizeBusinessDateInput(query?.date_from) || null,
+                    date_to: normalizeBusinessDateInput(query?.date_to) || null,
+                    status: query?.status || 'all'
+                }
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to load cashier shift history'));
         }
     };
 };
@@ -6520,20 +6810,23 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
 };
 
 const assertNoUnresolvedParkedSalesForShift = async ({ posRepository, shiftId, transaction }) => {
-    const activeParkedSaleCount = await posRepository.countActiveParkedSalesForShift(shiftId, {
+    const claimedParkedSaleCount = await posRepository.countActiveParkedSalesForShift(shiftId, {
         transaction,
         lock: true
     });
-    if (Number(activeParkedSaleCount || 0) <= 0) return;
+    if (Number(claimedParkedSaleCount || 0) <= 0) return;
 
     throw new DomainError(
         DomainErrorCode.CONFLICT,
-        `Resolve ${activeParkedSaleCount} active parked sale${Number(activeParkedSaleCount) === 1 ? '' : 's'} before closing this shift.`,
+        `Resolve ${claimedParkedSaleCount} claimed parked sale${Number(claimedParkedSaleCount) === 1 ? '' : 's'} before closing this shift.`,
         {
             statusCode: 409,
             details: {
                 reason_code: 'POS_PARKED_SALES_UNRESOLVED',
-                active_parked_sale_count: Number(activeParkedSaleCount),
+                // Keep the legacy detail key for older clients while exposing
+                // the exact blocking state to newer clients.
+                active_parked_sale_count: Number(claimedParkedSaleCount),
+                claimed_parked_sale_count: Number(claimedParkedSaleCount),
                 shift_id: Number(shiftId)
             }
         }
@@ -6656,22 +6949,19 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             });
 
             const shiftPayload = toSerializable(shift);
-            const cashSales = await posRepository.getShiftCashSalesTotal(
-                normalizedShiftId,
-                { transaction }
-            );
-            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
-                normalizedShiftId,
-                { transaction }
-            );
-            const tempShift = { ...shiftPayload, cashEvents };
-            const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
             const salesSummary = await buildShiftSalesSummary({
                 posRepository,
                 shiftId: normalizedShiftId,
                 shift: shiftPayload,
                 transaction
             });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
+            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
+                normalizedShiftId,
+                { transaction }
+            );
+            const tempShift = { ...shiftPayload, cashEvents };
+            const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
 
@@ -6860,10 +7150,13 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             });
 
             const shiftPayload = toSerializable(shift);
-            const cashSales = await posRepository.getShiftCashSalesTotal(
-                normalizedShiftId,
-                { transaction }
-            );
+            const salesSummary = await buildShiftSalesSummary({
+                posRepository,
+                shiftId: normalizedShiftId,
+                shift: shiftPayload,
+                transaction
+            });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
             const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
                 normalizedShiftId,
                 { transaction }
@@ -6871,12 +7164,6 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             const summary = buildShiftCashSummary({
                 shift: { ...shiftPayload, cashEvents },
                 cashSalesAmount: cashSales
-            });
-            const salesSummary = await buildShiftSalesSummary({
-                posRepository,
-                shiftId: normalizedShiftId,
-                shift: shiftPayload,
-                transaction
             });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
@@ -7000,9 +7287,14 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;
-            const shiftCashSales = openShift
-                ? await posRepository.getShiftCashSalesTotal(openShift.pos_terminal_shift_id)
-                : 0;
+            const activeShiftSalesSummary = shiftPayload
+                ? await buildShiftSalesSummary({
+                    posRepository,
+                    shiftId: shiftPayload.pos_terminal_shift_id,
+                    shift: shiftPayload
+                })
+                : null;
+            const shiftCashSales = cashSalesFromSalesSummary(activeShiftSalesSummary);
 
             return ok({
                 business_date: businessDate,

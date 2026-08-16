@@ -55,6 +55,21 @@ const postPayMongo = async (pathName, body) => {
   return payload.data;
 };
 
+const capabilityResponse = await fetch(`${baseUrl}/merchants/capabilities/payment_methods`, {
+  headers: {
+    Authorization: authHeader,
+    Accept: 'application/json'
+  }
+});
+const capabilityPayload = await capabilityResponse.json().catch(() => ({}));
+if (!capabilityResponse.ok) {
+  const error = capabilityPayload?.errors?.[0] || {};
+  throw new Error(`/merchants/capabilities/payment_methods failed with ${capabilityResponse.status}: ${error.code || error.detail || 'unknown_error'}`);
+}
+const supportedPaymentMethods = Array.isArray(capabilityPayload)
+  ? capabilityPayload.map((method) => String(method || '').trim().toLowerCase()).filter(Boolean)
+  : [];
+
 const paymentIntent = await postPayMongo('/payment_intents', {
   data: {
     attributes: {
@@ -103,6 +118,12 @@ console.log(JSON.stringify({
   ok: true,
   mode,
   base_url: baseUrl,
+  supported_payment_methods: [...new Set(supportedPaymentMethods)],
+  requested_methods_supported: {
+    card: supportedPaymentMethods.includes('card'),
+    gcash: supportedPaymentMethods.includes('gcash'),
+    maya: supportedPaymentMethods.includes('paymaya') || supportedPaymentMethods.includes('maya')
+  },
   payment_intent_id_prefix: String(paymentIntent.id || '').slice(0, 8),
   payment_method_id_prefix: String(paymentMethod.id || '').slice(0, 8),
   attached_status: attachedIntent?.attributes?.status || null,
