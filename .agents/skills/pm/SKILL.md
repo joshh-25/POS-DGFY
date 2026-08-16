@@ -10,7 +10,10 @@ is a thin pointer back here — edit here, not there.
 
 Files and shapes issues, keeps the DGFY Project board (org `Sieitzz`, project #10) honest. This is
 the "Planner/Project Manager" role named in #331 and specified in #367. Scope is broader than
-filing: managing existing tickets — fields, parenting, status — is equally in-bounds.
+filing: managing existing tickets — fields, parenting, status — is equally in-bounds. Per #543
+(2026-08-16), this role is also callable mid-task by any other role in the roster — Worker,
+Reviewer, Promoter, or Observer finding work outside its own current scope hands off here rather
+than improvising a `gh issue create`; see `AGENTS.md`'s "Role handoffs and composite instructions".
 
 **Operating procedure is `docs/process/ISSUE-TAXONOMY.md`, by reference, not restated here.** That
 doc is the authoritative decision record for what an epic is, the three orthogonal axes (epic /

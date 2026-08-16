@@ -19,7 +19,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'fnb',
     detailsTestId: 'fnb-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Parked Sales', 'Park & New Sale'],
+    visibleLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Park'],
     hiddenLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room']
   }),
   Object.freeze({
@@ -29,7 +29,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Parked Sales', 'Park & New Sale'],
+    visibleLabels: ['Walk-in', 'Park'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
   }),
   Object.freeze({
@@ -49,7 +49,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Parked Sales', 'Park & New Sale'],
+    visibleLabels: ['Walk-in', 'Park'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
   })
 ]);
@@ -59,12 +59,12 @@ const renderProfile = ({ workflowMode, effectiveCapabilities }) => {
   const presentationBundle = resolvePosPresentationBundle(posWorkflow);
   const setValue = vi.fn();
   const actions = {
-    onOpenParkedSales: vi.fn(),
     onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
-    onApplyDiscount: vi.fn()
+    onApplyDiscount: vi.fn(),
+    onSplitPayment: vi.fn()
   };
 
   render(
@@ -117,15 +117,17 @@ describe('POS mode presentation matrix', () => {
         expect(screen.queryByText(label)).toBeNull();
       });
 
-      fireEvent.click(screen.getByText('Checkout (2 Items)'));
+      fireEvent.click(screen.getByText('Checkout'));
       fireEvent.click(screen.getByText('Print Order'));
       fireEvent.click(screen.getByText('Open Cash Drawer'));
       fireEvent.click(screen.getByText('Apply Discount'));
+      fireEvent.click(screen.getByText('Split Payment'));
 
       expect(actions.onCheckout).toHaveBeenCalledOnce();
       expect(actions.onPrintOrder).toHaveBeenCalledOnce();
       expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
       expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
+      expect(actions.onSplitPayment).toHaveBeenCalledOnce();
     });
   });
 
@@ -137,7 +139,7 @@ describe('POS mode presentation matrix', () => {
     expect(actionGrid.getAttribute('data-has-parked-sale-controls')).toBe('false');
     expect(actionGrid.className).toContain('grid-cols-2');
     expect(actionGrid.className).toContain('sm:grid-cols-2');
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getAllByRole('button')).toHaveLength(5);
     screen.getAllByRole('button').forEach((button) => {
       expect(button.className).toContain('min-h-[46px]');
     });

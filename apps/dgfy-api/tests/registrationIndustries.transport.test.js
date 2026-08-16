@@ -84,6 +84,22 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
         expect(mockFindByKey).not.toHaveBeenCalledWith('healthcare');
     });
 
+    it('normalizes a JSON-encoded niches string from the landlord catalog into an array', async () => {
+        mockFindByKey.mockImplementation(async (key) => publishedTemplate(key));
+        mockCatalogFindAll.mockResolvedValue([
+            {
+                ...seededCatalogRows()[0],
+                niches: '["Preschool", "Tutorial center"]'
+            }
+        ]);
+
+        const response = await request(app).get('/api/v1/registration/industries');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.industries[0].niches).toEqual(['Preschool', 'Tutorial center']);
+        expect(Array.isArray(response.body.data.industries[0].niches)).toBe(true);
+    });
+
     it('degrades a single entry to template_key: null when its template is not published', async () => {
         mockFindByKey.mockImplementation(async (key) => (
             key === 'fnb_counter_service' ? { template_id: 2, template_key: key, status: 'draft' } : publishedTemplate(key)

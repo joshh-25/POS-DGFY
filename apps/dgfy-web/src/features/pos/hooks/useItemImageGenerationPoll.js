@@ -24,7 +24,7 @@ const TERMINAL_STATUSES = ['completed', 'failed'];
  * Lives at module scope (not inside the hook) because it reads the clock —
  * the same reasoning useMenuImportJob.js's runJobPoll documents for itself.
  */
-const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve }) => {
+const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve, readStatus }) => {
     const startedAt = Date.now();
 
     const scheduleOrTimeout = () => {
@@ -38,7 +38,7 @@ const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve }) => {
 
     const tick = async () => {
         try {
-            const record = await getStorefrontImageGenerationStatus(itemId);
+            const record = await readStatus(itemId);
             if (!isCurrent()) return;
             if (record && TERMINAL_STATUSES.includes(record.status)) {
                 resolve({ status: record.status, error_message: record.error_message || null });
@@ -56,7 +56,7 @@ const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve }) => {
     tick();
 };
 
-export const useItemImageGenerationPoll = () => {
+export const useItemImageGenerationPoll = (readStatus = getStorefrontImageGenerationStatus) => {
     // Bumped on every new poll, cancel(), and unmount — the same staleness
     // guard useMenuImportJob.js uses, so a tick from an abandoned poll can
     // never resolve a promise a newer poll (or nothing) is now waiting on.
@@ -107,9 +107,9 @@ export const useItemImageGenerationPoll = () => {
 
         return new Promise((resolve) => {
             resolveRef.current = resolve;
-            runStatusPoll({ itemId, timerRef, isCurrent, resolve: settle });
+            runStatusPoll({ itemId, timerRef, isCurrent, resolve: settle, readStatus });
         });
-    }, [cancel, settle]);
+    }, [cancel, readStatus, settle]);
 
     return { pollItemImageGeneration, cancel };
 };

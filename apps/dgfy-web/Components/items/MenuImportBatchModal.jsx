@@ -398,7 +398,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     {fileRows.map((file, index) => {
                         const badge = file.status ? FILE_STATUS_BADGES[file.status] : null;
                         return (
-                            <div key={`${file.name}-${index}`} className="flex items-center gap-3 p-3">
+                            <div key={`${file.name}-${index}`} className="flex min-w-0 items-center gap-3 p-3">
                                 {isImageFile(file.name)
                                     ? <ImageIcon className="w-4 h-4 shrink-0 text-slate-400" />
                                     : <FileText className="w-4 h-4 shrink-0 text-slate-400" />}
@@ -419,7 +419,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                                     )}
                                 </div>
                                 {badge && (
-                                    <Badge className={badge.className}>{badge.label}</Badge>
+                                    <Badge className={`shrink-0 ${badge.className}`}>{badge.label}</Badge>
                                 )}
                                 {!isProcessing && !job && (
                                     <button
@@ -497,7 +497,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
 
     const renderPreviewStep = () => (
         <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 <div className="bg-slate-50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-slate-700">{previewData?.totalRows || 0}</p>
                     <p className="text-xs text-slate-500">Merged items</p>
@@ -591,8 +591,8 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                 </div>
             )}
 
-            <div className="border rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                <table className="w-full text-sm">
+            <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-lg border max-h-96">
+                <table className="w-full min-w-[44rem] text-sm">
                     <thead className="bg-slate-50 sticky top-0">
                         <tr>
                             <th className="text-left p-3 font-medium text-slate-600">Import</th>
@@ -807,7 +807,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-3xl">
+            <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-[calc(100vw-1rem)] overflow-x-hidden p-3 sm:w-full sm:max-w-3xl sm:p-5">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />

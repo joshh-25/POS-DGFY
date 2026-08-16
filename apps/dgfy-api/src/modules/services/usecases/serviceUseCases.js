@@ -18,6 +18,11 @@ import {
 import { resolveStockBearingDescriptor, resolveStockExemptReason } from '../../shared/utils/stockBearingPolicy.js';
 import { assertGuestCheckoutProof } from '../../store/utils/storeGuestCheckoutProof.js';
 import { buildCalculateServiceQuoteUseCase } from './calculateServiceQuoteUseCase.js';
+import {
+    deriveFulfillmentProfileFromHandoffLegs,
+    resolveFulfillmentTrackingTimeline,
+    FULFILLMENT_TRACKING_EVENT_LABELS
+} from '../../shared/constants/fulfillmentProfiles.js';
 
 const VAT_RATE = 0.12;
 const POS_PAYMENT_TYPES = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
@@ -49,12 +54,18 @@ const BOOKING_HOLD_TTL_MS = 10 * 60 * 1000;
 const MAX_REFERENCE_ATTEMPTS = 20;
 // Phase 88 of #482 (ADR 0064): the round-trip arcs are appended additively. requested/confirmed/
 // checked_in/in_service and all their existing arcs are untouched - the profile-aware rewrite
-// (choosing the round-trip graph over the appointment graph per booking) is Phase 92, not this
-// phase. Nothing writes for_pickup/pickup_completed/out_for_return/ready_for_collection yet;
-// that wiring is Phase 89.
+// (choosing the round-trip graph over the appointment graph per booking) is Phase 103, not this
+// phase.
+// Phase 100 of #482: `for_pickup` also wired onto `confirmed`, closing a gap Phase 88 left -
+// the confirmed merchant state machine
+// (docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md section 6) is
+// requested -> confirmed -> for_pickup, but `confirmed` only allowed checked_in/cancelled/no_show
+// (appointment-graph arcs), dead-ending a merchant who confirms a handoff booking. Purely additive
+// - the map stays profile-blind, so an appointment booking gains an unreachable-in-practice extra
+// option, nothing already-working changes.
 const BOOKING_STATUS_TRANSITIONS = Object.freeze({
     requested: ['confirmed', 'for_pickup', 'cancelled', 'no_show'],
-    confirmed: ['checked_in', 'cancelled', 'no_show'],
+    confirmed: ['checked_in', 'for_pickup', 'cancelled', 'no_show'],
     checked_in: ['in_service', 'cancelled', 'no_show'],
     in_service: ['completed', 'out_for_return', 'ready_for_collection', 'cancelled'],
     completed: [],
@@ -118,11 +129,24 @@ const normalizeJsonValue = (value) => {
     return value;
 };
 
-const mapError = (error, fallbackMessage) => (
-    isDomainError(error)
-        ? error
-        : new DomainError(DomainErrorCode.INTERNAL_ERROR, error?.message || fallbackMessage, { statusCode: 500 })
+// Phase 100 of #482. Each booking create allocates a fresh booking_id, so the only realistic way
+// to trip service_booking_handoff_legs' unique (booking_id, direction) index is a payload with two
+// same-direction legs -- already rejected by the validator's .unique('direction') -- but this is
+// the backstop: a 409 is the correct shape for a real collision, not the generic 500 mapError
+// would otherwise produce.
+const isUniqueConstraintError = (error) => (
+    error?.name === 'SequelizeUniqueConstraintError'
+    || error?.original?.code === 'ER_DUP_ENTRY'
+    || error?.parent?.code === 'ER_DUP_ENTRY'
 );
+
+const mapError = (error, fallbackMessage) => {
+    if (isDomainError(error)) return error;
+    if (isUniqueConstraintError(error)) {
+        return new DomainError(DomainErrorCode.CONFLICT, error?.message || fallbackMessage, { statusCode: 409, cause: error });
+    }
+    return new DomainError(DomainErrorCode.INTERNAL_ERROR, error?.message || fallbackMessage, { statusCode: 500 });
+};
 const parseSettingValue = (rawValue, fallback = null) => {
     if (rawValue == null) return fallback;
     if (typeof rawValue !== 'string') return rawValue;
@@ -342,10 +366,80 @@ const serializeBookingHold = (hold = {}) => {
     };
 };
 
-const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
+// Phase 100 of #482 (ADR 0064). Redacted the same way serializeBooking's own customer_name/email/
+// phone are under publicSafe (below): address_line, latitude, longitude, customer_address_id,
+// contact_name, contact_phone, instructions, and the internal handoff_leg_id primary key are all
+// staff-only. `location` (the collection branch) is left in for both -- it is already public via
+// GET /store/locations.
+const serializeHandoffLeg = (leg = {}, { publicSafe = false } = {}) => {
+    const row = toPlain(leg) || {};
+    const base = {
+        direction: row.direction,
+        method: row.method,
+        status: row.status,
+        scheduled_from: row.scheduled_from || null,
+        scheduled_to: row.scheduled_to || null,
+        completed_at: row.completed_at || null,
+        location: row.location ? {
+            location_id: row.location.location_id,
+            name: row.location.name,
+            address_line: row.location.address_line || null
+        } : null
+    };
+    if (publicSafe) return base;
+    return {
+        ...base,
+        handoff_leg_id: row.handoff_leg_id,
+        address_line: row.address_line || null,
+        latitude: row.latitude == null ? null : Number(row.latitude),
+        longitude: row.longitude == null ? null : Number(row.longitude),
+        customer_address_id: row.customer_address_id || null,
+        contact_name: row.contact_name || null,
+        contact_phone: row.contact_phone || null,
+        instructions: row.instructions || null
+    };
+};
+
+// Phase 100 of #482 (ADR 0064 decision 3). Never returns the derived profile key itself - only the
+// resolved, ordered timeline. `statusEvents`, when provided, is the authoritative source for
+// `reached`/`occurred_at` (the public tracking read loads it explicitly via
+// serviceRepository.listBookingStatusEvents, since bookingInclude() deliberately does not carry
+// the unbounded status-event history). When it isn't provided - most other serializeBooking call
+// sites, including immediately after creation - reached degrades to "stage index <= the booking's
+// current status index within this timeline", with no occurred_at, rather than issuing an extra
+// query on every list/create response.
+const buildFulfillmentTimeline = (booking, legs, statusEvents) => {
+    const variant = deriveFulfillmentProfileFromHandoffLegs(
+        (legs || []).map((leg) => ({ direction: leg.direction, method: leg.method }))
+    );
+    if (!variant) return null;
+    const stages = resolveFulfillmentTrackingTimeline(variant);
+    const currentStageIndex = stages.indexOf(booking.status);
+    return stages.map((key, index) => {
+        if (Array.isArray(statusEvents)) {
+            const event = statusEvents.find((evt) => evt.to_status === key);
+            return {
+                key,
+                label: FULFILLMENT_TRACKING_EVENT_LABELS[key] || key,
+                reached: Boolean(event),
+                occurred_at: event ? event.occurred_at : null
+            };
+        }
+        return {
+            key,
+            label: FULFILLMENT_TRACKING_EVENT_LABELS[key] || key,
+            reached: currentStageIndex >= 0 && index <= currentStageIndex,
+            occurred_at: null
+        };
+    });
+};
+
+const serializeBooking = (booking = {}, { publicSafe = false, statusEvents = null } = {}) => {
     const row = toPlain(booking) || {};
     const item = row.serviceItem || null;
     const detail = row.serviceDetail || item?.serviceDetail || null;
+    const legs = Array.isArray(row.handoffLegs) ? row.handoffLegs : [];
+    const timeline = buildFulfillmentTimeline(row, legs, statusEvents);
     const payload = {
         booking_id: row.booking_id,
         public_reference: row.public_reference,
@@ -374,6 +468,12 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
         cancellation_reason: row.cancellation_reason || null,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        // Phase 100 of #482. Null/empty for a plain appointment booking - purely additive. Never
+        // carries the derived fulfillment-profile key (ADR 0064 decision 3); only the resolved
+        // timeline. handoff_legs is redacted per-field under publicSafe, not withheld wholesale,
+        // so an unauthenticated caller can still see handoff progress, just not the address/contact.
+        fulfillment: timeline ? { timeline } : null,
+        handoff_legs: legs.map((leg) => serializeHandoffLeg(leg, { publicSafe })),
         ticket: {
             type: 'booking_ticket',
             reference: row.public_reference,
@@ -736,12 +836,27 @@ const batchPaymentResponse = (bookings = [], payments = []) => {
     };
 };
 
+// Phase 100 of #482. handoff_legs is order-independent on the wire (one inbound + one outbound,
+// in either order) but stableStringify hashes arrays positionally - without this, a client retry
+// that happens to send [outbound, inbound] instead of [inbound, outbound] would hash differently
+// and 409 as "idempotency_key was already used with a different payload", even though it is the
+// same booking request. Sort by direction so the hash is stable regardless of wire order, mirroring
+// the existing selected_option_ids normalization immediately below.
+const normalizeHandoffLegsForHash = (legs) => (
+    Array.isArray(legs)
+        ? [...legs].sort((a, b) => String(a?.direction).localeCompare(String(b?.direction)))
+        : legs
+);
+
 const bookingRequestHashPayload = ({ payload = {}, source = 'storefront', storeCustomer = null } = {}) => {
     const payloadWithoutIdempotency = { ...(payload || {}) };
     delete payloadWithoutIdempotency.idempotency_key;
     const optionIds = payloadWithoutIdempotency.selected_option_ids || payloadWithoutIdempotency.selected_options;
     if (Array.isArray(optionIds)) {
         payloadWithoutIdempotency.selected_option_ids = [...optionIds].map(Number).filter(Boolean).sort((a, b) => a - b);
+    }
+    if (payloadWithoutIdempotency.handoff_legs) {
+        payloadWithoutIdempotency.handoff_legs = normalizeHandoffLegsForHash(payloadWithoutIdempotency.handoff_legs);
     }
     return {
         source,
@@ -1466,6 +1581,101 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
     }
 };
 
+// Phase 100 of #482 (ADR 0064 decisions 1-3). Turns the validated wire legs into
+// ServiceBookingHandoffLeg rows, ready for createBookingHandoffLegs. Every leg starts
+// `status: 'pending'` -- a leg's own lifecycle only ever advances via the booking-status
+// transition path (buildUpdateServiceBookingStatusUseCase), never a second write path here.
+const materializeHandoffLegs = async ({
+    serviceRepository,
+    legsInput,
+    startAt,
+    storeCustomer,
+    transaction
+}) => {
+    if (!Array.isArray(legsInput) || legsInput.length === 0) return [];
+    const materialized = [];
+    for (const leg of legsInput) {
+        const direction = String(leg?.direction || '').trim();
+        const method = String(leg?.method || '').trim();
+        const row = {
+            direction,
+            method,
+            address_line: null,
+            latitude: null,
+            longitude: null,
+            customer_address_id: null,
+            location_id: null,
+            scheduled_from: leg?.scheduled_from ? parseDate(leg.scheduled_from, 'handoff_legs.scheduled_from') : null,
+            scheduled_to: leg?.scheduled_to ? parseDate(leg.scheduled_to, 'handoff_legs.scheduled_to') : null,
+            contact_name: trim(leg?.contact_name, 255) || null,
+            contact_phone: trim(leg?.contact_phone, 50) || null,
+            instructions: trim(leg?.instructions, 500) || null,
+            status: 'pending',
+            completed_at: null
+        };
+        // start_at stays the single scheduling source of truth (#482 Phase 100 decision): default
+        // the inbound leg's window from it when the caller left scheduled_from blank, so an
+        // unscheduled "Now" pickup still has a concrete window to report on the tracking timeline.
+        if (direction === 'inbound' && !row.scheduled_from) {
+            row.scheduled_from = startAt;
+        }
+        if (leg?.customer_address_id) {
+            // Trust boundary, same shape as pos_transaction_id (serviceValidator.js's note): a
+            // public caller must not be able to attach an address it does not own. Session-gated
+            // here, not in the validator, which cannot see req.storeCustomer.
+            const addressId = toPositiveInt(leg.customer_address_id);
+            const customerId = toPositiveInt(storeCustomer?.customer_id);
+            if (!customerId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'customer_address_id requires a signed-in customer account',
+                    { statusCode: 422 }
+                );
+            }
+            const address = typeof serviceRepository.findCustomerAddressById === 'function'
+                ? await serviceRepository.findCustomerAddressById(addressId, { transaction })
+                : null;
+            if (!address || toPositiveInt(address.customer_id) !== customerId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Selected address does not belong to this customer',
+                    { statusCode: 403 }
+                );
+            }
+            // Snapshot, mirroring ServiceBookingLine's name_snapshot -- a later address edit must
+            // not silently rewrite a historical booking's pickup point.
+            row.customer_address_id = addressId;
+            row.address_line = address.address_line || null;
+            row.latitude = address.latitude ?? null;
+            row.longitude = address.longitude ?? null;
+        } else if (leg?.address_line) {
+            row.address_line = trim(leg.address_line, 4000) || null;
+            row.latitude = leg.latitude ?? null;
+            row.longitude = leg.longitude ?? null;
+        }
+        if (leg?.location_id) {
+            // The leg's collection branch is a separate TenantLocation from the service item's
+            // own storefront-location visibility (already enforced earlier in
+            // createServiceBookingRecord against payload.location_id) -- it only needs to exist
+            // and be active.
+            const locationId = toPositiveInt(leg.location_id);
+            const location = typeof serviceRepository.findTenantLocationById === 'function'
+                ? await serviceRepository.findTenantLocationById(locationId, { transaction })
+                : null;
+            if (!location || location.is_active === false) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Selected collection location is not active or does not exist',
+                    { statusCode: 404 }
+                );
+            }
+            row.location_id = locationId;
+        }
+        materialized.push(row);
+    }
+    return materialized;
+};
+
 const createServiceBookingRecord = async ({
     serviceRepository,
     serviceOptionRepository = null,
@@ -1495,6 +1705,30 @@ const createServiceBookingRecord = async ({
         const detail = service.serviceDetail || {};
         if (detail.bookable === false) {
             throw new DomainError(DomainErrorCode.CONFLICT, 'Service is not bookable', { statusCode: 409 });
+        }
+        // Phase 100 of #482 (ADR 0057 clause 4 - per-item grain, not a tenant/template flag).
+        // handoff_legs is a Joi-optional field the validator cannot gate on the resolved service
+        // item, so the gate lives here, both directions, for every source: a non-handoff item
+        // does not accept legs, and an item_handoff item cannot be booked without them (there is
+        // no legacy data to grandfather -- nothing has ever written service_area_type:
+        // 'item_handoff' before this phase). Holds are exempt from the "legs required" half: a
+        // hold reserves capacity ahead of the customer-detail step where legs are actually
+        // captured, and the hold schema never accepts handoff_legs in the first place.
+        const handoffLegsInput = Array.isArray(payload.handoff_legs) ? payload.handoff_legs : null;
+        const isHandoffItem = detail.service_area_type === 'item_handoff';
+        if (handoffLegsInput && !isHandoffItem) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'This service does not support pickup-and-return handoff legs',
+                { statusCode: 422, details: { reason_code: 'HANDOFF_LEGS_NOT_SUPPORTED_FOR_SERVICE' } }
+            );
+        }
+        if (!holdOnly && !handoffLegsInput && isHandoffItem) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'This service requires handoff_legs (pickup and return, or pickup and collection)',
+                { statusCode: 422, details: { reason_code: 'HANDOFF_LEGS_REQUIRED' } }
+            );
         }
         const salePrice = round4(service.default_sale_price);
         if (['storefront', 'pos'].includes(String(source || '').trim()) && salePrice <= 0) {
@@ -1898,6 +2132,44 @@ const createServiceBookingRecord = async ({
                 await serviceRepository.createBookingLines(partLines, { transaction });
             }
         }
+
+        // Phase 100 of #482 (ADR 0064 decisions 2-3). Materialize + persist inside this same
+        // transaction so the create response and the tracking read come from one hydrate below.
+        const handoffLegRows = await materializeHandoffLegs({
+            serviceRepository,
+            legsInput: handoffLegsInput,
+            startAt,
+            storeCustomer,
+            transaction
+        });
+        if (handoffLegRows.length > 0 && typeof serviceRepository.createBookingHandoffLegs === 'function') {
+            await serviceRepository.createBookingHandoffLegs(
+                handoffLegRows.map((leg) => ({ ...leg, booking_id: booking.booking_id })),
+                { transaction }
+            );
+        }
+
+        // Phase 100 of #482 (ADR 0064 decision 4). Seed event for every booking, not only handoff
+        // ones -- ServiceBookingStatusEvent.from_status's own comment designs for "the first
+        // event, recorded at booking creation, has no prior status" unconditionally, and this
+        // closes the no-timestamps gap for the laborTracking planned module as a side effect.
+        if (typeof serviceRepository.createBookingStatusEvents === 'function') {
+            const normalizedSource = ['storefront', 'pos', 'admin'].includes(String(source || '').trim())
+                ? String(source).trim()
+                : 'system';
+            await serviceRepository.createBookingStatusEvents([{
+                booking_id: booking.booking_id,
+                from_status: null,
+                to_status: booking.status,
+                handoff_leg_id: null,
+                actor_type: normalizedSource === 'storefront' ? 'customer' : 'staff',
+                actor_user_id: null,
+                source: normalizedSource,
+                reason: null,
+                occurred_at: new Date()
+            }], { transaction });
+        }
+
         const hydrated = await serviceRepository.getBookingById(booking.booking_id, { transaction });
         if (activeHold && typeof serviceRepository.updateHoldById === 'function') {
             await serviceRepository.updateHoldById(activeHold.hold_id, { status: 'consumed' }, { transaction, lock: true });
@@ -2506,7 +2778,39 @@ export const buildListServiceClientsUseCase = ({ serviceRepository }) => async (
     }
 };
 
-export const buildUpdateServiceBookingStatusUseCase = ({ serviceRepository }) => async ({ bookingId, payload = {} } = {}) => {
+// Phase 100 of #482 (ADR 0064 decision 4). Which leg a booking-status transition drives, and what
+// to set on it. Deliberately covers only the four round-trip statuses (plus the shared
+// 'cancelled' arc below) -- every appointment-mode transition (confirmed, checked_in, in_service,
+// completed via the appointment graph, no_show) resolves to no leg update at all when a booking
+// has no legs, which is every existing booking today.
+const HANDOFF_LEG_STATUS_EFFECTS = Object.freeze({
+    for_pickup: { direction: 'inbound', status: 'in_transit' },
+    pickup_completed: { direction: 'inbound', status: 'completed', completes: true },
+    out_for_return: { direction: 'outbound', status: 'in_transit' },
+    ready_for_collection: { direction: 'outbound', status: 'scheduled' },
+    completed: { direction: 'outbound', status: 'completed', completes: true }
+});
+
+// Returns [{handoff_leg_id, updates}] for the legs this transition should advance. `cancelled`
+// moves every leg that hasn't already reached a terminal state; every other status advances at
+// most one leg (the direction HANDOFF_LEG_STATUS_EFFECTS names), never both.
+const resolveHandoffLegStatusUpdates = (toStatus, legs = []) => {
+    if (!Array.isArray(legs) || legs.length === 0) return [];
+    if (toStatus === 'cancelled') {
+        return legs
+            .filter((leg) => leg.status !== 'completed' && leg.status !== 'cancelled')
+            .map((leg) => ({ handoff_leg_id: leg.handoff_leg_id, updates: { status: 'cancelled' } }));
+    }
+    const effect = HANDOFF_LEG_STATUS_EFFECTS[toStatus];
+    if (!effect) return [];
+    const leg = legs.find((candidate) => candidate.direction === effect.direction);
+    if (!leg) return [];
+    const updates = { status: effect.status };
+    if (effect.completes) updates.completed_at = new Date();
+    return [{ handoff_leg_id: leg.handoff_leg_id, updates }];
+};
+
+export const buildUpdateServiceBookingStatusUseCase = ({ serviceRepository }) => async ({ bookingId, payload = {}, user = null } = {}) => {
     const normalizedBookingId = toPositiveInt(bookingId);
     if (!normalizedBookingId) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'booking_id is required', { statusCode: 422 }));
@@ -2549,6 +2853,38 @@ export const buildUpdateServiceBookingStatusUseCase = ({ serviceRepository }) =>
         await serviceRepository.updateBookingById(normalizedBookingId, {
             ...updatePayload
         }, { transaction, lock: true });
+
+        // Phase 100 of #482 (ADR 0064 decision 4). No-op same-status "updates" (status === status)
+        // are permitted above and must not produce a timeline entry or move a leg twice.
+        const legStatusUpdates = status === currentStatus
+            ? []
+            : resolveHandoffLegStatusUpdates(status, existing.handoffLegs);
+        if (legStatusUpdates.length > 0 && typeof serviceRepository.updateBookingHandoffLegById === 'function') {
+            for (const { handoff_leg_id: handoffLegId, updates } of legStatusUpdates) {
+                await serviceRepository.updateBookingHandoffLegById(handoffLegId, updates, { transaction, lock: true });
+            }
+        }
+
+        if (status !== currentStatus && typeof serviceRepository.createBookingStatusEvents === 'function') {
+            // This one staff route (PATCH /services/bookings/:id/status) serves both back-office
+            // and POS with no terminal context to distinguish them, so source is 'admin' -- a
+            // false 'pos' in an audit table is worse than a coarse but honest 'admin'. A future
+            // POS-specific route can refine this.
+            const explicitLegId = toPositiveInt(payload.handoff_leg_id);
+            const derivedLegId = legStatusUpdates.length === 1 ? legStatusUpdates[0].handoff_leg_id : null;
+            await serviceRepository.createBookingStatusEvents([{
+                booking_id: normalizedBookingId,
+                from_status: currentStatus,
+                to_status: status,
+                handoff_leg_id: explicitLegId || derivedLegId || null,
+                actor_type: 'staff',
+                actor_user_id: toPositiveInt(user?.user_id),
+                source: 'admin',
+                reason: status === 'cancelled' ? updatePayload.cancellation_reason : null,
+                occurred_at: new Date()
+            }], { transaction });
+        }
+
         const booking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });
         await transaction.commit();
         return ok({ booking: serializeBooking(booking) });
@@ -2564,7 +2900,13 @@ export const buildGetServiceBookingByReferenceUseCase = ({ serviceRepository }) 
         if (!booking) {
             return fail(new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Booking not found', { statusCode: 404 }));
         }
-        return ok({ booking: serializeBooking(booking, { publicSafe: true }) });
+        // Phase 100 of #482. This is the one serializeBooking call site that needs the real
+        // per-event timestamps -- bookingInclude() deliberately does not carry the unbounded
+        // status-event history (see its comment), so load it explicitly here only.
+        const statusEvents = typeof serviceRepository.listBookingStatusEvents === 'function'
+            ? await serviceRepository.listBookingStatusEvents(booking.booking_id)
+            : null;
+        return ok({ booking: serializeBooking(booking, { publicSafe: true, statusEvents }) });
     } catch (error) {
         return fail(mapError(error, 'Failed to load service booking'));
     }

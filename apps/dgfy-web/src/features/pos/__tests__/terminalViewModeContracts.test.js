@@ -124,18 +124,19 @@ describe('POS terminal view-mode contracts', () => {
 
   it('returns a signed-in cashier to terminal login before opening a shift', () => {
     expect(terminalPageContent).toContain("cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start'");
-    expect(terminalPageContent).toContain('onClick={handleLock}');
+    expect(terminalPageContent).toContain('cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock');
+    expect(terminalPageContent).toContain('const handleLock = async ({ forceLogin = false } = {}) => {');
+    expect(terminalPageContent).toContain('onClick={cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock}');
     expect(terminalPageContent).toContain('Back to Login');
   });
 
 
-  it('validates POS onboarding starter item cost and stock before calling the onboarding API', () => {
-    expect(posTenantSetupModalContent).toContain('const parsedCost = cost === \'\' ? null : Number(cost);');
-    expect(posTenantSetupModalContent).toContain('const parsedStock = stock === \'\' ? 0 : Number(stock);');
-    expect(posTenantSetupModalContent).toContain("toast.error('Starter item cost cannot be negative.');");
-    expect(posTenantSetupModalContent).toContain("toast.error('Starter item stock cannot be negative.');");
-    expect(posTenantSetupModalContent).toContain('current_stock: parsedStock');
-    expect(posTenantSetupModalContent).toContain('if (parsedCost !== null) row.cost_per_unit = parsedCost;');
+  it('keeps starter-item creation out of the POS onboarding modal', () => {
+    expect(posTenantSetupModalContent).not.toContain('bulkCreateOnboardingItems');
+    expect(posTenantSetupModalContent).not.toContain('Starter item');
+    expect(posTenantSetupModalContent).not.toContain('starterItemForm');
+    expect(posTenantSetupModalContent).not.toContain('current_stock: parsedStock');
+    expect(posTenantSetupModalContent).toContain('POS Setup');
   });
 
   it('keeps tenant onboarding restriction tied to live readiness state, not only the URL query', () => {
@@ -266,6 +267,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
     expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}');
+    expect(terminalPageLayoutContent).toContain('data-testid="pos-terminal-lock-backdrop"');
+    expect(terminalPageLayoutContent).toContain('bg-slate-950/35 backdrop-blur-md');
   });
 
   it('remounts the POS layout after terminal unlock for Safari and PWA rendering', () => {
@@ -346,7 +349,7 @@ describe('POS terminal view-mode contracts', () => {
   it('renders forbidden/error states and transact guard in incoming queue workspace', () => {
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'forbidden\'');
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'error\'');
-    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked}");
+    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked || (status === 'completed' && isCompletionPaymentPending(order))}");
     expect(terminalSidebarPanelContent).toContain('You need POS transact permission to update order statuses.');
   });
 
@@ -523,6 +526,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('Completed paid sales move to Sales History.');
     expect(terminalOperationsPanelsContent).toContain('Previous order history page');
     expect(terminalOperationsPanelsContent).toContain('Next order history page');
+    expect(terminalOperationsPanelsContent).toContain("if (activeView !== 'history') return;");
+    expect(terminalOperationsPanelsContent).not.toContain("if (activeView !== 'history' || orderHistoryState?.accessState !== 'idle') return;");
     expect(posServiceContent).toContain("api.get('/pos/order-history'");
     expect(terminalPageContent).toContain("import('../utils/posOrderHistoryLoader.js')");
   });

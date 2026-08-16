@@ -56,6 +56,7 @@ export class PayMongoService {
         this.publicKey = RESOLVED_PUBLIC_KEY;
         this.secretKey = RESOLVED_SECRET_KEY;
         this.webhookSecret = RESOLVED_WEBHOOK_SECRET;
+        this.paymentMethodCapabilitiesCache = null;
     }
 
     /**
@@ -235,6 +236,77 @@ export class PayMongoService {
             return response.data.data;
         } catch (error) {
             logger.error('PayMongo Create Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async getPaymentMethodCapabilities({ cacheTtlMs = 15_000 } = {}) {
+        const now = Date.now();
+        if (this.paymentMethodCapabilitiesCache && this.paymentMethodCapabilitiesCache.expiresAt > now) {
+            return this.paymentMethodCapabilitiesCache.methods;
+        }
+
+        try {
+            const response = await axios.get(`${this.baseUrl}/merchants/capabilities/payment_methods`, {
+                headers: this.getAuthHeader()
+            });
+            const payload = Array.isArray(response.data) ? response.data : response.data?.data;
+            const methods = Array.isArray(payload)
+                ? payload
+                : (Array.isArray(payload?.attributes?.payment_methods)
+                    ? payload.attributes.payment_methods
+                    : (Array.isArray(response.data?.payment_methods) ? response.data.payment_methods : []));
+            const normalized = [...new Set(methods.map((method) => String(method || '').trim().toLowerCase()).filter(Boolean))];
+            this.paymentMethodCapabilitiesCache = {
+                methods: normalized,
+                expiresAt: now + Math.max(0, Number(cacheTtlMs) || 0)
+            };
+            return normalized;
+        } catch (error) {
+            logger.warn('PayMongo payment method capability lookup failed:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createHostedCheckoutSession({
+        amount,
+        currency = 'PHP',
+        description,
+        lineItems = [],
+        paymentMethodTypes = [],
+        successUrl,
+        cancelUrl,
+        referenceNumber,
+        metadata = {}
+    }) {
+        const attributes = {
+            line_items: lineItems,
+            payment_method_types: paymentMethodTypes,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            reference_number: referenceNumber,
+            metadata
+        };
+        if (description) attributes.description = description;
+        if (lineItems.length === 0 && Number.isFinite(Number(amount)) && Number(amount) > 0) {
+            attributes.line_items = [{
+                name: description || 'DGFY storefront order',
+                amount: Math.round(Number(amount)),
+                currency,
+                quantity: 1
+            }];
+        }
+
+        try {
+            const response = await axios.post(`${this.accountsBaseUrl}/checkout_sessions`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+            logger.info(`PayMongo Hosted Checkout session created: ${response.data?.data?.id || referenceNumber}`);
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error('PayMongo Hosted Checkout session creation failed:', error.response?.data || error.message);
             throw error;
         }
     }

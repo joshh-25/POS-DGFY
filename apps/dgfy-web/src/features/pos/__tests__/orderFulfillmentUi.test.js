@@ -3,6 +3,8 @@ import {
   getFulfillmentActionLabel,
   getDeliveryJobActionLabel,
   getIncomingOrderUtilityActions,
+  getNextStatusActions,
+  isCompletionPaymentPending,
   hasCompleteDeliveryAssignment,
   getNextDeliveryJobStatus,
   isManualDeliveryJob,
@@ -11,16 +13,31 @@ import {
 } from '../components/orderFulfillmentUi.js';
 
 describe('orderFulfillmentUi queue action mapping', () => {
-  it('keeps active online orders on open/print actions instead of history', () => {
+  it('keeps the initial and confirmed actions focused on the next useful step', () => {
     expect(getIncomingOrderUtilityActions({
       fulfillment_status: 'placed',
       order_method: 'pickup'
-    })).toEqual(['open_order', 'print_receipt', 'print_order']);
+    })).toEqual(['open_order']);
+
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'confirmed',
+      order_method: 'pickup'
+    })).toEqual(['print_order', 'open_order']);
 
     expect(getIncomingOrderUtilityActions({
       fulfillment_status: 'ready_for_pickup',
       order_method: 'pickup'
-    })).toEqual(['open_order', 'print_receipt', 'print_order']);
+    })).toEqual(['open_order']);
+
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'preparing',
+      order_method: 'pickup'
+    })).toEqual(['print_receipt', 'open_order']);
+
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'preparing',
+      order_method: 'delivery'
+    })).toEqual(['print_order', 'open_order']);
   });
 
   it('does not expose completed orders in the active incoming queue', () => {
@@ -35,10 +52,45 @@ describe('orderFulfillmentUi queue action mapping', () => {
     expect(getFulfillmentActionLabel('ready_for_pickup', { order_method: 'pickup' })).toBe('Ready for Pickup');
     expect(getFulfillmentActionLabel('ready_for_pickup', { order_method: 'takeout' })).toBe('Ready for Collection');
     expect(getFulfillmentActionLabel('ready_for_pickup', { order_method: 'dine_in' })).toBe('Ready to Serve');
-    expect(getFulfillmentActionLabel('completed', { order_method: 'pickup' })).toBe('Picked Up');
+    expect(getFulfillmentActionLabel('completed', { order_method: 'pickup' })).toBe('Pickup');
     expect(getFulfillmentActionLabel('completed', { order_method: 'delivery' })).toBe('Delivered');
     expect(getFulfillmentActionLabel('completed', { order_method: 'takeout' })).toBe('Collected');
     expect(getFulfillmentActionLabel('completed', { order_method: 'dine_in' })).toBe('Served');
+  });
+
+  it('gates pickup completion until cash collection is recorded', () => {
+    expect(getNextStatusActions({
+      fulfillment_status: 'placed',
+      order_method: 'pickup'
+    })).toEqual(['confirmed', 'rejected']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'ready_for_pickup',
+      order_method: 'pickup',
+      payment_status: 'unpaid'
+    })).toEqual(['completed']);
+    expect(isCompletionPaymentPending({
+      fulfillment_status: 'ready_for_pickup',
+      order_method: 'pickup',
+      payment_status: 'unpaid'
+    })).toBe(true);
+    expect(isCompletionPaymentPending({
+      fulfillment_status: 'ready_for_pickup',
+      order_method: 'pickup',
+      payment_status: 'paid'
+    })).toBe(false);
+  });
+
+  it('keeps delivery completion behind delivery-job tracking', () => {
+    expect(getNextStatusActions({
+      fulfillment_status: 'out_for_delivery',
+      order_method: 'delivery',
+      deliveryJob: { status: 'picked_up' }
+    })).toEqual([]);
+    expect(getNextStatusActions({
+      fulfillment_status: 'out_for_delivery',
+      order_method: 'delivery',
+      deliveryJob: { status: 'delivered' }
+    })).toEqual(['completed']);
   });
 
   it('uses readable appointment and QR Ph labels', () => {

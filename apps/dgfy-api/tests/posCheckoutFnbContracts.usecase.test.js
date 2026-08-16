@@ -1428,6 +1428,7 @@ describe('POS checkout F&B contracts', () => {
                 location_id: 3
             }]),
             createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'void-event-hash' }),
+            createAuditLog: jest.fn().mockResolvedValue(null),
             updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...fiscalTransaction, ...payload }))
         };
         const inventoryCommandService = {

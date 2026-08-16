@@ -39,7 +39,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0014 | [Multi-Template Modes, POS Offline Replay Hardening, and Storefront Cache Contracts](0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md) | `accepted` | multi_template_modes_pos_offline_sync_and_storefront_cache_contracts | 2026-10-27 | 0 |
 | 0015 | [Tenant User Invitation Registry](0015-tenant-user-invitation-registry.md) | `accepted` | tenant_user_invitation_registry | 2026-10-28 | 0 |
 | 0016 | [Services Mode Independent Booking And Ticketing](0016-services-mode-independent-booking-and-ticketing.md) | `accepted` | services_mode_independent_booking_and_ticketing | 2026-11-02 | 0 |
-| 0017 | [Customer Access Modes And Inventory Display Controls](0017-customer-access-modes-and-inventory-display.md) | `accepted` | customer_access_modes_and_inventory_display | 2026-11-03 | 5 |
+| 0017 | [Customer Access Modes And Inventory Display Controls](0017-customer-access-modes-and-inventory-display.md) | `amended` | customer_access_modes_and_inventory_display | 2026-11-03 | 5 |
 | 0018 | [Barcode Identity, Labels, And Scan Routing](0018-barcode-identity-labels-and-scan-routing.md) | `accepted` | barcode_identity_labels_and_scan_routing | 2026-11-05 | 0 |
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `amended` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `accepted` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
@@ -83,10 +83,11 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
 | 0059 | [Frontend Relocation to `apps/dgfy-web`](0059-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
 | 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `accepted` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
-| 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `amended` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
+| 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `superseded` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
+| 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
 
 ## Renumbered (collision stubs)
 

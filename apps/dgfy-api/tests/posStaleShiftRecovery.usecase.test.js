@@ -83,8 +83,12 @@ const buildRepository = () => {
                 ? clone(shift)
                 : null;
         },
-        async getShiftCashSalesTotal() {
-            return 40;
+        async getZReadingSummary() {
+            return {
+                transaction_count: 1,
+                total_amount: 40,
+                payment_breakdown: [{ payment_type: 'cash', count: 1, amount: 40 }]
+            };
         },
         async listCashDrawerEventsByShiftId() {
             return [
@@ -172,7 +176,7 @@ describe('POS stale shift recovery use case', () => {
         expect(transaction.rollback).not.toHaveBeenCalled();
     });
 
-    it('blocks stale recovery while active parked sales remain unresolved', async () => {
+    it('blocks stale recovery while claimed parked sales remain unresolved', async () => {
         const repository = buildRepository();
         repository.setActiveParkedSaleCount(1);
         const transaction = createTransaction();
@@ -202,7 +206,8 @@ describe('POS stale shift recovery use case', () => {
         expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
         expect(result.error.details).toEqual(expect.objectContaining({
             reason_code: 'POS_PARKED_SALES_UNRESOLVED',
-            active_parked_sale_count: 1
+            active_parked_sale_count: 1,
+            claimed_parked_sale_count: 1
         }));
         expect(repository.closeCount).toBe(0);
         expect(transaction.rollback).toHaveBeenCalledTimes(1);

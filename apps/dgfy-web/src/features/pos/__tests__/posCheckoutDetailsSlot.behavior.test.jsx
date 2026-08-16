@@ -51,6 +51,35 @@ describe('PosCheckoutDetailsSlot', () => {
     expect(screen.queryByTestId('counter-workflow-panel')).toBeNull();
   });
 
+  it('passes the payment field into the F&B details grid', async () => {
+    const posWorkflow = resolvePosWorkflow('fnb');
+    const presentationBundle = resolvePosPresentationBundle(posWorkflow);
+
+    render(
+      <PosCheckoutDetailsSlot
+        presentationBundle={presentationBundle}
+        posWorkflow={posWorkflow}
+        orderMethod="dine_in"
+        setOrderMethod={vi.fn()}
+        tableNumber="T-4"
+        setTableNumber={vi.fn()}
+        kitchenNotes="No spice"
+        setKitchenNotes={vi.fn()}
+        paymentTypeField={(
+          <label>
+            Payment Type
+            <select aria-label="Payment Type">
+              <option value="cash">Cash</option>
+            </select>
+          </label>
+        )}
+      />
+    );
+
+    const workflowPanel = await screen.findByTestId('fnb-workflow-panel');
+    expect(workflowPanel.textContent).toContain('Payment Type');
+  });
+
   it('renders only the Services checkout-detail presentation for Services', async () => {
     await renderSlot('services');
 

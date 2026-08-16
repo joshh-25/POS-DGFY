@@ -4,7 +4,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { resolveReceiptLogoRaster } from '../utils/receiptLogoRaster.js';
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
@@ -27,6 +27,8 @@ const parsePositiveInt = (value) => {
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
+const cashSalesFromSalesSummary = (salesSummary) => getPosCashPaymentAmount(salesSummary?.payment_breakdown);
 
 const resolveShiftSalesWindow = (shift = {}) => {
     const startAt = new Date(shift?.opened_at || '');
@@ -269,19 +271,16 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
     const cashEvents = Array.isArray(shift?.cashEvents) ? shift.cashEvents : [];
     const eventSummary = summarizeShiftCashEvents(cashEvents);
     const openingFloatAmount = round4(shift?.opening_float_amount);
-    const cashSalesAmount = typeof posRepository?.getShiftCashSalesTotal === 'function'
-        ? round4(await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id, { transaction }))
-        : 0;
-    const expectedCashAmount = shift?.expected_cash_amount == null
-        ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
-        : round4(shift.expected_cash_amount);
     const salesSummary = typeof posRepository?.getZReadingSummary === 'function'
         ? await posRepository.getZReadingSummary({
             shiftId: shift.pos_terminal_shift_id,
             ...resolveShiftSalesWindow(shift)
         }, { transaction })
         : null;
-
+    const cashSalesAmount = cashSalesFromSalesSummary(salesSummary);
+    const expectedCashAmount = shift?.expected_cash_amount == null
+        ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
+        : round4(shift.expected_cash_amount);
     return {
         business: buildBusinessSettings(settings),
         shift: {
@@ -311,8 +310,8 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
     };
 };
 
-export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) => {
-    return async ({ user, auditContext = {} }) => {
+export const buildGetPosDeviceStatusUseCase = ({ deviceDriver }) => {
+    return async ({ user }) => {
         const userId = parsePositiveInt(user?.user_id);
         if (!userId) {
             return fail(new DomainError(
@@ -324,19 +323,9 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) 
 
         try {
             const bridge = await deviceDriver.getStatus();
-            await posRepository.createAuditLog({
-                user_id: userId,
-                entity_type: 'pos_device_bridge',
-                entity_id: null,
-                action: 'VIEW',
-                changes: {
-                    operation: 'status',
-                    driver_id: deviceDriver.id,
-                    printers_detected: bridge?.printersDetected ?? null,
-                    auth_required: bridge?.authRequired ?? null
-                },
-                ...buildAuditMetadata(auditContext)
-            });
+            // Status is read-only health telemetry, not a cashier action. Do
+            // not create an audit row on every frontend status check; actual
+            // hardware actions (printing and drawer pulses) remain audited.
 
             // Absence of hardware is a successful, informational answer, not a
             // service failure — see ADR 0053. A 503 only ever comes from the

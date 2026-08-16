@@ -49,7 +49,7 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;");
     expect(terminalPageSource).toContain('const isMasterAdminOperator = terminalUser?.is_master_admin === true;');
     expect(terminalPageSource).toContain('const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);');
-    expect(terminalPageSource).not.toContain("|| normalizedTerminalRole === 'admin'");
+    expect(terminalPageSource).not.toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || normalizedTerminalRole === 'admin'");
   });
 
   it('returns admin lock to the full POS login session instead of the unlock modal', () => {

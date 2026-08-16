@@ -40,6 +40,7 @@ import {
     validateXReadingQuery,
     validateGovernedResetBody,
     validateTerminalCurrentShiftQuery,
+    validateTerminalShiftHistoryQuery,
     validateTerminalDashboardTodayQuery,
     validateIncomingOnlineOrdersQuery,
     validateOnlineOrderHistoryQuery,
@@ -166,6 +167,7 @@ router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.action
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
 router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
+router.get('/terminal/shifts/history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalShiftHistoryQuery, posController.getCashierShiftHistory);
 router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
 router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), posController.requirePairedTerminal, validateShiftIdParam, validateSwitchTerminalShiftLocation, posController.switchTerminalShiftLocation);
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);

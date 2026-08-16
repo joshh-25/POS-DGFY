@@ -210,6 +210,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'serviceBookingHandoffLegs',
+        label: 'service booking handoff legs',
+        modelName: 'ServiceBookingHandoffLeg',
+        association: 'ServiceBookingHandoffLeg.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'hospitalityRoomTypes',
         label: 'hospitality room types',
         modelName: 'HospitalityRoomType',

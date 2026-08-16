@@ -223,6 +223,7 @@ export default function Items() {
   const [activeDragItem, setActiveDragItem] = useState(null);
   const [posCatalogOverrides, setPosCatalogOverrides] = useState({});
   const [storefrontCatalogOverrides, setStorefrontCatalogOverrides] = useState({});
+  const [pendingStorefrontImagePreviews, setPendingStorefrontImagePreviews] = useState({});
   const [showPosChecklistModal, setShowPosChecklistModal] = useState(false);
   const [posChecklistSearch, setPosChecklistSearch] = useState('');
   const [posChecklistCategory, setPosChecklistCategory] = useState('all');
@@ -391,14 +392,32 @@ export default function Items() {
   const resolveStorefrontConfig = useCallback((item) => {
     const itemId = item?.item_id || item?.id;
     const override = storefrontCatalogOverrides[itemId];
+    const pendingPreview = pendingStorefrontImagePreviews[itemId];
+    const parsedSavedGallery = parseStorefrontImageGallery(override?.storefront_image_gallery);
+    const savedGallery = parsedSavedGallery.length > 0
+      ? parsedSavedGallery
+      : override?.storefront_image_url
+        ? [{
+          path: override?.storefront_image_path || null,
+          url: override.storefront_image_url,
+          is_primary: true,
+          sort_order: 0
+        }]
+        : [];
+    const gallery = pendingPreview
+      ? pendingPreview.replaceSavedGallery
+        ? pendingPreview.entries
+        : [...savedGallery, ...pendingPreview.entries]
+      : savedGallery;
+    const primaryEntry = gallery[0] || null;
     return {
       storefront_visible: override ? override.storefront_visible !== false : getDefaultStorefrontVisibility(item),
       storefront_image_path: override?.storefront_image_path || null,
-      storefront_image_url: resolveAssetUrl(override?.storefront_image_url) || null,
-      storefront_image_gallery: parseStorefrontImageGallery(override?.storefront_image_gallery),
+      storefront_image_url: resolveAssetUrl(primaryEntry?.url || primaryEntry?.image_url || override?.storefront_image_url) || null,
+      storefront_image_gallery: gallery,
       location_availability: Array.isArray(override?.location_availability) ? override.location_availability : []
     };
-  }, [getDefaultStorefrontVisibility, storefrontCatalogOverrides]);
+  }, [getDefaultStorefrontVisibility, pendingStorefrontImagePreviews, storefrontCatalogOverrides]);
 
   const handleTogglePosVisibility = async (item, nextVisible) => {
     const itemId = item?.item_id || item?.id;
@@ -588,6 +607,21 @@ export default function Items() {
       toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
     }
 
+    const previewEntries = filesToUpload.map((file) => ({
+      url: typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(file)
+        : '',
+      name: file?.name || 'Uploading image'
+    }));
+    setPendingStorefrontImagePreviews((prev) => ({
+      ...prev,
+      [itemId]: {
+        entries: previewEntries,
+        replaceSavedGallery: filesToUpload.length === 1
+      }
+    }));
+    toast.message('Image preview ready. Saving and optimizing in the background...');
+
     try {
       const updated = filesToUpload.length === 1
         ? await uploadStorefrontCatalogImage(itemId, filesToUpload[0])
@@ -596,8 +630,28 @@ export default function Items() {
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
       }));
+      setPendingStorefrontImagePreviews((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      previewEntries.forEach((entry) => {
+        if (/^blob:/i.test(String(entry.url || '')) && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(entry.url);
+        }
+      });
       toast.success(filesToUpload.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
     } catch (error) {
+      setPendingStorefrontImagePreviews((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      previewEntries.forEach((entry) => {
+        if (/^blob:/i.test(String(entry.url || '')) && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(entry.url);
+        }
+      });
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
     }
   };

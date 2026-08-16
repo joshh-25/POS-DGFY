@@ -11,6 +11,7 @@ import {
   fetchPosTransactionById,
   fetchPosParkedSales,
   fetchCurrentTerminalShift,
+  fetchCashierShiftHistory,
   fetchPosDayCloseReadiness,
   fetchTerminalTodayDashboard,
   closePosDay,
@@ -174,13 +175,14 @@ const OPERATIONS_VIEW_MODES = [
   'cash_drawer',
   'close_shift',
   'reports',
+  'audit',
   'items',
   'services',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'terminal_setup']);
-const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'services', 'history']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
 const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
@@ -202,7 +204,8 @@ const TERMINAL_SECTION_IDS = {
   reports: 'pos-section-reports',
   items: 'pos-section-items',
   services: 'pos-section-services',
-  affiliates: 'pos-section-affiliates'
+  affiliates: 'pos-section-affiliates',
+  audit: 'pos-section-audit'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -506,6 +509,13 @@ export default function TerminalPage() {
     cashSummary: null,
     salesSummary: null
   });
+  const [cashierHistoryState, setCashierHistoryState] = useState({
+    loading: false,
+    cashier: null,
+    records: [],
+    pagination: null,
+    errorMessage: ''
+  });
   const [todayDashboard, setTodayDashboard] = useState({
     loading: false,
     businessDate: null,
@@ -709,6 +719,16 @@ export default function TerminalPage() {
     workflowMode,
     posDefaults: modePosDefaults
   });
+  const permissions = useMemo(() => parseUserPermissions(terminalUser), [terminalUser]);
+  const normalizedTerminalRole = String(terminalUser?.role || '').trim().toLowerCase();
+  const isMasterAdminOperator = terminalUser?.is_master_admin === true;
+  const hasPermission = useCallback((permission) => {
+    if (!terminalUser) return false;
+    if (terminalUser.is_master_admin) return true;
+    return permissions.includes(permission);
+  }, [permissions, terminalUser]);
+  const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
+
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
     const workflowScopedModes = workflowMode === 'services'
@@ -718,17 +738,17 @@ export default function TerminalPage() {
       ? workflowScopedModes
       : workflowScopedModes.filter((mode) => mode !== 'incoming_queue');
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
+    const roleScopedModes = queueScopedModes.filter((mode) => mode !== 'audit' || canViewAudit);
     if (normalizedRole === 'cashier') {
-      return queueScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
+      return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
-    return queueScopedModes;
-  }, [isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+    return roleScopedModes;
+  }, [canViewAudit, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
   );
 
-  const permissions = useMemo(() => parseUserPermissions(terminalUser), [terminalUser]);
   const activeTerminalRegistry = useMemo(
     () => (Array.isArray(terminalRegistry) ? terminalRegistry.filter((entry) => entry?.is_active !== false) : []),
     [terminalRegistry]
@@ -763,12 +783,6 @@ export default function TerminalPage() {
     const merged = new Set([...fallbackOptions, current, formTerminal].filter(Boolean));
     return Array.from(merged);
   }, [activeTerminalId, activeTerminalRegistry, formData.terminalId, registryEnforced]);
-  const hasPermission = useCallback((permission) => {
-    if (!terminalUser) return false;
-    if (terminalUser.is_master_admin) return true;
-    return permissions.includes(permission);
-  }, [permissions, terminalUser]);
-  const normalizedTerminalRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedTerminalRole === 'cashier';
 
   const canViewPos = hasPermission('pos:view');
@@ -801,7 +815,6 @@ export default function TerminalPage() {
   ].some(Boolean);
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
-  const isMasterAdminOperator = terminalUser?.is_master_admin === true;
   const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
@@ -846,7 +859,7 @@ export default function TerminalPage() {
     && !locked
     && terminalUser?.is_master_admin === true
     && !setupFlowState.onboardingCompleted
-    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.starterItemReady || !setupFlowState.posSetupReady);
+    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.posSetupReady);
   const tenantSetupRequestedOrRequired = !setupFlowState.onboardingCompleted
     && (tenantSetupFlowRequested || tenantSetupIncomplete);
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
@@ -856,14 +869,12 @@ export default function TerminalPage() {
     requestedStep: requestedTenantSetupStep,
     profileReady: setupFlowState.profileReady,
     posSetupReady: setupFlowState.posSetupReady,
-    storefrontSetupReady: setupFlowState.storefrontSetupReady,
-    starterItemReady: setupFlowState.starterItemReady
+    storefrontSetupReady: setupFlowState.storefrontSetupReady
   }), [
     locked,
     requestedTenantSetupStep,
     setupFlowState.profileReady,
     setupFlowState.posSetupReady,
-    setupFlowState.starterItemReady,
     setupFlowState.storefrontSetupReady,
     tenantSetupRequestedOrRequired,
     terminalUser?.is_master_admin
@@ -901,8 +912,9 @@ export default function TerminalPage() {
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
     if (normalizedView === 'items' && !canViewPos && !canManageCategories) return '';
     if (normalizedView === 'services' && !canAccessServiceOperations) return '';
+    if (normalizedView === 'audit' && !canViewAudit) return '';
     return normalizedView;
-  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewPos, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep);
@@ -1254,6 +1266,41 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
+  const refreshCashierHistory = useCallback(async (filters = {}) => {
+    if (locked) return null;
+    setCashierHistoryState((previous) => ({
+      ...previous,
+      loading: true,
+      errorMessage: ''
+    }));
+
+    try {
+      const payload = await fetchCashierShiftHistory({
+        ...filters,
+        ...(filters?.location_id || operatingLocationId
+          ? { location_id: filters?.location_id || operatingLocationId }
+          : {})
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      setCashierHistoryState({
+        loading: false,
+        cashier: payload?.cashier || null,
+        records: Array.isArray(payload?.records) ? payload.records : [],
+        pagination: payload?.pagination || null,
+        errorMessage: ''
+      });
+      return payload;
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to load cashier shift history.';
+      setCashierHistoryState((previous) => ({
+        ...previous,
+        loading: false,
+        errorMessage: message
+      }));
+      if (error?.response?.status !== 403) toast.error(message);
+      return null;
+    }
+  }, [locked, operatingLocationId]);
+
   const refreshTenantLocations = useCallback(async ({
     suppressGlobalErrors = false,
     silent = false
@@ -1594,48 +1641,6 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
 
-  const refreshPostShiftDayCloseReadiness = useCallback(async () => {
-    if (!canCloseDay) {
-      setPostShiftHandoff((current) => current ? ({
-        ...current,
-        loading: false,
-        errorMessage: '',
-        readiness: {
-          authorized: false,
-          ready: false,
-          already_closed: false,
-          open_shift_count: null,
-          open_shifts: []
-        }
-      }) : current);
-      return null;
-    }
-    if (!isOnline) {
-      setPostShiftHandoff((current) => current ? ({
-        ...current,
-        loading: false,
-        errorMessage: 'Reconnect to check whether every branch shift is closed.'
-      }) : current);
-      return null;
-    }
-
-    setPostShiftHandoff((current) => current ? ({ ...current, loading: true, errorMessage: '' }) : current);
-    try {
-      const readiness = await fetchPosDayCloseReadiness();
-      setPostShiftHandoff((current) => current ? ({
-        ...current,
-        loading: false,
-        errorMessage: '',
-        readiness: { ...readiness, authorized: true }
-      }) : current);
-      return readiness;
-    } catch (error) {
-      const errorMessage = error?.response?.data?.message || 'Unable to check Day Close readiness right now.';
-      setPostShiftHandoff((current) => current ? ({ ...current, loading: false, errorMessage }) : current);
-      return null;
-    }
-  }, [canCloseDay, isOnline]);
-
   const openPostShiftHandoff = useCallback(async ({
     source = 'shift_close',
     closeResult = null,
@@ -1855,6 +1860,20 @@ export default function TerminalPage() {
     });
     setClosedShiftReportOpen(true);
   }, [shiftState.cashSummary, shiftState.salesSummary, shiftState.shift]);
+
+  const handleViewCashierHistoryShift = useCallback((record) => {
+    if (!record?.shift) {
+      toast.error('The selected cashier shift summary is unavailable.');
+      return;
+    }
+    setClosedShiftReportAutoPrint(false);
+    setClosedShiftReport({
+      shift: record.shift,
+      cash_summary: record.cash_summary || {},
+      sales_summary: record.sales_summary || {}
+    });
+    setClosedShiftReportOpen(true);
+  }, []);
 
   const replayQueuedTerminalOperations = useCallback(async ({
     toastIfEmpty = false,
@@ -3899,8 +3918,8 @@ export default function TerminalPage() {
     }
   };
 
-  const handleLock = async () => {
-    const hasOpenShift = Boolean(activeShiftId);
+  const handleLock = async ({ forceLogin = false } = {}) => {
+    const hasOpenShift = Boolean(activeShiftId) && !forceLogin;
     const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;
     const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
     const activeShiftCashierId = Number(shiftState?.shift?.cashier_id || terminalUser?.user_id || 0);
@@ -4314,9 +4333,9 @@ export default function TerminalPage() {
       toast.error(error?.response?.data?.message || 'Unable to verify parked sales. Reconnect and try again before closing the shift.');
       return;
     }
-    if (resolutionState.activeParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
+    if (resolutionState.claimedParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
       setCloseShiftBlocker(resolutionState);
-      toast.error('Resolve active parked sales and pending parked-sale syncs before closing this shift.');
+      toast.error('Resolve claimed parked sales and pending parked-sale syncs before closing this shift.');
       return;
     }
 
@@ -4436,12 +4455,14 @@ export default function TerminalPage() {
     } catch (error) {
       const errorDetails = error?.response?.data?.errors || error?.response?.data?.details || {};
       if (String(errorDetails?.reason_code || '').trim() === 'POS_PARKED_SALES_UNRESOLVED') {
-        const activeParkedSaleCount = Number(errorDetails?.active_parked_sale_count || 0);
+        const claimedParkedSaleCount = Number(
+          errorDetails?.claimed_parked_sale_count ?? errorDetails?.active_parked_sale_count ?? 0
+        );
         setCloseShiftBlocker({
-          activeParkedSaleCount,
+          claimedParkedSaleCount,
           pendingParkedSaleCount: 0
         });
-        toast.error(error?.response?.data?.message || 'Resolve active parked sales before closing this shift.');
+        toast.error(error?.response?.data?.message || 'Resolve claimed parked sales before closing this shift.');
         return;
       }
       if (isRetryableTerminalOperationError(error)) {
@@ -4519,8 +4540,8 @@ export default function TerminalPage() {
 
     try {
       const resolutionState = await getShiftCloseResolutionState({ shiftId: normalizedShiftId });
-      if (resolutionState.activeParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
-        toast.error('Resolve active parked sales and pending parked-sale syncs before recovering this shift.');
+      if (resolutionState.claimedParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
+        toast.error('Resolve claimed parked sales and pending parked-sale syncs before recovering this shift.');
         return false;
       }
     } catch (error) {
@@ -4949,8 +4970,13 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    if (nextMode === 'audit' && !canViewAudit) {
+      toast.error('Only a tenant admin can view audit history.');
+      setMobileNavOpen(false);
+      return;
+    }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
-    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services';
+    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services' || nextMode === 'audit';
     if (!isOnline && isOfflineOnlineOnlyMode) {
       toast.error('This POS area is available online only. Offline mode supports local sales, pending receipts, and history.');
       setMobileNavOpen(false);
@@ -5009,6 +5035,7 @@ export default function TerminalPage() {
     canAdminBypassShiftPrompt,
     canAccessServiceOperations,
     canManageCategories,
+    canViewAudit,
     canViewPos,
     commitViewModeSelection,
     isCashierRole,
@@ -5087,6 +5114,17 @@ export default function TerminalPage() {
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
 
+    // POS onboarding no longer owns starter-item creation. The shared IMS
+    // onboarding checklist still governs its own completion separately, so
+    // close the POS-only flow locally when catalog readiness is not present.
+    if (!setupFlowState.starterItemReady) {
+      clearTenantSetupQueryState();
+      setTenantSetupDismissedThisSession(false);
+      setTenantSetupModalOpen(false);
+      toast.message('POS setup is complete. Add catalog items later from Storefront or IMS onboarding.');
+      return;
+    }
+
     tenantSetupCompletionInFlightRef.current = true;
     setTenantSetupFinishing(true);
     try {
@@ -5125,7 +5163,8 @@ export default function TerminalPage() {
   }, [
     clearTenantSetupQueryState,
     hydrateTenantSetupState,
-    hydrateUser
+    hydrateUser,
+    setupFlowState.starterItemReady
   ]);
 
   useEffect(() => {
@@ -5458,7 +5497,6 @@ function PosRestorationLoadingScreen() {
               postShiftHandoff,
               printClosedShiftSummary,
               printZReading,
-              refreshPostShiftDayCloseReadiness,
               renderUnlockFailurePanel,
               resumeTenantSetupFlow,
               saveMyDayClosePin,
@@ -5535,6 +5573,7 @@ function PosRestorationLoadingScreen() {
           setMobileNavOpen={setMobileNavOpen}
           isDesktopWide={isDesktopWide}
           canViewPos={canViewPos}
+          canViewAudit={canViewAudit}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}
@@ -5610,6 +5649,9 @@ function PosRestorationLoadingScreen() {
           handleCloseShift={handleCloseShift}
           handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
+          cashierHistoryState={cashierHistoryState}
+          refreshCashierHistory={refreshCashierHistory}
+          handleViewCashierHistoryShift={handleViewCashierHistoryShift}
           refreshOperationalContext={refreshOperationalContext}
           setOperatingLocationId={setOperatingLocationId}
           setQueueLocationScopeId={setQueueLocationScopeId}

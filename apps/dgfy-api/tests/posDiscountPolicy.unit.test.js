@@ -146,13 +146,13 @@ describe('POS governed discount policy', () => {
 
     test('allows employee discounts without an employee ID', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'employee', customer_name: 'Employee Buyer', method: 'percentage', rate: 50, employee_name: 'Optional display name' },
+            draft: { type: 'employee', method: 'percentage', rate: 50, employee_name: 'Employee Name Only' },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type]
         });
 
-        expect(result.application).toMatchObject({ employee_id: null, employee_name: null, rate: 15 });
+        expect(result.application).toMatchObject({ employee_id: null, employee_name: 'Employee Name Only', rate: 15 });
     });
 
     test('requires customer name for non-statutory promo discounts', async () => {
@@ -168,14 +168,14 @@ describe('POS governed discount policy', () => {
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
     });
 
-    test('requires customer name for employee discounts before resolving the employee', async () => {
+    test('requires employee name for employee discounts before resolving the employee', async () => {
         await expect(resolvePosGovernedDiscount({
             draft: { type: 'employee', employee_id: '7' },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type],
             findActiveEmployee: async () => ({ user_id: 7, username: 'cashier-seven' })
-        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+        })).rejects.toMatchObject({ details: { reason_code: 'EMPLOYEE_NAME_REQUIRED' } });
     });
 
     test('requires customer name for manual discounts while preserving existing manual controls', async () => {
@@ -185,5 +185,21 @@ describe('POS governed discount policy', () => {
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type]
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+    });
+
+    test('allows a manual discount without a reason when the customer identity is present', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: { type: 'manual', method: 'percentage', rate: 10, customer_name: 'Walk-in Customer' },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        });
+
+        expect(result.application).toMatchObject({
+            type: 'manual',
+            customer_name: 'Walk-in Customer',
+            rate: 10
+        });
+        expect(result.application.reason || '').toBe('');
     });
 });

@@ -17,7 +17,13 @@ export const isPayMongoPlatformSplitConfirmed = () => {
   return isPayMongoLiveMode() ? (globalConfirmation || liveConfirmation) : globalConfirmation;
 };
 
-export const requireCommerceQrphConfig = () => {
+/**
+ * Shared configuration gate for PayMongo commerce flows. Hosted Checkout
+ * (card, GCash, Maya) uses the landlord collection model and therefore does
+ * not require a tenant Linked Account or a split recipient. QR Ph retains the
+ * legacy split-account requirements through requireCommerceQrphConfig().
+ */
+export const requireCommercePaymentConfig = ({ requiresSplitAccount = false } = {}) => {
   const missing = [];
   const modeSpecificSecretKey = isPayMongoLiveMode()
     ? process.env.PAYMONGO_LIVE_SECRET_KEY
@@ -28,14 +34,18 @@ export const requireCommerceQrphConfig = () => {
   if (!modeSpecificSecretKey && !process.env.PAYMONGO_SECRET_KEY) {
     missing.push(isPayMongoLiveMode() ? 'PAYMONGO_LIVE_SECRET_KEY' : 'PAYMONGO_TEST_SECRET_KEY');
   }
-  if (!tenantRevenueSharingEnabled && !process.env.PAYMONGO_DGFY_MERCHANT_ID) {
+  if (requiresSplitAccount && !tenantRevenueSharingEnabled && !process.env.PAYMONGO_DGFY_MERCHANT_ID) {
     missing.push('PAYMONGO_DGFY_MERCHANT_ID');
   }
   if (!modeSpecificWebhookSecret && !process.env.PAYMONGO_WEBHOOK_SECRET) {
-    missing.push(isPayMongoLiveMode() ? 'PAYMONGO_LIVE_WEBHOOK_SECRET' : 'PAYMONGO_TEST_WEBHOOK_SECRET');
+    missing.push(isPayMongoLiveMode() ? 'PAYMONGO_LIVE_WEBHOOK_SECRET' : 'PAYMONGO_WEBHOOK_SECRET');
   }
-  if (isCommercePaymongoSplitEnabled() && isPayMongoLiveMode() && !isPayMongoPlatformSplitConfirmed()) {
+  if (requiresSplitAccount && isCommercePaymongoSplitEnabled() && isPayMongoLiveMode() && !isPayMongoPlatformSplitConfirmed()) {
     missing.push('PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED');
   }
   return missing;
 };
+
+export const requireCommerceQrphConfig = () => (
+  requireCommercePaymentConfig({ requiresSplitAccount: true })
+);

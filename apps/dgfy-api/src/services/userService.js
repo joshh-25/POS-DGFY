@@ -829,8 +829,14 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
     throw notFoundError('Target user not found');
   }
   assertAcceptedUserEditable(targetUser, 'manage POS approval PIN');
-  if (!targetUser.is_active || !['admin', 'manager'].includes(String(targetUser.role || '').toLowerCase())) {
-    throw createError('POS approval PINs can only be configured for active Admin or Manager users', 422);
+  if (!targetUser.is_active) {
+    throw createError('POS approval PINs can only be configured for active employees', 422);
+  }
+  const targetRole = String(targetUser.role || '').trim().toLowerCase();
+  const isBuiltInDiscountAuthorizer = targetUser.is_master_admin === true
+    || ['admin', 'manager'].includes(targetRole);
+  if (!isBuiltInDiscountAuthorizer && !hasPermission(targetUser, 'pos:discount_authorize')) {
+    throw createError('Grant POS discount authorization before configuring an approval PIN', 422);
   }
 
   const normalizedPin = String(pin || '').trim();

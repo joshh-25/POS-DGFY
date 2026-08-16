@@ -94,9 +94,9 @@ Rules for filling this in:
 | Condition | Action |
 |---|---|
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --squash --delete-branch` — unattended, no confirmation needed |
-| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval |
+| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never |
 | Verdict `BLOCK`, any base | Never merge |
-| Checks red, or still pending, any base | Never merge — report the state, don't wait it out silently |
+| Checks red, or still pending, any base | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
 
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in
@@ -119,6 +119,14 @@ every runtime it runs on, not reliably by any tool restriction** — it's a disc
 expected to hold itself to, not a sandbox guarantee. Treat every one of the "never"s in the table
 with that in mind, regardless of which tool is executing this role.
 
+## Chaining into a deploy, and handing off out-of-scope work
+
+A "review, merge, and deploy" composite instruction chains this role's merge into `promoter`'s
+promotion as the next step of the same acting session — see `AGENTS.md`'s "Role handoffs and
+composite instructions" for the full shape and where it stops at the `main` boundary. If a review
+turns up work outside this PR's own scope (a correction, a bug, a gap), hand it to `pm` to shape and
+file rather than improvising a `gh issue create` here.
+
 ## Where this runs
 
 **Local, on demand — not CI.** GHA minutes are currently exhausted, and the working model for this
@@ -134,8 +142,8 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
   consequence for this role.
   - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
-    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; a
-    Verifier/QA role (tracked as a child of #331, not yet built) is what eventually flips it to
+    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; the
+    Verifier/QA role (`.agents/skills/verifier/SKILL.md`, #536) is what eventually flips it to
     `Done` or `Failed`.
   - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
     workflow already set `Done`.

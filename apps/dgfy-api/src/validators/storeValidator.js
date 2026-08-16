@@ -160,7 +160,7 @@ export const validateStoreLogin = validateSchema(storeLoginSchema, 'body', 'vali
 export const validateStoreQuote = validateSchema(storeQuoteSchema, 'body', 'validatedData');
 export const validateStoreCheckout = validateSchema(storeCheckoutSchema, 'body', 'validatedData');
 export const validateStoreCheckoutPaymentSession = validateSchema(storeCheckoutSchema.keys({
-    payment_type: Joi.string().valid('qrph').default('qrph')
+    payment_type: Joi.string().valid('qrph', 'card', 'gcash', 'maya').default('qrph')
 }), 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpRequest = validateSchema(guestCheckoutOtpRequestSchema, 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpVerify = validateSchema(guestCheckoutOtpVerifySchema, 'body', 'validatedData');
