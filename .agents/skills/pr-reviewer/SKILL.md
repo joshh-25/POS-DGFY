@@ -134,8 +134,8 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
   consequence for this role.
   - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
-    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; a
-    Verifier/QA role (tracked as a child of #331, not yet built) is what eventually flips it to
+    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; the
+    Verifier/QA role (`.agents/skills/verifier/SKILL.md`, #536) is what eventually flips it to
     `Done` or `Failed`.
   - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
     workflow already set `Done`.

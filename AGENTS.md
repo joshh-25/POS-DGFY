@@ -47,6 +47,8 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   @.agents/skills/pr-reviewer/SKILL.md
 - **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
+- **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
+  then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
