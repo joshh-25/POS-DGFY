@@ -6,9 +6,7 @@ export function SimpleCheckoutPaymentActions({
   checkoutError = '',
   checkoutLoading = false,
   isMobileViewport = false,
-  quoteError = '',
-  quoteResult = null,
-  submitLabel = 'Place Order',
+  submitLabel = '',
   storefrontClosedNotice = null,
   simpleCheckoutAllowed = false,
   onBack,
@@ -25,7 +23,7 @@ export function SimpleCheckoutPaymentActions({
             <ChevronLeft size={18} /> Back
           </button>
           <button type="button" onClick={onCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: actionHeight, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? SIMPLE_BRAND : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed', fontSize: actionFontSize }}>
-            {checkoutLoading ? 'Processing...' : submitLabel}
+            {checkoutLoading ? 'Processing...' : (submitLabel || 'Place Order')}
           </button>
         </div>
       )}

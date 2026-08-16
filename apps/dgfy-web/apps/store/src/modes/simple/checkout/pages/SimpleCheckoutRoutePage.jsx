@@ -46,8 +46,6 @@ export function SimpleCheckoutRoutePage({
   promoDiscountSummaryRow = null,
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
-  quoteError = '',
-  quoteResult = null,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
@@ -279,10 +277,6 @@ export function SimpleCheckoutRoutePage({
                 refreshing={qrphPaymentStatusLoading}
               />
             ) : null}
-            quoteError={quoteError}
-            quoteResult={quoteResult}
-            requireQuoteForCheckout={requireQuoteForCheckout}
-            selectedStore={selectedStore}
             simpleCheckoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
             submitLabel={paymentSubmitLabel}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}

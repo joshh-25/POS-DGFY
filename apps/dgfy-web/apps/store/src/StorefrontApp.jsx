@@ -3183,8 +3183,6 @@ export default function StorefrontApp() {
     promoDiscountSummaryRow,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
-    quoteError,
-    quoteResult,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
