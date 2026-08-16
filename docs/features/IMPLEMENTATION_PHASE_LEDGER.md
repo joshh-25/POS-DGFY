@@ -4074,24 +4074,27 @@ parked-sale replay and shift-close resolution.
   ADR 0064 decision 7 gap (both profiles were unreachable via
   `resolveFulfillmentProfilesForServiceAreaType` by construction before this phase).
 - No API contract, payload field, or frontend change ships in this phase. Nothing writes rows to
-  either new table yet - persistence wiring is Phase 89. `pickupReturnLogistics` stays
+  either new table yet - persistence wiring is Phase 100. `pickupReturnLogistics` stays
   `status: 'planned'` per ADR 0064 decision 6.
 - Assessed against PR #535 (storefront modularization, merged the same day as Phase 87) before
   starting: #535 touched zero files under `modes/services/` and does not affect this phase's scope.
 
 ### Status
 
-- `in_progress`
+- `completed`
 - Migration checkpoint reached 2026-08-15: three new files under
   `apps/dgfy-migration-runner/migrations/` trip the Worker/Implementer skill's mandatory
-  human-confirmation trigger. Code written and Tier 0-verified; not yet committed pending review.
+  human-confirmation trigger. Code written and Tier 0-verified, then committed as PR #541.
+- Merged 2026-08-15 - PR #541, verified end-to-end against a restored production snapshot (44/44
+  tenants repaired cleanly, including the real Liempyo Laundry tenant). The migration dry-run box
+  left open below is satisfied by that run.
 
 ### Dependencies and Governance Note
 
 - ADR 0064 (Services Handoff Legs and Round-Trip Persistence) - authorizes this phase in full;
   decisions 2, 4, and 7 are implemented directly, decision 3 (no profile key on the wire) is
   structurally enforced by the new table's `(booking_id, direction)` unique index rather than
-  implemented here (the derivation function is Phase 89).
+  implemented here (the derivation function is Phase 100).
 - ADR 0057 (Services Fulfillment Profiles) clause 4 (`[binding]`) - unaffected; `item_handoff`
   keeps the vocabulary keyed off `ServiceItemDetail.service_area_type`, a per-item field.
 - No compliance impact declaration required: `modules/services/` and
@@ -4132,8 +4135,8 @@ parked-sale replay and shift-close resolution.
   associations resolve as designed (`handoffLegs`, `statusEvents` on both sides); confirmed neither
   new model is in `tenantModelFactory.js`'s `NON_TENANT_MODEL_EXPORTS` exclusion set, matching
   `ServiceBookingLine`'s treatment.
-- [ ] Migration dry-run against a live tenant database - blocked on local DB credentials in this
-  session; needs a human or a later session with DB access before merge.
+- [x] Migration dry-run against a live tenant database - run against a restored production
+  snapshot as part of PR #541 (44/44 tenants repaired cleanly).
 
 ### Implementation Links
 
@@ -4837,3 +4840,116 @@ parked-sale replay and shift-close resolution.
 
 - Phase 99 remains in progress until authenticated rendered POS proof passes.
 - Phase 100 is the next eligible phase after completion.
+
+## Phase 100 - Services Handoff-Leg API Contract
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs), continuing #482.
+- Release: unreleased; backend API contract only (`apps/dgfy-api` + `packages/shared-constants`).
+  No storefront wiring (Phase 101), no services tracking UI (Phase 102), no POS (Phase 103) in this
+  phase.
+
+### Objective and Scope
+
+- Authorized by ADR 0064 (Phase 87). Makes Phase 88's schema live: the booking payload can carry
+  `handoff_legs`, the API persists both legs plus a `ServiceBookingStatusEvent` trail, and the
+  public tracking read returns the per-variant six-stage timeline.
+- **Wire contract**: `handoff_legs` is a two-item array (`{direction, method, address_line |
+  customer_address_id | location_id, scheduled_from, scheduled_to, contact_name, contact_phone,
+  instructions}`) added to `serviceBookingCoreSchema` (`apps/dgfy-api/src/validators/
+  serviceValidator.js`), so it is reachable from the public, admin, and per-draft batch booking
+  schemas alike, but not the hold schema. A direction-conditional method whitelist
+  (`inbound: business_pickup`; `outbound: business_delivery | customer_collection`) admits only
+  the two profiles ADR 0064 decision 1 authorizes - `customer_dropoff` (the
+  `item_dropoff_collection` shape) is in the DB enum from Phase 88 but rejected at the validator.
+- **Derivation** (`packages/shared-constants/src/fulfillmentProfiles.js`):
+  `deriveFulfillmentProfileFromHandoffLegs` maps `(inbound method, outbound method)` to a profile
+  key server-side only; it returns `null` for every unauthorized shape, which is the decision-1
+  enforcement surface, not merely a validation nicety. **No fulfillment-profile key is ever
+  returned to the caller** (ADR 0064 decision 3, read strictly) - the public tracking read returns
+  only the resolved `fulfillment.timeline`, never the variant string.
+- **Persistence**: legs and a seed `null -> <created status>` status event are written inside the
+  same transaction as booking creation, in the one shared writer (`createServiceBookingRecord`)
+  that single/hold/batch bookings all funnel through - hold creation is exempt from the
+  "`item_handoff` requires legs" gate, since a hold reserves capacity ahead of the step where legs
+  are actually captured. `customer_address_id` is session-gated (ownership-checked, 403 on
+  mismatch) rather than admin-only, the same trust-boundary shape as `pos_transaction_id` but
+  needed by signed-in guests. Idempotency replay is unaffected (it returns before the writer runs);
+  `bookingRequestHashPayload` now sorts `handoff_legs` by direction so wire order never causes a
+  spurious 409.
+- **Status transitions**: `buildUpdateServiceBookingStatusUseCase` now writes a
+  `ServiceBookingStatusEvent` per real transition (skipped on a same-status no-op) and drives each
+  leg's own `pending -> scheduled -> in_transit -> completed`/`cancelled` lifecycle off the booking
+  status (`for_pickup` -> inbound `in_transit`, `pickup_completed` -> inbound `completed`,
+  `out_for_return` -> outbound `in_transit`, `ready_for_collection` -> outbound `scheduled`,
+  `completed` -> outbound `completed`, `cancelled` -> every non-terminal leg `cancelled`). Actor
+  attribution threads `req.user` through the controller for the first time on this route.
+- **Two Phase 88 gaps closed as part of this phase** (both small, both in-module): (a)
+  `BOOKING_STATUS_TRANSITIONS.confirmed` now also allows `for_pickup` - the confirmed merchant
+  state machine documented in the discover-flow proposal is `requested -> confirmed -> for_pickup`,
+  which Phase 88 left dead-ended into `checked_in`; (b) `serviceRepository.getDashboardMetrics`'s
+  `activeStatuses` now includes the four round-trip statuses, so a handoff booking no longer
+  vanishes from the staff dashboard once it leaves `requested`/`confirmed`.
+- **Capability-module gating**: unchanged per ADR 0064 decision 6. `capabilityModules.js` is not
+  touched; both profiles and `pickupReturnLogistics` stay `status: 'planned'`, pinned by a new
+  regression test. Eligibility gates on the per-item `service_area_type === 'item_handoff'` (ADR
+  0057 clause 4), not a capability flag.
+
+### Status
+
+- `in_progress`
+- Code written and Tier 0/1-verified (see below); not yet run against a live tenant database.
+  Mirrors Phase 88's own precedent - that phase stayed `in_progress` until its migration dry-run
+  ran against a restored snapshot in PR #541. This phase flips to `completed` once the equivalent
+  live-tenant end-to-end run (create both leg shapes, drive the full status sequence, confirm the
+  public tracking read) is done.
+
+### Dependencies and Governance Note
+
+- ADR 0064 decisions 1, 2, 3, 5 (`[binding]`) and 4, 6 (`[default]`) - all implemented as specified;
+  none required a new ADR or amendment. Decision 3's "never transmitted" is read strictly: the
+  derived variant key is computed server-side but never serialized in any response.
+- ADR 0057 clause 4 (`[binding]`) - unaffected; the item-level gate in `createServiceBookingRecord`
+  keys off `ServiceItemDetail.service_area_type`, never a tenant/template setting.
+- **Hard deploy-order dependency on Phase 88 (PR #541).** This phase is non-functional without
+  `service_booking_handoff_legs`/`service_booking_status_events` existing; deliberately no
+  missing-table tolerance (unlike `isMissingStorefrontLocationItemOverrideTableError`'s pattern
+  elsewhere) - a silent leg loss on an under-migrated tenant is worse than a loud failure.
+- No compliance impact declaration required: `modules/services/` is not in
+  `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES`; `check:compliance` reports
+  no compliance-sensitive changes. Flagged anyway, as Phase 88 did: the new leg rows this phase
+  starts writing carry customer addresses/contact details, same incremental-exposure note as
+  before.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on every changed `.js` file (Tier 0; `apps/dgfy-api` has no real build step).
+- [x] `npm run check:architecture` passes: 47 modules / 467 files checked, 86 controllers checked.
+- [x] `npm run check:compliance` passes: no compliance-sensitive changes detected.
+- [x] `npm run lint:docs` passes (chains `check:adr`): 27 governed docs, 71 ADRs.
+- [x] Targeted Jest, all green: `fulfillmentProfiles.contract.test.js` (25/25, incl. new
+  handoff-leg derivation + cross-product-drift-guard tests), `serviceBookingValidator.test.js`
+  (35/35, incl. new handoff-leg schema tests), `servicesMode.usecases.test.js` (55/55, incl. new
+  persistence/gate/IDOR/replay/status-event/redaction tests), `serviceBookingSettlement.usecases.
+  test.js` (12/12, incl. new orthogonal-payment tests across all four round-trip statuses) - 127/127
+  across the four suites this phase touches.
+- [ ] Full `npm test` - not run this session; the repo's monorepo-wide suite OOMs the local Node
+  heap independent of this change (observed failing deep in an unrelated pre-existing test file).
+  Matches this repo's documented two-tier gate model - the full suite is Pat's own post-merge run,
+  not a PR-blocking Tier 0/1 requirement.
+- [ ] End-to-end run against a live tenant (create both leg shapes, drive the full status sequence,
+  confirm the public tracking read) - not run this session; flagged for a human or a later
+  DB-backed session before merge, matching Phase 88's own precedent.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/validators/serviceValidator.js`
+- `apps/dgfy-api/src/modules/services/repositories/serviceRepository.js`
+- `apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js`
+- `apps/dgfy-api/src/modules/services/controllers/serviceHandlers.js`
+- `packages/shared-constants/src/fulfillmentProfiles.js`
+- `apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js`,
+  `serviceBookingValidator.test.js`, `servicesMode.usecases.test.js`,
+  `serviceBookingSettlement.usecases.test.js`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)

@@ -309,3 +309,79 @@ export const describeFulfillmentProfile = (profileKey) => {
         planned_module_label: plannedModule ? plannedModule.label : null
     });
 };
+
+/**
+ * Phase 100 of #482 (ADR 0064 decision 3) - the handoff-leg vocabulary. A leg is one directional
+ * half of a round trip (`ServiceBookingHandoffLeg`): who moves the item, and which way. Declared
+ * here, not in the backend validator, so the (inbound method, outbound method) -> profile mapping
+ * below has exactly one source of truth per ADR 0057 clause 1 (pure derivation, no new state).
+ *
+ * These are intentionally NARROWER than ServiceBookingHandoffLeg.method's four-value DB enum,
+ * which also carries 'customer_dropoff' for the still-unauthorized item_dropoff_collection profile
+ * (ADR 0064 decision 1 authorizes only item_pickup_return and item_pickup_collection). Widening
+ * this whitelist to admit 'customer_dropoff' requires a superseding or amending ADR, not a code
+ * change - see HANDOFF_PROFILE_BY_LEG_SHAPE below.
+ */
+export const HANDOFF_LEG_DIRECTIONS = Object.freeze(['inbound', 'outbound']);
+export const HANDOFF_LEG_METHODS = Object.freeze([
+    'business_pickup', 'business_delivery', 'customer_dropoff', 'customer_collection'
+]);
+
+/**
+ * The only two leg shapes ADR 0064 decision 1 authorizes, keyed `${inboundMethod}|${outboundMethod}`.
+ * No `laundry_` prefix (ADR 0064 decision 5) and no fulfillment-profile key ever reaches the wire
+ * or the database (ADR 0064 decision 3) - this map is consulted server-side only, to pick which
+ * profile's tracking_events timeline to project back to the caller. It is never itself serialized.
+ */
+export const HANDOFF_PROFILE_BY_LEG_SHAPE = Object.freeze({
+    'business_pickup|business_delivery': 'item_pickup_return',
+    'business_pickup|customer_collection': 'item_pickup_collection'
+});
+
+/**
+ * legs: [{direction, method}, ...]. Returns the derived profile key, or null for every shape that
+ * ADR 0064 decision 1 does not authorize - including a well-formed inbound/outbound pair that uses
+ * 'customer_dropoff' (item_dropoff_collection's shape). Returning null for the unauthorized case,
+ * rather than throwing, is deliberate: it is the enforcement surface itself, not a validation
+ * concern - nothing downstream can act on a profile this function will not name.
+ */
+export const deriveFulfillmentProfileFromHandoffLegs = (legs) => {
+    if (!Array.isArray(legs) || legs.length !== 2) return null;
+    const inbound = legs.find((leg) => leg?.direction === 'inbound');
+    const outbound = legs.find((leg) => leg?.direction === 'outbound');
+    if (!inbound || !outbound) return null;
+    const key = `${inbound.method}|${outbound.method}`;
+    return HANDOFF_PROFILE_BY_LEG_SHAPE[key] || null;
+};
+
+/**
+ * The ordered tracking-event keys for a profile, e.g. for building a customer-facing timeline.
+ * Returns a frozen empty array for an unknown or non-handoff profile key rather than null, so
+ * callers can iterate without a null check.
+ */
+export const resolveFulfillmentTrackingTimeline = (profileKey) => {
+    const entry = resolveFulfillmentProfile(profileKey);
+    return entry ? entry.tracking_events : Object.freeze([]);
+};
+
+// Human-readable label per tracking-event key, shared so the backend serializer and any frontend
+// presenter can never disagree (mirrors the existing precedent at
+// apps/dgfy-api/src/modules/store/usecases/storeUseCases.js's toStatusLabel). Covers every
+// tracking_events key currently declared across the vocabulary, including the still-unauthorized
+// item_dropoff_collection/quote_request events, so this stays complete if those are ever unblocked.
+export const FULFILLMENT_TRACKING_EVENT_LABELS = Object.freeze({
+    requested: 'Requested',
+    confirmed: 'Confirmed',
+    checked_in: 'Checked in',
+    in_service: 'In service',
+    completed: 'Completed',
+    for_pickup: 'For pickup',
+    pickup_completed: 'Pickup completed',
+    out_for_return: 'Out for return',
+    ready_for_collection: 'Ready for collection',
+    for_dropoff: 'For drop-off',
+    dropoff_completed: 'Drop-off completed',
+    collected: 'Collected',
+    quoted: 'Quoted',
+    accepted: 'Accepted'
+});
