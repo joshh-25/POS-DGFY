@@ -21,9 +21,21 @@ import { buildCalculateServiceQuoteUseCase } from './calculateServiceQuoteUseCas
 
 const VAT_RATE = 0.12;
 const POS_PAYMENT_TYPES = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
-const SETTLEABLE_BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed']);
+// Phase 88 of #482 (ADR 0064): the four round-trip statuses are active/in-progress the same way
+// requested/confirmed/checked_in/in_service are - payment collection is confirmed orthogonal to
+// fulfillment progression (docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md),
+// so settlement must not be blocked while a booking is mid-handoff.
+const SETTLEABLE_BOOKING_STATUSES = Object.freeze([
+    'requested', 'confirmed', 'checked_in', 'in_service', 'completed',
+    'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+]);
 
-const BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show']);
+// Phase 88 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values; the
+// original seven are unchanged.
+const BOOKING_STATUSES = Object.freeze([
+    'requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show',
+    'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+]);
 const PAYMENT_POLICIES = Object.freeze(['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed']);
 const PAYMENT_TIMINGS = Object.freeze(['prepaid', 'postpaid', 'deposit']);
 const WAITLIST_STATUSES = Object.freeze(['waiting', 'notified', 'booked', 'expired', 'cancelled']);
@@ -35,14 +47,23 @@ const SERVICE_STOREFRONT_SETTING_KEYS = Object.freeze([
 const CLAIM_TOKEN_TTL_MS = 30 * 60 * 1000;
 const BOOKING_HOLD_TTL_MS = 10 * 60 * 1000;
 const MAX_REFERENCE_ATTEMPTS = 20;
+// Phase 88 of #482 (ADR 0064): the round-trip arcs are appended additively. requested/confirmed/
+// checked_in/in_service and all their existing arcs are untouched - the profile-aware rewrite
+// (choosing the round-trip graph over the appointment graph per booking) is Phase 92, not this
+// phase. Nothing writes for_pickup/pickup_completed/out_for_return/ready_for_collection yet;
+// that wiring is Phase 89.
 const BOOKING_STATUS_TRANSITIONS = Object.freeze({
-    requested: ['confirmed', 'cancelled', 'no_show'],
+    requested: ['confirmed', 'for_pickup', 'cancelled', 'no_show'],
     confirmed: ['checked_in', 'cancelled', 'no_show'],
     checked_in: ['in_service', 'cancelled', 'no_show'],
-    in_service: ['completed', 'cancelled'],
+    in_service: ['completed', 'out_for_return', 'ready_for_collection', 'cancelled'],
     completed: [],
     cancelled: [],
-    no_show: ['confirmed']
+    no_show: ['confirmed'],
+    for_pickup: ['pickup_completed', 'cancelled'],
+    pickup_completed: ['in_service', 'cancelled'],
+    out_for_return: ['completed', 'cancelled'],
+    ready_for_collection: ['completed', 'cancelled']
 });
 
 const toPositiveInt = (value, fallback = null) => {

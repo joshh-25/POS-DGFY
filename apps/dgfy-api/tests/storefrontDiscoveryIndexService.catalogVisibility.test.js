@@ -6,6 +6,7 @@ const mockIndexDestroy = jest.fn();
 const mockIndexCreate = jest.fn();
 const mockIndexCount = jest.fn();
 const mockGetConnection = jest.fn();
+const mockOpenEphemeralConnection = jest.fn();
 const mockGetTenantModels = jest.fn();
 const mockBumpCacheVersion = jest.fn();
 const mockInvalidateSharedSignature = jest.fn();
@@ -33,7 +34,11 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 
 jest.unstable_mockModule('../src/utils/TenantConnector.js', () => ({
     default: {
-        getConnection: mockGetConnection
+        getConnection: mockGetConnection,
+        // reconcileStorefrontDiscoveryIndex's bulk sweep uses this instead of
+        // getConnection (#524/#527) -- see storefrontDiscoveryIndexService.js's
+        // buildTenantSnapshot doc comment.
+        openEphemeralConnection: mockOpenEphemeralConnection
     }
 }));
 
@@ -77,6 +82,10 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             status: 'active'
         });
         mockGetConnection.mockResolvedValue({ name: 'tenant-connection' });
+        mockOpenEphemeralConnection.mockResolvedValue({
+            name: 'ephemeral-tenant-connection',
+            close: jest.fn().mockResolvedValue(undefined)
+        });
         mockIndexDestroy.mockResolvedValue(0);
         mockIndexCount.mockResolvedValue(0);
     });

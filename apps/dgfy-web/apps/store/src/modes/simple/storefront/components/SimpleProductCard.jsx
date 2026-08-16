@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { SIMPLE_CATEGORY_ICON_MAP } from '../model/simpleCategoryIconMap.jsx';
 
 /**
  * MSME's own item card — not shared with any other mode. Container sizing/layout
@@ -9,13 +10,11 @@ import { StorefrontResponsiveImage } from '../../../../shared/components/storefr
  * since catalogItemsToRender for MSME is already shaped by the same getFoodBeverageStorefrontViewModel
  * transform F&B uses (sectionVisualMeta/sectionLabel/descriptionPreview/availabilityMeta all
  * present — see useFnbCatalogRuntime.js, which runs for every mode). Differences from F&B: no
- * "View Details" button anywhere (a single full-width "Add to Order" button replaces the split
- * View Details/cart-icon row in both the grid and list variants), and the fill colors (price
- * badge, cart button, category icon) read from MSME's own heroTheme instead of F&B's — the card
- * border/shadow tones stay F&B's literal values, matching the same treatment retail's card uses.
+ * "View Details" button anywhere (a single full-width "Add to Cart" button replaces the split
+ * View Details/cart-icon row in both the grid and list variants), and all Simple catalog colors
+ * come from the mode's catalogPalette so this card does not inherit F&B styling.
  */
 const SimpleProductCard = ({
-  FNB_CATEGORY_ICON_MAP,
   available,
   addToCart,
   buttonTextOnAccent,
@@ -29,14 +28,19 @@ const SimpleProductCard = ({
   onViewDetails
 }) => {
   const sectionVisualMeta = item.sectionVisualMeta || {};
-  const accent = heroTheme.accent || '#0f766e';
-  const accentDeep = heroTheme.accentDark || '#134e4a';
-  const cardSurface = '#ffffff';
-  // Card border/shadow tones are F&B's own literal values (not MSME's heroTheme.borderSoft),
-  // matching the same treatment used for retail's product card.
-  const cardBorder = '#edd4bc';
-  const cardTextPrimary = heroTheme.textPrimary || '#0f172a';
-  const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
+  const catalogPalette = heroTheme.catalogPalette || heroTheme.palette || {};
+  const typography = heroTheme.typography || {};
+  const cardTitleTypography = typography.cardTitle || {};
+  const priceTypography = typography.price || {};
+  const actionTypography = typography.action || {};
+  const accent = catalogPalette.primary || heroTheme.accent || '#176B3A';
+  const accentDeep = catalogPalette.primaryHover || heroTheme.accentDark || '#0F5A30';
+  const cardSurface = catalogPalette.surface || '#FFFDF7';
+  const cardImageSurface = catalogPalette.surfaceSubtle || '#FFF7E6';
+  const cardBorder = catalogPalette.border || '#E4C98E';
+  const cardTextPrimary = catalogPalette.textPrimary || heroTheme.textPrimary || '#0f172a';
+  const cardTextSecondary = catalogPalette.textSecondary || heroTheme.textMuted || '#475569';
+  const CategoryIcon = SIMPLE_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
   const [isHovered, setIsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
   const [failedImageUrl, setFailedImageUrl] = useState('');
@@ -45,6 +49,7 @@ const SimpleProductCard = ({
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
   const imageUrl = imageSources?.src || '';
   const canRenderImage = Boolean(imageUrl) && failedImageUrl !== imageUrl;
+  const categoryLabel = String(item.sectionLabel || item.categoryMeta?.label || item.productKind || '').trim();
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
 
@@ -53,11 +58,11 @@ const SimpleProductCard = ({
       <article
         data-cart-fly-origin="true"
         style={{
-          background: '#fff',
+          background: cardSurface,
           borderRadius: 10,
           padding: 10,
-          boxShadow: '0 4px 16px rgba(15,23,42,0.04)',
-          border: '1px solid #f1f5f9',
+          boxShadow: '0 4px 12px rgba(23,107,58,0.05)',
+          border: `1px solid ${cardBorder}`,
           display: 'flex',
           flexDirection: 'row',
           gap: 12,
@@ -72,7 +77,7 @@ const SimpleProductCard = ({
         }}
       >
         <div
-          style={{ width: 118, height: 118, flexShrink: 0, borderRadius: 14, overflow: 'hidden', background: '#f8fafc', position: 'relative', cursor: 'pointer' }}
+          style={{ width: 118, height: 118, flexShrink: 0, borderRadius: 14, overflow: 'hidden', background: cardImageSurface, position: 'relative', cursor: 'pointer' }}
           onClick={() => onViewDetails?.(item)}
         >
           {canRenderImage ? (
@@ -106,10 +111,10 @@ const SimpleProductCard = ({
             background: accent,
             color: buttonTextOnAccent,
             padding: '6px 9px',
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 900,
-            boxShadow: '0 4px 12px rgba(217,119,6,0.3)',
+            borderRadius: 6,
+            fontSize: priceTypography.mobile || 13,
+            fontWeight: priceTypography.weight || 700,
+            boxShadow: 'none',
             fontFamily: cardUiFont,
             lineHeight: 1
           }}>
@@ -119,10 +124,10 @@ const SimpleProductCard = ({
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: cardTextPrimary, lineHeight: 1.15, fontFamily: cardTitleFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            <h4 style={{ margin: 0, fontSize: cardTitleTypography.mobile || 16, fontWeight: cardTitleTypography.weight || 700, color: cardTextPrimary, lineHeight: cardTitleTypography.lineHeight || 1.25, fontFamily: cardTitleFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {item.name}
             </h4>
-            <p style={{ margin: 0, fontSize: 14, color: '#64748b', lineHeight: 1.4, fontFamily: cardUiFont, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            <p style={{ margin: 0, fontSize: 13, color: cardTextSecondary, lineHeight: 1.4, fontFamily: cardUiFont, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {detailsCopy}
             </p>
           </div>
@@ -149,8 +154,8 @@ const SimpleProductCard = ({
                 gap: 8,
                 cursor: available ? 'pointer' : 'not-allowed',
                 fontFamily: cardUiFont,
-                fontSize: 13,
-                fontWeight: 800
+                fontSize: actionTypography.mobile || 13,
+                fontWeight: actionTypography.weight || 700
               }}
             >
               <span style={{ position: 'relative', display: 'flex' }}>
@@ -159,7 +164,7 @@ const SimpleProductCard = ({
                   <Plus size={7} strokeWidth={4} />
                 </span>
               </span>
-              Add to Order
+              Add to Cart
             </button>
           </div>
         </div>
@@ -167,7 +172,7 @@ const SimpleProductCard = ({
     );
   }
 
-  const cardTitleFontSize = isMobileViewport ? 16 : 22;
+  const cardTitleFontSize = isMobileViewport ? (cardTitleTypography.mobile || 16) : (cardTitleTypography.desktop || 18);
   const imageHeight = isMobileViewport ? 140 : 214;
   const actionHeight = isMobileViewport ? 36 : 46;
 
@@ -178,7 +183,7 @@ const SimpleProductCard = ({
         background: cardSurface,
         borderRadius: 10,
         padding: 0,
-        boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
+        boxShadow: isHovered ? '0 12px 24px rgba(23,107,58,0.10)' : '0 6px 16px rgba(23,107,58,0.05)',
         border: `1px solid ${cardBorder}`,
         overflow: 'hidden',
         position: 'relative',
@@ -196,7 +201,7 @@ const SimpleProductCard = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: isMobileViewport ? '0 0 16px 16px' : '0 0 22px 22px', cursor: 'pointer' }}
+        style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: isMobileViewport ? '0 0 12px 12px' : '0 0 8px 8px', cursor: 'pointer', background: cardImageSurface }}
         onClick={() => onViewDetails?.(item)}
       >
         {canRenderImage ? (
@@ -218,9 +223,9 @@ const SimpleProductCard = ({
             display: 'grid',
             placeItems: 'center',
             color: accentDeep,
-            fontWeight: 800,
+            fontWeight: cardTitleTypography.weight || 700,
             fontFamily: cardUiFont,
-            background: '#f8fafc'
+            background: cardImageSurface
           }}>
             <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
               <div style={{
@@ -232,7 +237,7 @@ const SimpleProductCard = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 12px 24px rgba(73,38,20,0.08)'
+                boxShadow: '0 8px 16px rgba(23,107,58,0.06)'
               }}>
                 <CategoryIcon size={isMobileViewport ? 24 : 28} />
               </div>
@@ -240,8 +245,7 @@ const SimpleProductCard = ({
             </div>
           </div>
         )}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.22) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(108,75,20,0.08) 100%)', pointerEvents: 'none' }} />
         {item.affiliate_price_applied && (
           <div style={{ position: 'absolute', top: isMobileViewport ? 10 : 16, left: isMobileViewport ? 10 : 16, background: '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>
             Affiliate price
@@ -255,9 +259,9 @@ const SimpleProductCard = ({
           color: buttonTextOnAccent,
           padding: isMobileViewport ? '6px 10px' : '9px 16px',
           borderRadius: 999,
-          fontSize: isMobileViewport ? 13 : 15,
-          fontWeight: 900,
-          boxShadow: isHovered ? '0 12px 26px rgba(217,119,6,0.32)' : '0 10px 22px rgba(217,119,6,0.24)',
+          fontSize: isMobileViewport ? (priceTypography.mobile || 13) : (priceTypography.desktop || 15),
+          fontWeight: priceTypography.weight || 700,
+          boxShadow: 'none',
           transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
           transition: 'all 0.2s ease',
           fontFamily: cardUiFont,
@@ -265,29 +269,25 @@ const SimpleProductCard = ({
         }}>
           {money(item.default_sale_price ?? 0)}
         </div>
+        {categoryLabel ? (
+          <div style={{ position: 'absolute', left: isMobileViewport ? 10 : 12, bottom: isMobileViewport ? 10 : 12, maxWidth: '55%', padding: isMobileViewport ? '5px 8px' : '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.94)', color: accentDeep, fontSize: isMobileViewport ? 10 : 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: cardUiFont }}>
+            {categoryLabel}
+          </div>
+        ) : null}
       </div>
       <div style={{ padding: isMobileViewport ? '12px 12px 12px' : '18px 18px 16px', flex: 1, display: 'grid', gap: isMobileViewport ? 8 : 14 }}>
         <div style={{ display: 'grid', gap: isMobileViewport ? 4 : 8 }}>
-          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.15, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
+          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: cardTitleTypography.weight || 700, lineHeight: cardTitleTypography.lineHeight || 1.25, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.02em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
           <div style={{ position: 'relative', maxHeight: 40, overflow: 'hidden' }}>
             <p style={{
               margin: 0,
               fontSize: 14,
               lineHeight: 1.4,
-              color: '#475569',
+              color: cardTextSecondary,
               fontFamily: cardUiFont
             }}>
               {detailsCopy}
             </p>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 24,
-              background: `linear-gradient(to top, ${cardSurface} 0%, transparent 100%)`,
-              pointerEvents: 'none'
-            }} />
           </div>
         </div>
         <div style={{ marginTop: 'auto', paddingTop: 8 }}>
@@ -318,8 +318,8 @@ const SimpleProductCard = ({
               transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
               fontFamily: cardUiFont,
-              fontSize: isMobileViewport ? 13 : 15,
-              fontWeight: 800
+              fontSize: isMobileViewport ? (actionTypography.mobile || 13) : (actionTypography.desktop || 15),
+              fontWeight: actionTypography.weight || 700
             }}
           >
             <span style={{ position: 'relative', width: isMobileViewport ? 18 : 22, height: isMobileViewport ? 18 : 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -341,7 +341,7 @@ const SimpleProductCard = ({
                 <Plus size={isMobileViewport ? 8 : 9} strokeWidth={3} />
               </span>
             </span>
-            Add to Order
+            Add to Cart
           </button>
         </div>
         {!available && (

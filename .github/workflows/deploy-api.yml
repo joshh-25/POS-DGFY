@@ -80,17 +80,17 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # gha scope stays the fast/default cache. Registry cache is the
-          # portable second target -- same cache reachable from either
-          # runner type. Costs extra GHCR blob traffic; GHCR has hit its
-          # secondary rate limit at least once already (2026-08-13), so
-          # watch for that before trusting this on a busy day.
-          cache-from: |
-            type=gha,scope=api
-            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-          cache-to: |
-            type=gha,mode=max,scope=api
-            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
+          # was added in #415 as "reachable from either runner type," a
+          # reason that stopped applying once #386 recorded self-hosted as
+          # the only CI tier (type=gha is already reachable from
+          # self-hosted). It also doubled every build's GHCR push volume,
+          # which is what actually tripped GHCR's secondary rate limit in
+          # run 31728787346 (deploy-main.yml's frontend-prod, 2026-08-13,
+          # same job graph this workflow shares registry pressure with).
+          # type=gha,scope=api is unaffected and stays as the only cache.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
       # PROD server pull/restart happens in the `publish` job of
       # deployment-orchestrator.yml -> publish-platform.yml, keyed off

@@ -276,12 +276,12 @@ const FnbHeroMobileInfoCards = ({
             ))}
           </div>
           {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: usesConnectedHeroSurface ? surfaceAccentSoft : 'none', border: usesConnectedHeroSurface ? `1px solid ${infoCardBorder}` : 'none', padding: usesConnectedHeroSurface ? '5px 9px' : 0, borderRadius: usesConnectedHeroSurface ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, borderRadius: 0, color: surfaceAccent, fontSize: usesConnectedHeroSurface ? 12 : 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               See all <ChevronDown size={14} />
             </button>
           )}
           {expandedMobileCard === 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: usesConnectedHeroSurface ? surfaceAccentSoft : 'none', border: usesConnectedHeroSurface ? `1px solid ${infoCardBorder}` : 'none', padding: usesConnectedHeroSurface ? '5px 9px' : 0, borderRadius: usesConnectedHeroSurface ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, borderRadius: 0, color: surfaceAccent, fontSize: usesConnectedHeroSurface ? 12 : 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               Show less <ChevronUp size={14} />
             </button>
           )}

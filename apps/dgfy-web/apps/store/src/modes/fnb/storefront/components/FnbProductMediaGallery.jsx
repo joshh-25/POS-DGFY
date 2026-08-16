@@ -30,6 +30,7 @@ export function FnbProductMediaGallery({
   imageSources,
   imageUrl,
   itemName,
+  objectFit = 'cover',
   sectionLabel,
   standardImageHeight
 }) {
@@ -39,7 +40,10 @@ export function FnbProductMediaGallery({
       borderRadius: 24,
       overflow: 'hidden',
       width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
       height: standardImageHeight,
+      boxSizing: 'border-box',
       background: '#f8fafc',
       border: '1px solid rgba(226, 232, 240, 0.8)',
       boxShadow: '0 20px 48px rgba(15, 23, 42, 0.06)'
@@ -136,7 +140,7 @@ export function FnbProductMediaGallery({
           fetchPriority="high"
           width={1024}
           height={768}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', maxWidth: '100%', minWidth: 0, height: '100%', objectFit, display: 'block' }}
         />
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#64748b' }}>

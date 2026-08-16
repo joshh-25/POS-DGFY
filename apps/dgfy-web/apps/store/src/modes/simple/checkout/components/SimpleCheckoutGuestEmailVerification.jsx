@@ -1,7 +1,7 @@
 import { Mail, Send, ShieldCheck } from 'lucide-react';
 
-const SIMPLE_BRAND = '#0f766e';
-const SIMPLE_BRAND_SOFT = '#ccfbf1';
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_SOFT = '#FFF8E7';
 
 /**
  * MSME (Simple) guest-checkout email OTP verification block. Mirrors

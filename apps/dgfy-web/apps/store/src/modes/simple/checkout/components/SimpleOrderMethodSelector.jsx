@@ -23,11 +23,11 @@ export function SimpleOrderMethodSelector({
             label={option.label}
             icon={SIMPLE_ORDER_METHOD_ICONS[option.value] || null}
             active={isActive}
-            activeBorderColor="#0f766e"
-            activeBackground="#ecfeff"
-            activeTextColor="#0f766e"
-            activeIconBackground="#ccfbf1"
-            activeIconColor="#0f766e"
+            activeBorderColor="#176B3A"
+            activeBackground="#FFF8E7"
+            activeTextColor="#176B3A"
+            activeIconBackground="#FFF7E6"
+            activeIconColor="#176B3A"
             inactiveBorderColor="#dbe5ee"
             inactiveTextColor="#334155"
             minHeight={isMobileViewport ? 52 : 64}
