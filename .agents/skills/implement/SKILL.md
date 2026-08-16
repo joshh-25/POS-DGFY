@@ -29,6 +29,7 @@ inventing new detection:
 | Force-push, branch deletion, or rewriting already-pushed shared history | Not recoverable by a second party | Ask |
 | No GitHub issue exists yet for the work | Repo SOP (`docs/process/ISSUE-TAXONOMY.md`) — every PR needs a linked issue | File one first, then proceed |
 | Moving the issue's board card (`In progress`, `For Review`) | Not high-risk or hard to reverse — the opposite of every other row here | **Unattended, never a checkpoint.** See "Board transitions" below |
+| A merge-shaped action comes up while executing this skill | This skill never merges its own PR (see above) — but if a task drifts into one, `AGENTS.md`'s repo-wide Merge Safety rule applies regardless of role | Don't merge. Follow `AGENTS.md`'s rule if any check state needs confirming first, then hand off — merging stays out of scope for this skill either way |
 
 If a task doesn't trip any of these, proceed through commit/push/PR without pausing — that's the
 default case, not the exception. See `references/checkpoint-examples.md` for four worked examples

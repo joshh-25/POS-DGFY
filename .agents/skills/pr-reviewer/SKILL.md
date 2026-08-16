@@ -96,7 +96,7 @@ Rules for filling this in:
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --squash --delete-branch` — unattended, no confirmation needed |
 | Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval |
 | Verdict `BLOCK`, any base | Never merge |
-| Checks red, or still pending, any base | Never merge — report the state, don't wait it out silently |
+| Checks red, or still pending, any base | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
 
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in

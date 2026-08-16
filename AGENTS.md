@@ -14,6 +14,24 @@ Before creating, updating, or describing any pull request in this repository, **
 
 If any part of a requested change conflicts with `docs/ai/PR.md`, flag the conflict explicitly rather than silently picking one convention over the other.
 
+## MANDATORY: Merge Safety
+
+Before calling a GitHub merge on this repo — **in any context, regardless of which role is
+nominally active** — confirm no check run on the head commit has status `in_progress` or `queued`
+(check-run status, not the phase-ledger `in_progress`/`approved`/etc. states used elsewhere in this
+file), and that merge state is `CLEAN`, not `unstable`. Check either surface: `gh pr checks <N>` and
+`gh pr view <N> --json mergeStateStatus,mergeable` (CLI), or `get_check_runs` and `mergeable_state`
+(REST) — whichever the acting session has to hand.
+
+A pending or in-progress check is a **hard stop**, independent of outcome. This repo has no branch
+protection (GitHub Free — confirmed 403 on both `branches/main/protection` and `rulesets`), so
+nothing technical stops the merge either way — "technically allowed" is not "permitted." Report the
+check state and wait for a terminal result; never merge past it and never wait it out silently.
+
+This rule governs the action (`gh pr merge` or equivalent), not one named role — it applies whether
+the acting session is running as `pr-reviewer`, `implement`, or unrostered. See #544 for the incident
+(PR #510) that exposed the rule existing only inside `pr-reviewer`'s own policy table.
+
 ## Roles
 
 This repo defines specialized agent roles for repeated jobs — planning, implementing, reviewing —
