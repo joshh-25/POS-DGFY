@@ -20,6 +20,9 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(terminalSource).toContain('data-testid="pos-header-parked-sales-history-button"');
         expect(actionSource).toContain('data-testid="pos-park-sale-button"');
         expect(dialogSource).toContain('data-testid="pos-parked-sales-dialog"');
+        expect(dialogSource).toContain('flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-2xl flex-col overflow-hidden p-0 sm:max-h-[90vh]');
+        expect(dialogSource).toContain('min-h-0 flex-1 overflow-y-auto px-5 py-4');
+        expect(dialogSource).toContain('shrink-0 border-t border-slate-200 px-5 py-3');
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');
         expect(dialogSource).toContain('Pay a parked sale now or resume it to add more items.');

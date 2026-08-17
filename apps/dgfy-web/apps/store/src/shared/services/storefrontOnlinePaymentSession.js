@@ -15,6 +15,23 @@ export const isStorefrontHostedPaymentType = (paymentType) => (
   STOREFRONT_HOSTED_PAYMENT_TYPES.includes(String(paymentType || '').trim().toLowerCase())
 );
 
+export const getStorefrontOnlinePaymentLabel = (paymentType) => {
+  switch (String(paymentType || '').trim().toLowerCase()) {
+    case 'gcash':
+      return 'GCash';
+    case 'maya':
+      return 'Maya';
+    case 'grab_pay':
+      return 'GrabPay';
+    case 'shopeepay':
+      return 'ShopeePay';
+    case 'qrph':
+      return 'QR Ph';
+    default:
+      return 'Card';
+  }
+};
+
 export const isStorefrontOnlinePaymentType = (paymentType) => (
   STOREFRONT_ONLINE_PAYMENT_TYPES.includes(String(paymentType || '').trim().toLowerCase())
 );

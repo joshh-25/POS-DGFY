@@ -36,13 +36,17 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
-    expect(terminalLayoutContent).toContain("? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`");
+    expect(terminalLayoutContent).toContain("? (isTabletLayout");
+    expect(terminalLayoutContent).toContain("'md:grid md:grid-cols-[68px_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain("`lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
   });
 
   it('keeps the mobile navigation control available in the persistent header', () => {
-    expect(terminalLayoutContent).toContain("aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}");
+    expect(terminalLayoutContent).toContain("aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}");
     expect(terminalLayoutContent).toContain('setMobileNavOpen(true);');
+    expect(terminalLayoutContent).toContain('isTabletLayout = false');
+    expect(terminalLayoutContent).toContain("{isFloatingSidebarLayout && mobileNavOpen && (");
   });
 
   it('locks the checkout workspace while preserving scrolling for other modes', () => {
@@ -107,7 +111,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('md:h-[clamp(18rem,46vh,26rem)] md:flex-none');
     expect(posCheckoutContent).toContain('<PosCurrentSaleActions');
     expect(posCurrentSaleActionsContent).toContain('data-testid="pos-current-sale-actions"');
-    expect(posCurrentSaleActionsContent).not.toContain('data-has-parked-sale-controls');
+    expect(posCurrentSaleActionsContent).toContain('data-has-parked-sale-controls={hasParkedSaleControls ? \'true\' : \'false\'}');
     expect(posCurrentSaleActionsContent).toContain('className={`dgfy-pos-current-sale-actions ${tabletLayout ? \'dgfy-pos-tablet-action-grid\' : \'\'} grid shrink-0 grid-cols-2');
     expect(posCurrentSaleActionsContent).toContain('dgfy-pos-tablet-action-grid');
     expect(posCurrentSaleActionsContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
@@ -197,8 +201,12 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalSidebarContent).toContain('h-full min-h-0 overflow-hidden rounded-none');
     expect(terminalSidebarContent).toContain('dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto');
     expect(terminalSidebarContent).toContain('testId="pos-nav-settings"');
-    expect(terminalSidebarContent).toContain('my-5 border-t border-slate-200');
+    expect(terminalSidebarContent).toContain("isCollapsed ? 'my-3' : 'my-5'");
+    expect(terminalSidebarContent).toContain('border-t border-slate-200');
     expect(terminalSidebarContent).toContain('Lock Terminal');
     expect(terminalSidebarContent).not.toContain('data-testid="pos-sidebar-session-footer"');
+    expect(terminalSidebarContent).toContain('isCollapsed = false');
+    expect(terminalSidebarContent).toContain('collapsed={isCollapsed}');
+    expect(terminalSidebarContent).toContain('title={collapsed ? label : undefined}');
   });
 });

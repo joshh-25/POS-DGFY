@@ -235,7 +235,7 @@ describe('store use-cases application result contract', () => {
             resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
-        const result = await dbStore.run({ tenantId: 'tenant-payment-methods' }, () => useCase({ query: {} }));
+        const result = await dbStore.run({ tenantId: 43 }, () => useCase({ query: {} }));
 
         expect(result.success).toBe(true);
         expect(result.data.payment_capabilities).toEqual(expect.objectContaining({

@@ -76,7 +76,10 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('Total Due');
         expect(checkoutSource).toContain('data-testid="pos-checkout-payment-summary"');
         expect(checkoutSource).toContain('Payment Summary');
+        expect(checkoutSource).toContain('Payment Method');
+        expect(checkoutSource).toContain('formatSplitPaymentMethod(paymentType)');
         expect(checkoutSource).toContain('Remaining Balance');
+        expect(checkoutSource).not.toContain('Review the items and enter the customer payment before finalizing this sale.');
         expect(checkoutSource).toContain('data-testid="pos-checkout-add-discount"');
         expect(checkoutSource).toContain('data-testid="pos-edit-checkout-discount"');
         expect(checkoutSource).toContain('data-testid="pos-remove-checkout-discount"');
@@ -90,15 +93,26 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}');
     });
 
+    it('shows cash payment suggestions above the payment amount field', () => {
+        expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];');
+        expect(checkoutSource).toContain('data-testid="pos-cash-payment-suggestions"');
+        expect(checkoutSource).toContain('isCashPayment && (');
+        expect(checkoutSource).toContain('onClick={() => setCustomerPaymentAmountInput(String(amount))}');
+        expect(checkoutSource).toContain('data-testid={`pos-cash-payment-suggestion-${amount}`}');
+        expect(checkoutSource).toContain('id="pos-customer-payment-amount"');
+    });
+
     it('does not auto-focus Total Payment when checkout confirmation opens', () => {
         const checkoutDialogIndex = checkoutSource.indexOf('open={checkoutConfirmModalOpen}');
         const totalPaymentIndex = checkoutSource.indexOf('customerPaymentFieldLabel', checkoutDialogIndex);
-        const totalPaymentSection = checkoutSource.slice(totalPaymentIndex, checkoutSource.indexOf('</label>', totalPaymentIndex));
+        const paymentInputIndex = checkoutSource.indexOf('id="pos-customer-payment-amount"', totalPaymentIndex);
+        const paymentInputSection = checkoutSource.slice(paymentInputIndex, checkoutSource.indexOf('/>', paymentInputIndex));
 
         expect(checkoutDialogIndex).toBeGreaterThan(-1);
         expect(totalPaymentIndex).toBeGreaterThan(checkoutDialogIndex);
-        expect(totalPaymentSection).toContain('value={customerPaymentAmountInput}');
-        expect(totalPaymentSection).not.toContain('autoFocus');
+        expect(paymentInputIndex).toBeGreaterThan(totalPaymentIndex);
+        expect(paymentInputSection).toContain('value={customerPaymentAmountInput}');
+        expect(paymentInputSection).not.toContain('autoFocus');
     });
 
     it('hosts split payment outside the Current Sale item list', () => {
@@ -191,6 +205,6 @@ describe('POS split-payment UI contract', () => {
         expect(splitWorkflowSource).toContain('No money is recorded. Resume this payment or discard the unpaid draft.');
         expect(checkoutSource).not.toContain('setSplitPaymentDialogOpen(true);\n            return;');
         expect(checkoutSource).not.toContain('paymentSessionBlockedReason');
-        expect(checkoutSource).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
+        expect(checkoutSource).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;');
     });
 });

@@ -60,12 +60,22 @@ describe('POS Park & New Sale cashier flow', () => {
     });
 
     it('exits parked-sale editing when the final item is removed without cancelling the parked sale', () => {
-        expect(componentSource).toContain('const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(() =>');
-        expect(componentSource).toContain('cancelActiveParkedSaleEditingAfterCartEmpty();');
+        expect(componentSource).toContain('const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () =>');
+        expect(componentSource).toContain('void cancelActiveParkedSaleEditingAfterCartEmpty();');
+        expect(componentSource).toContain('await reparkPosParkedSale(parkedSaleId, {');
+        expect(componentSource).toContain('snapshot,');
+        expect(componentSource).toContain('The parked sale is still claimed and the current items were kept.');
+        expect(componentSource).toContain('remains available for the next cashier.');
         expect(componentSource).toContain('setActiveParkedSale(null);');
         expect(componentSource).toContain('Editing was cancelled because all items were removed.');
         expect(componentSource).not.toContain('cancelPosParkedSale');
         expect(componentSource).not.toContain('PARKED_SALE_EMPTY_CART_CANCEL_REASON');
+
+        const editingCancelStart = componentSource.indexOf('const cancelActiveParkedSaleEditingAfterCartEmpty');
+        const reparkRequest = componentSource.indexOf('await reparkPosParkedSale(parkedSaleId, {', editingCancelStart);
+        const clearDraft = componentSource.indexOf('clearPosCartDraft(offlineSnapshotScope, activeShiftId);', editingCancelStart);
+        expect(reparkRequest).toBeGreaterThan(editingCancelStart);
+        expect(clearDraft).toBeGreaterThan(reparkRequest);
     });
 
     it('cancels Pay checkout by returning the claimed parked sale to the queue and clearing current sale', () => {
@@ -89,6 +99,7 @@ describe('POS Park & New Sale cashier flow', () => {
         expect(componentSource).toContain('setParkedSalesDialogOpen(true);');
         expect(actionComponentSource).toContain('data-testid="pos-park-sale-button"');
         expect(componentSource).toContain('data-testid="pos-clear-current-sale"');
+        expect(componentSource.match(/data-testid="pos-clear-current-sale"/g)).toHaveLength(1);
         expect(componentSource).toContain('data-testid="pos-clear-current-sale-dialog"');
         expect(componentSource).toContain('data-testid="pos-confirm-clear-current-sale"');
         expect(componentSource).toContain('clearPosCartDraft(offlineSnapshotScope, activeShiftId);');

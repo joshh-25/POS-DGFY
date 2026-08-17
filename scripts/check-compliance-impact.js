@@ -172,12 +172,14 @@ const PROMOTION_HEAD_BY_BASE = Object.freeze({
 
 // Release-candidate PRs into `main` carry an unmodified staging snapshot in
 // under a human-readable name (release/2026-07-30) instead of reusing the
-// literal `staging` ref -- see docs/ops/RELEASE_CANDIDATE_POLICY.md. Scoped
-// to `main` and to this one prefix, same reasoning as PROMOTION_HEAD_BY_BASE
-// above: a hotfix PR opened directly against main from an arbitrary branch
-// name (e.g. PR #83) must still get full per-declaration scrutiny, so this
-// must not become "anything into main".
+// literal `staging` ref, and (2026-08-16) a develop->staging promotion does
+// the same via to-staging/<label> -- see docs/ops/RELEASE_CANDIDATE_POLICY.md.
+// Scoped to these two prefixes only, same reasoning as PROMOTION_HEAD_BY_BASE
+// above: a hotfix PR opened directly against staging/main from an arbitrary
+// branch name (e.g. PR #83) must still get full per-declaration scrutiny, so
+// this must not become "anything into staging/main".
 const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+  staging: /^to-staging\//,
   main: /^release\//
 });
 

@@ -61,7 +61,7 @@ describe('POS audit workspace contract', () => {
                 cashier_name: 'cashier-seven'
             }
         }, [{ location_id: 1, name: 'Space Bar - Iloilo Main Branch' }])).toEqual([
-            'Applied Manual discount PHP 25.00 to order #44',
+            'Applied Other discount PHP 25.00 to order #44',
             'Authorized by manager-nine',
             'Cashier: cashier-seven'
         ]);

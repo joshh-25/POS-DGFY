@@ -4,7 +4,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { buildStorefrontCheckoutPaymentOptions } from '../shared/model/storefrontCheckoutPaymentOptions.js';
-import { createStorefrontOnlinePaymentSession } from '../shared/services/storefrontOnlinePaymentSession.js';
+import {
+  createStorefrontOnlinePaymentSession
+} from '../shared/services/storefrontOnlinePaymentSession.js';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readSource = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');

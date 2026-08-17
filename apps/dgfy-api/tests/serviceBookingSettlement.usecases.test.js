@@ -233,6 +233,66 @@ describe('buildSettleServiceBookingUseCase', () => {
         expect(updateBookingLineById).toHaveBeenCalledWith(900, expect.objectContaining({ stock_movement_id: 4321 }), expect.anything());
     });
 
+    // Phase 100 of #482 (ADR 0064). Payment collection is confirmed orthogonal to fulfillment
+    // progression (docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md) --
+    // settlement must be reachable (not blocked by SETTLEABLE_BOOKING_STATUSES) while a booking is
+    // mid-handoff, and settlement itself must not touch handoff legs or write a status event
+    // (that is buildUpdateServiceBookingStatusUseCase's job, not settlement's -- unaffected by
+    // settlement's own pre-existing, unrelated "finalize to completed" behavior below).
+    it.each(['for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'])(
+        'settles a booking while status is %s (fulfillment and payment are orthogonal)',
+        async (status) => {
+            const tx = transaction();
+            const createSettlementTransaction = jest.fn(async () => ({
+                transactionId: 900,
+                lines: [{ line_id: 5000 }]
+            }));
+            const updateBookingHandoffLegById = jest.fn();
+            const createBookingStatusEvents = jest.fn();
+            const updateBookingById = jest.fn(async () => baseBooking({ status: 'completed', pos_transaction_id: 900, payment_status: 'paid' }));
+            const getBookingById = jest.fn()
+                .mockResolvedValueOnce(baseBooking({ status }))
+                .mockResolvedValueOnce(baseBooking({ status: 'completed', pos_transaction_id: 900, payment_status: 'paid' }));
+            const getPosTransactionSnapshotById = jest.fn(async () => ({
+                pos_transaction_id: 900,
+                invoice_number: 'SVC-000001',
+                document_type: 'non_fiscal_slip',
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                payment_status: 'paid',
+                total_amount: 750
+            }));
+
+            const useCase = buildSettleServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getBookingById,
+                    nextSettlementInvoiceNumber: jest.fn(async () => 'SVC-000001'),
+                    createSettlementTransaction,
+                    updateBookingLineById: jest.fn(),
+                    updateBookingById,
+                    getPosTransactionSnapshotById,
+                    updateBookingHandoffLegById,
+                    createBookingStatusEvents
+                },
+                inventoryCommandService: { issueStockForPosSale: jest.fn() },
+                posRepository: openShiftRepository()
+            });
+
+            const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
+
+            // SETTLEABLE_BOOKING_STATUSES (Phase 88) admits this status -- settlement is not
+            // blocked while mid-handoff. Not asserting the resulting status stays `status`:
+            // settlement's own updateBookingById call always finalizes to 'completed' regardless
+            // of the pre-settlement fulfillment stage -- pre-existing, unrelated behavior.
+            expect(result.success).toBe(true);
+            expect(updateBookingById).toHaveBeenCalledWith(1, expect.objectContaining({ pos_transaction_id: 900 }), expect.anything());
+            expect(updateBookingHandoffLegById).not.toHaveBeenCalled();
+            expect(createBookingStatusEvents).not.toHaveBeenCalled();
+            expect(tx.commit).toHaveBeenCalled();
+        }
+    );
+
     it('rejects settling a cancelled booking', async () => {
         const tx = transaction();
         const useCase = buildSettleServiceBookingUseCase({

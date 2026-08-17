@@ -20,7 +20,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutContent).toContain("{ value: 'pwd', label: 'PWD'");
     expect(checkoutContent).toContain("{ value: 'employee', label: 'Employee'");
     expect(checkoutContent).toContain("{ value: 'promo', label: 'Promo'");
-    expect(checkoutContent).toContain("{ value: 'manual', label: 'Manual'");
+    expect(checkoutContent).toContain("{ value: 'manual', label: 'Other'");
     expect(discountModalContent).toContain('role="tablist"');
     expect(discountModalContent).toContain('role="tab"');
     expect(discountModalContent).toContain('aria-selected={active}');
@@ -46,7 +46,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain("discountDraft.type === 'manual'");
     expect(discountModalContent).toContain('Discount Rate');
     expect(discountModalContent).toContain('employeeDiscountRateOptions.map');
-    expect(discountModalContent).toContain('placeholder="Enter manual discount reason"');
+    expect(discountModalContent).toContain('placeholder="Enter other discount reason (optional)"');
     expect(discountModalContent).toContain('Employee PIN');
     expect(discountModalContent).toContain('discountDraft.approver_user_id');
     expect(discountModalContent).toContain('Authorizing employee');
@@ -73,7 +73,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('eligible_quantity: 1');
     expect(discountModalContent).toContain('Select only items and quantities for this Senior/PWD customer.');
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
-    expect(checkoutContent).toContain('onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}');
+    expect(checkoutContent).not.toContain('onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}');
     expect(discountModalContent).toContain('Select authorized employee');
     expect(discountModalContent).toContain('No authorized employees are configured.');
     expect(discountModalContent).toContain('PIN not configured');

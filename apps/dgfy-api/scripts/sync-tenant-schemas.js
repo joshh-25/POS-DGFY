@@ -119,6 +119,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         sku_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `sku_snapshot` VARCHAR(100) NULL COMMENT 'Sale-time SKU snapshot; immune to later item edits (issue #178 phase 5)'"
+        }),
+        item_discount_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_discount_snapshot` JSON NULL COMMENT 'Server-calculated item-specific discount snapshot; global sale discounts remain separate'"
         })
     }),
     items: Object.freeze({

@@ -24,6 +24,7 @@ const HUMAN_EVENT_LABELS = Object.freeze({
     pos_transaction_voided: 'Transaction voided',
     void: 'Transaction voided',
     pos_discount_applied: 'Discount applied',
+    pos_item_discount_applied: 'Item discount applied',
     print_receipt: 'Receipt printed',
     print_original: 'Receipt printed',
     print_reprint: 'Receipt reprinted',
@@ -68,6 +69,7 @@ const HUMAN_ENTITY_LABELS = Object.freeze({
     pos_transaction: 'transaction',
     pos_parked_sale: 'parked sale',
     pos_discount: 'discount',
+    pos_item_discount: 'item discount',
     pos_z_reading: 'Z-reading',
     pos_cash_drawer_event: 'cash drawer activity',
     terminal_registration: 'POS terminal',
@@ -150,6 +152,11 @@ const humanizeToken = (value) => String(value || '')
     .replace(/\s+/g, ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const humanizeDiscountType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'manual' ? 'Other' : humanizeToken(value);
+};
+
 const uniqueLabels = (labels) => Array.from(new Set(labels.filter(Boolean)));
 
 const formatAuditValue = (value) => {
@@ -218,6 +225,7 @@ const formatAuditDetailValue = (key, value, locationNames = new Map(), cashierNa
         const locationId = Number(value);
         return locationNames.get(locationId) || `Location ID ${String(value)}`;
     }
+    if (key === 'discount_type') return humanizeDiscountType(value);
     if (AUDIT_CASHIER_ID_PATTERN.test(key)) {
         const cashierId = String(value);
         const cashierName = String(cashierNames?.[key] || '').trim();
@@ -406,15 +414,17 @@ const resolveTransactionLabels = (entry, eventType, changes) => {
 
 const resolveDiscountLabels = (entry, eventType, changes) => {
     const entityType = String(entry.entity_type || '').trim().toLowerCase();
-    if (entityType !== 'pos_discount' && eventType !== 'pos_discount_applied') return [];
+    if (entityType !== 'pos_discount' && entityType !== 'pos_item_discount'
+        && eventType !== 'pos_discount_applied' && eventType !== 'pos_item_discount_applied') return [];
     const hasDiscountEvidence = eventType === 'pos_discount_applied'
+        || eventType === 'pos_item_discount_applied'
         || changes.discount_type
         || changes.discount_amount !== undefined
         || changes.authorized_by_user_id
         || changes.approved_by_user_id;
     if (!hasDiscountEvidence) return [];
     const orderReference = formatAuditOrderReference(entry, changes);
-    const type = humanizeToken(changes.discount_type || 'discount');
+    const type = humanizeDiscountType(changes.discount_type || 'discount');
     const amount = changes.discount_amount === undefined ? '' : ` ${formatAuditMoney(changes.discount_amount)}`;
     const authorizedBy = String(
         changes.authorized_by_name
@@ -422,7 +432,10 @@ const resolveDiscountLabels = (entry, eventType, changes) => {
         || (changes.authorized_by_user_id ? `employee #${changes.authorized_by_user_id}` : '')
     ).trim();
     const cashier = String(changes.cashier_name || changes.applied_by_name || '').trim();
-    const labels = [`Applied ${type} discount${amount} to ${orderReference}`];
+    const itemReference = entityType === 'pos_item_discount'
+        ? ` for ${String(changes.item_name || '').trim() || formatAuditItemReference(entry, changes)}`
+        : '';
+    const labels = [`Applied ${type} discount${amount}${itemReference} to ${orderReference}`];
     if (authorizedBy) labels.push(`Authorized by ${authorizedBy}`);
     if (cashier && cashier !== authorizedBy) labels.push(`Cashier: ${cashier}`);
     return labels;

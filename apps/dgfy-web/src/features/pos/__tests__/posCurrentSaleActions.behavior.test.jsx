@@ -18,7 +18,6 @@ const renderActions = (workflowMode, effectiveCapabilities = null) => {
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
-    onApplyDiscount: vi.fn(),
     onParkSale: vi.fn()
   };
 
@@ -44,7 +43,7 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
-    expect(screen.getByText('Apply Discount')).toBeDefined();
+    expect(screen.queryByText('Apply Discount')).toBeNull();
     fireEvent.click(parkButton);
     expect(actions.onParkSale).toHaveBeenCalledOnce();
   });
@@ -66,7 +65,7 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
-    expect(screen.getByText('Apply Discount')).toBeDefined();
+    expect(screen.queryByText('Apply Discount')).toBeNull();
   });
 
   it('keeps shared cashier action callbacks intact for Services', () => {
@@ -75,12 +74,10 @@ describe('PosCurrentSaleActions', () => {
     fireEvent.click(screen.getByText('Checkout'));
     fireEvent.click(screen.getByText('Print Order'));
     fireEvent.click(screen.getByText('Open Cash Drawer'));
-    fireEvent.click(screen.getByText('Apply Discount'));
 
     expect(actions.onCheckout).toHaveBeenCalledOnce();
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
-    expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
   });
 
   it('falls back to the Services-safe action set when the bundle is missing', () => {
@@ -89,7 +86,6 @@ describe('PosCurrentSaleActions', () => {
         presentationBundle={null}
         onCheckout={vi.fn()}
         onOpenCashDrawer={vi.fn()}
-        onApplyDiscount={vi.fn()}
         showParkedSaleControls={false}
       />
     );

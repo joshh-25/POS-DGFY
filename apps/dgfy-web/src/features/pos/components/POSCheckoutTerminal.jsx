@@ -28,7 +28,6 @@ import {
     EyeOff,
     Receipt,
     ArrowLeft,
-    Utensils,
     Trash2,
     LayoutGrid
 } from 'lucide-react';
@@ -53,6 +52,7 @@ import {
     voidPosTransaction,
     fetchPosDiscountApprovers,
     verifyPosDiscountApproval,
+    authorizePosDrawerOpen,
     fetchPosItemOptionGroups,
     cancelPosPaymentAllocation,
     cancelPosPaymentSession,
@@ -88,7 +88,6 @@ import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import {
     advanceAssetImageFallback,
-    resolveAppAssetUrl,
     resolveAssetUrl,
     resolveAssetVariantUrl
 } from '@/src/utils/assetUrl.js';
@@ -97,8 +96,9 @@ import { usePosHardware } from '../hardware/usePosHardware.js';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
-import { COMMON_POS_ITEM_IMAGE_MAP } from '../utils/posItemImageMap.js';
 import { clearPosSplitPaymentSessionPointer } from '../services/posSplitPaymentSessionStore.js';
+import { buildFnbGlobalOrderNote, buildFnbPrintContext } from '../utils/posOrderNotes.js';
+import { calculatePosItemDiscounts, getItemDiscountDraft } from '../utils/posItemDiscount.js';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
@@ -106,7 +106,8 @@ const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCr
 const ServiceOptionsModal = lazyWithChunkRetry(() => import('./ServiceOptionsModal.jsx').then(({ ServiceOptionsModal: Component }) => ({ default: Component })));
 const POSParkedSalesDialog = lazyWithChunkRetry(() => import('./POSParkedSalesDialog.jsx'));
 const POSSplitPaymentWorkflow = lazyWithChunkRetry(() => import('./POSSplitPaymentWorkflow.jsx'));
-const FnbModifierPickerDialog = lazyWithChunkRetry(() => import('./FnbModifierPickerDialog.jsx'));
+const ItemOptionsDialog = lazyWithChunkRetry(() => import('./ItemOptionsDialog.jsx'));
+const BillRequestDialog = lazyWithChunkRetry(() => import('./BillRequestDialog.jsx'));
 const PosAddToCartToastContainer = lazyWithChunkRetry(() => import('./PosAddToCartToastContainer.jsx').then(({ PosAddToCartToastContainer: Component }) => ({ default: Component })));
 const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
 const PosCurrentSaleActions = lazyWithChunkRetry(() => import('./PosCurrentSaleActions.jsx').then(({ PosCurrentSaleActions: Component }) => ({ default: Component })));
@@ -120,17 +121,9 @@ const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
 const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const POS_ITEM_IMAGE_MAP = [
-    ...COMMON_POS_ITEM_IMAGE_MAP.slice(0, 2),
-    { match: ['mango float', 'mangofloat'], src: '/pos-items/mangofloat.jpg' },
-    { match: ['siomai pork', 'siomai'], src: '/pos-items/siomai%20Pork.jpg' },
-    { match: ['baked macaroni', 'macaroni'], src: '/pos-items/baked%20macaroni.jpg' },
-    { match: ['cheese stick', 'cheese sticks'], src: '/pos-items/cheese%20Stick.jpg' },
-    { match: ['pork sisig', 'sisig'], src: '/pos-items/pork%20sisig.jpg' },
-    ...COMMON_POS_ITEM_IMAGE_MAP.slice(2)
-];
 const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];
 const RECEIPT_PAPER_OPTIONS = [
     { value: '80mm', label: '80mm (3 1/8 in)' },
     { value: '57mm', label: '57mm (2 1/4 in)' }
@@ -174,47 +167,112 @@ const DISCOUNT_TYPE_OPTIONS = [
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
     { value: 'pwd', label: 'PWD', icon: Accessibility },
     { value: 'promo', label: 'Promo', icon: Tag },
-    { value: 'manual', label: 'Manual', icon: Pencil }
+    // Keep `manual` as the API/database value for backward compatibility.
+    // The cashier-facing name is "Other" so the option is understandable
+    // without exposing an implementation term.
+    { value: 'manual', label: 'Other', icon: Pencil }
 ];
 const calculateGovernedDiscount = (cart, application) => {
     const cartRows = toArray(cart);
     const eligibleItemIds = toArray(application?.eligible_item_ids);
     const eligibleItems = toArray(application?.eligible_items);
-    const subtotal = round4(cartRows.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.sale_price || 0), 0));
-    if (!application) return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: 0, total: subtotal };
+    const getGlobalBase = (line) => line?.global_discount_base_amount == null
+        ? Number(line.quantity || 0) * Number(line.sale_price || 0)
+        : Math.max(0, Number(line.global_discount_base_amount) || 0);
+    const subtotal = round4(cartRows.reduce((sum, line) => sum + getGlobalBase(line), 0));
+    if (!application) {
+        return {
+            vatRemoved: 0,
+            vatExemptAmount: 0,
+            discountAmount: 0,
+            total: subtotal,
+            lines: cartRows.map((line) => ({
+                line_key: line.line_key || line.line_id || null,
+                item_id: Number(line.item_id),
+                discount_amount: 0,
+                vat_removed: 0,
+                vat_exempt_amount: 0,
+                eligible_quantity: 0
+            }))
+        };
+    }
     const statutory = application.type === 'senior' || application.type === 'pwd';
     if (!statutory) {
         const selectedItemIds = new Set(eligibleItemIds.map(Number));
-        const discountBase = application.type === 'promo' && selectedItemIds.size > 0
+        const restrictToSelections = selectedItemIds.size > 0;
+        const discountBase = restrictToSelections
             ? round4(cartRows.reduce((sum, line) => (
                 selectedItemIds.has(Number(line.item_id))
-                    ? sum + Number(line.quantity || 0) * Number(line.sale_price || 0)
+                    ? sum + getGlobalBase(line)
                     : sum
             ), 0))
             : subtotal;
         const discountAmount = application.method === 'fixed'
             ? Math.min(discountBase, Math.max(0, Number(application.amount || 0)))
             : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
-        return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount) };
+        const eligibleRows = cartRows.filter((line) => !restrictToSelections || selectedItemIds.has(Number(line.item_id)));
+        const lastEligibleLine = eligibleRows.at(-1);
+        let allocatedDiscount = 0;
+        const lines = cartRows.map((line) => {
+            const gross = round4(getGlobalBase(line));
+            const eligible = !restrictToSelections || selectedItemIds.has(Number(line.item_id));
+            const lineDiscount = !eligible
+                ? 0
+                : application.method === 'fixed'
+                    ? line === lastEligibleLine
+                        ? round4(discountAmount - allocatedDiscount)
+                        : round4(Math.min(discountAmount - allocatedDiscount, discountBase > 0 ? (gross / discountBase) * discountAmount : 0))
+                    : round4(gross * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
+            allocatedDiscount = round4(allocatedDiscount + lineDiscount);
+            return {
+                line_key: line.line_key || line.line_id || null,
+                item_id: Number(line.item_id),
+                discount_amount: lineDiscount,
+                vat_removed: 0,
+                vat_exempt_amount: 0,
+                eligible_quantity: eligible ? Number(line.quantity || 0) : 0
+            };
+        });
+        return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount), lines };
     }
     const selected = new Map(eligibleItems.length > 0
         ? eligibleItems.map((entry) => [Number(entry?.item_id), Number(entry?.eligible_quantity)])
         : eligibleItemIds.map((itemId) => [Number(itemId), null]));
     let vatRemoved = 0;
     let vatExemptAmount = 0;
-    cartRows.forEach((line) => {
+    const lines = cartRows.map((line) => {
         const selectedQuantity = selected.get(Number(line.item_id));
-        if (selectedQuantity === undefined) return;
+        if (selectedQuantity === undefined) {
+            return {
+                line_key: line.line_key || line.line_id || null,
+                item_id: Number(line.item_id),
+                discount_amount: 0,
+                vat_removed: 0,
+                vat_exempt_amount: 0,
+                eligible_quantity: 0
+            };
+        }
         const quantity = selectedQuantity == null
             ? Number(line.quantity || 0)
             : Math.min(Number(line.quantity || 0), Math.max(0, selectedQuantity));
-        const gross = round4(quantity * Number(line.sale_price || 0));
+        const globalUnitPrice = Number(line.quantity || 0) > 0
+            ? getGlobalBase(line) / Number(line.quantity || 0)
+            : 0;
+        const gross = round4(quantity * globalUnitPrice);
         const exempt = (line.vat_type || 'vatable') === 'vatable' ? round4(gross / 1.12) : gross;
         vatExemptAmount = round4(vatExemptAmount + exempt);
         vatRemoved = round4(vatRemoved + gross - exempt);
+        return {
+            line_key: line.line_key || line.line_id || null,
+            item_id: Number(line.item_id),
+            discount_amount: round4(exempt * 0.20),
+            vat_removed: round4(gross - exempt),
+            vat_exempt_amount: exempt,
+            eligible_quantity: quantity
+        };
     });
     const discountAmount = round4(vatExemptAmount * 0.20);
-    return { vatRemoved, vatExemptAmount, discountAmount, total: round4(subtotal - vatRemoved - discountAmount) };
+    return { vatRemoved, vatExemptAmount, discountAmount, total: round4(subtotal - vatRemoved - discountAmount), lines };
 };
 const formatQuantity = (value) => {
     const quantity = Number(value || 0);
@@ -395,7 +453,7 @@ const buildOfflineCheckoutHistoryRow = ({
         total_amount: Number(cartTotal || 0),
         subtotal_amount: Number(cartSubtotal || 0),
         discount_amount: Number(calculatedDiscountAmount || 0),
-        discount_label_snapshot: selectedDiscount?.name || (calculatedDiscountAmount > 0 ? 'Manual Discount' : null),
+        discount_label_snapshot: selectedDiscount?.name || (calculatedDiscountAmount > 0 ? 'Other Discount' : null),
         discount_rate_snapshot: selectedDiscount
             ? Number(selectedDiscount.percentage || 0)
             : (manualDiscountMode === 'percentage' && manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
@@ -594,15 +652,6 @@ const createIdempotencyKey = () => {
     return `pos-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const resolveMappedPosItemImage = (item = {}) => {
-    const itemName = String(item?.name || item?.item_name || item?.itemName || item?.title || '').trim().toLowerCase();
-    if (!itemName) return '';
-    const mapped = POS_ITEM_IMAGE_MAP.find((entry) => (
-        Array.isArray(entry.match) && entry.match.some((token) => itemName.includes(String(token).toLowerCase()))
-    ));
-    return mapped?.src || '';
-};
-
 const resolvePosCatalogImageSources = (item = {}) => {
     const variants = item?.storefront_image_variants || item?.pos_image_variants || {};
     const resolveVariantSet = (variantSet = {}) => {
@@ -712,36 +761,6 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
     return null;
 };
 
-const CartItemThumbnail = React.memo(({ catalog, line, receiptSettings }) => {
-    const item = (Array.isArray(catalog) ? catalog.find((i) => i.item_id === line.item_id) : null) || line;
-    const imageSources = resolvePosCatalogImageSources(item, receiptSettings);
-    const [imageFailed, setImageFailed] = useState(false);
-
-    if (imageSources.src && !imageFailed) {
-        return (
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center">
-                <PosResponsiveImage
-                    sources={imageSources}
-                    alt={line.item_name || 'Item'}
-                    loading="lazy"
-                    decoding="async"
-                    width={36}
-                    height={36}
-                    sizes="36px"
-                    className="h-full w-full object-cover object-center"
-                    onError={() => setImageFailed(true)}
-                />
-            </div>
-        );
-    }
-
-    return (
-        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-400">
-            <Utensils className="h-4 w-4" aria-hidden="true" />
-        </div>
-    );
-});
-CartItemThumbnail.displayName = 'CartItemThumbnail';
 
 export default function POSCheckoutTerminal({
     sessionLocked = false,
@@ -785,7 +804,7 @@ export default function POSCheckoutTerminal({
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
     const [serviceOptionsModal, setServiceOptionsModal] = useState({ open: false, item: null, groups: [] });
-    const [fnbModifierLineKey, setFnbModifierLineKey] = useState(null);
+    const [itemOptionsLineKey, setItemOptionsLineKey] = useState(null);
     const [serviceOptionsLoadingItemId, setServiceOptionsLoadingItemId] = useState(null);
     const serviceOptionsRequestRef = useRef(0);
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
@@ -898,6 +917,8 @@ export default function POSCheckoutTerminal({
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const discountApprovalRef = useRef(null);
+    const itemDiscountApprovalRef = useRef(new Map());
+    const itemDiscountApproversRequestedRef = useRef(false);
     const [discountApplying, setDiscountApplying] = useState(false);
     const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
@@ -937,6 +958,11 @@ export default function POSCheckoutTerminal({
     const [receiptPrinting, setReceiptPrinting] = useState(false);
     const [receiptPaperWidth, setReceiptPaperWidth] = useState('80mm');
     const [drawerOpening, setDrawerOpening] = useState(false);
+    const [drawerAuthorizationModalOpen, setDrawerAuthorizationModalOpen] = useState(false);
+    const [drawerAuthorizationContext, setDrawerAuthorizationContext] = useState({ transactionId: null });
+    const [drawerAuthorizationReason, setDrawerAuthorizationReason] = useState('');
+    const [drawerAuthorizationPin, setDrawerAuthorizationPin] = useState('');
+    const [drawerAuthorizationSubmitting, setDrawerAuthorizationSubmitting] = useState(false);
     const [imagePreview, setImagePreview] = useState(null);
     const [receiptPreviewModalOpen, setReceiptPreviewModalOpen] = useState(false);
     const [receiptPreviewSource, setReceiptPreviewSource] = useState('receipt_preview');
@@ -994,6 +1020,8 @@ export default function POSCheckoutTerminal({
         };
     }, [receiptPreviewModalOpen, lastReceipt]);
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
+    const [billRequestDraft, setBillRequestDraft] = useState(null);
+    const [billRequestPrinting, setBillRequestPrinting] = useState(false);
     const [splitPaymentDialogOpen, setSplitPaymentDialogOpen] = useState(false);
     const [splitPaymentSession, setSplitPaymentSession] = useState(null);
     const [splitPaymentCancelModalOpen, setSplitPaymentCancelModalOpen] = useState(false);
@@ -1034,12 +1062,12 @@ export default function POSCheckoutTerminal({
     ]);
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
-        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || splitPaymentDialogOpen || discountModalOpen || mobileCheckoutPanelOpen;
+        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || splitPaymentDialogOpen || discountModalOpen || mobileCheckoutPanelOpen || drawerAuthorizationModalOpen;
         document.body.classList.toggle('pos-modal-scroll-lock', shouldLockModalScroll);
         return () => {
             document.body.classList.remove('pos-modal-scroll-lock');
         };
-    }, [checkoutConfirmModalOpen, discountModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen, splitPaymentDialogOpen]);
+    }, [checkoutConfirmModalOpen, discountModalOpen, drawerAuthorizationModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen, splitPaymentDialogOpen]);
 
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
@@ -1092,6 +1120,9 @@ export default function POSCheckoutTerminal({
     const safeDiscountProfiles = toArray(discountProfiles);
     const safeCommercialPromoConfig = toArray(commercialPromoConfig);
     const safeDiscountApprovers = toArray(discountApprovers);
+    const activeShiftCashierApprover = safeDiscountApprovers.find((approver) => (
+        Number(approver?.user_id) === Number(activeShiftCashierId)
+    )) || null;
     const safeCart = toArray(cart);
     const safeQueuedCheckouts = toArray(queuedCheckouts);
     const safeHistoryRows = toArray(historyRows);
@@ -2157,9 +2188,22 @@ export default function POSCheckoutTerminal({
         [safeCart]
     );
 
+    const itemDiscountTotals = useMemo(
+        () => calculatePosItemDiscounts(safeCart),
+        [safeCart]
+    );
+
+    const globalDiscountCart = useMemo(
+        () => safeCart.map((line, index) => ({
+            ...line,
+            global_discount_base_amount: itemDiscountTotals.lines[index]?.global_discount_base_amount
+        })),
+        [itemDiscountTotals.lines, safeCart]
+    );
+
     const governedDiscountTotals = useMemo(
-        () => calculateGovernedDiscount(safeCart, safeAppliedDiscount),
-        [safeAppliedDiscount, safeCart]
+        () => calculateGovernedDiscount(globalDiscountCart, safeAppliedDiscount),
+        [globalDiscountCart, safeAppliedDiscount]
     );
 
     const selectedDiscount = useMemo(
@@ -2178,26 +2222,56 @@ export default function POSCheckoutTerminal({
             if (manualDiscountMode === 'amount') {
                 const parsed = Number(manualDiscountAmountInput);
                 if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-                return round4(Math.min(parsed, cartSubtotal));
+                return round4(Math.min(parsed, itemDiscountTotals.totalAmount));
             }
             if (manualDiscountMode !== 'percentage') {
                 return 0;
             }
-            return round4(Math.min((cartSubtotal * manualDiscountRate) / 100, cartSubtotal));
+            return round4(Math.min((itemDiscountTotals.totalAmount * manualDiscountRate) / 100, itemDiscountTotals.totalAmount));
         },
-        [cartSubtotal, manualDiscountAmountInput, manualDiscountMode, manualDiscountRate]
+        [itemDiscountTotals.totalAmount, manualDiscountAmountInput, manualDiscountMode, manualDiscountRate]
     );
 
-    const calculatedDiscountAmount = appliedDiscount
+    const globalDiscountAmount = appliedDiscount
         ? governedDiscountTotals.discountAmount
-        : (selectedDiscount ? round4(Math.min((cartSubtotal * selectedDiscount.percentage) / 100, cartSubtotal)) : manualDiscountAmount);
+        : (selectedDiscount ? round4(Math.min((itemDiscountTotals.totalAmount * selectedDiscount.percentage) / 100, itemDiscountTotals.totalAmount)) : manualDiscountAmount);
+    const calculatedDiscountAmount = appliedDiscount
+        ? round4(itemDiscountTotals.discountAmount + governedDiscountTotals.discountAmount)
+        : round4(itemDiscountTotals.discountAmount + globalDiscountAmount);
     const checkoutDiscountLabel = safeAppliedDiscount?.label
         || selectedDiscount?.name
         || (calculatedDiscountAmount > 0 ? 'Discount' : '');
-    const discountPreviewTotals = calculateGovernedDiscount(safeCart, {
+    const discountPreviewTotals = calculateGovernedDiscount(globalDiscountCart, {
         ...discountDraft,
         eligible_item_ids: safeEligibleDiscountItemIds
     });
+    const itemOptionsLine = itemOptionsLineKey
+        ? safeCart.find((line) => getLineKey(line) === itemOptionsLineKey) || null
+        : null;
+    const itemOptionsGlobalDiscountAllocation = itemOptionsLine
+        ? governedDiscountTotals.lines?.find((entry) => (
+            entry.line_key && entry.line_key === itemOptionsLineKey
+        )) || governedDiscountTotals.lines?.find((entry) => Number(entry.item_id) === Number(itemOptionsLine.item_id))
+        : null;
+    const itemOptionsDiscountIds = toArray(safeAppliedDiscount?.eligible_item_ids).map(Number);
+    const itemOptionsDiscountIncluded = safeAppliedDiscount
+        ? safeAppliedDiscount.type === 'promo'
+            ? itemOptionsDiscountIds.length === 0 || itemOptionsDiscountIds.includes(Number(itemOptionsLine?.item_id))
+            : ['senior', 'pwd'].includes(safeAppliedDiscount.type)
+                ? itemOptionsDiscountIds.includes(Number(itemOptionsLine?.item_id))
+                : itemOptionsDiscountIds.length === 0 || itemOptionsDiscountIds.includes(Number(itemOptionsLine?.item_id))
+        : false;
+    const itemOptionsItemDiscount = itemOptionsLine ? getItemDiscountDraft(itemOptionsLine) : null;
+    const itemOptionsGlobalDiscount = safeAppliedDiscount && Number(itemOptionsGlobalDiscountAllocation?.discount_amount || 0) > 0
+        ? {
+            label: safeAppliedDiscount.label || 'Approved discount',
+            type: safeAppliedDiscount.type,
+            rate: safeAppliedDiscount.method === 'fixed' ? null : safeAppliedDiscount.rate,
+            amount: Number(itemOptionsGlobalDiscountAllocation?.discount_amount || 0),
+            applies_to_all: itemOptionsDiscountIncluded,
+            can_edit: false
+        }
+        : null;
 
     useEffect(() => {
         if (selectedDiscountProfile && (manualDiscountRateInput || manualDiscountAmountInput)) {
@@ -2209,9 +2283,29 @@ export default function POSCheckoutTerminal({
     const serviceFeeAmount = 0;
 
     const netItemsTotal = useMemo(
-        () => round4(Math.max(0, cartSubtotal - calculatedDiscountAmount - governedDiscountTotals.vatRemoved)),
-        [cartSubtotal, calculatedDiscountAmount, governedDiscountTotals.vatRemoved]
+        () => round4(Math.max(0, itemDiscountTotals.totalAmount - globalDiscountAmount - governedDiscountTotals.vatRemoved)),
+        [governedDiscountTotals.vatRemoved, globalDiscountAmount, itemDiscountTotals.totalAmount]
     );
+
+    useEffect(() => {
+        if (!itemOptionsLineKey || safeDiscountApprovers.length > 0 || itemDiscountApproversRequestedRef.current) return undefined;
+        let mounted = true;
+        itemDiscountApproversRequestedRef.current = true;
+        setDiscountApproversLoading(true);
+        fetchPosDiscountApprovers()
+            .then((approvers) => {
+                if (mounted) setDiscountApprovers(toArray(approvers));
+            })
+            .catch(() => {
+                if (mounted) toast.error('Unable to load discount approvers.');
+            })
+            .finally(() => {
+                if (mounted) setDiscountApproversLoading(false);
+            });
+        return () => {
+            mounted = false;
+        };
+    }, [itemOptionsLineKey, safeDiscountApprovers.length]);
 
     const normalizedFnbContext = useMemo(() => (
         fnbContext && typeof fnbContext === 'object' ? fnbContext : null
@@ -2229,11 +2323,24 @@ export default function POSCheckoutTerminal({
     }, [netItemsTotal, normalizedFnbContext]);
 
     const vatBreakdown = useMemo(() => {
-        const factor = cartSubtotal > 0 ? netItemsTotal / cartSubtotal : 1;
-        const adjustedLines = safeCart.map((line) => ({
-            vat_type: line.vat_type || 'vatable',
-            gross: round4((Number(line.quantity) * Number(line.sale_price)) * factor)
-        }));
+        const adjustedLines = safeCart.map((line, index) => {
+            const itemLine = itemDiscountTotals.lines[index] || {};
+            const base = Number(itemLine.global_discount_base_amount || 0);
+            const governedLine = governedDiscountTotals.lines?.[index] || {};
+            const globalVatRemoved = safeAppliedDiscount
+                ? Number(governedLine.vat_removed || 0)
+                : 0;
+            const governedLineDiscount = safeAppliedDiscount
+                ? Number(governedLine.discount_amount || 0)
+                : (itemDiscountTotals.totalAmount > 0
+                    ? round4((base / itemDiscountTotals.totalAmount) * globalDiscountAmount)
+                    : 0);
+            return {
+                vat_type: line.vat_type || 'vatable',
+                governed_vat_exempt: safeAppliedDiscount && Number(governedLine.vat_exempt_amount || 0) > 0,
+                gross: round4(Math.max(0, base - globalVatRemoved - governedLineDiscount))
+            };
+        });
 
         const adjustedTotal = round4(adjustedLines.reduce((sum, line) => sum + line.gross, 0));
         const lineDiff = round4(netItemsTotal - adjustedTotal);
@@ -2245,7 +2352,9 @@ export default function POSCheckoutTerminal({
         let vatExemptSales = 0;
         let zeroRatedSales = 0;
         adjustedLines.forEach((line) => {
-            if (line.vat_type === 'vatable') {
+            if (line.governed_vat_exempt) {
+                vatExemptSales = round4(vatExemptSales + line.gross);
+            } else if (line.vat_type === 'vatable') {
                 vatableGross = round4(vatableGross + line.gross);
             } else if (line.vat_type === 'vat_exempt') {
                 vatExemptSales = round4(vatExemptSales + line.gross);
@@ -2268,7 +2377,7 @@ export default function POSCheckoutTerminal({
             vatExemptSales,
             zeroRatedSales
         };
-    }, [safeCart, cartSubtotal, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount]);
+    }, [globalDiscountAmount, governedDiscountTotals.lines, itemDiscountTotals.lines, itemDiscountTotals.totalAmount, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount, safeAppliedDiscount, safeCart]);
 
     const cartTotal = useMemo(
         () => round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount),
@@ -2320,9 +2429,13 @@ export default function POSCheckoutTerminal({
     const splitPaymentSuccessfulAllocations = splitPaymentAllocations.filter((allocation) => (
         String(allocation?.status || '').toLowerCase() === 'successful'
     ));
-    const posActionsBlocked = Boolean(checkoutBlockedReason);
+    const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;
     const notifyPosActionBlocked = () => {
-        toast.error(checkoutBlockedReason || 'You cannot use the POS because the shift is closed.');
+        toast.error(
+            parkedSaleReleaseLoading
+                ? 'Returning the parked sale to the queue. Please wait.'
+                : (checkoutBlockedReason || 'You cannot use the POS because the shift is closed.')
+        );
     };
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
@@ -2511,16 +2624,21 @@ export default function POSCheckoutTerminal({
         setServiceOptionsModal({ open: false, item: null, groups: [] });
     };
 
-    const updateCartLine = (lineKey, patch) => {
-        if (posActionsBlocked) {
+    const updateCartLine = (lineKey, patch, { allowWhenCheckoutBlocked = false } = {}) => {
+        if (sessionLocked) {
             notifyPosActionBlocked();
-            return;
+            return false;
+        }
+        if (posActionsBlocked && !allowWhenCheckoutBlocked) {
+            notifyPosActionBlocked();
+            return false;
         }
         setCart((prev) => prev.map((line) => (
             getLineKey(line) === lineKey
                 ? { ...line, ...patch }
                 : line
         )));
+        return true;
     };
 
     const updateCartQuantity = (lineKey, requestedQuantity) => {
@@ -2552,7 +2670,7 @@ export default function POSCheckoutTerminal({
             .filter(Boolean);
 
         if (nextCart.length === 0 && activeParkedSale?.pos_parked_sale_id) {
-            cancelActiveParkedSaleEditingAfterCartEmpty();
+            void cancelActiveParkedSaleEditingAfterCartEmpty();
             return;
         }
         setCart(nextCart);
@@ -2766,20 +2884,125 @@ export default function POSCheckoutTerminal({
         }
         const nextCart = safeCart.filter((line) => getLineKey(line) !== lineKey);
         if (nextCart.length === 0 && activeParkedSale?.pos_parked_sale_id) {
-            cancelActiveParkedSaleEditingAfterCartEmpty();
+            void cancelActiveParkedSaleEditingAfterCartEmpty();
             return;
         }
+        if (itemOptionsLineKey === lineKey) setItemOptionsLineKey(null);
+        itemDiscountApprovalRef.current.delete(lineKey);
         setCart(nextCart);
     };
 
-    const saveFnbLineModifiers = (selections) => {
-        setCart((current) => current.map((line) => {
-            if (getLineKey(line) !== fnbModifierLineKey) return line;
-            const basePrice = Number(line.base_sale_price || line.sale_price || 0);
-            const serviceDelta = (line.service_option_details || []).reduce((sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100), 0);
-            return { ...line, line_modifiers: selections, sale_price: round4(basePrice + serviceDelta + resolveModifierDelta(line, selections)) };
-        }));
-        setFnbModifierLineKey(null);
+    const saveItemOptions = async ({ note, selections, item_discount: itemDiscount }) => {
+        const lineKey = itemOptionsLineKey;
+        const currentLine = safeCart.find((line) => getLineKey(line) === lineKey);
+        if (!lineKey || !currentLine || sessionLocked) return false;
+        const basePrice = Number(currentLine.base_sale_price || currentLine.sale_price || 0);
+        const serviceDelta = (currentLine.service_option_details || []).reduce(
+            (sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100),
+            0
+        );
+        let normalizedItemDiscount = null;
+        if (itemDiscount?.enabled) {
+            const discountType = ['senior', 'pwd', 'employee', 'promo', 'manual'].includes(String(itemDiscount.discount_type || '').trim().toLowerCase())
+                ? String(itemDiscount.discount_type).trim().toLowerCase()
+                : 'manual';
+            const method = String(itemDiscount.method || '').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
+            const rate = Number(itemDiscount.rate);
+            const amount = Number(itemDiscount.amount);
+            if (['senior', 'pwd'].includes(discountType)
+                && ![true, 1, '1'].includes(currentLine.senior_pwd_discount_eligible)) {
+                toast.error('This item is not configured as eligible for Senior/PWD discounts.');
+                return false;
+            }
+            if (['senior', 'pwd'].includes(discountType) && (!String(itemDiscount.customer_name || '').trim() || !String(itemDiscount.id_number || '').trim())) {
+                toast.error('Customer name and Senior/PWD ID number are required.');
+                return false;
+            }
+            if (discountType === 'promo' && !String(itemDiscount.customer_name || '').trim()) {
+                toast.error('Customer name is required for a promo item discount.');
+                return false;
+            }
+            if (discountType === 'promo' && !String(itemDiscount.promo_code || '').trim()) {
+                toast.error('Enter a promo code for this item discount.');
+                return false;
+            }
+            if (discountType === 'employee' && !String(itemDiscount.employee_name || '').trim()) {
+                toast.error('Employee name is required for an employee discount.');
+                return false;
+            }
+            if (!['senior', 'pwd', 'promo'].includes(discountType) && method === 'percentage' && (!Number.isFinite(rate) || rate <= 0 || rate > 100)) {
+                toast.error('Item discount rate must be from 0.01% to 100%.');
+                return false;
+            }
+            if (!['senior', 'pwd', 'promo'].includes(discountType) && method === 'fixed' && (!Number.isFinite(amount) || amount <= 0)) {
+                toast.error('Item fixed discount amount must be greater than zero.');
+                return false;
+            }
+            const approverId = Number(itemDiscount.approver_user_id);
+            const currentDiscount = currentLine.item_discount;
+            const sameDiscount = currentDiscount
+                && String(currentDiscount.discount_type || 'manual').toLowerCase() === discountType
+                && String(currentDiscount.method || '').toLowerCase() === method
+                && Number(currentDiscount.rate || 0) === (method === 'percentage' ? rate : 0)
+                && Number(currentDiscount.amount || 0) === (method === 'fixed' ? amount : 0)
+                && String(currentDiscount.customer_name || '') === String(itemDiscount.customer_name || '').trim()
+                && String(currentDiscount.id_number || '') === String(itemDiscount.id_number || '').trim()
+                && String(currentDiscount.employee_name || '') === String(itemDiscount.employee_name || '').trim()
+                && String(currentDiscount.employee_id || '') === String(itemDiscount.employee_id || '').trim()
+                && String(currentDiscount.promo_code || '') === String(itemDiscount.promo_code || '').trim().toUpperCase()
+                && String(currentDiscount.reason || '') === String(itemDiscount.reason || '').trim();
+            let approval = itemDiscountApprovalRef.current.get(lineKey);
+            if (!sameDiscount || !approval || Number(approval.approver_user_id) !== approverId) {
+                if (!Number.isInteger(approverId) || approverId <= 0 || !String(itemDiscount.manager_pin || '').trim()) {
+                    toast.error('Select an authorized approver and enter the approval PIN for this item discount.');
+                    return false;
+                }
+                try {
+                    const verifiedApprover = await verifyPosDiscountApproval({
+                        discount_type: discountType,
+                        approver_user_id: approverId,
+                        manager_pin: String(itemDiscount.manager_pin || '').trim()
+                    });
+                    approval = {
+                        approver_user_id: verifiedApprover?.user_id || approverId,
+                        manager_pin: String(itemDiscount.manager_pin || '').trim()
+                    };
+                    itemDiscountApprovalRef.current.set(lineKey, approval);
+                } catch (error) {
+                    toast.error(error?.response?.data?.message || error?.message || 'Item discount approval failed.');
+                    return false;
+                }
+            }
+            const approver = safeDiscountApprovers.find((entry) => Number(entry?.user_id) === Number(approval?.approver_user_id));
+            const labels = { senior: 'Senior Discount', pwd: 'PWD Discount', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Other Discount' };
+            normalizedItemDiscount = {
+                discount_type: discountType,
+                label: labels[discountType],
+                method,
+                rate: ['senior', 'pwd', 'promo'].includes(discountType) ? null : (method === 'percentage' ? round4(rate) : null),
+                amount: ['senior', 'pwd', 'promo'].includes(discountType) ? null : (method === 'fixed' ? round4(amount) : null),
+                customer_name: String(itemDiscount.customer_name || '').trim().slice(0, 255) || null,
+                id_number: String(itemDiscount.id_number || '').trim().slice(0, 100) || null,
+                employee_name: String(itemDiscount.employee_name || '').trim().slice(0, 255) || null,
+                employee_id: String(itemDiscount.employee_id || '').trim().slice(0, 100) || null,
+                promo_code: String(itemDiscount.promo_code || '').trim().toUpperCase().slice(0, 40) || null,
+                reason: String(itemDiscount.reason || '').trim().slice(0, 500) || null,
+                approver_user_id: Number(approval.approver_user_id),
+                approver_name: String(approver?.username || '').trim() || null,
+                approved_at: currentDiscount?.approved_at || new Date().toISOString()
+            };
+        } else {
+            itemDiscountApprovalRef.current.delete(lineKey);
+        }
+        const updated = updateCartLine(lineKey, {
+            line_modifiers: selections,
+            special_instructions: String(note || '').trim().slice(0, 1000),
+            sale_price: round4(basePrice + serviceDelta + resolveModifierDelta(currentLine, selections)),
+            item_discount: normalizedItemDiscount
+        }, { allowWhenCheckoutBlocked: true });
+        if (!updated) return false;
+        setItemOptionsLineKey(null);
+        return true;
     };
 
     const toggleFolderFilter = (folderId) => {
@@ -2836,7 +3059,7 @@ export default function POSCheckoutTerminal({
         const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
         if (invalidModifierLine) {
             toast.error(`${invalidModifierLine.item_name}: ${validateFnbModifierSelections(invalidModifierLine.modifier_groups || [], invalidModifierLine.line_modifiers || [], selectedLocationId)}`);
-            setFnbModifierLineKey(getLineKey(invalidModifierLine));
+            setItemOptionsLineKey(getLineKey(invalidModifierLine));
             return;
         }
         if (!isCheckoutWorkflowValid) {
@@ -2884,7 +3107,7 @@ export default function POSCheckoutTerminal({
         const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
         if (invalidModifierLine) {
             toast.error(`${invalidModifierLine.item_name}: ${validateFnbModifierSelections(invalidModifierLine.modifier_groups || [], invalidModifierLine.line_modifiers || [], selectedLocationId)}`);
-            setFnbModifierLineKey(getLineKey(invalidModifierLine));
+            setItemOptionsLineKey(getLineKey(invalidModifierLine));
             return;
         }
         if (!isCheckoutWorkflowValid) {
@@ -3061,7 +3284,7 @@ export default function POSCheckoutTerminal({
                 manager_pin: discountDraft.manager_pin,
                 employee_user_id: employeeUserId
             });
-            const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Manual Discount' };
+            const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Other Discount' };
             const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
             const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0
                 ? resolvedApproverUserId
@@ -3138,6 +3361,7 @@ export default function POSCheckoutTerminal({
 
     const resetCurrentSaleForNewSale = useCallback(() => {
         setCart([]);
+        itemDiscountApprovalRef.current.clear();
         setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
         setTableNumber('');
         setKitchenNotes('');
@@ -3166,19 +3390,51 @@ export default function POSCheckoutTerminal({
         setCustomerPaymentAmountInput('');
         setCheckoutConfirmModalOpen(false);
         setParkedSalePayContext(null);
-        setFnbModifierLineKey(null);
+        setItemOptionsLineKey(null);
         setServiceOptionsModal({ open: false, item: null, groups: [] });
     }, [posWorkflow]);
 
-    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(() => {
-        if (!activeParkedSale?.pos_parked_sale_id) return false;
+    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () => {
+        const parkedSaleId = Number(activeParkedSale?.pos_parked_sale_id);
+        const snapshot = activeParkedSale?.snapshot;
+        if (!parkedSaleId || parkedSaleReleaseLoading) return false;
+        if (!activeShiftId || !normalizedTerminalId) {
+            toast.error('Open the active POS shift before cancelling parked-sale editing.');
+            return false;
+        }
+        if (!snapshot || !Array.isArray(snapshot.lines) || snapshot.lines.length === 0) {
+            toast.error('Unable to return this parked sale because its original items are unavailable.');
+            return false;
+        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
+            return false;
+        }
+
         const parkedSaleLabel = formatParkedSaleDisplayName(activeParkedSale);
-        clearPosCartDraft(offlineSnapshotScope, activeShiftId);
-        setActiveParkedSale(null);
-        resetCurrentSaleForNewSale();
-        toast.info(`${parkedSaleLabel} remains saved. Editing was cancelled because all items were removed.`);
-        return true;
-    }, [activeParkedSale, activeShiftId, offlineSnapshotScope, resetCurrentSaleForNewSale]);
+        setParkedSaleReleaseLoading(true);
+        try {
+            await reparkPosParkedSale(parkedSaleId, {
+                shift_id: Number(activeShiftId),
+                terminal_id: normalizedTerminalId,
+                location_id: selectedLocationId ? Number(selectedLocationId) : undefined,
+                expected_revision: Number(activeParkedSale.revision),
+                snapshot,
+                subtotal_amount: Number(activeParkedSale.subtotal_amount || 0),
+                total_amount: Number(activeParkedSale.total_amount || 0)
+            });
+            clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+            setActiveParkedSale(null);
+            resetCurrentSaleForNewSale();
+            toast.info(`${parkedSaleLabel} remains available for the next cashier. Editing was cancelled because all items were removed.`);
+            return true;
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Unable to release this parked sale. The current items were kept.');
+            return false;
+        } finally {
+            setParkedSaleReleaseLoading(false);
+        }
+    }, [activeParkedSale, activeShiftId, normalizedTerminalId, offlineSnapshotScope, parkedSaleReleaseLoading, resetCurrentSaleForNewSale, selectedLocationId]);
 
     const openClearCurrentSale = () => {
         if (posActionsBlocked || safeCart.length === 0 || activeParkedSale?.pos_parked_sale_id) return;
@@ -3277,6 +3533,7 @@ export default function POSCheckoutTerminal({
         const resumedOrderMethod = posWorkflow.allowedMethods.includes(snapshot.order_method)
             ? snapshot.order_method
             : defaultOrderMethod;
+        itemDiscountApprovalRef.current.clear();
         setCart(resumedLines);
         setPaymentType('cash');
         setEmployeeCreditAccountCode('');
@@ -3287,13 +3544,16 @@ export default function POSCheckoutTerminal({
         setCustomerPaymentAmountInput('');
         setCheckoutConfirmModalOpen(false);
         setMobileCheckoutPanelOpen(false);
-        setFnbModifierLineKey(null);
+        setItemOptionsLineKey(null);
         setServiceOptionsModal({ open: false, item: null, groups: [] });
         setActiveParkedSale({
             pos_parked_sale_id: Number(claimedSale?.pos_parked_sale_id),
             park_reference: claimedSale?.park_reference || null,
             revision: Number(claimedSale?.revision || 1),
-            parked_sale_name: String(snapshot.parked_sale_name || '').trim() || null
+            parked_sale_name: String(snapshot.parked_sale_name || '').trim() || null,
+            snapshot,
+            subtotal_amount: Number(claimedSale?.subtotal_amount || 0),
+            total_amount: Number(claimedSale?.total_amount || 0)
         });
         setParkedSalePayContext(normalizedAction === 'pay'
             ? {
@@ -3448,6 +3708,22 @@ export default function POSCheckoutTerminal({
                 modifier_groups: toArray(line.modifier_groups),
                 line_modifiers: toArray(line.line_modifiers),
                 special_instructions: line.special_instructions || null,
+                item_discount: line.item_discount ? {
+                    discount_type: line.item_discount.discount_type || 'manual',
+                    label: line.item_discount.label || 'Item Discount',
+                    method: line.item_discount.method,
+                    rate: line.item_discount.rate == null ? null : Number(line.item_discount.rate),
+                    amount: line.item_discount.amount == null ? null : Number(line.item_discount.amount),
+                    customer_name: line.item_discount.customer_name || null,
+                    id_number: line.item_discount.id_number || null,
+                    employee_name: line.item_discount.employee_name || null,
+                    employee_id: line.item_discount.employee_id || null,
+                    promo_code: line.item_discount.promo_code || null,
+                    reason: line.item_discount.reason || null,
+                    approver_user_id: line.item_discount.approver_user_id || null,
+                    approver_name: line.item_discount.approver_name || null,
+                    approved_at: line.item_discount.approved_at || null
+                } : null,
                 scan_metadata: line.scan_metadata || null
             }))
         };
@@ -3658,6 +3934,7 @@ export default function POSCheckoutTerminal({
             setLastReceipt(transaction);
             setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
             setCart([]);
+            itemDiscountApprovalRef.current.clear();
             setActiveParkedSale(null);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
@@ -3687,8 +3964,11 @@ export default function POSCheckoutTerminal({
         servicesClientName,
         servicesNotes,
         servicesDateTime,
+        tableNumber,
+        kitchenNotes,
         appliedDiscount,
         discountApproval: discountApprovalRef.current,
+        itemDiscountApproval: itemDiscountApprovalRef.current,
         selectedDiscount,
         manualDiscountAmount,
         manualDiscountMode,
@@ -3711,7 +3991,9 @@ export default function POSCheckoutTerminal({
         selectedDiscount,
         servicesClientName,
         servicesDateTime,
-        servicesNotes
+        servicesNotes,
+        tableNumber,
+        kitchenNotes
     ]);
 
     const handleCheckout = async () => {
@@ -3750,8 +4032,13 @@ export default function POSCheckoutTerminal({
             terminal_id: normalizedTerminalId || undefined,
             location_id: selectedLocationId || undefined,
             order_method: orderMethod,
+            table_number: isFnbWorkflow && orderMethod === 'dine_in' ? tableNumber.trim() || undefined : undefined,
             customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || undefined : undefined,
-            special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || undefined : undefined,
+            special_instructions: posWorkflow.mode === 'services'
+                ? servicesNotes.trim() || undefined
+                : (isFnbWorkflow
+                    ? buildFnbGlobalOrderNote({ kitchenNotes }) || undefined
+                    : undefined),
             scheduled_for: posWorkflow.mode === 'services' && servicesDateTime
                 ? new Date(servicesDateTime).toISOString()
                 : undefined,
@@ -3764,6 +4051,7 @@ export default function POSCheckoutTerminal({
             } : undefined,
             discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')),
             discount_amount: Number(calculatedDiscountAmount || 0),
+            item_discount_amount: Number(itemDiscountTotals.discountAmount || 0),
             discount_profile_name: appliedDiscount ? undefined : (selectedDiscount?.name || null),
             discount_rate: appliedDiscount
                 ? undefined
@@ -3792,7 +4080,8 @@ export default function POSCheckoutTerminal({
             parked_sale_id: activeParkedSale?.pos_parked_sale_id || undefined,
             fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
             fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
-            fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || undefined,
+            fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot
+                || (isFnbWorkflow && orderMethod === 'dine_in' ? tableNumber.trim() || undefined : undefined),
             fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
             fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
             restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
@@ -3800,6 +4089,28 @@ export default function POSCheckoutTerminal({
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
+                ...(line.item_discount ? {
+                    item_discount: {
+                        discount_type: line.item_discount.discount_type || 'manual',
+                        label: line.item_discount.label || 'Item Discount',
+                        method: line.item_discount.method,
+                        rate: line.item_discount.rate == null ? null : Number(line.item_discount.rate),
+                        amount: line.item_discount.amount == null ? null : Number(line.item_discount.amount),
+                        customer_name: line.item_discount.customer_name || null,
+                        id_number: line.item_discount.id_number || null,
+                        employee_name: line.item_discount.employee_name || null,
+                        employee_id: line.item_discount.employee_id || null,
+                        promo_code: line.item_discount.promo_code || null,
+                        reason: line.item_discount.reason || null,
+                        approver_user_id: line.item_discount.approver_user_id || null
+                    },
+                    ...(itemDiscountApprovalRef.current.get(getLineKey(line))?.manager_pin ? {
+                        item_discount_approval: {
+                            approver_user_id: itemDiscountApprovalRef.current.get(getLineKey(line)).approver_user_id,
+                            manager_pin: itemDiscountApprovalRef.current.get(getLineKey(line)).manager_pin
+                        }
+                    } : {})
+                } : {}),
                 price_override_reason: String(line.price_override_reason || '').trim() || undefined,
                 ...(isFnbWorkflow ? {
                     course: line.course || normalizedFnbContext?.default_course || undefined,
@@ -3820,6 +4131,7 @@ export default function POSCheckoutTerminal({
             item_name: line.item_name,
             quantity: Number(line.quantity),
             sale_price: Number(line.sale_price),
+            item_discount: line.item_discount || null,
             special_instructions: line.special_instructions || '',
             selected_option_ids: Array.isArray(line.service_option_ids) ? line.service_option_ids : [],
             service_options_snapshot: Array.isArray(line.service_option_details) ? line.service_option_details : [],
@@ -3862,8 +4174,8 @@ export default function POSCheckoutTerminal({
         });
 
         const queueCheckoutIntentLocally = async (source) => {
-            if (appliedDiscount) {
-                toast.error('Governed discounts require an online checkout so eligibility and the selected approver can be verified securely.');
+            if (appliedDiscount || itemDiscountTotals.discountAmount > 0) {
+                toast.error('Approved discounts require an online checkout so eligibility and the selected approver can be verified securely.');
                 return;
             }
             try {
@@ -3893,6 +4205,7 @@ export default function POSCheckoutTerminal({
             setCatalog(nextCatalog);
             saveCatalogSnapshot(nextCatalog);
             setCart([]);
+            itemDiscountApprovalRef.current.clear();
             setActiveParkedSale(null);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
@@ -3936,6 +4249,7 @@ export default function POSCheckoutTerminal({
             setLastReceipt(data?.transaction || null);
             setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
             setCart([]);
+            itemDiscountApprovalRef.current.clear();
             setActiveParkedSale(null);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
@@ -4039,7 +4353,9 @@ export default function POSCheckoutTerminal({
 
         setReceiptPrinting(true);
         try {
-            const shouldOpenDrawer = String(transaction?.payment_type || '').trim().toLowerCase() === 'cash';
+            // Reprinting a cash receipt must not silently pulse the drawer.
+            // Cashier-initiated drawer opens go through the PIN/reason modal.
+            const shouldOpenDrawer = false;
             const outcome = await posHardware.printReceipt({
                 transaction,
                 businessSettings: receiptSettings,
@@ -4054,9 +4370,7 @@ export default function POSCheckoutTerminal({
 
             if (outcome.success) {
                 toast.success(
-                    shouldOpenDrawer && outcome.driverId === 'imin_native'
-                        ? 'Receipt printed and cash drawer opened.'
-                        : (outcome.message || 'Receipt printed.')
+                    outcome.message || 'Receipt printed.'
                 );
             } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED') {
                 toast.message(outcome.message || 'No printer is configured for this terminal. The receipt is available for on-screen preview.');
@@ -4068,6 +4382,54 @@ export default function POSCheckoutTerminal({
         }
     }, [activeShiftId, normalizedTerminalId, posHardware, receiptSettings]);
 
+    const handleBillRequest = useCallback(async () => {
+        if (safeCart.length === 0) {
+            toast.error('Add at least one item before requesting a bill.');
+            return;
+        }
+
+        const draft = {
+            lines: safeCart.map((line) => ({
+                lineKey: getLineKey(line),
+                itemId: line.item_id,
+                itemName: line.item_name,
+                quantity: Number(line.quantity || 0),
+                unitPrice: Number(line.sale_price || 0)
+            })),
+            total: Number(cartTotal || 0)
+        };
+        setBillRequestDraft(draft);
+        setCheckoutConfirmModalOpen(false);
+        setBillRequestPrinting(true);
+        try {
+            const outcome = await posHardware.printOrderTicket({
+                cart: safeCart,
+                terminalId: normalizedTerminalId,
+                orderMethod,
+                fnbContext: buildFnbPrintContext({
+                    fnbContext: normalizedFnbContext,
+                    tableNumber,
+                    orderMethod
+                }),
+                orderNotes: isFnbWorkflow
+                    ? buildFnbGlobalOrderNote({ kitchenNotes })
+                    : kitchenNotes,
+                billRequest: true,
+                billTotal: cartTotal
+            });
+
+            if (outcome.success) {
+                toast.success(outcome.message || 'Bill request sent to printer.');
+            } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED' || outcome.reasonCode === 'NOT_SUPPORTED') {
+                toast.error('Bill request printing is not available on this terminal.');
+            } else {
+                toast.error(outcome.message || 'Failed to print bill request.');
+            }
+        } finally {
+            setBillRequestPrinting(false);
+        }
+    }, [cartTotal, isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, safeCart, tableNumber]);
+
     const handlePrintOrder = useCallback(async () => {
         if (safeCart.length === 0) {
             toast.error('Add at least one item before printing an order.');
@@ -4078,8 +4440,14 @@ export default function POSCheckoutTerminal({
             cart: safeCart,
             terminalId: normalizedTerminalId,
             orderMethod,
-            fnbContext: normalizedFnbContext,
-            orderNotes: kitchenNotes
+            fnbContext: buildFnbPrintContext({
+                fnbContext: normalizedFnbContext,
+                tableNumber,
+                orderMethod
+            }),
+            orderNotes: isFnbWorkflow
+                ? buildFnbGlobalOrderNote({ kitchenNotes })
+                : kitchenNotes
         });
 
         if (outcome.success) {
@@ -4089,7 +4457,7 @@ export default function POSCheckoutTerminal({
         } else {
             toast.error(outcome.message || 'Failed to print order ticket.');
         }
-    }, [kitchenNotes, safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
+    }, [isFnbWorkflow, kitchenNotes, safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, tableNumber]);
 
     const printHistoryReceipt = useCallback(async (posTransactionId) => {
         const transactionId = Number(posTransactionId);
@@ -4112,33 +4480,71 @@ export default function POSCheckoutTerminal({
         }
     }, []);
 
-    const handleOpenDrawer = useCallback(async ({ transactionId = null, reason = 'manual_ui_open' } = {}) => {
+    const handleOpenDrawer = useCallback(({ transactionId = null } = {}) => {
+        if (!activeShiftId) {
+            toast.error('Open a shift first before opening the cash drawer.');
+            return;
+        }
+        setDrawerAuthorizationContext({ transactionId });
+        setDrawerAuthorizationReason('');
+        setDrawerAuthorizationPin('');
+        setDrawerAuthorizationModalOpen(true);
+    }, [activeShiftId]);
+
+    const drawerAdminBypass = terminalUser?.is_master_admin === true
+        || ['admin', 'manager'].includes(String(terminalUser?.role || '').trim().toLowerCase());
+
+    const submitDrawerAuthorization = useCallback(async () => {
+        const reason = String(drawerAuthorizationReason || '').trim();
+        if (reason.length < 3) {
+            toast.error('Enter a reason before opening the cash drawer.');
+            return;
+        }
+        if (!drawerAdminBypass && !/^[0-9]{4,12}$/.test(String(drawerAuthorizationPin || '').trim())) {
+            toast.error('Enter your 4–12 digit POS PIN before opening the cash drawer.');
+            return;
+        }
         if (!activeShiftId) {
             toast.error('Open a shift first before opening the cash drawer.');
             return;
         }
 
+        const idempotencyKey = createIdempotencyKey();
+        setDrawerAuthorizationSubmitting(true);
         setDrawerOpening(true);
         try {
+            const authorization = await authorizePosDrawerOpen({
+                idempotency_key: idempotencyKey,
+                shift_id: activeShiftId,
+                transaction_id: drawerAuthorizationContext.transactionId || undefined,
+                terminal_id: normalizedTerminalId || undefined,
+                reason,
+                authorization_pin: drawerAdminBypass ? undefined : String(drawerAuthorizationPin).trim()
+            });
             const outcome = await posHardware.openDrawer({
                 shiftId: activeShiftId,
-                transactionId,
+                transactionId: drawerAuthorizationContext.transactionId || null,
                 terminalId: normalizedTerminalId || undefined,
                 reason,
-                idempotencyKey: createIdempotencyKey()
+                idempotencyKey,
+                drawerAuthorizationToken: authorization?.authorization_token
             });
 
             if (outcome.success) {
+                setDrawerAuthorizationModalOpen(false);
                 toast.success(outcome.message || 'Cash drawer opened.');
             } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED') {
                 toast.message(outcome.message || 'No cash drawer is configured for this terminal.');
             } else {
                 toast.error(outcome.message || 'Failed to open the cash drawer.');
             }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Cash drawer authorization failed.');
         } finally {
+            setDrawerAuthorizationSubmitting(false);
             setDrawerOpening(false);
         }
-    }, [activeShiftId, normalizedTerminalId, posHardware]);
+    }, [activeShiftId, drawerAdminBypass, drawerAuthorizationContext.transactionId, drawerAuthorizationPin, drawerAuthorizationReason, normalizedTerminalId, posHardware]);
 
     const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
         if (!sectionTitle && !action) return null;
@@ -4841,27 +5247,69 @@ export default function POSCheckoutTerminal({
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
-                                <div key={lineKey} className="rounded-lg border border-slate-200 p-2.5">
+                                <div
+                                    key={lineKey}
+                                    role="button"
+                                    tabIndex={sessionLocked ? -1 : 0}
+                                    aria-disabled={sessionLocked}
+                                    aria-label={`Customize ${line.item_name}`}
+                                    data-testid={`pos-item-options-trigger-${lineKey}`}
+                                    onClick={() => {
+                                        if (!sessionLocked) setItemOptionsLineKey(lineKey);
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.target !== event.currentTarget) return;
+                                        if ((event.key === 'Enter' || event.key === ' ') && !sessionLocked) {
+                                            event.preventDefault();
+                                            setItemOptionsLineKey(lineKey);
+                                        }
+                                    }}
+                                    className="cursor-pointer rounded-lg border border-slate-200 p-2.5 transition-colors hover:border-blue-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                >
                                     <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <CartItemThumbnail catalog={catalog} line={line} receiptSettings={receiptSettings} />
+                                        <div className="flex min-w-0 items-center gap-2.5">
+                                            <div className="flex min-w-0 items-center gap-2.5 text-left">
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</span>
+                                                    <span className="mt-0.5 block text-[10px] font-bold text-blue-700">Tap item to customize</span>
+                                                </span>
+                                            </div>
                                             <div className="min-w-0">
-                                                <p className="text-[13px] font-extrabold text-[#0F172A] truncate">{line.item_name}</p>
                                                 {Array.isArray(line.service_option_details) && line.service_option_details.length > 0 ? (
                                                     <p className="mt-0.5 truncate text-[10px] font-semibold text-blue-700">
                                                         Options: {line.service_option_details.map((option) => option.name).filter(Boolean).join(', ')}
                                                     </p>
                                                 ) : null}
-                                                {Array.isArray(line.modifier_groups) && line.modifier_groups.length > 0 ? (
-                                                    <button type="button" onClick={() => setFnbModifierLineKey(lineKey)} className="mt-1 text-left text-[10px] font-bold text-blue-700 underline underline-offset-2">
-                                                        {resolveModifierSnapshot(line).length > 0 ? resolveModifierSnapshot(line).map((modifier) => modifier.option_name).join(', ') : 'Choose modifiers'}
-                                                    </button>
+                                                {line.special_instructions ? (
+                                                    <p className="mt-1 max-w-full truncate text-[10px] font-semibold text-slate-600">
+                                                        Note: {line.special_instructions}
+                                                    </p>
+                                                ) : null}
+                                                {line.item_discount ? (
+                                                    <p className="mt-1 max-w-full truncate text-[10px] font-extrabold text-rose-600">
+                                                        {(line.item_discount.discount_type === 'pwd'
+                                                            ? 'PWD discount'
+                                                            : line.item_discount.discount_type === 'senior'
+                                                                ? 'Senior discount'
+                                                                : line.item_discount.discount_type === 'promo'
+                                                                    ? 'Promo discount'
+                                                                    : line.item_discount.discount_type === 'employee'
+                                                                        ? 'Employee discount'
+                                                                    : 'Other discount')}: {line.item_discount.discount_type === 'promo'
+                                                            ? 'configured rate'
+                                                            : line.item_discount.method === 'fixed'
+                                                            ? `-PHP ${money(line.item_discount.amount)}`
+                                                            : `-${money(line.item_discount.rate)}%`}
+                                                    </p>
                                                 ) : null}
                                             </div>
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => removeCartLine(lineKey)}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                removeCartLine(lineKey);
+                                            }}
                                             disabled={posActionsBlocked}
                                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
                                             aria-label={`Remove ${line.item_name}`}
@@ -4870,7 +5318,11 @@ export default function POSCheckoutTerminal({
                                             <Trash2 className="h-4 w-4" />
                                         </button>
                                     </div>
-                                    <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <div
+                                        className="mt-2 grid grid-cols-2 gap-2"
+                                        onClick={(event) => event.stopPropagation()}
+                                        onKeyDown={(event) => event.stopPropagation()}
+                                    >
                                         <label className="text-[11px] text-slate-500">
                                             Qty
                                             {/* Mobile: read-only, qty is managed from the catalog card's stepper. */}
@@ -4985,9 +5437,15 @@ export default function POSCheckoutTerminal({
                         </div>
                         <div className="flex justify-between">
                             <span className="text-[#334155]">
-                                Discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}
+                                Item discount
                             </span>
-                            <span className="font-extrabold text-rose-600">- PHP {money(calculatedDiscountAmount)}</span>
+                            <span className="font-extrabold text-rose-600">- PHP {money(itemDiscountTotals.discountAmount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-[#334155]">
+                                Global discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}
+                            </span>
+                            <span className="font-extrabold text-rose-600">- PHP {money(globalDiscountAmount)}</span>
                         </div>
                         {governedDiscountTotals.vatRemoved > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT Removed</span><span className="font-extrabold text-rose-600">- PHP {money(governedDiscountTotals.vatRemoved)}</span></div>}
                         {governedDiscountTotals.vatExemptAmount > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT-Exempt Amount</span><span className="font-extrabold text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span></div>}
@@ -5028,7 +5486,15 @@ export default function POSCheckoutTerminal({
                             <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(netItemsTotal)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
-                            <span className="min-w-0 text-[#334155]">Discount</span>
+                            <span className="min-w-0 text-[#334155]">Item discount</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(itemDiscountTotals.discountAmount)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-[#334155]">Global discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(globalDiscountAmount)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-[#334155]">Total discounts</span>
                             <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(calculatedDiscountAmount)}</span>
                         </div>
                         {governedDiscountTotals.vatRemoved > 0 && (
@@ -5114,6 +5580,11 @@ export default function POSCheckoutTerminal({
 
                 <Suspense fallback={<div className="h-[46px] w-full animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
                     <PosCurrentSaleActions
+                        presentationBundle={posPresentationBundle}
+                        onParkAndNewSale={openParkSaleNameDialog}
+                        parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
+                        parkLoading={parkLoading}
+                        activeParkedSale={activeParkedSale}
                         onCheckout={openCheckoutConfirmModal}
                         checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
                         checkoutLoading={checkoutLoading}
@@ -5125,13 +5596,10 @@ export default function POSCheckoutTerminal({
                             transactionId: Number(lastReceipt?.pos_transaction_id) || null,
                             reason: 'manual_drawer_panel'
                         })}
-                        cashDrawerDisabled={!activeShiftId || drawerOpening}
+                        cashDrawerDisabled={!activeShiftId || drawerOpening || drawerAuthorizationModalOpen}
                         drawerOpening={drawerOpening}
-                        onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}
-                        discountDisabled={posActionsBlocked || safeCart.length === 0}
                         showParkedSaleControls={posPresentationBundle.currentSaleActions.showParkedSaleControls}
                         onParkSale={openParkSaleNameDialog}
-                        parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
                         parkSaleLoading={parkLoading}
                         parkSaleLabel={activeParkedSale ? 'Update Parked Sale' : 'Park Sale'}
                         onSplitPayment={openSplitPaymentModal}
@@ -5257,6 +5725,81 @@ export default function POSCheckoutTerminal({
                     />
                 </Suspense>
             </div>
+
+            <Dialog
+                open={drawerAuthorizationModalOpen}
+                onOpenChange={(nextOpen) => {
+                    if (!drawerAuthorizationSubmitting) setDrawerAuthorizationModalOpen(nextOpen);
+                }}
+            >
+                <DialogContent
+                    className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
+                    data-testid="pos-drawer-authorization-dialog"
+                >
+                    <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+                        <DialogTitle className="text-lg font-black text-slate-900">Open Cash Drawer</DialogTitle>
+                        <DialogDescription className="text-sm leading-5 text-slate-600">
+                            Enter the reason and authorize this drawer opening before the terminal sends the hardware command.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 px-5 py-4">
+                        <div>
+                            <label htmlFor="pos-drawer-open-reason" className="text-xs font-extrabold text-slate-700">Reason <span className="text-rose-600">*</span></label>
+                            <Input
+                                id="pos-drawer-open-reason"
+                                data-testid="pos-drawer-open-reason"
+                                value={drawerAuthorizationReason}
+                                onChange={(event) => setDrawerAuthorizationReason(event.target.value)}
+                                placeholder="e.g. Cash change for customer"
+                                maxLength={255}
+                                disabled={drawerAuthorizationSubmitting}
+                                className="mt-1"
+                            />
+                        </div>
+                        {drawerAdminBypass ? (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800" role="status">
+                                Admin bypass is enabled for your account. A reason is still required and this action will be recorded in the audit history.
+                            </div>
+                        ) : (
+                            <div>
+                                <label htmlFor="pos-drawer-open-pin" className="text-xs font-extrabold text-slate-700">Cashier POS PIN <span className="text-rose-600">*</span></label>
+                                <Input
+                                    id="pos-drawer-open-pin"
+                                    data-testid="pos-drawer-open-pin"
+                                    type="password"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    value={drawerAuthorizationPin}
+                                    onChange={(event) => setDrawerAuthorizationPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 12))}
+                                    placeholder="Enter your POS PIN"
+                                    maxLength={12}
+                                    disabled={drawerAuthorizationSubmitting}
+                                    className="mt-1"
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDrawerAuthorizationModalOpen(false)}
+                            disabled={drawerAuthorizationSubmitting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={submitDrawerAuthorization}
+                            disabled={drawerAuthorizationSubmitting}
+                            className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                            data-testid="pos-drawer-authorize-submit"
+                        >
+                            {drawerAuthorizationSubmitting ? 'Authorizing…' : 'Authorize & Open Drawer'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : closeDiscountModal())}>
                 <DialogContent className="relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
@@ -5532,7 +6075,7 @@ export default function POSCheckoutTerminal({
                                     <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="text-[11px] font-medium text-slate-400">(optional)</span></label>
                                     <div className="relative">
                                         <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter manual discount reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                        <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter other discount reason (optional)" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
                                     </div>
                                 </div>
                             )}
@@ -5642,9 +6185,6 @@ export default function POSCheckoutTerminal({
                                     <DialogTitle id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
                                         Confirm Checkout
                                     </DialogTitle>
-                                    <DialogDescription className="mt-0.5 text-[12px] font-medium text-[#475569]">
-                                        Review the items and enter the customer payment before finalizing this sale.
-                                    </DialogDescription>
                                 </div>
                             </div>
                             <button
@@ -5832,65 +6372,6 @@ export default function POSCheckoutTerminal({
                             </div>
                         </div>
 
-                        <div className="rounded-xl border border-slate-200 bg-white p-3">
-                            <div className="max-h-[220px] space-y-2 overflow-y-auto pr-1">
-                                {safeCart.map((line) => {
-                                    const lineTotal = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
-                                    const catalogItem = safeCatalog.find((ci) => (
-                                        (ci?.item_id && line?.item_id && Number(ci.item_id) === Number(line.item_id)) ||
-                                        (ci?.id && line?.id && Number(ci.id) === Number(line.id))
-                                    )) || null;
-
-                                    const imageSources = catalogItem ? resolvePosCatalogImageSources(catalogItem, receiptSettings) : null;
-                                    const rawImage = line.thumbnail_url || line.thumbnail || line.storefront_image_url || line.image_url || line.imageUrl || line.image
-                                        || catalogItem?.storefront_image_url || catalogItem?.pos_image_url || catalogItem?.image_url || catalogItem?.imageUrl || catalogItem?.image
-                                        || imageSources?.src || '';
-
-                                    const mappedAsset = resolveMappedPosItemImage(line) || resolveMappedPosItemImage(catalogItem);
-                                    const mappedSrc = mappedAsset ? resolveAssetVariantUrl(resolveAppAssetUrl(mappedAsset), 'thumbnail') : '';
-
-                                    const thumbnailSrc = rawImage ? resolveAssetVariantUrl(rawImage, 'thumbnail') : mappedSrc;
-                                    return (
-                                        <div key={getLineKey(line)} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-                                            <div className="flex items-center gap-3 min-w-0">
-                                                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-blue-100 bg-blue-50/60">
-                                                    {thumbnailSrc ? (
-                                                        <>
-                                                            <img
-                                                                src={thumbnailSrc}
-                                                                alt={line.item_name || 'Item'}
-                                                                loading="lazy"
-                                                                decoding="async"
-                                                                className="h-full w-full object-cover rounded-lg"
-                                                                onError={(event) => {
-                                                                    event.currentTarget.style.display = 'none';
-                                                                    if (event.currentTarget.nextElementSibling) {
-                                                                        event.currentTarget.nextElementSibling.style.display = 'flex';
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <div className="hidden h-full w-full items-center justify-center bg-blue-50/60">
-                                                                <Utensils className="h-4 w-4 text-blue-600" />
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <Utensils className="h-4 w-4 text-blue-600" />
-                                                    )}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
-                                                    <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">
-                                                        {formatQuantity(line.quantity)} x PHP {money(line.sale_price)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <span className="shrink-0 text-[13px] font-black text-[#1A4E8D]">PHP {money(lineTotal)}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
                         {isEmployeeCreditPayment && (
                             <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">Loading employee credit...</div>}>
                                 <EmployeeCreditPaymentPanel
@@ -5905,23 +6386,44 @@ export default function POSCheckoutTerminal({
                         )}
                         {!isEmployeeCreditPayment && !splitPaymentReady && (
                             <div className="space-y-2" data-testid="pos-checkout-payment-summary">
-                                <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
+                                <label htmlFor="pos-customer-payment-amount" className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
                                     {customerPaymentFieldLabel}
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={customerPaymentAmountInput}
-                                        onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
-                                        onFocus={(event) => {
-                                            if (event.currentTarget.value === '0') setCustomerPaymentAmountInput('');
-                                        }}
-                                        placeholder="0.00"
-                                        className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
-                                    />
                                 </label>
+                                {isCashPayment && (
+                                    <div className="grid grid-cols-3 gap-2" data-testid="pos-cash-payment-suggestions">
+                                        {CASH_PAYMENT_SUGGESTIONS.map((amount) => (
+                                            <button
+                                                key={amount}
+                                                type="button"
+                                                onClick={() => setCustomerPaymentAmountInput(String(amount))}
+                                                disabled={checkoutLoading}
+                                                className="h-8 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-extrabold text-[#1A4E8D] transition-colors hover:border-[#1A4E8D] hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                data-testid={`pos-cash-payment-suggestion-${amount}`}
+                                            >
+                                                PHP {amount.toLocaleString('en-US')}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                <Input
+                                    id="pos-customer-payment-amount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={customerPaymentAmountInput}
+                                    onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
+                                    onFocus={(event) => {
+                                        if (event.currentTarget.value === '0') setCustomerPaymentAmountInput('');
+                                    }}
+                                    placeholder="0.00"
+                                    className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
+                                />
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                                     <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-[#64748B]">Payment Summary</p>
+                                    <div className="flex justify-between gap-2">
+                                        <span className="text-[#334155]">Payment Method</span>
+                                        <span className="font-bold text-[#1A4E8D]">{formatSplitPaymentMethod(paymentType)}</span>
+                                    </div>
                                     <div className="flex justify-between gap-2">
                                         <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
                                         <span className="font-bold text-emerald-700">PHP {money(customerPaymentChange)}</span>
@@ -5942,11 +6444,13 @@ export default function POSCheckoutTerminal({
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={handleCancelCheckout}
-                            disabled={checkoutLoading || splitPaymentCancelLoading || parkedSaleReleaseLoading}
+                            onClick={handleBillRequest}
+                            disabled={posActionsBlocked || checkoutLoading || billRequestPrinting || splitPaymentCancelLoading || parkedSaleReleaseLoading || safeCart.length === 0 || !isPrinterAvailable}
                             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                            title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                            data-testid="pos-bill-request-button"
                         >
-                            Cancel
+                            {billRequestPrinting ? 'Printing…' : 'Bill Request'}
                         </Button>
                         <Button
                             type="button"
@@ -6336,15 +6840,29 @@ export default function POSCheckoutTerminal({
                 optionGroups={serviceOptionsModal.groups}
                 onConfirmOptions={handleConfirmServiceOptions}
             />
-            {fnbModifierLineKey && (
-                <Suspense fallback={<div className="sr-only" role="status">Loading item modifiers…</div>}>
-                    <FnbModifierPickerDialog
-                        key={fnbModifierLineKey}
+            {itemOptionsLineKey && (
+                <Suspense fallback={<div className="sr-only" role="status">Loading item options…</div>}>
+                    <ItemOptionsDialog
+                        key={itemOptionsLineKey}
                         open
-                        line={safeCart.find((line) => getLineKey(line) === fnbModifierLineKey) || null}
+                        line={itemOptionsLine}
                         locationId={selectedLocationId}
-                        onClose={() => setFnbModifierLineKey(null)}
-                        onSave={saveFnbLineModifiers}
+                        itemDiscount={itemOptionsItemDiscount}
+                        globalDiscount={itemOptionsGlobalDiscount}
+                        discountApprovers={safeDiscountApprovers}
+                        discountApproversLoading={discountApproversLoading}
+                        defaultDiscountApprover={activeShiftCashierApprover}
+                        onClose={() => setItemOptionsLineKey(null)}
+                        onSave={saveItemOptions}
+                    />
+                </Suspense>
+            )}
+            {billRequestDraft && (
+                <Suspense fallback={<div className="sr-only" role="status">Loading bill request…</div>}>
+                    <BillRequestDialog
+                        open
+                        draft={billRequestDraft}
+                        onClose={() => setBillRequestDraft(null)}
                     />
                 </Suspense>
             )}

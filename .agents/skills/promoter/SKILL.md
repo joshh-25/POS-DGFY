@@ -1,0 +1,94 @@
+---
+name: promoter
+description: Run a develop -> staging -> main promotion end to end on dgfy-platform, cutting the intermediate promotion branch itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to staging, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time. First live run is report-only.
+---
+
+# Promoter/Release
+
+**Portability**: this is the canonical definition of this role (#442).
+`.claude/skills/promoter/SKILL.md` is a thin pointer back here — edit here, not there.
+
+Runs a branch promotion end to end — `develop` → `staging`, and `staging` → `main` — including
+cutting the intermediate branch each leg needs. This is the "Release/Deploy captain" candidate
+named in #331, built out by #512 after PR #510 was blocked because `staging` had been deleted as a
+side effect of using it directly as a PR head (full incident:
+`docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`).
+
+**Read rule sources at runtime. Never embed their contents here.**
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) owns the flow and branch-naming convention;
+`docs/testing/release-go-no-go-checklist.md` owns the pre-`main` gate; `docs/ai/PR.md` owns commit
+and PR-body format; `scripts/check-compliance-impact.js` owns the promotion-PR compliance exemption;
+`AGENTS.md`'s Merge Safety section owns the check-state rule this role must never merge past.
+
+## Why a new role, not an extension of an existing one
+
+#512's own design question, resolved here: not `pr-reviewer` (its charter is auditing *one* PR and
+its tool allowlist is deliberately read-mostly — promotion needs branch creation and `gh pr create`)
+and not `implement` (its checkpoint policy explicitly forbids opening a PR based on `staging` or
+`main` — promotion *is* that). A promotion is a multi-branch orchestration job with its own shape
+(no code authored, batch inventory + gate evidence instead of a diff review), so it gets its own
+role rather than bending either existing one past its charter.
+
+## The flow, and why it's one mechanism now, not two
+
+`feature → develop → to-staging/<label> → staging → release/<label> → main`. Both legs cut a
+throwaway branch — `to-staging/<label>` from `origin/develop`, `release/<label>` from
+`origin/staging` — carrying no commits of its own, used once as a PR head, never reused. This was
+amended into the policy specifically so this role implements **one** promotion mechanism for both
+legs instead of two (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-16 amendment). The branch
+prefix is not cosmetic: `scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_PREFIX_BY_BASE`
+matches exactly `to-staging/*` (base `staging`) and `release/*` (base `main`) to exempt the PR from
+a bundled-classification re-check that would otherwise produce ~13 false compliance failures on an
+aggregate diff — get the prefix wrong and that incident reproduces. Full command sequence for both
+legs: `references/promotion-runbook.md`.
+
+Promotion PRs merge with `--merge` (a true merge commit), never `--squash` — confirmed as the
+existing convention on every prior promotion (#127, #426); squashing would diverge the target's
+history from what the next promotion diffs against.
+
+## Pre-flight — run before touching any branch
+
+The check that would have caught #426: confirm the **target** branch exists on the remote
+(`git ls-remote --exit-code --heads origin <staging|main>`) before starting. If it's missing,
+restore it from the last known-good SHA and stop — do not proceed into a promotion against a branch
+that isn't there. Also confirm the head you're about to cut has never been used as a PR head before
+(long-lived branches — `develop`, `staging`, `main` — must never be a head; that's the mechanism the
+`to-staging/`/`release/` prefixes exist to prevent).
+
+## Pre-`main` gates
+
+Before a `release/<label>` → `main` PR: run `npm run gate:release:local` — **invoke it, do not
+rebuild it** (the policy says this outright). ~25 minutes, needs local MySQL/Redis; exit code `2`
+means at least one of 16 gates failed — report which, don't merge past it. Gate 16
+(`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json` exists for
+the target SHA — the normal case — so a green #16 is not evidence of anything; don't cite it as
+verification. Also confirm the tenant-schema sync report is clean against **production** tenant
+databases specifically, not staging's — the 2026-07-28 outage happened because schema drift was
+checked against the wrong environment.
+
+## Unattended vs. checkpoint — stop and ask before proceeding
+
+| Trigger | What "stop" means |
+|---|---|
+| Pre-flight, branch cut, PR open, merge into `develop`/`staging` | Unattended — proceed |
+| Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
+| Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
+| Dispatching `deploy-main.yml` (BETA+PROD dual-deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
+| Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. The sole exception is the `incident-responder` role's narrow, explicit-phrase-gated override (`.agents/skills/incident-responder/SKILL.md`); that override belongs to that role, not this one |
+| `verify-deployment.yml` reports FAIL | Report it and stop — **there is no rollback to call.** #495 (rollback mechanism) is still open; say so plainly rather than implying a recovery path exists |
+| The first live run of this role | Report-only regardless of outcome — produce the promotion plan and PR bodies, let Pat confirm before it runs unattended, matching the calibration already used for `implement`/`pr-reviewer`/`observer`/`verifier` |
+
+## Composite-flow chaining
+
+See `AGENTS.md`'s "Role handoffs and composite instructions" section for what a chained "review,
+merge, and deploy" instruction actually does end to end and where it hands off to Pat.
+
+## Board handling
+
+This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-reviewer` still sets
+`For QA` on the issues bundled into whatever it promotes.
+
+## Reference files
+
+- `references/promotion-runbook.md` — the copy-pasteable command sequence for both legs: pre-flight,
+  branch cut, PR create, checks, merge, deploy dispatch, verify dispatch.

@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
 import {
   createStorefrontOnlinePaymentSession,
+  getStorefrontOnlinePaymentLabel,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
@@ -129,7 +130,7 @@ export function useFnbCheckoutSubmission({
         } else {
           toast.success(fnbPaymentType === 'qrph'
             ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
-            : `${fnbPaymentType === 'gcash' ? 'GCash' : fnbPaymentType === 'maya' ? 'Maya' : 'Card'} payment created. Complete it on PayMongo to continue.`);
+            : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);
         }
         return;
       }

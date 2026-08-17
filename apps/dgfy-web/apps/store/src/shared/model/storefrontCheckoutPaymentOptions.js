@@ -20,7 +20,6 @@ const PAYMONGO_TEST_LABELS = Object.freeze({
   shopeepay: 'ShopeePay',
   qrph: 'Pay via QR Ph'
 });
-
 export const STOREFRONT_SANDBOX_QRPH_ENABLED = (
   import.meta.env.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED === 'true'
 );
@@ -42,7 +41,7 @@ export const buildStorefrontCheckoutPaymentOptions = (paymentCapabilities = null
         option.value === 'qrph'
           ? paymentCapabilities?.qrph?.environment === 'test'
           : paymentCapabilities?.[option.value]?.environment === 'test'
-      )
+        )
         ? { ...option, label: `${PAYMONGO_TEST_LABELS[option.value] || option.label} (PayMongo test)` }
         : option
     ))
