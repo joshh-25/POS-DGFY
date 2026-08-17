@@ -19,7 +19,10 @@ const VoucherScope = sequelize.define('VoucherScope', {
   voucher_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'vouchers', key: 'voucher_id' }
+    references: { model: 'vouchers', key: 'voucher_id' },
+    // Sequelize emits no referential action unless it is declared here, so without this a new tenant
+    // gets a bare FK and deleting a voucher with scopes errors instead of cascading.
+    onDelete: 'CASCADE'
   },
   scope_type: {
     type: DataTypes.ENUM('item', 'item_folder'),
@@ -33,7 +36,18 @@ const VoucherScope = sequelize.define('VoucherScope', {
   tableName: 'voucher_scopes',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: false,
+  // uq_voucher_scopes_voucher_type_ref is an integrity constraint, not a lookup index: without it
+  // the same item can be scoped to one voucher twice. It is unreachable from the attribute-level
+  // `unique` flag because it spans three columns.
+  indexes: [
+    {
+      name: 'uq_voucher_scopes_voucher_type_ref',
+      unique: true,
+      fields: ['voucher_id', 'scope_type', 'scope_ref_id']
+    },
+    { name: 'idx_voucher_scopes_type_ref', fields: ['scope_type', 'scope_ref_id'] }
+  ]
 });
 
 export default VoucherScope;

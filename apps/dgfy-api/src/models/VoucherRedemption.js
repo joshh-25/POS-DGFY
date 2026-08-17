@@ -28,7 +28,8 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
   pos_transaction_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'pos_transactions', key: 'pos_transaction_id' }
+    references: { model: 'pos_transactions', key: 'pos_transaction_id' },
+    onDelete: 'SET NULL'
   },
   channel: {
     type: DataTypes.ENUM('storefront', 'pos'),
@@ -37,12 +38,14 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
   location_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'tenant_locations', key: 'location_id' }
+    references: { model: 'tenant_locations', key: 'location_id' },
+    onDelete: 'SET NULL'
   },
   cashier_user_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'users', key: 'user_id' }
+    references: { model: 'users', key: 'user_id' },
+    onDelete: 'SET NULL'
   },
   terminal_id: {
     type: DataTypes.STRING(100),
@@ -51,7 +54,8 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
   store_customer_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'store_customers', key: 'customer_id' }
+    references: { model: 'store_customers', key: 'customer_id' },
+    onDelete: 'SET NULL'
   },
   // Landlord-side account pointer. Non-authoritative, no FK, and NULL for the whole POS half by
   // design -- #454 decision 6 makes POS redemption identity-free.
@@ -107,15 +111,17 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  // Named in the `indexes` block, not via `unique: true` -- see the note on Voucher.code for why the
+  // two forms are not interchangeable.
   idempotency_key: {
     type: DataTypes.STRING(160),
-    allowNull: false,
-    unique: true
+    allowNull: false
   },
   reversal_of_redemption_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'voucher_redemptions', key: 'voucher_redemption_id' }
+    references: { model: 'voucher_redemptions', key: 'voucher_redemption_id' },
+    onDelete: 'SET NULL'
   },
   reason: {
     type: DataTypes.STRING(500),
@@ -129,7 +135,20 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
   tableName: 'voucher_redemptions',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: false,
+  // Mirrors the migration's addIndex calls one for one, by name. The five FK-column indexes are
+  // declared explicitly rather than left to MySQL's implicit FK index, so the name matches what
+  // inspectRequiredTenantSchemaIndexes looks for.
+  indexes: [
+    { name: 'uq_voucher_redemptions_idempotency', unique: true, fields: ['idempotency_key'] },
+    { name: 'idx_voucher_redemptions_voucher_created', fields: ['voucher_id', 'created_at'] },
+    { name: 'idx_voucher_redemptions_transaction', fields: ['pos_transaction_id'] },
+    { name: 'idx_voucher_redemptions_store_customer', fields: ['store_customer_id'] },
+    { name: 'idx_voucher_redemptions_channel', fields: ['channel'] },
+    { name: 'idx_voucher_redemptions_reversal_of', fields: ['reversal_of_redemption_id'] },
+    { name: 'idx_voucher_redemptions_location', fields: ['location_id'] },
+    { name: 'idx_voucher_redemptions_cashier', fields: ['cashier_user_id'] }
+  ]
 });
 
 export default VoucherRedemption;
