@@ -38,7 +38,7 @@ describe('ServicesTrackingRoutePage', () => {
 
     const statusHeading = screen.getByRole('heading', { name: 'Service in progress' });
     expect(statusHeading).toBeTruthy();
-    expect(statusHeading.style.fontFamily).toContain('Lexend');
+    expect(statusHeading.style.fontFamily).toContain('Outfit');
     expect(statusHeading.style.fontFamily).toContain('Segoe UI');
     expect(screen.getAllByText('SV-ABC123').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/Wash, Dry & Fold/)).toBeTruthy();
@@ -53,7 +53,7 @@ describe('ServicesTrackingRoutePage', () => {
         actions={{ advanceLocalSimulation: vi.fn(), copyTextToClipboard: vi.fn(), goStoreCatalogPage: vi.fn(), handleTrack: vi.fn(), money: (amount) => `PHP ${amount}`, setTrackingPinInput: vi.fn() }}
         catalog={[]}
         formatTicketDate={(value) => String(value)}
-        isMobileViewport={false}
+        isMobileViewport
         isTrackingRefreshing={false}
         selectedStore={{ name: 'Ralph\'s Laundry' }}
         trackingError=""
@@ -73,6 +73,7 @@ describe('ServicesTrackingRoutePage', () => {
 
     expect(screen.getByRole('heading', { name: 'Ready for drop-off' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Custom repair assessment' }).getAttribute('src')).toBe('/uploads/storefront-assets/comforter-care.webp');
+    expect(screen.getByRole('region', { name: 'Service status timeline' }).style.overflowX).toBe('hidden');
     expect(screen.queryByText(/Local preview only/)).toBeNull();
     expect(screen.queryByText('Live updates')).toBeNull();
     expect(screen.queryByText('Your safety matters')).toBeNull();

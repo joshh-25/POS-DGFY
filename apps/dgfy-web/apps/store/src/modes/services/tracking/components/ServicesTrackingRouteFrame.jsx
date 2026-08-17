@@ -1,11 +1,12 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../servicesTypography.js';
 
 export function ServicesTrackingRouteFrame({
   children,
-  bodyFont = "'Source Sans 3', 'Segoe UI', sans-serif",
-  displayFont = "'Lexend', 'Segoe UI', Arial, sans-serif",
+  bodyFont = SERVICES_BODY_FONT,
+  displayFont = SERVICES_DISPLAY_FONT,
   goStoreCatalogPage,
   isMobileViewport,
   selectedStore,
