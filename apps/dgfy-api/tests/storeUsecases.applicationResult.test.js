@@ -8,6 +8,7 @@ import {
     buildStoreCartQuoteUseCase,
     buildStoreCheckoutUseCase,
     buildStorefrontPaymentCallbackUrl,
+    getHostedPaymentMethodType,
     resolveStorefrontPaymentReturnUrl,
     buildTrackStoreOrderUseCase,
     buildCancelStoreOrderUseCase,
@@ -72,6 +73,16 @@ describe('store use-cases application result contract', () => {
             'https://dgfy.ph/tenant-store/masu-cafe-ed841f/order'
             + '?payment_session=CPS-BBF4RAYCYN&payment_status=success&payment_method=gcash'
         );
+    });
+
+    it.each([
+        ['card', 'card'],
+        ['gcash', 'gcash'],
+        ['maya', 'paymaya'],
+        ['grab_pay', 'grab_pay'],
+        ['shopeepay', 'shopeepay']
+    ])('maps %s to the exact PayMongo Hosted Checkout method %s', (paymentType, providerMethod) => {
+        expect(getHostedPaymentMethodType(paymentType)).toBe(providerMethod);
     });
 
     it('rejects an invalid or credential-bearing payment return URL', () => {
@@ -194,6 +205,47 @@ describe('store use-cases application result contract', () => {
                 reason_code: null
             }
         });
+    });
+
+    it('surfaces active hosted wallet and card methods from PayMongo capabilities', async () => {
+        const paymongoService = {
+            getPaymentMethodCapabilities: jest.fn().mockResolvedValue([
+                'card',
+                'gcash',
+                'paymaya',
+                'grab_pay',
+                'shopeepay',
+                'qrph'
+            ])
+        };
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
+            paymongoService,
+            tenantRevenueRepository: {
+                findEffectiveFeePolicy: jest.fn().mockResolvedValue({
+                    settlement_status: 'active',
+                    payout_destination_masked: '****1234'
+                })
+            },
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: () => [],
+            paymongoMode: 'live',
+            revenueSharingEnabled: true,
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
+        });
+
+        const result = await dbStore.run({ tenantId: 'tenant-payment-methods' }, () => useCase({ query: {} }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.payment_capabilities).toEqual(expect.objectContaining({
+            card: { enabled: true, environment: 'live', reason_code: null },
+            gcash: { enabled: true, environment: 'live', reason_code: null },
+            maya: { enabled: true, environment: 'live', reason_code: null },
+            grab_pay: { enabled: true, environment: 'live', reason_code: null },
+            shopeepay: { enabled: true, environment: 'live', reason_code: null },
+            qrph: { enabled: true, environment: 'live', reason_code: null }
+        }));
     });
 
     it('listStoreCatalog keeps browsing available when payment readiness lookup fails', async () => {

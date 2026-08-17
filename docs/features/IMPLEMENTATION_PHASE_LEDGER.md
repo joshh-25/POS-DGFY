@@ -4837,3 +4837,65 @@ parked-sale replay and shift-close resolution.
 
 - Phase 99 remains in progress until authenticated rendered POS proof passes.
 - Phase 100 is the next eligible phase after completion.
+
+## Phase 100 - Storefront Active PayMongo E-wallet Routing
+
+### Initiative and Release
+
+- Initiative: Storefront payment-method capability expansion.
+- Release: Storefront Hosted Checkout active e-wallet/card method selection.
+
+### Objective and Scope
+
+- Show active server-resolved Card, GCash, Maya, GrabPay, ShopeePay, and QR Ph
+  choices in Storefront checkout.
+- Route the selected method as the single PayMongo Hosted Checkout method; a
+  GCash selection must create a session restricted to `gcash`.
+- Preserve the existing signed webhook finalization, idempotency, settlement,
+  refund, and walk-in POS physical-QR boundaries.
+- Defer BPI, UBP, BDO, Landbank, and other direct-online-banking choices until
+  the bank-specific `bank_code` Payment Intent flow is separately approved.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-17.
+
+### Dependencies and Governance Note
+
+- Depends on ADR 0052's landlord-owned commerce payment-session and verified
+  provider-finalization contract, amended on 2026-08-17.
+- Depends on the PayMongo capability endpoint and the additive tenant payment
+  enum migration.
+- Classified `cross-boundary`: Storefront UI/API capability expansion plus an
+  additive tenant-schema enum migration; no posted payment or settlement rows
+  are changed.
+
+### Acceptance and Validation Evidence
+
+- [ ] Only PayMongo methods reported active by the server capability lookup are
+  shown; inactive methods remain hidden.
+- [ ] GCash selection sends `payment_type=gcash` and creates
+  `payment_method_types=["gcash"]`.
+- [ ] Maya, GrabPay, ShopeePay, Card, and QR Ph selections preserve their exact
+  method identifiers through the same payment-session endpoint.
+- [ ] No direct order finalizes before a verified PayMongo webhook.
+- [ ] Existing Cash, QR Ph, return recovery, and POS physical-QR behavior remain
+  unchanged.
+- [ ] Focused frontend/backend tests, schema checks, architecture checks, lint,
+  and Storefront/API validation pass.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`
+- `apps/dgfy-api/src/validators/storeValidator.js`
+- `apps/dgfy-api/src/models/PosTransaction.js`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-migration-runner/migrations/20260817000001-expand-storefront-paymongo-payment-methods.cjs`
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js`
+- `apps/dgfy-web/apps/store/src/shared/services/storefrontOnlinePaymentSession.js`
+
+### Completion Record
+
+- Phase 100 remains in progress until the acceptance gates and live-capability
+  verification pass. Phase 101 is the next eligible phase after completion.
