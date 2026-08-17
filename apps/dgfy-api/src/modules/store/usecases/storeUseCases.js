@@ -81,7 +81,8 @@ const PAYMENT_METHOD_CAPABILITY_ALIASES = Object.freeze({
     gcash: Object.freeze(['gcash']),
     maya: Object.freeze(['paymaya', 'maya']),
     grab_pay: Object.freeze(['grab_pay']),
-    shopeepay: Object.freeze(['shopeepay', 'shopee_pay'])
+    shopeepay: Object.freeze(['shopeepay', 'shopee_pay']),
+    qrph: Object.freeze(['qrph'])
 });
 
 export const getHostedPaymentMethodType = (paymentType) => (

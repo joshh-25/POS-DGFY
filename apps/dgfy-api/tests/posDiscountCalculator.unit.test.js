@@ -1,4 +1,5 @@
 import { calculatePosDiscount } from '../src/modules/pos/domain/posDiscountCalculator.js';
+import { calculatePosItemDiscounts } from '../src/modules/pos/domain/posItemDiscountCalculator.js';
 
 const lines = [
     { item_id: 1, quantity: 1, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: true },
@@ -81,6 +82,22 @@ describe('POS governed discount calculator', () => {
         }
     });
 
+    test('allocates an employee discount only to selected cart lines', () => {
+        const result = calculatePosDiscount({
+            lines,
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 15,
+                lines: [{ item_id: 2 }]
+            }
+        });
+
+        expect(result.discount_amount).toBe(15);
+        expect(result.lines.map((line) => line.discount_amount)).toEqual([0, 15, 0]);
+        expect(result.total_amount).toBe(277);
+    });
+
     test('still applies an explicit maximum discount amount', () => {
         const result = calculatePosDiscount({
             lines: [{ item_id: 1, quantity: 1, sale_price: 100, vat_type_snapshot: 'vatable' }],
@@ -95,5 +112,38 @@ describe('POS governed discount calculator', () => {
 
         expect(result.discount_amount).toBe(10);
         expect(result.total_amount).toBe(90);
+    });
+
+    test('calculates a global discount from the item-discounted base', () => {
+        const result = calculatePosDiscount({
+            lines: [{
+                item_id: 1,
+                quantity: 1,
+                sale_price: 100,
+                global_discount_base_amount: 85,
+                vat_type_snapshot: 'vatable'
+            }],
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 10,
+                lines: []
+            }
+        });
+
+        expect(result.discount_amount).toBe(8.5);
+        expect(result.total_amount).toBe(76.5);
+    });
+
+    test('calculates an item-only discount and exposes the reduced global base', () => {
+        const result = calculatePosItemDiscounts({
+            lines: [{ item_id: 1, item_name: 'Coffee', quantity: 1, sale_price: 100 }],
+            applications: [{ item_id: 1, method: 'percentage', rate: 15, label: 'Item Discount' }]
+        });
+
+        expect(result.discount_amount).toBe(15);
+        expect(result.total_amount).toBe(85);
+        expect(result.lines[0].item_discount_snapshot.discount_amount).toBe(15);
+        expect(result.lines[0].global_discount_base_amount).toBe(85);
     });
 });

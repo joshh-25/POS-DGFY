@@ -5,20 +5,25 @@ const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
 export const calculatePosDiscount = ({ lines = [], application = null } = {}) => {
-  const normalizedLines = lines.map((line) => {
-    const quantity = Math.max(0, Number(line.quantity) || 0);
-    const salePrice = Math.max(0, Number(line.sale_price) || 0);
-    return {
-      ...line,
-      quantity,
-      sale_price: salePrice,
-      gross_amount: round4(quantity * salePrice)
-    };
-  });
-  const subtotalAmount = round4(normalizedLines.reduce((sum, line) => sum + line.gross_amount, 0));
+    const normalizedLines = lines.map((line) => {
+        const quantity = Math.max(0, Number(line.quantity) || 0);
+        const salePrice = Math.max(0, Number(line.sale_price) || 0);
+        const grossAmount = round4(quantity * salePrice);
+        const globalDiscountBaseAmount = line.global_discount_base_amount == null
+            ? grossAmount
+            : round4(Math.min(grossAmount, Math.max(0, Number(line.global_discount_base_amount) || 0)));
+        return {
+            ...line,
+            quantity,
+            sale_price: salePrice,
+            gross_amount: grossAmount,
+            global_discount_base_amount: globalDiscountBaseAmount
+        };
+    });
+    const subtotalAmount = round4(normalizedLines.reduce((sum, line) => sum + line.global_discount_base_amount, 0));
   const type = String(application?.type || 'none').trim().toLowerCase();
   if (!application || type === 'none') {
-    return { type: 'none', subtotal_amount: subtotalAmount, vat_removed: 0, vat_exempt_amount: 0, discount_amount: 0, total_amount: subtotalAmount, lines: normalizedLines.map((line) => ({ ...line, final_line_amount: line.gross_amount, discount_amount: 0, vat_removed: 0, vat_exempt_amount: 0, eligible_quantity: 0 })) };
+    return { type: 'none', subtotal_amount: subtotalAmount, vat_removed: 0, vat_exempt_amount: 0, discount_amount: 0, total_amount: subtotalAmount, lines: normalizedLines.map((line) => ({ ...line, final_line_amount: line.global_discount_base_amount, discount_amount: 0, vat_removed: 0, vat_exempt_amount: 0, eligible_quantity: 0 })) };
   }
 
   const statutory = STATUTORY_TYPES.has(type);
@@ -29,11 +34,11 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const restrictToSelections = !statutory && selections.size > 0;
   const eligibleBase = round4(normalizedLines.reduce((sum, line) => {
     const selected = selections.get(Number(line.item_id));
-    if (!statutory) return restrictToSelections && !selected ? sum : sum + line.gross_amount;
+    if (!statutory) return restrictToSelections && !selected ? sum : sum + line.global_discount_base_amount;
     const autoEligible = isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible);
     if ((hasStatutorySelections && !selected) || !autoEligible) return sum;
     const eligibleQuantity = clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity);
-    return sum + round4(eligibleQuantity * line.sale_price);
+    return sum + round4(eligibleQuantity * (line.quantity > 0 ? line.global_discount_base_amount / line.quantity : 0));
   }, 0));
   let remainingFixed = method === 'fixed' ? clamp(application.amount, 0, eligibleBase) : 0;
   const fixedDiscountAmount = remainingFixed;
@@ -57,7 +62,8 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
         ? clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity)
         : 0)
       : (restrictToSelections && !selected ? 0 : line.quantity);
-    const eligibleGross = round4(eligibleQuantity * line.sale_price);
+    const globalUnitPrice = line.quantity > 0 ? line.global_discount_base_amount / line.quantity : 0;
+    const eligibleGross = round4(eligibleQuantity * globalUnitPrice);
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     let discountAmount = 0;
@@ -87,7 +93,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
       vat_exempt_amount: vatExemptAmount,
       discount_amount: discountAmount,
       eligibility_override_reason: selected?.override_reason || null,
-      final_line_amount: round4(line.gross_amount - vatRemoved - discountAmount)
+      final_line_amount: round4(line.global_discount_base_amount - vatRemoved - discountAmount)
     };
   });
 
@@ -103,7 +109,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
     const factor = maximum / discountAmount;
     calculatedLines.forEach((line) => {
       line.discount_amount = round4(line.discount_amount * factor);
-      line.final_line_amount = round4(line.gross_amount - line.vat_removed - line.discount_amount);
+      line.final_line_amount = round4(line.global_discount_base_amount - line.vat_removed - line.discount_amount);
     });
     discountAmount = round4(calculatedLines.reduce((sum, line) => sum + line.discount_amount, 0));
   }

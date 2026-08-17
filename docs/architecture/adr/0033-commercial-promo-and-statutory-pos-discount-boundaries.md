@@ -172,6 +172,14 @@ Migration `20260815000003-align-audit-log-context.cjs` adds the nullable audit
 actor/context columns required by the existing append-only audit contract to
 older tenant schemas; it does not add or store raw PIN data.
 
+### 2026-08-17 — Cashier-facing label for the generic discount type
+
+The governed generic discount keeps the existing `manual` API/database value
+for backward compatibility, but POS displays it as **Other**. This is a
+presentation-only label change; validation, PIN authorization, stored audit
+records, reports, and receipts continue to use the existing `manual` value
+where they require the canonical type.
+
 ## Authoritative Sources
 
 - `docs/START_HERE.md`
