@@ -18,11 +18,13 @@ function ServicesCatalogToolbar({
   servicesPrimarySoft,
   servicesPrimaryBorder,
   servicesPrimaryShadow,
+  servicesViewMode = 'list',
   catalogPresentation = {},
   servicesViewModel,
   setActiveServiceTab,
   setCatalogSearch,
   setServiceSortOption,
+  setServicesViewMode = NOOP,
   visibleServiceCount
 }) {
   const categoryDropdownRef = useRef(null);
@@ -93,7 +95,7 @@ function ServicesCatalogToolbar({
       filteredFnbViewModel={toolbarViewModel}
       fnbCategoryDropdownRef={categoryDropdownRef}
       fnbSortOption={serviceSortOption === 'recommended' ? 'name_asc' : serviceSortOption}
-      fnbViewMode="grid"
+      fnbViewMode={servicesViewMode}
       isFnbCategoryDropdownOpen={isCategoryDropdownOpen}
       isMobileViewport={isMobileViewport}
       modeAdapter={modeAdapter}
@@ -101,9 +103,9 @@ function ServicesCatalogToolbar({
       setActiveServiceTab={setActiveServiceTab}
       setCatalogSearch={setCatalogSearch}
       setFnbSortOption={(nextValue) => setServiceSortOption(nextValue === 'name_asc' ? 'recommended' : nextValue)}
-      setFnbViewMode={NOOP}
+      setFnbViewMode={setServicesViewMode}
       setIsFnbCategoryDropdownOpen={setIsCategoryDropdownOpen}
-      showViewToggle={false}
+      showViewToggle
     />
   );
 }

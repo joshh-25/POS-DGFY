@@ -20,6 +20,7 @@ export function ServiceImage({
   loading = 'lazy',
   decoding = 'async',
   fallbackLabel = DEFAULT_FALLBACK_LABEL,
+  fallbackLabelStyle,
   fallbackIcon,
   fallbackStyle,
   style,
@@ -54,7 +55,7 @@ export function ServiceImage({
         }}
       >
         {fallbackIcon || <ImageOff size={20} strokeWidth={1.8} aria-hidden="true" />}
-        {fallbackLabel ? <span style={{ fontSize: 12, fontWeight: 700 }}>{fallbackLabel}</span> : null}
+        {fallbackLabel ? <span style={{ maxWidth: 'calc(100% - 8px)', overflow: 'hidden', textAlign: 'center', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, fontWeight: 700, ...fallbackLabelStyle }}>{fallbackLabel}</span> : null}
       </div>
     );
   }

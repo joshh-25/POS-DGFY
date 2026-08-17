@@ -185,7 +185,7 @@ const ServicesHero = ({
               selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
             />
           ) : (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont, minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
               <MapPin size={16} />
               {!hasSelectedBranchFromMenu && <span>Branch:</span>}
               <StorefrontDropdown
@@ -201,11 +201,11 @@ const ServicesHero = ({
                   background: 'transparent',
                   boxShadow: 'none',
                   padding: '4px 34px 4px 2px',
-                  fontFamily: '"Inter", sans-serif'
+                  fontFamily: servicesBodyFont
                 }}
                 containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
                 menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
-                optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
+                optionStyle={{ padding: '12px 18px', fontFamily: servicesBodyFont }}
                 selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
               />
             </label>

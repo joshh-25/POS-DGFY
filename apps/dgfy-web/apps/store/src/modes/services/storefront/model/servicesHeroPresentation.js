@@ -1,3 +1,5 @@
+import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../servicesTypography.js';
+
 const SERVICES_HERO_HIGHLIGHT = '#f59e0b';
 const SERVICES_HERO_PRIMARY_SHADOW = 'rgba(15,118,110,0.24)';
 const SERVICES_HERO_MOBILE_INFO_CARD_WIDTH = 'calc(100% - 32px)';
@@ -84,8 +86,8 @@ function deriveServicesHeroTheme(heroTheme) {
     servicesPrimary: heroTheme?.accent || '#0f766e',
     servicesPrimaryDark: heroTheme?.accentDark || '#134e4a',
     servicesPrimarySoft: heroTheme?.accentSoft || '#ecfeff',
-    servicesBodyFont: heroTheme?.bodyFont || "'Source Sans 3', 'Segoe UI', sans-serif",
-    servicesDisplayFont: heroTheme?.displayFont || heroTheme?.bodyFont || "'Lexend', 'Segoe UI', Arial, sans-serif",
+    servicesBodyFont: heroTheme?.bodyFont || SERVICES_BODY_FONT,
+    servicesDisplayFont: heroTheme?.displayFont || heroTheme?.bodyFont || SERVICES_DISPLAY_FONT,
     servicesHighlight: SERVICES_HERO_HIGHLIGHT,
     servicesPrimaryShadow: SERVICES_HERO_PRIMARY_SHADOW,
     servicesMobileInfoCardWidth: SERVICES_HERO_MOBILE_INFO_CARD_WIDTH

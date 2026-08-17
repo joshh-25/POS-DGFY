@@ -1,6 +1,7 @@
 import { getBusinessModePinMeta, normalizeBusinessMode } from '../../discovery/model/businessModePins.js';
 import { getStorefrontTemplateConfig } from './storefrontTemplateRegistry.js';
 import { hasServicesCapability as hasComposedServicesCapability } from '../../shared/model/workflowCapabilities.js';
+import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../modes/services/servicesTypography.js';
 
 export const ModePresentationRegistry = Object.freeze({
   default: Object.freeze({
@@ -101,8 +102,8 @@ export const ModePresentationRegistry = Object.freeze({
       })
     }),
     heroTheme: Object.freeze({
-      displayFont: "'Lexend', 'Segoe UI', Arial, sans-serif",
-      bodyFont: "'Source Sans 3', 'Segoe UI', sans-serif",
+      displayFont: SERVICES_DISPLAY_FONT,
+      bodyFont: SERVICES_BODY_FONT,
       accent: '#0f766e',
       accentDark: '#134e4a',
       accentSoft: '#ecfeff',

@@ -49,6 +49,46 @@ describe('ServiceCatalogCard', () => {
     expect(baseProps.onAdd).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the Services mobile list card with the demo arrangement', () => {
+    const { container } = render(
+      <ServiceCatalogCard
+        {...baseProps}
+        isMobileViewport
+        servicesViewMode="list"
+      />
+    );
+
+    const card = container.querySelector('[data-service-catalog-view="list"]');
+    expect(card).toBeTruthy();
+    expect(card.style.display).toBe('flex');
+    expect(card.style.minHeight).toBe('120px');
+    expect(card.firstElementChild.style.width).toBe('88px');
+    expect(screen.queryByText('Laundry Packages')).toBeNull();
+    expect(screen.getByText('A practical laundry package.').style.minHeight).toBe('34px');
+    const addServiceButton = screen.getByRole('button', { name: 'Add service Wash, Dry & Fold' });
+    expect(addServiceButton).toBeTruthy();
+    expect(addServiceButton.style.width).toBe('100%');
+    expect(addServiceButton.style.height).toBe('38px');
+    expect(addServiceButton.textContent).not.toContain('Add service');
+    expect(addServiceButton.querySelector('svg')).toBeTruthy();
+  });
+
+  it('keeps the F&B-sized single-column mobile grid geometry for Services', () => {
+    const { container } = render(
+      <ServiceCatalogCard
+        {...baseProps}
+        isMobileViewport
+        servicesViewMode="grid"
+      />
+    );
+
+    const card = container.querySelector('[data-service-catalog-view="grid"]');
+    expect(card).toBeTruthy();
+    expect(card.style.width).toBe('calc(100% - 8px)');
+    expect(card.style.borderRadius).toBe('20px');
+    expect(card.firstElementChild.style.height).toBe('140px');
+  });
+
   it('uses configured empty and unavailable labels without inventing service options', () => {
     render(<ServiceCatalogCard {...baseProps} available={false} />);
 

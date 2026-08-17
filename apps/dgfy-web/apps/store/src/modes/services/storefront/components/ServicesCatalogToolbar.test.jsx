@@ -48,6 +48,8 @@ const baseProps = {
   setActiveServiceTab: vi.fn(),
   setCatalogSearch: vi.fn(),
   setServiceSortOption: vi.fn(),
+  servicesViewMode: 'list',
+  setServicesViewMode: vi.fn(),
   visibleServiceCount: 2
 };
 
@@ -105,5 +107,17 @@ describe('ServicesCatalogToolbar', () => {
     expect(screen.getByText('2 services available')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
     expect(screen.queryByPlaceholderText('Search laundry services...')).toBeNull();
+  });
+
+  it('enables the mobile list and grid view choices for Services', () => {
+    const setServicesViewMode = vi.fn();
+    const { container } = render(<ServicesCatalogToolbar {...baseProps} isMobileViewport setServicesViewMode={setServicesViewMode} />);
+    const viewButtons = [...container.querySelectorAll('button')].filter((button) => button.querySelector('svg.lucide-list, svg.lucide-layout-grid'));
+
+    expect(viewButtons).toHaveLength(2);
+    fireEvent.click(viewButtons[0]);
+    fireEvent.click(viewButtons[1]);
+    expect(setServicesViewMode).toHaveBeenNthCalledWith(1, 'list');
+    expect(setServicesViewMode).toHaveBeenNthCalledWith(2, 'grid');
   });
 });
