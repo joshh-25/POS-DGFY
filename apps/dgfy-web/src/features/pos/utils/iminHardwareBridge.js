@@ -10,6 +10,10 @@ const safeText = (value, fallback = '') => {
     return text || fallback;
 };
 
+const displayDiscountType = (value) => safeText(value).toLowerCase() === 'manual'
+    ? 'OTHER'
+    : safeText(value).replace(/_/g, ' ').toUpperCase();
+
 const line = (char = '-') => char.repeat(RECEIPT_COLUMNS);
 
 const center = (value) => {
@@ -421,7 +425,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         receiptRows.push(`Promo Code: ${safeText(governedDiscount.promo_code)}`);
     }
     if (governedDiscount?.discount_type) {
-        receiptRows.push(`Discount Type: ${safeText(governedDiscount.discount_type).replace(/_/g, ' ').toUpperCase()}`);
+        receiptRows.push(`Discount Type: ${displayDiscountType(governedDiscount.discount_type)}`);
     }
 
     const serviceFeeLabel = [
@@ -687,7 +691,7 @@ export const formatIminOrderTicketText = ({
         const fnbParts = [
             fnbContext?.fnb_check_id ? `F&B Check #${fnbContext.fnb_check_id}` : '',
             fnbContext?.table_label || fnbContext?.fnb_table_label_snapshot
-                ? `Table ${fnbContext.table_label || fnbContext.fnb_table_label_snapshot}`
+                ? `Table: ${fnbContext.table_label || fnbContext.fnb_table_label_snapshot}`
                 : ''
         ].filter(Boolean);
         pushCenteredWrapped(rows, fnbParts.join(' '));
@@ -701,7 +705,7 @@ export const formatIminOrderTicketText = ({
         || fnbContext?.special_instructions
     );
     if (normalizedOrderNotes) {
-        wrapText(`Order notes: ${normalizedOrderNotes}`).forEach((row) => rows.push(row));
+        wrapText(`Kitchen note: ${normalizedOrderNotes}`).forEach((row) => rows.push(row));
     }
 
     rows.push(line('='));
@@ -741,12 +745,66 @@ export const formatIminOrderTicketText = ({
     return rows.join('\n');
 };
 
+export const formatIminBillRequestText = ({
+    cart = [],
+    terminalId = '',
+    orderMethod = '',
+    fnbContext = null,
+    orderNotes = '',
+    billTotal = null
+}) => {
+    const rows = [
+        center('DGFY'),
+        center('BILL REQUEST'),
+        center(new Date().toLocaleString())
+    ];
+
+    if (terminalId) rows.push(center(`Terminal: ${terminalId}`));
+    if (orderMethod) rows.push(center(`Order: ${String(orderMethod).replace(/_/g, ' ')}`));
+    if (fnbContext?.fnb_check_id || fnbContext?.table_label || fnbContext?.fnb_table_label_snapshot) {
+        const fnbParts = [
+            fnbContext?.fnb_check_id ? `F&B Check #${fnbContext.fnb_check_id}` : '',
+            fnbContext?.table_label || fnbContext?.fnb_table_label_snapshot
+                ? `Table: ${fnbContext.table_label || fnbContext.fnb_table_label_snapshot}`
+                : ''
+        ].filter(Boolean);
+        pushCenteredWrapped(rows, fnbParts.join(' '));
+    }
+
+    const normalizedOrderNotes = safeText(orderNotes || fnbContext?.order_notes || fnbContext?.special_instructions);
+    if (normalizedOrderNotes) {
+        wrapText(`Kitchen note: ${normalizedOrderNotes}`).forEach((row) => rows.push(row));
+    }
+
+    rows.push(line('='));
+    rows.push(pair('Item / Qty', 'Unit price'));
+    rows.push(line());
+
+    let calculatedTotal = 0;
+    cart.forEach((cartLine, index) => {
+        const quantity = Number(cartLine?.quantity || 0);
+        const unitPrice = Number(cartLine?.sale_price || cartLine?.unit_price || 0);
+        calculatedTotal += quantity * unitPrice;
+        const itemName = resolveOrderTicketItemName(cartLine, index);
+        wrapText(`${quantity.toFixed(quantity % 1 === 0 ? 0 : 2)} x ${itemName}`).forEach((row) => rows.push(row));
+        rows.push(pair('  Price', money(unitPrice)));
+        rows.push(line());
+    });
+
+    const total = Number.isFinite(Number(billTotal)) ? Number(billTotal) : calculatedTotal;
+    rows.push(pair('Overall price', money(total)));
+    rows.push(center('No payment recorded'));
+    return rows.join('\n');
+};
+
 export const printOrderWithIminBridge = ({
     cart = [],
     terminalId = '',
     orderMethod = '',
     fnbContext = null,
-    orderNotes = ''
+    orderNotes = '',
+    billRequest = false,
+    billTotal = null
 }) => {
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.printReceipt !== 'function') {
@@ -755,10 +813,12 @@ export const printOrderWithIminBridge = ({
 
     const result = parseBridgeResult(
         bridge.printReceipt(
-            formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
+            billRequest
+                ? formatIminBillRequestText({ cart, terminalId, orderMethod, fnbContext, orderNotes, billTotal })
+                : formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
             false
         ),
-        'Order ticket print command sent.'
+        billRequest ? 'Bill request print command sent.' : 'Order ticket print command sent.'
     );
 
     if (!result.success) {
@@ -767,7 +827,7 @@ export const printOrderWithIminBridge = ({
 
     emitPosHardwareMessage({
         title: 'iMin order printer',
-        message: result.message || 'Order ticket print command sent.',
+        message: result.message || (billRequest ? 'Bill request print command sent.' : 'Order ticket print command sent.'),
         tone: 'success',
         source: 'iMin hardware',
         details: result.diagnostics || null

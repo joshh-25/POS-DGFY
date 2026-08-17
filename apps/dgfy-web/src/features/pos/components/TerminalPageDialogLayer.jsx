@@ -23,7 +23,6 @@ export default function TerminalPageDialogLayer({ model }) {
   const {
     DEFAULT_CURRENCY,
     POS_TERMINAL_SETUP_STEPS,
-    activeShiftId,
     activeTerminalRegistry,
     adminReauthContext,
     adminReauthForm,
@@ -419,11 +418,11 @@ export default function TerminalPageDialogLayer({ model }) {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
-                {((cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start') || cashierResumeUnlock) && (
+                {((cashierUnlockSession?.email && terminalUnlockMode === 'shift_start') || cashierResumeUnlock) && (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock}
+                    onClick={() => handleLock({ forceLogin: true })}
                     disabled={submitting || shiftActionLoading.open}
                   >
                     Back to Login

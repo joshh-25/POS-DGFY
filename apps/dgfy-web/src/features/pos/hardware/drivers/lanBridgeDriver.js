@@ -100,14 +100,15 @@ export const lanBridgeDriver = {
             });
         }
     },
-    async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey } = {}) {
+    async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey, drawerAuthorizationToken } = {}) {
         try {
             const result = await openPosDeviceDrawer({
                 idempotency_key: idempotencyKey,
                 shift_id: shiftId,
                 transaction_id: transactionId || undefined,
                 terminal_id: terminalId || undefined,
-                reason
+                reason,
+                drawer_authorization_token: drawerAuthorizationToken || undefined
             });
             return normalizeHardwareResult({
                 success: true,

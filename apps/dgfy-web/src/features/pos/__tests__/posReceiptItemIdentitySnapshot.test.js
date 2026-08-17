@@ -69,6 +69,30 @@ describe('pos-receipt item identity snapshot precedence', () => {
     expect(text).not.toContain('Live Name');
   });
 
+  it('prints selected add-ons and item notes beneath the item without showing empty modifier text', () => {
+    const transaction = {
+      ...baseTransaction,
+      lines: [{
+        item_id: 1,
+        item_name_snapshot: 'Brewed Coffee',
+        quantity: 1,
+        sale_price: 90,
+        line_subtotal: 90,
+        fnb_modifiers_snapshot: [{ option_name: 'Extra syrup' }],
+        fnb_special_instructions: 'Less ice'
+      }]
+    };
+
+    const html = renderPosReceiptHtml({ transaction });
+    expect(html).toContain('Add-ons: Extra syrup');
+    expect(html).toContain('Note: Less ice');
+    expect(html).not.toContain('Modifiers: Extra syrup');
+
+    const thermalText = renderThermalReceiptText({ transaction });
+    expect(thermalText).toContain('Add-ons: Extra syrup');
+    expect(thermalText).toContain('Note: Less ice');
+  });
+
   it('renders a persisted mixed-tender breakdown in HTML and thermal receipts', () => {
     const transaction = {
       ...baseTransaction,

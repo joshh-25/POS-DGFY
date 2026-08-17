@@ -16,6 +16,7 @@ describe('POS Workflow Panels Contract', () => {
         setOrderMethod={setMethod}
         tableNumber="T-10"
         kitchenNotes="No spice"
+        setKitchenNotes={setMethod}
         paymentTypeField={(
           <label>
             Payment Type
@@ -35,6 +36,8 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Pickup')).toBeDefined();
     expect(screen.getByText('Delivery')).toBeDefined();
     expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (global)')).toBeDefined();
+    expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
     expect(screen.getByText('Payment Type')).toBeDefined();
 

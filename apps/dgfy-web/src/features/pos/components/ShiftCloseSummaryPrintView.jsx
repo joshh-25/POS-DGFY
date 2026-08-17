@@ -60,7 +60,7 @@ export default function ShiftCloseSummaryPrintView({
                     <Row name="Subtotal" value={`${currency} ${money(sales.subtotal_amount)}`} />
                     <Row name="Discounts" value={`${currency} ${money(sales.discount_amount)}`} />
                     <Row name="VAT" value={`${currency} ${money(sales.vat_amount)}`} />
-                    <Row name="Total sales" value={`${currency} ${money(sales.total_amount)}`} strong />
+                    <Row name="Total sales (excluding opening cash)" value={`${currency} ${money(sales.total_amount)}`} strong />
                     <Row name={`POS voids (${sales.void_transaction_count || 0})`} value={`${currency} ${money(sales.void_amount)}`} />
                 </section>
 
@@ -77,11 +77,11 @@ export default function ShiftCloseSummaryPrintView({
 
                 <section className="space-y-1 py-2">
                     <p className="font-black uppercase">Cash reconciliation</p>
-                    <Row name="Opening float" value={`${currency} ${money(cash.opening_float_amount)}`} />
+                    <Row name="Opening/petty cash" value={`${currency} ${money(cash.opening_float_amount)}`} />
                     <Row name="Cash sales" value={`${currency} ${money(cash.cash_sales_amount)}`} />
                     <Row name="Cash in" value={`${currency} ${money(cash.cash_in_total)}`} />
                     <Row name="Cash out" value={`${currency} ${money(cash.cash_out_total)}`} />
-                    <Row name="Expected cash" value={`${currency} ${money(cash.expected_cash_amount)}`} />
+                    <Row name="Expected cash in drawer" value={`${currency} ${money(cash.expected_cash_amount)}`} />
                     <Row name="Closing cash" value={reconciliationMoney(cash.closing_cash_amount, currency, 'Not closed')} />
                     <Row name="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                 </section>

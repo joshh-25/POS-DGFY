@@ -3,6 +3,9 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
 
 const money = (value) => Number(value || 0).toFixed(2);
+const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
+    ? 'OTHER'
+    : String(value || '').replace(/_/g, ' ').toUpperCase();
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem';
@@ -211,6 +214,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     const quantity = resolveReceiptLineQuantity(line);
                     const unitPrice = resolveReceiptLineUnitPrice(line);
                     const lineTotal = resolveReceiptLineTotal(line);
+                    const itemDiscountAmount = Number((line?.item_discount || line?.item_discount_snapshot)?.discount_amount || 0);
                     const itemNameParts = splitReceiptItemName(line.item?.name || `Item #${line.item_id}`);
                     return (
                         <div
@@ -231,10 +235,19 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                                     {itemNameParts.secondLine}
                                 </p>
                             )}
-                            {(modifiers.length || line.fnb_special_instructions) && (
-                                <p className="mt-0.5 text-[9px] leading-snug text-slate-500 print:text-[8px]">
-                                    {modifiers.length ? `Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
-                                    {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
+                            {itemDiscountAmount > 0 && (
+                                <p className="mt-0.5 text-[9px] font-semibold leading-snug text-rose-700 print:text-[8px]">
+                                    Item discount: -PHP {money(itemDiscountAmount)}
+                                </p>
+                            )}
+                            {modifiers.length > 0 && (
+                                <p className="mt-0.5 pl-2 text-[9px] font-semibold leading-snug text-slate-500 print:pl-1.5 print:text-[8px]">
+                                    Add-ons: {modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}
+                                </p>
+                            )}
+                            {line.fnb_special_instructions && (
+                                <p className="mt-0.5 pl-2 text-[9px] italic leading-snug text-slate-500 print:pl-1.5 print:text-[8px]">
+                                    Note: {line.fnb_special_instructions}
                                 </p>
                             )}
                         </div>
@@ -255,7 +268,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
                     {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>Promo Code</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
-                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{String(governedDiscount.discount_type).replace(/_/g, ' ').toUpperCase()}</span></div>}
+                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{displayDiscountType(governedDiscount.discount_type)}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
