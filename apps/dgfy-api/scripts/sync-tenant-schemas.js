@@ -1170,7 +1170,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  UNIQUE KEY `uq_vouchers_code` (`code`),\n"
             + "  KEY `idx_vouchers_status_validity` (`status`,`valid_from`,`valid_until`),\n"
             + "  KEY `idx_vouchers_kind` (`voucher_kind`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // `scope_ref_id` is polymorphic across items(item_id) and item_folders(folder_id) depending on
     // `scope_type`, so it deliberately carries no FK - validated in voucherRepository instead.
@@ -1185,7 +1185,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  UNIQUE KEY `uq_voucher_scopes_voucher_type_ref` (`voucher_id`,`scope_type`,`scope_ref_id`),\n"
             + "  KEY `idx_voucher_scopes_type_ref` (`scope_type`,`scope_ref_id`),\n"
             + "  CONSTRAINT `voucher_scopes_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE CASCADE\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // The redemption ledger - authoritative, append-only (no `updated_at`). `idempotency_key` is
     // NOT NULL UNIQUE and its row is inserted before the counter UPDATE, so a replay is rejected
@@ -1233,7 +1233,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `voucher_redemptions_ibfk_4` FOREIGN KEY (`cashier_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `voucher_redemptions_ibfk_5` FOREIGN KEY (`store_customer_id`) REFERENCES `store_customers` (`customer_id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `voucher_redemptions_ibfk_6` FOREIGN KEY (`reversal_of_redemption_id`) REFERENCES `voucher_redemptions` (`voucher_redemption_id`) ON DELETE SET NULL\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // Per-item allocation. Both base and voucher unit prices are stored because
     // Item.default_sale_price moves with Dispatch Order dispatches - without the base snapshot,
@@ -1253,7 +1253,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_voucher_redemption_lines_item` (`item_id`),\n"
             + "  CONSTRAINT `voucher_redemption_lines_ibfk_1` FOREIGN KEY (`voucher_redemption_id`) REFERENCES `voucher_redemptions` (`voucher_redemption_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `voucher_redemption_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     })
 });
 
@@ -1333,6 +1333,68 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_pos_parked_sales_origin_shift_status: Object.freeze({
             sql: "ALTER TABLE `pos_parked_sales` ADD INDEX `idx_pos_parked_sales_origin_shift_status` (`origin_shift_id`,`status`)"
+        })
+    }),
+    // Voucher indexes (#455). A tenant that gets these tables from REQUIRED_TENANT_SCHEMA_TABLES
+    // above already has every index inline in the CREATE TABLE, so these entries only fire for a
+    // tenant whose tables came from sequelize.sync() -- which, before the model `indexes` blocks were
+    // added alongside this, created none of them.
+    //
+    // uq_voucher_scopes_voucher_type_ref is the one that can legitimately fail here: adding a unique
+    // index to a table that already holds duplicate (voucher_id, scope_type, scope_ref_id) rows
+    // errors rather than silently dropping rows. That is the correct outcome -- it needs a human to
+    // decide which duplicate survives -- and it is reported per-tenant like any other repair failure.
+    vouchers: Object.freeze({
+        uq_vouchers_code: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD UNIQUE INDEX `uq_vouchers_code` (`code`)"
+        }),
+        idx_vouchers_status_validity: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_status_validity` (`status`,`valid_from`,`valid_until`)"
+        }),
+        idx_vouchers_kind: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_kind` (`voucher_kind`)"
+        })
+    }),
+    voucher_scopes: Object.freeze({
+        uq_voucher_scopes_voucher_type_ref: Object.freeze({
+            sql: "ALTER TABLE `voucher_scopes` ADD UNIQUE INDEX `uq_voucher_scopes_voucher_type_ref` (`voucher_id`,`scope_type`,`scope_ref_id`)"
+        }),
+        idx_voucher_scopes_type_ref: Object.freeze({
+            sql: "ALTER TABLE `voucher_scopes` ADD INDEX `idx_voucher_scopes_type_ref` (`scope_type`,`scope_ref_id`)"
+        })
+    }),
+    voucher_redemptions: Object.freeze({
+        uq_voucher_redemptions_idempotency: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD UNIQUE INDEX `uq_voucher_redemptions_idempotency` (`idempotency_key`)"
+        }),
+        idx_voucher_redemptions_voucher_created: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_voucher_created` (`voucher_id`,`created_at`)"
+        }),
+        idx_voucher_redemptions_transaction: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_transaction` (`pos_transaction_id`)"
+        }),
+        idx_voucher_redemptions_store_customer: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_store_customer` (`store_customer_id`)"
+        }),
+        idx_voucher_redemptions_channel: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_channel` (`channel`)"
+        }),
+        idx_voucher_redemptions_reversal_of: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_reversal_of` (`reversal_of_redemption_id`)"
+        }),
+        idx_voucher_redemptions_location: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_location` (`location_id`)"
+        }),
+        idx_voucher_redemptions_cashier: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_cashier` (`cashier_user_id`)"
+        })
+    }),
+    voucher_redemption_lines: Object.freeze({
+        idx_voucher_redemption_lines_redemption: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemption_lines` ADD INDEX `idx_voucher_redemption_lines_redemption` (`voucher_redemption_id`)"
+        }),
+        idx_voucher_redemption_lines_item: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemption_lines` ADD INDEX `idx_voucher_redemption_lines_item` (`item_id`)"
         })
     })
 });
@@ -1509,7 +1571,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-17.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-18.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

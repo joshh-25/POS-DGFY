@@ -254,6 +254,68 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[2].sql).toContain('REFERENCES `tenant_locations` (`location_id`)');
   });
 
+  // Three separate code paths can create the voucher tables, and they must agree:
+  //   1. the landlord migration (20260817000001-create-vouchers.cjs)
+  //   2. sequelize.sync() over the models -- how tenantProvisioningService.js provisions a NEW tenant
+  //   3. REQUIRED_TENANT_SCHEMA_TABLES/_INDEXES -- how an EXISTING tenant is repaired
+  // Verified against a real MySQL 8.0.46 snapshot; these assertions are what keep them in step
+  // without needing a database, since a divergence is otherwise invisible until a tenant is born.
+  it('keeps the voucher model definitions, table registry, and index registry in parity', async () => {
+    const voucherModels = {
+      vouchers: (await import('../src/models/Voucher.js')).default,
+      voucher_scopes: (await import('../src/models/VoucherScope.js')).default,
+      voucher_redemptions: (await import('../src/models/VoucherRedemption.js')).default,
+      voucher_redemption_lines: (await import('../src/models/VoucherRedemptionLine.js')).default
+    };
+
+    for (const [table, model] of Object.entries(voucherModels)) {
+      const modelIndexNames = (model.options.indexes || []).map((index) => index.name).sort();
+      const registryIndexNames = Object.keys(REQUIRED_TENANT_SCHEMA_INDEXES[table] || {}).sort();
+
+      // Without an indexes block, sync() creates only MySQL's implicit FK/unique indexes, so a new
+      // tenant silently loses every named index -- including uq_voucher_scopes_voucher_type_ref,
+      // which is an integrity constraint rather than a lookup index.
+      expect(modelIndexNames.length).toBeGreaterThan(0);
+      expect(modelIndexNames).toEqual(registryIndexNames);
+
+      // Same names again in the CREATE TABLE, so a tenant repaired by whole-table creation and one
+      // repaired index-by-index end up identical.
+      const [{ sql }] = buildTenantSchemaTableRepairSql([table]);
+      for (const indexName of registryIndexNames) {
+        expect(sql).toContain(`\`${indexName}\``);
+      }
+
+      // A new tenant's DB inherits the server default collation (utf8mb4_0900_ai_ci on MySQL 8), and
+      // pos_transaction_discounts.promo_code is utf8mb4_0900_ai_ci on every tenant. Pinning
+      // general_ci here made `v.code = d.promo_code` -- the Phase 107 promo backfill's own join --
+      // fail with ERROR 1267 Illegal mix of collations on repair-provisioned tenants only.
+      expect(sql).toContain('COLLATE=utf8mb4_0900_ai_ci');
+      expect(sql).not.toContain('utf8mb4_general_ci');
+    }
+
+    // Declaring uniqueness on the attribute instead makes Sequelize name the key after the column
+    // (`code`, `idempotency_key`), while both other paths name it `uq_*` -- and
+    // inspectRequiredTenantSchemaIndexes matches by name, so a new tenant would report as drifted
+    // forever. Declaring it in both places is worse still: two unique keys on one column.
+    expect(voucherModels.vouchers.rawAttributes.code.unique).toBeUndefined();
+    expect(voucherModels.voucher_redemptions.rawAttributes.idempotency_key.unique).toBeUndefined();
+
+    // Sequelize emits no referential action unless the attribute declares one, so these are what
+    // keep a new tenant's cascade behaviour equal to the migration's.
+    expect(voucherModels.voucher_scopes.rawAttributes.voucher_id.onDelete).toBe('CASCADE');
+    expect(voucherModels.voucher_redemption_lines.rawAttributes.voucher_redemption_id.onDelete)
+      .toBe('CASCADE');
+    for (const column of [
+      'pos_transaction_id',
+      'location_id',
+      'cashier_user_id',
+      'store_customer_id',
+      'reversal_of_redemption_id'
+    ]) {
+      expect(voucherModels.voucher_redemptions.rawAttributes[column].onDelete).toBe('SET NULL');
+    }
+  });
+
   it('registers the complete location-scoped Z-reading snapshot contract', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_z_reading_snapshots', column: 'location_id' },

@@ -17,10 +17,13 @@ const Voucher = sequelize.define('Voucher', {
     primaryKey: true,
     autoIncrement: true
   },
+  // Uniqueness is declared in the `indexes` block below, not with `unique: true` here. Both produce
+  // a unique key, but the attribute form makes Sequelize name it `code`, while the migration and the
+  // tenant-repair registry both name it `uq_vouchers_code` -- and
+  // inspectRequiredTenantSchemaIndexes matches by name, so the two forms are not interchangeable.
   code: {
     type: DataTypes.STRING(64),
-    allowNull: false,
-    unique: true
+    allowNull: false
   },
   voucher_kind: {
     type: DataTypes.ENUM('promo_code'),
@@ -165,7 +168,15 @@ const Voucher = sequelize.define('Voucher', {
   tableName: 'vouchers',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  // Mirrors the migration's addIndex calls one for one, by name. sequelize.sync() -- how
+  // tenantProvisioningService.js provisions a NEW tenant -- creates only what the model declares, so
+  // without this block a new tenant gets none of these.
+  indexes: [
+    { name: 'uq_vouchers_code', unique: true, fields: ['code'] },
+    { name: 'idx_vouchers_status_validity', fields: ['status', 'valid_from', 'valid_until'] },
+    { name: 'idx_vouchers_kind', fields: ['voucher_kind'] }
+  ]
 });
 
 export default Voucher;

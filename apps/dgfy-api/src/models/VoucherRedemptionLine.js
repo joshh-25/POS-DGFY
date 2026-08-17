@@ -21,7 +21,8 @@ const VoucherRedemptionLine = sequelize.define('VoucherRedemptionLine', {
   voucher_redemption_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'voucher_redemptions', key: 'voucher_redemption_id' }
+    references: { model: 'voucher_redemptions', key: 'voucher_redemption_id' },
+    onDelete: 'CASCADE'
   },
   item_id: {
     type: DataTypes.INTEGER,
@@ -53,7 +54,11 @@ const VoucherRedemptionLine = sequelize.define('VoucherRedemptionLine', {
   tableName: 'voucher_redemption_lines',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: false,
+  indexes: [
+    { name: 'idx_voucher_redemption_lines_redemption', fields: ['voucher_redemption_id'] },
+    { name: 'idx_voucher_redemption_lines_item', fields: ['item_id'] }
+  ]
 });
 
 export default VoucherRedemptionLine;
