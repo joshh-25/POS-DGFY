@@ -93,7 +93,7 @@ Rules for filling this in:
 
 | Condition | Action |
 |---|---|
-| Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --squash --delete-branch` — unattended, no confirmation needed |
+| Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` (true merge commit, never `--squash`) — unattended, no confirmation needed |
 | Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never |
 | Verdict `BLOCK`, any base | Never merge |
 | Checks red, or still pending, any base | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
@@ -101,6 +101,17 @@ Rules for filling this in:
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in
 `.agents/skills/implement/SKILL.md`.
+
+**Never `--squash`, on any base** (corrected 2026-08-18, Pat's call) — a true merge commit preserves
+every individual commit from the PR branch, so `git blame` resolves to the actual commit that
+introduced a line rather than one collapsed PR-sized blob. This also removes the inconsistency
+where `promoter` already refused `--squash` on promotion PRs
+(`.agents/skills/promoter/SKILL.md`, "never `--squash` — squashing would diverge the target's
+history from what the next promotion diffs against") while this role squashed everything feeding
+into the same branches. Relies on `implement`'s existing commit discipline (Conventional Commits,
+batched by domain) to keep merge-commit history legible — a PR with sloppy fixup commits will carry
+that noise into `develop`/`staging` too, so Worker's batching rule matters more now than it did
+under squash.
 
 **Said plainly, not glossed over:** this repo has no branch protection (GitHub Free — confirmed
 403 on both `branches/main/protection` and `rulesets`). Beyond that, **every runtime this role might
