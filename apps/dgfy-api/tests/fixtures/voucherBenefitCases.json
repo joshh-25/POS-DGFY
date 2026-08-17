@@ -1,0 +1,354 @@
+{
+  "_comment": "Acceptance fixtures for src/modules/vouchers/domain/voucherBenefitPolicy.js (Phase 103, #614). Money is integer centavos and rates are basis points throughout, per ADR 0066 decision 2 (binding). Shape mirrors fixtures/affiliatePricingCases.json so both pure pricing policies are exercised the same way. `lineDiscounts` and `voucherUnitPrices` are positional over the INPUT line array, including ineligible lines.",
+
+  "allocationCases": [
+    {
+      "id": "alloc-even-split",
+      "description": "Two equal weights split an even total exactly",
+      "input": { "totalCentavos": 100, "weights": [1, 1] },
+      "expected": [50, 50]
+    },
+    {
+      "id": "alloc-thirds-largest-remainder",
+      "description": "Three equal weights over 100 leave one centavo, awarded to the lowest index on a full tie",
+      "input": { "totalCentavos": 100, "weights": [1, 1, 1] },
+      "expected": [34, 33, 33]
+    },
+    {
+      "id": "alloc-sevens",
+      "description": "Three equal weights over 7 centavos",
+      "input": { "totalCentavos": 7, "weights": [1, 1, 1] },
+      "expected": [3, 2, 2]
+    },
+    {
+      "id": "alloc-zero-total",
+      "description": "A zero total allocates nothing",
+      "input": { "totalCentavos": 0, "weights": [5, 5] },
+      "expected": [0, 0]
+    },
+    {
+      "id": "alloc-all-zero-weights",
+      "description": "No positive weight means no allocation, even with a positive total",
+      "input": { "totalCentavos": 100, "weights": [0, 0] },
+      "expected": [0, 0]
+    },
+    {
+      "id": "alloc-skips-zero-weight",
+      "description": "A zero-weight entry never receives a remainder centavo",
+      "input": { "totalCentavos": 10, "weights": [0, 3, 7] },
+      "expected": [0, 3, 7]
+    },
+    {
+      "id": "alloc-tie-breaks-on-index",
+      "description": "Equal fractional parts and equal weights break on original index ascending",
+      "input": { "totalCentavos": 10, "weights": [2, 1, 1] },
+      "expected": [5, 3, 2]
+    },
+    {
+      "id": "alloc-tie-breaks-on-weight",
+      "description": "Equal fractional parts with unequal weights break on weight descending",
+      "input": { "totalCentavos": 6, "weights": [1, 3] },
+      "expected": [1, 5]
+    },
+    {
+      "id": "alloc-negative-inputs-clamped",
+      "description": "Negative weights and totals clamp to zero rather than inverting the allocation",
+      "input": { "totalCentavos": -50, "weights": [-1, 4] },
+      "expected": [0, 0]
+    }
+  ],
+
+  "calculationCases": [
+    {
+      "id": "percent-off-simple",
+      "description": "10% off a single two-unit line",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 1000,
+        "lines": [{ "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 5000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 10000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 1000,
+        "discountCentavos": 1000,
+        "capApplied": false,
+        "lineDiscounts": [1000],
+        "voucherUnitPrices": [4500]
+      }
+    },
+    {
+      "id": "percent-off-ignores-ineligible-lines",
+      "description": "An ineligible line contributes nothing to the subtotal and receives no discount",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 2000,
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 10000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 5000, "eligible": false }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 10000,
+        "eligibleQuantity": 1,
+        "rawDiscountCentavos": 2000,
+        "discountCentavos": 2000,
+        "capApplied": false,
+        "lineDiscounts": [2000, 0],
+        "voucherUnitPrices": [8000, 5000]
+      }
+    },
+    {
+      "id": "percent-off-largest-remainder-across-three-lines",
+      "description": "33.33% across three identical lines distributes the leftover centavo deterministically",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 3333,
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 3, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 3000,
+        "eligibleQuantity": 3,
+        "rawDiscountCentavos": 1000,
+        "discountCentavos": 1000,
+        "capApplied": false,
+        "lineDiscounts": [334, 333, 333],
+        "voucherUnitPrices": [666, 667, 667]
+      }
+    },
+    {
+      "id": "percent-off-cap-applied",
+      "description": "max_discount_centavos caps a percentage benefit and flags capApplied",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 5000,
+        "maxDiscountCentavos": 1000,
+        "lines": [{ "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 3000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 6000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 3000,
+        "discountCentavos": 1000,
+        "capApplied": true,
+        "lineDiscounts": [1000],
+        "voucherUnitPrices": [2500]
+      }
+    },
+    {
+      "id": "amount-off-clamped-to-subtotal",
+      "description": "A flat amount larger than the eligible subtotal never produces a negative order",
+      "input": {
+        "benefitClass": "amount_off",
+        "amountOffCentavos": 50000,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 10000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 10000,
+        "eligibleQuantity": 1,
+        "rawDiscountCentavos": 10000,
+        "discountCentavos": 10000,
+        "capApplied": false,
+        "lineDiscounts": [10000],
+        "voucherUnitPrices": [0]
+      }
+    },
+    {
+      "id": "amount-off-spread-across-lines",
+      "description": "A flat amount is allocated by line subtotal weight",
+      "input": {
+        "benefitClass": "amount_off",
+        "amountOffCentavos": 1000,
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 3000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 4000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 1000,
+        "discountCentavos": 1000,
+        "capApplied": false,
+        "lineDiscounts": [250, 750],
+        "voucherUnitPrices": [750, 2250]
+      }
+    },
+    {
+      "id": "fixed-price-pins-unit-price",
+      "description": "fixed_price yields qty x (base - pinned) and the display unit price lands on the pin",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 800,
+        "lines": [{ "item_id": 1, "quantity": 3, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 3000,
+        "eligibleQuantity": 3,
+        "rawDiscountCentavos": 600,
+        "discountCentavos": 600,
+        "capApplied": false,
+        "lineDiscounts": [600],
+        "voucherUnitPrices": [800]
+      }
+    },
+    {
+      "id": "fixed-price-base-below-pin-is-zero-not-negative",
+      "description": "ADR 0066 validation 5: a base price that fell below the pinned price yields zero, never a negative",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 1200,
+        "lines": [{ "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 2000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 0,
+        "discountCentavos": 0,
+        "capApplied": false,
+        "lineDiscounts": [0],
+        "voucherUnitPrices": [1000]
+      }
+    },
+    {
+      "id": "fixed-price-mixed-lines",
+      "description": "Only lines above the pinned price contribute a delta",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 800,
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 700, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 1700,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 200,
+        "discountCentavos": 200,
+        "capApplied": false,
+        "lineDiscounts": [200, 0],
+        "voucherUnitPrices": [800, 700]
+      }
+    },
+    {
+      "id": "fixed-price-cap-triggers-reallocation-by-intrinsic-weight",
+      "description": "When the cap bites, the capped total is re-spread using each line's own intrinsic delta as its weight",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 0,
+        "maxDiscountCentavos": 1000,
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 3000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 4000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 4000,
+        "discountCentavos": 1000,
+        "capApplied": true,
+        "lineDiscounts": [250, 750],
+        "voucherUnitPrices": [750, 2250]
+      }
+    },
+    {
+      "id": "fractional-quantity",
+      "description": "Weighed goods keep a fractional quantity while money stays integer centavos",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 1000,
+        "lines": [{ "item_id": 1, "quantity": 1.5, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 1500,
+        "eligibleQuantity": 1.5,
+        "rawDiscountCentavos": 150,
+        "discountCentavos": 150,
+        "capApplied": false,
+        "lineDiscounts": [150],
+        "voucherUnitPrices": [900]
+      }
+    },
+    {
+      "id": "zero-quantity-line",
+      "description": "A zero-quantity line cannot divide by quantity and falls back to the base unit price",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 1000,
+        "lines": [{ "item_id": 1, "quantity": 0, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 0,
+        "eligibleQuantity": 0,
+        "rawDiscountCentavos": 0,
+        "discountCentavos": 0,
+        "capApplied": false,
+        "lineDiscounts": [0],
+        "voucherUnitPrices": [1000]
+      }
+    },
+    {
+      "id": "no-eligible-lines",
+      "description": "A voucher scoped to nothing in the basket resolves to a zero discount rather than an error",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 1000,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": false }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 0,
+        "eligibleQuantity": 0,
+        "rawDiscountCentavos": 0,
+        "discountCentavos": 0,
+        "capApplied": false,
+        "lineDiscounts": [0],
+        "voucherUnitPrices": [1000]
+      }
+    },
+    {
+      "id": "unknown-benefit-class",
+      "description": "An unrecognized benefit class throws rather than silently resolving to zero",
+      "input": {
+        "benefitClass": "buy_one_get_one",
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "UNKNOWN_BENEFIT_CLASS"
+    },
+    {
+      "id": "percent-off-missing-rate",
+      "description": "percent_off without a rate throws",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": null,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "INVALID_PERCENT_OFF_BPS"
+    },
+    {
+      "id": "amount-off-missing-amount",
+      "description": "amount_off without an amount throws",
+      "input": {
+        "benefitClass": "amount_off",
+        "amountOffCentavos": null,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "INVALID_AMOUNT_OFF_CENTAVOS"
+    },
+    {
+      "id": "fixed-price-missing-price",
+      "description": "fixed_price without a pinned price throws",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": null,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "INVALID_FIXED_UNIT_PRICE_CENTAVOS"
+    }
+  ]
+}
