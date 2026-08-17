@@ -282,15 +282,8 @@ body {
   }
 }
 
-@media (min-width: 768px) and (max-height: 720px) {
-  .dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-/* Portrait tablets need two comfortable action columns. The parked-sale
- * variant otherwise switches to three columns at the `sm` breakpoint, which
- * leaves labels such as "Open Cash Drawer" compressed into narrow targets. */
+/* Portrait tablets need two comfortable action columns so labels such as
+ * "Open Cash Drawer" remain comfortable touch targets. */
 @media (min-width: 640px) and (max-width: 1023.98px) {
   .dgfy-pos-tablet-action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

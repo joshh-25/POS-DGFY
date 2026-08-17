@@ -60,4 +60,40 @@ describe('POS governed discount calculator', () => {
         expect(result.discount_amount).toBe(100);
         expect(result.lines[1].final_line_amount).toBe(0);
     });
+
+    test('treats a null maximum as uncapped for governed employee and manual discounts', () => {
+        const discountLine = [{ item_id: 1, quantity: 1, sale_price: 100, vat_type_snapshot: 'vatable' }];
+
+        for (const type of ['employee', 'manual']) {
+            const result = calculatePosDiscount({
+                lines: discountLine,
+                application: {
+                    type,
+                    method: 'percentage',
+                    rate: 15,
+                    max_discount_amount: null,
+                    lines: []
+                }
+            });
+
+            expect(result.discount_amount).toBe(15);
+            expect(result.total_amount).toBe(85);
+        }
+    });
+
+    test('still applies an explicit maximum discount amount', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 1, sale_price: 100, vat_type_snapshot: 'vatable' }],
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 20,
+                max_discount_amount: 10,
+                lines: []
+            }
+        });
+
+        expect(result.discount_amount).toBe(10);
+        expect(result.total_amount).toBe(90);
+    });
 });

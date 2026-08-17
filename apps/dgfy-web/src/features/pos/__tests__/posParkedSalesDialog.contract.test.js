@@ -10,16 +10,15 @@ const terminalSource = fs.readFileSync(
     path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
     'utf8'
 );
-const actionComponentSource = fs.readFileSync(
+const actionSource = fs.readFileSync(
     path.resolve(process.cwd(), 'src/features/pos/components/PosCurrentSaleActions.jsx'),
     'utf8'
 );
-
 describe('POS parked-sales pay/resume contract', () => {
     it('loads only while the dialog is open and exposes Pay/Resume actions without Refresh', () => {
         expect(terminalSource).toContain('posPresentationBundle.currentSaleActions.showParkedSaleControls');
-        expect(terminalSource).toContain('data-testid="pos-header-open-parked-sales"');
-        expect(actionComponentSource).toContain('data-testid="pos-park-sale-button"');
+        expect(terminalSource).toContain('data-testid="pos-header-parked-sales-history-button"');
+        expect(actionSource).toContain('data-testid="pos-park-sale-button"');
         expect(dialogSource).toContain('data-testid="pos-parked-sales-dialog"');
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');

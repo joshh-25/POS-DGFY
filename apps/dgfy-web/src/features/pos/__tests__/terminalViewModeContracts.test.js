@@ -440,10 +440,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Discount Type');
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
-    expect(posCheckoutTerminalContent).toContain("['employee', 'manual'].includes(discountDraft.type)");
+    expect(posCheckoutTerminalContent).toContain("discountDraft.type === 'manual'");
     expect(posCheckoutTerminalContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
     expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
-    expect(posCheckoutTerminalContent).toContain('Select the discount and complete all required verification details.');
+    expect(posCheckoutTerminalContent).toContain('Select discount type and verify employee.');
   });
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {

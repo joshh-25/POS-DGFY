@@ -106,11 +106,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-totals"');
     expect(posCheckoutContent).toContain('md:h-[clamp(18rem,46vh,26rem)] md:flex-none');
     expect(posCheckoutContent).toContain('<PosCurrentSaleActions');
-    expect(posCheckoutContent).toContain('presentationBundle={posPresentationBundle}');
     expect(posCurrentSaleActionsContent).toContain('data-testid="pos-current-sale-actions"');
-    expect(posCurrentSaleActionsContent).toContain('data-has-parked-sale-controls={showParkedSaleControls');
+    expect(posCurrentSaleActionsContent).not.toContain('data-has-parked-sale-controls');
     expect(posCurrentSaleActionsContent).toContain('className={`dgfy-pos-current-sale-actions ${tabletLayout ? \'dgfy-pos-tablet-action-grid\' : \'\'} grid shrink-0 grid-cols-2');
-    expect(posCurrentSaleActionsContent).toContain("showParkedSaleControls && !tabletLayout ? 'sm:grid-cols-3' : 'sm:grid-cols-2'");
     expect(posCurrentSaleActionsContent).toContain('dgfy-pos-tablet-action-grid');
     expect(posCurrentSaleActionsContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
     expect(posCheckoutContent).not.toContain('max-h-[25rem] overflow-y-auto');
@@ -122,7 +120,7 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('collects workflow and payment settings inside checkout confirmation', () => {
     const currentSaleIndex = posCheckoutContent.indexOf('data-testid="pos-current-sale-panel"');
-    const checkoutDialogIndex = posCheckoutContent.indexOf('<Dialog open={checkoutConfirmModalOpen}');
+    const checkoutDialogIndex = posCheckoutContent.indexOf('open={checkoutConfirmModalOpen}');
     const confirmationSettingsIndex = posCheckoutContent.indexOf('data-testid="pos-checkout-order-settings"');
     const workflowSlotIndex = posCheckoutContent.indexOf('<PosCheckoutDetailsSlot', confirmationSettingsIndex);
     const currentSaleSection = posCheckoutContent.slice(currentSaleIndex, checkoutDialogIndex);
@@ -178,9 +176,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll:hover,');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll:hover::-webkit-scrollbar-thumb,');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar {');
-    expect(appStylesContent).toContain('@media (min-width: 768px) and (max-height: 720px)');
-    expect(appStylesContent).toContain(".dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {");
-    expect(appStylesContent).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
+    expect(appStylesContent).not.toContain(".dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {");
+    expect(appStylesContent).not.toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
     expect(appStylesContent).toContain('@media (min-width: 640px) and (max-width: 1023.98px)');
     expect(appStylesContent).toContain('.dgfy-pos-tablet-action-grid > button {');
     expect(appStylesContent).toContain('min-height: 54px;');

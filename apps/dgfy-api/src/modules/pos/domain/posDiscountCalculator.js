@@ -93,8 +93,13 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
 
   const vatRemoved = round4(calculatedLines.reduce((sum, line) => sum + line.vat_removed, 0));
   let discountAmount = round4(calculatedLines.reduce((sum, line) => sum + line.discount_amount, 0));
-  const maximum = Number(application.max_discount_amount);
-  if (Number.isFinite(maximum) && maximum >= 0 && discountAmount > maximum) {
+  // A null/empty maximum means the rule is uncapped. Avoid Number(null) and
+  // Number('') because both become 0 and would erase a valid discount.
+  const rawMaximum = application.max_discount_amount;
+  const maximum = rawMaximum === null || rawMaximum === undefined || rawMaximum === ''
+    ? null
+    : Number(rawMaximum);
+  if (maximum !== null && Number.isFinite(maximum) && maximum >= 0 && discountAmount > maximum) {
     const factor = maximum / discountAmount;
     calculatedLines.forEach((line) => {
       line.discount_amount = round4(line.discount_amount * factor);

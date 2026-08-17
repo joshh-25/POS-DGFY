@@ -19,7 +19,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'fnb',
     detailsTestId: 'fnb-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Park'],
+    visibleLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes'],
     hiddenLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room']
   }),
   Object.freeze({
@@ -29,7 +29,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Park'],
+    visibleLabels: ['Walk-in'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
   }),
   Object.freeze({
@@ -49,7 +49,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Park'],
+    visibleLabels: ['Walk-in'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
   })
 ]);
@@ -59,7 +59,6 @@ const renderProfile = ({ workflowMode, effectiveCapabilities }) => {
   const presentationBundle = resolvePosPresentationBundle(posWorkflow);
   const setValue = vi.fn();
   const actions = {
-    onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
@@ -90,7 +89,6 @@ const renderProfile = ({ workflowMode, effectiveCapabilities }) => {
         setServicesNotes={setValue}
       />
       <PosCurrentSaleActions
-        presentationBundle={presentationBundle}
         {...actions}
         itemCount={2}
         printerAvailable
@@ -136,7 +134,7 @@ describe('POS mode presentation matrix', () => {
     const actionGrid = screen.getByTestId('pos-current-sale-actions');
 
     expect(presentationBundle.key).toBe('services');
-    expect(actionGrid.getAttribute('data-has-parked-sale-controls')).toBe('false');
+    expect(actionGrid.hasAttribute('data-has-parked-sale-controls')).toBe(false);
     expect(actionGrid.className).toContain('grid-cols-2');
     expect(actionGrid.className).toContain('sm:grid-cols-2');
     expect(screen.getAllByRole('button')).toHaveLength(5);

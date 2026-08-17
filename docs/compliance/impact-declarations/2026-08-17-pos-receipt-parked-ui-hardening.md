@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.16
-verification_evidence: focused backend POS tests,focused frontend POS tests,receipt contract tests,POS production build,Storefront production build,targeted lint,git diff check
+verification_evidence: focused backend POS tests,parked-sale ownership tests,audit repository tests,discount calculator tests,focused frontend POS tests,receipt contract tests,POS production build,Storefront production build,targeted lint,git diff check
 rollback_note: Revert the receipt renderer and iMin bridge batch, POS parked-sale and discount batches, Storefront header batch, tests, and this declaration together; preserve issued transaction and audit records.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -53,12 +53,14 @@ boundaries.
 ## Verification Evidence
 
 1. Focused backend POS and audit tests passed before the develop merge.
-2. Focused frontend POS, receipt, iMin, and Storefront contract tests passed
+2. Parked-sale ownership, discount calculator, and audit repository tests
+   passed before the develop merge.
+3. Focused frontend POS, receipt, iMin, and Storefront contract tests passed
    before the develop merge.
-3. Backend and frontend lint completed with zero errors; POS and Storefront
+4. Backend and frontend lint completed with zero errors; POS and Storefront
    production builds completed successfully before the develop merge.
-4. `git diff --check` passed and the changed-file safety scan found no
+5. `git diff --check` passed and the changed-file safety scan found no
    `DO NOT COMMIT` marker in the release inventory.
-5. After the develop merge, the affected tests, migration checks if applicable,
+6. After the develop merge, the affected tests, migration checks if applicable,
    lint, builds, and PR compliance gates must be rerun and reported in the
    draft PR.

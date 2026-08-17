@@ -70,7 +70,13 @@ describe('POS split-payment UI contract', () => {
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {
+        expect(checkoutSource).toContain('data-testid="pos-checkout-sale-summary"');
         expect(checkoutSource).toContain('data-testid="pos-checkout-discount-summary"');
+        expect(checkoutSource).toContain('Total Sales (before discount)');
+        expect(checkoutSource).toContain('Total Due');
+        expect(checkoutSource).toContain('data-testid="pos-checkout-payment-summary"');
+        expect(checkoutSource).toContain('Payment Summary');
+        expect(checkoutSource).toContain('Remaining Balance');
         expect(checkoutSource).toContain('data-testid="pos-checkout-add-discount"');
         expect(checkoutSource).toContain('data-testid="pos-edit-checkout-discount"');
         expect(checkoutSource).toContain('data-testid="pos-remove-checkout-discount"');
@@ -85,7 +91,7 @@ describe('POS split-payment UI contract', () => {
     });
 
     it('does not auto-focus Total Payment when checkout confirmation opens', () => {
-        const checkoutDialogIndex = checkoutSource.indexOf('<Dialog open={checkoutConfirmModalOpen}');
+        const checkoutDialogIndex = checkoutSource.indexOf('open={checkoutConfirmModalOpen}');
         const totalPaymentIndex = checkoutSource.indexOf('customerPaymentFieldLabel', checkoutDialogIndex);
         const totalPaymentSection = checkoutSource.slice(totalPaymentIndex, checkoutSource.indexOf('</label>', totalPaymentIndex));
 

@@ -1,5 +1,4 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
@@ -611,6 +610,10 @@ export default function TerminalPageLayout({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+            <div
+              data-testid="pos-header-park-slot"
+              className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10"
+            />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
             {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
@@ -794,7 +797,7 @@ export default function TerminalPageLayout({
             <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
             {posViewMode === 'audit' ? (
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading audit history...</div>}>
-                <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} />
+                <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} locations={locationsState?.locations || []} />
               </Suspense>
             ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace

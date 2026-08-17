@@ -10,25 +10,24 @@ afterEach(() => {
   cleanup();
 });
 
-const renderActions = (workflowMode, effectiveCapabilities = null, activeParkedSale = null) => {
+const renderActions = (workflowMode, effectiveCapabilities = null) => {
   const presentationBundle = resolvePosPresentationBundle(
     resolvePosWorkflow(workflowMode, effectiveCapabilities)
   );
   const actions = {
-    onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
-    onApplyDiscount: vi.fn()
+    onApplyDiscount: vi.fn(),
+    onParkSale: vi.fn()
   };
 
   render(
     <PosCurrentSaleActions
-      presentationBundle={presentationBundle}
       {...actions}
-      activeParkedSale={activeParkedSale}
       itemCount={2}
       printerAvailable
+      showParkedSaleControls={presentationBundle.currentSaleActions.showParkedSaleControls}
     />
   );
 
@@ -36,29 +35,25 @@ const renderActions = (workflowMode, effectiveCapabilities = null, activeParkedS
 };
 
 describe('PosCurrentSaleActions', () => {
-  it('shows F&B parked-sale actions together with shared cashier actions', () => {
-    const { presentationBundle } = renderActions('fnb');
+  it('shows the explicit park action separately from the header history action in F&B', () => {
+    const { actions, presentationBundle } = renderActions('fnb');
 
     expect(presentationBundle.key).toBe('fnb');
-    expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
-    expect(screen.getByText('Park')).toBeDefined();
+    const parkButton = screen.getByTestId('pos-park-sale-button');
+    expect(parkButton).toBeDefined();
     expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
     expect(screen.getByText('Apply Discount')).toBeDefined();
+    fireEvent.click(parkButton);
+    expect(actions.onParkSale).toHaveBeenCalledOnce();
   });
 
-  it('shows Counter parked-sale actions after F&B dining capabilities are removed', () => {
+  it('keeps the parked action for Counter mode after F&B dining capabilities are removed', () => {
     const { presentationBundle } = renderActions('fnb', []);
 
     expect(presentationBundle.key).toBe('counter');
     expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
-  });
-
-  it('labels the park action as Update Parked Sale while editing a resumed sale', () => {
-    renderActions('fnb', null, { pos_parked_sale_id: 17 });
-
-    expect(screen.getByText('Update Parked Sale')).toBeDefined();
   });
 
   it('hides unchanged order-oriented parked-sale controls in Services', () => {
@@ -86,7 +81,6 @@ describe('PosCurrentSaleActions', () => {
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
     expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
-    expect(actions.onParkAndNewSale).not.toHaveBeenCalled();
   });
 
   it('falls back to the Services-safe action set when the bundle is missing', () => {
@@ -96,6 +90,7 @@ describe('PosCurrentSaleActions', () => {
         onCheckout={vi.fn()}
         onOpenCashDrawer={vi.fn()}
         onApplyDiscount={vi.fn()}
+        showParkedSaleControls={false}
       />
     );
 
