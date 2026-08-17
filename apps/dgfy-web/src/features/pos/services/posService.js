@@ -67,6 +67,90 @@ export const createPosCheckout = async (payload) => {
     return data;
 };
 
+export const createPosParkedSale = async (payload = {}) => {
+    const response = await api.post('/pos/parked-sales', payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const fetchPosParkedSales = async (params = {}) => {
+    const response = await api.get('/pos/parked-sales', { params });
+    return response.data?.data;
+};
+
+export const claimPosParkedSale = async (parkedSaleId, payload = {}) => {
+    const response = await api.post(`/pos/parked-sales/${parkedSaleId}/claim`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const reparkPosParkedSale = async (parkedSaleId, payload = {}) => {
+    const response = await api.post(`/pos/parked-sales/${parkedSaleId}/repark`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const cancelPosParkedSale = async (parkedSaleId, payload = {}) => {
+    const response = await api.post(`/pos/parked-sales/${parkedSaleId}/cancel`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const createPosPaymentSession = async (payload = {}) => {
+    const response = await api.post('/pos/payment-sessions', payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const fetchActivePosPaymentSession = async (scope = {}) => {
+    const response = await api.get('/pos/payment-sessions/active', {
+        params: scope,
+        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
+    });
+    return response.data?.data || null;
+};
+
+export const fetchPosPaymentSession = async (paymentSessionId, scope = {}) => {
+    const response = await api.get(`/pos/payment-sessions/${paymentSessionId}`, {
+        params: scope,
+        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const addPosPaymentAllocation = async (paymentSessionId, payload = {}) => {
+    const response = await api.post(`/pos/payment-sessions/${paymentSessionId}/allocations`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const cancelPosPaymentAllocation = async (paymentSessionId, allocationId, payload = {}) => {
+    const response = await api.post(`/pos/payment-sessions/${paymentSessionId}/allocations/${allocationId}/cancel`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const cancelPosPaymentSession = async (paymentSessionId, payload = {}) => {
+    const response = await api.post(`/pos/payment-sessions/${paymentSessionId}/cancel`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const completePosPaymentSession = async (paymentSessionId, payload = {}) => {
+    const response = await api.post(`/pos/payment-sessions/${paymentSessionId}/complete`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const fetchPosDiscountApprovers = async () => {
     const response = await api.get('/pos/discount-approvers');
     return response.data?.data?.approvers || [];
@@ -381,6 +465,14 @@ export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchCashierShiftHistory = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/shifts/history', {
+        params,
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
 export const openTerminalShift = async (payload = {}, requestConfig = {}) => {
     const response = await api.post('/pos/terminal/shifts/open', payload, requestConfig);
     trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_OPENED, {
@@ -416,6 +508,16 @@ export const forceCloseStaleTerminalShift = async (shiftId, payload = {}) => {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
     trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_CLOSED, { shift_id: shiftId, forced: true });
+    return response.data?.data;
+};
+
+export const fetchMerchantTenderReconciliation = async (shiftId) => {
+    const response = await api.get(`/pos/terminal/shifts/${shiftId}/merchant-tender-reconciliation`);
+    return response.data?.data;
+};
+
+export const reviewMerchantTenderReconciliation = async (shiftId, payload = {}) => {
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/merchant-tender-reconciliation`, payload);
     return response.data?.data;
 };
 
@@ -493,6 +595,14 @@ export const exportPosReportCsv = async (params = {}) => {
 
 export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/incoming-orders', {
+        params,
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
+export const fetchOnlineOrderHistory = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/order-history', {
         params,
         ...requestConfig
     });
@@ -633,6 +743,10 @@ export default {
     fetchPosCatalog,
     scanPosBarcode,
     createPosCheckout,
+    createPosParkedSale,
+    fetchPosParkedSales,
+    claimPosParkedSale,
+    cancelPosParkedSale,
     fetchPosTransactions,
     fetchPosTransactionById,
     fetchPosDeviceStatus,
@@ -646,11 +760,14 @@ export default {
     fetchCurrentXReading,
     incrementGovernedResetCounter,
     fetchCurrentTerminalShift,
+    fetchCashierShiftHistory,
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,
     closeTerminalShift,
     forceCloseStaleTerminalShift,
+    fetchMerchantTenderReconciliation,
+    reviewMerchantTenderReconciliation,
     fetchTerminalTodayDashboard,
     fetchPosReportsOverview,
     fetchPosReportsTopItems,
@@ -658,6 +775,7 @@ export default {
     fetchPosReportsProfitLoss,
     exportPosReportCsv,
     fetchIncomingOnlineOrders,
+    fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,
     collectCashPickupOrder,
     collectCashDeliveryOrder,

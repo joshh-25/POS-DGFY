@@ -19,6 +19,7 @@ import { normalizeBusinessMode } from '../../discovery/model/businessModePins.js
 import { buildAccessPolicyStorePatch } from '../model/customerAccess.js';
 import { buildWorkflowCapabilityStorePatch } from '../model/workflowCapabilities.js';
 import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
+import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
 
 export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = null } = {}) => {
   const basePath = isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog';
@@ -121,6 +122,8 @@ export function useStoreCatalogLoader({
     const abortController = new AbortController();
     storeLoadAbortControllerRef.current = abortController;
     const { signal } = abortController;
+    let loadedProfile = null;
+    let loadedProfileLocations = [];
 
     setLoadingCatalog(true);
     setCatalogError('');
@@ -168,12 +171,14 @@ export function useStoreCatalogLoader({
         }
         setRouteSlug(toSlug(profile.slug));
       }
+      loadedProfile = profile;
       setSelectedStore(profile);
       const isServicesStorefront = normalizeBusinessMode(
         profile?.workflow_mode || profile?.ops_workflow_mode
       ) === 'services';
       let resolvedCatalogLocationId = null;
       const profileLocations = normalizeProfileLocations(profile);
+      loadedProfileLocations = profileLocations;
       const profileHasNoLocation = profile?.store_has_no_location === true
         || profile?.map_publication_disabled === true;
 
@@ -278,17 +283,26 @@ export function useStoreCatalogLoader({
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
-      setSelectedStore(null);
-      setStoreLocations([]);
-      setCatalog([]);
-      setCatalogError(normalizedError.message);
+      const failureState = buildStorefrontLoadFailureState({
+        profile: loadedProfile,
+        profileLocations: loadedProfileLocations,
+        errorMessage: normalizedError.message
+      });
+      // Keep a successfully loaded profile visible when only the catalog
+      // request fails. The hero still has the correct industry mode and can
+      // render its honest catalog error state instead of falling back to the
+      // generic "Storefront" shell.
+      setSelectedStore(failureState.selectedStore);
+      setStoreLocations(failureState.storeLocations);
+      setCatalog(failureState.catalog);
+      setCatalogError(failureState.catalogError);
     } finally {
       if (requestSequence === storeLoadRequestSequenceRef.current) {
         setLoadingCatalog(false);
         storeLoadInFlightRef.current = false;
       }
     }
-  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage]);
+  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setRouteSlug, setSelectedStore]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;

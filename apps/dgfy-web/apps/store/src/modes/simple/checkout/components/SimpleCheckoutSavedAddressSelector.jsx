@@ -2,10 +2,10 @@ import { Plus } from 'lucide-react';
 
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 
-const SIMPLE_BRAND = '#0f766e';
+const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_BORDER = '#5eead4';
-const SIMPLE_BRAND_SHADOW = 'rgba(15,118,110,0.16)';
-const SIMPLE_BRAND_TINT = '#ecfeff';
+const SIMPLE_BRAND_SHADOW = 'rgba(23,107,58,0.16)';
+const SIMPLE_BRAND_TINT = '#FFF8E7';
 
 /**
  * MSME fulfillment saved-address selector. Mirrors FnbCheckoutSavedAddressSelector's
@@ -42,7 +42,7 @@ export function SimpleCheckoutSavedAddressSelector({
       themeHoverBorder={SIMPLE_BRAND_BORDER}
       themeHoverBg="#f0fdfa"
       themeShadowColor={SIMPLE_BRAND_SHADOW}
-      themeShadowColorSoft="rgba(15,118,110,0.08)"
+      themeShadowColorSoft="rgba(23,107,58,0.08)"
     />
   );
 
@@ -102,7 +102,7 @@ export function SimpleCheckoutSavedAddressSelector({
           fontSize: 13
         }}
       >
-        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND : '#94a3b8', background: deliveryLocationAction === 'map' ? '#ccfbf1' : 'transparent', transition: 'all 200ms ease' }}>
+        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND : '#94a3b8', background: deliveryLocationAction === 'map' ? '#FFF7E6' : 'transparent', transition: 'all 200ms ease' }}>
           <Plus size={18} />
         </span>
         Add New Location

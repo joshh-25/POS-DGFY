@@ -2,8 +2,10 @@ import { Minus, Plus } from 'lucide-react';
 
 /** Displays the F&B unit price and delegates quantity changes to the route view-model. */
 export function FnbProductPriceQuantitySelector({
+  accentColor = '#f97316',
   formatMoney,
   isMobileViewport,
+  compactTypography = false,
   quantity,
   setQuantity,
   spacing,
@@ -14,7 +16,7 @@ export function FnbProductPriceQuantitySelector({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingTop: spacing(2) }}>
-      <div style={{ fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: '#f97316', lineHeight: 1, letterSpacing: '-0.02em' }}>
+      <div style={{ fontSize: isMobileViewport ? 24 : 32, fontWeight: compactTypography ? 700 : 900, color: accentColor, lineHeight: 1, letterSpacing: compactTypography ? '-0.015em' : '-0.02em' }}>
         {formatMoney(unitPrice)}
       </div>
 
@@ -42,3 +44,4 @@ export function FnbProductPriceQuantitySelector({
     </div>
   );
 }
+import React from 'react';

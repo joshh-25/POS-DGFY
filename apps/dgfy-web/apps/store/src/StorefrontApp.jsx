@@ -91,6 +91,7 @@ import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandConta
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
+import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -116,6 +117,8 @@ import { useCheckoutTotalsAndGating } from './modes/fnb/checkout/hooks/useChecko
 import { useSignedInCheckoutAddresses } from './modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js';
 import { useFnbTrackingDrawerPresentation } from './modes/fnb/tracking/hooks/useFnbTrackingDrawerPresentation.js';
 import { useFnbTrackingRuntime } from './modes/fnb/tracking/hooks/useFnbTrackingRuntime.js';
+import { useSimpleTrackingRuntime } from './modes/simple/tracking/hooks/useSimpleTrackingRuntime.js';
+import { useRetailTrackingRuntime } from './modes/retail/tracking/hooks/useRetailTrackingRuntime.js';
 import { useFnbCheckoutPresentation } from './modes/fnb/checkout/hooks/useFnbCheckoutPresentation.js';
 import { useFnbCheckoutQuote } from './modes/fnb/checkout/hooks/useFnbCheckoutQuote.js';
 import { useFnbCheckoutRouteState } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteState.js';
@@ -251,6 +254,16 @@ import {
   SERVICES_LOCAL_SIMULATION_ENABLED
 } from './modes/services/booking/model/servicesLocalFlow.js';
 import {
+  simpleTrackingAdapter,
+  getSimpleCompletedTrackingLabel,
+  getSimpleTrackingFlowForOrderMethod
+} from './modes/simple/tracking/model/simpleTrackingAdapter.js';
+import {
+  RetailTrackingAdapter,
+  getCompletedTrackingLabel as getRetailCompletedTrackingLabel,
+  getTrackingFlowForOrderMethod as getRetailTrackingFlowForOrderMethod
+} from './modes/retail/tracking/model/retailTrackingAdapter.js';
+import {
   mergeTrackedOrderEntries,
   normalizeTrackedOrderEntry,
   readLastTrackingPinForStore,
@@ -304,6 +317,9 @@ import { requestJson } from './services/requestJson.js';
 import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
+import { buildSimpleTrackingRouteProps } from './modes/simple/tracking/model/buildSimpleTrackingRouteProps.js';
+import { buildSimpleTrackingDrawerProps } from './modes/simple/tracking/model/buildSimpleTrackingDrawerProps.js';
+import { buildRetailTrackingRouteProps } from './modes/retail/tracking/model/buildRetailTrackingRouteProps.js';
 import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
@@ -671,6 +687,7 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const paymentReturnSessionRef = useRef('');
   const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
   const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
@@ -687,7 +704,7 @@ export default function StorefrontApp() {
       uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
-      if (val !== 'qrph') resetQrphPaymentSession();
+      if (!['qrph', 'card', 'gcash', 'maya'].includes(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
   }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
@@ -935,8 +952,8 @@ export default function StorefrontApp() {
   }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
-    enabled: isFnbMode || isServicesMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : ''),
+    enabled: isFnbMode || isServicesMode || isRetailMode,
+    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : '')),
     setCart,
     // Route state changes synchronously when another storefront is selected.
     // Prefer it over the previous async profile so cart hydration/clearing
@@ -944,6 +961,7 @@ export default function StorefrontApp() {
     storeSlug: routeSlug || selectedStore?.slug
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
+  const isSimpleOrderSubpage = isSimpleMode && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
   const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
@@ -958,11 +976,70 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     selectedStoreSlug: selectedStore?.slug
   });
-  const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
-  const trackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([fnbTrackingAdapter, serviceTrackingAdapter]),
+  const fnbTrackingMode = isFnbMode ? 'fnb' : 'services';
+  const fnbTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
     []
   );
+  const fnbTrackingRuntime = useFnbTrackingRuntime({
+    checkoutTab,
+    isFnbOrderSubpage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: fnbTrackingAdapterRegistry,
+    trackingMode: fnbTrackingMode
+  });
+  const servicesTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([serviceTrackingAdapter]),
+    []
+  );
+  const servicesTrackingRuntime = useFnbTrackingRuntime({
+    checkoutTab,
+    isFnbOrderSubpage: isServicesTrackingPage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: servicesTrackingAdapterRegistry,
+    trackingMode: 'services'
+  });
+  const simpleTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([simpleTrackingAdapter]),
+    []
+  );
+  const simpleTrackingRuntime = useSimpleTrackingRuntime({
+    checkoutTab,
+    enabled: isSimpleMode,
+    isSimpleOrderSubpage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: simpleTrackingAdapterRegistry
+  });
+  const retailTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([RetailTrackingAdapter]),
+    []
+  );
+  const retailTrackingRuntime = useRetailTrackingRuntime({
+    checkoutTab,
+    isRetailOrderSubpage: isRetailMode && isStandaloneTrackingPage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: retailTrackingAdapterRegistry,
+    trackingMode: 'retail'
+  });
+  const activeTrackingRuntime = isServicesMode
+    ? servicesTrackingRuntime
+    : (isSimpleMode ? simpleTrackingRuntime : (isRetailMode ? retailTrackingRuntime : fnbTrackingRuntime));
   const {
     buildTrackedOrderEntryFromTrackingPayload,
     fetchTrackingPayload,
@@ -979,21 +1056,7 @@ export default function StorefrontApp() {
     trackingError,
     trackingPinInput,
     trackingResult
-  } = useFnbTrackingRuntime({
-    checkoutTab,
-    // useFnbTrackingRuntime's fetch/poll effect only runs when this is true. F&B reaches the
-    // tracking view through its checkout drawer (isFnbOrderSubpage), while retail and MSME reach
-    // it through their own dedicated /order routes (isTrackSubpage, no drawer involved the same
-    // way F&B's is) -- all three need to activate the same shared polling effect.
-    isFnbOrderSubpage: isFnbOrderSubpage || isServicesTrackingPage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
-    normalizeErrorMessage: normalizeStorefrontErrorMessage,
-    requestJson,
-    routeSlug,
-    selectedStore,
-    toSlug,
-    trackingAdapterRegistry,
-    trackingMode
-  });
+  } = activeTrackingRuntime;
   const advanceServicesLocalTracking = useCallback((reference) => {
     const storeSlug = selectedStore?.slug || routeSlug;
     const updated = advanceLocalServicesSimulation(storeSlug, reference);
@@ -1008,8 +1071,8 @@ export default function StorefrontApp() {
   const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || SERVICES_BODY_FONT;
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || modeAdapter?.heroTheme?.bodyFont || SERVICES_DISPLAY_FONT;
   const servicesPrimaryBorder = `${servicesPrimary}33`;
-  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
-  const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
+  const servicesPrimaryShadow = isSimpleMode ? 'rgba(23,107,58,0.16)' : 'rgba(15,118,110,0.24)';
+  const servicesPrimaryShadowStrong = isSimpleMode ? 'rgba(23,107,58,0.24)' : 'rgba(15,118,110,0.32)';
   const servicesHighlight = '#f59e0b';
   const servicesHighlightSoft = '#fffbeb';
   const {
@@ -1150,8 +1213,7 @@ export default function StorefrontApp() {
     maskValue
   });
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  // `trackingMode`/`trackingAdapterRegistry` (above, feeding the unmoved
-  // `useFnbTrackingRuntime` call) stay here rather than moving into
+  // The tracking runtime setup above stays here rather than moving into
   // useStorefrontTrackingIntent: this hook can only be called after
   // `accountTrackedOrders`/`guestTrackedOrders` exist (required for
   // `trackingDrawerOrders`), which is after `useFnbTrackingRuntime` already needed
@@ -1364,6 +1426,28 @@ export default function StorefrontApp() {
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
   }, [currentPathSubpage, isFnbOrderSubpage, isServicesTrackingPage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, selectedTrackingPin, setSelectedTrackingPin, setTrackingPinInput, trackingPinInput]);
+
+  useEffect(() => {
+    const supportsProductPaymentReturn = isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage);
+    if (!supportsProductPaymentReturn || typeof window === 'undefined' || qrphPaymentSession) return;
+    const params = new URLSearchParams(window.location.search);
+    const paymentSessionId = String(params.get('payment_session') || '').trim().toUpperCase();
+    if (!/^CPS-[A-Z0-9]{10}$/.test(paymentSessionId)) return;
+    if (paymentReturnSessionRef.current === paymentSessionId) return;
+    const paymentMethod = String(params.get('payment_method') || '').trim().toLowerCase();
+    if (!['qrph', 'card', 'gcash', 'maya'].includes(paymentMethod)) return;
+    paymentReturnSessionRef.current = paymentSessionId;
+    const returnedStatus = String(params.get('payment_status') || '').trim().toLowerCase();
+    if (isFnbOrderSubpage) setFnbOrderStep(4);
+    if (isSimpleMode && isResolvedOrderSubpage) setSimpleOrderStep(3);
+    setCheckoutTab('checkout');
+    setFnbPaymentType(paymentMethod);
+    setQrphPaymentSession({
+      payment_session_id: paymentSessionId,
+      payment_method: paymentMethod,
+      status: returnedStatus === 'cancelled' ? 'cancelled' : 'awaiting_payment'
+    });
+  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -2048,6 +2132,7 @@ export default function StorefrontApp() {
     detailRuntime: fnbProductDetailsRuntime,
     isItemAvailable,
     isMobileViewport,
+    modeAdapter,
     onToggleModifier: toggleFnbDetailModifier,
     onModifierQuantityChange: setFnbDetailModifierQuantity,
     navigation: {
@@ -2333,7 +2418,7 @@ export default function StorefrontApp() {
         setCheckoutError(message);
         if (!silent) toast.error(message);
       } else if (['failed', 'expired', 'cancelled'].includes(paymentSession?.status)) {
-        const message = paymentSession?.failure_reason || 'This QR Ph payment can no longer be completed.';
+        const message = paymentSession?.failure_reason || 'This online payment can no longer be completed.';
         setCheckoutError(message);
         if (!silent) toast.error(message);
       } else if (!silent) {
@@ -2417,6 +2502,7 @@ export default function StorefrontApp() {
         handleRefreshQrphPaymentSession({ silent: true });
       }
     };
+    pollPaymentStatus();
     const timer = window.setInterval(pollPaymentStatus, QRPH_PAYMENT_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [handleRefreshQrphPaymentSession, qrphPaymentSession?.status]);
@@ -2564,6 +2650,8 @@ export default function StorefrontApp() {
     orderMethod,
     orderSuccessAnimationTimerRef,
     productCartLines,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,
@@ -2596,6 +2684,7 @@ export default function StorefrontApp() {
     setQuoteError,
     setQuoteNeedsRefresh,
     setQuoteResult,
+    setQrphPaymentSession,
     setSavedCustomerDetails,
     setSelectedServiceCartLineId,
     setSelectedTrackingPin,
@@ -2806,6 +2895,7 @@ export default function StorefrontApp() {
     goStoreOrderPage,
     isCheckoutOpen,
     isMobileViewport,
+    isRetailMode,
     money,
     removeCartItem,
     renderPromoCodePanel,
@@ -2858,11 +2948,13 @@ export default function StorefrontApp() {
     isMobileViewport,
     money,
     orderMethod,
+    promoDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
+    renderPromoCodePanel,
     renderStorefrontClosedNotice,
     selectedStore,
     selectedSavedLocationId,
@@ -2877,6 +2969,7 @@ export default function StorefrontApp() {
     setShowExpandedDeliveryMap,
     showExpandedDeliveryMap,
     storefrontClosedByHours,
+    totalsForDisplay,
     goStoreCatalogPage,
     setCartImageErrors,
     withAssetOrigin,
@@ -2943,8 +3036,8 @@ export default function StorefrontApp() {
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
-    handlePinMyLocation,
     handleConfirmQrphTestPayment,
+    handlePinMyLocation,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
     handleSetDefaultDeliveryAddress,
@@ -3144,8 +3237,8 @@ export default function StorefrontApp() {
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
+    handleConfirmQrphTestPayment,
     handlePinMyLocation,
-    handleQuote,
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
@@ -3160,14 +3253,13 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
-    quoteError,
-    quoteResult,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
-    requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,
@@ -3196,6 +3288,7 @@ export default function StorefrontApp() {
     simpleHasPrimaryIdentityContact,
     setShowSimpleMobileAddressModal,
     setShowSimpleMobileOrderSummary,
+    resetQrphPaymentSession,
     showSimpleMobileAddressModal,
     showSimpleMobileOrderSummary,
     simpleOrderMethodOptions,
@@ -3372,20 +3465,102 @@ export default function StorefrontApp() {
     routeSlug,
     selectedLocationId,
     selectedStore,
-    selectedTrackingPin,
+    selectedTrackingPin: fnbTrackingRuntime.selectedTrackingPin,
     servicesBodyFont,
     servicesDisplayFont,
     setCheckoutTab,
-    showCompletedTrackingCard,
+    showCompletedTrackingCard: fnbTrackingRuntime.showCompletedTrackingCard,
     storeLocations,
     storePath,
     tileTransformRequest,
     tilingServer: TILING_SERVER,
     toSlug,
     trackingDrawerOrders,
-    trackingError,
-    trackingPinInput,
-    trackingResult,
+    trackingError: fnbTrackingRuntime.trackingError,
+    trackingPinInput: fnbTrackingRuntime.trackingPinInput,
+    trackingResult: fnbTrackingRuntime.trackingResult,
+    withAssetOrigin
+  });
+  const simpleTrackingRouteProps = buildSimpleTrackingRouteProps({
+    checkoutTab,
+    copyTextToClipboard,
+    formatTicketDate,
+    getCompletedTrackingLabel: getSimpleCompletedTrackingLabel,
+    getTrackingFlowForOrderMethod: getSimpleTrackingFlowForOrderMethod,
+    goStoreCatalogPage,
+    isMobileViewport,
+    money,
+    primaryLocationId,
+    routeSlug,
+    selectedLocationId,
+    selectedStore,
+    selectedTrackingPin: simpleTrackingRuntime.selectedTrackingPin,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCheckoutTab,
+    showCompletedTrackingCard: simpleTrackingRuntime.showCompletedTrackingCard,
+    storeLocations,
+    storePath,
+    tileTransformRequest,
+    tilingServer: TILING_SERVER,
+    toSlug,
+    trackingError: simpleTrackingRuntime.trackingError,
+    trackingPinInput: simpleTrackingRuntime.trackingPinInput,
+    trackingResult: simpleTrackingRuntime.trackingResult,
+    withAssetOrigin
+  });
+  const simpleTrackingDrawerProps = buildSimpleTrackingDrawerProps({
+    canOpenTrackingDrawer,
+    expandedPins: expandedGuestDrawerPins,
+    isAccountTracking: isDgfyCustomerSignedIn,
+    isMobileViewport,
+    isOpen: isGuestTrackingDrawerOpen,
+    isStandaloneTrackingPage,
+    money,
+    onClose: () => setIsGuestTrackingDrawerOpen(false),
+    onExpandedPinsChange: setExpandedGuestDrawerPins,
+    openFullTrackingForPin,
+    selectedStore,
+    trackingDrawerOrders,
+    withAssetOrigin
+  });
+  const retailTrackingRouteProps = buildRetailTrackingRouteProps({
+    canOpenTrackingDrawer,
+    checkoutTab,
+    copyTextToClipboard,
+    expandedPins: expandedGuestDrawerPins,
+    formatTicketDate,
+    getCompletedTrackingLabel: getRetailCompletedTrackingLabel,
+    getTrackingFlowForOrderMethod: getRetailTrackingFlowForOrderMethod,
+    goStoreCatalogPage,
+    goStoreOrderPage,
+    isAccountTracking: isDgfyCustomerSignedIn,
+    isMobileViewport,
+    isOpen: isGuestTrackingDrawerOpen,
+    isStandaloneTrackingPage,
+    money,
+    onClose: () => setIsGuestTrackingDrawerOpen(false),
+    onExpandedPinsChange: setExpandedGuestDrawerPins,
+    openRetailItemReviewFromInvite: openFnbItemReviewFromInvite,
+    openFullTrackingForPin,
+    primaryLocationId,
+    routeSlug,
+    selectedLocationId,
+    selectedStore,
+    selectedTrackingPin: retailTrackingRuntime.selectedTrackingPin,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCheckoutTab,
+    showCompletedTrackingCard: retailTrackingRuntime.showCompletedTrackingCard,
+    storeLocations,
+    storePath,
+    tileTransformRequest,
+    tilingServer: TILING_SERVER,
+    toSlug,
+    trackingDrawerOrders,
+    trackingError: retailTrackingRuntime.trackingError,
+    trackingPinInput: retailTrackingRuntime.trackingPinInput,
+    trackingResult: retailTrackingRuntime.trackingResult,
     withAssetOrigin
   });
   const servicesTrackingRouteProps = buildServicesTrackingRouteProps({
@@ -3681,7 +3856,9 @@ export default function StorefrontApp() {
     isRetailMode,
     retailOrderRouteProps,
     isTrackSubpage,
-    fnbTrackingRouteProps
+    fnbTrackingRouteProps,
+    simpleTrackingRouteProps,
+    retailTrackingRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3788,6 +3965,8 @@ export default function StorefrontApp() {
     serviceBookingReviewProps,
     storefrontCheckoutSummaryProps,
     fnbTrackingRouteProps,
+    retailTrackingRouteProps,
+    simpleTrackingDrawerProps,
     showOrderSuccessAnimation
   });
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
@@ -3799,7 +3978,7 @@ export default function StorefrontApp() {
         '--services-body-font': servicesBodyFont,
         '--services-display-font': servicesDisplayFont,
         fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body),
-        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff',
+        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')))) : '#ffffff',
         minHeight: '100vh',
         color: '#0f172a',
         overflowX: 'clip'
@@ -3935,7 +4114,14 @@ export default function StorefrontApp() {
         )}
 
         {isStorePage && (
-          <>
+          <StorefrontLoadBoundary
+            errorMessage={catalogError}
+            hasStoreProfile={Boolean(selectedStore)}
+            isLoading={loadingCatalog}
+            onBackToDiscovery={goDiscovery}
+            onRetry={refreshStorePageForTenantSetup}
+          >
+            <>
             {isServicesTrackingPage ? (
               <ServicesTrackingRouteContainer {...servicesTrackingRouteProps} />
             ) : null}
@@ -3945,15 +4131,16 @@ export default function StorefrontApp() {
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {!isServicesTrackingPage && (isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
+            {!isServicesTrackingPage && (isFnbDetailsSubpage || loadingCatalog || catalogError || catalogPermitted) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
-          </>
+            </>
+          </StorefrontLoadBoundary>
         )}
 
       </div>
 
-  { isStorePage && !isServicesTrackingPage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
+  { isStorePage && selectedStore && !isServicesTrackingPage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <StorefrontCartDrawerShellContainer {...storefrontCartDrawerShellProps} />
   )}
       {customerDashboardDrawerRouteNode}

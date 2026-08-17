@@ -21,11 +21,16 @@ const detailBadgeStyle = (background, color, border) => ({
 });
 
 export function FnbProductMediaGallery({
+  accentColor = '#15803d',
+  accentSoft = '#f0fdf4',
   available,
   availabilityLabel,
+  borderSoft = '#86efac',
+  bodyFont = FNB_BODY_FONT,
   imageSources,
   imageUrl,
   itemName,
+  objectFit = 'cover',
   sectionLabel,
   standardImageHeight
 }) {
@@ -35,7 +40,10 @@ export function FnbProductMediaGallery({
       borderRadius: 24,
       overflow: 'hidden',
       width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
       height: standardImageHeight,
+      boxSizing: 'border-box',
       background: '#f8fafc',
       border: '1px solid rgba(226, 232, 240, 0.8)',
       boxShadow: '0 20px 48px rgba(15, 23, 42, 0.06)'
@@ -132,7 +140,7 @@ export function FnbProductMediaGallery({
           fetchPriority="high"
           width={1024}
           height={768}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', maxWidth: '100%', minWidth: 0, height: '100%', objectFit, display: 'block' }}
         />
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#64748b' }}>
@@ -144,11 +152,11 @@ export function FnbProductMediaGallery({
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, rgba(15,23,42,0.1) 0%, transparent 40%)', pointerEvents: 'none' }} />
 
       <div style={{ position: 'absolute', top: 16, left: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <span style={detailBadgeStyle('rgba(21,128,61,0.92)', '#fff')}>{sectionLabel}</span>
+        <span style={{ ...detailBadgeStyle(accentColor, '#fff'), fontFamily: bodyFont }}>{sectionLabel}</span>
         <span style={detailBadgeStyle(
-          available ? 'rgba(240,253,244,0.95)' : 'rgba(254,242,242,0.95)',
-          available ? '#15803d' : '#b91c1c',
-          available ? '#86efac' : '#fecaca'
+          available ? accentSoft : 'rgba(254,242,242,0.95)',
+          available ? accentColor : '#b91c1c',
+          available ? borderSoft : '#fecaca'
         )}>
           {available ? <BadgeCheck size={12} /> : <ShieldAlert size={12} />}
           {availabilityLabel}
@@ -168,7 +176,7 @@ export function FnbProductMediaGallery({
             width: 48,
             height: 48,
             borderRadius: 10,
-            border: '2px solid #22C55E',
+            border: `2px solid ${accentColor}`,
             overflow: 'hidden',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             background: '#fff',

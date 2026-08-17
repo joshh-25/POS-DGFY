@@ -13,14 +13,13 @@ const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativeP
 describe('POS printer availability and post-checkout receipt view', () => {
     it('gates every Print control on posHardware.isPrinterAvailable, not just posActionsBlocked', () => {
         const source = read('../components/POSCheckoutTerminal.jsx');
-
+        const currentSaleActionsSource = read('../components/PosCurrentSaleActions.jsx');
         expect(source).toContain('const isPrinterAvailable = posHardware.isPrinterAvailable;');
-        // Print Order (current-sale panel), Print Order (confirm modal),
-        // Print Last Receipt, and the post-checkout preview's Print button
-        // all read the same flag.
-        expect(source).toContain('disabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}');
+        // Current-sale Print Order, checkout confirmation Print Order, and the
+        // post-checkout preview's Print button all read the same flag.
+        expect(source).toContain('printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}');
+        expect(currentSaleActionsSource).toContain('disabled={printOrderDisabled}');
         expect(source).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isPrinterAvailable}');
-        expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}');
         expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}');
     });
 

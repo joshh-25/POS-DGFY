@@ -68,7 +68,14 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260812000001-create-registration-industries.cjs',
     '20260812000002-seed-registration-industries.cjs',
     '20260812000003-fold-registration-industry-visibility.cjs',
-    '20260812000004-drop-registration-industry-visibility.cjs'
+    '20260812000004-drop-registration-industry-visibility.cjs',
+    '20260812000005-add-third-party-delivery-personnel-name.cjs',
+    '20260812000006-create-pos-split-payment-sessions.cjs',
+    '20260812000007-add-pos-payment-confirmation-and-breakdown.cjs',
+    '20260812000008-add-pos-provider-refund-reconciliation.cjs',
+    '20260813000001-create-pos-merchant-tender-reconciliations.cjs',
+    '20260813000002-add-pos-parked-sale-revision.cjs',
+    '20260815000002-add-pos-parked-sale-origin-ownership.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -134,7 +141,66 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'employee_credit_amount',
         'employee_credit_balance_after',
         'employee_credit_outstanding_after',
-        'employee_credit_authorization_reference'
+        'employee_credit_authorization_reference',
+        'payment_breakdown'
+    ],
+    pos_payment_sessions: [
+        'pos_payment_session_id',
+        'session_reference',
+        'status',
+        'cashier_id',
+        'shift_id',
+        'terminal_id',
+        'location_id',
+        'total_amount',
+        'paid_amount',
+        'remaining_amount'
+    ],
+    pos_parked_sales: [
+        'pos_parked_sale_id',
+        'park_reference',
+        'status',
+        'revision',
+        'cashier_id',
+        'shift_id',
+        'origin_cashier_id',
+        'origin_shift_id',
+        'terminal_id',
+        'location_id',
+        'snapshot'
+    ],
+    pos_payment_allocations: [
+        'pos_payment_allocation_id',
+        'allocation_reference',
+        'session_id',
+        'status',
+        'payment_method',
+        'applied_amount',
+        'provider_event_id',
+        'provider_refund_ids',
+        'provider_refund_event_id',
+        'provider_refund_status',
+        'provider_refunded_at'
+    ],
+    pos_merchant_tender_reconciliations: [
+        'pos_merchant_tender_reconciliation_id',
+        'reconciliation_reference',
+        'shift_id',
+        'location_id',
+        'terminal_id',
+        'idempotency_key',
+        'request_hash',
+        'status',
+        'expected_breakdown',
+        'observed_breakdown',
+        'variance_breakdown',
+        'expected_total',
+        'observed_total',
+        'variance_total',
+        'review_note',
+        'reviewed_by',
+        'reviewed_at',
+        'supersedes_reconciliation_id'
     ],
     employee_credit_accounts: [
         'account_id',
@@ -179,6 +245,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'pos_transaction_id',
         'location_id',
         'delivery_personnel_id',
+        'delivery_personnel_name',
         'assigned_by',
         'assigned_shift_id',
         'assigned_at',

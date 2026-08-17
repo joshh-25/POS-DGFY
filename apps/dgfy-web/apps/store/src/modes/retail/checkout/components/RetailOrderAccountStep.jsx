@@ -84,8 +84,8 @@ export function RetailOrderAccountStep({
       )}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button type="button" onClick={onBackToCatalog} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
-          <button type="button" onClick={onContinue} disabled={!retailCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: retailCustomerStepComplete ? `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: retailCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+          <button type="button" onClick={onBackToCatalog} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
+          <button type="button" onClick={onContinue} disabled={!retailCustomerStepComplete} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: retailCustomerStepComplete ? `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: retailCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
         </div>
       )}
       {!retailCustomerStepComplete && (

@@ -33,6 +33,10 @@ import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
+import PosParkedSale from './PosParkedSale.js';
+import PosPaymentSession from './PosPaymentSession.js';
+import PosPaymentAllocation from './PosPaymentAllocation.js';
+import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
 import PosTransactionLine from './PosTransactionLine.js';
@@ -68,6 +72,8 @@ import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
+import ServiceBookingHandoffLeg from './ServiceBookingHandoffLeg.js';
+import ServiceBookingStatusEvent from './ServiceBookingStatusEvent.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import WorkflowModeChangeLog from './WorkflowModeChangeLog.js';
@@ -570,6 +576,47 @@ PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' })
 PosTransaction.belongsTo(EmployeeCreditAccount, { foreignKey: 'employee_credit_account_id', as: 'employeeCreditAccount' });
 PosTransaction.belongsTo(User, { foreignKey: 'employee_credit_user_id', as: 'employeeCreditEmployee' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
+PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
+PosParkedSale.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosParkedSale.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosParkedSale.belongsTo(PosTransaction, { foreignKey: 'completed_transaction_id', as: 'completedTransaction' });
+PosPaymentSession.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosPaymentSession.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosPaymentSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosPaymentSession.belongsTo(PosParkedSale, { foreignKey: 'parked_sale_id', as: 'parkedSale' });
+PosPaymentSession.belongsTo(PosTransaction, { foreignKey: 'completed_transaction_id', as: 'completedTransaction' });
+PosPaymentSession.hasMany(PosPaymentAllocation, { foreignKey: 'session_id', as: 'allocations' });
+PosPaymentAllocation.belongsTo(PosPaymentSession, { foreignKey: 'session_id', as: 'session' });
+PosPaymentAllocation.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+PosPaymentAllocation.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosPaymentAllocation.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosPaymentAllocation.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
+PosPaymentAllocation.belongsTo(User, { foreignKey: 'reversed_by', as: 'reversedByUser' });
+PosMerchantTenderReconciliation.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosMerchantTenderReconciliation.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosMerchantTenderReconciliation.belongsTo(User, { foreignKey: 'reviewed_by', as: 'reviewedByUser' });
+PosMerchantTenderReconciliation.belongsTo(PosMerchantTenderReconciliation, { foreignKey: 'supersedes_reconciliation_id', as: 'supersededReconciliation' });
+PosTerminalShift.hasMany(PosParkedSale, { foreignKey: 'shift_id', as: 'parkedSales' });
+TenantLocation.hasMany(PosParkedSale, { foreignKey: 'location_id', as: 'posParkedSales' });
+User.hasMany(PosParkedSale, { foreignKey: 'cashier_id', as: 'posParkedSales' });
+User.hasMany(PosParkedSale, { foreignKey: 'claimed_by', as: 'claimedPosParkedSales' });
+User.hasMany(PosParkedSale, { foreignKey: 'cancelled_by', as: 'cancelledPosParkedSales' });
+PosTransaction.hasMany(PosParkedSale, { foreignKey: 'completed_transaction_id', as: 'parkedSaleCompletions' });
+PosParkedSale.hasMany(PosPaymentSession, { foreignKey: 'parked_sale_id', as: 'paymentSessions' });
+PosTransaction.hasMany(PosPaymentSession, { foreignKey: 'completed_transaction_id', as: 'paymentSessions' });
+PosTerminalShift.hasMany(PosPaymentSession, { foreignKey: 'shift_id', as: 'paymentSessions' });
+TenantLocation.hasMany(PosPaymentSession, { foreignKey: 'location_id', as: 'posPaymentSessions' });
+User.hasMany(PosPaymentSession, { foreignKey: 'cashier_id', as: 'posPaymentSessions' });
+PosTerminalShift.hasMany(PosPaymentAllocation, { foreignKey: 'shift_id', as: 'paymentAllocations' });
+TenantLocation.hasMany(PosPaymentAllocation, { foreignKey: 'location_id', as: 'posPaymentAllocations' });
+User.hasMany(PosPaymentAllocation, { foreignKey: 'cashier_id', as: 'posPaymentAllocations' });
+User.hasMany(PosPaymentAllocation, { foreignKey: 'cancelled_by', as: 'cancelledPaymentAllocations' });
+User.hasMany(PosPaymentAllocation, { foreignKey: 'reversed_by', as: 'reversedPaymentAllocations' });
+PosTerminalShift.hasMany(PosMerchantTenderReconciliation, { foreignKey: 'shift_id', as: 'merchantTenderReconciliations' });
+TenantLocation.hasMany(PosMerchantTenderReconciliation, { foreignKey: 'location_id', as: 'merchantTenderReconciliations' });
+User.hasMany(PosMerchantTenderReconciliation, { foreignKey: 'reviewed_by', as: 'reviewedMerchantTenderReconciliations' });
 PosTransaction.hasOne(DeliveryJob, { foreignKey: 'pos_transaction_id', as: 'deliveryJob' });
 DeliveryJob.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 DeliveryJob.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -711,6 +758,17 @@ ServiceBooking.hasMany(ServiceBookingLine, { foreignKey: 'booking_id', as: 'line
 ServiceBookingLine.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
 ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
+// Phase 88 of #482 (ADR 0064 decision 2) - the handoff-leg entity keyed to the booking.
+ServiceBooking.hasMany(ServiceBookingHandoffLeg, { foreignKey: 'booking_id', as: 'handoffLegs' });
+ServiceBookingHandoffLeg.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingHandoffLeg.belongsTo(StoreCustomerAddress, { foreignKey: 'customer_address_id', as: 'customerAddress' });
+ServiceBookingHandoffLeg.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceBookingHandoffLeg.hasMany(ServiceBookingStatusEvent, { foreignKey: 'handoff_leg_id', as: 'statusEvents' });
+// Phase 88 of #482 (ADR 0064 decision 4) - the transition-event table.
+ServiceBooking.hasMany(ServiceBookingStatusEvent, { foreignKey: 'booking_id', as: 'statusEvents' });
+ServiceBookingStatusEvent.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingStatusEvent.belongsTo(ServiceBookingHandoffLeg, { foreignKey: 'handoff_leg_id', as: 'handoffLeg' });
+ServiceBookingStatusEvent.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 ServiceOptionGroup.hasMany(ServiceOption, { foreignKey: 'group_id', as: 'options' });
@@ -911,6 +969,10 @@ const db = {
   DispatchOrder,
   DispatchOrderLine,
   PosTransaction,
+  PosParkedSale,
+  PosPaymentSession,
+  PosPaymentAllocation,
+  PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
   PosTransactionLine,
@@ -947,6 +1009,8 @@ const db = {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,
@@ -1105,6 +1169,10 @@ export {
   DispatchOrder,
   DispatchOrderLine,
   PosTransaction,
+  PosParkedSale,
+  PosPaymentSession,
+  PosPaymentAllocation,
+  PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,
@@ -1139,6 +1207,8 @@ export {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,

@@ -22,6 +22,7 @@ describe('POS Day Close PIN contract', () => {
     expect(terminalPageSource).toContain('Shift Closed Successfully');
     expect(terminalPageSource).toContain('All cashier shifts are closed. The branch Z-reading is ready to generate.');
     expect(terminalPageSource).toContain('Return to Login');
+    expect(terminalPageSource).not.toContain("'Refresh Status'");
   });
 
   it('shows the cashier account and keeps PIN creation self-service', () => {

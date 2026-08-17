@@ -5,10 +5,13 @@ const ORDER_METHODS = POS_ORDER_METHODS;
 const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
+const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
 const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
+const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
 const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
@@ -88,7 +91,7 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
-    discount_type: Joi.string().valid('employee', 'manual').optional()
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -97,6 +100,7 @@ const checkoutPosSchema = Joi.object({
     }),
     terminal_id: Joi.string().trim().max(100).allow(null, ''),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
+    parked_sale_id: Joi.number().integer().positive().allow(null).optional(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     document_context: Joi.string().valid(...DOCUMENT_CONTEXTS).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
@@ -135,6 +139,7 @@ const checkoutPosSchema = Joi.object({
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
+    discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
@@ -207,8 +212,147 @@ const listTransactionsQuerySchema = Joi.object({
     cashier_id: Joi.number().integer().positive().optional(),
     location_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
+    payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
     order_source: Joi.string().valid(...ORDER_SOURCES).optional()
+});
+
+const parkedSaleLineSchema = Joi.object({
+    item_id: Joi.number().integer().positive().required(),
+    quantity: Joi.number().positive().precision(4).required(),
+    sale_price: Joi.number().min(0).precision(4).allow(null).optional()
+}).unknown(true);
+
+const createPosParkedSaleSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    snapshot: Joi.object({
+        lines: Joi.array().items(parkedSaleLineSchema).min(1).max(100).required()
+    }).unknown(true).required(),
+    subtotal_amount: Joi.number().min(0).precision(4).optional(),
+    total_amount: Joi.number().min(0).precision(4).optional()
+});
+
+const listPosParkedSalesQuerySchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    location_id: Joi.number().integer().positive().optional(),
+    status: Joi.string().valid('parked', 'claimed').optional(),
+    limit: Joi.number().integer().min(1).max(200).default(100)
+});
+
+const claimPosParkedSaleSchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const cancelPosParkedSaleSchema = claimPosParkedSaleSchema.keys({
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const reparkPosParkedSaleSchema = createPosParkedSaleSchema.fork(
+    ['idempotency_key'],
+    (schema) => schema.forbidden()
+).keys({
+    expected_revision: Joi.number().integer().positive().required()
+});
+
+const splitPaymentSnapshotLineSchema = Joi.object({
+    item_id: Joi.number().integer().positive().required(),
+    quantity: Joi.number().positive().precision(4).required(),
+    sale_price: Joi.number().min(0).precision(4).allow(null).optional()
+}).unknown(true);
+
+const splitPaymentSessionIdParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
+});
+
+const splitPaymentSessionScopeQuerySchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const createPosPaymentSessionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    parked_sale_id: Joi.number().integer().positive().allow(null).optional(),
+    snapshot: Joi.object({
+        lines: Joi.array().items(splitPaymentSnapshotLineSchema).min(1).max(100).required()
+    }).unknown(true).required(),
+    subtotal_amount: Joi.number().min(0).precision(4).optional(),
+    total_amount: Joi.number().positive().precision(4).optional()
+});
+
+const addPosPaymentAllocationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    payment_method: Joi.string().lowercase().valid(...SPLIT_PAYMENT_METHODS).required(),
+    amount: Joi.number().positive().precision(4).required(),
+    outcome: Joi.string().lowercase().valid(...SPLIT_PAYMENT_OUTCOMES).optional(),
+    payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
+    manual_payment_received: Joi.boolean().optional(),
+    payment_reference: Joi.string().trim().max(120).allow('', null).optional(),
+    payment_provider: Joi.string().trim().max(40).allow('', null).optional(),
+    failure_code: Joi.string().trim().max(80).allow('', null).optional(),
+    failure_reason: Joi.string().trim().max(255).allow('', null).optional()
+});
+
+const cancelPosPaymentSchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const completePosPaymentSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const confirmPosPaymentAllocationSchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    provider_event_id: Joi.string().trim().min(8).max(120).required(),
+    provider_confirmed_at: Joi.date().iso().required(),
+    provider_signature: Joi.string().trim().pattern(/^(?:sha256=)?[a-f0-9]{64}$/i).required()
+});
+
+const reconcilePosPaymentAllocationSchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const merchantTenderObservedBreakdownSchema = Joi.object({
+    gcash: Joi.number().min(0).precision(4).required(),
+    maya: Joi.number().min(0).precision(4).required(),
+    card: Joi.number().min(0).precision(4).required(),
+    bank_transfer: Joi.number().min(0).precision(4).required()
+}).required();
+
+const reviewMerchantTenderReconciliationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    observed_breakdown: merchantTenderObservedBreakdownSchema,
+    review_note: Joi.string().trim().max(500).allow('', null).optional()
+});
+
+const splitPaymentAllocationIdParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    allocation_id: Joi.number().integer().positive().required()
+});
+
+const parkedSaleIdParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
 });
 
 const posCatalogQuerySchema = Joi.object({
@@ -326,6 +470,15 @@ const terminalCurrentShiftQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const terminalShiftHistoryQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    status: Joi.string().valid('all', 'open', 'closed').default('all'),
+    page: Joi.number().integer().min(1).max(100000).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(20)
+});
+
 const terminalDashboardTodayQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional(),
@@ -354,6 +507,15 @@ const incomingOnlineOrdersQuerySchema = Joi.object({
     shift_id: Joi.number().integer().positive().required(),
     location_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(500).default(200)
+});
+
+const onlineOrderHistoryQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional(),
+    search: Joi.string().trim().allow('', null).optional(),
+    fulfillment_status: Joi.string().valid('completed', 'cancelled', 'rejected').optional(),
+    payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(200).default(100)
 });
 
 const deliveryPersonnelListQuerySchema = Joi.object({
@@ -432,8 +594,10 @@ const updateDeliveryJobStatusSchema = Joi.object({
 
 const assignDeliveryPersonnelSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
-    delivery_personnel_id: Joi.number().integer().positive().required()
-});
+    delivery_personnel_id: Joi.number().integer().positive().optional(),
+    delivery_personnel_name: Joi.string().trim().min(1).max(255).optional()
+}).or('delivery_personnel_id', 'delivery_personnel_name')
+    .oxor('delivery_personnel_id', 'delivery_personnel_name');
 const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
@@ -685,6 +849,22 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 };
 
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
+export const validateCreatePosParkedSale = validateSchema(createPosParkedSaleSchema, 'body', 'validatedData');
+export const validateListPosParkedSales = validateSchema(listPosParkedSalesQuerySchema, 'query', 'validatedQuery');
+export const validateClaimPosParkedSale = validateSchema(claimPosParkedSaleSchema, 'body', 'validatedData');
+export const validateCancelPosParkedSale = validateSchema(cancelPosParkedSaleSchema, 'body', 'validatedData');
+export const validateReparkPosParkedSale = validateSchema(reparkPosParkedSaleSchema, 'body', 'validatedData');
+export const validateParkedSaleIdParam = validateSchema(parkedSaleIdParamSchema, 'params', 'validatedParams');
+export const validateCreatePosPaymentSession = validateSchema(createPosPaymentSessionSchema, 'body', 'validatedData');
+export const validateAddPosPaymentAllocation = validateSchema(addPosPaymentAllocationSchema, 'body', 'validatedData');
+export const validateCancelPosPayment = validateSchema(cancelPosPaymentSchema, 'body', 'validatedData');
+export const validateCompletePosPayment = validateSchema(completePosPaymentSchema, 'body', 'validatedData');
+export const validateConfirmPosPaymentAllocation = validateSchema(confirmPosPaymentAllocationSchema, 'body', 'validatedData');
+export const validateReconcilePosPaymentAllocation = validateSchema(reconcilePosPaymentAllocationSchema, 'body', 'validatedData');
+export const validateReviewMerchantTenderReconciliation = validateSchema(reviewMerchantTenderReconciliationSchema, 'body', 'validatedData');
+export const validateSplitPaymentSessionIdParam = validateSchema(splitPaymentSessionIdParamSchema, 'params', 'validatedParams');
+export const validateSplitPaymentSessionScopeQuery = validateSchema(splitPaymentSessionScopeQuerySchema, 'query', 'validatedQuery');
+export const validateSplitPaymentAllocationIdParam = validateSchema(splitPaymentAllocationIdParamSchema, 'params', 'validatedParams');
 export const validatePosDiscountApproval = validateSchema(posDiscountApprovalSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
@@ -704,9 +884,11 @@ export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'vali
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
+export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');

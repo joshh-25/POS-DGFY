@@ -15,8 +15,10 @@ const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview
 const MAX_NOTIFICATION_ITEMS = 5;
 const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
 const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
+const loadAuditWorkspacePanel = () => import('./AuditWorkspacePanel.jsx');
 const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);
 const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
+const AuditWorkspacePanel = lazyWithChunkRetry(loadAuditWorkspacePanel);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
 // A prefetch failure must be silent -- this isn't a real load, it's an idle
 // or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
@@ -40,6 +42,7 @@ export default function TerminalPageLayout({
     setMobileNavOpen,
     isDesktopWide,
     canViewPos,
+    canViewAudit = false,
     onboardingRestricted = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
@@ -51,6 +54,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canAdminBypassShiftPrompt = false,
+    showIncomingQueue = true,
     canOpenShift = false,
     itemsStockFilterPreset = '',
     onItemsStockFilterPresetApplied = () => {},
@@ -70,6 +74,7 @@ export default function TerminalPageLayout({
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
+    orderHistoryState = { loading: false, orders: [], pagination: null },
     adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
     adminTerminalSwitching = false,
     onSelectAdminTerminal = async () => false,
@@ -110,6 +115,9 @@ export default function TerminalPageLayout({
     handleCloseShift,
     handleCloseDay,
     handleViewShiftSummary = () => {},
+    cashierHistoryState = { loading: false, records: [], pagination: null, errorMessage: '' },
+    refreshCashierHistory = async () => {},
+    handleViewCashierHistoryShift = () => {},
     refreshOperationalContext,
     setOperatingLocationId,
     setQueueLocationScopeId,
@@ -122,10 +130,12 @@ export default function TerminalPageLayout({
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
     refreshIncomingOrders,
+    refreshOrderHistory,
     activeShiftId,
     checkoutBlockedReason,
     offlineSnapshotScope = {},
     onQueueOfflineItemDraft = async () => '',
+    onQueueOfflineOperation = async () => null,
     onManualUniversalSync = async () => ({ allowed: false }),
     manualSyncPolicy = {},
     refreshTerminalUser = async () => {},
@@ -180,7 +190,11 @@ export default function TerminalPageLayout({
   const actionableQueueCount = queueCount + blockedQueueCount;
   const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const incomingOrders = useMemo(() => (
+    showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
+      ? incomingOrdersState.orders
+      : []
+  ), [incomingOrdersState, showIncomingQueue]);
   const activeHeaderTitle = useMemo(() => {
     const titles = {
       checkout: 'POS Catalog',
@@ -189,6 +203,7 @@ export default function TerminalPageLayout({
       reports: 'Report',
       items: 'Items',
       services: 'Services',
+      audit: 'Audit',
       incoming_queue: 'Orders',
       location_scope: 'Settings',
       settings_profile: 'Settings',
@@ -277,8 +292,8 @@ export default function TerminalPageLayout({
     ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
     : 'hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:touch-pan-y';
   const headerShellClassName = IS_DGFY_POS_SURFACE
-    ? 'flex min-h-[38px] flex-col gap-1 lg:grid lg:min-h-[46px] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-2'
-    : 'grid min-h-[56px] grid-cols-1 gap-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center';
+    ? 'flex min-h-[38px] min-w-0 items-center justify-between gap-2 lg:min-h-[46px] lg:gap-3'
+    : 'flex min-h-[56px] min-w-0 items-center justify-between gap-2.5';
   const headerSubtitleClassName = IS_DGFY_POS_SURFACE
     ? 'mt-1 hidden max-w-3xl text-[11px] leading-4 text-pos-muted lg:block'
     : 'mt-1 hidden max-w-3xl text-[12px] leading-4 text-pos-muted md:block';
@@ -375,10 +390,10 @@ export default function TerminalPageLayout({
         <>
           <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)} />
           <div
-            className="absolute left-1/2 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-left"
+            className="absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="absolute left-1/2 top-0 z-10 h-5 w-5 -translate-x-1/2 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
+            <div className="absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
               <div className="bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white">
                 <p className="text-lg font-black">Notifications</p>
@@ -527,8 +542,10 @@ export default function TerminalPageLayout({
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
+              canViewAudit={canViewAudit}
               canManageCategories={canManageCategories}
               showServiceOperations={workflowMode === 'services'}
+              showIncomingQueue={showIncomingQueue}
               canAccessServiceOperations={canAccessServiceOperations}
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
@@ -557,8 +574,7 @@ export default function TerminalPageLayout({
         className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName}`}
       >
         <div className={headerShellClassName}>
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
               type="button"
               onClick={() => {
@@ -577,26 +593,27 @@ export default function TerminalPageLayout({
               <Menu className="h-6 w-6" />
             </button>
             <div className="min-w-0 flex-1">
-              <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[22px]">
-                {activeHeaderTitle}
-              </h1>
+              <div className="flex min-w-0 items-center gap-3">
+                <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[22px]">
+                  {activeHeaderTitle}
+                </h1>
+                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex">
+                  <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <span className="text-[11px] font-extrabold text-slate-800">
+                    Terminal: {normalizedActiveTerminalId || 'COUNTER-01'}
+                  </span>
+                  <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    • {isOnline ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+              </div>
               <p className={headerSubtitleClassName}>{headerSubtitle}</p>
             </div>
-            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             {renderNotificationButton(compactBellClassName, 20)}
-          </div>
-          <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
-          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs">
-            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="text-[11px] font-extrabold text-slate-800">
-              Terminal: {normalizedActiveTerminalId || 'COUNTER-01'}
-            </span>
-            <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
-              • {isOnline ? 'Online' : 'Offline'}
-            </span>
-          </div>
-          {renderNotificationButton(desktopBellClassName, 24)}
-          {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
+            {renderNotificationButton(desktopBellClassName, 24)}
+            {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
           </div>
         </div>
       </div>
@@ -685,14 +702,17 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
+                canViewAudit={canViewAudit}
                 canManageCategories={canManageCategories}
                 showServiceOperations={workflowMode === 'services'}
+                showIncomingQueue={showIncomingQueue}
                 canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
+                orderHistoryState={orderHistoryState}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
                 accessibleCompanies={accessibleCompanies}
@@ -734,6 +754,7 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 selectedLocationId={operatingLocationId}
                 activeShiftId={activeShiftId}
+                activeShiftCashierId={shiftState?.shift?.cashier_id || null}
                 terminalId={normalizedActiveTerminalId}
                 terminalMeta={terminalMeta}
                 checkoutBlockedReason={checkoutBlockedReason}
@@ -742,6 +763,7 @@ export default function TerminalPageLayout({
                 universalPendingSyncCount={queueCount + blockedQueueCount}
                 offlineSnapshotScope={offlineSnapshotScope}
                 onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+                onQueueOfflineOperation={onQueueOfflineOperation}
                 onCheckoutCompleted={handleCheckoutCompleted}
                 viewMode={posViewMode}
                 onViewModeChange={setPosViewMode}
@@ -770,7 +792,11 @@ export default function TerminalPageLayout({
 
           {isOperationsWorkspaceMode && (
             <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
-            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
+            {posViewMode === 'audit' ? (
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading audit history...</div>}>
+                <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} />
+              </Suspense>
+            ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}
                 workflowMode={workflowMode}
@@ -817,6 +843,9 @@ export default function TerminalPageLayout({
                 handleCloseShift={handleCloseShift}
                 handleCloseDay={handleCloseDay}
                 handleViewShiftSummary={handleViewShiftSummary}
+                cashierHistoryState={cashierHistoryState}
+                refreshCashierHistory={refreshCashierHistory}
+                handleViewCashierHistoryShift={handleViewCashierHistoryShift}
                 refreshOperationalContext={refreshOperationalContext}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
@@ -840,6 +869,7 @@ export default function TerminalPageLayout({
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
                 refreshIncomingOrders={refreshIncomingOrders}
+                refreshOrderHistory={refreshOrderHistory}
                 queueStatusFilter={queueStatusFilter}
                 setQueueStatusFilter={setQueueStatusFilter}
                 queueSummary={queueSummary}
@@ -859,12 +889,20 @@ export default function TerminalPageLayout({
                 setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
                 sectionIds={TERMINAL_SECTION_IDS}
               />
-            </Suspense>
+            </Suspense>}
             </div>
           )}
-        </div>
       </div>
       </div>
+      </div>
+
+      {drawerOpen && !terminalUnlockModalOpen ? (
+        <div
+          aria-hidden="true"
+          data-testid="pos-terminal-lock-backdrop"
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-md"
+        />
+      ) : null}
 
       <Suspense fallback={null}>
         <TerminalLockDrawer

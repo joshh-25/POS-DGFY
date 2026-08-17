@@ -157,17 +157,45 @@ export const ModePresentationRegistry = Object.freeze({
     heroTheme: Object.freeze({
       displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
       bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
-      accent: '#0f766e',
-      accentDark: '#134e4a',
-      accentSoft: '#ecfeff',
-      surface: '#0f172a',
-      surfaceInset: '#ecfeff',
-      borderSoft: '#bfe8e4',
+      accent: '#176B3A',
+      accentDark: '#0F5A30',
+      accentSoft: '#FFF8E7',
+      accentShadow: 'rgba(23,107,58,0.16)',
+      surface: '#0F3B2A',
+      surfaceInset: '#FFF7E6',
+      borderSoft: '#E4C98E',
       textPrimary: '#0f172a',
-      textMuted: '#64748b'
+      textMuted: '#64748b',
+      typography: Object.freeze({
+        heroTitle: Object.freeze({ desktop: 46, mobile: 24, weight: 800, lineHeight: 1.08 }),
+        catalogTitle: Object.freeze({ desktop: 32, mobile: 16, weight: 700, lineHeight: 1.2 }),
+        cardTitle: Object.freeze({ desktop: 18, mobile: 16, weight: 700, lineHeight: 1.25 }),
+        body: Object.freeze({ desktop: 14, mobile: 13, weight: 400, lineHeight: 1.5 }),
+        label: Object.freeze({ size: 12, weight: 700, lineHeight: 1.3 }),
+        action: Object.freeze({ desktop: 15, mobile: 13, weight: 700 }),
+        price: Object.freeze({ desktop: 15, mobile: 13, weight: 700 }),
+        total: Object.freeze({ desktop: 32, mobile: 26, weight: 800 })
+      }),
+      catalogPalette: Object.freeze({
+        primary: '#176B3A',
+        primaryHover: '#0F5A30',
+        accentSoft: '#FFF8E7',
+        surface: '#FFFBF0',
+        surfaceSubtle: '#FFF7E6',
+        textPrimary: '#0F172A',
+        textSecondary: '#475569',
+        textMuted: '#64748B',
+        border: '#E4C98E',
+        borderStrong: '#D5B36B'
+      })
     })
   }),
   retail: Object.freeze({
+    productDetailsPresentation: Object.freeze({
+      catalogLabel: 'Products',
+      compactTypography: true
+    }),
+    usesConnectedHeroSurface: true,
     heroEyebrow: 'Retail storefront',
     heroDescription: 'Browse shelf items, weighed goods, and refills, then check out or reserve for pickup.',
     catalogEyebrow: 'Item Catalog',
@@ -213,17 +241,43 @@ export const ModePresentationRegistry = Object.freeze({
     heroTheme: Object.freeze({
       displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
       bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
-      accent: '#ea580c',
-      accentDark: '#9a3412',
-      accentSoft: '#fff7ed',
-      surface: '#0f172a',
-      surfaceInset: '#fff7ed',
-      borderSoft: '#fed7aa',
-      textPrimary: '#0f172a',
-      textMuted: '#64748b'
+      accent: '#1A4E8D',
+      accentDark: '#1A4586',
+      accentSoft: '#EEF4FB',
+      surface: '#0F172A',
+      surfaceInset: '#EEF4FB',
+      borderSoft: '#A9DCE8',
+      textPrimary: '#0F172A',
+      textMuted: '#64748B',
+      buttonTextOnAccent: '#ffffff',
+      palette: Object.freeze({
+        primary: '#1A4E8D',
+        primaryHover: '#1A4586',
+        secondary: '#A9DCE8',
+        accent: '#1A4E8D',
+        accentHighlight: '#FF7A1A',
+        accentSoft: '#EEF4FB',
+        pageBackground: '#F8FAFC',
+        surface: '#FFFFFF',
+        surfaceSubtle: '#EFF4F9',
+        textPrimary: '#0F172A',
+        textSecondary: '#475569',
+        textMuted: '#64748B',
+        border: '#E2E8F0',
+        borderStrong: '#CBD8E6',
+        retailHighlight: '#FF7A1A',
+        mapPin: '#EA580C',
+        success: '#16A34A',
+        warning: '#F59E0B',
+        error: '#DC2626'
+      })
     })
   }),
   fnb: Object.freeze({
+    productDetailsPresentation: Object.freeze({
+      catalogLabel: 'Menu',
+      compactTypography: false
+    }),
     heroEyebrow: 'Food and beverage storefront',
     heroDescription: 'Browse the live menu, compare food and drink sections, and build an order from product cards designed for ready-to-serve items.',
     catalogEyebrow: 'Curated Menu',

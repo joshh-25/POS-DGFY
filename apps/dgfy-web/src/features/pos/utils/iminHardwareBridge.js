@@ -488,7 +488,7 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
     `Item #${cartLine?.item_id || index + 1}`
 );
 
-const formatShiftSummaryValue = (value) => Number(value || 0).toFixed(2);
+const formatShiftSummaryValue = (value) => value == null ? '-' : Number(value || 0).toFixed(2);
 const paymentBreakdownLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
     'Other'

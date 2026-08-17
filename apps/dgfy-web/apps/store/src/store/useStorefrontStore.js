@@ -36,6 +36,10 @@ const isDevEnvironment = () => {
   }
 };
 
+const hasReduxDevtoolsExtension = () => (
+  typeof window !== 'undefined' && Boolean(window.__REDUX_DEVTOOLS_EXTENSION__)
+);
+
 const composeStorefrontState = (set, get, store) => ({
   ...createUiSlice(set, get, store),
   ...createSessionSlice(set, get, store),
@@ -53,7 +57,7 @@ const composeStorefrontState = (set, get, store) => ({
 export const useStorefrontStore = create(
   devtools(composeStorefrontState, {
     name: 'StorefrontStore',
-    enabled: isDevEnvironment()
+    enabled: isDevEnvironment() && hasReduxDevtoolsExtension()
   })
 );
 

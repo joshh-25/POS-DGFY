@@ -403,7 +403,7 @@ export const createCheckoutPaymentSession = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
-                message: 'QR Ph payment session created',
+            message: 'Online payment session created',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

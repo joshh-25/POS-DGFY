@@ -20,7 +20,7 @@ const SimpleHeroContactLocation = ({
   visibleContactRows
 }) => (
   <div style={{ display: 'grid', gap: 14, paddingLeft: (!isMobileViewport && hasAboutSection) ? 26 : 0, borderLeft: (!isMobileViewport && hasAboutSection) ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>
-    <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+    <div style={{ fontSize: heroTheme.typography?.label?.size || 12, fontWeight: heroTheme.typography?.label?.weight || 700, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
     <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
       {hasContactRows && (
         <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
@@ -73,7 +73,7 @@ const SimpleHeroContactLocation = ({
                 borderRadius: 10,
                 background: '#fff',
                 border: '1px solid #cbd5e1',
-                boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                boxShadow: '0 3px 8px rgba(23,107,58,0.08)',
                 display: 'grid',
                 placeItems: 'center',
                 cursor: 'pointer',

@@ -205,4 +205,22 @@ describe('POS manual delivery job status', () => {
         expect(result.data.status_transition.outcome).toBe('no_change');
         expect(repository.audit).toHaveLength(0);
     });
+
+    it('allows lifecycle transitions when assignment evidence uses a third-party courier name', async () => {
+        const repository = buildRepository({
+            deliveryJob: {
+                status: 'assigned',
+                delivery_personnel_id: null,
+                delivery_personnel_name: 'Juan Dela Cruz',
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            }
+        });
+
+        const result = await updateStatus(repository, 'picked_up');
+
+        expect(result.success).toBe(true);
+        expect(repository.deliveryJob.status).toBe('picked_up');
+    });
 });

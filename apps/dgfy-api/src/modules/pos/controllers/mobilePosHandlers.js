@@ -48,7 +48,7 @@ export const getCatalogBootstrap = async (req, res, next) => {
 
 export const getSettingsBootstrap = async (req, res, next) => {
     try {
-        const result = await getMobilePosSettingsBootstrapUseCase();
+        const result = await getMobilePosSettingsBootstrapUseCase({ user: req.user });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => buildSuccessPayload(result),

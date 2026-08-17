@@ -20,6 +20,7 @@
 - [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
+- [POS Parked Sale Foundation (2026-08-12)](#pos-parked-sale-foundation-2026-08-12)
 
 ### Table Definitions
 - [1. Users Table](#1-users-table)
@@ -42,6 +43,9 @@
 - [18. POS Catalog Overrides Table](#18-pos-catalog-overrides-table)
 - [19. POS Terminal Shifts Table](#19-pos-terminal-shifts-table)
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
+- [23. POS Parked Sales Table](#23-pos-parked-sales-table)
+- [24. POS Payment Sessions Table](#24-pos-payment-sessions-table)
+- [25. POS Payment Allocations Table](#25-pos-payment-allocations-table)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 - [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
@@ -1306,17 +1310,31 @@ CREATE TABLE audit_logs (
     entity_type VARCHAR(50) NOT NULL,
     entity_id INT,
     action ENUM('CREATE', 'UPDATE', 'DELETE', 'VIEW') NOT NULL,
+    event_type VARCHAR(100),
+    actor_username VARCHAR(120),
+    terminal_id VARCHAR(100),
+    shift_id BIGINT,
+    location_id INT,
+    reason VARCHAR(500),
+    request_id VARCHAR(100),
     changes JSON,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_entity_type (entity_type),
-    INDEX idx_timestamp (timestamp)
+    INDEX idx_timestamp (timestamp),
+    INDEX idx_audit_event_timestamp (event_type, timestamp),
+    INDEX idx_audit_terminal_timestamp (terminal_id, timestamp),
+    INDEX idx_audit_shift_timestamp (shift_id, timestamp)
 );
 ```
+
+`audit_logs` is tenant-local. The API tenant schema repair registry in
+`apps/dgfy-api/scripts/sync-tenant-schemas.js` is authoritative for backfilling the
+table, POS event-context columns, and supporting indexes on existing tenant databases.
 
 ### 18. System Settings Table
 
@@ -1364,9 +1382,42 @@ CREATE TABLE system_settings (
   - `payment_status` (enum `unpaid|payment_pending|paid|failed|refund_pending|partial_refunded|refunded`, default `paid`)
   - `payment_reference` (provider payment/reference ID, nullable)
   - `payment_checkout_url` (provider checkout URL, nullable)
-  - `payment_provider` (provider key such as `paymongo`, nullable)
-  - `payment_session_reference` (commerce payment session public reference, nullable)
-  - `payment_status` supports `refund_pending`, `partial_refunded`, and `refunded` for PayMongo commerce refund reconciliation.
+- `payment_provider` (provider key such as `paymongo`, nullable)
+- `payment_breakdown` (JSON immutable successful tender allocation snapshot,
+  nullable for historical rows)
+- `payment_session_reference` (commerce payment session public reference, nullable)
+- `payment_status` supports `refund_pending`, `partial_refunded`, and `refunded` for PayMongo commerce refund reconciliation.
+
+## POS Split-Payment Design and Persistence Contract (Phases 57-63)
+
+The current `pos_transactions` payment fields remain the backward-compatible
+single-tender snapshot. Split tender uses additive tenant-local collection and
+allocation records. Successful completion also stores a server-derived tender
+breakdown on the one transaction for receipt/report presentation.
+
+The additive design must preserve:
+
+- One payment session per one checkout/sale attempt, scoped by tenant,
+  location, terminal, cashier, and open shift.
+- A server-validated checkout/totals snapshot that can be revalidated before
+  completion.
+- One or more allocation records with method, applied amount, status,
+  reference, idempotency key, actor, shift, terminal, location, and timestamps.
+- Cash-only tendered amount and change fields; non-cash allocations cannot
+  carry change or exceed the remaining balance.
+- Durable `pending`, `successful`, `failed`, `cancelled`, and `reversed`
+  allocation evidence without deleting successful financial history.
+- Idempotency uniqueness and indexes for active-session scope, shift-close
+  recovery, and reconciliation reads.
+- Tenant model-factory, schema synchronizer, runtime schema-audit, and
+  disposable-tenant coverage before any existing tenant is upgraded.
+
+Split-session records are not `pos_transactions`, inventory movements, fiscal
+events, receipts, Z-reading sales, or Unified Sales rows until the one atomic
+completion transition creates the authoritative POS transaction. The full
+behavioral contract is in
+[`docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`](../features/POS_SPLIT_PAYMENT_CONTRACT.md)
+and ADR 0062.
 
 ## Commerce Payment Sessions Addendum (2026-05-19)
 
@@ -1487,6 +1538,245 @@ CREATE TABLE pos_cash_drawer_events (
 **Current Implementation Note (2026-03):**
 - Used for shift-level cash-in/cash-out adjustments.
 - Included in terminal cash summary and variance calculations.
+
+### 23. POS Parked Sales Table
+
+```sql
+CREATE TABLE pos_parked_sales (
+    pos_parked_sale_id INT PRIMARY KEY AUTO_INCREMENT,
+    park_reference VARCHAR(40) NOT NULL UNIQUE,
+    idempotency_key VARCHAR(120) NOT NULL UNIQUE,
+    request_hash VARCHAR(64) NOT NULL,
+    status ENUM('parked', 'claimed', 'completed', 'cancelled') NOT NULL DEFAULT 'parked',
+    revision INT UNSIGNED NOT NULL DEFAULT 1,
+    cashier_id INT NOT NULL,
+    shift_id INT NOT NULL,
+    origin_cashier_id INT NULL,
+    origin_shift_id INT NULL,
+    terminal_id VARCHAR(100) NOT NULL,
+    location_id INT NOT NULL,
+    snapshot JSON NOT NULL,
+    line_count INT NOT NULL DEFAULT 0,
+    quantity_total DECIMAL(24, 12) NOT NULL DEFAULT 0,
+    subtotal_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    claimed_by INT NULL,
+    claimed_terminal_id VARCHAR(100) NULL,
+    claimed_at TIMESTAMP NULL,
+    completed_transaction_id INT NULL,
+    completed_at TIMESTAMP NULL,
+    cancelled_by INT NULL,
+    cancelled_at TIMESTAMP NULL,
+    cancel_reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (cashier_id) REFERENCES users(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (shift_id) REFERENCES pos_terminal_shifts(pos_terminal_shift_id) ON DELETE RESTRICT,
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id) ON DELETE RESTRICT,
+    FOREIGN KEY (claimed_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (completed_transaction_id) REFERENCES pos_transactions(pos_transaction_id) ON DELETE SET NULL,
+    FOREIGN KEY (cancelled_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_pos_parked_sales_status (status),
+    INDEX idx_pos_parked_sales_shift_status (shift_id, status),
+    INDEX idx_pos_parked_sales_cashier_status (cashier_id, status),
+    INDEX idx_pos_parked_sales_location_status (location_id, status),
+    INDEX idx_pos_parked_sales_origin_cashier_status (origin_cashier_id, status),
+    INDEX idx_pos_parked_sales_origin_shift_status (origin_shift_id, status),
+    INDEX idx_pos_parked_sales_created_at (created_at)
+);
+```
+
+**Current Implementation Note (2026-08-13):**
+- Tenant-local parked carts are immutable until an explicit cashier re-park
+  replaces the snapshot on the same claimed record using optimistic revision
+  protection. Parking and re-parking create no payment, sale, receipt,
+  Z-reading, or stock movement.
+- `cashier_id` and `shift_id` identify the current operational owner. The
+  nullable `origin_cashier_id` and `origin_shift_id` preserve the cashier and
+  shift that originally parked the cart when another authorized cashier
+  resumes it from the same location.
+- Active parked carts are listed by location. Claiming a parked cart transfers
+  its operational owner to the authenticated cashier's open shift while
+  retaining the immutable origin fields and an audit event.
+- `idempotency_key` and `request_hash` make retries deterministic. Active
+  cashier operations are scoped to the open shift, terminal, and location.
+- Secret-like snapshot keys are removed before persistence, and the snapshot
+  is bounded to protect tenant storage and API payload limits.
+
+### 24. POS Payment Sessions Table
+
+```sql
+CREATE TABLE pos_payment_sessions (
+    pos_payment_session_id INT PRIMARY KEY AUTO_INCREMENT,
+    session_reference VARCHAR(40) NOT NULL UNIQUE,
+    idempotency_key VARCHAR(120) NOT NULL UNIQUE,
+    request_hash VARCHAR(64) NOT NULL,
+    status ENUM('open', 'partially_paid', 'ready_to_complete', 'completed', 'cancelled') NOT NULL DEFAULT 'open',
+    cashier_id INT NOT NULL,
+    shift_id INT NOT NULL,
+    terminal_id VARCHAR(100) NOT NULL,
+    location_id INT NOT NULL,
+    parked_sale_id INT NULL,
+    snapshot JSON NOT NULL,
+    line_count INT NOT NULL DEFAULT 0,
+    quantity_total DECIMAL(24, 12) NOT NULL DEFAULT 0,
+    subtotal_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    paid_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    remaining_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    completed_transaction_id INT NULL,
+    completed_at TIMESTAMP NULL,
+    cancelled_by INT NULL,
+    cancelled_at TIMESTAMP NULL,
+    cancel_reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (cashier_id) REFERENCES users(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (shift_id) REFERENCES pos_terminal_shifts(pos_terminal_shift_id) ON DELETE RESTRICT,
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id) ON DELETE RESTRICT,
+    FOREIGN KEY (parked_sale_id) REFERENCES pos_parked_sales(pos_parked_sale_id) ON DELETE SET NULL,
+    FOREIGN KEY (completed_transaction_id) REFERENCES pos_transactions(pos_transaction_id) ON DELETE SET NULL,
+    FOREIGN KEY (cancelled_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    INDEX idx_pos_payment_sessions_status (status),
+    INDEX idx_pos_payment_sessions_shift_status (shift_id, status),
+    INDEX idx_pos_payment_sessions_cashier_status (cashier_id, status),
+    INDEX idx_pos_payment_sessions_location_status (location_id, status),
+    INDEX idx_pos_payment_sessions_parked_sale (parked_sale_id),
+    INDEX idx_pos_payment_sessions_completed_transaction (completed_transaction_id),
+    INDEX idx_pos_payment_sessions_created_at (created_at)
+);
+```
+
+**Phase 58 implementation note (2026-08-12):** This is an additive tenant-local
+collection record. It preserves the server-validated checkout snapshot and
+denormalized paid/remaining display values; successful allocations remain the
+source of truth for recalculation. It creates no inventory, fiscal, receipt,
+Z-reading, or Unified Sales effect by itself.
+
+### 25. POS Payment Allocations Table
+
+```sql
+CREATE TABLE pos_payment_allocations (
+    pos_payment_allocation_id INT PRIMARY KEY AUTO_INCREMENT,
+    allocation_reference VARCHAR(40) NOT NULL UNIQUE,
+    session_id INT NOT NULL,
+    idempotency_key VARCHAR(120) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
+    status ENUM('pending', 'successful', 'failed', 'cancelled', 'reversed') NOT NULL DEFAULT 'pending',
+    payment_method ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer') NOT NULL,
+    payment_handoff_mode ENUM('external', 'internal') NULL,
+    applied_amount DECIMAL(14, 4) NOT NULL,
+    cash_tendered DECIMAL(14, 4) NULL,
+    change_amount DECIMAL(14, 4) NULL,
+    payment_reference VARCHAR(120) NULL,
+    payment_provider VARCHAR(40) NULL,
+    provider_event_id VARCHAR(120) NULL,
+    provider_refund_ids JSON NULL,
+    provider_refund_event_id VARCHAR(255) NULL,
+    provider_refund_status VARCHAR(40) NULL,
+    provider_refunded_at TIMESTAMP NULL,
+    failure_code VARCHAR(80) NULL,
+    failure_reason VARCHAR(255) NULL,
+    cashier_id INT NOT NULL,
+    shift_id INT NOT NULL,
+    terminal_id VARCHAR(100) NOT NULL,
+    location_id INT NOT NULL,
+    confirmed_at TIMESTAMP NULL,
+    cancelled_by INT NULL,
+    cancelled_at TIMESTAMP NULL,
+    cancel_reason VARCHAR(255) NULL,
+    reversed_by INT NULL,
+    reversed_at TIMESTAMP NULL,
+    reversal_reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (session_id) REFERENCES pos_payment_sessions(pos_payment_session_id) ON DELETE RESTRICT,
+    FOREIGN KEY (cashier_id) REFERENCES users(user_id) ON DELETE RESTRICT,
+    FOREIGN KEY (shift_id) REFERENCES pos_terminal_shifts(pos_terminal_shift_id) ON DELETE RESTRICT,
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id) ON DELETE RESTRICT,
+    FOREIGN KEY (cancelled_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (reversed_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    UNIQUE KEY uq_pos_payment_allocations_session_idempotency (session_id, idempotency_key),
+    UNIQUE KEY uq_pos_payment_allocations_provider_event_id (provider_event_id),
+    UNIQUE KEY uq_pos_payment_allocations_provider_refund_event_id (provider_refund_event_id),
+    INDEX idx_pos_payment_allocations_session_status (session_id, status),
+    INDEX idx_pos_payment_allocations_session_created (session_id, created_at),
+    INDEX idx_pos_payment_allocations_shift_status (shift_id, status),
+    INDEX idx_pos_payment_allocations_location_status (location_id, status),
+    INDEX idx_pos_payment_allocations_method_status (payment_method, status),
+    INDEX idx_pos_payment_allocations_created_at (created_at)
+);
+```
+
+**Phase 62 implementation note (2026-08-12):** Allocation rows preserve the
+method, applied amount, cash tender/change, provider reference, verified provider
+event identity, terminal scope,
+idempotency evidence, and bounded failure/reversal metadata. Provider
+confirmation is accepted only through the configured server-side verifier. Raw
+card data,
+PINs, passwords, access tokens, signatures, and provider secrets are never stored.
+
+**Phase 63 implementation note (2026-08-12):** Provider refund identities,
+status, and timestamp are stored only when server-to-server reconciliation
+observes a full successful PayMongo refund. The unique refund event identity
+prevents cross-allocation replay inside the tenant ledger. Partial refunds do
+not automatically rewrite `applied_amount` or session balances.
+
+**Phase 64 implementation note (2026-08-13):** Store-owned GCash/Maya QR,
+card-terminal, and bank-account allocations reuse the existing columns and are
+stored with `payment_provider = 'merchant_owned'`. Their optional reference is
+an audit aid. They have `confirmed_at` and cashier/shift/terminal/location
+evidence but no `provider_event_id`, because the payment is cashier-attested
+rather than processed or verified by PayMongo. No migration is required.
+
+### pos_merchant_tender_reconciliations (Phase 65)
+
+Append-only manager review evidence for store-owned non-cash tenders. The
+table is tenant-local and shift-scoped. It is not a replacement for
+`pos_transactions` or `pos_payment_allocations` and never adjusts either
+ledger.
+
+```sql
+CREATE TABLE pos_merchant_tender_reconciliations (
+    pos_merchant_tender_reconciliation_id INT PRIMARY KEY AUTO_INCREMENT,
+    reconciliation_reference VARCHAR(40) NOT NULL UNIQUE,
+    shift_id INT NOT NULL,
+    location_id INT NULL,
+    terminal_id VARCHAR(100) NOT NULL,
+    idempotency_key VARCHAR(120) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
+    status ENUM('balanced', 'variance_reviewed') NOT NULL,
+    expected_breakdown JSON NOT NULL,
+    observed_breakdown JSON NOT NULL,
+    variance_breakdown JSON NOT NULL,
+    expected_total DECIMAL(14,4) NOT NULL,
+    observed_total DECIMAL(14,4) NOT NULL,
+    variance_total DECIMAL(14,4) NOT NULL,
+    review_note VARCHAR(500) NULL,
+    reviewed_by INT NOT NULL,
+    reviewed_at DATETIME NOT NULL,
+    supersedes_reconciliation_id INT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    UNIQUE KEY uq_pos_merchant_tender_reconciliations_shift_idempotency
+        (shift_id, idempotency_key),
+    INDEX idx_pos_merchant_tender_reconciliations_shift_reviewed
+        (shift_id, reviewed_at),
+    FOREIGN KEY (shift_id) REFERENCES pos_terminal_shifts(pos_terminal_shift_id),
+    FOREIGN KEY (location_id) REFERENCES tenant_locations(location_id),
+    FOREIGN KEY (reviewed_by) REFERENCES users(user_id),
+    FOREIGN KEY (supersedes_reconciliation_id)
+        REFERENCES pos_merchant_tender_reconciliations(pos_merchant_tender_reconciliation_id)
+);
+```
+
+Expected totals are server-derived from recognized in-store single-tender
+sales plus successful `merchant_owned` allocations. PayMongo/Storefront,
+pending, failed, cancelled, and reversed money is excluded. Migration:
+`20260813000001-create-pos-merchant-tender-reconciliations.cjs`.
 
 ---
 

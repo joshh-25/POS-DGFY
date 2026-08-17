@@ -37,7 +37,7 @@ export function CustomerDashboardShell({ presentation, isMobileViewport, activeN
     <div data-testid="dgfy-customer-account-page" style={rootStyle}><div style={shellStyle}>
       <CustomerDashboardSidebar activeNav={activeNav} onSelectNav={selectNavigation} onHelp={onHelp} onSignOut={onSignOut} isMobileViewport={isMobileViewport} onCloseMobile={() => setIsMobileMenuOpen(false)} style={sidebarStyle} theme={theme} />
       <div style={contentStyle}>
-        <CustomerDashboardHeader style={headerStyle} theme={theme} isMobileViewport={isMobileViewport} onOpenMenu={() => setIsMobileMenuOpen(true)} onClose={onClose} notifications={notifications} unreadCount={unreadNotificationCount} isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} onMarkRead={onMarkNotificationRead} onMarkAllRead={onMarkAllNotificationsRead} onTrackReference={onTrackReference} initials={accountIdentityInitials} name={accountIdentityName} />
+        <CustomerDashboardHeader style={headerStyle} theme={theme} isMobileViewport={isMobileViewport} isDrawer={isDrawer} onOpenMenu={() => setIsMobileMenuOpen(true)} onClose={onClose} notifications={notifications} unreadCount={unreadNotificationCount} isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} onMarkRead={onMarkNotificationRead} onMarkAllRead={onMarkAllNotificationsRead} onTrackReference={onTrackReference} initials={accountIdentityInitials} name={accountIdentityName} />
         <main style={mainStyle}>{children}</main>
       </div>
     </div></div>

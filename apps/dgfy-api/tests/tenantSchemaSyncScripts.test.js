@@ -10,7 +10,8 @@ import {
   REQUIRED_TENANT_SCHEMA_COLUMNS,
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
-  repairItemFolderCategoryLifecycleSchema
+  repairItemFolderCategoryLifecycleSchema,
+  repairPosParkedSaleOriginOwnership
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
@@ -144,6 +145,50 @@ describe('tenant schema sync script contracts', () => {
     );
   });
 
+  it('registers the tenant-local audit log table and POS event context contract', () => {
+    expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('audit_logs');
+
+    const [tableRepair] = buildTenantSchemaTableRepairSql(['audit_logs']);
+    expect(tableRepair.sql).toContain('CREATE TABLE `audit_logs`');
+    expect(tableRepair.sql).toContain('`event_type` varchar(100)');
+
+    const columnRepairs = buildTenantSchemaRepairSql([
+      { table: 'audit_logs', column: 'event_type' },
+      { table: 'audit_logs', column: 'actor_username' },
+      { table: 'audit_logs', column: 'terminal_id' },
+      { table: 'audit_logs', column: 'shift_id' },
+      { table: 'audit_logs', column: 'location_id' },
+      { table: 'audit_logs', column: 'reason' },
+      { table: 'audit_logs', column: 'request_id' }
+    ]);
+    expect(columnRepairs).toHaveLength(7);
+    expect(columnRepairs[0].sql).toContain('ADD COLUMN `event_type`');
+    expect(columnRepairs[6].sql).toContain('ADD COLUMN `request_id`');
+
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.audit_logs).toHaveProperty('idx_audit_event_timestamp');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.audit_logs).toHaveProperty('idx_audit_terminal_timestamp');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.audit_logs).toHaveProperty('idx_audit_shift_timestamp');
+  });
+
+  it('registers shared parked-sale ownership columns and origin backfill', async () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_cashier_id');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_shift_id');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
+      .toHaveProperty('idx_pos_parked_sales_origin_cashier_status');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
+      .toHaveProperty('idx_pos_parked_sales_origin_shift_status');
+
+    const connection = { query: jest.fn().mockResolvedValue([[], {}]) };
+    await repairPosParkedSaleOriginOwnership(connection, 'sku_tenant_test');
+
+    expect(connection.query).toHaveBeenCalledWith(expect.stringContaining(
+      '`origin_cashier_id` = COALESCE(`origin_cashier_id`, `cashier_id`)'
+    ));
+    expect(connection.query).toHaveBeenCalledWith(expect.stringContaining(
+      '`origin_shift_id` = COALESCE(`origin_shift_id`, `shift_id`)'
+    ));
+  });
+
   it('registers manual delivery assignment tables and repairs for older tenants', () => {
     expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('delivery_personnel');
 
@@ -153,10 +198,12 @@ describe('tenant schema sync script contracts', () => {
 
     const columnRepairs = buildTenantSchemaRepairSql([
       { table: 'delivery_jobs', column: 'delivery_personnel_id' },
+      { table: 'delivery_jobs', column: 'delivery_personnel_name' },
       { table: 'delivery_jobs', column: 'assigned_shift_id' }
     ]);
     expect(columnRepairs[0].sql).toContain('ADD COLUMN `delivery_personnel_id`');
-    expect(columnRepairs[1].sql).toContain('ADD COLUMN `assigned_shift_id`');
+    expect(columnRepairs[1].sql).toContain('ADD COLUMN `delivery_personnel_name`');
+    expect(columnRepairs[2].sql).toContain('ADD COLUMN `assigned_shift_id`');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_personnel_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });

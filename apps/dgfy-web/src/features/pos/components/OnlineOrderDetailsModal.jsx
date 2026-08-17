@@ -170,7 +170,7 @@ export default function OnlineOrderDetailsModal({
                 )}
               </div>
               <DialogDescription className="mt-0.5 truncate text-[11px] text-slate-500 sm:text-xs">
-                Review the active customer order details.
+                Review the customer order details.
               </DialogDescription>
             </div>
           </div>
@@ -179,11 +179,11 @@ export default function OnlineOrderDetailsModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3 sm:px-4 sm:py-3.5">
           {loading ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center text-xs text-slate-600">
-              Loading active order details...
+              Loading order details...
             </div>
           ) : !order ? (
             <div className="rounded-lg border border-dashed border-rose-300 bg-rose-50 p-5 text-center text-xs font-semibold text-rose-700">
-              Failed to load the active order details.
+              Failed to load the order details.
             </div>
           ) : (
             <div className="space-y-2.5">

@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => ({
@@ -28,7 +29,9 @@ const mocks = vi.hoisted(() => ({
     updateTenantCompliancePeripheralVerification: vi.fn(),
     acknowledgeTenantComplianceSecurityIncident: vi.fn(),
     resolveTenantComplianceSecurityIncident: vi.fn(),
-    updateComplianceFinalReviewDocumentReview: vi.fn()
+    updateComplianceFinalReviewDocumentReview: vi.fn(),
+    listStoreTemplates: vi.fn(),
+    getTenantRevenueDashboard: vi.fn()
   },
   toastMock: {
     success: vi.fn(),
@@ -117,6 +120,8 @@ describe('TenantManager capability controls', () => {
         ]
       }
     });
+    mocks.adminServiceMock.listStoreTemplates.mockResolvedValue({ success: true, data: { templates: [] } });
+    mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({ data: null });
   });
 
   afterEach(() => {
@@ -125,15 +130,18 @@ describe('TenantManager capability controls', () => {
 
   it('filters tenants by search and updates capability switches with an audit reason', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     expect(screen.getByText('Tenant search')).toBeTruthy();
     expect(screen.getByText('2 of 2')).toBeTruthy();
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
 
-    expect(screen.getByText('Kusina & Cafe')).toBeTruthy();
-    expect(screen.queryByText('Kate Store')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Kusina & Cafe' })).toBeTruthy();
+    // Kate Store's own detail card is filtered out. The tenant-revenue
+    // workspace's tenant picker is a separate, unfiltered widget that
+    // legitimately keeps listing every tenant as a <select> option.
+    expect(screen.queryByRole('heading', { name: 'Kate Store' })).toBeNull();
     expect(screen.getByText('1 of 2')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /POS Off/i }));
@@ -153,9 +161,9 @@ describe('TenantManager capability controls', () => {
   }, 15000);
 
   it('shows storefront readiness gaps for visible tenants without a publishable pin', async () => {
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     expect(screen.getAllByRole('region', { name: 'Core workspace access' })).toHaveLength(2);
     expect(screen.getAllByRole('region', { name: 'Public storefront controls' })).toHaveLength(2);
     expect(screen.getByText('Needs primary map pin')).toBeTruthy();
@@ -173,9 +181,9 @@ describe('TenantManager capability controls', () => {
 
   it('updates platform max allowed storefront mode separately from requested mode', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
 
     const platformPanel = screen.getByText('Platform max allowed').closest('.rounded-lg');
@@ -200,9 +208,9 @@ describe('TenantManager capability controls', () => {
 
   it('warns when Online Ordering remains capped by registration readiness', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
     await user.click(screen.getByRole('button', { name: /Online ordering mode/i }));
 
@@ -212,9 +220,9 @@ describe('TenantManager capability controls', () => {
 
   it('updates registration readiness separately from requested mode', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
 
     const readinessPanel = screen.getByText('Registration readiness').closest('.rounded-lg');
@@ -239,9 +247,9 @@ describe('TenantManager capability controls', () => {
 
   it('keeps storefront sub-modes disabled until Storefront Maps is visible', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kate Store');
+    await screen.findByRole('heading', { name: 'Kate Store' });
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
 
     expect(screen.getByText('Hidden from maps')).toBeTruthy();
@@ -252,9 +260,9 @@ describe('TenantManager capability controls', () => {
 
   it('loads and renders recent capability audit logs', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Kusina & Cafe');
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     await user.click(screen.getAllByRole('button', { name: /Audit/i })[0]);
 
     await waitFor(() => {

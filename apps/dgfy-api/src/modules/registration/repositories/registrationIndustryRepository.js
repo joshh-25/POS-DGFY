@@ -3,8 +3,17 @@ import {
     RegistrationIndustryAuditLog,
     sequelize
 } from '../../../models/index.js';
+import { normalizeRegistrationIndustryNiches } from '../registrationIndustryNiches.js';
 
-const toPlainIndustry = (row) => (row ? row.get({ plain: true }) : null);
+const toPlainIndustry = (row) => {
+    if (!row) return null;
+
+    const plain = row.get({ plain: true });
+    return {
+        ...plain,
+        niches: normalizeRegistrationIndustryNiches(plain.niches)
+    };
+};
 
 // The registration module's DB-driven catalog (issue #316): the successor
 // to the hardcoded REGISTRATION_INDUSTRIES constant, which is now the seed

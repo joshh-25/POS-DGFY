@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { validatePosTransactionsQuery } from '../src/validators/posValidator.js';
 
 const mockRes = () => {
@@ -40,6 +40,23 @@ describe('POS transactions query validator', () => {
         expect(res.status).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedQuery.order_method).toBe('walk_in');
+    });
+
+    it('accepts payment_status for financially recognized sales filtering', () => {
+        const req = {
+            query: {
+                status: 'completed',
+                payment_status: 'paid'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosTransactionsQuery(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery).toMatchObject({ status: 'completed', payment_status: 'paid' });
     });
 
     it('rejects unsupported order_source values', () => {

@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => ({
@@ -26,7 +27,9 @@ const mocks = vi.hoisted(() => ({
     updateTenantCompliancePeripheralVerification: vi.fn(),
     acknowledgeTenantComplianceSecurityIncident: vi.fn(),
     resolveTenantComplianceSecurityIncident: vi.fn(),
-    updateComplianceFinalReviewDocumentReview: vi.fn()
+    updateComplianceFinalReviewDocumentReview: vi.fn(),
+    listStoreTemplates: vi.fn(),
+    getTenantRevenueDashboard: vi.fn()
   },
   toastMock: {
     success: vi.fn(),
@@ -72,6 +75,8 @@ describe('TenantManager compliance modal partial-load resilience', () => {
     mocks.adminServiceMock.listTenantComplianceSecurityIncidents.mockResolvedValue({
       data: { incidents: [] }
     });
+    mocks.adminServiceMock.listStoreTemplates.mockResolvedValue({ success: true, data: { templates: [] } });
+    mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({ data: null });
   });
 
   afterEach(() => {
@@ -80,9 +85,9 @@ describe('TenantManager compliance modal partial-load resilience', () => {
 
   it('keeps modal open and renders partial data when one compliance section fails', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Acme Foods');
+    await screen.findByRole('heading', { name: 'Acme Foods' });
     await user.click(screen.getByRole('button', { name: /^Compliance$/i }));
 
     expect(await screen.findByText('Compliance Verification Review')).toBeTruthy();

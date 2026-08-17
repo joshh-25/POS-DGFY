@@ -1,10 +1,10 @@
 import { Plus, X } from 'lucide-react';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 
-const SIMPLE_BRAND = '#0f766e';
+const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_BORDER = '#5eead4';
-const SIMPLE_BRAND_SHADOW = 'rgba(15,118,110,0.16)';
-const SIMPLE_BRAND_TINT = '#ecfeff';
+const SIMPLE_BRAND_SHADOW = 'rgba(23,107,58,0.16)';
+const SIMPLE_BRAND_TINT = '#FFF8E7';
 
 /**
  * MSME mobile "Saved Addresses" bottom sheet, shown when tapping "View All
@@ -60,7 +60,7 @@ export function SimpleCheckoutSavedAddressesModal({
               themeHoverBorder={SIMPLE_BRAND_BORDER}
               themeHoverBg="#f0fdfa"
               themeShadowColor={SIMPLE_BRAND_SHADOW}
-              themeShadowColorSoft="rgba(15,118,110,0.08)"
+              themeShadowColorSoft="rgba(23,107,58,0.08)"
             />
           ))}
         </div>

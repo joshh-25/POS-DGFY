@@ -29,8 +29,8 @@ const FnbHeroMobileInfoCards = ({
   hasMapData,
   hasMobileStoreDetailsSummary,
   hasWhyChooseUs,
-  heroSectionModel,
   heroTheme,
+  modeAdapter,
   mapSelectedKey,
   mapStores,
   openStorefrontActionLink,
@@ -42,6 +42,14 @@ const FnbHeroMobileInfoCards = ({
 }) => {
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const mobileInfoCardWidth = 'calc(100% - 32px)';
+  const usesConnectedHeroSurface = modeAdapter?.usesConnectedHeroSurface === true;
+  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
+  const surfaceAccentSoft = heroTheme.palette?.accentSoft || '#fff7ed';
+  const infoCardBorder = heroTheme.palette?.secondary || '#ffedd5';
+  const pageBackground = usesConnectedHeroSurface ? (heroTheme.palette?.pageBackground || '#F8FAFC') : 'transparent';
+  const infoCardShadow = usesConnectedHeroSurface
+    ? '0 3px 12px rgba(26,78,141,0.05)'
+    : '0 8px 24px rgba(249,115,22,0.08)';
   // Mobile merges the gallery into the store-detail hero image instead of showing a
   // separate "Gallery" card: the overlay counts every image other than the one shown
   // (total gallery count - 1), not just the images beyond the desktop 4-tile preview cap.
@@ -72,9 +80,9 @@ const FnbHeroMobileInfoCards = ({
 
   return (
     <>
-    <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
+    <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box', background: pageBackground }}>
       {(hasAboutSection || hasMobileStoreDetailsSummary) && (
-        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
+        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${infoCardBorder}`, borderRadius: 16, padding: 16, boxShadow: infoCardShadow, boxSizing: 'border-box' }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: heroTheme.bodyFont }}>
             {hasAboutSection ? 'About Us' : 'Store Details'}
           </div>
@@ -96,12 +104,12 @@ const FnbHeroMobileInfoCards = ({
                     {aboutText}
                   </p>
                   {hasAboutToggle && expandedMobileCard !== 'about' && (
-                    <button type="button" onClick={() => setExpandedMobileCard('about')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                    <button type="button" onClick={() => setExpandedMobileCard('about')} style={{ background: 'none', border: 'none', padding: 0, color: surfaceAccent, fontSize: 12, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
                       See more <ChevronDown size={14} />
                     </button>
                   )}
                   {hasAboutToggle && expandedMobileCard === 'about' && (
-                    <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                    <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: surfaceAccent, fontSize: 12, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
                       Show less <ChevronUp size={14} />
                     </button>
                   )}
@@ -162,7 +170,7 @@ const FnbHeroMobileInfoCards = ({
                     {deliveryPlatformLinks.map((platform) => {
                       const content = platform.logoUrl ? (
                         <img src={platform.logoUrl} alt={platform.label} loading="lazy" decoding="async" style={{ height: 16, objectFit: 'contain' }} />
-                      ) : <span style={{ fontSize: 12, fontWeight: 700, color: '#f97316' }}>{platform.label}</span>;
+                      ) : <span style={{ fontSize: 12, fontWeight: 700, color: surfaceAccent }}>{platform.label}</span>;
                       return platform.href ? (
                         <button
                           key={platform.partner}
@@ -185,7 +193,7 @@ const FnbHeroMobileInfoCards = ({
       )}
 
       {(hasContactRows || hasMapData) && (
-        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
+        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${infoCardBorder}`, borderRadius: 16, padding: 16, boxShadow: infoCardShadow, boxSizing: 'border-box' }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
           <div style={{ display: 'grid', gap: 14 }}>
             {visibleContactRows.filter((row) => row.label !== 'Address' && row.label !== 'Hours').slice(0, expandedMobileCard === 'contact' ? 99 : 1).map((row) => {
@@ -222,7 +230,7 @@ const FnbHeroMobileInfoCards = ({
                   {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                 </div>
                 <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
-                  <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                  <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: surfaceAccent, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
                     Get directions
                   </button>
                   <StorefrontDirectionsEta latitude={addressRow?.destinationLatitude} longitude={addressRow?.destinationLongitude} bodyFont={heroTheme.bodyFont} />
@@ -242,12 +250,12 @@ const FnbHeroMobileInfoCards = ({
           )}
 
           {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
-            <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: surfaceAccent, fontSize: 12, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               See details & map <ChevronDown size={14} />
             </button>
           )}
           {expandedMobileCard === 'contact' && (
-            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: surfaceAccent, fontSize: 12, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               Hide details <ChevronUp size={14} />
             </button>
           )}
@@ -255,25 +263,25 @@ const FnbHeroMobileInfoCards = ({
       )}
 
       {hasWhyChooseUs && (
-        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
+        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${infoCardBorder}`, borderRadius: 16, padding: 16, boxShadow: infoCardShadow, boxSizing: 'border-box' }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Why Choose Us?</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {visibleWhyChooseUs.slice(0, expandedMobileCard === 'why' ? 99 : 2).map((item, index) => (
               <div key={`${item}-${index}`} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Sparkles size={16} color="#f97316" />
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: surfaceAccentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={16} color={surfaceAccent} />
                 </div>
                 <div style={{ color: '#0f172a', fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{item}</div>
               </div>
             ))}
           </div>
           {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, borderRadius: 0, color: surfaceAccent, fontSize: usesConnectedHeroSurface ? 12 : 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               See all <ChevronDown size={14} />
             </button>
           )}
           {expandedMobileCard === 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, borderRadius: 0, color: surfaceAccent, fontSize: usesConnectedHeroSurface ? 12 : 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               Show less <ChevronUp size={14} />
             </button>
           )}

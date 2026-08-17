@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -9,6 +9,7 @@ import {
   DELIVERY_JOB_STATUS_LABELS,
   hasCompleteDeliveryAssignment,
   isManualDeliveryJob,
+  isCompletionPaymentPending,
   getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
@@ -69,11 +70,287 @@ const formatOrderDateTime = (value) => {
   return date.toLocaleString();
 };
 
+const formatOrderAmount = (value) => {
+  const amount = Number(value || 0);
+  return `PHP ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
+};
+
+const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount }) {
+  const tabs = [
+    {
+      key: 'active',
+      label: 'Active Queue',
+      count: activeCount,
+      icon: ShoppingBag
+    },
+    {
+      key: 'history',
+      label: 'Order History',
+      count: historyCount,
+      icon: Receipt
+    }
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist" aria-label="Online order views">
+      {tabs.map(({ key, label, count, icon: Icon }) => {
+        const selected = activeView === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange?.(key)}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-extrabold transition ${selected
+              ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm'
+              : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#1A4E8D]'}`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+            {Number.isFinite(Number(count)) ? (
+              <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function OnlineOrderHistoryPanel({
+  canViewPos,
+  orderHistoryState,
+  refreshOrderHistory,
+  handleOpenIncomingOrderReceipt,
+  incomingReceiptOpeningId,
+  locked,
+  isOnline = true
+}) {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [fulfillmentStatus, setFulfillmentStatus] = React.useState('');
+  const [paymentStatus, setPaymentStatus] = React.useState('');
+  const [page, setPage] = React.useState(1);
+  const historyOrders = Array.isArray(orderHistoryState?.orders) ? orderHistoryState.orders : [];
+  const accessState = String(orderHistoryState?.accessState || '').trim() || 'idle';
+  const errorMessage = String(orderHistoryState?.errorMessage || '').trim();
+  const historyTotal = Number(orderHistoryState?.pagination?.total);
+  const currentPage = Number(orderHistoryState?.pagination?.page) > 0
+    ? Number(orderHistoryState.pagination.page)
+    : page;
+  const totalPages = Math.max(1, Number(orderHistoryState?.pagination?.totalPages) || 1);
+
+  const loadPage = (nextPage) => {
+    const normalizedPage = Math.min(totalPages, Math.max(1, Number(nextPage) || 1));
+    setPage(normalizedPage);
+    refreshOrderHistory?.({
+      search: searchTerm,
+      fulfillmentStatus,
+      paymentStatus,
+      page: normalizedPage
+    });
+  };
+
+  const applyFilters = (event) => {
+    event?.preventDefault();
+    loadPage(1);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-lg font-black leading-6 text-[#0F172A]">Order History</p>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-600">
+            Rejected, cancelled, and unpaid online orders stay here so Sales History contains financially recognized sales only.
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={() => loadPage(currentPage)}
+          disabled={orderHistoryState?.loading || locked || !isOnline}
+          className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+        >
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          {orderHistoryState?.loading ? 'Refreshing...' : 'Refresh History'}
+        </Button>
+      </div>
+
+      <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <label className="min-w-0 text-xs font-bold text-slate-600">
+          Search invoice
+          <span className="relative mt-1 block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Invoice number"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm font-medium text-slate-800 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+              aria-label="Search order history invoice"
+            />
+          </span>
+        </label>
+        <label className="text-xs font-bold text-slate-600">
+          Fulfillment
+          <select
+            value={fulfillmentStatus}
+            onChange={(event) => setFulfillmentStatus(event.target.value)}
+            className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+            aria-label="Filter order history fulfillment status"
+          >
+            <option value="">All exception orders</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="completed">Completed but unpaid</option>
+          </select>
+        </label>
+        <label className="text-xs font-bold text-slate-600">
+          Payment
+          <select
+            value={paymentStatus}
+            onChange={(event) => setPaymentStatus(event.target.value)}
+            className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+            aria-label="Filter order history payment status"
+          >
+            <option value="">All payment statuses</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="payment_pending">Payment pending</option>
+            <option value="paid">Paid</option>
+            <option value="failed">Failed</option>
+            <option value="refunded">Refunded</option>
+          </select>
+        </label>
+        <Button type="submit" variant="outline" className="h-10 rounded-lg border-slate-300 bg-white px-5 text-sm font-extrabold text-slate-800 hover:bg-slate-100">
+          Apply Filters
+        </Button>
+      </form>
+
+      {!isOnline ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Order history is read-only while offline. Reconnect before refreshing the list.
+        </p>
+      ) : null}
+
+      {!canViewPos || accessState === 'forbidden' ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {errorMessage || 'You need POS view permission to access online order history.'}
+        </p>
+      ) : accessState === 'error' ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {errorMessage || 'Failed to load online order history. Try refreshing.'}
+        </p>
+      ) : orderHistoryState?.loading && historyOrders.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading order history...</p>
+      ) : historyOrders.length === 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center">
+          <Receipt className="mx-auto h-8 w-8 text-slate-400" />
+          <p className="mt-2 text-base font-black text-slate-800">No exception orders found.</p>
+          <p className="mt-1 text-sm text-slate-600">Rejected, cancelled, or unpaid online orders will appear here.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Invoice</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Fulfillment</th>
+                <th className="px-4 py-3">Payment</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {historyOrders.map((order) => {
+                const orderId = Number(order?.pos_transaction_id);
+                const opening = incomingReceiptOpeningId === orderId;
+                return (
+                  <tr key={orderId || order?.invoice_number} className="align-middle hover:bg-slate-50/80">
+                    <td className="px-4 py-3">
+                      <p className="font-extrabold text-slate-900">{order?.invoice_number || order?.tracking_pin || '-'}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{order?.customer_name || 'Guest Buyer'}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{formatOrderDateTime(order?.created_at)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${order?.fulfillment_status === 'rejected'
+                        ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : order?.fulfillment_status === 'cancelled'
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+                        {FULFILLMENT_STATUS_LABELS[order?.fulfillment_status] || humanizeOrderStatus(order?.fulfillment_status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-800">{humanizeOrderStatus(order?.payment_status)}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{PAYMENT_TYPE_LABELS[order?.payment_type] || humanizeOrderStatus(order?.payment_type)}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-black tabular-nums text-slate-900">{formatOrderAmount(order?.total_amount)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={locked || !canViewPos || !isOnline || opening}
+                        onClick={() => handleOpenIncomingOrderReceipt?.(orderId, { printMode: false })}
+                        aria-label={`View order ${order?.invoice_number || orderId}`}
+                      >
+                        {opening ? 'Opening...' : 'View Order'}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {Number.isFinite(historyTotal) ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+              <p className="text-xs text-slate-500">
+                Showing {historyOrders.length} of {historyTotal} exception order{historyTotal === 1 ? '' : 's'}.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={orderHistoryState?.loading || currentPage <= 1}
+                  onClick={() => loadPage(currentPage - 1)}
+                  aria-label="Previous order history page"
+                >
+                  Previous
+                </Button>
+                <span className="min-w-24 text-center text-xs font-bold tabular-nums text-slate-600" aria-live="polite">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={orderHistoryState?.loading || currentPage >= totalPages}
+                  onClick={() => loadPage(currentPage + 1)}
+                  aria-label="Next order history page"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IncomingQueueWorkspace({
   canViewPos,
   canTransactPos,
   shiftState = { shift: null },
   incomingOrdersState,
+  orderHistoryState,
   incomingOrderActionState,
   handleIncomingOrderStatusChange,
   handleDeliveryJobStatusChange,
@@ -83,6 +360,7 @@ function IncomingQueueWorkspace({
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
+  refreshOrderHistory,
   locationsState,
   queueLocationScopeId,
   locked,
@@ -90,6 +368,7 @@ function IncomingQueueWorkspace({
   sectionId
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
+  const [activeView, setActiveView] = React.useState('active');
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -108,8 +387,41 @@ function IncomingQueueWorkspace({
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
 
+  React.useEffect(() => {
+    if (activeView !== 'history') return;
+    refreshOrderHistory?.();
+  }, [activeView, refreshOrderHistory]);
+
+  if (activeView === 'history') {
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={incomingOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+        />
+        <OnlineOrderHistoryPanel
+          canViewPos={canViewPos}
+          orderHistoryState={orderHistoryState}
+          refreshOrderHistory={refreshOrderHistory}
+          handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+          incomingReceiptOpeningId={incomingReceiptOpeningId}
+          locked={locked}
+          isOnline={isOnline}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id={sectionId} className="space-y-4">
+      <OrderWorkspaceTabs
+        activeView={activeView}
+        onChange={setActiveView}
+        activeCount={incomingOrders.length}
+        historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+      />
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]">
@@ -187,7 +499,7 @@ function IncomingQueueWorkspace({
                 <Info className="h-4 w-4" />
               </span>
               <p>
-                Completed or cancelled online orders move to History/Receipt Preview.
+                Completed paid sales move to Sales History. Rejected, cancelled, or unpaid online orders move to Order History.
                 <br />
                 Incoming Queue shows active fulfillment statuses only.
               </p>
@@ -272,7 +584,7 @@ function IncomingQueueWorkspace({
                   type="button"
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
                   onClick={() => {
                     if (status === 'rejected') {
                       setPendingRejectionOrderId(Number(order.pos_transaction_id));
@@ -401,18 +713,6 @@ function IncomingQueueWorkspace({
                         <div className="flex items-center flex-1 min-w-0">
                           <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment Status</span>
                           <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
-                          <Printer className="h-4 w-4" />
-                        </div>
-                        <div className="flex items-center flex-1 min-w-0">
-                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Receipt</span>
-                          <span className={`text-xs font-semibold break-words flex-1 ${order.receipt_print_status === 'printed' ? 'text-emerald-700' : order.receipt_print_status === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
-                            {order.receipt_print_status === 'printed' ? 'Printed' : order.receipt_print_status === 'failed' ? 'Print failed' : 'Not printed'}
-                          </span>
                         </div>
                       </div>
 

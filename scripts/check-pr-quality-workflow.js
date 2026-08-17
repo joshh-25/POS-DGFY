@@ -9,9 +9,19 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const prChecks = read('.github/workflows/pr-checks.yml');
 const qualityWorkflow = read('.github/workflows/pr-quality-checks.yml');
 
+// Originally also required `quality-checks:` / `uses: ./.github/workflows/
+// pr-quality-checks.yml` to exist in pr-checks.yml -- i.e. that this
+// workflow stay wired into the PR pipeline, even while disabled via
+// `if: false`. That job was removed outright 2026-08-14 (#416): a job
+// that's permanently skipped is still a row in every PR's Checks tab
+// asserting nothing, and Pat asked to stop showing it rather than keep it
+// wired-but-disabled. Dropped that half of the assertion accordingly.
+// `requiredQualityMarkers` below is the half that actually matters and
+// stays fully enforced: pr-quality-checks.yml itself must keep every real
+// gate and must never be continue-on-error, whether it's invoked
+// automatically, manually (workflow_dispatch), or re-wired into a caller
+// again later.
 const requiredPrChecks = [
-  'quality-checks:',
-  'uses: ./.github/workflows/pr-quality-checks.yml',
   'runner_labels_json: *runner_heavy'
 ];
 const requiredQualityMarkers = [

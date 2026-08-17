@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-07-08
+last_reviewed: 2026-08-15
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -43,11 +43,15 @@ item targets, time window, and usage limit.
    configured rule value or maximum discount.
 6. Employee discount identity is resolved from an active tenant user by `user_id`.
    The persisted name is the server-resolved username, not submitted free text.
-7. Employee and manual discounts require an individual approval PIN belonging to
-   an active Admin or Manager. Only the Master Admin may set, replace, or clear
-   that PIN, and APIs expose only whether it is configured. Checkout verifies the
-   selected approver and persists `manager_approval_id` and approval time.
-   Employee self-approval is prohibited.
+7. Every governed POS discount (Senior, PWD, Employee, Promo, and Manual)
+   requires an individual approval PIN belonging to an active authorized
+   employee. Authorization is granted by the existing Admin/Manager defaults or
+   the explicit `pos:discount_authorize` permission; there is no Admin bypass.
+   Only the Master Admin may set, replace, or clear that PIN, and APIs expose
+   only whether it is configured. Checkout verifies the selected PIN owner and
+   persists `manager_approval_id` and approval time. Employee self-approval is
+   prohibited, and the cashier who applies the discount remains a separate
+   audit identity when the PIN owner is different.
 8. Persist the active rule ID, canonical employee identity, commercial promo code,
    line allocations, and `pos-discount.v2` calculation version. Client-provided
    VAT and discount totals are ignored.
@@ -73,8 +77,9 @@ item targets, time window, and usage limit.
     in the tenant storefront timezone. The accepted transaction retains its saved
     promo allocation; it is not repriced after acceptance.
 14. Governed POS discount audit evidence records the applying cashier, the selected
-    employee identity for employee discounts, and the manager/admin approver when
-    approval applies. These audit fields supplement, rather than replace, the saved
+    employee identity for employee discounts, the discount type/rate/amount,
+    transaction reference, and the canonical authorized employee plus approval
+    time. These audit fields supplement, rather than replace, the saved
     transaction and `pos_transaction_discounts` snapshots.
 
 ## Boundary Consequences
@@ -112,7 +117,8 @@ both Storefront and POS without affecting completed transactions.
 3. POS frontend discount-card contract test and production build.
 4. Backend lint, architecture guardrails, docs lint, and compliance gates.
 5. Rendered POS checks for desktop and tablet before release approval.
-6. Individual approval tests for invalid PIN, invalid role, self-approval, and
+6. Individual approval tests for invalid PIN, missing authorization, explicit
+   cashier authorization, self-approval, PIN-owner/cashier separation, and
    persisted approver identity.
 7. Storefront promo persistence tests covering canonical promo code, header
    totals, per-line allocation reconciliation, usage-counter atomicity, and POS
@@ -151,6 +157,20 @@ Prepaid delivery requires `payment_status=paid`; COD delivery additionally
 requires the server-recorded cash collection evidence before inventory deduction
 and order completion. Missing delivery proof or payment proof returns a
 deterministic conflict and leaves the order unchanged.
+
+### 2026-08-15 — PIN-driven authorization for every governed POS discount
+
+All five governed POS discount types now require a server-verified PIN from an
+active authorized employee. Existing Admin/Manager role defaults remain valid,
+and `pos:discount_authorize` allows an explicitly delegated employee to
+authorize discounts. The applying cashier and PIN owner are recorded as
+separate identities; the raw PIN is transient request data and is never stored
+in transaction, payment-session, or audit records. A manual reason is optional
+and no longer blocks checkout. Legacy generic discount fields without a
+governed discount plus verified PIN are rejected server-side.
+Migration `20260815000003-align-audit-log-context.cjs` adds the nullable audit
+actor/context columns required by the existing append-only audit contract to
+older tenant schemas; it does not add or store raw PIN data.
 
 ## Authoritative Sources
 

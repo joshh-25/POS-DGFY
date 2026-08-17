@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BarChart3,
   CalendarCheck,
+  ClipboardCheck,
   ClipboardList,
   History,
   ListChecks,
@@ -64,8 +65,10 @@ export default function TerminalWorkspaceSidebar({
   branchName: propBranchName = '',
   currentViewMode = 'checkout',
   canViewPos = false,
+  canViewAudit = false,
   canManageCategories = false,
   showServiceOperations = false,
+  showIncomingQueue = true,
   canAccessServiceOperations = false,
   allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
@@ -89,7 +92,7 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const showIncomingQueue = !isMsmeMode;
+  const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
@@ -272,7 +275,7 @@ export default function TerminalWorkspaceSidebar({
               testId="pos-nav-services"
             />
           )}
-          {showIncomingQueue && (
+          {shouldShowIncomingQueue && (
             <NavButton
               label={`Orders (${incomingCount})`}
               icon={Truck}
@@ -330,6 +333,18 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
               }
               testId="pos-nav-affiliates"
+            />
+          )}
+          {canViewAudit && (
+            <NavButton
+              label="Audit"
+              icon={ClipboardCheck}
+              active={currentViewMode === 'audit'}
+              onClick={() => onSelectViewMode('audit')}
+              onPrefetch={() => onPrefetchViewMode('audit')}
+              disabled={locked || !isOnline}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Admin-only activity log for POS and account changes')}
+              testId="pos-nav-audit"
             />
           )}
         </div>

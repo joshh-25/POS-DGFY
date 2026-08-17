@@ -694,14 +694,20 @@ export function FnbCheckoutRouteContainer({
                   cashInfoAccent={fnbOrderBrand}
                   bodyFont={servicesBodyFont}
                 />
-                {fnbPaymentType === 'qrph' ? (
+                {['qrph', 'card', 'gcash', 'maya'].includes(fnbPaymentType) ? (
                   <FnbQrphPaymentPanel
-                    onConfirmTestPayment={import.meta.env.DEV ? handleConfirmQrphTestPayment : null}
+                    onConfirmTestPayment={import.meta.env.DEV
+                      && fnbPaymentType === 'qrph'
+                      && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
+                      ? handleConfirmQrphTestPayment
+                      : null}
                     onUseCash={() => {
                       resetQrphPaymentSession();
                       handlePaymentTypeChange('cash');
                     }}
                     paymentSession={qrphPaymentSession}
+                    paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
+                    paymentType={fnbPaymentType}
                     refreshing={qrphPaymentStatusLoading}
                   />
                 ) : null}
@@ -709,7 +715,7 @@ export function FnbCheckoutRouteContainer({
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
-            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : ['card', 'gcash', 'maya'].includes(fnbPaymentType) ? 'Continue to payment' : 'Place Order'}
             withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>

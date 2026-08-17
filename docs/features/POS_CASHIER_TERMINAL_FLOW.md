@@ -1,7 +1,7 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-07-03
+Last reviewed: 2026-08-13
 
 ## Scope
 
@@ -51,7 +51,10 @@ This means the cashier can view POS items, operate checkout, view POS history/re
 7. Use `Sell` to create checkout transactions while the shift is open.
 8. Use `History` and receipt views to look up completed transactions and receipts.
 9. Use `Items` as a view-only item list. Cashiers do not get item create/edit/delete permissions by default.
-10. Use `Orders` where enabled to view incoming online orders and progress allowed order status actions while a shift is open.
+10. In eligible retail, F&B, and counter workflows, use `Orders` where enabled
+    to view incoming online orders and progress allowed order status actions
+    while a shift is open. Services uses its booking workspace instead and
+    does not show the storefront Orders queue.
 11. Use `Shift` to monitor the active shift and close the shift at the end of the cashier's work period.
 
 ## Login behavior with multiple companies
@@ -103,6 +106,10 @@ Expected POS behavior:
 - Only the cashier who opened the active shift can resume it.
 - If another cashier signs in while the first cashier's shift is still open, the UI blocks continuation and instructs the operator to close the current shift first.
 - After shift close, cashier login is required before the next shift can begin.
+- Closing or replaying a shift close may print through a configured physical
+  printer, but it must not open the browser print dialog automatically when no
+  printer is available. The saved post-shift handoff provides an explicit
+  **Print Shift Summary** action for browser printing.
 - When an administrator switches companies, POS clears the previous company's terminal and lock state, retains the newly issued tenant session, and loads the selected company's workspace. A one-time same-tab handoff permits the selected POS workspace to restore that newly issued cookie-backed session without showing login. The target company never inherits the previous company's terminal, shift, or `shift_closed` lock marker.
 
 ## What cashiers can do by default

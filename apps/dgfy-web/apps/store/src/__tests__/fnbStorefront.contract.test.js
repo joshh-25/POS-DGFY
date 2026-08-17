@@ -25,7 +25,8 @@ const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnb
 const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
-const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
+const checkoutPaymentOptionsSource = () => readSource('shared/model/storefrontCheckoutPaymentOptions.js');
+const onlinePaymentSessionSource = () => readSource('shared/services/storefrontOnlinePaymentSession.js');
 const checkoutRouteMountSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteMount.jsx');
 const checkoutRouteContainerSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
 const cartDrawerShellContainerSource = () => readSource('app/pages/StorefrontCartDrawerShellContainer.jsx');
@@ -97,7 +98,9 @@ describe('Food & Beverage storefront contract', () => {
     const unavailableStateIndex = detailsSource.indexOf('if (!item) {');
 
     expect(appSource).toContain('!isFnbDetailsSubpage && (');
-    expect(appSource).toContain('(isFnbDetailsSubpage || (catalogPermitted && selectedStore))');
+    expect(appSource).toContain('<StorefrontLoadBoundary');
+    expect(appSource).toContain('hasStoreProfile={Boolean(selectedStore)}');
+    expect(appSource).toContain('(isFnbDetailsSubpage || loadingCatalog || catalogError || catalogPermitted)');
     expect(containerSource).toContain('if (isFnbDetailsSubpage)');
     expect(containerSource).toContain('loading={loadingCatalog || (!selectedStore && !catalogError)}');
     expect(containerSource).toContain('loadError={catalogError}');
@@ -118,6 +121,18 @@ describe('Food & Beverage storefront contract', () => {
     expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode && !isRetailMode)');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
+  });
+
+  it('hides the redundant floating cart on retail product-details and order routes', () => {
+    const cartShell = cartDrawerShellContainerSource();
+
+    expect(cartShell).toContain('isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage)');
+  });
+
+  it('hides the Simple cart surface on product-details routes', () => {
+    const cartShell = cartDrawerShellContainerSource();
+
+    expect(cartShell).toContain('isSimpleCartSurfaceMode && !isFnbDetailsSubpage');
   });
 
   it('gates required add-ons behind customization and supports cart editing', () => {
@@ -200,29 +215,44 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('buildStorefrontCheckoutPaymentOptions');
     expect(source).toContain("paymentCapabilities?.qrph?.enabled === true");
     expect(source).toContain("paymentCapabilities?.qrph?.environment === 'test'");
-    expect(source).not.toContain("value: 'gcash'");
-    expect(source).not.toContain("value: 'maya'");
-    expect(source).not.toContain("value: 'card'");
+    expect(source).toContain("{ value: 'card', label: 'Credit or debit card' }");
+    expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
+    expect(source).toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).toContain("paymentCapabilities?.[paymentType]?.enabled === true");
     expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
     expect(checkoutRouteContainer).toContain('buildStorefrontCheckoutPaymentOptions');
     expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
-    expect(submission).toContain('/api/v1/store/checkout/payment-sessions');
-    expect(submission).toContain("payment_type: 'qrph'");
-    expect(submission).toContain('payment_type: fnbPaymentType');
+    expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
+    expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
     expect(storefrontAppSource()).toContain("handleRefreshQrphPaymentSession({ silent: true })");
+    expect(storefrontAppSource()).toContain('pollPaymentStatus();');
     expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)");
+    expect(storefrontAppSource()).toContain('setFnbOrderStep(4)');
+    expect(storefrontAppSource()).toContain('setSimpleOrderStep(3)');
+    expect(storefrontAppSource()).toContain("setCheckoutTab('checkout')");
+    expect(storefrontAppSource()).toContain('paymentReturnSessionRef.current === paymentSessionId');
+    expect(storefrontAppSource()).toContain("paymentSession?.status === 'finalized' && paymentSession?.tracking_pin");
+    expect(storefrontAppSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
   });
 
   it('provides a development-only PayMongo sandbox confirmation control', () => {
-    const panel = readSource('modes/fnb/checkout/components/FnbQrphPaymentPanel.jsx');
+    const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
     const checkout = readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
     const storefront = storefrontAppSource();
 
     expect(panel).toContain('Confirm test payment');
     expect(panel).toContain('Confirming test payment...');
-    expect(checkout).toContain('import.meta.env.DEV ? handleConfirmQrphTestPayment : null');
+    expect(panel).toContain('Payment processing');
+    expect(panel).toContain('Please do not pay again');
+    expect(panel).toContain("aria-busy={processing || refreshing ? 'true' : undefined}");
+    expect(panel).toContain('Loader2');
+    expect(panel).toContain('animate-spin');
+    expect(checkout).toContain("fnbPaymentType === 'qrph'");
+    expect(checkout).toContain("selectedStore?.payment_capabilities?.qrph?.environment === 'test'");
+    expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
     expect(storefront).toContain('/confirm-test');
     expect(storefront).toContain("method: 'POST'");
   });

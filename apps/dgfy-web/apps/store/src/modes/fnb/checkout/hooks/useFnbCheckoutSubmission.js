@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
 
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
+import {
+  createStorefrontOnlinePaymentSession,
+  isStorefrontOnlinePaymentType
+} from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -98,36 +103,33 @@ export function useFnbCheckoutSubmission({
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
-      if (fnbPaymentType === 'qrph') {
+      if (isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'A QR Ph payment is already awaiting confirmation. Refresh its status or use cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
           setCheckoutError(message);
           toast.error(message);
           return;
         }
 
-        const sessionResult = await requestJson('/api/v1/store/checkout/payment-sessions', {
-          method: 'POST',
-          storeSlug: selectedStore.slug,
+        const paymentSession = await createStorefrontOnlinePaymentSession({
           authToken,
-          body: {
-            ...buildPayload(),
-            idempotency_key: isDgfyCustomerSignedIn
-              ? qrphIdempotencyKey
-              : guestCheckoutIntentId,
-            payment_type: 'qrph',
-            guest_checkout_proof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null,
-          },
+          checkoutPayload: buildPayload(),
+          guestCheckoutProof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null,
+          idempotencyKey: isDgfyCustomerSignedIn
+            ? qrphIdempotencyKey
+            : guestCheckoutIntentId,
+          paymentType: fnbPaymentType,
+          requestJson,
+          storeSlug: selectedStore.slug
         });
-        const paymentSession = sessionResult?.payment_session;
-        if (!paymentSession?.payment_session_id) {
-          throw new Error('PayMongo did not return a QR Ph payment session.');
-        }
         setQrphPaymentSession(paymentSession);
-        if (paymentSession.status === 'failed') {
-          throw new Error(paymentSession.failure_reason || 'PayMongo could not create this QR Ph payment.');
+        if (['card', 'gcash', 'maya'].includes(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
+          window.location.assign(paymentSession.checkout_url);
+        } else {
+          toast.success(fnbPaymentType === 'qrph'
+            ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
+            : `${fnbPaymentType === 'gcash' ? 'GCash' : fnbPaymentType === 'maya' ? 'Maya' : 'Card'} payment created. Complete it on PayMongo to continue.`);
         }
-        toast.success('QR Ph payment created. Complete the PayMongo test payment to continue.');
         return;
       }
 

@@ -44,6 +44,34 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(true);
   });
 
+  it('passes Simple storefront About Us and gallery configuration to its mode model', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'msme',
+        storefront_about: 'A neighborhood shop for everyday needs.',
+        storefront_gallery_images: [
+          { url: '/uploads/storefront-assets/simple/about-1.jpg' },
+          { url: '/uploads/storefront-assets/simple/about-2.jpg' }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.isSimpleMode).toBe(true);
+    expect(model.hero.aboutText).toBe('A neighborhood shop for everyday needs.');
+    expect(model.hero.galleryPreview).toEqual([
+      '/uploads/storefront-assets/simple/about-1.jpg',
+      '/uploads/storefront-assets/simple/about-2.jpg'
+    ]);
+    expect(model.hero.galleryFull).toHaveLength(2);
+    expect(model.supporting.galleryImages).toEqual([
+      expect.objectContaining({ url: '/uploads/storefront-assets/simple/about-1.jpg' }),
+      expect.objectContaining({ url: '/uploads/storefront-assets/simple/about-2.jpg' })
+    ]);
+    expect(model.sections.overview.hasAbout).toBe(true);
+    expect(model.sections.supporting.hasGallery).toBe(true);
+  });
+
   it('builds AVIF/WebP hero image sources from cover/profile image_variants (issue #282)', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

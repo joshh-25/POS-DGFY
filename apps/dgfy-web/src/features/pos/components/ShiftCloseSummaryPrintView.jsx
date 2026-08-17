@@ -2,6 +2,9 @@ import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
+const reconciliationMoney = (value, currency, pendingLabel) => (
+    value == null ? pendingLabel : `${currency} ${money(value)}`
+);
 const paymentLabel = (entry) => (
     String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
 );
@@ -79,8 +82,8 @@ export default function ShiftCloseSummaryPrintView({
                     <Row name="Cash in" value={`${currency} ${money(cash.cash_in_total)}`} />
                     <Row name="Cash out" value={`${currency} ${money(cash.cash_out_total)}`} />
                     <Row name="Expected cash" value={`${currency} ${money(cash.expected_cash_amount)}`} />
-                    <Row name="Closing cash" value={`${currency} ${money(cash.closing_cash_amount)}`} />
-                    <Row name="Variance" value={`${currency} ${money(cash.cash_variance_amount)}`} strong />
+                    <Row name="Closing cash" value={reconciliationMoney(cash.closing_cash_amount, currency, 'Not closed')} />
+                    <Row name="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                 </section>
 
                 <p className="border-t border-dashed border-slate-300 pt-2 text-center text-[10px] text-slate-500">

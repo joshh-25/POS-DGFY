@@ -8,7 +8,8 @@ export function CheckoutHeroHeader({
   accentSoft = '#ecfeff',
   accentBorder = '#99f6e4',
   displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
-  variant = 'default'
+  variant = 'default',
+  titleFontWeight = 900
 }) {
   const isServicesReference = variant === 'services-reference';
   return (
@@ -23,8 +24,8 @@ export function CheckoutHeroHeader({
       justifyItems: isServicesReference ? 'start' : undefined,
     }}>
       <div style={{ fontSize: isServicesReference ? 12.48 : 12, lineHeight: isServicesReference ? 1.6 : undefined, fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: isServicesReference ? 10 : 0 }}>{eyebrow}</div>
-      <h1 style={{ margin: 0, fontSize: isServicesReference ? (isMobileViewport ? 30 : 40) : (isMobileViewport ? 24 : 28), fontWeight: 700, color: '#101010', lineHeight: isServicesReference ? 1.25 : 1.1, fontFamily: displayFont, marginBottom: isServicesReference ? 16 : 0 }}>{title}</h1>
-      <div style={{ fontSize: isServicesReference ? 16 : 14, lineHeight: isServicesReference ? 1.6 : undefined, color: '#58717a', marginTop: isServicesReference ? 8 : 0 }}>{description}</div>
+      <h1 style={{ margin: 0, fontSize: isServicesReference ? (isMobileViewport ? 30 : 40) : (isMobileViewport ? 24 : 28), fontWeight: isServicesReference ? 700 : titleFontWeight, color: isServicesReference ? '#101010' : '#0f172a', lineHeight: isServicesReference ? 1.25 : 1.1, fontFamily: displayFont, marginBottom: isServicesReference ? 16 : 0 }}>{title}</h1>
+      <div style={{ fontSize: isServicesReference ? 16 : 14, lineHeight: isServicesReference ? 1.6 : undefined, color: isServicesReference ? '#58717a' : '#64748b', marginTop: isServicesReference ? 8 : 0 }}>{description}</div>
       {isServicesReference && badges.length > 0 ? (
         <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
           {badges.map((badge) => <span key={badge.label}>{badge.label}</span>)}

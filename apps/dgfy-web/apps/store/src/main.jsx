@@ -77,7 +77,13 @@ export function App() {
 // window.location-based routing.
 function StoreRoot() {
   return (
-    <BrowserRouter basename={appBasePath === '/' ? undefined : appBasePath}>
+    <BrowserRouter
+      basename={appBasePath === '/' ? undefined : appBasePath}
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+    >
       <AnalyticsRouteTracker />
       <ConsentBanner onConsentChange={handleConsentChange} />
       <Routes>

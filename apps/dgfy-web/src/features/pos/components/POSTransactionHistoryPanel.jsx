@@ -10,6 +10,10 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    getPaymentStatusClassName,
+    getPaymentStatusLabel
+} from '../utils/posHistoryStatus.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
@@ -33,12 +37,12 @@ const formatDateTime = (value) => {
     };
 };
 
-const baseSelectClassName = 'w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-[13px] font-medium text-[#334155] shadow-sm shadow-slate-100 outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100';
+const baseSelectClassName = 'w-full min-w-0 max-w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-[13px] font-medium text-[#334155] shadow-sm shadow-slate-100 outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100';
 const fieldLabelClassName = 'text-[13px] font-semibold text-[#334155]';
 
 function SelectField({ label, value, onChange, children, className = '' }) {
     return (
-        <label className={className ? `block ${className}` : 'block'}>
+        <label className={className ? `block min-w-0 ${className}` : 'block min-w-0'}>
             <span className={fieldLabelClassName}>{label}</span>
             <div className="relative mt-2">
                 <select value={value} onChange={onChange} className={baseSelectClassName}>
@@ -55,7 +59,7 @@ function IconInput({ icon: Icon, children, mobileIconAlign = 'left' }) {
         ? 'right-4 sm:right-auto sm:left-4'
         : 'left-4';
     return (
-        <div className="relative mt-2">
+        <div className="relative mt-2 min-w-0 max-w-full">
             <Icon className={`pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 ${iconPositionClassName}`} />
             {children}
         </div>
@@ -150,13 +154,13 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section className="flex h-full min-h-0 flex-col gap-4 rounded-xl bg-white p-1 lg:p-0">
+        <section className="flex h-full min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-hidden rounded-xl bg-white p-1 lg:p-0">
             {/* Whole panel (search/sync bar, filter grid, table, pagination) scrolls as one
                 region so a tall stacked mobile filter grid can't clip the buttons/table beneath
                 it — previously only the table had its own scroll area, so overflow above it
                 (see Fix: History Catalog Mobile Filter Clipping) was cut off by the ancestor
                 overflow-hidden containers in POSCheckoutTerminal.jsx instead of scrolling. */}
-            <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
@@ -190,17 +194,17 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="px-3 lg:px-4">
-                    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+                <div className="min-w-0 max-w-full overflow-x-hidden px-3 lg:px-4">
+                    <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         {/* Tablet-only reorder (see Task: Reorder Filters - History Catalog, Tablet):
                             Date From, Cashier ID, Date To. Explicit order-* values below make the
                             current natural sequence explicit for every field so the Cashier/Date
                             From swap can't disturb anything else's position; only applied when
                             isTabletViewport, so mobile (max-sm:order-*) and desktop (unordered,
                             default flow) are untouched. */}
-                        <SelectField label="Status" className={`max-sm:order-2 ${isTabletViewport ? 'order-1' : ''}`} value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
-                            <option value="all">All Status</option>
-                            <option value="completed">Completed</option>
+                        <SelectField label="Sales View" className={`max-sm:order-2 ${isTabletViewport ? 'order-1' : ''}`} value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                            <option value="all">Paid Sales</option>
+                            <option value="completed">Completed Sales</option>
                             <option value="pending_sync">Pending Sync</option>
                             <option value="voided">Voided</option>
                         </SelectField>
@@ -214,7 +218,7 @@ export default function POSTransactionHistoryPanel({
                             <option value="bank_transfer">Bank Transfer</option>
                         </SelectField>
 
-                        <SelectField label="Order Methods" className={`max-sm:order-4 max-sm:col-span-2 ${isTabletViewport ? 'order-3' : ''}`} value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
+                        <SelectField label="Order Methods" className={`max-sm:order-4 max-sm:col-span-1 ${isTabletViewport ? 'order-3' : ''}`} value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
                             <option value="all">All Order Methods</option>
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
@@ -224,13 +228,13 @@ export default function POSTransactionHistoryPanel({
                             <option value="walk_in">Walk-in</option>
                         </SelectField>
 
-                        <SelectField label="Sources" className={`max-sm:order-3 max-sm:col-span-2 ${isTabletViewport ? 'order-4' : ''}`} value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
+                        <SelectField label="Sources" className={`max-sm:order-3 max-sm:col-span-1 ${isTabletViewport ? 'order-4' : ''}`} value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
                             <option value="all">All Sources</option>
                             <option value="in_store">In-Store</option>
                             <option value="online_store">Online Store</option>
                         </SelectField>
 
-                        <label className={`block max-sm:col-span-2 max-sm:order-5 ${isTabletViewport ? 'order-7' : ''}`}>
+                        <label className={`block min-w-0 max-sm:col-span-1 max-sm:order-5 ${isTabletViewport ? 'order-7' : ''}`}>
                             <span className={fieldLabelClassName}>Cashier ID</span>
                             <IconInput icon={UserRound}>
                                 <Input
@@ -244,8 +248,8 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <div className={`grid grid-cols-2 gap-3 sm:contents max-sm:col-span-2 max-sm:order-6`}>
-                        <label className={isTabletViewport ? 'block order-5' : 'block'}>
+                        <div className={`grid min-w-0 grid-cols-1 gap-3 sm:contents max-sm:col-span-1 max-sm:order-6`}>
+                        <label className={isTabletViewport ? 'block min-w-0 order-5' : 'block min-w-0'}>
                             <span className={fieldLabelClassName}>Date From</span>
                             <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
@@ -259,7 +263,7 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <label className={isTabletViewport ? 'block order-6' : 'block'}>
+                        <label className={isTabletViewport ? 'block min-w-0 order-6' : 'block min-w-0'}>
                             <span className={fieldLabelClassName}>Date To</span>
                             <IconInput icon={CalendarDays} mobileIconAlign="right">
                                 <Input
@@ -275,12 +279,12 @@ export default function POSTransactionHistoryPanel({
                         </label>
                         </div>
 
-                        <div className={`flex items-end gap-3 max-sm:col-span-2 max-sm:order-7 sm:col-span-2 xl:col-span-1 xl:col-start-4 ${isTabletViewport ? 'order-8' : ''}`}>
+                        <div className={`flex min-w-0 items-end gap-3 max-sm:col-span-1 max-sm:order-7 sm:col-span-2 xl:col-span-1 xl:col-start-4 ${isTabletViewport ? 'order-8' : ''}`}>
                             <Button
                                 type="button"
                                 variant="outline"
                                 onClick={resetFilters}
-                                className="h-11 flex-1 rounded-xl border-slate-200 bg-white text-[13px] font-extrabold text-[#334155] hover:bg-slate-50"
+                                className="h-11 min-w-0 flex-1 rounded-xl border-slate-200 bg-white text-[13px] font-extrabold text-[#334155] hover:bg-slate-50"
                             >
                                 <RotateCcw className="mr-2 h-5 w-5" />
                                 Reset
@@ -288,7 +292,7 @@ export default function POSTransactionHistoryPanel({
                             <Button
                                 type="button"
                                 onClick={() => loadHistory(1)}
-                                className="h-11 flex-[1.15] rounded-xl bg-[#1A4E8D] text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
+                                className="h-11 min-w-0 flex-[1.15] rounded-xl bg-[#1A4E8D] text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
                             >
                                 <ListFilter className="mr-2 h-5 w-5" />
                                 Apply Filters
@@ -297,9 +301,9 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="overflow-x-auto border-t border-slate-200" aria-busy={historyLoading}>
+                <div className="w-full min-w-0 max-w-full overscroll-x-contain overflow-x-auto border-t border-slate-200" aria-busy={historyLoading}>
                     <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
-                            <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
+                            <caption className="sr-only">POS transaction history with payment status and separate receipt actions</caption>
                             <thead>
                                 <tr className="border-b border-slate-200 bg-white text-[#0F172A]">
                                     <th scope="col" className="px-6 py-4 text-left text-[13px] font-black">Invoice</th>
@@ -334,11 +338,6 @@ export default function POSTransactionHistoryPanel({
                                             <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
                                                 <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">
                                                     <div>{row.invoice_number}</div>
-                                                    {row.order_source === 'online_store' && (
-                                                        <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.receipt_print_status === 'printed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.receipt_print_status === 'failed' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                                                            Receipt {row.receipt_print_status === 'printed' ? 'Printed' : row.receipt_print_status === 'failed' ? 'Failed' : 'Pending'}
-                                                        </span>
-                                                    )}
                                                     {isOfflinePending && (
                                                         <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
                                                             Pending Sync
@@ -355,11 +354,30 @@ export default function POSTransactionHistoryPanel({
                                                         {ORDER_SOURCE_LABELS[sourceKey]}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-4 text-[#334155] capitalize">{row.payment_type}</td>
+                                                <td className="px-4 py-4 text-[#334155]">
+                                                    <div className="capitalize">{row.payment_type || '-'}</div>
+                                                    <span
+                                                        className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getPaymentStatusClassName(row.payment_status)}`}
+                                                        title={`Payment status: ${getPaymentStatusLabel(row.payment_status)}`}
+                                                    >
+                                                        {getPaymentStatusLabel(row.payment_status)}
+                                                    </span>
+                                                </td>
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
                                                     <td className="px-4 py-4 text-[#334155]">
-                                                        {row.discount_label_snapshot
+                                                        {row.discount ? (
+                                                            <div>
+                                                                <div className="font-semibold">
+                                                                    {row.discount.discount_type || row.discount_label_snapshot || 'Discount'}
+                                                                    {row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : ''}
+                                                                </div>
+                                                                <div className="text-[11px] text-rose-700">PHP {money(row.discount.discount_amount || row.discount_amount)}</div>
+                                                                <div className="text-[11px] text-slate-500">
+                                                                    Authorized by {row.discount.approvedBy?.username || `employee #${row.discount.manager_approval_id || 'unknown'}`}
+                                                                </div>
+                                                            </div>
+                                                        ) : row.discount_label_snapshot
                                                             ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
                                                             : '–'}
                                                     </td>

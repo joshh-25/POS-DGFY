@@ -48,22 +48,13 @@ import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
+import { COMMON_POS_ITEM_IMAGE_MAP as POS_ITEM_IMAGE_MAP } from '../utils/posItemImageMap.js';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
 const POSBarcodeScanner = lazyWithChunkRetry(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./SkupervisorPOSTransactionHistoryPanel.jsx'));
 const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
-const POS_ITEM_IMAGE_MAP = [
-    { match: ['coffee'], src: '/pos-items/coffee.jpg' },
-    { match: ['juice'], src: '/pos-items/juice.jpg' },
-    { match: ['sandwich', 'sandwitch'], src: '/pos-items/sandwich.jpg' },
-    { match: ['ginger tea', 'ginger'], src: '/pos-items/ginger-tea.jpg' },
-    { match: ['herbal tea', 'herbal'], src: '/pos-items/herbal-tea.jpg' },
-    { match: ['burger'], src: '/pos-items/burger.jpg' },
-    { match: ['chicken wings', 'wings'], src: '/pos-items/chicken%20wings.jpg' },
-    { match: ['chicken tenders', 'tenders'], src: '/pos-items/chicken%20Tenders.jpg' }
-];
 const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
 const RECEIPT_PAPER_OPTIONS = [
@@ -2645,9 +2636,13 @@ export default function POSCheckoutTerminal({
                         <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
                         <Input
                             id="skupervisor-day-close-pin"
-                            type="password"
+                            type="text"
                             inputMode="numeric"
                             autoComplete="one-time-code"
+                            data-1p-ignore="true"
+                            data-lpignore="true"
+                            data-bwignore="true"
+                            style={{ WebkitTextSecurity: 'disc' }}
                             value={zReadingClosePin}
                             onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
                             onKeyDown={(event) => {

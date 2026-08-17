@@ -12,6 +12,7 @@ describe('business mode storefront pins', () => {
     expect(BUSINESS_MODE_PIN_META.food_manufacturing.icon).toBe('Factory');
     expect(BUSINESS_MODE_PIN_META.fnb.label).toBe('Food & Beverage');
     expect(BUSINESS_MODE_PIN_META.fnb.icon).toBe('Utensils');
+    expect(BUSINESS_MODE_PIN_META.retail.color).toBe('#ea580c');
     expect(getBusinessModePinMeta('manufacturing').label).toBe('Food Manufacturing');
   });
 

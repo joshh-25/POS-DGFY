@@ -5,7 +5,8 @@ import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(120000);
+// Tenant schema creation can approach two minutes on Windows/MySQL developer machines.
+jest.setTimeout(180000);
 
 describe('Refresh Token Rotation (RTR) Verification', () => {
     let testTenantContext;

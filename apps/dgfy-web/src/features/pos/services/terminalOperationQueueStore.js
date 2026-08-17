@@ -3,6 +3,9 @@ import {
   toOfflinePosScopeFields
 } from './offlinePosScope.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../observability/analyticsEvents.js';
+import { TERMINAL_QUEUE_STATUS } from '../utils/terminalOperationQueueConstants.js';
+
+export { TERMINAL_QUEUE_STATUS } from '../utils/terminalOperationQueueConstants.js';
 
 const DB_NAME = 'sku_pos_terminal_sync_queue';
 const DB_VERSION = 2;
@@ -11,13 +14,6 @@ const LEGACY_STORAGE_KEY = 'pos_terminal_operation_queue_v1';
 const FALLBACK_STORAGE_KEY = 'pos_terminal_operation_queue_v2_fallback';
 const LEGACY_MIGRATION_FLAG_KEY = 'pos_terminal_operation_queue_v2_legacy_migrated';
 const STALE_REPLAY_WINDOW_MS = 90 * 1000;
-
-export const TERMINAL_QUEUE_STATUS = Object.freeze({
-  QUEUED: 'queued',
-  REPLAYING: 'replaying',
-  REPLAYED: 'replayed',
-  FAILED_MANUAL_RESOLUTION_REQUIRED: 'failed_manual_resolution_required'
-});
 
 const QUEUE_STATUS_SET = new Set(Object.values(TERMINAL_QUEUE_STATUS));
 const MAX_FALLBACK_HISTORY = 300;

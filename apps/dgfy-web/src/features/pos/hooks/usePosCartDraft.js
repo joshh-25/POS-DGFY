@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { buildPosCartDraftKey, loadPosCartDraft, savePosCartDraft } from '../services/posCartDraftStore.js';
+import { buildPosCartDraftKey, loadPosCartDraftState, savePosCartDraft } from '../services/posCartDraftStore.js';
 
 export const usePosCartDraft = ({
   activeShiftId,
+  activeParkedSale = null,
   cart,
   catalog,
   catalogReady,
   enabled,
   scope,
+  setActiveParkedSale = null,
   setCart
 }) => {
   const hydratedKeyRef = useRef('');
@@ -23,11 +25,12 @@ export const usePosCartDraft = ({
       return;
     }
     if (hydratedKeyRef.current === draftKey) return;
-    const restoredCart = loadPosCartDraft(scope, activeShiftId, catalog);
+    const restored = loadPosCartDraftState(scope, activeShiftId, catalog);
     hydratedKeyRef.current = draftKey;
     skipPersistKeyRef.current = draftKey;
-    setCart(restoredCart);
-  }, [activeShiftId, catalog, catalogReady, draftKey, enabled, scope, setCart]);
+    setCart(restored.cart);
+    setActiveParkedSale?.(restored.activeParkedSale);
+  }, [activeShiftId, catalog, catalogReady, draftKey, enabled, scope, setActiveParkedSale, setCart]);
 
   useEffect(() => {
     if (!enabled || !draftKey || hydratedKeyRef.current !== draftKey) return;
@@ -35,6 +38,6 @@ export const usePosCartDraft = ({
       skipPersistKeyRef.current = '';
       return;
     }
-    savePosCartDraft(scope, activeShiftId, cart);
-  }, [activeShiftId, cart, draftKey, enabled, scope]);
+    savePosCartDraft(scope, activeShiftId, cart, { activeParkedSale });
+  }, [activeParkedSale, activeShiftId, cart, draftKey, enabled, scope]);
 };

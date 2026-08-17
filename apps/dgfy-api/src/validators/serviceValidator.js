@@ -4,14 +4,32 @@ import Joi from 'joi';
 // apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js (issue #178, ADR 0057)
 // - can pin against the real enums instead of a hand-copied duplicate that
 // could silently drift.
-export const BOOKING_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
+// Phase 88 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values.
+export const BOOKING_STATUSES = [
+    'requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show',
+    'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+];
 const PAYMENT_POLICIES = ['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed'];
 const PAYMENT_TIMINGS = ['prepaid', 'postpaid', 'deposit'];
-export const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid'];
+// 'item_handoff' added by Phase 88 of #482 (ADR 0064 decision 7).
+export const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid', 'item_handoff'];
 const RESOURCE_TYPES = ['provider', 'room', 'equipment', 'vehicle', 'station'];
 const WAITLIST_STATUSES = ['waiting', 'notified', 'booked', 'expired', 'cancelled'];
 const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
 const POS_PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
+
+// Phase 100 of #482 (ADR 0064 decision 1). Deliberately NOT imported from
+// @sieitzz/shared-constants/fulfillmentProfiles: that package's HANDOFF_PROFILE_BY_LEG_SHAPE names
+// the exact same two authorized (inbound, outbound) pairs, and fulfillmentProfiles.contract.test.js
+// pins this whitelist's cross-product against that map's keys - a deliberate cross-check, not
+// duplication to remove. Widening this to admit 'customer_dropoff' (item_dropoff_collection's
+// shape) requires a superseding or amending ADR, not a code change. Exported (not just
+// module-local) for that same cross-check test to import.
+export const HANDOFF_METHODS_BY_DIRECTION = {
+    inbound: ['business_pickup'],
+    outbound: ['business_delivery', 'customer_collection']
+};
+const HANDOFF_LEG_DIRECTIONS = Object.keys(HANDOFF_METHODS_BY_DIRECTION);
 
 const serviceCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
@@ -113,6 +131,79 @@ const bookingQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(300).default(100)
 });
 
+// Phase 100 of #482 (ADR 0064 decisions 1-3). One directional half of a round trip
+// (ServiceBookingHandoffLeg). The wire shape is deliberately leg-shaped, not
+// variant-shaped: the fulfillment-profile variant is derived server-side from the
+// (inbound method, outbound method) pair, never accepted or transmitted as a raw
+// profile key (ADR 0064 decision 3). `status`/`completed_at`/`handoff_leg_id` are
+// forbidden here for every caller, admin included -- a leg is always created
+// `pending` and is only ever advanced by the booking-status transition path
+// (buildUpdateServiceBookingStatusUseCase), never by a second write path at
+// creation time.
+//
+// NOTE on customer_address_id: unlike every other field here, it is a trust
+// boundary the same shape as pos_transaction_id above -- an FK a public caller
+// could point at an address it does not own. It is intentionally NOT split into a
+// separate admin-only schema (guests legitimately need it once signed in); it is
+// session-gated in the use case instead (customer_address_id is only honored when
+// req.storeCustomer owns it), not at this validation layer, which cannot see the
+// session.
+const handoffLegSchema = Joi.object({
+    direction: Joi.string().valid(...HANDOFF_LEG_DIRECTIONS).required(),
+    method: Joi.string().when('direction', {
+        switch: Object.entries(HANDOFF_METHODS_BY_DIRECTION).map(([direction, methods]) => ({
+            is: direction,
+            then: Joi.string().valid(...methods).required()
+        })),
+        otherwise: Joi.forbidden()
+    }),
+    address_line: Joi.string().trim().max(4000).when('method', {
+        is: Joi.valid('business_pickup', 'business_delivery'),
+        then: Joi.optional(),
+        otherwise: Joi.forbidden()
+    }),
+    latitude: Joi.number().min(-90).max(90).when('method', {
+        is: Joi.valid('business_pickup', 'business_delivery'),
+        then: Joi.optional(),
+        otherwise: Joi.forbidden()
+    }),
+    longitude: Joi.number().min(-180).max(180).when('method', {
+        is: Joi.valid('business_pickup', 'business_delivery'),
+        then: Joi.optional(),
+        otherwise: Joi.forbidden()
+    }),
+    customer_address_id: Joi.number().integer().positive().when('method', {
+        is: Joi.valid('business_pickup', 'business_delivery'),
+        then: Joi.optional(),
+        otherwise: Joi.forbidden()
+    }),
+    location_id: Joi.number().integer().positive().when('method', {
+        is: 'customer_collection',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    }),
+    scheduled_from: Joi.date().iso().allow(null).optional(),
+    scheduled_to: Joi.date().iso().min(Joi.ref('scheduled_from')).allow(null).optional(),
+    contact_name: Joi.string().trim().max(255).allow('', null).optional(),
+    contact_phone: Joi.string().trim().max(50).allow('', null).optional(),
+    instructions: Joi.string().trim().max(500).allow('', null).optional(),
+    status: Joi.forbidden().messages({ 'any.unknown': 'status is set by the server' }),
+    completed_at: Joi.forbidden().messages({ 'any.unknown': 'completed_at is set by the server' }),
+    handoff_leg_id: Joi.forbidden().messages({ 'any.unknown': 'handoff_leg_id is assigned by the server' })
+}).custom((value, helpers) => {
+    const needsAddress = value.method === 'business_pickup' || value.method === 'business_delivery';
+    if (needsAddress && !value.address_line && !value.customer_address_id) {
+        return helpers.error('any.invalid');
+    }
+    return value;
+}, 'require address_line or customer_address_id for pickup/delivery legs')
+    .messages({ 'any.invalid': 'address_line or customer_address_id is required for this method' });
+
+// Exactly one inbound + one outbound leg. length(2) + unique('direction') + direction's
+// own two-value enum together guarantee that pairing -- with two items and no duplicate
+// direction, the only possible pair is one of each.
+const handoffLegsSchema = Joi.array().items(handoffLegSchema).length(2).unique('direction').optional();
+
 // Fields common to every booking-creation caller (public storefront and admin/POS).
 // NOTE: pos_transaction_id is deliberately NOT part of this core schema. It links a
 // booking to a settled POS transaction and must only ever be settable by trusted
@@ -138,7 +229,11 @@ const serviceBookingCoreSchema = {
     selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).optional(),
     idempotency_key: Joi.string().trim().min(1).max(200).optional(),
     guest_checkout_proof: Joi.string().trim().min(16).max(2048).allow('', null).optional(),
-    hold_token: Joi.string().trim().min(1).max(200).optional()
+    hold_token: Joi.string().trim().min(1).max(200).optional(),
+    // Phase 100 of #482 (ADR 0064). Only meaningful when service_item_id resolves to an
+    // item_handoff service item -- the use case enforces that gate, not this schema, since
+    // the validator has no access to the resolved service item.
+    handoff_legs: handoffLegsSchema
 };
 
 // Public storefront booking creation: no pos_transaction_id (see note above).
@@ -196,7 +291,9 @@ const serviceBookingDraftSchema = Joi.object({
     customer_name: Joi.string().trim().min(1).max(255).optional(),
     customer_email: Joi.string().email({ tlds: { allow: false } }).trim().lowercase().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
-    payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).optional()
+    payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).optional(),
+    // Phase 100 of #482 -- each draft is its own booking with its own legs.
+    handoff_legs: handoffLegsSchema
 });
 
 const serviceBookingBatchSchema = Joi.object({
@@ -213,7 +310,10 @@ const serviceBookingBatchSchema = Joi.object({
 const bookingStatusSchema = Joi.object({
     status: Joi.string().valid(...BOOKING_STATUSES).required(),
     cancellation_reason: Joi.string().trim().max(500).allow('', null).optional(),
-    pos_transaction_id: Joi.number().integer().positive().allow(null).optional()
+    pos_transaction_id: Joi.number().integer().positive().allow(null).optional(),
+    // Phase 100 of #482 (ADR 0064 decision 4). Set only when this transition is driven by a
+    // specific leg completing (e.g. pickup_completed) -- most transitions are not leg-specific.
+    handoff_leg_id: Joi.number().integer().positive().optional()
 });
 
 const settleBookingPartSchema = Joi.object({

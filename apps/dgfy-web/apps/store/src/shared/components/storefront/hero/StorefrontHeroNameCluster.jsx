@@ -6,6 +6,7 @@ function StoreFollowGlyph({
   isFollowing = false,
   size = 18,
   tone = 'currentColor',
+  accentColor = '#f97316',
   badgeSize = 14,
   badgeTextSize = 10
 }) {
@@ -44,7 +45,7 @@ function StoreFollowGlyph({
           width: badgeSize,
           height: badgeSize,
           borderRadius: '50%',
-          background: isFollowing ? '#22c55e' : '#f97316',
+          background: isFollowing ? '#22c55e' : accentColor,
           color: '#fff',
           display: 'inline-flex',
           alignItems: 'center',
@@ -66,6 +67,8 @@ export function StorefrontHeroNameCluster({
   textColor = '#fff',
   fontFamily,
   fontSize,
+  fontWeight = 900,
+  accentColor = '#f97316',
   followEnabled = false,
   followState,
   handleFollowAction
@@ -89,7 +92,7 @@ export function StorefrontHeroNameCluster({
             display: 'inline',
             fontFamily,
             fontSize,
-            fontWeight: 900,
+            fontWeight,
             letterSpacing: '-0.03em',
             lineHeight: 1.05,
             margin: 0,
@@ -125,7 +128,7 @@ export function StorefrontHeroNameCluster({
               cursor: followState.loading ? 'not-allowed' : 'pointer'
             }}
           >
-            <StoreFollowGlyph isFollowing={followState.isFollowing} size={18} tone={textColor} badgeSize={13} badgeTextSize={9} />
+            <StoreFollowGlyph isFollowing={followState.isFollowing} size={18} tone={textColor} accentColor={accentColor} badgeSize={13} badgeTextSize={9} />
           </button>
         )}
       </div>

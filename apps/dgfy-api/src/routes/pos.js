@@ -9,6 +9,22 @@ import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
+    validateCreatePosParkedSale,
+    validateListPosParkedSales,
+    validateClaimPosParkedSale,
+    validateCancelPosParkedSale,
+    validateReparkPosParkedSale,
+    validateParkedSaleIdParam,
+    validateCreatePosPaymentSession,
+    validateAddPosPaymentAllocation,
+    validateCancelPosPayment,
+    validateCompletePosPayment,
+    validateConfirmPosPaymentAllocation,
+    validateReconcilePosPaymentAllocation,
+    validateReviewMerchantTenderReconciliation,
+    validateSplitPaymentSessionIdParam,
+    validateSplitPaymentSessionScopeQuery,
+    validateSplitPaymentAllocationIdParam,
     validatePosCatalogQuery,
     validatePosScan,
     validatePosCatalogOverridesQuery,
@@ -24,8 +40,10 @@ import {
     validateXReadingQuery,
     validateGovernedResetBody,
     validateTerminalCurrentShiftQuery,
+    validateTerminalShiftHistoryQuery,
     validateTerminalDashboardTodayQuery,
     validateIncomingOnlineOrdersQuery,
+    validateOnlineOrderHistoryQuery,
     validateDeliveryPersonnelListQuery,
     validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
@@ -111,6 +129,20 @@ router.patch('/catalog-overrides/:item_id', checkPermission(PERMISSIONS.INVENTOR
 router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, preserveTenantContext(posCatalogImageUpload.single('image')), posController.uploadCatalogImage);
 router.delete('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posController.deleteCatalogImage);
 router.post('/checkouts', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosCheckout, requireEmployeeCreditCheckoutPermission, posController.checkout);
+router.post('/parked-sales', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateCreatePosParkedSale, posController.createParkedSale);
+router.get('/parked-sales', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateListPosParkedSales, posController.listParkedSales);
+router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateClaimPosParkedSale, posController.claimParkedSale);
+router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateReparkPosParkedSale, posController.reparkParkedSale);
+router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateCancelPosParkedSale, posController.cancelParkedSale);
+router.post('/payment-sessions', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateCreatePosPaymentSession, posController.createPaymentSession);
+router.get('/payment-sessions/active', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionScopeQuery, posController.getActivePaymentSession);
+router.get('/payment-sessions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateSplitPaymentSessionIdParam, validateSplitPaymentSessionScopeQuery, posController.getPaymentSession);
+router.post('/payment-sessions/:id/allocations', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionIdParam, validateAddPosPaymentAllocation, posController.addPaymentAllocation);
+router.post('/payment-sessions/:id/allocations/:allocation_id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentAllocationIdParam, validateCancelPosPayment, posController.cancelPaymentAllocation);
+router.post('/payment-sessions/:id/allocations/:allocation_id/confirm', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentAllocationIdParam, validateConfirmPosPaymentAllocation, posController.confirmPaymentAllocation);
+router.post('/payment-sessions/:id/allocations/:allocation_id/reconcile', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentAllocationIdParam, validateReconcilePosPaymentAllocation, posController.reconcilePaymentAllocation);
+router.post('/payment-sessions/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionIdParam, validateCancelPosPayment, posController.cancelPaymentSession);
+router.post('/payment-sessions/:id/complete', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionIdParam, validateCompletePosPayment, posController.completePaymentSession);
 router.get(
     '/employees',
     checkAnyPermission([
@@ -135,6 +167,7 @@ router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.action
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
 router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
+router.get('/terminal/shifts/history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalShiftHistoryQuery, posController.getCashierShiftHistory);
 router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
 router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), posController.requirePairedTerminal, validateShiftIdParam, validateSwitchTerminalShiftLocation, posController.switchTerminalShiftLocation);
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
@@ -143,6 +176,8 @@ router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.
 // pairing was retired.
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
 router.post('/terminal/shifts/:id/force-close', checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS), validateShiftIdParam, validateForceCloseStaleTerminalShift, posController.forceCloseStaleTerminalShift);
+router.get('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, posController.getMerchantTenderReconciliation);
+router.post('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateReviewMerchantTenderReconciliation, posController.reviewMerchantTenderReconciliation);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
 router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
 router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
@@ -160,6 +195,7 @@ router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.
 router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
 router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
+router.get('/order-history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateOnlineOrderHistoryQuery, posController.listOnlineOrderHistory);
 router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryPersonnelListQuery, posController.listActiveDeliveryPersonnel);
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);

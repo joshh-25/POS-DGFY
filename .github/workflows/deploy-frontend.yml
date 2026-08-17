@@ -14,7 +14,7 @@ on:
         description: JSON array passed to runs-on for this build job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -90,6 +90,23 @@ jobs:
           file: infrastructure/docker/frontend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
+          # was added in #415 as "reachable from either runner type," a
+          # reason that stopped applying once #386 recorded self-hosted as
+          # the only CI tier (type=gha is already reachable from
+          # self-hosted). It was actively harmful for this job specifically:
+          # this workflow is called once per environment (DEV/STAGING/BETA/
+          # PROD) with ~37 differing VITE_* build-args each time, but writes
+          # ONE registry ref (${{ env.IMAGE_NAME }}:buildcache) shared by all
+          # four -- each environment's build evicted the previous one's
+          # cache, so it was rarely a hit (see #428). It also doubled this
+          # job's GHCR push volume on every build, which is what actually
+          # tripped GHCR's secondary rate limit in run 31728787346
+          # (deploy-main.yml's frontend-prod, 2026-08-13). type=gha,scope=
+          # frontend is unaffected and stays as the only cache.
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
           build-args: |

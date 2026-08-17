@@ -6,6 +6,10 @@ import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentSt
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
+import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+
+const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya']);
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -40,14 +44,13 @@ export function SimpleCheckoutRoutePage({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
-  quoteError = '',
-  quoteResult = null,
+  qrphPaymentSession = null,
+  qrphPaymentStatusLoading = false,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
-  requireQuoteForCheckout = false,
   selectedLocation = null,
   selectedSavedLocationId = '',
   selectedStore = null,
@@ -75,9 +78,9 @@ export function SimpleCheckoutRoutePage({
   onOpenExpandedMap,
   onOrderMethodChange,
   onPaymentTypeChange,
+  onConfirmQrphTestPayment,
   onPinChange,
   onPinMyLocation,
-  onQuote,
   onRequestGuestCheckoutOtp,
   onScheduleModeChange,
   onScheduledForChange,
@@ -87,6 +90,7 @@ export function SimpleCheckoutRoutePage({
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
+  resetQrphPaymentSession,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -100,6 +104,13 @@ export function SimpleCheckoutRoutePage({
   const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
     ? new Date(fnbScheduledFor).toLocaleString()
     : 'NOW';
+  const isOnlinePayment = ONLINE_PAYMENT_TYPES.has(fnbPaymentType);
+  const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
+  const paymentSubmitLabel = fnbPaymentType === 'qrph'
+    ? 'Generate QR Ph'
+    : isOnlinePayment
+      ? 'Continue to payment'
+      : 'Place Order';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
@@ -162,7 +173,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -226,7 +237,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -248,20 +259,31 @@ export function SimpleCheckoutRoutePage({
             money={money}
             onImageError={onImageError}
             paymentType={fnbPaymentType}
-            paymentOptions={[
-              { value: 'cash', label: 'Cash on delivery/pickup' }
-            ]}
-            quoteError={quoteError}
-            quoteResult={quoteResult}
-            requireQuoteForCheckout={requireQuoteForCheckout}
-            selectedStore={selectedStore}
-            simpleCheckoutAllowed={simpleCheckoutAllowed}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
+            onlinePaymentPanel={isOnlinePayment ? (
+              <StorefrontOnlinePaymentPanel
+                onConfirmTestPayment={import.meta.env.DEV
+                  && fnbPaymentType === 'qrph'
+                  && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
+                  ? onConfirmQrphTestPayment
+                  : null}
+                onUseCash={() => {
+                  resetQrphPaymentSession?.();
+                  onPaymentTypeChange('cash');
+                }}
+                paymentSession={qrphPaymentSession}
+                paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
+                paymentType={fnbPaymentType}
+                refreshing={qrphPaymentStatusLoading}
+              />
+            ) : null}
+            simpleCheckoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
+            submitLabel={paymentSubmitLabel}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
-            onQuote={onQuote}
           />
           {!isMobileViewport && (
             <SimpleCheckoutSummaryContent
@@ -275,7 +297,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={null}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -308,7 +330,7 @@ export function SimpleCheckoutRoutePage({
           cart={cart}
           cartCount={cartCount}
           cartImageErrors={cartImageErrors}
-          checkoutAllowed={simpleCheckoutAllowed}
+          checkoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
           checkoutLoading={checkoutLoading}
           customerStepComplete={simpleCustomerStepComplete}
           fulfillmentStepComplete={simpleStepOneReady}
@@ -320,10 +342,11 @@ export function SimpleCheckoutRoutePage({
           onStepChange={onSetSimpleOrderStep}
           orderStep={simpleOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
-          promoPanel={simpleOrderStep === 3 ? null : renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont, isMobile: true })}
+          promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={scheduleLabel}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
           showSummary={showSimpleMobileOrderSummary}
+          submitLabel={paymentSubmitLabel}
           totals={totals}
           withAssetOrigin={withAssetOrigin}
         />

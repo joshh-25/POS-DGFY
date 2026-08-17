@@ -360,8 +360,45 @@ const buildItemSearchText = (item = {}) => (
         .join(' '))
 );
 
-const buildTenantSnapshot = async (tenant) => {
-    const tenantConnection = await tenantConnector.getConnection(tenant);
+/**
+ * Builds one tenant's discovery-index snapshot row.
+ *
+ * By default this goes through tenantConnector's shared, cached connection
+ * pool (`getConnection`) -- correct for the single-tenant, event-triggered
+ * callers (syncStorefrontDiscoveryIndexForTenant). The bulk reconciliation
+ * sweep (reconcileStorefrontDiscoveryIndex, all tenants, every 15 minutes)
+ * instead passes an `openConnection` override that opens a short-lived,
+ * uncached connection per tenant -- see #524/#527: going through the shared
+ * cache from a sweep that touches every tenant in a short window was
+ * thrashing the 20-slot LRU cache live POS/storefront traffic depends on.
+ * When an override is supplied, this function owns closing that connection
+ * (the default cached path does not close -- TenantConnector owns that
+ * connection's lifecycle instead).
+ * @param {Object} tenant
+ * @param {{ openConnection?: () => Promise<import('sequelize').Sequelize> }} [options]
+ */
+const buildTenantSnapshot = async (tenant, { openConnection } = {}) => {
+    const ephemeral = Boolean(openConnection);
+    const tenantConnection = ephemeral
+        ? await openConnection()
+        : await tenantConnector.getConnection(tenant);
+
+    try {
+        return await buildTenantSnapshotWithConnection(tenant, tenantConnection);
+    } finally {
+        if (ephemeral) {
+            await tenantConnection.close().catch((error) => {
+                logger.warn('[StorefrontDiscoveryIndex] Failed to close ephemeral tenant connection', {
+                    tenantId: tenant?.id || null,
+                    tenantName: tenant?.name || null,
+                    error: error?.message || 'unknown_error'
+                });
+            });
+        }
+    }
+};
+
+const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
     const {
         SystemSetting,
         TenantLocation,
@@ -1037,7 +1074,12 @@ export const reconcileStorefrontDiscoveryIndex = async ({
 
     await mapWithConcurrency(tenants || [], concurrency, async (tenant) => {
         try {
-            const snapshot = await buildTenantSnapshot(tenant);
+            // Ephemeral connection: this sweep touches every active tenant, so it
+            // must not route through tenantConnector's shared cache -- see the
+            // doc comment on buildTenantSnapshot and #524/#527.
+            const snapshot = await buildTenantSnapshot(tenant, {
+                openConnection: () => tenantConnector.openEphemeralConnection(tenant)
+            });
             if (!snapshot) {
                 if (!dryRun) {
                     await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });

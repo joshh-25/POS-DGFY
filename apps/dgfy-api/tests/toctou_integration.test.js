@@ -204,7 +204,7 @@ describe('TOCTOU Integration Test', () => {
             .send({ actionId: actionId });
 
         expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
+        expect(response.body).toEqual(expect.objectContaining({ success: true }));
 
         const refreshedAction = await PendingAIAction.findByPk(actionId);
         expect(refreshedAction.status).toBe('confirmed');

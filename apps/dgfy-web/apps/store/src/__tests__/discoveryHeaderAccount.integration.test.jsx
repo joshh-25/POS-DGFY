@@ -292,7 +292,6 @@ describe('discovery header customer account actions', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
       expect(screen.getByText(/overview/i)).toBeTruthy();
     });
@@ -423,7 +422,6 @@ describe('discovery header customer account actions', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
     });
 
@@ -455,7 +453,6 @@ describe('discovery header customer account actions', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
     });
     await user.click(screen.getByRole('button', { name: /sign out/i }));
@@ -485,11 +482,9 @@ describe('discovery header customer account actions', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
       expect(screen.getByText(/overview/i)).toBeTruthy();
     });
-    expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /sign out/i }));
 

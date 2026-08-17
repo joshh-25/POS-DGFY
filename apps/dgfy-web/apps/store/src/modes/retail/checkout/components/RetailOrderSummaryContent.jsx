@@ -1,3 +1,4 @@
+import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 
@@ -32,6 +33,8 @@ export function RetailOrderSummaryContent({
   isSticky = false,
   money,
   onImageError,
+  promoDiscountSummaryRow = null,
+  promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
   withAssetOrigin
@@ -57,7 +60,8 @@ export function RetailOrderSummaryContent({
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    { label: 'Fees & Taxes', value: money(totals.service_fee_amount) },
+    ...(promoDiscountSummaryRow ? [{ ...promoDiscountSummaryRow, color: '#15803d' }] : []),
+    { label: 'Fees & Taxes', value: money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0)) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
   ];
 
@@ -68,6 +72,7 @@ export function RetailOrderSummaryContent({
         totalLabel="Order Summary"
         totalAmount={totals.total_amount}
         money={money}
+        promoPanel={promoPanel}
         sticky={isSticky}
         statusRows={statusRows}
         lineItems={lineItems}

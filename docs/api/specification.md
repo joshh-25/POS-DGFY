@@ -1011,6 +1011,14 @@ The item CSV endpoints share the same workflow-mode template contract for correc
 - Hospitality exports preserve PMS preset keys such as `room_night`, `paid_amenity`, `facility_booking`, `minibar_retail_product`, `housekeeping_supply`, `linen_reusable_asset`, and `physical_add_on`.
 - Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
 
+**Import contract and POS entry point**
+- `POST /items/import/preview` accepts the uploaded CSV content and returns row-level validation and create/update counts.
+- `POST /items/import/confirm` accepts the preview rows and upserts items by normalized SKU.
+- Both import endpoints require `items:import`; the POS Items workspace exposes the same three-step Upload → Preview → Result wizard used by IMS.
+- The POS wizard downloads the active tenant workflow-mode template and is disabled while the terminal is offline.
+- CSV import does not include image binaries. POS item images are managed through the shared Storefront gallery endpoints below, capped at five images per item.
+- After a successful import, the API publishes a tenant-scoped `pos.catalog.changed` event with reason `csv_items_imported` and the created/updated item IDs so POS catalog consumers refresh without a manual reload.
+
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
 
@@ -1163,7 +1171,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 - `image/avif`
 
 **Security Contract**
-- A single primary image source may be up to 100 MB. The backend validates it, stores the original privately, and generates public delivery variants. The public large variant is always 10 MB or smaller.
+- A single primary image source may be up to 100 MB. The backend validates it, uses the source as temporary processing input, and generates public delivery variants. The source is removed after successful variant generation; the public large variant is always 10 MB or smaller.
 - Backend validates both reported MIME type and binary signature.
 - Stored paths are served through `/uploads` with `nosniff` static serving.
 - Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
@@ -1179,8 +1187,70 @@ Append images to the ordered Storefront catalog image gallery for one item.
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
 - If a gallery already exists, accepted images are appended after the existing ordered entries and the existing first image remains primary.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
-- Gallery uploads remain capped at 10 MB per source image and use the same safe MIME/signature checks. The public large variant is always 10 MB or smaller.
+- Gallery uploads accept source images up to 100 MB per file and use the same safe MIME/signature checks. The backend uses each source as temporary processing input and removes it after generating optimized public delivery variants; the public large variant is always 10 MB or smaller.
 - Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
+- If server-side image processing fails, the endpoint returns HTTP 500 with `error_code=STOREFRONT_IMAGE_PROCESSING_FAILED`; if the optimized image cannot be committed to the catalog, it returns `error_code=STOREFRONT_IMAGE_PERSIST_FAILED`. Both responses include `request_id` for log correlation and clean up temporary/newly stored files before returning.
+
+### POST /items/:item_id/storefront-image/async
+Queue a Storefront catalog primary-image upload for background optimization. This is the POS interactive upload path for an existing item.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with one `image` file field.
+
+**Response (202)**
+```json
+{
+  "success": true,
+  "message": "Image received. It will be optimized in the background.",
+  "data": {
+    "job_id": "uuid",
+    "item_id": 22,
+    "queued": true
+  }
+}
+```
+
+**Processing Contract**
+- The API validates the item and accepts the source file, then returns without waiting for image compression or gallery persistence.
+- The POS may show a local temporary preview immediately. The temporary preview is not a public catalog asset and is not stored in browser, WebView, or Redis cache as the source of truth.
+- A backend worker validates and optimizes the staged file, updates the ordered gallery, and removes the temporary source after successful delivery-variant generation. Existing catalog data remains authoritative until the new job completes.
+- The worker uses the shared Redis queue in production. A process-local queue is available only for local development when Redis is unavailable; it is not a durable production queue.
+
+### POST /items/:item_id/storefront-images/async
+Queue one or more images for background append to the Storefront catalog gallery.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with up to 5 `images` file fields.
+
+**Response**: Same `202` acknowledgement shape as the single-image endpoint. The returned `job_id` identifies the queued gallery operation.
+
+**Notes**
+- The worker preserves gallery ordering and primary-image rules defined by `POST /items/:item_id/storefront-images`.
+- A failed job leaves the previously persisted gallery authoritative and reports the failure through the status endpoint.
+- This endpoint is asynchronous only; it does not change the synchronous endpoint contract used by existing callers.
+
+### GET /items/:item_id/storefront-image/async-status
+Read the latest interactive catalog-image job for an item.
+
+**Permission**: `items:edit`
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "tenant_id": 1,
+    "item_id": 22,
+    "job_id": "uuid",
+    "status": "queued|processing|completed|failed",
+    "error_code": null,
+    "error_message": null,
+    "updated_at": "2026-08-14T00:00:00.000Z"
+  }
+}
+```
+
+The status record is short-lived and is an acknowledgement mechanism, not a replacement for the persisted item/gallery response. Interactive POS clients do not need to poll this endpoint; the worker emits the existing catalog-change invalidation event after successful persistence, and the POS refreshes the item catalog through its normal catalog path to obtain the optimized public image URL and gallery metadata. Diagnostic or administrative clients may still read the status record. If no job exists, `data` is `null`.
 
 ### POST /items/storefront-images/bulk
 Upload Storefront catalog images in bulk by SKU filename stem.
@@ -2480,6 +2550,27 @@ eligible POS row sellable at zero stock. Checkout persists an immutable
 `stock_exempt_reason='pos_always_available'` line snapshot and creates no
 Inventory stock movement for that line.
 
+### POS parked-sale lifecycle
+
+Parked sales are tenant-local cashier work items. Parking stores an immutable,
+secret-scrubbed cart snapshot only; it does not create a POS transaction,
+payment, stock movement, or inventory reservation. All endpoints require the
+Premium POS gates above and scope the request to the authenticated cashier's
+open shift and location.
+
+| Method | Endpoint | Permission | Purpose |
+|--------|----------|------------|---------|
+| `POST` | `/pos/parked-sales` | `pos:transact` | Add a parked sale using a required `idempotency_key`, shift/terminal context, and `snapshot.lines`. |
+| `GET` | `/pos/parked-sales?shift_id=...` | `pos:view` | List active (`parked` and `claimed`) sales for the cashier's open shift. |
+| `POST` | `/pos/parked-sales/:id/claim` | `pos:transact` | Claim a parked sale for the current cashier and terminal. |
+| `POST` | `/pos/parked-sales/:id/cancel` | `pos:transact` | Cancel a parked sale with an auditable reason. |
+
+The park request is replay-safe: the same idempotency key and payload returns
+the original row, while reusing the key with a different payload returns a
+conflict. Claim and cancel are lifecycle transitions only; checkout completion
+will be the separate operation that creates the financial transaction and
+applies inventory effects.
+
 ### POST /pos/terminal/pair
 Optionally enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication. This endpoint is retained for compatibility and hardware-specific flows; normal shift opening and checkout do not require a pairing cookie.
 
@@ -2546,7 +2637,7 @@ Upload/replace POS catalog image override (multipart file upload).
 **Validation Contract**
 - Endpoint accepts image files only.
 - Unsupported upload types are rejected with `422 Validation failed`.
-- A single primary image source may be up to 100 MB; the backend retains the original privately and publishes a large delivery variant at or below 10 MB.
+- A single primary image source may be up to 100 MB; the backend uses the source as temporary processing input and publishes a large delivery variant at or below 10 MB before removing the source.
 - Existing image is replaced atomically when a valid new image is uploaded.
 
 **Image URL Contract**
@@ -2685,6 +2776,107 @@ Final Review documentary (tenant self-serve):
 - Invoice number prefixes such as `INV-` and `NFS-` are sequence identifiers only. They must not be used by clients to infer fiscal status, choose fiscal headers, or decide whether fiscal print/reprint evidence is required.
 - Idempotent checkout replay returns the persisted transaction receipt contract, not a newly inferred contract from the caller payload, invoice prefix, or current compliance policy state.
 
+### POS split-payment contract (Phases 57-62)
+
+Split payment is an additive, server-owned collection workflow for one POS
+sale. It is not implemented by submitting several `POST /pos/checkouts`
+requests and it must never create several sales for one customer bill. The
+behavioral and persistence contract is maintained in
+[`docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`](../features/POS_SPLIT_PAYMENT_CONTRACT.md).
+
+- The current one-shot checkout payload remains backward-compatible for
+  single-tender sales during the additive rollout.
+- A split collection session owns the authoritative total, successful paid
+  amount, remaining balance, and allocation statuses before final checkout.
+- The server accepts only the existing cashier POS methods for V1: `cash`,
+  `gcash`, `maya`, `card`, and `bank_transfer`.
+- `employee_credit` remains a full single-tender workflow under ADR 0051 and
+  is not a split leg. Storefront `qrph` commerce sessions remain a separate
+  provider workflow.
+- A successful allocation is durable evidence, but it is excluded from
+  completed-sales, inventory, fiscal, receipt, and Z-reading totals until the
+  final completion transaction succeeds.
+- The collection engine rejects zero/negative amounts, non-cash overpayment,
+  unauthorized scope, duplicate idempotency keys with different payloads, and
+  completion when the remaining balance is not exactly zero. Final checkout
+  revalidates the snapshot and total so a stale client cart cannot post a sale.
+- Cash over-tender stores the applied amount separately from tendered cash and
+  calculated change. Change is never sales revenue.
+- Pending or failed digital confirmation never increases the authoritative
+  paid amount.
+- Phase 58 adds the tenant-local `pos_payment_sessions` and
+  `pos_payment_allocations` persistence foundation. Phase 59 adds the
+  server-owned session/allocation transport below; it does not create a second
+  checkout transport or post a financial transaction.
+- Phase 60 adds the cashier Split Payment dialog and refresh recovery against
+  that transport.
+- Phase 61 adds `POST /pos/payment-sessions/:id/complete`. It requires a zero
+  server balance, rejects unresolved allocations, revalidates the stored
+  checkout snapshot through the normal POS checkout engine, and commits the
+  session linkage, one transaction, inventory movements, receipt/fiscal
+  evidence, and any F&B side effects atomically. The session reference is the
+  checkout idempotency identity, so retry cannot create a second sale.
+- Phase 62 adds a separate provider-confirmation operation for pending digital
+  allocations. It accepts only a signed provider event verified by the
+  server-side `POS_PAYMENT_CONFIRMATION_SECRET`; cashier input cannot claim digital
+  success. Completed split transactions persist a server-derived
+  `payment_breakdown` snapshot for receipts and reporting.
+- Phase 63 adds authenticated PayMongo reconciliation. The server retrieves the
+  Payment resource and verifies paid status, PHP currency, exact amount,
+  payment method, payment ID, and exact POS session/allocation metadata. Full
+  provider refunds reverse only incomplete-session allocations; partial
+  refunds fail closed for manual review.
+- Phase 64 adds a separate manual walk-in classification. An authenticated
+  cashier may attest that the store received GCash/Maya through its own QR,
+  card through its own terminal, or a transfer through its own account. These
+  rows are `merchant_owned`, not provider-verified, and never call PayMongo.
+
+### POS split-payment collection endpoints (Phases 59-65)
+
+All endpoints require the POS premium/capability gates and tenant context. The
+session is scoped to the authenticated cashier, the selected open shift,
+terminal, and location. Mutations require `pos:transact`; the read requires
+`pos:view`.
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/pos/payment-sessions` | Create or idempotently resume a scoped session from a sanitized cart snapshot and authoritative total. |
+| `GET` | `/pos/payment-sessions/:id` | Read the session and its persisted allocation statuses after refresh. |
+| `POST` | `/pos/payment-sessions/:id/allocations` | Record one cash/digital allocation under a lock. Cash success updates paid and calculates change. A store-owned digital payment requires `manual_payment_received=true`, is forced to `payment_provider=merchant_owned`, accepts an optional `payment_reference`, and is recorded as successful from the authenticated cashier attestation. Explicit provider-owned allocations remain pending. |
+| `POST` | `/pos/payment-sessions/:id/allocations/:allocation_id/cancel` | Cancel a pending/failed attempt or reverse successful cash/store-owned tender with an auditable reason. PayMongo-confirmed digital money requires provider refund evidence. |
+| `POST` | `/pos/payment-sessions/:id/allocations/:allocation_id/confirm` | Confirm one pending digital allocation only after the configured server-side provider verifier validates `provider_event_id`, timestamp, and HMAC signature. |
+| `POST` | `/pos/payment-sessions/:id/allocations/:allocation_id/reconcile` | Reconcile a `payment_provider=paymongo` allocation against PayMongo. The reference must be a PayMongo `pay_...` ID and its Payment metadata must contain matching `pos_payment_session_reference` and `pos_payment_allocation_reference`. |
+| `POST` | `/pos/payment-sessions/:id/cancel` | Cancel an unpaid session with an auditable reason. Successful money must be cancelled/reversed first. |
+| `POST` | `/pos/payment-sessions/:id/complete` | Complete a fully paid session atomically through normal POS checkout and return the canonical transaction/receipt contract. |
+
+Every create/allocation/completion mutation requires an idempotency key. The
+provider-confirmation mutation uses the provider event identity as its replay
+key. Reusing a key with a different request hash returns a conflict; retries
+return the persisted session/allocation rather than creating another row. Pending
+provider allocations remain outside paid/sales totals until confirmed. Phase
+62 completion stores the successful tender breakdown on the one transaction;
+allocation rows remain the financial source of truth. Phase 63 uses the stable
+PayMongo payment/refund identities as replay keys and never submits a refund
+from this endpoint. Phase 64 manual walk-in tenders do not call PayMongo and do
+not receive a provider event identity; `merchant_owned` means cashier-recorded,
+not independently provider-verified.
+
+### POS merchant-owned tender reconciliation endpoints (Phase 65)
+
+Both endpoints require the normal POS premium/capability gates, tenant context,
+and `pos:close_day`. Cashier roles do not receive this permission by default.
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/pos/terminal/shifts/:id/merchant-tender-reconciliation` | Return the server-computed expected GCash, Maya, card, and bank-transfer breakdown, latest immutable review, and whether later tender activity made that review stale. |
+| `POST` | `/pos/terminal/shifts/:id/merchant-tender-reconciliation` | Append a manager review from `idempotency_key`, four non-negative `observed_breakdown` amounts, and optional `review_note`; a method-level variance requires a note of at least 8 characters. |
+
+The server derives expected totals, variance, status, reviewer identity, review
+time, and supersession. Client values for those fields are stripped. Reusing an
+idempotency key with the same request returns the persisted record; using it
+with a different request returns `409`. Neither endpoint calls PayMongo or
+changes transactions, allocations, inventory, fiscal records, or settlements.
+
 ### GET /pos/transactions
 List POS transactions with cashier metadata and pagination.
 
@@ -2700,6 +2892,7 @@ List POS transactions with cashier metadata and pagination.
 | `status` | string | `completed` or `voided` |
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
+| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
 | `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
 | `order_source` | string | `in_store`, `online_store` |
 | `date_from` | ISO date | Inclusive start date filter |
@@ -2821,6 +3014,31 @@ List incoming online orders for POS fulfillment queue.
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
 2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
 
+### GET /pos/order-history
+List online orders that are no longer in the active fulfillment queue but still
+need operational visibility in POS.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | number | Optional location scope; server validates the user’s access |
+| `search` | string | Optional invoice-number search |
+| `fulfillment_status` | string | Optional `completed`, `cancelled`, or `rejected` filter |
+| `payment_status` | string | Optional payment-status filter |
+| `page` | number | One-based page number (default 1) |
+| `limit` | number | Rows per page (default 100, max 200) |
+
+**Response Notes**
+1. Includes cancelled and rejected online orders regardless of payment state.
+2. Includes completed online orders whose payment status is not `paid`.
+3. Excludes completed paid sales because those remain in `/pos/transactions` and
+   the POS Sales History view.
+4. The endpoint is location-scoped and does not change the order or payment
+   state; it provides a read-only operational history surface.
+
 ### GET /pos/delivery-personnel
 List active delivery personnel available to the authenticated POS location.
 
@@ -2838,7 +3056,7 @@ List active delivery personnel available to the authenticated POS location.
 3. Registry creation, editing, activation, and deactivation are not part of this POS endpoint.
 
 ### PATCH /pos/orders/:id/delivery-job/assignment
-Assign or reassign an active delivery person before pickup begins.
+Assign or reassign a registered delivery person or an unregistered third-party courier name before pickup begins.
 
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
@@ -2847,15 +3065,15 @@ Assign or reassign an active delivery person before pickup begins.
 ```json
 {
   "idempotency_key": "delivery-assignment-20260808-789",
-  "delivery_personnel_id": 21
+  "delivery_personnel_name": "Juan Dela Cruz"
 }
 ```
 
 **Transition Notes**
 1. The associated online order must already be `out_for_delivery` and have a `manual` delivery job.
 2. The authenticated user must own an open shift at the order location.
-3. The selected person must be active and global or assigned to the order location.
-4. The assignment atomically records the person, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
+3. Send exactly one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed third-party courier name, registration not required).
+4. The assignment atomically records the person or name, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
 5. Assignment can be changed while the job is `pending_dispatch` or `assigned`; it is locked after pickup begins.
 6. Replayed requests with the same idempotency key and payload return the original result without a duplicate audit event.
 

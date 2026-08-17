@@ -195,7 +195,9 @@ export function useStorefrontCatalogRouteProps({
   isRetailMode,
   retailOrderRouteProps,
   isTrackSubpage,
-  fnbTrackingRouteProps
+  fnbTrackingRouteProps,
+  simpleTrackingRouteProps,
+  retailTrackingRouteProps
 }) {
   return {
     accountStepComplete,
@@ -391,6 +393,8 @@ export function useStorefrontCatalogRouteProps({
     isRetailMode,
     retailOrderRouteProps,
     isTrackSubpage,
-    fnbTrackingRouteProps
+    fnbTrackingRouteProps,
+    simpleTrackingRouteProps,
+    retailTrackingRouteProps
   };
 }

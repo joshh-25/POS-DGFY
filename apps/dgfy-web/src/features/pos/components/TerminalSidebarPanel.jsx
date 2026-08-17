@@ -9,7 +9,8 @@ import {
   PAYMENT_TYPE_LABELS,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
-  getNextStatusActions
+  getNextStatusActions,
+  isCompletionPaymentPending
 } from './orderFulfillmentUi.js';
 
 const WORKSPACE_VIEW_CONFIG = {
@@ -625,11 +626,6 @@ export default function TerminalSidebarPanel({
                       Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
-                      Receipt: <span className={`font-semibold ${order.receipt_print_status === 'printed' ? 'text-emerald-700' : order.receipt_print_status === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
-                        {order.receipt_print_status === 'printed' ? 'Printed' : order.receipt_print_status === 'failed' ? 'Print failed' : 'Not printed'}
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-slate-600">
                       Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
@@ -668,7 +664,7 @@ export default function TerminalSidebarPanel({
                           size="sm"
                           variant={status === 'rejected' ? 'destructive' : 'outline'}
                           className="h-7 text-[11px]"
-                          disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                          disabled={Boolean(actionLoading) || !canTransactPos || locked || (status === 'completed' && isCompletionPaymentPending(order))}
                           onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                         >
                           {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
