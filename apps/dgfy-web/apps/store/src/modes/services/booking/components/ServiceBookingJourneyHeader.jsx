@@ -32,7 +32,6 @@ export function ServiceBookingJourneyHeader({
   return (
     <>
       <CheckoutHeroHeader
-        eyebrow="Four clear steps"
         title="Complete your service booking"
         description="Provide customer details, review add-ons, choose fulfillment and payment, then confirm your booking."
         badges={[

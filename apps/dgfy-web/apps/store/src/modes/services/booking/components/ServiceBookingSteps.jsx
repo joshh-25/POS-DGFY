@@ -39,6 +39,7 @@ export function ServiceBookingStepAccount({
   onRequestGuestCheckoutOtp,
   onVerifyGuestCheckoutOtp,
   servicesBodyFont,
+  servicesDisplayFont,
   referenceStyle = false,
   toast,
   onBack,
@@ -51,7 +52,7 @@ export function ServiceBookingStepAccount({
     <div style={{ display: 'grid', gap: 20 }}>
       {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
         <section style={panelStyle}>
-          <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? "'Lexend', 'Segoe UI', Arial, sans-serif" : undefined }}>Customer details</div>
+          <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>Customer details</div>
           <div style={{ marginTop: -12, fontSize: referenceStyle ? 14.4 : 12, lineHeight: referenceStyle ? 1.6 : undefined, color: referenceStyle ? '#58717a' : '#64748b' }}>
             {isDgfyCustomerSignedIn ? 'Your account details are already linked. Review them here before continuing.' : 'Use your details for this booking. No account is needed to continue.'}
           </div>
@@ -99,7 +100,7 @@ export function ServiceBookingStepAccount({
               Complete the required customer details before continuing.
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+          {!referenceStyle || !isMobileViewport ? <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
             <GhostButton onClick={onBack} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>Back</GhostButton>
             <PrimaryButton
               {...primaryButtonProps}
@@ -117,7 +118,7 @@ export function ServiceBookingStepAccount({
             >
               Continue
             </PrimaryButton>
-          </div>
+          </div> : null}
         </section>
       ) : renderGuestCheckoutEntry({
         title: referenceStyle ? 'How would you like to continue?' : 'Continue to your booking',
@@ -141,6 +142,7 @@ export function ServiceBookingStepFulfillment({
   PrimaryButton,
   primaryButtonProps,
   activeBookingService,
+  bookingCalendarDateOptions,
   bookingDateOptions,
   bookingFieldPlan,
   bookingPreferredDateInputRef,
@@ -154,12 +156,17 @@ export function ServiceBookingStepFulfillment({
   isMobileViewport,
   selectedServiceDatePart,
   selectedServiceTimePart,
+  serviceScheduleMode,
   serviceDraftQuantity,
   serviceIntakeResponses,
   serviceUnitType,
   servicesPrimary,
+  servicesPrimarySoft,
+  servicesPrimaryBorder,
   servicesPrimaryShadow,
+  servicesDisplayFont,
   setServiceAppointmentAt,
+  setServiceScheduleMode,
   setServiceDraftQuantity,
   setServiceIntakeResponses,
   setServiceUnitType,
@@ -180,7 +187,7 @@ export function ServiceBookingStepFulfillment({
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <section style={panelStyle}>
-        <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? "'Lexend', 'Segoe UI', Arial, sans-serif" : undefined }}>Fulfillment</div>
+        <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>Fulfillment</div>
         <div style={{ marginTop: -4, fontSize: 12, color: STYLES.colors.muted }}>
           Choose how and when the customer will receive the order, then add the service details.
         </div>
@@ -190,6 +197,7 @@ export function ServiceBookingStepFulfillment({
           onOrderMethodChange={onOrderMethodChange}
           serviceOrderMethod={serviceOrderMethod}
           servicesPrimary={servicesPrimary}
+          servicesPrimaryBorder={servicesPrimaryBorder}
           servicesPrimaryShadow={servicesPrimaryShadow}
         />
 
@@ -198,6 +206,7 @@ export function ServiceBookingStepFulfillment({
           BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
           StorefrontDropdown={StorefrontDropdown}
           activeBookingService={activeBookingService}
+          bookingCalendarDateOptions={bookingCalendarDateOptions}
           bookingDateOptions={bookingDateOptions}
           bookingFieldPlan={bookingFieldPlan}
           bookingPreferredDateInputRef={bookingPreferredDateInputRef}
@@ -211,11 +220,15 @@ export function ServiceBookingStepFulfillment({
           registerBookingFieldRef={registerBookingFieldRef}
           selectedServiceDatePart={selectedServiceDatePart}
           selectedServiceTimePart={selectedServiceTimePart}
+          serviceScheduleMode={serviceScheduleMode}
           serviceDraftQuantity={serviceDraftQuantity}
           serviceIntakeResponses={serviceIntakeResponses}
           serviceUnitType={serviceUnitType}
           servicesPrimary={servicesPrimary}
+          servicesPrimarySoft={servicesPrimarySoft}
+          servicesPrimaryShadow={servicesPrimaryShadow}
           setServiceAppointmentAt={setServiceAppointmentAt}
+          setServiceScheduleMode={setServiceScheduleMode}
           setServiceDraftQuantity={setServiceDraftQuantity}
           setServiceIntakeResponses={setServiceIntakeResponses}
           setServiceUnitType={setServiceUnitType}
@@ -229,7 +242,7 @@ export function ServiceBookingStepFulfillment({
             Complete the required fulfillment details before continuing.
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+        {!referenceStyle || !isMobileViewport ? <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
           <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>Back</GhostButton>
           <PrimaryButton
             {...primaryButtonProps}
@@ -245,7 +258,7 @@ export function ServiceBookingStepFulfillment({
           >
             Continue
           </PrimaryButton>
-        </div>
+        </div> : null}
       </section>
     </div>
   );
@@ -320,11 +333,10 @@ export function ServiceBookingStepReviewPayment({
     <>
     <div style={{ display: 'grid', gap: 20 }}>
       <section style={{ border: '1px solid #e2e8f0', borderRadius: referenceStyle ? 18 : 16, background: '#fff', padding: referenceStyle ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 14 : 18), display: 'grid', gap: referenceStyle ? 24 : 14 }}>
-      <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? "'Lexend', 'Segoe UI', Arial, sans-serif" : undefined }}>Review and payment</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: STYLES.colors.muted }}>
-        {isQuoteFlow ? 'Review the request details before sending this local quote preview.' : 'Review the service flow details before continuing.'}
+      <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark, fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>
+        Payment
       </div>
-
       {!isQuoteFlow ? <div style={{ display: 'grid', gap: 16 }}>
         <label ref={registerBookingFieldRef('payment_timing')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, maxWidth: isMobileViewport ? '100%' : 360 }}>
           Payment Method
@@ -356,7 +368,12 @@ export function ServiceBookingStepReviewPayment({
           <div style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>No payment is collected in this local preview. The business can review the request and provide a price.</div>
         </div>
       )}
+      </div>
 
+      <div style={{ display: 'grid', gap: 14, paddingTop: 8, borderTop: '1px solid #eef2f7' }}>
+      <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark, fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>
+        Review
+      </div>
       <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: STYLES.colors.dark }}>Selected services</div>
         {groupedServiceLineItems.map((line, index) => (
@@ -416,6 +433,7 @@ export function ServiceBookingStepReviewPayment({
           </div>
         </div>
       </section>
+      </div>
 
       {storefrontClosedByHours && storefrontClosedMessageBody ? (
         <div style={{ border: `1px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, color: servicesPrimary, borderRadius: 14, padding: '12px 14px', display: 'grid', gap: 4 }}>
@@ -424,7 +442,7 @@ export function ServiceBookingStepReviewPayment({
         </div>
       ) : null}
       {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+      {!referenceStyle || !isMobileViewport ? <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
         <GhostButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>Back</GhostButton>
         <PrimaryButton
           {...primaryButtonProps}
@@ -439,7 +457,7 @@ export function ServiceBookingStepReviewPayment({
         >
           {isQuoteFlow ? 'Send Quote Request' : 'Confirm Booking'}
         </PrimaryButton>
-      </div>
+      </div> : null}
       </section>
     </div>
     {showOnlinePaymentNotice ? (

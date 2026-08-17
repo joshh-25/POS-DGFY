@@ -200,6 +200,7 @@ import { buildServiceBookingSummaryModel } from './modes/services/booking/model/
 import { useServiceBookingDerivations } from './modes/services/booking/hooks/useServiceBookingDerivations.js';
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
+import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from './modes/services/servicesTypography.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
 import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
@@ -638,7 +639,7 @@ export default function StorefrontApp() {
   const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
   const [serviceOrderMethod, setServiceOrderMethod] = useState('delivery');
-  const [serviceScheduleMode, setServiceScheduleMode] = useState('schedule');
+  const [serviceScheduleMode, setServiceScheduleMode] = useState('now');
   const [serviceSpecialInstructions, setServiceSpecialInstructions] = useState('');
   const {
     bookingPreferredDateInputRef,
@@ -1004,8 +1005,8 @@ export default function StorefrontApp() {
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
   const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
-  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Source Sans 3', 'Segoe UI', sans-serif";
-  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || SERVICES_BODY_FONT;
+  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || modeAdapter?.heroTheme?.bodyFont || SERVICES_DISPLAY_FONT;
   const servicesPrimaryBorder = `${servicesPrimary}33`;
   const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
   const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
@@ -1679,6 +1680,7 @@ export default function StorefrontApp() {
     accountStepComplete,
     activeBookingService,
     activeServiceCartLine,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
     bookingPageIntakeFields,
@@ -1969,15 +1971,16 @@ export default function StorefrontApp() {
       if (serviceAppointmentAt) setServiceAppointmentAt('');
       return;
     }
-    const currentDateIsValid = bookingDateOptions.some((option) => option.value === selectedServiceDatePart);
     const currentTimeIsValid = bookingTimeSlotOptions.some((option) => option.value === selectedServiceTimePart);
-    if (currentDateIsValid && currentTimeIsValid) return;
+    if (selectedServiceDatePart && currentTimeIsValid) return;
+    if (selectedServiceDatePart && !selectedServiceTimePart) return;
     const nextTime = getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart);
     const nextAppointment = combineDateAndTimeParts(firstDate, nextTime);
     if (nextAppointment !== serviceAppointmentAt) setServiceAppointmentAt(nextAppointment);
   }, [
     isBookingSubpage,
     activeBookingService,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingTimeSlotOptions,
     getPreferredBookingTimeForDate,
@@ -3502,6 +3505,7 @@ export default function StorefrontApp() {
     activeBookingService,
     activeServiceLocationSummary,
     addToCart,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
     bookingPagePaymentOptions,
@@ -3516,6 +3520,7 @@ export default function StorefrontApp() {
     catalogError,
     catalogSearch,
     checkoutError,
+    checkoutLoading,
     checkoutPromoCode,
     checkoutResult,
     customerEmail,
@@ -3788,7 +3793,18 @@ export default function StorefrontApp() {
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
-    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main
+      data-storefront-mode={isServicesMode ? 'services' : undefined}
+      style={{
+        '--services-body-font': servicesBodyFont,
+        '--services-display-font': servicesDisplayFont,
+        fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body),
+        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff',
+        minHeight: '100vh',
+        color: '#0f172a',
+        overflowX: 'clip'
+      }}
+    >
       <div style={{
         maxWidth: 1320,
         width: '100%',

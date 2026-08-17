@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildServiceCalendarDateOptions,
   buildServiceDateOptions,
   buildServiceTimeSlotOptions,
+  formatServiceAppointmentSummary,
+  getDatePartFromAppointment,
   getPreferredBookingTimeForDate
 } from './serviceBookingSchedule.js';
 
@@ -98,5 +101,23 @@ describe('Services handoff schedule resolver', () => {
       storefrontHours: closedHours,
       now: new Date('2026-08-10T04:30:00Z')
     })).toEqual([]);
+  });
+
+  it('returns every future calendar date while keeping slot availability explicit', () => {
+    const options = {
+      storefrontHours,
+      now: new Date('2026-08-09T04:30:00Z'),
+      maxLookaheadDays: 3
+    };
+    const dates = buildServiceCalendarDateOptions(service, options);
+
+    expect(dates.map((date) => date.value)).toEqual(['2026-08-09', '2026-08-10', '2026-08-11']);
+    expect(dates[0]).toEqual(expect.objectContaining({ hasAvailability: false, recommended: false }));
+    expect(dates[1]).toEqual(expect.objectContaining({ hasAvailability: true, recommended: true }));
+  });
+
+  it('preserves a date-only draft until the user chooses a valid time', () => {
+    expect(getDatePartFromAppointment('2026-08-16')).toBe('2026-08-16');
+    expect(formatServiceAppointmentSummary('2026-08-16')).toBe('Schedule needed');
   });
 });

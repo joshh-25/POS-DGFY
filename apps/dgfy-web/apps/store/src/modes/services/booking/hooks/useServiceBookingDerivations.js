@@ -6,6 +6,7 @@ import {
   normalizeServiceFormFields
 } from '../model/serviceBookingFields.js';
 import {
+  buildServiceCalendarDateOptions,
   buildServiceDateOptions,
   buildServiceTimeSlotOptions,
   getDatePartFromAppointment,
@@ -113,7 +114,10 @@ export function useServiceBookingDerivations({
   const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
   const scheduleOptions = useMemo(() => ({ storefrontHours, now: scheduleNow }), [scheduleNow, storefrontHours]);
   const bookingDateOptions = useMemo(() => (
-    isServicesMode ? buildServiceDateOptions(activeBookingService, 7, scheduleOptions) : []
+    isServicesMode ? buildServiceDateOptions(activeBookingService, Number.POSITIVE_INFINITY, scheduleOptions) : []
+  ), [activeBookingService, isServicesMode, scheduleOptions]);
+  const bookingCalendarDateOptions = useMemo(() => (
+    isServicesMode ? buildServiceCalendarDateOptions(activeBookingService, scheduleOptions) : []
   ), [activeBookingService, isServicesMode, scheduleOptions]);
   const bookingTimeSlotOptions = useMemo(() => (
     isServicesMode ? buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart, scheduleOptions) : []
@@ -200,6 +204,7 @@ export function useServiceBookingDerivations({
     accountStepComplete,
     activeBookingService,
     activeServiceCartLine,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
     bookingPageIntakeFields,

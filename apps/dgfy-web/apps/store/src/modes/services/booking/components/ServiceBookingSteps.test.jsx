@@ -202,8 +202,12 @@ describe('ServiceBookingStepReviewPayment', () => {
       />
     );
 
+    const paymentSection = screen.getByText('Payment', { exact: true });
+    const reviewSection = screen.getByText('Review', { exact: true });
     const payment = screen.getByText('Payment Method');
     const fulfillment = screen.getByText('Fulfillment Information');
+    expect(screen.queryByText('Review and payment')).toBeNull();
+    expect(paymentSection.compareDocumentPosition(reviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(payment.compareDocumentPosition(fulfillment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

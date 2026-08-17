@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   MessageCircle,
@@ -34,6 +34,7 @@ import { ServiceBookingConfirmation } from '../../booking/components/ServiceBook
 import { ServiceBookingEmptyState } from '../../booking/components/ServiceBookingEmptyState.jsx';
 import { ServiceBookingLocationSection } from '../../booking/components/ServiceBookingLocationSection.jsx';
 import { ServiceBookingSummaryCard } from '../../booking/components/ServiceBookingSummaryCard.jsx';
+import { ServiceBookingMobileSummaryPanel } from '../../booking/components/ServiceBookingMobileSummaryPanel.jsx';
 import { ServiceBookingJourneyHeader } from '../../booking/components/ServiceBookingJourneyHeader.jsx';
 import { ServiceBookingAddOnsStep } from '../../booking/components/ServiceBookingAddOnsStep.jsx';
 import { ServiceBookingStepAccount, ServiceBookingStepFulfillment, ServiceBookingStepReviewPayment } from '../../booking/components/ServiceBookingSteps.jsx';
@@ -57,6 +58,7 @@ export function StorefrontServicesCatalog({
   fulfillmentStepComplete,
   activeBookingService,
   addToCart,
+  bookingCalendarDateOptions,
   bookingDateOptions,
   bookingFieldPlan,
   bookingPagePaymentOptions,
@@ -72,6 +74,7 @@ export function StorefrontServicesCatalog({
   catalogError,
   catalogSearch,
   checkoutError,
+  checkoutLoading,
   checkoutPromoCode,
   checkoutResult,
   customerPin,
@@ -141,6 +144,8 @@ export function StorefrontServicesCatalog({
   serviceLocationSummaryDraft,
   serviceOrderMethod,
   setServiceOrderMethod,
+  serviceScheduleMode,
+  setServiceScheduleMode,
   servicePage,
   servicePageSize,
   servicePaymentTiming,
@@ -183,6 +188,7 @@ export function StorefrontServicesCatalog({
   submitFnbItemReview,
   viewportWidth
 }) {
+  const [servicesViewMode, setServicesViewMode] = useState('list');
   const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
   const availabilityFilteredServices = searchFilteredServices.filter((item) => {
     if (serviceAvailabilityFilter === 'available') return isItemAvailable(item);
@@ -499,7 +505,7 @@ export function StorefrontServicesCatalog({
         </div>
 
         <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#fff' }}>
-          <div style={{ maxWidth: 1264, margin: '0 auto', width: '100%', padding: isMobileViewport ? '40px 16px 56px' : '80px 24px 80px', boxSizing: 'border-box' }}>
+          <div style={{ maxWidth: 1264, margin: '0 auto', width: '100%', padding: isMobileViewport ? '40px 16px calc(env(safe-area-inset-bottom, 0px) + 196px)' : '80px 24px 80px', boxSizing: 'border-box' }}>
             {bookingConfirmation ? (
               <ServiceBookingConfirmation
                 isMobileViewport={isMobileViewport}
@@ -529,11 +535,6 @@ export function StorefrontServicesCatalog({
               />
             ) : (
             <>
-            <nav aria-label="Checkout breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isMobileViewport ? 24 : 32, color: '#58717a', fontSize: 14.4, lineHeight: 1.6 }}>
-              <span>{serviceHeroModel.name}</span>
-              <span aria-hidden="true">/</span>
-              <strong style={{ color: '#101010', fontWeight: 700 }}>Checkout</strong>
-            </nav>
             <div style={{ display: 'grid', gap: isMobileViewport ? 32 : 32 }}>
               <ServiceBookingJourneyHeader
                 accentColor={servicesPrimary}
@@ -580,6 +581,7 @@ export function StorefrontServicesCatalog({
                       onRequestGuestCheckoutOtp={onRequestGuestCheckoutOtp}
                       onVerifyGuestCheckoutOtp={onVerifyGuestCheckoutOtp}
                       servicesBodyFont={servicesBodyFont}
+                      servicesDisplayFont={servicesDisplayFont}
                       toast={toast}
                       onBack={goStoreCatalogPage}
                       setServiceBookingStep={setServiceBookingStep}
@@ -598,6 +600,7 @@ export function StorefrontServicesCatalog({
                       servicesPrimary={servicesPrimary}
                       servicesPrimarySoft={servicesPrimarySoft}
                       servicesPrimaryBorder={servicesPrimaryBorder}
+                      servicesDisplayFont={servicesDisplayFont}
                       serviceLines={serviceLines}
                       onEditLine={handleEditServiceLine}
                       specialInstructions={serviceSpecialInstructions}
@@ -616,6 +619,7 @@ export function StorefrontServicesCatalog({
                       PrimaryButton={PrimaryButton}
                       primaryButtonProps={servicePrimaryButtonProps}
                       activeBookingService={activeBookingService}
+                      bookingCalendarDateOptions={bookingCalendarDateOptions}
                       bookingDateOptions={bookingDateOptions}
                       bookingFieldPlan={bookingFieldPlan}
                       bookingPreferredDateInputRef={bookingPreferredDateInputRef}
@@ -629,13 +633,17 @@ export function StorefrontServicesCatalog({
                       isMobileViewport={isMobileViewport}
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
+                      serviceScheduleMode={serviceScheduleMode}
                       serviceDraftQuantity={serviceDraftQuantity}
                       serviceIntakeResponses={serviceIntakeResponses}
                       serviceUnitType={serviceUnitType}
                       servicesPrimary={servicesPrimary}
+                      servicesPrimarySoft={servicesPrimarySoft}
                       servicesPrimaryBorder={servicesPrimaryBorder}
+                      servicesDisplayFont={servicesDisplayFont}
                       servicesPrimaryShadow={servicesPrimaryShadow}
                       setServiceAppointmentAt={setServiceAppointmentAt}
+                      setServiceScheduleMode={setServiceScheduleMode}
                       setServiceDraftQuantity={setServiceDraftQuantity}
                       setServiceIntakeResponses={setServiceIntakeResponses}
                       setServiceUnitType={setServiceUnitType}
@@ -643,6 +651,7 @@ export function StorefrontServicesCatalog({
                       serviceOrderMethod={serviceOrderMethod}
                       onOrderMethodChange={(nextMethod) => {
                         setServiceOrderMethod(nextMethod);
+                        setServiceScheduleMode('now');
                         if (nextMethod === 'quote') setServiceAppointmentAt('');
                       }}
                       renderLocationSection={() => (
@@ -720,18 +729,54 @@ export function StorefrontServicesCatalog({
                   )}
                 </section>
 
-                <ServiceBookingSummaryCard
-                  isMobileViewport={isMobileViewport}
-                  STYLES={STYLES}
-                  servicesPrimary={servicesPrimary}
-                  servicesPrimarySoft={servicesPrimarySoft}
-                  servicesPrimaryBorder={servicesPrimaryBorder}
-                  money={money}
-                  bookingSummaryAmount={bookingSummaryAmount}
-                  summaryRows={serviceBookingSummaryRows}
-                  serviceLineItems={groupedServiceLineItems}
-                />
+                {!isMobileViewport ? (
+                  <ServiceBookingSummaryCard
+                    isMobileViewport={isMobileViewport}
+                    STYLES={STYLES}
+                    servicesPrimary={servicesPrimary}
+                    servicesPrimarySoft={servicesPrimarySoft}
+                    servicesPrimaryBorder={servicesPrimaryBorder}
+                    servicesDisplayFont={servicesDisplayFont}
+                    money={money}
+                    bookingSummaryAmount={bookingSummaryAmount}
+                    summaryRows={serviceBookingSummaryRows}
+                    serviceLineItems={groupedServiceLineItems}
+                  />
+                ) : null}
               </div>
+              <ServiceBookingMobileSummaryPanel
+                accountStepComplete={accountStepComplete}
+                bookingSummaryAmount={bookingSummaryAmount}
+                bookingSummaryQuantity={bookingSummaryQuantity}
+                checkoutLoading={checkoutLoading}
+                fulfillmentStepComplete={fulfillmentStepComplete}
+                isMobileViewport={isMobileViewport}
+                isQuoteFlow={serviceOrderMethod === 'quote'}
+                money={money}
+                onBack={() => {
+                  if (serviceBookingStep <= 1) {
+                    goStoreCatalogPage();
+                    return;
+                  }
+                  setServiceBookingStep(serviceBookingStep - 1);
+                }}
+                onPrimary={() => {
+                  if (serviceBookingStep < 4) {
+                    setServiceBookingStep(serviceBookingStep + 1);
+                    return;
+                  }
+                  handleCheckout();
+                }}
+                serviceBookingStep={serviceBookingStep}
+                serviceLineItems={groupedServiceLineItems}
+                servicePaymentTiming={servicePaymentTiming}
+                servicesBodyFont={servicesBodyFont}
+                servicesDisplayFont={servicesDisplayFont}
+                servicesPrimary={servicesPrimary}
+                servicesPrimaryDark={servicesPrimaryDark}
+                servicesPrimaryShadow={servicesPrimaryShadow}
+                summaryRows={serviceBookingSummaryRows}
+              />
             </div>
             </>
             )}
@@ -766,11 +811,13 @@ export function StorefrontServicesCatalog({
           servicesPrimarySoft={servicesPrimarySoft}
           servicesPrimaryBorder={servicesPrimaryBorder}
           servicesPrimaryShadow={servicesPrimaryShadow}
+          servicesViewMode={servicesViewMode}
           catalogPresentation={catalogPresentation}
           servicesViewModel={servicesViewModel}
           setActiveServiceTab={setActiveServiceTab}
           setCatalogSearch={setCatalogSearch}
           setServiceSortOption={setServiceSortOption}
+          setServicesViewMode={setServicesViewMode}
           visibleServiceCount={sortedServices.length}
         />
         <div
@@ -823,12 +870,14 @@ export function StorefrontServicesCatalog({
                   item={item}
                   imageSources={imageSources}
                   available={available}
+                  isMobileViewport={isMobileViewport}
                   money={money}
                   servicesPrimary={servicesPrimary}
                   servicesPrimaryDark={servicesPrimaryDark}
                   servicesPrimarySoft={servicesPrimarySoft}
                   servicesPrimaryBorder={servicesPrimaryBorder}
                   servicesPrimaryShadow={servicesPrimaryShadow}
+                  servicesViewMode={servicesViewMode}
                   servicesDisplayFont={servicesDisplayFont}
                   servicesBodyFont={servicesBodyFont}
                   addActionLabel={catalogPresentation.addActionLabel}

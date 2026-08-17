@@ -104,7 +104,7 @@ const getScheduleOptions = (options = {}) => {
 
 export const formatServiceAppointmentSummary = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
-  if (!raw) return 'Schedule needed';
+  if (!raw || !raw.includes('T')) return 'Schedule needed';
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return 'Schedule needed';
   return parsed.toLocaleString('en-PH', {
@@ -138,7 +138,8 @@ export const formatTimeSlotLabel = (timeString) => {
 
 export const getDatePartFromAppointment = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
-  return raw.includes('T') ? raw.split('T')[0] : '';
+  if (raw.includes('T')) return raw.split('T')[0];
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
 };
 
 export const getTimePartFromAppointment = (appointmentAt) => {
@@ -343,12 +344,43 @@ export const buildServiceDateOptions = (serviceItem, maxOptions = 7, options = {
       value: dateString,
       label: formatShortDateLabel(dateString),
       weekday: DAY_LABELS[parsedDate.dayIndex],
+      offset,
       hasAvailability: true,
       recommended: dateOptions.length === 0,
       recommendedTime: timeSlots[0]?.value || ''
     });
   }
   return dateOptions;
+};
+
+export const buildServiceCalendarDateOptions = (serviceItem, options = {}) => {
+  const { storefrontHours, now, maxLookaheadDays } = getScheduleOptions(options);
+  const storefrontSchedule = getNormalizedStorefrontWeeklyHours(storefrontHours);
+  const nowClock = getTimeZoneClock(now, storefrontSchedule.timezone);
+  const calendarDateOptions = [];
+
+  for (let offset = 0; offset < maxLookaheadDays; offset += 1) {
+    const dateString = getDateAfterOffset(nowClock.dateString, offset);
+    const timeSlots = buildTimeSlotOptionsForDate(serviceItem, dateString, { storefrontHours, now });
+    const parsedDate = parseCalendarDate(dateString);
+    if (!parsedDate) continue;
+    calendarDateOptions.push({
+      value: dateString,
+      label: formatShortDateLabel(dateString),
+      weekday: DAY_LABELS[parsedDate.dayIndex],
+      offset,
+      hasAvailability: timeSlots.length > 0,
+      recommended: false,
+      recommendedTime: timeSlots[0]?.value || ''
+    });
+  }
+
+  const recommendedIndex = calendarDateOptions.findIndex((option) => option.hasAvailability);
+  if (recommendedIndex < 0) return calendarDateOptions;
+  return calendarDateOptions.map((option, index) => ({
+    ...option,
+    recommended: index === recommendedIndex
+  }));
 };
 
 export const buildServiceTimeSlotOptions = (serviceItem, dateString, options = {}) => {

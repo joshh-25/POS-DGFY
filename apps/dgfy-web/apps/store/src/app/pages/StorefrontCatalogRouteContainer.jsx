@@ -28,6 +28,7 @@ export function StorefrontCatalogRouteContainer(props) {
     activeBookingService,
     activeServiceLocationSummary,
     addToCart,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
     bookingPagePaymentOptions,
@@ -43,6 +44,7 @@ export function StorefrontCatalogRouteContainer(props) {
     catalogError,
     catalogSearch,
     checkoutError,
+    checkoutLoading,
     checkoutPromoCode,
     checkoutResult,
     customerEmail,
@@ -265,6 +267,7 @@ export function StorefrontCatalogRouteContainer(props) {
         activeBookingService={activeBookingService}
         activeServiceLocationSummary={activeServiceLocationSummary}
         addToCart={addToCart}
+        bookingCalendarDateOptions={bookingCalendarDateOptions}
         bookingDateOptions={bookingDateOptions}
         bookingFieldPlan={bookingFieldPlan}
         bookingPagePaymentOptions={bookingPagePaymentOptions}
@@ -280,6 +283,7 @@ export function StorefrontCatalogRouteContainer(props) {
         catalogError={catalogError}
         catalogSearch={catalogSearch}
         checkoutError={checkoutError}
+        checkoutLoading={checkoutLoading}
         checkoutPromoCode={checkoutPromoCode}
         checkoutResult={checkoutResult}
         customerEmail={customerEmail}

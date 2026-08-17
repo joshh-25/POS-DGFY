@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
+const NOOP = () => {};
+
 const DROPDOWN_MENU_BASE_STYLE = {
   position: 'absolute',
   top: 'calc(100% + 10px)',
@@ -35,7 +37,8 @@ export function StorefrontDropdown({
   selectedLabelStyle = {},
   labelStyle = {},
   chevronSize = 18,
-  compactLabel = false
+  compactLabel = false,
+  onOpenChange = NOOP
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -49,10 +52,14 @@ export function StorefrontDropdown({
     const handlePointerDown = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
+        onOpenChange(false);
       }
     };
     const handleEscape = (event) => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        onOpenChange(false);
+      }
     };
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleEscape);
@@ -60,7 +67,7 @@ export function StorefrontDropdown({
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen]);
+  }, [isOpen, onOpenChange]);
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative', minWidth: 0, ...containerStyle }}>
@@ -71,7 +78,11 @@ export function StorefrontDropdown({
         aria-expanded={isOpen}
         onClick={() => {
           if (disabled) return;
-          setIsOpen((previous) => !previous);
+          setIsOpen((previous) => {
+            const nextOpenState = !previous;
+            onOpenChange(nextOpenState);
+            return nextOpenState;
+          });
         }}
         style={{
           width: '100%',
@@ -164,6 +175,7 @@ export function StorefrontDropdown({
                 onClick={() => {
                   onChange(option.value);
                   setIsOpen(false);
+                  onOpenChange(false);
                 }}
                 style={{
                   width: '100%',

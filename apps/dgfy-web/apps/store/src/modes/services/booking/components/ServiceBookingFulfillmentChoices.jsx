@@ -7,7 +7,7 @@ import {
  * Services' own handoff chooser: pick up items and deliver to the customer's address, or
  * pick up items for in-store collection. No now/schedule choice — Services always books a
  * calendar date/time (see ServiceBookingDetailsForm rendered alongside this in the Fulfillment
- * step), so there is nothing to toggle here beyond the handoff method.
+ * step). The timing choice is kept separate so the customer can choose Now or Schedule for later.
  *
  * Uses a local option card (not the shared SelectableOptionCard) because its labels are full
  * sentences that need to wrap across two lines in a two-column layout — the shared primitive

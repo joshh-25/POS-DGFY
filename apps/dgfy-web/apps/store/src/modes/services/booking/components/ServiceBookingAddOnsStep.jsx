@@ -11,6 +11,7 @@ export function ServiceBookingAddOnsStep({
   servicesPrimary,
   servicesPrimarySoft,
   servicesPrimaryBorder,
+  servicesDisplayFont,
   serviceLines,
   onEditLine,
   specialInstructions,
@@ -31,7 +32,7 @@ export function ServiceBookingAddOnsStep({
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <section style={{ border: '1px solid #e2e8f0', borderRadius: referenceStyle ? 18 : 16, background: '#fff', padding: referenceStyle ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 14 : 18), display: 'grid', gap: referenceStyle ? 24 : 14 }}>
-        <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? "'Lexend', 'Segoe UI', Arial, sans-serif" : undefined }}>Add-ons</div>
+        <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>Add-ons</div>
         <div style={{ marginTop: referenceStyle ? -12 : -4, fontSize: referenceStyle ? 14.4 : 12, lineHeight: referenceStyle ? 1.6 : undefined, color: referenceStyle ? '#58717a' : STYLES.colors.muted }}>
           Review the service options selected from the catalog. Only options configured in Admin are shown.
         </div>
@@ -54,7 +55,7 @@ export function ServiceBookingAddOnsStep({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                    gridTemplateColumns: isMobileViewport ? 'auto minmax(0, 1fr)' : 'auto minmax(0, 1fr) auto',
                     gap: 14,
                     alignItems: 'center',
                     padding: isMobileViewport ? 14 : 16,
@@ -88,7 +89,7 @@ export function ServiceBookingAddOnsStep({
                     </div>
                   </button>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, gridColumn: isMobileViewport ? '2' : undefined, justifySelf: isMobileViewport ? 'end' : undefined }}>
                     <span
                       style={{
                         width: 'fit-content',
@@ -159,12 +160,12 @@ export function ServiceBookingAddOnsStep({
           </span>
         </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+        {!referenceStyle || !isMobileViewport ? <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
           <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>Back</GhostButton>
           <PrimaryButton {...primaryButtonProps} onClick={() => setServiceBookingStep(3)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>
             Continue
           </PrimaryButton>
-        </div>
+        </div> : null}
       </section>
     </div>
   );

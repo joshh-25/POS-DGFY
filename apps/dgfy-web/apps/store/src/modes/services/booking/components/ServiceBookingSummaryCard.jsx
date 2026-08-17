@@ -16,6 +16,7 @@ export function ServiceBookingSummaryCard({
   servicesPrimary = '#0f766e',
   servicesPrimarySoft = '#ecfeff',
   servicesPrimaryBorder = 'rgba(15,118,110,0.2)',
+  servicesDisplayFont,
 }) {
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const shouldExpand = !isMobileViewport || isMobileExpanded;
@@ -34,7 +35,7 @@ export function ServiceBookingSummaryCard({
         <div style={{ fontSize: 12.48, lineHeight: 1.6, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
           Your booking
         </div>
-        <div style={{ fontSize: 35.2, lineHeight: 1.6, fontWeight: 800, color: '#101010', marginBottom: 24, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: isMobileViewport ? 30 : 35.2, lineHeight: isMobileViewport ? 1.25 : 1.6, fontWeight: 800, color: '#101010', marginBottom: 24, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {money(bookingSummaryAmount)}
         </div>
 
@@ -52,18 +53,18 @@ export function ServiceBookingSummaryCard({
           <>
             <div style={{ display: 'grid', gap: 7.2, borderBottom: '1px solid #cce8ee', paddingBottom: 24, marginBottom: 24 }}>
               {infoRows.map((row) => (
-                <div key={row.label} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, minHeight: 24.3 }}>
+                <div key={row.label} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, minHeight: 24.3, minWidth: 0 }}>
                   <span style={{ fontSize: 14.4, lineHeight: 1.6, color: '#58717a' }}>{row.label}</span>
-                  <strong style={{ fontSize: 14.4, lineHeight: 1.6, color: '#153e4a', textAlign: 'right', fontWeight: 700 }}>{row.value}</strong>
+                  <strong style={{ fontSize: 14.4, lineHeight: 1.6, color: '#153e4a', textAlign: 'right', fontWeight: 700, minWidth: 0, overflowWrap: 'anywhere' }}>{row.value}</strong>
                 </div>
               ))}
             </div>
 
             <div style={{ display: 'grid', gap: 0 }}>
-              <h3 style={{ margin: '0 0 16px', fontFamily: "'Lexend', 'Segoe UI', Arial, sans-serif", fontSize: 16, lineHeight: 1.25, fontWeight: 700, color: '#101010' }}>Your items</h3>
+              <h3 style={{ margin: '0 0 16px', fontFamily: servicesDisplayFont, fontSize: 16, lineHeight: 1.25, fontWeight: 700, color: '#101010' }}>Your items</h3>
               <ul style={{ listStyle: 'none', margin: '0 0 24px', padding: 0, display: 'grid', gap: 16 }}>
                 {serviceLineItems.map((line) => (
-                  <li key={line.key} style={{ display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', gap: 12, alignItems: 'start' }}>
+                  <li key={line.key} style={{ display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', minWidth: 0 }}>
                     <div style={{ width: 52, height: 52, borderRadius: 10, overflow: 'hidden', background: '#f1f5f9', border: '1px solid #cce8ee', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <ServiceImage
                         imageSources={line.imageSources}
@@ -76,7 +77,7 @@ export function ServiceBookingSummaryCard({
                       />
                     </div>
                     <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
-                      <div style={{ fontSize: 16, lineHeight: 1.4, fontWeight: 700, color: '#101010' }}>{line.title}</div>
+                      <div style={{ fontSize: 16, lineHeight: 1.4, fontWeight: 700, color: '#101010', overflowWrap: 'anywhere' }}>{line.title}</div>
                       <div style={{ fontSize: 14.4, lineHeight: 1.6, color: '#58717a' }}>
                         x {line.quantity}{line.variant ? ` · ${line.variant}` : ''}
                       </div>
@@ -84,7 +85,7 @@ export function ServiceBookingSummaryCard({
                         <div key={addOn.key} style={{ fontSize: 12.8, lineHeight: 1.5, color: servicesPrimary }}>+ {addOn.label}</div>
                       ))}
                     </div>
-                    <strong style={{ fontSize: 14.4, lineHeight: 1.6, color: servicesPrimary, whiteSpace: 'nowrap', fontWeight: 800 }}>{line.amount}</strong>
+                    <strong style={{ fontSize: 14.4, lineHeight: 1.6, color: servicesPrimary, whiteSpace: 'nowrap', fontWeight: 800, justifySelf: 'end' }}>{line.amount}</strong>
                   </li>
                 ))}
               </ul>
