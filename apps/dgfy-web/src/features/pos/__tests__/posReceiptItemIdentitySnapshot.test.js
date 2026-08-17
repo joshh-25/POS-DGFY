@@ -82,4 +82,44 @@ describe('pos-receipt item identity snapshot precedence', () => {
     expect(renderPosReceiptHtml({ transaction })).toContain('GCash');
     expect(renderThermalReceiptText({ transaction })).toContain('GCash 50.00');
   });
+
+  it('shows discounted item totals with an explicit negative discount and net total', () => {
+    const transaction = {
+      ...baseTransaction,
+      subtotal_amount: 80,
+      discount_amount: 12,
+      discount_label_snapshot: 'Employee Discount',
+      total_amount: 68,
+      lines: [{
+        line_id: 7,
+        item_id: 1,
+        item_name_snapshot: 'Garlic',
+        quantity: 1,
+        sale_price: 40,
+        line_subtotal: 68
+      }],
+      discount: {
+        lines: [{
+          transaction_line_id: 7,
+          gross_eligible_amount: 80,
+          discount_amount: 12,
+          vat_removed: 0
+        }]
+      }
+    };
+
+    const html = renderPosReceiptHtml({ transaction });
+    expect(html).toContain('<span>Total</span>');
+    expect(html).toContain('<strong>80.00</strong>');
+    expect(html).toContain('Discount (Employee Discount)');
+    expect(html).toContain('-12.00');
+    expect(html).toContain('NET TOTAL');
+    expect(html).toContain('<strong>68.00</strong>');
+
+    const thermalText = renderThermalReceiptText({ transaction });
+    expect(thermalText).toContain('Discount (Employee Discount)');
+    expect(thermalText).toContain('-12.00');
+    expect(thermalText).toContain('NET TOTAL');
+    expect(thermalText).toContain('TOTAL AMOUNT DUE');
+  });
 });

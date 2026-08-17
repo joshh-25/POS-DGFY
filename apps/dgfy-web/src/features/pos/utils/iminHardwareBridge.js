@@ -222,6 +222,51 @@ const isStatutorySeniorPwdDiscount = (discount) => {
     return discountType === 'senior' || discountType === 'pwd';
 };
 
+const roundCurrency = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const discountAllocationForLine = (transaction, item) => {
+    const allocations = Array.isArray(transaction?.discount?.lines) ? transaction.discount.lines : [];
+    const lineId = Number(item?.line_id ?? item?.id);
+    if (!Number.isFinite(lineId)) return null;
+    return allocations.find((allocation) => Number(allocation?.transaction_line_id) === lineId) || null;
+};
+
+const allocationAmount = (allocation, field) => {
+    const value = Number(allocation?.[field]);
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+};
+
+const resolveReceiptLineGrossTotal = (transaction, item, netTotal) => {
+    const explicit = Number(item?.gross_amount ?? item?.gross_total ?? item?.gross_subtotal);
+    if (Number.isFinite(explicit)) return roundCurrency(explicit);
+
+    const allocation = discountAllocationForLine(transaction, item);
+    const persistedAdjustments = allocationAmount(allocation, 'discount_amount')
+        + allocationAmount(allocation, 'vat_removed');
+    if (persistedAdjustments > 0) return roundCurrency(netTotal + persistedAdjustments);
+
+    const quantity = Number(item?.quantity ?? item?.qty ?? 0) || 0;
+    const salePrice = Number(item?.sale_price ?? item?.unit_price ?? item?.unit_price_snapshot ?? item?.price);
+    const fallbackGross = Number.isFinite(salePrice) ? quantity * salePrice : netTotal;
+    return roundCurrency(Math.max(netTotal, fallbackGross));
+};
+
+const resolveReceiptLineDiscount = (transaction, item, netTotal, grossTotal) => {
+    const allocation = discountAllocationForLine(transaction, item);
+    if (allocation) return roundCurrency(allocationAmount(allocation, 'discount_amount'));
+    return roundCurrency(Math.max(0, grossTotal - netTotal));
+};
+
+const formatDiscountLabel = (transaction) => {
+    const label = safeText(transaction?.discount_label_snapshot);
+    return label ? `Discount (${label})` : 'Discount';
+};
+
+const negativeMoney = (value) => {
+    const amount = roundCurrency(value);
+    return amount > 0 ? `-PHP ${amount.toFixed(2)}` : money(0);
+};
+
 const parseArrayMetadata = (value) => {
     if (Array.isArray(value)) return value;
     if (typeof value !== 'string') return [];
@@ -324,17 +369,26 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     receiptRows.push(line());
 
     lines.forEach((item) => {
-        const itemName = safeText(item?.item?.name, `Item #${item?.item_id || '-'}`);
+        const itemName = safeText(
+            item?.item_name_snapshot || item?.item?.name || item?.item_snapshot?.name || item?.name,
+            `Item #${item?.item_id || '-'}`
+        );
         const quantity = Number(item?.quantity || 0).toFixed(2);
         const unit = safeText(item?.unit_of_measure);
         const price = money(item?.sale_price);
-        const subtotal = money(item?.line_subtotal);
+        const netTotal = roundCurrency(item?.line_subtotal ?? item?.line_total ?? item?.total_amount ?? item?.amount);
+        const grossTotal = resolveReceiptLineGrossTotal(transaction, item, netTotal);
+        const lineDiscount = resolveReceiptLineDiscount(transaction, item, netTotal, grossTotal);
         const modifiers = parseArrayMetadata(item?.fnb_modifiers_snapshot)
             .map((modifier) => modifier?.option_name || modifier?.name)
             .filter(Boolean);
 
         wrapText(itemName).forEach((row) => receiptRows.push(row));
-        receiptRows.push(pair(`${quantity} ${unit} x ${price}`.trim(), subtotal));
+        receiptRows.push(pair(`${quantity} ${unit} x ${price}`.trim(), money(lineDiscount > 0 ? grossTotal : netTotal)));
+        if (lineDiscount > 0) {
+            receiptRows.push(pair(formatDiscountLabel(transaction), negativeMoney(lineDiscount)));
+            receiptRows.push(pair('NET TOTAL', money(netTotal)));
+        }
         const fnbDetails = [
             item?.fnb_course_snapshot ? `Course: ${item.fnb_course_snapshot}` : '',
             modifiers.length ? `Modifiers: ${modifiers.join(', ')}` : '',
@@ -362,7 +416,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         transaction?.discount_label_snapshot ? `(${transaction.discount_label_snapshot})` : '',
         transaction?.discount_rate_snapshot != null ? `@ ${Number(transaction.discount_rate_snapshot).toFixed(2)}%` : ''
     ].filter(Boolean).join(' ');
-    receiptRows.push(pair(discountLabel, money(transaction?.discount_amount)));
+    receiptRows.push(pair(discountLabel, negativeMoney(transaction?.discount_amount)));
     if (governedDiscount?.promo_code) {
         receiptRows.push(`Promo Code: ${safeText(governedDiscount.promo_code)}`);
     }
