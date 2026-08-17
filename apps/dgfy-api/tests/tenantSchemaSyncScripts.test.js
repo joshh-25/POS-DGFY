@@ -208,6 +208,52 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers the four voucher tables in foreign-key dependency order', () => {
+    const voucherTables = [
+      'vouchers',
+      'voucher_scopes',
+      'voucher_redemptions',
+      'voucher_redemption_lines'
+    ];
+    for (const table of voucherTables) {
+      expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty(table);
+    }
+
+    // Declaration order is load-bearing: buildTenantSchemaTableRepairSql preserves it, and each
+    // table's FKs point at one declared before it. A reordering would fail on a real tenant repair.
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    const positions = voucherTables.map((table) => declared.indexOf(table));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+
+    const repairs = buildTenantSchemaTableRepairSql(voucherTables);
+    expect(repairs.map((repair) => repair.table)).toEqual(voucherTables);
+    expect(repairs[0].sql).toContain('CREATE TABLE `vouchers`');
+    expect(repairs[0].sql).toContain('UNIQUE KEY `uq_vouchers_code`');
+    expect(repairs[3].sql).toContain('CREATE TABLE `voucher_redemption_lines`');
+
+    // ADR 0066 decision 4: the redemption ledger is authoritative, so its replay guard is a real
+    // unique constraint rather than an application-level check.
+    expect(repairs[2].sql).toContain('UNIQUE KEY `uq_voucher_redemptions_idempotency`');
+    expect(repairs[2].sql).toContain('`idempotency_key` varchar(160) NOT NULL');
+
+    // ADR 0066 decision 10: eligibility must be NOT NULL with an explicit default so "eligible
+    // everywhere" cannot be produced by omission -- the #459 failure mode.
+    for (const column of ['channels_mask', 'fulfillment_methods_mask', 'order_timings_mask']) {
+      expect(repairs[0].sql).toContain(`\`${column}\` tinyint unsigned NOT NULL DEFAULT`);
+    }
+
+    // ADR 0066 decision 2: integer centavos, and bigint because centavos overflow int at ~21.5M pesos.
+    expect(repairs[0].sql).toContain('`redeemed_value_centavos` bigint NOT NULL');
+    expect(repairs[0].sql).not.toContain('`redeemed_value_centavos` int ');
+
+    // voucher_scopes.scope_ref_id is polymorphic across items/item_folders, so it must NOT gain a FK.
+    expect(repairs[1].sql).toContain('`scope_ref_id` int NOT NULL');
+    expect(repairs[1].sql).not.toContain('FOREIGN KEY (`scope_ref_id`)');
+
+    // #455 says "locations"; no such table exists. Every location FK targets tenant_locations.
+    expect(repairs[2].sql).toContain('REFERENCES `tenant_locations` (`location_id`)');
+  });
+
   it('registers the complete location-scoped Z-reading snapshot contract', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_z_reading_snapshots', column: 'location_id' },

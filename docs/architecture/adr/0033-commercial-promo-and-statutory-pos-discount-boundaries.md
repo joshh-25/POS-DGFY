@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-17
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -171,6 +171,30 @@ governed discount plus verified PIN are rejected server-side.
 Migration `20260815000003-align-audit-log-context.cjs` adds the nullable audit
 actor/context columns required by the existing append-only audit contract to
 older tenant schemas; it does not add or store raw PIN data.
+
+### 2026-08-17 — Commercial promos are superseded by the voucher entity
+
+- Clause amended: the `## Migration and Rollback` JSON-storage premise, and Decision 13
+  (both untagged, therefore `default` tier per ADR 0039).
+- Change: this ADR's statement that multiple commercial promos are stored as JSON in
+  `system_settings.storefront_promos` "so no additional database table is required" no
+  longer holds. A promo code becomes one `voucher_kind` within the voucher entity
+  ([ADR 0066](0066-voucher-sale-time-price-resolution.md), issues #454/#455), backed by four
+  real tenant tables with a redemption ledger. The `storefront_promos` setting key is
+  migrated and retired.
+- Reason: the JSON premise was sound for small, hand-authored, tenant-wide promos. It does
+  not survive a server-owned redemption ledger, unique-code generation, per-transaction
+  attribution, or eligibility conditions that must appear in a `WHERE` clause. Issue #459 is
+  the concrete failure of the JSON approach: three eligibility fields declared in Decision 13
+  were silently stripped on every save and gated nothing in production.
+- Unchanged by this amendment: Decision 8 and Decision 10 remain in force. A voucher
+  redemption still persists a `pos_transaction_discounts` audit row plus per-line allocations
+  in the same tenant transaction, and POS remains authoritative for receipts on any fiscal
+  disagreement with the voucher ledger.
+- Also recorded: POS carries exactly one governed discount per transaction
+  (`UNIQUE (transaction_id)` plus a single-typed `governed_discount` payload). A voucher
+  occupies that one slot and is rejected when it is already taken. See ADR 0066 Decision 8.
+- PR: #455 (Phase 101)
 
 ## Authoritative Sources
 
