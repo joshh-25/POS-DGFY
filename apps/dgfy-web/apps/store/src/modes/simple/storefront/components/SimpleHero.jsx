@@ -34,6 +34,7 @@ const SimpleHero = ({
   setCatalogSearch,
   goDiscovery,
   goStore,
+  goStoreOrderPage,
   cartCount,
   setIsCheckoutOpen,
   modeAdapter,
@@ -157,6 +158,7 @@ const SimpleHero = ({
         bodyFont={heroTheme.bodyFont}
         onBack={goDiscovery}
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        onOrder={() => goStoreOrderPage({ initialTab: 'checkout' })}
         onTrack={openTrackPanel}
         onAccount={openAccountPanel}
         onRegisterBusiness={onRegisterBusiness}

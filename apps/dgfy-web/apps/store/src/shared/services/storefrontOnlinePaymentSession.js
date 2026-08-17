@@ -1,4 +1,19 @@
-export const STOREFRONT_ONLINE_PAYMENT_TYPES = Object.freeze(['qrph', 'card', 'gcash', 'maya']);
+export const STOREFRONT_HOSTED_PAYMENT_TYPES = Object.freeze([
+  'card',
+  'gcash',
+  'maya',
+  'grab_pay',
+  'shopeepay'
+]);
+
+export const STOREFRONT_ONLINE_PAYMENT_TYPES = Object.freeze([
+  'qrph',
+  ...STOREFRONT_HOSTED_PAYMENT_TYPES
+]);
+
+export const isStorefrontHostedPaymentType = (paymentType) => (
+  STOREFRONT_HOSTED_PAYMENT_TYPES.includes(String(paymentType || '').trim().toLowerCase())
+);
 
 export const isStorefrontOnlinePaymentType = (paymentType) => (
   STOREFRONT_ONLINE_PAYMENT_TYPES.includes(String(paymentType || '').trim().toLowerCase())
@@ -15,7 +30,7 @@ export async function createStorefrontOnlinePaymentSession({
 }) {
   const normalizedPaymentType = String(paymentType || '').trim().toLowerCase();
   if (!isStorefrontOnlinePaymentType(normalizedPaymentType)) {
-    throw new Error('Only QR Ph, card, GCash, or Maya can create an online payment session.');
+    throw new Error('Only QR Ph, card, GCash, Maya, GrabPay, or ShopeePay can create an online payment session.');
   }
 
   const sessionResult = await requestJson('/api/v1/store/checkout/payment-sessions', {

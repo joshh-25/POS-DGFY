@@ -8,8 +8,10 @@ import {
   getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
   REQUIRED_TENANT_SCHEMA_COLUMNS,
+  REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS,
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
+  buildTenantSchemaEnumRepairSql,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership
 } from '../scripts/sync-tenant-schemas.js';
@@ -225,6 +227,18 @@ describe('tenant schema sync script contracts', () => {
       .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
       .toHaveProperty('idx_pos_z_reading_snapshots_closed_by_user');
+  });
+
+  it('registers hosted wallet payment enum values for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.payment_type;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['grab_pay', 'shopeepay']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transactions', column: 'payment_type', missing_values: ['grab_pay', 'shopeepay'] }
+    ]);
+
+    expect(repair.sql).toContain("'grab_pay'");
+    expect(repair.sql).toContain("'shopeepay'");
   });
 
   it('registers Phase 20 F&B modifier columns and conditional-group index', () => {

@@ -1,6 +1,7 @@
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 import {
   createStorefrontOnlinePaymentSession,
+  isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType
 } from '../services/storefrontOnlinePaymentSession.js';
 
@@ -305,7 +306,7 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         setQrphPaymentSession(paymentSession);
-        if (['card', 'gcash', 'maya'].includes(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
+        if (isStorefrontHostedPaymentType(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
           window.location.assign(paymentSession.checkout_url);
         } else {
           toast.success(fnbPaymentType === 'qrph'

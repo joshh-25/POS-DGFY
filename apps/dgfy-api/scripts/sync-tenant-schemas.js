@@ -1340,8 +1340,8 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // they missed items.category above.
     pos_transactions: Object.freeze({
         payment_type: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit') NOT NULL DEFAULT 'cash'"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL DEFAULT 'cash'"
         }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
@@ -1375,7 +1375,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-15.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-17.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {
