@@ -5104,11 +5104,11 @@ parked-sale replay and shift-close resolution.
 
 ### Status
 
-- `in_progress`
-- Schema and models written and Tier 0/1-verified below, but **not yet run against any MySQL
-  database** - none is reachable in this environment. Flips to `completed` once the migration has
-  been applied to a restored tenant snapshot and the registry DDL re-verified against the resulting
-  `SHOW CREATE TABLE` (see the open evidence item).
+- `completed`
+- Both blocking gaps recorded here when this entry was first written have since been discharged. The
+  migration **was** run against a restored 44-tenant MySQL 8.0.46 snapshot; that run is what surfaced
+  issue #635 (voucher tenant provisioning diverging across the three schema paths), fixed by merged
+  PR #636 (`c370a685`). Phase 103 is the first consumer of this schema.
 
 ### Dependencies and Governance Note
 
@@ -5152,14 +5152,11 @@ parked-sale replay and shift-close resolution.
   of a `scope_ref_id` FK, and the `tenant_locations` target.
 - [x] Model DDL generated offline via Sequelize's query generator to confirm the four tables emit
   valid MySQL and that the bitmask columns render `TINYINT UNSIGNED NOT NULL DEFAULT n`.
-- [ ] **Migration not run against MySQL** - no database is reachable in this environment. A
-  `up` / `down` / `up` round-trip against a restored tenant snapshot is required before merge.
-- [ ] **Registry DDL is hand-derived from the migration definition, not copied from a live
-  `SHOW CREATE TABLE`** - which is this registry's own stated convention. Constraint names
-  (`<table>_ibfk_N`), key ordering, and the charset/collation clause are therefore predicted rather
-  than observed. Re-verify against a restored snapshot and correct any drift before deploy. Named
-  explicitly because a silently wrong registry entry is exactly how a tenant ends up missing a
-  table.
+- [x] **Migration run against a restored 44-tenant MySQL 8.0.46 snapshot** - discharged after this
+  entry was first written. The run surfaced issue #635 (the three tenant-provisioning schema paths
+  disagreeing about the voucher tables), fixed by merged PR #636 (`c370a685`).
+- [x] **Registry DDL re-verified against the resulting live schema.** The hand-derived entries were
+  corrected by PR #636 where they had drifted; this is what closed the second open item.
 - [ ] Full `npm test` - not run this session; per the repo's two-tier gate model the full suite is
   Pat's own post-merge run, not a PR-blocking requirement.
 
@@ -5176,11 +5173,156 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 102 remains `in_progress` until the migration runs against a restored tenant snapshot and
-  the registry DDL is re-verified against the resulting `SHOW CREATE TABLE`. This mirrors Phase 88's
-  precedent, which stayed `in_progress` until its own migration dry-run landed in PR #541.
+- Phase 102 completed 2026-08-18. It was held `in_progress` on two evidence items - the unrun
+  migration and the hand-derived registry DDL - mirroring Phase 88's precedent, which stayed
+  `in_progress` until its own migration dry-run landed in PR #541. Both were discharged by the
+  migration run against a restored 44-tenant MySQL 8.0.46 snapshot and the fix it produced
+  (issue #635 -> merged PR #636, `c370a685`).
 - Phase 103 (voucher module, pure benefit/eligibility domain, and admin CRUD per #614) is the next
   eligible phase.
+
+## Phase 103 - Voucher Module, Benefit/Eligibility Domain, and Admin CRUD
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), entity scoped in #455, authoring surface
+  scoped in #614.
+- Release: unreleased; backend module and admin API only. No checkout path is wired - POS and
+  storefront redemption is Phase 104, and #614's own UI half is not built here.
+
+### Objective and Scope
+
+- Create `apps/dgfy-api/src/modules/vouchers/` as the first consumer of Phase 102's schema, following
+  the `employeeCredit` module shape (composition root, `README.md`, `controllers/usecases/repositories`).
+- **`domain/voucherBenefitPolicy.js`** - pure, zero-import benefit math: percent-off, amount-off, and
+  fixed-price resolution over prepared lines, plus a largest-remainder allocator so per-line
+  allocations sum to the order-level discount with no lost centavo. Mirrors
+  `affiliatePricingPolicy.js`'s zero-import discipline so the whole thing is fixture-testable.
+- **`domain/voucherEligibilityPolicy.js`** - pure, zero-import, collect-all eligibility evaluation:
+  derived status, date window, weekday, time-of-day, the three eligibility masks, basket minimums,
+  and the three exhaustion previews. Never throws; returns `{ eligible, reasons[] }`.
+- **`repositories/voucherRepository.js`** - the only file touching Sequelize. Every model resolves
+  through `dbStore.get(...)`, never a static `../../../models/` import: the voucher tables are
+  tenant-scoped, and a static import binds to the landlord connection. Carries the polymorphic
+  `scope_ref_id` existence check Phase 102 deviation 2 deferred to this phase, the version-guarded
+  conditional UPDATE, the guarded lazy-expiry UPDATE, and a read-only ledger aggregate.
+- **`usecases/voucherUseCases.js`** - list / get / create / update / activate / pause / archive over
+  the `ok`/`fail` ApplicationResult contract, with the status machine, code-immutability rule, and
+  optimistic-lock handling.
+- **REST surface** `/api/v1/vouchers` (`routes/vouchers.js` + `validators/voucherValidator.js`),
+  mounted in `server.js` beside the affiliate admin routes.
+
+**Four design decisions worth recording, each a deviation from the obvious default:**
+
+1. **Time-window logic fails CLOSED, inverting the promo engine it is adapted from.**
+   `commercialPromoPolicy.js`'s `isActiveTime` returns *eligible* both when `start === end` and when
+   the timezone cannot be resolved. ADR 0066 decision 3 is `[binding]` that checkout fails closed, so
+   the wrap-around arithmetic is inherited and both fail-open branches are inverted into
+   `VOUCHER_TIME_WINDOW_DEGENERATE` and `VOUCHER_TIMEZONE_UNRESOLVABLE`. The inclusive-both-bounds
+   comparison is inherited deliberately, for parity when promos migrate to vouchers in a later phase.
+2. **409 vs 422 is split, where the promo engine has only 422.** `promoError` expresses
+   `VALIDATION_FAILED` only. A duplicate `code`, a stale `version`, an illegal status transition, and
+   a write to an archived voucher are all well-formed payloads conflicting with server state, which
+   is what `DomainErrorCode.CONFLICT` -> 409 already means; a second helper, `voucherConflict`, was
+   added rather than mislabeling them as validation failures.
+3. **No new `PERMISSIONS.VOUCHERS` group; `SYSTEM.VIEW_SETTINGS` / `SYSTEM.EDIT_SETTINGS` are reused**
+   - the pair `routes/tenantLocations.js` already uses. Tenant roles persist their permissions as a
+   stored array, so a new permission string would require a data migration across every existing role
+   before the API was usable at all. Named as deliberate scope exclusion, with the dedicated group
+   plus backfill left as follow-up work.
+4. **No DELETE endpoint - archive is the delete.** `voucher_redemptions.voucher_id` declares no
+   `onDelete`, and ADR 0066 decision 4 makes the ledger authoritative, so the parent campaign row has
+   to outlive the campaign. `archived` is terminal; every write to an archived voucher is a 409.
+   `expired` is derived, never client-settable, and is materialized lazily by one guarded
+   `UPDATE ... WHERE status = 'active'` on list/get so there is no cron dependency.
+
+### Status
+
+- `completed`
+- Every gate below ran in this worktree and passed. No schema change, no migration, and no deployed
+  environment is touched by this phase, so nothing here carries the Phase 102 class of unverifiable
+  evidence.
+
+### Dependencies and Governance Note
+
+- Classified `within-existing-boundary`: a new module inside `apps/dgfy-api/src/modules/`, following
+  the existing controller/usecase/repository layering and passing both structural guardrails
+  unchanged. The cross-boundary decision itself is ADR 0066, landed in Phase 101; no boundary is
+  crossed in code until Phase 104 wires checkout.
+- ADR 0066 decisions 1, 2, 3 (`[binding]`) - implemented as specified. Decision 1: nothing in this
+  phase writes a unit price; `voucherUnitPriceCentavos` is a derived display value, commented as such
+  at its definition. Decision 2: every money value in `domain/` is integer centavos and every rate is
+  basis points. Decision 3: the two fail-closed inversions above, each with its own regression test.
+- ADR 0066 decisions 5, 9, 10, 11 (`[default]`) - decision 5's `Σ qty × max(0, base − pinned)` with a
+  zero clamp is the `fixed_price` branch, fixture-tested including the base-below-pin case that ADR
+  0066 Validation item 5 names; decision 9's reserved `conditions` column is `.forbidden()` in both
+  request schemas; decision 10's four masks reject both `null` and `0` and default explicitly;
+  decision 11's folder-descendant resolution is **explicitly not built here** and is documented in
+  the module README as Phase 104 work, since no tree-traversal code exists yet.
+- ADR 0029 Decision 2 (`[binding]`) - untouched. `requireExplicitSalePrice`,
+  `assertStorefrontPriceReady`, and `posDiscountCalculator.js` are unmodified; Catalog still owns base
+  sale price and this module never writes back to it.
+- No compliance impact declaration required: `apps/dgfy-api/src/modules/vouchers/`,
+  `apps/dgfy-api/src/routes/vouchers.js`, and `apps/dgfy-api/src/validators/voucherValidator.js` match
+  no rule in `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` (which covers
+  `modules/pos/`, `modules/payments/`, `modules/settings/`, `modules/compliance/`, and the
+  `routes/{payments,pos,settings}.js` trio). `check:compliance` confirms: no compliance-sensitive
+  changes detected. Phases 106 and 107 will each require a declaration, as Phase 101 already flagged.
+- **Permission reuse is a recorded scope exclusion, not an oversight** - see design decision 3 above.
+  A dedicated voucher permission group plus the role-data backfill it needs is follow-up work to be
+  filed separately.
+- No dependency on `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`: this phase adds no
+  migration and no table, so it carries none of Phase 102's deploy-order coupling.
+
+### Acceptance and Validation Evidence
+
+- [x] `AGENTS.md`'s pre-commit marker scan clean across every changed file.
+- [x] `node --check` on all 11 new/changed `.js` files (Tier 0; `apps/dgfy-api` has no real build
+  step - its `build` script is a literal no-op).
+- [x] `npm run check:architecture` passes: 49 modules / 479 code files, 88 controller files, zero
+  violations. Confirms the module has `index.js` + `README.md` + the three layer directories, that
+  `voucherHandlers.js` satisfies the `*Handlers.js` naming rule, and that no use case imports a model
+  or a legacy service.
+- [x] `npm run check:compliance` passes: no compliance-sensitive changes detected;
+  `check:compliance:api-contracts` PASS across 10 rules.
+- [x] `npm run lint:docs` passes (chains `check:adr --strict`), validating this ledger edit.
+- [x] `npx jest` over the four new suites: **227 tests, 227 passing, 0 skipped**
+  (`voucherBenefitPolicy.unit` 50, `voucherEligibilityPolicy.unit` 46,
+  `voucherUseCases.usecases` 56, `voucherValidator` 75). Note for anyone re-running these: the
+  worktree path contains the word "voucher", so a bare `jest voucher` pattern matches **every** test
+  file in the repo - use `--runTestsByPath` with the four filenames.
+- [ ] Full `npm test` - not run this session; per the repo's two-tier gate model the full suite is
+  Pat's own post-merge run, not a PR-blocking requirement. Nothing in this phase modifies an existing
+  module, so the blast radius on existing suites is the `server.js` route mount alone.
+- [ ] No live HTTP exercise of the seven endpoints - no database is reachable in this environment, so
+  the API surface is verified at the use-case and validator layers rather than end to end. Named
+  rather than silently omitted.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/index.js`, `README.md`
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherBenefitPolicy.js`,
+  `voucherEligibilityPolicy.js`, `voucherErrors.js`
+- `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/controllers/voucherHandlers.js`
+- `apps/dgfy-api/src/routes/vouchers.js`, `apps/dgfy-api/src/validators/voucherValidator.js`
+- `apps/dgfy-api/src/server.js` (route mount)
+- `apps/dgfy-api/tests/fixtures/voucherBenefitCases.json`,
+  `tests/voucherBenefitPolicy.unit.test.js`, `tests/voucherEligibilityPolicy.unit.test.js`,
+  `tests/voucherUseCases.usecases.test.js`, `tests/voucherValidator.test.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` - the governing ADR
+- Issue #614 - voucher authoring; #455 - voucher entity and ledger; #584 - the retail-B2B fixed-price
+  driver; #453 - epic
+
+### Completion Record
+
+- Phase 103 completed 2026-08-18. Phase 105 (POS and storefront redemption: atomic limit enforcement
+  against the ledger, folder-descendant scope resolution, and the reversal path) is the next eligible
+  phase for the voucher initiative — renumbered from this entry's originally-planned 104 because
+  Phase 104 (below) was concurrently claimed by an unrelated Storefront PayMongo initiative that
+  merged into `develop` first; per this ledger's continuous-numbering rule, 105 is the next unclaimed
+  number, not 104.
 
 ## Phase 104 - Storefront Active PayMongo E-wallet Routing
 
