@@ -34,6 +34,7 @@ export const ANALYTICS_EVENTS = Object.freeze({
   CHECKOUT_STARTED: 'checkout_started',
   CHECKOUT_STEP_COMPLETED: 'checkout_step_completed',
   PROMO_CODE_APPLIED: 'promo_code_applied',
+  VOUCHER_CODE_APPLIED: 'voucher_code_applied',
   CHECKOUT_SUBMITTED: 'checkout_submitted',
   ORDER_PLACED: 'order_placed',
   CHECKOUT_FAILED: 'checkout_failed',
