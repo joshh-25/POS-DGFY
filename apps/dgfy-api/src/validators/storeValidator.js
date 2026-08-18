@@ -120,12 +120,14 @@ const storeOrderHistoryQuerySchema = Joi.object({
 const storeCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
     limit: Joi.number().integer().min(1).max(200).default(60),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storeQrQuerySchema = Joi.object({
     code: Joi.string().trim().max(512).required(),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storefrontFollowBaseSchema = Joi.object({

@@ -13,6 +13,7 @@ import {
     buildRedeemVoucherUseCase
 } from './usecases/voucherRedemptionUseCases.js';
 import { buildReverseVoucherRedemptionUseCase } from './usecases/voucherReversalUseCases.js';
+import { buildResolveVoucherDisplayPricesUseCase } from './usecases/voucherDisplayUseCases.js';
 
 export const listVouchersUseCase = buildListVouchersUseCase({ repository: voucherRepository });
 export const getVoucherUseCase = buildGetVoucherUseCase({ repository: voucherRepository });
@@ -27,3 +28,6 @@ export const archiveVoucherUseCase = buildArchiveVoucherUseCase({ repository: vo
 export const previewVoucherEligibilityUseCase = buildPreviewVoucherEligibilityUseCase({ repository: voucherRepository });
 export const redeemVoucherUseCase = buildRedeemVoucherUseCase({ repository: voucherRepository });
 export const reverseVoucherRedemptionUseCase = buildReverseVoucherRedemptionUseCase({ repository: voucherRepository });
+
+// #603 -- storefront catalog display seam. Read-only, best-effort (fail-open), no transaction.
+export const resolveVoucherDisplayPricesUseCase = buildResolveVoucherDisplayPricesUseCase({ repository: voucherRepository });
