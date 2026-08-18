@@ -7,9 +7,12 @@ const toPositiveInteger = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const hasLiveModeValue = (value) => value === true || String(value || '').trim().toLowerCase() === 'true';
 
 const getPaidPaymentValidationFailure = ({ session, resource }) => {
   const attrs = getAttributes(resource);
+  const isPayMongoLiveMode = String(process.env.PAYMONGO_MODE || 'test').trim().toLowerCase() === 'live';
+  const providerHasLiveMode = hasLiveModeValue(attrs.livemode);
   const providerStatus = String(attrs.status || '').trim().toLowerCase();
   const expectedAmount = toPositiveInteger(session?.total_amount_centavos);
   const paidAmount = toPositiveInteger(attrs.amount);
@@ -20,6 +23,12 @@ const getPaidPaymentValidationFailure = ({ session, resource }) => {
     return {
       code: 'PAYMENT_STATUS_MISMATCH',
       reason: `PayMongo payment.paid event contained payment status "${providerStatus || 'missing'}".`
+    };
+  }
+  if ((isPayMongoLiveMode && !providerHasLiveMode) || (!isPayMongoLiveMode && providerHasLiveMode)) {
+    return {
+      code: 'PAYMENT_LIVEMODE_MISMATCH',
+      reason: `PayMongo payment livemode ${providerHasLiveMode ? 'true' : 'false'} does not match the configured ${isPayMongoLiveMode ? 'live' : 'test'} mode.`
     };
   }
   if (!expectedAmount || !paidAmount || paidAmount !== expectedAmount) {

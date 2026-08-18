@@ -240,6 +240,42 @@ export class PayMongoService {
         }
     }
 
+    getPublicKey() {
+        return this.publicKey || null;
+    }
+
+    async createDirectGcashPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        metadata = {},
+        returnUrl = null
+    }) {
+        const publicKey = this.getPublicKey();
+        if (!publicKey) {
+            throw new Error('PAYMONGO_PUBLIC_KEY is not configured');
+        }
+
+        const paymentIntent = await this.createPaymentIntent({
+            amount,
+            currency,
+            description,
+            paymentMethodAllowed: ['gcash'],
+            metadata
+        });
+        const clientKey = String(paymentIntent?.attributes?.client_key || '').trim();
+        if (!paymentIntent?.id || !clientKey) {
+            throw new Error('PayMongo did not return a usable GCash Payment Intent client key');
+        }
+
+        return {
+            paymentFlow: 'direct_gcash',
+            paymentIntent,
+            publicKey,
+            returnUrl
+        };
+    }
+
     async getPaymentMethodCapabilities({ cacheTtlMs = 15_000 } = {}) {
         const now = Date.now();
         if (this.paymentMethodCapabilitiesCache && this.paymentMethodCapabilitiesCache.expiresAt > now) {

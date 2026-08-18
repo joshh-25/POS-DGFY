@@ -3080,12 +3080,35 @@ export const buildStorefrontPaymentCallbackUrl = ({
     payment_method: paymentMethod
 });
 
+const getDirectGcashSessionDetails = (session = {}) => {
+    const providerPayload = parseObjectValue(session.provider_payload);
+    const paymentIntent = providerPayload.paymentIntent || providerPayload.payment_intent || {};
+    const paymentIntentAttributes = paymentIntent.attributes || {};
+    const isDirectGcash = providerPayload.paymentFlow === 'direct_gcash'
+        || providerPayload.payment_flow === 'direct_gcash';
+
+    return {
+        payment_flow: isDirectGcash ? 'direct_gcash' : (session.checkout_url ? 'hosted' : null),
+        paymongo_public_key: isDirectGcash
+            ? (providerPayload.publicKey || providerPayload.public_key || null)
+            : null,
+        paymongo_client_key: isDirectGcash
+            ? (paymentIntentAttributes.client_key || paymentIntent.client_key || null)
+            : null,
+        paymongo_return_url: isDirectGcash
+            ? (providerPayload.returnUrl || providerPayload.return_url || null)
+            : null
+    };
+};
+
 const serializePaymentSession = (session = {}) => ({
+    ...getDirectGcashSessionDetails(session),
     payment_session_id: session.public_reference,
     public_reference: session.public_reference,
     status: session.status,
     provider: session.provider,
     payment_method: getPaymentSessionType(session),
+    provider_payment_intent_id: session.provider_payment_intent_id || null,
     qr_code_image_url: session.qr_code_image_url || null,
     checkout_url: session.checkout_url || null,
     expires_at: session.expires_at || null,
@@ -3112,6 +3135,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     commercePaymentsEnabled = false,
     commerceQrphEnabled = false,
     commercePaymongoSplitEnabled = false,
+    directGcashEnabled = false,
+    directGcashRequested = false,
     requireCommerceQrphConfig = () => [],
     requireCommercePaymentConfig = requireCommerceQrphConfig
 }) => {
@@ -3137,9 +3162,10 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'payload must be an object', { statusCode: 400 });
             }
 
+            const directGcashConfigRequired = requestedPaymentType === 'gcash' && directGcashRequested;
             const missingConfig = requestedPaymentType === 'qrph'
                 ? requireCommerceQrphConfig()
-                : requireCommercePaymentConfig();
+                : requireCommercePaymentConfig({ requiresDirectGcash: directGcashConfigRequired });
             if (missingConfig.length > 0) {
                 throw new DomainError(
                     DomainErrorCode.SERVICE_UNAVAILABLE,
@@ -3383,6 +3409,20 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         splitPayment: splitPayload,
                         returnUrl: storefrontReturnUrl
                     });
+                } else if (requestedPaymentType === 'gcash' && directGcashEnabled) {
+                    const directReturnUrl = buildStorefrontPaymentCallbackUrl({
+                        paymentMethod: requestedPaymentType,
+                        paymentSession: publicReference,
+                        paymentStatus: 'return',
+                        returnUrl: storefrontReturnUrl
+                    });
+                    providerResult = await paymongoService.createDirectGcashPaymentIntent({
+                        amount: totalAmountCentavos,
+                        currency: 'PHP',
+                        description: `DGFY storefront checkout ${publicReference}`,
+                        metadata,
+                        returnUrl: directReturnUrl
+                    });
                 } else {
                     const successUrl = buildStorefrontPaymentCallbackUrl({
                         paymentMethod: requestedPaymentType,
@@ -3432,7 +3472,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const providerAttributes = providerResult?.attributes || {};
             const expiresAt = providerResult.expiresAt
                 ? new Date(providerResult.expiresAt)
-                : (requestedPaymentType === 'qrph' ? new Date(Date.now() + 30 * 60 * 1000) : null);
+                : (requestedPaymentType === 'qrph'
+                    ? new Date(Date.now() + 30 * 60 * 1000)
+                    : (requestedPaymentType === 'gcash' && directGcashEnabled
+                        ? new Date(Date.now() + 4 * 60 * 60 * 1000)
+                        : null));
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
                 status: 'awaiting_payment',
                 provider_payment_intent_id: providerResult.paymentIntent?.id || providerResult.attachedIntent?.id || null,

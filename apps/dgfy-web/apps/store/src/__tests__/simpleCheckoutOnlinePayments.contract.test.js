@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 
 import { buildStorefrontCheckoutPaymentOptions } from '../shared/model/storefrontCheckoutPaymentOptions.js';
 import {
-  createStorefrontOnlinePaymentSession
+  createStorefrontOnlinePaymentSession,
+  startStorefrontDirectGcashPayment
 } from '../shared/services/storefrontOnlinePaymentSession.js';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -93,6 +94,59 @@ describe('Simple Storefront online payment contract', () => {
     expect(requestJson).not.toHaveBeenCalled();
   });
 
+  it('creates a GCash payment method and attaches it with the Payment Intent client key', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'pm_test_gcash' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              next_action: { redirect: { url: 'gcash://authorize/test' } }
+            }
+          }
+        })
+      });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await startStorefrontDirectGcashPayment({
+        billing: {
+          name: 'Test Customer',
+          email: 'customer@example.com',
+          phone: '+639171234567'
+        },
+        paymentSession: {
+          payment_flow: 'direct_gcash',
+          payment_method: 'gcash',
+          provider_payment_intent_id: 'pi_test_gcash',
+          paymongo_client_key: 'pi_test_gcash_client_key',
+          paymongo_public_key: 'pk_test_gcash',
+          paymongo_return_url: 'https://dgfy.ph/tenant-store/masu-cafe/order?payment_status=return'
+        }
+      });
+
+      expect(result).toEqual({
+        paymentMethodId: 'pm_test_gcash',
+        redirectUrl: 'gcash://authorize/test'
+      });
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"type":"gcash"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.paymongo.com/v1/payment_intents/pi_test_gcash/attach', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"client_key":"pi_test_gcash_client_key"')
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('wires Simple checkout to capability options, PayMongo sessions, and return recovery', () => {
     const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
     const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
@@ -105,6 +159,9 @@ describe('Simple Storefront online payment contract', () => {
     expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
     expect(submission).toContain('isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    expect(submission).toContain('startStorefrontDirectGcashPayment');
+    expect(submission).toContain('isStorefrontDirectGcashPaymentSession');
+    expect(panel).toContain('Continue in the GCash app or browser authorization screen');
     expect(shell).toContain('isSimpleMode && isResolvedOrderSubpage');
     expect(shell).toContain("params.get('payment_session')");
     expect(shell).toContain('setSimpleOrderStep(3)');
