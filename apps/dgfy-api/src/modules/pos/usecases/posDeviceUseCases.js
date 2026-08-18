@@ -1081,6 +1081,26 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver, authori
                     { statusCode: 409 }
                 );
             }
+            if (isTransactionAutoOpen) {
+                // The `checkout_auto_*` reason is a client-supplied literal, not a
+                // server-issued grant — without this check, any user holding
+                // ADJUST_CASH_DRAWER could open a different cashier's open-shift
+                // drawer with zero PIN. Mirrors buildAuthorizePosDrawerUseCase's
+                // ownership check above.
+                const operator = toSerializable(
+                    await (typeof posRepository.findActivePosDrawerOperatorById === 'function'
+                        ? posRepository.findActivePosDrawerOperatorById(userId)
+                        : posRepository.findActiveDiscountApproverById(userId))
+                );
+                const adminBypass = isPosDrawerAdmin(user) || isPosDrawerAdmin(operator);
+                if (!adminBypass && Number(shift.cashier_id) !== userId) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only the cashier assigned to this open shift can auto-open its drawer.',
+                        { statusCode: 403, details: { reason_code: 'DRAWER_SHIFT_CASHIER_MISMATCH' } }
+                    );
+                }
+            }
             let transaction = null;
             if (transactionId) {
                 transaction = toSerializable(await posRepository.getTransactionById(transactionId));
