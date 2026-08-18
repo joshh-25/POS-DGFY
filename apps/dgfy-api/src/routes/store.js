@@ -15,7 +15,7 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storeVoucherLookupLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -102,8 +102,18 @@ const bypassCacheForVoucherCode = (req, res, next) => {
     return next();
 };
 
-router.get('/catalog', catalogReadCacheControl, bypassCacheForVoucherCode, validateStoreCatalogQuery, storeController.listStoreCatalog);
-router.get('/qr/resolve', catalogReadCacheControl, bypassCacheForVoucherCode, validateStoreQrQuery, storeController.resolveStoreQr);
+// A voucher_code-bearing request is both a valid/invalid voucher-code oracle and, via the
+// no-store bypass above, a free lever to defeat the shared CDN cache -- neither route otherwise
+// carries a limiter of its own beyond the generic app-wide bucket. Only consumes budget when
+// voucher_code is actually present, so plain catalog browsing is unaffected.
+const limitVoucherCodeLookups = (req, res, next) => (
+    String(req.query?.voucher_code || '').trim()
+        ? storeVoucherLookupLimiter(req, res, next)
+        : next()
+);
+
+router.get('/catalog', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', storeLocationsLimiter, locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
