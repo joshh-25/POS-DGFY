@@ -434,7 +434,7 @@ const createVoucherRedemptions = async (queryInterface, Sequelize) => {
         },
 
         // NOT NULL UNIQUE, and inserted BEFORE the counter UPDATE so a replay is rejected here
-        // rather than double-counting. Composition (Phase 104):
+        // rather than double-counting. Composition (Phase 105):
         //   redemption -> '<channel>:<transaction or checkout key>:<voucher_id>'
         //   reversal   -> 'reversal:<original voucher_redemption_id>'
         idempotency_key: {
