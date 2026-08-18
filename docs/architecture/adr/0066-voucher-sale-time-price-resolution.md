@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-18
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -140,12 +140,59 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
 5. A fixed-price voucher whose base price has dropped below the pinned price yields a zero discount,
    never a negative one.
 
+## Amendments
+
+### 2026-08-18 — Below-cost enforcement, correcting an unimplemented inheritance claim
+
+- Clause added: a new Decision, below, recording the below-cost floor. `[default]` tier — no
+  existing binding invariant changes.
+- Change: `vouchers.allow_below_cost` (column present since #455/Phase 101, along with a merchant
+  UI toggle) was write-only — validated, persisted, and displayed, but read by no decision path.
+  This amendment makes it real:
+  1. **The below-cost comparison is benefit-class-agnostic.** It compares each eligible, discounted
+     line's resolved `voucherUnitPriceCentavos` (the same value `lineAllocations` already exposes)
+     against that line's `cost_per_unit` — not the raw `fixed_unit_price_centavos` alone. A deep
+     `percent_off` or `amount_off` voucher can undercut cost exactly as easily as a mispriced
+     `fixed_price` line; a check scoped to `fixed_price` would miss those.
+  2. **A line with no recorded cost (`Item.cost_per_unit IS NULL`) is skipped, never treated as a
+     violation** — matching the affiliate guard's own null-cost skip
+     (`affiliatePricingPolicy.js`/`storeUseCases.js`).
+  3. **Redemption fails closed; catalog display fails open per item** — the same asymmetry
+     Decision 3 already establishes, applied to this new condition rather than a new rule.
+  4. **Cost is `Item.cost_per_unit` alone, not `item_cost_breakdown`'s labor/overhead/packaging
+     components.** Matches the affiliate floor's own definition of cost; using a different
+     definition for the two guards would make them disagree on the same item.
+  5. **No config-time (save-time) validation.** `allow_below_cost` lives on the voucher, and a
+     pricelist (if attached) is authored before it is attached to a voucher — so there is nothing
+     concrete to validate a pinned price against at config time in the general case. Enforced at
+     resolution only; the authoring UI may warn.
+- Reason: the flag was live and toggleable in the merchant UI with zero backing enforcement — a
+  merchant could already set a price below cost and nothing stopped them. Filed as #697,
+  independent of any specific benefit-class feature, because the gap predates and is orthogonal to
+  the per-item pricelist work in the same phase.
+- **Correction, not just an addition:** the References section below (item 3, until this
+  amendment) stated this ADR "inherits ADR 0050 Decision 6's resolution-time cost guard" as an
+  already-settled fact. No decision in this ADR ever implemented one. That line is corrected below
+  to point at this amendment instead of asserting an inheritance that was never built.
+- PR: #697 follow-up to Phase 101-109 (#455 lineage).
+
+## Decision (continued)
+
+12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
+    line's `cost_per_unit`, unless `vouchers.allow_below_cost` is `true`.** Catalog display fails
+    open on the same condition — the affected item shows its plain catalog price instead of a
+    voucher price, per item, matching Decision 3's asymmetry. Lines with no recorded cost are
+    exempt from the check. `[default]`
+
 ## References
 1. [ADR 0029](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) — Decision 2
    `binding` tier, Catalog owns base sale price; this ADR layers above it and never writes back
 2. [ADR 0033](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) — Decisions 8 and 10,
    and the JSON-storage premise this work retires; amended alongside this ADR
 3. [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) — Decision 5's fail-closed/
-   fail-open asymmetry and Decision 6's resolution-time cost guard, both inherited here
+   fail-open asymmetry, inherited here as Decision 3. Decision 6's resolution-time cost guard is
+   the model this ADR's own Decision 12 (2026-08-18 amendment, above) follows — not something this
+   ADR inherited automatically, corrected from the prior wording of this line
 4. [ADR 0039](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) — strictness tiers
-5. Issue #454 — voucher decision record; #455 — entity and ledger; #453 — epic
+5. Issue #454 — voucher decision record; #455 — entity and ledger; #453 — epic; #697 — this
+   amendment's below-cost enforcement gap
