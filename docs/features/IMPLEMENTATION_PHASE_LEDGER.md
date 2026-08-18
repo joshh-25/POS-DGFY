@@ -5626,3 +5626,68 @@ parked-sale replay and shift-close resolution.
 ### Completion Record
 
 - Phase 107 completed 2026-08-18. Next eligible phase: 108 (`PERMISSIONS.VOUCHERS` group, #655).
+
+## Phase 108 - Dedicated PERMISSIONS.VOUCHERS Group
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #655. Closes the gap named as
+  deliberate follow-up work in three places (PR #641's description, `modules/vouchers/README.md`,
+  `routes/vouchers.js`'s own inline comment).
+- Release: permission-config and route-gate change only, dual-gated for one release rather than a
+  hard cutover.
+
+### Objective and Scope
+
+- Add a `VOUCHERS` group (`view`/`manage`) to `apps/dgfy-api/src/config/permissions.js`, added to
+  `DEFAULT_ROLE_PERMISSIONS.manager` (admin inherits via `getAllPermissions()`).
+- Re-verified against `develop` before implementing: no data migration needed.
+  `scripts/backfill-role-permissions.js` already performs an idempotent, additive, cross-tenant
+  permission merge, already wired into `scripts/deploy.sh` ahead of the pm2 reload.
+- Dual-gate all 7 routes in `routes/vouchers.js` — `VOUCHERS.*` OR the legacy
+  `SYSTEM.VIEW_SETTINGS`/`EDIT_SETTINGS` pair, via the existing `checkAnyPermission` middleware —
+  for one release, since `resolveEffectivePermissions` only re-derives role defaults when a user's
+  stored permissions array is empty. The legacy arm's removal is filed as a dated follow-up (#686),
+  not left open-ended.
+- Add `VOUCHERS` to `config/modeRolePresets.js`'s `PERMISSION_GROUP_VISIBILITY` for every workflow
+  mode, and bump `ROLE_CATALOG_VERSION` — without this the group would exist but never reach
+  `GET /users/role-catalog`, the actual source the user-management UI reads (not
+  `permissions_frontend.js`'s `PERMISSION_GROUPS`, which is only a degraded-path fallback, mirrored
+  here for consistency but not the live path).
+- Update #614's `canManageVouchers` in `TerminalPage.jsx` to the same dual-gate.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 103's voucher admin CRUD API and Phase 107's authoring UI (#614), whose
+  `canManageVouchers` this phase updates.
+- Classification: `major`, `surfaces: pos,terminal` — forced, matching Phase 107's declaration.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on all three touched backend files (`config/permissions.js`,
+      `config/modeRolePresets.js`, `routes/vouchers.js`) — OK.
+- [x] `npm run build:pos` — real Vite production build of the touched POS/Terminal surface.
+- [x] `npm run check:compliance` — PASS.
+- [x] `npm run check:architecture` — OK (49 modules / 488 files; 88 controller files).
+- No new tests: permission-config and route-gate wiring against the repo's existing
+  `checkAnyPermission` implementation, not new business logic. Local Jest could not be run in the
+  implementing worktree (no `node_modules` installed).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/config/permissions.js`, `config/modeRolePresets.js`
+- `apps/dgfy-api/src/routes/vouchers.js`, `modules/vouchers/README.md`
+- `apps/dgfy-web/src/config/permissions_frontend.js`,
+  `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`
+- `docs/compliance/impact-declarations/2026-08-18-vouchers-permission-group.md`
+- Branch `feature/655-vouchers-permission-group`, PR #685 (base `feature/614-voucher-merchant-ui`)
+- Issue #655 (`Closes`); #686 - legacy-arm removal follow-up; #453 - epic
+
+### Completion Record
+
+- Phase 108 completed 2026-08-18 via PR #685. Next eligible phase: 109 (POS voucher master switch,
+  #604).
