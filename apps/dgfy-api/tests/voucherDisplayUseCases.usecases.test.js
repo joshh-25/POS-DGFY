@@ -191,6 +191,66 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.pricesByItemId[2]).toBeUndefined();
     });
 
+    // #697: fail open, per item, on a below-cost resolution -- the rest of the batch is unaffected.
+    it('fails open per item on a below-cost voucher price, leaving other items priced', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 500 })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [
+                // 100 pesos -> pinned 5 pesos undercuts an 8-peso cost.
+                { item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: 8 },
+                // 50 pesos -> pinned 5 pesos is still above a 1-peso cost, stays priced.
+                { item_id: 2, folder_id: null, default_sale_price: 50, cost_per_unit: 1 }
+            ]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toBeUndefined();
+        expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 5 });
+    });
+
+    // #697/RF-2 (PR #699 review): a voucher explicitly configured to allow below-cost pricing
+    // must show that price on the storefront too -- checkout (voucherRedemptionUseCases.js) would
+    // honor it, so hiding it here would contradict what the customer actually pays.
+    it('shows the voucher price when allow_below_cost is true, even though it undercuts cost', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: 500,
+                allow_below_cost: true
+            })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [
+                // 100 pesos -> pinned 5 pesos undercuts an 8-peso cost, but allow_below_cost is true.
+                { item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: 8 }
+            ]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 5 });
+    });
+
+    it('does not block a below-cost line when cost_per_unit is unknown', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 500 })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [{ item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: null }]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 5 });
+    });
+
     it('fails open when the repository throws resolving the voucher code', async () => {
         const repository = {
             async findByCode() {

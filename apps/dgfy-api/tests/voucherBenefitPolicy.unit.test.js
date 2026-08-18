@@ -69,13 +69,18 @@ describe('calculateVoucherBenefit — fixture cases', () => {
             }
 
             const result = calculateVoucherBenefit(testCase.input);
-            const { lineDiscounts, voucherUnitPrices, ...scalars } = testCase.expected;
+            // #697: belowCostLines is an array of objects -- pulled out of the scalar loop (which
+            // uses `.toBe`, reference equality) and asserted separately with `.toEqual`. Cases that
+            // don't declare it in `expected` still get it asserted as `[]` -- the input lines never
+            // carry `costPerUnitCentavos`, so nothing should ever be flagged.
+            const { lineDiscounts, voucherUnitPrices, belowCostLines, ...scalars } = testCase.expected;
 
             for (const [key, expectedValue] of Object.entries(scalars)) {
                 expect(result[key]).toBe(expectedValue);
             }
             expect(result.lineAllocations.map((line) => line.discountCentavos)).toEqual(lineDiscounts);
             expect(result.lineAllocations.map((line) => line.voucherUnitPriceCentavos)).toEqual(voucherUnitPrices);
+            expect(result.belowCostLines).toEqual(belowCostLines ?? []);
         });
     }
 });
