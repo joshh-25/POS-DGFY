@@ -5318,11 +5318,12 @@ parked-sale replay and shift-close resolution.
 ### Completion Record
 
 - Phase 103 completed 2026-08-18. Phase 105 (POS and storefront redemption: atomic limit enforcement
-  against the ledger, folder-descendant scope resolution, and the reversal path) is the next eligible
+  against the ledger, folder-descendant scope resolution, and the reversal path) was the next eligible
   phase for the voucher initiative — renumbered from this entry's originally-planned 104 because
   Phase 104 (below) was concurrently claimed by an unrelated Storefront PayMongo initiative that
-  merged into `develop` first; per this ledger's continuous-numbering rule, 105 is the next unclaimed
-  number, not 104.
+  merged into `develop` first; per this ledger's continuous-numbering rule, 105 was the next unclaimed
+  number, not 104. Phase 105 has since completed (PR #661, 2026-08-18) — see its own entry after
+  Phase 104 below.
 
 ## Phase 104 - Storefront Active PayMongo E-wallet Routing
 
@@ -5385,3 +5386,92 @@ parked-sale replay and shift-close resolution.
 
 - Phase 104 remains in progress until the acceptance gates and live-capability
   verification pass. Phase 105 is the next eligible phase after completion.
+
+## Phase 105 - Storefront Voucher Redemption: Atomic Reservation, Ledger, and Reversal
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), entity scoped in #455, authoring surface
+  scoped in #614. Continues Phase 103's backend module.
+- Release: storefront checkout only. POS redemption is deferred behind #604 (tenant-wide POS voucher
+  master switch, not yet built); the catalog display seam (#603) and the dedicated
+  `PERMISSIONS.VOUCHERS` group (#655) are both separate, not-yet-landed follow-ups.
+
+### Objective and Scope
+
+- Add `domain/voucherFolderScope.js` — a pure, cycle-safe BFS descendant-folder resolver over
+  `ItemFolder.parent_id`, used to resolve which cart lines a folder-scoped voucher applies to.
+- Add `usecases/voucherRedemptionUseCases.js` — `buildPreviewVoucherEligibilityUseCase` (no
+  transaction, read-only preview used by the QRPh payment-session path) and
+  `buildRedeemVoucherUseCase` (the real atomic path: row-lock the voucher, resolve scope, compute the
+  benefit, then a single guarded conditional `UPDATE` against `redeemed_count` /
+  `redeemed_value_centavos` / `redeemed_quantity`, bumping `version`, inside the already-open checkout
+  transaction).
+- Add `usecases/voucherReversalUseCases.js` — `buildReverseVoucherRedemptionUseCase`, a symmetric
+  decrement floored at zero with its own `entry_type:'reversal'` ledger row. No live caller yet:
+  `buildCancelStoreOrderUseCase` has no `status:'voided'` path today, so storefront has no
+  cancel/refund hook. Built ahead of that caller per this phase's own scope, covered by a direct unit
+  test instead of an integration path.
+- Wire the checkout seam into `storeUseCases.js`'s `resolveCheckoutContext`: no-transaction callers
+  (quote/QRPh-session preview) get eligibility + benefit calculation only; the transactional checkout
+  path gets the full atomic reserve + idempotency-keyed ledger insert
+  (`` `storefront:${checkoutIdempotencyKey}:${voucher_id}` ``), reusing the checkout's own transaction
+  rather than opening a second one.
+- Add `voucher_code` to `storeValidator.js`'s checkout payload schema, symmetric to the existing
+  `promo_code`.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Governed by ADR 0066 (`docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`).
+- Classified as a new authoritative money-moving ledger write path
+  (`voucher_redemptions`/`voucher_redemption_lines`); no compliance declaration was required or
+  written because `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` has no pattern
+  covering `modules/vouchers/` or `modules/store/` — a confirmed scanner gap, tracked separately
+  (#670), not a compliance exemption for this phase's own change.
+- Two known, deliberately deferred limitations, both filed as follow-ups rather than fixed here:
+  voucher and promo-code discounts currently stack at storefront checkout with no single-slot cap
+  unlike POS (#667), and the QRPh payment-session flow can succeed a payment before the real
+  reservation runs at webhook-confirmed finalization, which can roll back an already-paid order if the
+  voucher is exhausted in between (#668).
+
+### Acceptance and Validation Evidence
+
+- [x] `reserveRedemption`'s guarded conditional `UPDATE` returns `0` affected rows (mapped to the
+      specific exhaustion reason code) rather than silently over-redeeming when the voucher's
+      redemption count, peso budget, or benefit quantity limit is reached.
+- [x] A checkout retry sharing the same idempotency key returns the already-committed ledger row
+      (`idempotentReplay: true`) without a second `reserveRedemption` call — no double-fire on retry.
+- [x] Folder-scoped vouchers resolve descendant folders cycle-safely and fail closed (422) when the
+      scope matches zero eligible cart lines.
+- [x] Unit and use-case tests for the folder-scope resolver, redemption use case, and reversal use
+      case (`tests/voucherFolderScope.unit.test.js`,
+      `tests/voucherRedemptionUseCases.usecases.test.js`,
+      `tests/voucherReversalUseCases.usecases.test.js`).
+- [x] `node --check` on all 11 changed/new files, `check:architecture`, `check:adr`, and
+      `check:compliance` all pass. Local Jest could not run in the implementing worktree (no
+      `node_modules` installed) — stated in PR #661 rather than silently skipped.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherFolderScope.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `voucherReversalUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js` (+8 methods)
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js` (+2 reason codes)
+- `apps/dgfy-api/src/modules/vouchers/index.js` (composition-root wiring)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (checkout-seam hookup)
+- `apps/dgfy-api/src/validators/storeValidator.js` (`voucher_code`)
+- `apps/dgfy-api/tests/voucherFolderScope.unit.test.js`,
+  `voucherRedemptionUseCases.usecases.test.js`, `voucherReversalUseCases.usecases.test.js`
+- PR #661, merged to `develop` as `f4011814` (2026-08-18)
+- Issue #455 - voucher entity and ledger (`Refs`, left open — POS redemption remains, gated behind
+  #604); #614 - voucher authoring UI (separate, in progress); #453 - epic
+
+### Completion Record
+
+- Phase 105 completed 2026-08-18 via PR #661. Phase 106 (voucher merchant authoring UI, #614) is the
+  next eligible phase for the voucher initiative.
