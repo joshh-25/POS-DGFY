@@ -211,7 +211,8 @@ const calculateGovernedDiscount = (cart, application) => {
             ? Math.min(discountBase, Math.max(0, Number(application.amount || 0)))
             : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
         const eligibleRows = cartRows.filter((line) => !restrictToSelections || selectedItemIds.has(Number(line.item_id)));
-        const lastEligibleLine = eligibleRows.at(-1);
+        // Chrome 80-84 iMin POS WebView has no Array.prototype.at (ES2022 / Chrome 92+). See DGFY-POS-Y (#664).
+        const lastEligibleLine = eligibleRows[eligibleRows.length - 1];
         let allocatedDiscount = 0;
         const lines = cartRows.map((line) => {
             const gross = round4(getGlobalBase(line));
