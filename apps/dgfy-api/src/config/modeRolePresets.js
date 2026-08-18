@@ -625,16 +625,20 @@ const MODE_ROLE_PRESETS = Object.freeze({
   ]
 });
 
+// VOUCHERS (#655) is listed alongside SYSTEM in every mode -- vouchers, like tenant settings, are a
+// general merchant-admin capability, not mode-specific the way FNB/HOSPITALITY/SERVICES are.
 const PERMISSION_GROUP_VISIBILITY = Object.freeze({
-  msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  generic: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM']
+  msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  generic: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS']
 });
 
-export const ROLE_CATALOG_VERSION = '2026-05-19.mode-aware-rbac-v2';
+// Bumped for #655: PERMISSION_GROUP_VISIBILITY gained a VOUCHERS entry in every mode, so a client
+// that cached the previous catalog by version needs to know to refetch.
+export const ROLE_CATALOG_VERSION = '2026-05-19.mode-aware-rbac-v3';
 
 export const getRoleCatalogMode = (mode) => {
   const normalized = normalizeWorkflowMode(mode || DEFAULT_WORKFLOW_MODE);
