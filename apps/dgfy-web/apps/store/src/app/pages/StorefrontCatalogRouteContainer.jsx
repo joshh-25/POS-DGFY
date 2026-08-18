@@ -50,6 +50,9 @@ export function StorefrontCatalogRouteContainer(props) {
     catalogSearch,
     checkoutError,
     checkoutPromoCode,
+    checkoutVoucherCode,
+    setCheckoutVoucherCode,
+    handleVoucherCardApply,
     checkoutResult,
     customerEmail,
     customerName,
@@ -454,6 +457,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch,
           catalogState,
           categoryDropdownRef: fnbCategoryDropdownRef,
+          checkoutVoucherCode,
+          setCheckoutVoucherCode,
+          handleVoucherCardApply,
           filteredCatalog,
           filteredCatalogViewModel: filteredFnbViewModel,
           getCartFlySourceRect,
@@ -516,6 +522,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch={catalogSearch}
           catalogState={catalogState}
           categoryDropdownRef={fnbCategoryDropdownRef}
+          checkoutVoucherCode={checkoutVoucherCode}
+          setCheckoutVoucherCode={setCheckoutVoucherCode}
+          handleVoucherCardApply={handleVoucherCardApply}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}
@@ -582,6 +591,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch={catalogSearch}
           catalogState={catalogState}
           categoryDropdownRef={fnbCategoryDropdownRef}
+          checkoutVoucherCode={checkoutVoucherCode}
+          setCheckoutVoucherCode={setCheckoutVoucherCode}
+          handleVoucherCardApply={handleVoucherCardApply}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}

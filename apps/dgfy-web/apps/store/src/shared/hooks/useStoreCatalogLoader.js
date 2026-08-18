@@ -79,6 +79,19 @@ export function useStoreCatalogLoader({
   // instead of merely ignoring their eventual response via the sequence
   // guard above -- an actual abort rather than a wasted in-flight request.
   const storeLoadAbortControllerRef = useRef(null);
+  // #694: `openStoreBySlug` reads the CURRENT voucher code via this ref rather than depending on
+  // the `voucherCode` prop directly. Before #694 nothing changed `voucherCode` after mount (it only
+  // ever arrived once, from a `?voucher=` link), so `openStoreBySlug` depending on it was harmless.
+  // Once a catalog-page voucher-entry button can change it live, that dependency would re-identify
+  // this whole callback on every applied code -- and the effect below re-runs `openStoreBySlug` on
+  // every identity change, firing a full store reload (profile + locations + catalog, clearing
+  // `storeLocations`/`selectedLocationId` along the way) for what should be a catalog-only refetch.
+  // The location-aware effect further down intentionally keeps `voucherCode` as a real dependency --
+  // that one is exactly the codepath that SHOULD refetch on a voucher change.
+  const voucherCodeRef = useRef(voucherCode);
+  useEffect(() => {
+    voucherCodeRef.current = voucherCode;
+  }, [voucherCode]);
 
   // Shared by both catalog-fetch call sites (openStoreBySlug's own fetch and
   // the location-aware effect's) -- previously duplicated inline in each.
@@ -185,7 +198,7 @@ export function useStoreCatalogLoader({
       // against the scoped one that follows. Wrapped so it never rejects
       // (tagged result instead) -- nothing may ever await it if the
       // locations fetch itself throws before reaching the branch below.
-      const speculativeCatalogPromise = requestJson(withVoucherCodeParam('/api/v1/store/catalog?limit=120', voucherCode), { storeSlug: profile.slug, signal })
+      const speculativeCatalogPromise = requestJson(withVoucherCodeParam('/api/v1/store/catalog?limit=120', voucherCodeRef.current), { storeSlug: profile.slug, signal })
         .then((data) => ({ data }))
         .catch((error) => ({ error }));
 
@@ -261,13 +274,13 @@ export function useStoreCatalogLoader({
         // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
         // fetch above for why.
         catalogData = await requestJson(
-          withVoucherCodeParam(`/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`, voucherCode),
+          withVoucherCodeParam(`/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`, voucherCodeRef.current),
           { storeSlug: profile.slug, signal }
         );
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       applyCatalogResponse(catalogData);
-      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}::${voucherCode || ''}`;
+      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}::${voucherCodeRef.current || ''}`;
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
@@ -290,7 +303,8 @@ export function useStoreCatalogLoader({
         storeLoadInFlightRef.current = false;
       }
     }
-  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setRouteSlug, setSelectedStore, voucherCode]);
+  // voucherCode is deliberately NOT a dependency here -- see voucherCodeRef's own comment above.
+  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setRouteSlug, setSelectedStore]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;

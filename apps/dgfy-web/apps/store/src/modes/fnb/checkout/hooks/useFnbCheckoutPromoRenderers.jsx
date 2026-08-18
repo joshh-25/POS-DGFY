@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 
 import { PromoCodePanel } from '../components/PromoCodePanel.jsx';
-import { VoucherCodePanel } from '../components/VoucherCodePanel.jsx';
+import { VoucherCodePanel } from '../../../../shared/components/storefront/VoucherCodePanel.jsx';
 
 export function useFnbCheckoutPromoRenderers({
   appliedPromoDiscountText,

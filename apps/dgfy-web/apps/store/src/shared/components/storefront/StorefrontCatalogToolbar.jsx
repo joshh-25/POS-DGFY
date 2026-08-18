@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, ChevronDown, Filter, LayoutGrid, List, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { StorefrontDropdown } from '../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { VoucherCodePanel } from './VoucherCodePanel.jsx';
 
 /**
  * Search/sort/category toolbar for the classic catalog section (eyebrow +
@@ -16,6 +17,9 @@ const StorefrontCatalogToolbar = ({
   FNB_CATEGORY_ICON_MAP,
   STYLES,
   catalogSearch,
+  checkoutVoucherCode,
+  setCheckoutVoucherCode,
+  handleVoucherCardApply,
   filteredFnbViewModel,
   fnbCategoryDropdownRef,
   fnbSortOption,
@@ -62,6 +66,24 @@ const StorefrontCatalogToolbar = ({
   const catalogTitleTypography = typography.catalogTitle || {};
   const catalogLabelTypography = typography.label || {};
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+
+  // #694: a second, more prominent entry point into #672's already-wired apply pipeline --
+  // applying a code here re-fetches the catalog in place (useStoreCatalogLoader.js already keys
+  // its fetch on voucherCode), so no new data flow is needed, just this render.
+  const voucherEntry = handleVoucherCardApply ? (
+    <VoucherCodePanel
+      code={checkoutVoucherCode}
+      onChange={setCheckoutVoucherCode}
+      onClear={() => setCheckoutVoucherCode?.('')}
+      onApplyVoucher={handleVoucherCardApply}
+      compact
+      accentColor={toolbarAccent}
+      bodyFont={toolbarBodyFont}
+      isMobile={isMobileViewport}
+      helperText="Prices update in place below -- no need to open checkout."
+      triggerLabel="Have a voucher code? Apply it here"
+    />
+  ) : null;
 
   if (isMobileViewport) {
     // Keep the category and filter rows aligned with the mobile catalog gutter.
@@ -177,6 +199,12 @@ const StorefrontCatalogToolbar = ({
             )}
           </div>
         </div>
+
+        {voucherEntry && (
+          <div style={{ width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
+            {voucherEntry}
+          </div>
+        )}
       </div>
     );
   }
@@ -210,9 +238,12 @@ const StorefrontCatalogToolbar = ({
           <h2 style={{ margin: 0, fontSize: isSimpleMode ? (catalogTitleTypography.desktop || 32) : (modeAdapter.isRetailMode ? 34 : 36), fontWeight: isSimpleMode ? (catalogTitleTypography.weight || 700) : (modeAdapter.isRetailMode ? 800 : 900), color: toolbarTextPrimary || STYLES.colors.dark, lineHeight: isSimpleMode ? (catalogTitleTypography.lineHeight || 1.2) : 1.12, letterSpacing: '-0.025em', fontFamily: toolbarDisplayFont }}>{modeAdapter.catalogHeading}</h2>
           <p style={{ margin: 0, color: toolbarTextMuted || STYLES.colors.muted, fontSize: 15, lineHeight: 1.5, maxWidth: 720, fontFamily: toolbarBodyFont }}>{modeAdapter.catalogSubtitle}</p>
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: toolbarTheme.surfaceInset || '#fff3e8', border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary || STYLES.colors.dark, fontSize: 13, fontWeight: 700, fontFamily: toolbarBodyFont }}>
-          <span style={{ width: 8, height: 8, borderRadius: 999, background: toolbarAccent }} />
-          {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: toolbarTheme.surfaceInset || '#fff3e8', border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary || STYLES.colors.dark, fontSize: 13, fontWeight: 700, fontFamily: toolbarBodyFont }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: toolbarAccent }} />
+            {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
+          </div>
+          {voucherEntry && <div style={{ width: 260 }}>{voucherEntry}</div>}
         </div>
       </div>
 
