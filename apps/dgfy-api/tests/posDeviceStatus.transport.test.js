@@ -60,6 +60,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     printPosShiftSummaryUseCase: jest.fn(),
     printPosZReadingUseCase: jest.fn(),
     openPosDrawerUseCase: jest.fn(),
+    authorizePosDrawerUseCase: jest.fn(),
     getPairedPosTerminalUseCase: jest.fn(),
     createPosParkedSaleUseCase: jest.fn(),
     listPosParkedSalesUseCase: jest.fn(),

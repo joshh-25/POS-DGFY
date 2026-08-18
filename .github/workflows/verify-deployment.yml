@@ -26,8 +26,16 @@ name: Verify Deployment Health
 #
 # `dgfy-api` has no host port published (compose: `networks: [dgfy_internal]` only), so `/health`
 # is polled via `docker compose exec` into the container itself, exactly like the container's own
-# healthcheck does -- not via a public domain, which would need per-environment domain knowledge
-# and may not be reachable from this runner for DEV/STAGING depending on VPN routing.
+# healthcheck does -- not via a public domain, which would need per-environment domain knowledge.
+#
+# VPN: both registered self-hosted runners (vm-sieitzstaging, vm-openproject) sit on the same
+# internal LAN as the DEV/STAGING server (vm-sieitzstaging IS that server -- confirmed #598/#599),
+# so no environment needs an OpenVPN hop today. The `vpn_required` input below exists solely as a
+# fallback for a GitHub-hosted runner, which *would* need it -- see docs/ops/
+# CI_RUNNER_MIGRATION_HANDOFF.md for the switch-back procedure. Bringing up OpenVPN on a runner
+# already on the target network rewrites its own default route/DNS and can strand the job with no
+# path back to GitHub's control plane -- this is what happened on run 31957380863 (#598): it hung
+# past its own timeout-minutes and ignored `gh run cancel`.
 #
 # Does NOT resolve #514's own "open question": whether Claude Code Cloud's GitHub App grants
 # `actions:write` (to dispatch this) and `actions:read` (to poll the run conclusion) is left
@@ -50,6 +58,10 @@ on:
         description: Minutes to poll for (a single snapshot can't catch a crash-loop -- see header comment)
         type: string
         default: '5'
+      vpn_required:
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see header comment
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -60,23 +72,23 @@ jobs:
     timeout-minutes: 15
     environment: ${{ inputs.environment }}
     steps:
-      # VPN gating mirrors publish-platform.yml: DEV/STAGING aren't directly reachable from this
-      # runner, BETA/PROD are (the self-hosted runner already sits on that network).
+      # VPN gating mirrors publish-platform.yml: opt-in only, for a GitHub-hosted runner fallback.
+      # Every self-hosted runner already sits on the DEV/STAGING network -- see header comment.
       - name: Write OpenVPN config
-        if: inputs.environment == 'DEV' || inputs.environment == 'STAGING'
+        if: inputs.vpn_required
         env:
           OVPN_CONFIG: ${{ secrets.OVPN_CONFIG }}
         run: |
           printf '%s\n' "$OVPN_CONFIG" > /tmp/client.ovpn
 
       - name: Install OpenVPN
-        if: inputs.environment == 'DEV' || inputs.environment == 'STAGING'
+        if: inputs.vpn_required
         run: |
           sudo apt update
           sudo apt install -y openvpn openvpn-systemd-resolved
 
       - name: Connect to VPN
-        if: inputs.environment == 'DEV' || inputs.environment == 'STAGING'
+        if: inputs.vpn_required
         uses: kota65535/github-openvpn-connect-action@v2
         with:
           config_file: /tmp/client.ovpn
