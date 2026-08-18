@@ -126,24 +126,32 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
     }
 
     let scopeItemIds = null;
+    // #696: a pricelist-backed voucher's price map IS the scope -- same rule as the redemption path,
+    // `voucher_scopes` is not consulted when one is attached.
+    let fixedUnitPriceByItemId = null;
     try {
-        const scopes = await repository.listScopes([voucher.voucher_id]);
-        if (scopes.length > 0) {
-            const folderScopeRefIds = scopes
-                .filter((scope) => scope.scope_type === 'item_folder')
-                .map((scope) => scope.scope_ref_id);
-            const folders = folderScopeRefIds.length > 0
-                ? await repository.listItemFolderAdjacency()
-                : [];
-            const resolved = resolveVoucherScopeItemIds({
-                scopes,
-                folders,
-                items: (Array.isArray(items) ? items : []).map((item) => ({
-                    item_id: item.item_id,
-                    folder_id: item.folder_id
-                }))
-            });
-            scopeItemIds = resolved.itemIds;
+        if (voucher.pricelist_id != null) {
+            fixedUnitPriceByItemId = await repository.listPricelistItemPrices(voucher.pricelist_id);
+            scopeItemIds = new Set(Object.keys(fixedUnitPriceByItemId).map(Number));
+        } else {
+            const scopes = await repository.listScopes([voucher.voucher_id]);
+            if (scopes.length > 0) {
+                const folderScopeRefIds = scopes
+                    .filter((scope) => scope.scope_type === 'item_folder')
+                    .map((scope) => scope.scope_ref_id);
+                const folders = folderScopeRefIds.length > 0
+                    ? await repository.listItemFolderAdjacency()
+                    : [];
+                const resolved = resolveVoucherScopeItemIds({
+                    scopes,
+                    folders,
+                    items: (Array.isArray(items) ? items : []).map((item) => ({
+                        item_id: item.item_id,
+                        folder_id: item.folder_id
+                    }))
+                });
+                scopeItemIds = resolved.itemIds;
+            }
         }
     } catch (error) {
         logger.warn('[VoucherDisplay] Failed to resolve voucher scope, showing catalog prices instead', {
@@ -169,6 +177,7 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
                 benefitClass: voucher.benefit_class,
                 percentOffBps: voucher.percent_off_bps,
                 fixedUnitPriceCentavos: voucher.fixed_unit_price_centavos,
+                fixedUnitPriceByItemId,
                 // Order-level cap is not meaningful for a single item shown at quantity 1 in
                 // isolation on a browse card -- omit it, mirroring why amount_off is excluded above.
                 maxDiscountCentavos: null,

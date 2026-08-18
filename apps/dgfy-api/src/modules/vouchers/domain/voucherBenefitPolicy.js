@@ -123,6 +123,7 @@ const resolveRawDiscount = ({
     percentOffBps,
     amountOffCentavos,
     fixedUnitPriceCentavos,
+    fixedUnitPriceByItemId,
     eligibleLines,
     eligibleSubtotalCentavos
 }) => {
@@ -158,25 +159,46 @@ const resolveRawDiscount = ({
 
     // fixed_price. ADR 0066 decision 5: the delta is derived per line and clamped at zero, so a line
     // whose base price has fallen below the pinned price contributes nothing rather than a negative.
-    if (fixedUnitPriceCentavos == null) {
+    //
+    // #696: a fixed_price voucher pins EITHER one price for every line (fixedUnitPriceCentavos) OR a
+    // per-item price via a pricelist (fixedUnitPriceByItemId) -- never both; the caller enforces the
+    // XOR, this module just resolves whichever arrived. A line with no entry in the map contributes
+    // no discount rather than erroring: "not on this pricelist" is a legitimate, silent zero, not a
+    // config error -- the map's keys are the eligible item set, so an eligible-but-unpriced line
+    // should not normally occur, but a defensive zero is cheaper than a defensive throw here.
+    if (fixedUnitPriceCentavos == null && !fixedUnitPriceByItemId) {
         throw new VoucherBenefitError(
             'INVALID_FIXED_UNIT_PRICE_CENTAVOS',
-            'fixed_price vouchers require fixed_unit_price_centavos',
+            'fixed_price vouchers require fixed_unit_price_centavos or a per-item pricelist',
             { fixed_unit_price_centavos: null }
         );
     }
-    const pinned = toInteger(fixedUnitPriceCentavos);
-    if (pinned < 0) {
+
+    const resolvePinnedForLine = (line) => {
+        if (!fixedUnitPriceByItemId) return toInteger(fixedUnitPriceCentavos);
+        const hasEntry = Object.prototype.hasOwnProperty.call(fixedUnitPriceByItemId, line.item_id);
+        return hasEntry ? toInteger(fixedUnitPriceByItemId[line.item_id]) : null;
+    };
+
+    // Validate every candidate pin up front rather than per-line during the map below, so a single
+    // negative price anywhere in a pricelist fails the whole resolution with one clear error instead
+    // of silently skipping just that line.
+    const pinsToValidate = fixedUnitPriceByItemId
+        ? Object.values(fixedUnitPriceByItemId)
+        : [fixedUnitPriceCentavos];
+    if (pinsToValidate.some((value) => toInteger(value) < 0)) {
         throw new VoucherBenefitError(
             'INVALID_FIXED_UNIT_PRICE_CENTAVOS',
             'fixed_unit_price_centavos cannot be negative',
-            { fixed_unit_price_centavos: fixedUnitPriceCentavos }
+            { fixed_unit_price_centavos: fixedUnitPriceCentavos, fixed_unit_price_by_item_id: fixedUnitPriceByItemId ?? null }
         );
     }
 
-    const intrinsicLineDiscounts = eligibleLines.map((line) => Math.round(
-        line.quantity * Math.max(0, line.baseUnitPriceCentavos - pinned)
-    ));
+    const intrinsicLineDiscounts = eligibleLines.map((line) => {
+        const pinned = resolvePinnedForLine(line);
+        if (pinned == null) return 0;
+        return Math.round(line.quantity * Math.max(0, line.baseUnitPriceCentavos - pinned));
+    });
 
     return {
         rawDiscountCentavos: intrinsicLineDiscounts.reduce((sum, value) => sum + value, 0),
@@ -206,6 +228,10 @@ export const calculateVoucherBenefit = ({
     percentOffBps = null,
     amountOffCentavos = null,
     fixedUnitPriceCentavos = null,
+    // #696: optional per-item fixed-price map, `{ [item_id]: unitPriceCentavos }`. Only meaningful
+    // for benefitClass 'fixed_price'; mutually exclusive with fixedUnitPriceCentavos at the caller
+    // level (voucherUseCases.js's applyBenefitConfig enforces the XOR, not here).
+    fixedUnitPriceByItemId = null,
     maxDiscountCentavos = null,
     lines = []
 } = {}) => {
@@ -227,6 +253,7 @@ export const calculateVoucherBenefit = ({
         percentOffBps,
         amountOffCentavos,
         fixedUnitPriceCentavos,
+        fixedUnitPriceByItemId,
         eligibleLines,
         eligibleSubtotalCentavos
     });
