@@ -71,6 +71,7 @@ const normalizePaymentStatus = (value) => {
 };
 
 const humanize = (value) => String(value || '').trim().replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+const humanizeDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual' ? 'Other' : humanize(value);
 
 const resolveCustomerNotes = (order = {}) => String(
   order?.special_instructions || order?.customer_note || '-'
@@ -281,7 +282,7 @@ export default function OnlineOrderDetailsModal({
                     <DetailRow label="Original Subtotal" value={`PHP ${money(order.subtotal_amount)}`} />
                     {Number(order.discount_amount || 0) > 0 && <DetailRow label="Discount" value={`-PHP ${money(order.discount_amount)}`} valueClassName="text-rose-600" />}
                     {discount?.promo_code && <DetailRow label="Promo Code" value={discount.promo_code} />}
-                    {discount?.discount_type && <DetailRow label="Discount Type" value={humanize(discount.discount_type)} />}
+                    {discount?.discount_type && <DetailRow label="Discount Type" value={humanizeDiscountType(discount.discount_type)} />}
                     {order.discount_rate_snapshot != null && <DetailRow label="Discount Rate" value={`${Number(order.discount_rate_snapshot).toFixed(2)}%`} />}
                     {order.payment_provider && <DetailRow label="Payment Provider" value={humanize(order.payment_provider)} />}
                     {order.payment_reference && <DetailRow label="Payment Reference" value={order.payment_reference} />}

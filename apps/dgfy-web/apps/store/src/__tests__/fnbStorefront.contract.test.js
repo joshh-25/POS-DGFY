@@ -218,6 +218,8 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain("{ value: 'card', label: 'Credit or debit card' }");
     expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
     expect(source).toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).toContain("{ value: 'grab_pay', label: 'GrabPay' }");
+    expect(source).toContain("{ value: 'shopeepay', label: 'ShopeePay' }");
     expect(source).toContain("paymentCapabilities?.[paymentType]?.enabled === true");
     expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
     expect(checkoutRouteContainer).toContain('buildStorefrontCheckoutPaymentOptions');

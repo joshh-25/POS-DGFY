@@ -52,6 +52,7 @@ import {
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
     printPosZReadingUseCase,
+    authorizePosDrawerUseCase,
     openPosDrawerUseCase,
     getPairedPosTerminalUseCase,
     createPosParkedSaleUseCase,
@@ -1594,6 +1595,28 @@ export const openDeviceDrawer = async (req, res, next) => {
     }
 };
 
+export const authorizeDeviceDrawer = async (req, res, next) => {
+    try {
+        const result = await authorizePosDrawerUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS cash drawer authorization verified',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const listTransactions = async (req, res, next) => {
     try {
         const result = await listPosTransactionsUseCase({
@@ -1981,5 +2004,6 @@ export default {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 };

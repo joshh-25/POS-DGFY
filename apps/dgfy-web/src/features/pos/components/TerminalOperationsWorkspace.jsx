@@ -1043,13 +1043,19 @@ function ShiftControlsWorkspace({
     },
     {
       icon: CircleDollarSign,
-      label: 'Opening Float:',
+      label: 'Opening/Petty Cash:',
       value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
     },
     {
+      icon: Receipt,
+      label: 'Total Sales (excluding opening cash):',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
+      valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
+    },
+    {
       icon: Banknote,
-      label: 'Expected Cash:',
+      label: 'Expected Cash in Drawer:',
       value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
@@ -1654,11 +1660,11 @@ function ShiftControlsWorkspace({
         ) : (
           <div className="mt-3 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-              <span className="text-xs font-semibold text-slate-600">Current shift sales</span>
+              <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
               <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
             </div>
             <p className="text-xs text-slate-600">
-              Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
+              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
@@ -1795,6 +1801,7 @@ function ShiftControlsWorkspace({
       state={cashierHistoryState}
       onRefresh={refreshCashierHistory}
       onViewSummary={handleViewCashierHistoryShift}
+      activeShift={activeShift}
       locked={locked}
       isOnline={isOnline}
       currency={terminalMeta.pettyCashSymbol}
@@ -9137,7 +9144,7 @@ function SettingsWorkspace({
               POS Discount Approval PIN
             </DialogTitle>
             <DialogDescription>
-              This PIN is used only to approve Employee and Manual discounts. It cannot be viewed after saving.
+              This PIN is used to approve POS discounts. It cannot be viewed after saving.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -9146,7 +9153,7 @@ function SettingsWorkspace({
               <p className="mt-1 text-xs text-slate-500">
                 {approvalPinUser?.pos_approval_pin_configured
                   ? 'A PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure a PIN this approver will enter for Employee and Manual discounts.'}
+                  : 'Configure a PIN this approver will enter for POS discounts.'}
               </p>
             </div>
             <div>

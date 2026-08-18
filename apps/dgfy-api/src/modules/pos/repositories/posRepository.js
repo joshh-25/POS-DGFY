@@ -21,7 +21,7 @@ import {
 } from '../../shared/utils/barcodePolicy.js';
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
@@ -1420,8 +1420,285 @@ const buildCashierSummary = (rows = []) => {
         cashier_id: cashierId === 'unassigned' ? null : Number(cashierId),
         cashier_name: entries[0]?.cashier_name || entries[0]?.accepted_by_name || 'Unassigned',
         shift_ids: Array.from(new Set(entries.map((entry) => entry.shift_id).filter(Boolean))),
-        summary: serializeReportSummary(entries)
+        summary: serializeReportSummary(entries),
+        shift_money: null
     })).sort((left, right) => Number(right.summary.net_sales || 0) - Number(left.summary.net_sales || 0));
+};
+
+const REPORT_CASH_EVENT_EFFECT = Object.freeze({
+    cash_in: 1,
+    opening_adjustment: 1,
+    cash_out: -1,
+    closing_adjustment: -1
+});
+
+const getCashPaymentAmount = (transaction = {}) => {
+    const paymentBreakdown = parseJsonLoosely(transaction.payment_breakdown);
+    if (Array.isArray(paymentBreakdown) && paymentBreakdown.length > 0) {
+        return getPosCashPaymentAmount(paymentBreakdown);
+    }
+
+    return String(transaction.payment_type || '').trim().toLowerCase() === 'cash'
+        ? round4(transaction.total_amount)
+        : 0;
+};
+
+const summarizeReportCashEvents = (events = []) => {
+    const summary = {
+        cash_in_total: 0,
+        cash_out_total: 0,
+        opening_adjustment_total: 0,
+        closing_adjustment_total: 0,
+        net_events_total: 0
+    };
+
+    (Array.isArray(events) ? events : []).forEach((event) => {
+        const eventType = String(event?.event_type || '').trim();
+        const effect = REPORT_CASH_EVENT_EFFECT[eventType];
+        if (!effect) return;
+
+        const amount = round4(event?.amount);
+        const summaryKey = `${eventType}_total`;
+        summary[summaryKey] = round4((summary[summaryKey] || 0) + amount);
+        summary.net_events_total = round4(summary.net_events_total + (amount * effect));
+    });
+
+    return summary;
+};
+
+const buildReportShiftMoney = ({ shift = {}, transactions = [] } = {}) => {
+    const eventSummary = summarizeReportCashEvents(shift.cashEvents);
+    const openingFloatAmount = round4(shift.opening_float_amount);
+    const cashSalesAmount = round4((Array.isArray(transactions) ? transactions : []).reduce(
+        (total, transaction) => total + getCashPaymentAmount(transaction),
+        0
+    ));
+    const derivedExpectedCashAmount = round4(
+        openingFloatAmount + eventSummary.net_events_total + cashSalesAmount
+    );
+    const expectedCashAmount = shift.expected_cash_amount == null
+        ? derivedExpectedCashAmount
+        : round4(shift.expected_cash_amount);
+    const closingCashAmount = shift.closing_cash_amount == null
+        ? null
+        : round4(shift.closing_cash_amount);
+    const cashVarianceAmount = shift.cash_variance_amount == null
+        ? (closingCashAmount == null ? null : round4(closingCashAmount - expectedCashAmount))
+        : round4(shift.cash_variance_amount);
+
+    return {
+        shift_count: 1,
+        closed_shift_count: String(shift.status || '').trim().toLowerCase() === 'closed' ? 1 : 0,
+        opening_float_amount: openingFloatAmount,
+        cash_sales_amount: cashSalesAmount,
+        cash_in_total: eventSummary.cash_in_total,
+        cash_out_total: eventSummary.cash_out_total,
+        opening_adjustment_total: eventSummary.opening_adjustment_total,
+        closing_adjustment_total: eventSummary.closing_adjustment_total,
+        net_events_total: eventSummary.net_events_total,
+        expected_cash_amount: expectedCashAmount,
+        closing_cash_amount: closingCashAmount,
+        cash_variance_amount: cashVarianceAmount
+    };
+};
+
+const mergeCashierShiftMoney = (cashierSummary = [], reconciliation = new Map()) => {
+    const merged = new Map();
+
+    (Array.isArray(cashierSummary) ? cashierSummary : []).forEach((entry) => {
+        const key = String(entry.cashier_id || 'unassigned');
+        merged.set(key, {
+            ...entry,
+            shift_money: reconciliation.get(key) || null
+        });
+    });
+
+    reconciliation.forEach((shiftMoney, key) => {
+        if (merged.has(key)) return;
+        merged.set(key, {
+            cashier_id: shiftMoney.cashier_id,
+            cashier_name: shiftMoney.cashier_name || `Cashier #${shiftMoney.cashier_id}`,
+            shift_ids: shiftMoney.shift_ids || [],
+            summary: serializeReportSummary([]),
+            shift_money: shiftMoney
+        });
+    });
+
+    return Array.from(merged.values()).sort((left, right) => (
+        Number(right.summary?.net_sales || 0) - Number(left.summary?.net_sales || 0)
+    ));
+};
+
+const buildReportTransactionRows = (transactions = [], normalizedLines = []) => {
+    const matchingTransactionIds = new Set(normalizedLines.map((row) => String(row.transaction_id)));
+    const lineSummaryByTransaction = new Map();
+
+    normalizedLines.forEach((row) => {
+        const key = String(row.transaction_id);
+        const current = lineSummaryByTransaction.get(key) || {
+            gross_sales: 0,
+            net_sales: 0,
+            discount_amount: 0,
+            refund_amount: 0
+        };
+        current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
+        current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
+        current.discount_amount = round4(current.discount_amount + Number(row.discount_amount || 0));
+        current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
+        lineSummaryByTransaction.set(key, current);
+    });
+
+    return (Array.isArray(transactions) ? transactions : [])
+        .filter((transaction) => matchingTransactionIds.has(String(transaction?.pos_transaction_id)))
+        .map((transaction) => {
+            const summary = lineSummaryByTransaction.get(String(transaction.pos_transaction_id)) || {};
+            return {
+                pos_transaction_id: transaction.pos_transaction_id,
+                invoice_number: transaction.invoice_number || null,
+                created_at: transaction.created_at || null,
+                status: transaction.status || null,
+                cashier_id: transaction.cashier?.user_id || transaction.cashier_id || transaction.accepted_by || null,
+                cashier_name: transaction.cashier?.username || transaction.acceptedByUser?.username || null,
+                payment_type: transaction.payment_type || null,
+                payment_status: transaction.payment_status || null,
+                order_source: transaction.order_source || null,
+                order_method: transaction.order_method || null,
+                total_amount: round4(transaction.total_amount),
+                gross_sales: round4(summary.gross_sales),
+                net_sales: round4(summary.net_sales),
+                discount_amount: round4(summary.discount_amount),
+                refund_amount: round4(summary.refund_amount)
+            };
+        });
+};
+
+const loadReportCashierReconciliation = async ({ transactions = [], filters = {}, options = {} } = {}) => {
+    const PosTerminalShift = dbStore.get('PosTerminalShift');
+    const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
+    if (!PosTerminalShift || typeof PosTerminalShift.findAll !== 'function' || !PosCashDrawerEvent) {
+        return new Map();
+    }
+
+    const where = {};
+    const dateFrom = normalizeBusinessDateValue(filters.date_from);
+    const dateTo = normalizeBusinessDateValue(filters.date_to);
+    if (dateFrom || dateTo) {
+        where.business_date = {};
+        if (dateFrom) where.business_date[Op.gte] = dateFrom;
+        if (dateTo) where.business_date[Op.lte] = dateTo;
+    }
+
+    const cashierId = toPositiveInt(filters.cashier_id);
+    if (cashierId) where.cashier_id = cashierId;
+
+    const locationId = toPositiveInt(filters.location_id);
+    if (locationId) where.location_id = locationId;
+
+    const terminalId = String(filters.terminal_id || '').trim();
+    if (terminalId) where.terminal_id = terminalId;
+
+    const shifts = await PosTerminalShift.findAll({
+        where,
+        include: [
+            {
+                model: dbStore.get('User'),
+                as: 'cashier',
+                attributes: ['user_id', 'username'],
+                required: false
+            },
+            {
+                model: PosCashDrawerEvent,
+                as: 'cashEvents',
+                attributes: ['pos_cash_drawer_event_id', 'event_type', 'amount'],
+                required: false,
+                separate: true,
+                order: [['created_at', 'ASC']]
+            }
+        ],
+        order: [['business_date', 'ASC'], ['opened_at', 'ASC'], ['pos_terminal_shift_id', 'ASC']],
+        transaction: options.transaction
+    });
+
+    const transactionsByShift = new Map();
+    (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
+        const shiftId = toPositiveInt(transaction?.shift?.pos_terminal_shift_id || transaction?.shift_id);
+        if (!shiftId) return;
+        const rows = transactionsByShift.get(shiftId) || [];
+        rows.push(transaction);
+        transactionsByShift.set(shiftId, rows);
+    });
+
+    const grouped = new Map();
+    (Array.isArray(shifts) ? shifts : []).forEach((row) => {
+        const shift = toPlain(row);
+        const shiftId = toPositiveInt(shift.pos_terminal_shift_id);
+        const cashierIdValue = toPositiveInt(shift.cashier_id || shift.cashier?.user_id);
+        if (!shiftId || !cashierIdValue) return;
+
+        const shiftMoney = buildReportShiftMoney({
+            shift,
+            transactions: transactionsByShift.get(shiftId) || []
+        });
+        const key = String(cashierIdValue);
+        const current = grouped.get(key) || {
+            cashier_id: cashierIdValue,
+            cashier_name: shift.cashier?.username || `Cashier #${cashierIdValue}`,
+            shift_ids: [],
+            shift_count: 0,
+            closed_shift_count: 0,
+            opening_float_amount: 0,
+            cash_sales_amount: 0,
+            cash_in_total: 0,
+            cash_out_total: 0,
+            opening_adjustment_total: 0,
+            closing_adjustment_total: 0,
+            net_events_total: 0,
+            expected_cash_amount: 0,
+            closing_cash_amount: 0,
+            cash_variance_amount: 0,
+            has_closing_cash: false,
+            has_cash_variance: false
+        };
+
+        current.shift_ids.push(shiftId);
+        current.shift_count += shiftMoney.shift_count;
+        current.closed_shift_count += shiftMoney.closed_shift_count;
+        current.opening_float_amount = round4(current.opening_float_amount + shiftMoney.opening_float_amount);
+        current.cash_sales_amount = round4(current.cash_sales_amount + shiftMoney.cash_sales_amount);
+        current.cash_in_total = round4(current.cash_in_total + shiftMoney.cash_in_total);
+        current.cash_out_total = round4(current.cash_out_total + shiftMoney.cash_out_total);
+        current.opening_adjustment_total = round4(current.opening_adjustment_total + shiftMoney.opening_adjustment_total);
+        current.closing_adjustment_total = round4(current.closing_adjustment_total + shiftMoney.closing_adjustment_total);
+        current.net_events_total = round4(current.net_events_total + shiftMoney.net_events_total);
+        current.expected_cash_amount = round4(current.expected_cash_amount + shiftMoney.expected_cash_amount);
+        if (shiftMoney.closing_cash_amount != null) {
+            current.has_closing_cash = true;
+            current.closing_cash_amount = round4(current.closing_cash_amount + shiftMoney.closing_cash_amount);
+        }
+        if (shiftMoney.cash_variance_amount != null) {
+            current.has_cash_variance = true;
+            current.cash_variance_amount = round4(current.cash_variance_amount + shiftMoney.cash_variance_amount);
+        }
+        grouped.set(key, current);
+    });
+
+    return new Map(Array.from(grouped.entries()).map(([key, value]) => [key, {
+        cashier_id: value.cashier_id,
+        cashier_name: value.cashier_name,
+        shift_ids: value.shift_ids,
+        shift_count: value.shift_count,
+        closed_shift_count: value.closed_shift_count,
+        opening_float_amount: value.opening_float_amount,
+        cash_sales_amount: value.cash_sales_amount,
+        cash_in_total: value.cash_in_total,
+        cash_out_total: value.cash_out_total,
+        opening_adjustment_total: value.opening_adjustment_total,
+        closing_adjustment_total: value.closing_adjustment_total,
+        net_events_total: value.net_events_total,
+        expected_cash_amount: value.expected_cash_amount,
+        closing_cash_amount: value.has_closing_cash ? value.closing_cash_amount : null,
+        cash_variance_amount: value.has_cash_variance ? value.cash_variance_amount : null
+    }]));
 };
 
 const buildShiftSummary = (rows = []) => {
@@ -1589,7 +1866,12 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     return rows;
 };
 
-const buildReportPayloadFromTransactions = (transactions = [], filters = {}, categoryOptions = []) => {
+const buildReportPayloadFromTransactions = (
+    transactions = [],
+    filters = {},
+    categoryOptions = [],
+    cashierReconciliation = new Map()
+) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
     const summary = serializeReportSummary(normalizedLines);
     const dailySeries = buildTimeSeries(normalizedLines, 'daily');
@@ -1636,6 +1918,11 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}, cat
         };
     });
 
+    const cashierSummary = mergeCashierShiftMoney(
+        buildCashierSummary(normalizedLines),
+        cashierReconciliation
+    );
+
     return {
         applied_filters: {
             ...resolveReportDateRange(filters),
@@ -1660,8 +1947,10 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}, cat
             discount_breakdown: buildDiscountBreakdown(normalizedLines),
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
-            cashier_summary: buildCashierSummary(normalizedLines),
+            cashier_summary: cashierSummary,
+            cash_reconciliation: Array.from(cashierReconciliation.values()),
             shift_summary: buildShiftSummary(normalizedLines),
+            transaction_rows: buildReportTransactionRows(transactions, normalizedLines),
             top_items: topItems,
             trend: dailySeries
         },
@@ -1796,6 +2085,36 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
             round4(entry.pos_profit_loss)
         ]);
     });
+    rows.push([]);
+    rows.push(['Cashier', 'Shift Count', 'Closed Shifts', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance']);
+    (payload?.daily_report?.cashier_summary || []).forEach((entry) => {
+        const cash = entry?.shift_money || {};
+        rows.push([
+            entry.cashier_name,
+            cash.shift_count || 0,
+            cash.closed_shift_count || 0,
+            round4(cash.opening_float_amount),
+            round4(cash.cash_sales_amount),
+            round4(cash.cash_in_total),
+            round4(cash.cash_out_total),
+            round4(cash.expected_cash_amount),
+            cash.closing_cash_amount == null ? '' : round4(cash.closing_cash_amount),
+            cash.cash_variance_amount == null ? '' : round4(cash.cash_variance_amount)
+        ]);
+    });
+    rows.push([]);
+    rows.push(['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales']);
+    (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
+        rows.push([
+            entry.invoice_number || entry.pos_transaction_id,
+            entry.created_at || '',
+            entry.cashier_name || '',
+            entry.payment_type || '',
+            entry.status || '',
+            round4(entry.total_amount),
+            round4(entry.net_sales)
+        ]);
+    });
     return rows;
 };
 
@@ -1852,6 +2171,16 @@ export const posRepository = {
             transaction: options.transaction
         });
         return serializeDiscountAuthorizer(row);
+    },
+
+    async findActivePosDrawerOperatorById(userId, options = {}) {
+        const User = dbStore.get('User');
+        const row = await User.findOne({
+            where: buildVisibleWhere({ user_id: userId, is_active: true }),
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'pos_approval_pin_hash'],
+            transaction: options.transaction
+        });
+        return toPlain(row);
     },
 
     async findActiveDayCloseOperatorById(userId, options = {}) {
@@ -2446,6 +2775,7 @@ export const posRepository = {
         const transaction = options.transaction;
         const posTransactionId = toPositiveInt(payload.pos_transaction_id);
         if (!posTransactionId) return null;
+        const orderNotes = String(payload.order_notes || '').trim() || null;
 
         let checkId = toPositiveInt(payload.check_id);
         const usesExistingCheck = Boolean(checkId);
@@ -2482,7 +2812,7 @@ export const posRepository = {
                     : 'dine_in',
                 status: 'sent_to_kitchen',
                 pos_transaction_id: posTransactionId,
-                notes: 'POS checkout kitchen order'
+                notes: orderNotes
             }, { transaction });
             checkId = Number(check.check_id);
             await PosTransaction.update(
@@ -2548,7 +2878,9 @@ export const posRepository = {
                     }
                 );
             }
-            await check.update({ status: 'sent_to_kitchen', pos_transaction_id: posTransactionId }, { transaction });
+            const checkUpdate = { status: 'sent_to_kitchen', pos_transaction_id: posTransactionId };
+            if (orderNotes !== null) checkUpdate.notes = orderNotes;
+            await check.update(checkUpdate, { transaction });
         }
 
         const ticket = await FnbKitchenTicket.create({
@@ -2732,7 +3064,17 @@ export const posRepository = {
             this.listReportTransactions(filters, options),
             this.listActiveReportCategories(options)
         ]);
-        return buildReportPayloadFromTransactions(transactions, filters, categoryOptions);
+        const cashierReconciliation = await loadReportCashierReconciliation({
+            transactions,
+            filters,
+            options
+        });
+        return buildReportPayloadFromTransactions(
+            transactions,
+            filters,
+            categoryOptions,
+            cashierReconciliation
+        );
     },
 
     async exportReports(filters = {}, options = {}) {

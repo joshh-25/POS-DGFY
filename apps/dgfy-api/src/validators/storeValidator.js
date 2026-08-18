@@ -2,7 +2,7 @@ import Joi from 'joi';
 import { STOREFRONT_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
 
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay'];
 const FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 
@@ -160,7 +160,7 @@ export const validateStoreLogin = validateSchema(storeLoginSchema, 'body', 'vali
 export const validateStoreQuote = validateSchema(storeQuoteSchema, 'body', 'validatedData');
 export const validateStoreCheckout = validateSchema(storeCheckoutSchema, 'body', 'validatedData');
 export const validateStoreCheckoutPaymentSession = validateSchema(storeCheckoutSchema.keys({
-    payment_type: Joi.string().valid('qrph', 'card', 'gcash', 'maya').default('qrph')
+    payment_type: Joi.string().valid('qrph', 'card', 'gcash', 'maya', 'grab_pay', 'shopeepay').default('qrph')
 }), 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpRequest = validateSchema(guestCheckoutOtpRequestSchema, 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpVerify = validateSchema(guestCheckoutOtpVerifySchema, 'body', 'validatedData');

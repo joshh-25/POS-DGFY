@@ -67,13 +67,27 @@ import { STOREFRONT_ORDER_METHODS } from '../../shared/constants/orderMethods.js
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
-const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya']);
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay'];
+const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya', 'grab_pay', 'shopeepay']);
 const HOSTED_PAYMENT_METHOD_TYPES = Object.freeze({
     card: 'card',
     gcash: 'gcash',
-    maya: 'paymaya'
+    maya: 'paymaya',
+    grab_pay: 'grab_pay',
+    shopeepay: 'shopeepay'
 });
+const PAYMENT_METHOD_CAPABILITY_ALIASES = Object.freeze({
+    card: Object.freeze(['card']),
+    gcash: Object.freeze(['gcash']),
+    maya: Object.freeze(['paymaya', 'maya']),
+    grab_pay: Object.freeze(['grab_pay']),
+    shopeepay: Object.freeze(['shopeepay', 'shopee_pay']),
+    qrph: Object.freeze(['qrph'])
+});
+
+export const getHostedPaymentMethodType = (paymentType) => (
+    HOSTED_PAYMENT_METHOD_TYPES[String(paymentType || '').trim().toLowerCase()] || null
+);
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
     delivery: 'supports_delivery',
@@ -1626,7 +1640,9 @@ const resolveStorefrontPaymentCapabilities = async ({
     revenueSharingEnabled
 }) => {
     const supportsHostedCapabilityLookup = typeof paymongoService?.getPaymentMethodCapabilities === 'function';
-    const paymentTypes = supportsHostedCapabilityLookup ? ['card', 'gcash', 'maya', 'qrph'] : ['qrph'];
+    const paymentTypes = supportsHostedCapabilityLookup
+        ? ['card', 'gcash', 'maya', 'grab_pay', 'shopeepay', 'qrph']
+        : ['qrph'];
     const disabled = (reasonCode) => Object.fromEntries(paymentTypes.map((paymentType) => [paymentType, {
             enabled: false,
             environment: paymongoMode,
@@ -1665,16 +1681,18 @@ const resolveStorefrontPaymentCapabilities = async ({
         const providerMethods = supportsHostedCapabilityLookup
             ? await paymongoService.getPaymentMethodCapabilities()
             : ['qrph'];
-        const hasProviderMethod = (method) => providerMethods.includes(method);
+        const hasProviderMethod = (paymentType) => (
+            (PAYMENT_METHOD_CAPABILITY_ALIASES[paymentType] || [getHostedPaymentMethodType(paymentType)])
+                .some((method) => providerMethods.includes(method))
+        );
         const capabilities = Object.fromEntries(paymentTypes.map((paymentType) => [paymentType, {
             enabled: false,
             environment: paymongoMode,
             reason_code: 'PAYMENT_METHOD_NOT_AVAILABLE'
         }]));
 
-        for (const paymentType of supportsHostedCapabilityLookup ? ['card', 'gcash', 'maya'] : []) {
-            const providerMethod = HOSTED_PAYMENT_METHOD_TYPES[paymentType];
-            if (revenueSharingEnabled && hasProviderMethod(providerMethod)) {
+        for (const paymentType of supportsHostedCapabilityLookup ? Object.keys(HOSTED_PAYMENT_METHOD_TYPES) : []) {
+            if (revenueSharingEnabled && hasProviderMethod(paymentType)) {
                 capabilities[paymentType] = {
                     enabled: true,
                     environment: paymongoMode,
@@ -2987,7 +3005,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             if (!ONLINE_PAYMENT_TYPES.has(requestedPaymentType)) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Only QR Ph, card, GCash, or Maya can create an online payment session.',
+                    'Only QR Ph, card, GCash, Maya, GrabPay, or ShopeePay can create an online payment session.',
                     { statusCode: 422 }
                 );
             }
@@ -3053,7 +3071,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             if (requestedPaymentType !== 'qrph' && !tenantRevenueSharingEnabled) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
-                    'Card, GCash, and Maya checkout requires the tenant revenue collection policy to be enabled.',
+                    'Card, GCash, Maya, GrabPay, and ShopeePay checkout requires the tenant revenue collection policy to be enabled.',
                     {
                         statusCode: 409,
                         details: { code: 'TENANT_REVENUE_POLICY_NOT_READY' }
@@ -3279,7 +3297,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                             currency: 'PHP',
                             quantity: 1
                         }],
-                        paymentMethodTypes: [HOSTED_PAYMENT_METHOD_TYPES[requestedPaymentType]],
+                        paymentMethodTypes: [getHostedPaymentMethodType(requestedPaymentType)],
                         successUrl,
                         cancelUrl,
                         referenceNumber: publicReference,
