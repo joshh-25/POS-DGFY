@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ShoppingCart, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { VoucherPriceDisplay, VoucherAppliedBadge } from '../../../../shared/components/storefront/VoucherPriceDisplay.jsx';
 import { hasRequiredFnbModifierGroups } from '../model/fnbProductDetailsModel.js';
 
 const FnbProductCard = ({
@@ -89,6 +90,7 @@ const FnbProductCard = ({
               Affiliate price
             </div>
           )}
+          <VoucherAppliedBadge item={item} style={{ top: 6, right: 6 }} />
 
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
@@ -105,7 +107,7 @@ const FnbProductCard = ({
             fontFamily: cardUiFont,
             lineHeight: 1
           }}>
-            {money(item.default_sale_price ?? 0)}
+            <VoucherPriceDisplay item={item} money={money} size="sm" />
           </div>
         </div>
 
@@ -270,6 +272,7 @@ const FnbProductCard = ({
             Affiliate price
           </div>
         )}
+        <VoucherAppliedBadge item={item} style={{ top: isMobileViewport ? 10 : 16, right: isMobileViewport ? 10 : 16, fontSize: 10, padding: '3px 8px' }} />
         <div style={{
           position: 'absolute',
           right: isMobileViewport ? 10 : 16,
@@ -286,7 +289,7 @@ const FnbProductCard = ({
           fontFamily: cardUiFont,
           lineHeight: 1
         }}>
-          {money(item.default_sale_price ?? 0)}
+          <VoucherPriceDisplay item={item} money={money} />
         </div>
       </div>
       <div style={{ padding: isMobileViewport ? '12px 12px 12px' : '18px 18px 16px', flex: 1, display: 'grid', gap: isMobileViewport ? 8 : 14 }}>

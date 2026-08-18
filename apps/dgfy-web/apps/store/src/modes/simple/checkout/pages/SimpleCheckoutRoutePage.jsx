@@ -43,6 +43,7 @@ export function SimpleCheckoutRoutePage({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
   renderAccountOwnedIdentitySummary,
@@ -172,6 +173,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -236,6 +238,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -296,6 +299,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -341,6 +345,7 @@ export function SimpleCheckoutRoutePage({
           onStepChange={onSetSimpleOrderStep}
           orderStep={simpleOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          voucherDiscountSummaryRow={voucherDiscountSummaryRow}
           promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={scheduleLabel}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
