@@ -74,6 +74,7 @@ export function RetailOrderPage({
   onSelectAddress,
   orderMethod = 'delivery',
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   pinLocationError = '',
   pinLocationLoading = false,
   renderAccountOwnedIdentitySummary,
@@ -197,6 +198,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -262,6 +264,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -301,6 +304,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -322,6 +326,7 @@ export function RetailOrderPage({
             onCheckout={onCheckout}
             onImageError={onImageError}
             promoDiscountSummaryRow={promoDiscountSummaryRow}
+            voucherDiscountSummaryRow={voucherDiscountSummaryRow}
             promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont, isMobile: true })}
             onStepChange={setStep}
             orderStep={step}
