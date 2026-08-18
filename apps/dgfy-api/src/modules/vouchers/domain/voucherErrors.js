@@ -31,7 +31,15 @@ export const VoucherReasonCode = Object.freeze({
     VOUCHER_VALIDITY_WINDOW_ELAPSED: 'VOUCHER_VALIDITY_WINDOW_ELAPSED',
     VOUCHER_VALIDITY_WINDOW_INVALID: 'VOUCHER_VALIDITY_WINDOW_INVALID',
     VOUCHER_TIME_WINDOW_INCOMPLETE: 'VOUCHER_TIME_WINDOW_INCOMPLETE',
-    VOUCHER_BENEFIT_CONFIG_INVALID: 'VOUCHER_BENEFIT_CONFIG_INVALID'
+    VOUCHER_BENEFIT_CONFIG_INVALID: 'VOUCHER_BENEFIT_CONFIG_INVALID',
+
+    // Redemption codes (Phase 105, #455). ADR 0066 decision 7: two parties both claiming the right
+    // to set the final unit price is undefined, so a fixed-price voucher is refused outright under
+    // an active affiliate attribution rather than resolved silently.
+    VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT: 'VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT',
+    // ADR 0066 decision 3: checkout fails closed. A scope that resolves to zero cart-eligible items
+    // is not "no discount" -- it is a redemption attempt that cannot be honored, so it blocks.
+    VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS: 'VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS'
 });
 
 export const voucherError = (message, reasonCode, details = {}) => {
