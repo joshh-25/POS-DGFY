@@ -176,6 +176,45 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   to point at this amendment instead of asserting an inheritance that was never built.
 - PR: #697 follow-up to Phase 101-109 (#455 lineage).
 
+### 2026-08-18 — Per-item pricelist for `fixed_price` (#696)
+
+- Clause amended: **Decision 5** (`[default]` tier). Previously read as a single scalar
+  (`fixed_unit_price_centavos`) with no alternative. Amended to add a second, mutually-exclusive
+  way to express a fixed price: a `pricelists`/`pricelist_items` pair carrying N prices for N
+  items, referenced from `vouchers.pricelist_id`.
+- Change: `#584`'s own wording — *"per-item, not per-order"* — always meant *scoped to items* with
+  one shared price, never a price *per item*. The one-price-per-voucher shape was an unstated
+  assumption baked into a column's location (`vouchers`, not a child table), not a decision this
+  ADR ever bound. This amendment gives it a second column to point at, still under Decision 5's
+  original framing (intent, not a stored delta) and still resolved the same way at redemption time
+  — `Σ qty × max(0, base_unit − price(item))`, with `price(item)` now either the scalar or a
+  per-item lookup.
+  1. **A `fixed_price` voucher carries EITHER `fixed_unit_price_centavos` OR `pricelist_id`, never
+     both.** Enforced in `voucherUseCases.js`'s `applyBenefitConfig`, the same choke point already
+     re-run on create, update, and activation for the base benefit-column validation.
+  2. **When a pricelist is attached, it IS the scope — `voucher_scopes` is not consulted.**
+     Avoids two sources of truth for "which items does this voucher cover." A voucher may attach
+     only an `active` pricelist (checked at attach time, mirroring how `assertScopeRefsExist`
+     validates scope references at attach time and not continuously).
+  3. **No ledger change.** `voucher_redemption_lines` already snapshots both
+     `base_unit_price_centavos` and `voucher_unit_price_centavos` per line — precisely because
+     `Item.default_sale_price` moves, the same reasoning Decision 5 already gives for the scalar
+     case. A per-item price needs no new column to stay auditable after the fact.
+  4. **`Decision 1` `[binding]` is untouched.** Neither the scalar nor a pricelist row is ever
+     written back to `Item.default_sale_price` or `pos_transaction_lines.sale_price` — a pricelist
+     is exactly as inert with respect to Catalog's own price as the scalar always was.
+  5. **`Decision 7`'s affiliate refusal is inherited unchanged.** A pricelist-backed voucher is
+     refused under active affiliate attribution the same way a scalar-priced one already is —
+     nothing about having N prices instead of one changes which party's price wins.
+- Reason: vouchers are deliberately standing in for a wholesale/B2B-shaped need through a B2C
+  mechanism (#454 decision 2) — a business buys stock from a retailer at negotiated per-item prices
+  by presenting a voucher code. A single shared price across an entire scope cannot express a real
+  wholesale pricelist; #696 is the gap this amendment closes. This is **not** a reversal of #569's
+  B2B deferral — no B2B account, pricing tier, or customer-group concept is introduced here, only a
+  second way to express what a `fixed_price` voucher's existing scalar already could, one item at a
+  time instead of once.
+- PR: #696 follow-up to Phase 101-109 (#455 lineage), stacked on #697.
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
@@ -195,4 +234,6 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
    ADR inherited automatically, corrected from the prior wording of this line
 4. [ADR 0039](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) — strictness tiers
 5. Issue #454 — voucher decision record; #455 — entity and ledger; #453 — epic; #697 — this
-   amendment's below-cost enforcement gap
+   amendment's below-cost enforcement gap; #696 — the per-item pricelist amendment above; #584 —
+   the `fixed_price` benefit class this extends; #569 — B2B deferral, not reversed by #696
+   (#454 decision 2 is the carve-out)
