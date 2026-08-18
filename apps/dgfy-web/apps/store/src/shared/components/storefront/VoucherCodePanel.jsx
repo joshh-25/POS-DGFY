@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Ticket, X } from 'lucide-react';
 
-const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperCase().slice(0, 64);
+export const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperCase().slice(0, 64);
 
 /**
  * Voucher-code entry (#672), adapted from PromoCodePanel.jsx's trigger+modal shape -- same visual
@@ -9,6 +9,11 @@ const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperC
  * no catalog-level endpoint that enumerates a store's active vouchers for display here. A voucher
  * is entered by code only, same as the storefront checkout API already accepts (voucher_code,
  * symmetric to promo_code but independent -- see buildFnbCheckoutPayload.js).
+ *
+ * Hoisted from modes/fnb/checkout/components/ to shared/ (#694) -- it now has two render sites
+ * (the checkout promo-panel stack, and the catalog toolbar's voucher-entry button), and the `fnb/`
+ * path was already vestigial: `useFnbCheckoutPromoRenderers.jsx` renders this for every mode, not
+ * just fnb.
  */
 export function VoucherCodePanel({
   code = '',
@@ -21,7 +26,12 @@ export function VoucherCodePanel({
   compact = false,
   accentColor = '#7c3aed',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
-  isMobile = false
+  isMobile = false,
+  // #694: the checkout-flavored copy ("refresh quote or place the order...") is wrong on a catalog
+  // page, where applying a code updates prices in place with no checkout visit needed. Defaulting
+  // to `null` keeps the checkout render's copy byte-identical to before this change.
+  helperText = null,
+  triggerLabel = 'Have a voucher code?'
 }) {
   const normalizedCode = normalizeVoucherCode(code);
   const hasCode = normalizedCode.length > 0;
@@ -35,6 +45,9 @@ export function VoucherCodePanel({
       ? { border: '#ddd6fe', background: '#f5f3ff', text: '#5b21b6' }
       : { border: '#e2e8f0', background: '#ffffff', text: '#64748b' };
   const hasAppliedDiscount = String(appliedDiscountText || '').trim().length > 0;
+  const resolvedHelperText = hasAppliedDiscount
+    ? `Discount applied: ${appliedDiscountText}`
+    : (helperText ?? (hasCode ? 'Refresh quote or place the order to validate this code.' : 'Enter a voucher code if you have one.'));
 
   const handleApply = (codeToApply) => {
     const finalCode = normalizeVoucherCode(codeToApply);
@@ -69,7 +82,7 @@ export function VoucherCodePanel({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Ticket size={18} color={accentColor} />
           <span style={{ fontSize: 14, fontWeight: 700, color: accentColor }}>
-            {hasCode ? normalizedCode : 'Have a voucher code?'}
+            {hasCode ? normalizedCode : triggerLabel}
           </span>
         </div>
         {hasCode && (
@@ -101,9 +114,7 @@ export function VoucherCodePanel({
             <div style={{ display: 'grid', gap: 4 }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Voucher Code</div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
-                {hasAppliedDiscount
-                  ? `Discount applied: ${appliedDiscountText}`
-                  : (hasCode ? 'Refresh quote or place the order to validate this code.' : 'Enter a voucher code if you have one.')}
+                {resolvedHelperText}
               </div>
             </div>
 
