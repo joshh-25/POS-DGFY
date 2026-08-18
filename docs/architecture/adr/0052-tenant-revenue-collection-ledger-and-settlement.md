@@ -128,3 +128,18 @@ methods remain deferred because BPI/UBP and Brankas banks require bank-specific
 `bank_code` handling that is outside this amendment. Verified provider webhooks,
 landlord-owned payment sessions, fee snapshots, settlement hold, and refund
 rules remain unchanged.
+
+### 2026-08-18: Explicit direct GCash authorization for production
+
+Storefront GCash may use a direct PayMongo Payment Intent authorization flow
+instead of Hosted Checkout only when both `STOREFRONT_DIRECT_GCASH_ENABLED=true`
+and, in live mode, `STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true` are present.
+The backend creates the landlord-owned Payment Intent with `gcash` as the only
+allowed method; the browser uses only the PayMongo public key and Payment Intent
+client key to create and attach the GCash Payment Method, then follows the
+provider authorization URL. The browser return is never a payment confirmation.
+
+All other Storefront payment methods continue using Hosted Checkout, and GCash
+falls back to Hosted Checkout when direct mode is disabled. The signed provider
+webhook remains authoritative and must match configured livemode, locked
+centavo amount, currency, and idempotent session state before finalization.

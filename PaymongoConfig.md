@@ -23,6 +23,8 @@ PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=false
 PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS=300
 
 COMMERCE_PAYMENTS_ENABLED=true
+STOREFRONT_DIRECT_GCASH_ENABLED=false
+STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=false
 COMMERCE_PAYMONGO_SPLIT_ENABLED=false
 TENANT_REVENUE_SHARING_ENABLED=true
 TENANT_AUTOMATIC_PAYOUT_ENABLED=false
@@ -59,6 +61,11 @@ PAYMONGO_WEBHOOK_ENDPOINT_URL=https://dgfy.ph/api/v1/commerce-payments/paymongo/
 PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=false
 PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS=300
 
+# Explicitly enable the direct browser-to-GCash authorization flow.
+# PayMongo must have live GCash activated before enabling this in production.
+STOREFRONT_DIRECT_GCASH_ENABLED=true
+STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true
+
 COMMERCE_PAYMONGO_SPLIT_ENABLED=false
 
 TENANT_REVENUE_SHARING_ENABLED=true
@@ -83,6 +90,11 @@ Configuration notes:
   controlled production verification.
 - Do not enable PayMongo split payments. This implementation uses DGFY revenue
   accounting and settlement records instead.
+- Direct GCash creates a PayMongo Payment Intent and sends the customer to the
+  PayMongo/GCash authorization URL; it does not create a PayMongo Hosted
+  Checkout page. Keep Hosted Checkout for other methods.
+- Enable the two direct-GCash flags only after live GCash activation is visible
+  in PayMongo and the controlled low-value canary is scheduled.
 
 ## 2. PayMongo Live Webhook
 

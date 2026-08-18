@@ -5329,7 +5329,7 @@ parked-sale replay and shift-close resolution.
 ### Initiative and Release
 
 - Initiative: Storefront payment-method capability expansion.
-- Release: Storefront Hosted Checkout active e-wallet/card method selection.
+- Release: Storefront PayMongo active e-wallet/card method selection and direct GCash authorization.
 
 ### Objective and Scope
 
@@ -5337,6 +5337,9 @@ parked-sale replay and shift-close resolution.
   choices in Storefront checkout.
 - Route the selected method as the single PayMongo Hosted Checkout method; a
   GCash selection must create a session restricted to `gcash`.
+- Permit direct GCash Payment Intent authorization only behind explicit live
+  configuration; keep Hosted Checkout for other methods and as the GCash
+  fallback when direct mode is disabled.
 - Preserve the existing signed webhook finalization, idempotency, settlement,
   refund, and walk-in POS physical-QR boundaries.
 - Defer BPI, UBP, BDO, Landbank, and other direct-online-banking choices until
@@ -5363,6 +5366,10 @@ parked-sale replay and shift-close resolution.
   shown; inactive methods remain hidden.
 - [ ] GCash selection sends `payment_type=gcash` and creates
   `payment_method_types=["gcash"]`.
+- [ ] Explicitly enabled live GCash creates a PayMongo Payment Intent and
+  redirects to provider authorization without opening Hosted Checkout.
+- [ ] Live provider `livemode`, amount, and currency are validated before
+  finalization.
 - [ ] Maya, GrabPay, ShopeePay, Card, and QR Ph selections preserve their exact
   method identifiers through the same payment-session endpoint.
 - [ ] No direct order finalizes before a verified PayMongo webhook.
@@ -5380,6 +5387,8 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-migration-runner/migrations/20260817000001-expand-storefront-paymongo-payment-methods.cjs`
 - `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js`
 - `apps/dgfy-web/apps/store/src/shared/services/storefrontOnlinePaymentSession.js`
+- `apps/dgfy-api/src/modules/commercePayments/usecases/processVerifiedPaidCommerceSession.js`
+- Issue #679
 
 ### Completion Record
 
