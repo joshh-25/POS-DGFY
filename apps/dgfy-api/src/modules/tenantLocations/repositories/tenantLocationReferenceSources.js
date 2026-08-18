@@ -248,5 +248,13 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         association: 'HospitalityFacility.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'voucherRedemptions',
+        label: 'voucher redemptions',
+        modelName: 'VoucherRedemption',
+        association: 'VoucherRedemption.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
     }
 ]);
