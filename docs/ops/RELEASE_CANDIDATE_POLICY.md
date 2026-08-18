@@ -194,3 +194,30 @@ invoke it.
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed
   on `staging` for several days before it was ported back to `develop` as
   part of this same change. Worth an audit of what else has diverged.
+
+## Amendments
+
+### 2026-08-18: Hotfix and back-port
+
+A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow — the
+P0-production-outage case, e.g. #664/PR #665) creates a real risk: `main` now contains a fix that
+`develop` and `staging` don't, and the next ordinary promotion can silently overwrite it if the same
+line is touched upstream. This happened for real with PR #665 — its own body flagged the gap and
+promised a follow-up, closed by #675.
+
+**Procedure**, added here so it's not re-discovered by hand each time:
+
+1. Before the incident is considered closed, merge `origin/main` into `develop` — via a **cut
+   branch** off fresh `origin/develop` (`git merge origin/main`, push, PR into `develop`), never
+   using `main` itself as a PR head. This is the same principle `to-staging/<label>` and
+   `release/<label>` already use for promotion, and for the same reason: PR-ing a long-lived branch
+   as head risks GitHub deleting it on merge (the #426 incident).
+2. `staging` is **not** back-ported separately — it inherits the fix on the next
+   `develop → staging` promotion, same as any other `develop` commit.
+3. Link the back-port PR to a fresh issue (`Refs` the original incident and hotfix PR, not `Closes`
+   — those are already closed), since the incident issue itself is typically already closed by the
+   hotfix PR.
+
+This does not change anything about who may merge `main` (`AGENTS.md`'s Merge Safety rule, and every
+role's own "never merge `main`" boundary, are unaffected) — it only closes the gap on what happens
+*after* an authorized `main` merge, so the fix doesn't get lost going the other direction.
