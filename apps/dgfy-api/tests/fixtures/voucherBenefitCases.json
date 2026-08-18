@@ -388,6 +388,60 @@
       }
     },
     {
+      "id": "pricelist-per-item-prices",
+      "description": "#696: fixedUnitPriceByItemId pins a different price per line, unlike the single-scalar case",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500, "2": 900 },
+        "lines": [
+          { "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 3000,
+        "eligibleQuantity": 3,
+        "rawDiscountCentavos": 1100,
+        "discountCentavos": 1100,
+        "capApplied": false,
+        "lineDiscounts": [1000, 100],
+        "voucherUnitPrices": [500, 900],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "pricelist-item-not-in-map-gets-no-discount",
+      "description": "#696: an eligible line with no entry in the pricelist map contributes zero, not an error",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500 },
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 2000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 500,
+        "discountCentavos": 500,
+        "capApplied": false,
+        "lineDiscounts": [500, 0],
+        "voucherUnitPrices": [500, 1000],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "pricelist-negative-price-anywhere-throws",
+      "description": "#696: one negative price in the map fails the whole resolution, matching the scalar case",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500, "2": -1 },
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "INVALID_FIXED_UNIT_PRICE_CENTAVOS"
+    },
+    {
       "id": "unknown-benefit-class",
       "description": "An unrecognized benefit class throws rather than silently resolving to zero",
       "input": {

@@ -55,12 +55,13 @@ const CONTEXT = {
 
 const LINES = [{ item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 }];
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = [] } = {}) => {
+const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {} } = {}) => {
     const state = {
         vouchers: vouchers.map((v) => ({ ...v })),
         scopes: scopes.map((s) => ({ ...s })),
         folders: folders.map((f) => ({ ...f })),
         items: items.map((i) => ({ ...i })),
+        pricelistItemsByPricelistId,
         redemptions: [],
         lines: [],
         nextRedemptionId: 1,
@@ -101,6 +102,11 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = 
             state.calls.push('listItemFolderLinksForItems');
             const ids = new Set((itemIds || []).map(Number));
             return state.items.filter((i) => ids.has(Number(i.item_id))).map((i) => ({ ...i }));
+        },
+
+        async listPricelistItemPrices(pricelistId) {
+            state.calls.push('listPricelistItemPrices');
+            return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
         },
 
         async findRedemptionByIdempotencyKey(key) {
@@ -362,6 +368,65 @@ describe('buildRedeemVoucherUseCase', () => {
         });
         expect(result.applied).toBe(true);
         expect(result.discountCentavos).toBe(1000);
+    });
+
+    describe('#696 pricelist-backed voucher', () => {
+        const pricelistVoucher = makeVoucher({
+            benefit_class: 'fixed_price',
+            percent_off_bps: null,
+            fixed_unit_price_centavos: null,
+            pricelist_id: 7
+        });
+        // Cart item 1 costs 50 pesos (LINES); pricelist pins it to 4000 centavos (₱40).
+        const twoItemLines = [
+            { item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 },
+            { item_id: 2, quantity: 1, sale_price: 100, line_subtotal: 100 }
+        ];
+
+        it('uses the pricelist as the scope -- voucher_scopes is never consulted', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                // A scope row exists but must be ignored entirely once a pricelist is attached.
+                scopes: [{ voucher_id: 1, scope_type: 'item', scope_ref_id: 999 }],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-1', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+            expect(result.discountCentavos).toBe(2000); // 2 x (5000 - 4000) centavos
+            expect(repository.__state.calls).toContain('listPricelistItemPrices');
+            expect(repository.__state.calls).not.toContain('listScopes');
+        });
+
+        it('prices only the items on the pricelist -- an unpriced cart line gets no discount', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } } // item 2 is not on this pricelist
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: twoItemLines, idempotencyKey: 'k-pricelist-2', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+            expect(result.discountCentavos).toBe(2000); // only item 1's line discounts
+            expect(result.lineAllocations.find((line) => line.item_id === 2)).toBeUndefined();
+        });
+
+        it('fails closed when the pricelist matches nothing in the cart', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 999: 100 } } // no cart item is item 999
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-3', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS
+            );
+        });
     });
 
     describe('#697 below-cost guard', () => {
