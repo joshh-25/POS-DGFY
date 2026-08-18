@@ -150,6 +150,7 @@ import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
+import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5387,7 +5388,8 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {}
+  onStorefrontSetupSaved = async () => {},
+  canManageVouchers = false
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -5624,7 +5626,12 @@ function SettingsWorkspace({
     { id: 'storefront', label: 'Storefront', icon: Store },
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
-      : [])
+      : []),
+    // View-only (settings:view) merchants can still see this tab -- reaching SettingsWorkspace at
+    // all already implies settings:view (PIN_PROTECTED_VIEW_MODES + canAccessSettingsDirectly gate
+    // entry at the page level), so no extra permission check gates visibility here. `canManageVouchers`
+    // (settings:edit) only gates create/edit/lifecycle actions inside the panel itself.
+    { id: 'vouchers', label: 'Vouchers', icon: Percent }
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -8049,6 +8056,10 @@ function SettingsWorkspace({
     </div>
   );
 
+  const renderVouchersPane = () => (
+    <VoucherManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
+  );
+
   const renderStorefrontPane = () => (
     <div className="grid gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -9018,6 +9029,7 @@ function SettingsWorkspace({
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }
+    if (renderedTab === 'vouchers') return renderVouchersPane();
     return renderPosSetupPane();
   };
 
@@ -9254,6 +9266,7 @@ export default function TerminalOperationsWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
+  canManageVouchers = false,
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -9380,6 +9393,7 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          canManageVouchers={canManageVouchers}
         />
       );
     case 'shift_controls':
@@ -9558,6 +9572,7 @@ export default function TerminalOperationsWorkspace({
     canDeleteItems,
     canEditItems,
     canManageCategories,
+    canManageVouchers,
     canManageServiceCatalog,
     canManageFnbModifiers,
     canViewFnbModifiers,

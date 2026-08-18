@@ -826,6 +826,12 @@ export default function TerminalPage() {
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
+  // Voucher admin UI (#614) deliberately reuses the SYSTEM settings:view/settings:edit permission
+  // pair rather than a dedicated PERMISSIONS.VOUCHERS group (tracked separately, #655) -- mirrors
+  // apps/dgfy-api/src/routes/vouchers.js's own choice. Read-only list access is already implied by
+  // reaching the Settings pane at all (canAccessSettingsDirectly gates entry); this only gates
+  // create/edit/lifecycle actions inside the Vouchers tab.
+  const canManageVouchers = hasPermission('settings:edit');
 
   useEffect(() => {
     if (locked || !isOnline) return undefined;
@@ -5584,6 +5590,7 @@ function PosRestorationLoadingScreen() {
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
+          canManageVouchers={canManageVouchers}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
