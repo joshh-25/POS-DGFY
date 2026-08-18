@@ -3133,29 +3133,29 @@ export const buildStorefrontPaymentCallbackUrl = ({
     payment_method: paymentMethod
 });
 
-const getDirectGcashSessionDetails = (session = {}) => {
+const getDirectWalletSessionDetails = (session = {}) => {
     const providerPayload = parseObjectValue(session.provider_payload);
     const paymentIntent = providerPayload.paymentIntent || providerPayload.payment_intent || {};
     const paymentIntentAttributes = paymentIntent.attributes || {};
-    const isDirectGcash = providerPayload.paymentFlow === 'direct_gcash'
-        || providerPayload.payment_flow === 'direct_gcash';
+    const paymentFlow = providerPayload.paymentFlow || providerPayload.payment_flow || null;
+    const isDirectWallet = paymentFlow === 'direct_gcash' || paymentFlow === 'direct_maya';
 
     return {
-        payment_flow: isDirectGcash ? 'direct_gcash' : (session.checkout_url ? 'hosted' : null),
-        paymongo_public_key: isDirectGcash
+        payment_flow: isDirectWallet ? paymentFlow : (session.checkout_url ? 'hosted' : null),
+        paymongo_public_key: isDirectWallet
             ? (providerPayload.publicKey || providerPayload.public_key || null)
             : null,
-        paymongo_client_key: isDirectGcash
+        paymongo_client_key: isDirectWallet
             ? (paymentIntentAttributes.client_key || paymentIntent.client_key || null)
             : null,
-        paymongo_return_url: isDirectGcash
+        paymongo_return_url: isDirectWallet
             ? (providerPayload.returnUrl || providerPayload.return_url || null)
             : null
     };
 };
 
 const serializePaymentSession = (session = {}) => ({
-    ...getDirectGcashSessionDetails(session),
+    ...getDirectWalletSessionDetails(session),
     payment_session_id: session.public_reference,
     public_reference: session.public_reference,
     status: session.status,
@@ -3190,6 +3190,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     commercePaymongoSplitEnabled = false,
     directGcashEnabled = false,
     directGcashRequested = false,
+    directMayaEnabled = false,
+    directMayaRequested = false,
     requireCommerceQrphConfig = () => [],
     requireCommercePaymentConfig = requireCommerceQrphConfig
 }) => {
@@ -3216,9 +3218,13 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             }
 
             const directGcashConfigRequired = requestedPaymentType === 'gcash' && directGcashRequested;
+            const directMayaConfigRequired = requestedPaymentType === 'maya' && directMayaRequested;
             const missingConfig = requestedPaymentType === 'qrph'
                 ? requireCommerceQrphConfig()
-                : requireCommercePaymentConfig({ requiresDirectGcash: directGcashConfigRequired });
+                : requireCommercePaymentConfig({
+                    requiresDirectGcash: directGcashConfigRequired,
+                    requiresDirectMaya: directMayaConfigRequired
+                });
             if (missingConfig.length > 0) {
                 throw new DomainError(
                     DomainErrorCode.SERVICE_UNAVAILABLE,
@@ -3476,6 +3482,20 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         metadata,
                         returnUrl: directReturnUrl
                     });
+                } else if (requestedPaymentType === 'maya' && directMayaEnabled) {
+                    const directReturnUrl = buildStorefrontPaymentCallbackUrl({
+                        paymentMethod: requestedPaymentType,
+                        paymentSession: publicReference,
+                        paymentStatus: 'return',
+                        returnUrl: storefrontReturnUrl
+                    });
+                    providerResult = await paymongoService.createDirectMayaPaymentIntent({
+                        amount: totalAmountCentavos,
+                        currency: 'PHP',
+                        description: `DGFY storefront checkout ${publicReference}`,
+                        metadata,
+                        returnUrl: directReturnUrl
+                    });
                 } else {
                     const successUrl = buildStorefrontPaymentCallbackUrl({
                         paymentMethod: requestedPaymentType,
@@ -3527,7 +3547,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 ? new Date(providerResult.expiresAt)
                 : (requestedPaymentType === 'qrph'
                     ? new Date(Date.now() + 30 * 60 * 1000)
-                    : (requestedPaymentType === 'gcash' && directGcashEnabled
+                    : ((requestedPaymentType === 'gcash' && directGcashEnabled)
+                        || (requestedPaymentType === 'maya' && directMayaEnabled)
                         ? new Date(Date.now() + 4 * 60 * 60 * 1000)
                         : null));
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {

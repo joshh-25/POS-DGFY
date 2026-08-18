@@ -4,10 +4,10 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
-  isStorefrontDirectGcashPaymentSession,
+  isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
-  startStorefrontDirectGcashPayment
+  startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 
@@ -126,8 +126,8 @@ export function useFnbCheckoutSubmission({
           requestJson,
           storeSlug: selectedStore.slug
         });
-        if (isStorefrontDirectGcashPaymentSession(paymentSession)) {
-          const directPayment = await startStorefrontDirectGcashPayment({
+        if (isStorefrontDirectPaymentSession(paymentSession)) {
+          const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
               email: customerEmail,
@@ -140,12 +140,12 @@ export function useFnbCheckoutSubmission({
         } else {
           setQrphPaymentSession(paymentSession);
         }
-        if (!isStorefrontDirectGcashPaymentSession(paymentSession)
+        if (!isStorefrontDirectPaymentSession(paymentSession)
           && isStorefrontHostedPaymentType(fnbPaymentType)
           && paymentSession.checkout_url
           && typeof window !== 'undefined') {
           window.location.assign(paymentSession.checkout_url);
-        } else if (!isStorefrontDirectGcashPaymentSession(paymentSession)) {
+        } else if (!isStorefrontDirectPaymentSession(paymentSession)) {
           toast.success(fnbPaymentType === 'qrph'
             ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
             : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);

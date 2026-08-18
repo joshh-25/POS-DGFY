@@ -20,6 +20,16 @@ export const isStorefrontDirectGcashPaymentSession = (paymentSession) => (
   && paymentSession?.payment_method === 'gcash'
 );
 
+export const isStorefrontDirectMayaPaymentSession = (paymentSession) => (
+  paymentSession?.payment_flow === 'direct_maya'
+  && paymentSession?.payment_method === 'maya'
+);
+
+export const isStorefrontDirectPaymentSession = (paymentSession) => (
+  isStorefrontDirectGcashPaymentSession(paymentSession)
+  || isStorefrontDirectMayaPaymentSession(paymentSession)
+);
+
 export const getStorefrontOnlinePaymentLabel = (paymentType) => {
   switch (String(paymentType || '').trim().toLowerCase()) {
     case 'gcash':
@@ -55,20 +65,22 @@ const buildPayMongoPublicAuthHeaders = (publicKey) => ({
   'Content-Type': 'application/json'
 });
 
-export async function startStorefrontDirectGcashPayment({
+export async function startStorefrontDirectPayment({
   billing = {},
   paymentSession
 }) {
-  if (!isStorefrontDirectGcashPaymentSession(paymentSession)) {
-    throw new Error('This is not a direct GCash payment session.');
+  if (!isStorefrontDirectPaymentSession(paymentSession)) {
+    throw new Error('This is not a direct GCash or Maya payment session.');
   }
 
+  const paymentType = paymentSession.payment_method === 'maya' ? 'Maya' : 'GCash';
+  const paymongoPaymentMethodType = paymentSession.payment_method === 'maya' ? 'paymaya' : 'gcash';
   const paymentIntentId = String(paymentSession.provider_payment_intent_id || '').trim();
   const clientKey = String(paymentSession.paymongo_client_key || '').trim();
   const publicKey = String(paymentSession.paymongo_public_key || '').trim();
   const returnUrl = String(paymentSession.paymongo_return_url || '').trim();
   if (!paymentIntentId || !clientKey || !publicKey || !returnUrl) {
-    throw new Error('PayMongo did not return the required GCash authorization details.');
+    throw new Error(`PayMongo did not return the required ${paymentType} authorization details.`);
   }
 
   const paymentMethodResponse = await globalThis.fetch(`${PAYMONGO_API_BASE_URL}/payment_methods`, {
@@ -77,7 +89,7 @@ export async function startStorefrontDirectGcashPayment({
     body: JSON.stringify({
       data: {
         attributes: {
-          type: 'gcash',
+          type: paymongoPaymentMethodType,
           billing: {
             name: billing.name || 'Storefront Customer',
             email: billing.email || undefined,
@@ -88,12 +100,12 @@ export async function startStorefrontDirectGcashPayment({
     })
   });
   if (!paymentMethodResponse.ok) {
-    throw new Error(await readPayMongoError(paymentMethodResponse, 'PayMongo could not create the GCash payment method.'));
+    throw new Error(await readPayMongoError(paymentMethodResponse, `PayMongo could not create the ${paymentType} payment method.`));
   }
   const paymentMethodPayload = await paymentMethodResponse.json();
   const paymentMethodId = String(paymentMethodPayload?.data?.id || '').trim();
   if (!paymentMethodId) {
-    throw new Error('PayMongo did not return a GCash payment method.');
+    throw new Error(`PayMongo did not return a ${paymentType} payment method.`);
   }
 
   const attachResponse = await globalThis.fetch(
@@ -113,7 +125,7 @@ export async function startStorefrontDirectGcashPayment({
     }
   );
   if (!attachResponse.ok) {
-    throw new Error(await readPayMongoError(attachResponse, 'PayMongo could not start the GCash authorization.'));
+    throw new Error(await readPayMongoError(attachResponse, `PayMongo could not start the ${paymentType} authorization.`));
   }
   const attachPayload = await attachResponse.json();
   const redirectUrl = String(
@@ -122,13 +134,27 @@ export async function startStorefrontDirectGcashPayment({
       || ''
   ).trim();
   if (!redirectUrl) {
-    throw new Error('PayMongo did not return the GCash authorization redirect.');
+    throw new Error(`PayMongo did not return the ${paymentType} authorization redirect.`);
   }
 
   return {
     paymentMethodId,
     redirectUrl
   };
+}
+
+export async function startStorefrontDirectGcashPayment(params = {}) {
+  if (!isStorefrontDirectGcashPaymentSession(params.paymentSession)) {
+    throw new Error('This is not a direct GCash payment session.');
+  }
+  return startStorefrontDirectPayment(params);
+}
+
+export async function startStorefrontDirectMayaPayment(params = {}) {
+  if (!isStorefrontDirectMayaPaymentSession(params.paymentSession)) {
+    throw new Error('This is not a direct Maya payment session.');
+  }
+  return startStorefrontDirectPayment(params);
 }
 
 export async function createStorefrontOnlinePaymentSession({

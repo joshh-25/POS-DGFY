@@ -158,7 +158,7 @@ describe('production environment validation', () => {
     expect(result.errors).toContain('PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS must not be true in production, live mode, or payment-enabled deployments');
   });
 
-  it('requires explicit live confirmation for production direct GCash', () => {
+  it('requires explicit live confirmation for production direct GCash and Maya', () => {
     const directLiveEnv = {
       ...baseEnv,
       COMMERCE_PAYMENTS_ENABLED: 'true',
@@ -183,6 +183,28 @@ describe('production environment validation', () => {
       }
     });
     expect(configured.ok).toBe(true);
+
+    const mayaMissingConfirmation = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true'
+      }
+    });
+    expect(mayaMissingConfirmation.ok).toBe(false);
+    expect(mayaMissingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true is required when direct Maya is enabled in live mode'
+    );
+
+    const mayaConfigured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true',
+        STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(mayaConfigured.ok).toBe(true);
   });
 
   it('requires PayMongo and DGFY merchant config when commerce payments are enabled', () => {

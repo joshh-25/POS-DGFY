@@ -10,6 +10,8 @@ import {
     commercePaymongoSplitEnabled,
     storefrontDirectGcashEnabled,
     storefrontDirectGcashRequested,
+    storefrontDirectMayaEnabled,
+    storefrontDirectMayaRequested,
     getPayMongoMode,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig
@@ -77,6 +79,8 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     commercePaymongoSplitEnabled,
     directGcashEnabled: storefrontDirectGcashEnabled,
     directGcashRequested: storefrontDirectGcashRequested,
+    directMayaEnabled: storefrontDirectMayaEnabled,
+    directMayaRequested: storefrontDirectMayaRequested,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig
 });
