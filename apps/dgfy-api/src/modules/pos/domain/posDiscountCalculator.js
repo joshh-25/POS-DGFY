@@ -53,7 +53,9 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
       return !restrictToSelections || selected ? index : null;
     })
     .filter((index) => index != null);
-  const finalEligibleIndex = eligibleLineIndexes.at(-1);
+  // Runs in Node -- no runtime risk here -- but kept symmetric with the frontend twin
+  // (POSCheckoutTerminal.jsx) fixed for the iMin POS WebView in #664/#666.
+  const finalEligibleIndex = eligibleLineIndexes[eligibleLineIndexes.length - 1];
 
   const calculatedLines = normalizedLines.map((line, index) => {
     const selected = selections.get(Number(line.item_id));

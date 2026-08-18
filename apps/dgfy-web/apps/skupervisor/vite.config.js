@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+import esCompatGuardPlugin from '../../build/esCompatGuardPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,7 +52,7 @@ const proxyTargets = {
 export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-skupervisor'),
-  plugins: [react(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('skupervisor')
   },

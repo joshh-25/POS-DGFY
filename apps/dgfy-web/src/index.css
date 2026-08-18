@@ -630,16 +630,19 @@ body.pos-receipt-print-mode {
     margin: 0 auto;
   }
 
-  body:has(.pos-shift-summary-print-shell) > #root {
+  /* Chrome 80-84 iMin POS WebView has no :has() (Chrome 105+); a body class
+     toggled by ShiftCloseSummaryPrintView.jsx's mount/unmount effect replaces
+     it -- see #666. */
+  body.pos-shift-summary-printing > #root {
     visibility: hidden;
   }
 
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell,
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell * {
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell,
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell * {
     visibility: visible;
   }
 
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell {
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell {
     position: fixed;
     inset: 0;
     z-index: 2147483647;
