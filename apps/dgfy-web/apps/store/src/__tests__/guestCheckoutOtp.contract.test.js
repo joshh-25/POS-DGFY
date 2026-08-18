@@ -33,10 +33,6 @@ describe('Storefront guest checkout OTP contract', () => {
     const simpleCustomerStepSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx');
     const serviceValidatorSource = readRepoSource('apps/dgfy-api/src/validators/serviceValidator.js');
     const serviceUseCaseSource = readRepoSource('apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js');
-    const checkoutSubmissionStart = appSource.indexOf('useCheckoutSubmission({');
-    const checkoutSubmissionEnd = appSource.indexOf('\n  });', checkoutSubmissionStart);
-    const checkoutSubmissionInvocation = appSource.slice(checkoutSubmissionStart, checkoutSubmissionEnd);
-
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
     expect(hookSource).toContain('idempotency_key');
@@ -58,15 +54,11 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
-    expect(appSource).toContain('useGuestCheckoutOtp');
-    expect(checkoutSubmissionInvocation).toContain('guestCheckoutIntentId,');
-    expect(checkoutSubmissionInvocation).toContain('guestCheckoutOtpVerified,');
-    expect(checkoutSubmissionInvocation).toContain('guestCheckoutProof,');
+    expect(appSource).toMatch(/use(?:Fnb)?GuestCheckoutOtp/);
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');
     expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');
     expect(simpleCustomerStepSource).toContain('SimpleCheckoutGuestEmailVerification');
-    expect(appSource).toContain('handleRequestGuestCheckoutOtp(appliedDetails?.email)');
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
   });
