@@ -5691,3 +5691,74 @@ parked-sale replay and shift-close resolution.
 
 - Phase 108 completed 2026-08-18 via PR #685. Next eligible phase: 109 (POS voucher master switch,
   #604).
+
+## Phase 109 - POS Voucher Redemption Master Switch
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #604.
+- Release: gate-only change — ships the tenant-wide switch ahead of POS voucher redemption itself,
+  which does not yet exist (Phase 105/PR #661 was storefront checkout only). No runtime behavior
+  changes for any existing caller.
+
+### Objective and Scope
+
+- Add a tenant-wide setting, `voucher_pos_redemption_enabled` (default `false`), registered in both
+  Joi schemas (`settingsValidator.js`). No seeding/migration — an absent `system_settings` row
+  already reads falsy in every consumer, which is the correct default.
+- Add a tenant-scoped 15s-TTL read-path cache, `voucherPosRedemptionSettingCache.js`, modeled on the
+  existing `inventoryAuthoritySettingsCache.js` pattern (relies on the TTL for staleness, same as
+  its precedent — not wired into `updateSettingsUseCase.js`'s cache-invalidate list).
+- Add a fail-closed guard inside `buildRedeemVoucherUseCase` itself, checked on `channel === 'pos'`
+  — tenant-wide and un-bypassable by any future POS-side caller, since every POS redemption path
+  must go through this one function. New `VOUCHER_POS_REDEMPTION_DISABLED` reason code. Orthogonal
+  to a voucher's own `channels` mask (`VOUCHER_CHANNEL_BITS.pos`), evaluated separately per #604's
+  own body.
+- Add a merchant-facing toggle to the existing POS Setup pane (`TerminalOperationsWorkspace.jsx`),
+  following the Strict Shift Location Binding toggle end to end.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 103's voucher domain/CRUD and Phase 105's storefront redemption path (the guard
+  lives in the same shared use case Phase 105 built). No dependency on Phase 107/108's authoring UI
+  or permission group.
+- Classification: `major`, `surfaces: pos,terminal` (declaration approved by Pat before staging).
+- Known gap, tracked separately, not fixed in this phase: the `channel === 'pos'` guard in
+  `voucherRedemptionUseCases.js` runs before the function's own empty-code short-circuit — inert
+  today (no live POS caller exists to exercise the ordering) but a latent bug once one does. Flagged
+  in PR #687's review (unfixed) and again in PR #684's review; filed as #693, parented under #604,
+  rather than fixed inline here.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on all four touched/new backend files — OK.
+- [x] `npm run build:pos` — real Vite production build of the touched settings surface.
+- [x] `npm run check:compliance` — PASS (declaration on file for `voucherErrors.js`,
+      `voucherRedemptionUseCases.js`, `voucherPosRedemptionSettingCache.js`,
+      `TerminalOperationsWorkspace.jsx`, `classification: major`, `surfaces: pos,terminal`).
+- [x] `npm run check:architecture` — OK (49 modules / 488 files; 88 controller files).
+- No test coverage for the `channel === 'pos'` branch beyond the syntax check, disclosed plainly in
+  the compliance declaration rather than implied: nothing in the codebase yet constructs a call with
+  `channel: 'pos'`, since POS redemption doesn't exist yet. Tracked as part of #693's definition of
+  done, not deferred silently.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherPosRedemptionSettingCache.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/validators/settingsValidator.js`
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `docs/compliance/impact-declarations/2026-08-18-pos-voucher-master-switch.md`
+- Branch `feature/604-pos-voucher-master-switch`, PR #687 (base `feature/614-voucher-merchant-ui`)
+- Issue #604 (`Refs` on the PR; closed manually post-merge, see PR #684's own review); #693 —
+  guard-ordering follow-up; #453 - epic
+
+### Completion Record
+
+- Phase 109 completed 2026-08-18 via PR #687, landing on `develop` via PR #684. Next eligible phase:
+  110.
