@@ -5,22 +5,22 @@ const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
 export const calculatePosDiscount = ({ lines = [], application = null } = {}) => {
-    const normalizedLines = lines.map((line) => {
-        const quantity = Math.max(0, Number(line.quantity) || 0);
-        const salePrice = Math.max(0, Number(line.sale_price) || 0);
-        const grossAmount = round4(quantity * salePrice);
-        const globalDiscountBaseAmount = line.global_discount_base_amount == null
-            ? grossAmount
-            : round4(Math.min(grossAmount, Math.max(0, Number(line.global_discount_base_amount) || 0)));
-        return {
-            ...line,
-            quantity,
-            sale_price: salePrice,
-            gross_amount: grossAmount,
-            global_discount_base_amount: globalDiscountBaseAmount
-        };
-    });
-    const subtotalAmount = round4(normalizedLines.reduce((sum, line) => sum + line.global_discount_base_amount, 0));
+  const normalizedLines = lines.map((line) => {
+    const quantity = Math.max(0, Number(line.quantity) || 0);
+    const salePrice = Math.max(0, Number(line.sale_price) || 0);
+    const grossAmount = round4(quantity * salePrice);
+    const globalDiscountBaseAmount = line.global_discount_base_amount == null
+      ? grossAmount
+      : round4(Math.min(grossAmount, Math.max(0, Number(line.global_discount_base_amount) || 0)));
+    return {
+      ...line,
+      quantity,
+      sale_price: salePrice,
+      gross_amount: grossAmount,
+      global_discount_base_amount: globalDiscountBaseAmount
+    };
+  });
+  const subtotalAmount = round4(normalizedLines.reduce((sum, line) => sum + line.global_discount_base_amount, 0));
   const type = String(application?.type || 'none').trim().toLowerCase();
   if (!application || type === 'none') {
     return { type: 'none', subtotal_amount: subtotalAmount, vat_removed: 0, vat_exempt_amount: 0, discount_amount: 0, total_amount: subtotalAmount, lines: normalizedLines.map((line) => ({ ...line, final_line_amount: line.global_discount_base_amount, discount_amount: 0, vat_removed: 0, vat_exempt_amount: 0, eligible_quantity: 0 })) };
