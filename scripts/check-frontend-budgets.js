@@ -32,7 +32,10 @@ const ROUTE_BUDGETS = [
   // parked-sale handoff, and resumable split-payment completion were added to
   // the cashier route. Heavy dialogs remain lazy chunks; this ceiling covers
   // the route-level coordination state that must stay resident during a sale.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 166 },
+  // Raised 166 -> 190 on 2026-08-18 for the #631 POS drawer/discount/notes/PayMongo work
+  // (measured 183.93KB). This is the second raise from the same workstream after #577; #392
+  // tracks splitting POSCheckoutTerminal.jsx rather than raising the ceiling again.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 190 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
   // Rebased after terminal auth, shift, queue orchestration, and setup-flow
