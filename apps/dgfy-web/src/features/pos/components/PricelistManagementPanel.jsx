@@ -322,14 +322,18 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   const handlePriceInputKeyDown = (event, itemId) => {
     if (event.key !== 'Enter' && event.key !== 'Tab') return;
     if (event.key === 'Tab' && event.shiftKey) return; // let native reverse-tab behave normally
-    event.preventDefault();
     const currentIndex = pagedRows.findIndex((row) => row.item_id === itemId);
     if (currentIndex === -1) return;
+    // RF-5 (PR #702 review): preventDefault only when there's actually somewhere to advance to --
+    // calling it unconditionally trapped Tab on the last row of the last page, since neither branch
+    // below would run and native focus-out was already suppressed.
     if (currentIndex < pagedRows.length - 1) {
+      event.preventDefault();
       const nextInput = document.querySelector(`[data-price-row="${pagedRows[currentIndex + 1].item_id}"]`);
       nextInput?.focus?.();
       nextInput?.select?.();
     } else if (desktopPage < desktopTotalPages - 1) {
+      event.preventDefault();
       focusFirstRowOnPageChangeRef.current = true;
       setDesktopPage((page) => page + 1);
     }
@@ -465,7 +469,10 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
             <span>Unsaved draft from {formatSavedAt(restoreBanner.savedAt)} found in this browser.</span>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" onClick={restoreLocalDraft}>Restore</Button>
-              <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px]" onClick={discardLocalDraft}>Discard</Button>
+              {/* RF-6 (PR #702 review): Discard permanently erases another user's local autosave on
+                  a shared POS terminal -- gate it, unlike Restore (which only mutates local React
+                  state and is harmless for a viewer to preview). */}
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-[11px]" disabled={disabled || !canManage} onClick={discardLocalDraft}>Discard</Button>
             </div>
           </div>
         )}
