@@ -90,8 +90,20 @@ const trackingReadCacheControl = setReadCacheControl({
     varyHeaders: ['X-Store-Slug']
 });
 
-router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
-router.get('/qr/resolve', catalogReadCacheControl, validateStoreQrQuery, storeController.resolveStoreQr);
+// #603: a voucher-coded catalog/QR request resolves a per-buyer display price, same class of
+// problem as the affiliate attribution cookie (#671, not fixed here) -- a shared public cache must
+// not serve one buyer's voucher-priced response to another. `voucher_code` is a query param (not a
+// cookie), so it's simplest to just switch the response to no-store rather than try to add it to
+// `Vary`, which most shared caches don't key on query params by convention anyway.
+const bypassCacheForVoucherCode = (req, res, next) => {
+    if (String(req.query?.voucher_code || '').trim()) {
+        return setNoStoreCacheControl(req, res, next);
+    }
+    return next();
+};
+
+router.get('/catalog', catalogReadCacheControl, bypassCacheForVoucherCode, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, bypassCacheForVoucherCode, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', storeLocationsLimiter, locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
