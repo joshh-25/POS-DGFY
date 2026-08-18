@@ -15,13 +15,7 @@
 
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { VoucherReasonCode, voucherConflict, voucherError } from '../domain/voucherErrors.js';
-
-const pricelistNotFound = (pricelistId) => voucherError(
-    'Pricelist not found',
-    VoucherReasonCode.PRICELIST_NOT_FOUND,
-    { pricelist_id: pricelistId }
-);
+import { VoucherReasonCode, voucherConflict, voucherError, pricelistNotFound } from '../domain/voucherErrors.js';
 
 const toFailure = (error, fallbackMessage) => {
     if (error instanceof DomainError) return fail(error, error.message);
@@ -86,7 +80,7 @@ export const buildListPricelistsUseCase = ({ repository }) => async ({ query = {
 export const buildGetPricelistUseCase = ({ repository }) => async ({ pricelistId } = {}) => {
     try {
         const stored = await repository.findById(pricelistId);
-        if (!stored) pricelistNotFound(pricelistId);
+        if (!stored) pricelistNotFound('Pricelist not found', { pricelist_id: pricelistId });
 
         const [items, draft, attachedVoucherCount] = await Promise.all([
             repository.listPricelistItems(stored.pricelist_id),
@@ -123,7 +117,7 @@ export const buildCreatePricelistUseCase = ({ repository }) => async ({ payload 
 
         if (payload.copy_from_pricelist_id != null) {
             const source = await repository.findById(payload.copy_from_pricelist_id, { transaction });
-            if (!source) pricelistNotFound(payload.copy_from_pricelist_id);
+            if (!source) pricelistNotFound('Pricelist not found', { pricelist_id: payload.copy_from_pricelist_id });
             const sourceItems = await repository.listPricelistItems(source.pricelist_id, { transaction });
             if (sourceItems.length > 0) {
                 await repository.replacePricelistItems(created.pricelist_id, normalizeItemsPayload(sourceItems), { transaction });
@@ -148,7 +142,7 @@ export const buildUpdatePricelistUseCase = ({ repository }) => async ({ pricelis
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(pricelistId, { transaction, lock: true });
-        if (!stored) pricelistNotFound(pricelistId);
+        if (!stored) pricelistNotFound('Pricelist not found', { pricelist_id: pricelistId });
         if (stored.status === 'archived') {
             voucherConflict(
                 'Archived pricelists cannot be modified.',
@@ -202,7 +196,7 @@ export const buildReplacePricelistItemsUseCase = ({ repository }) => async ({ pr
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(pricelistId, { transaction, lock: true });
-        if (!stored) pricelistNotFound(pricelistId);
+        if (!stored) pricelistNotFound('Pricelist not found', { pricelist_id: pricelistId });
         if (stored.status === 'archived') {
             voucherConflict(
                 'Archived pricelists cannot be modified.',
@@ -233,8 +227,13 @@ export const buildReplacePricelistItemsUseCase = ({ repository }) => async ({ pr
                     await repository.replacePricelistItems(draft.pricelist_id, normalizeItemsPayload(publishedItems), { transaction });
                 }
             } else {
+                // RF-3 (PR #700 review): no `Number.isFinite` carve-out here -- an omitted `version`
+                // on a second write to an already-existing draft must not silently bypass the
+                // staleness check. `Number(undefined)` is `NaN`, which never equals a real version,
+                // so omitting it now fails closed (a conflict), matching the non-active-status
+                // branch below rather than the accidental skip this guard used to allow.
                 const expectedVersion = Number(payload.version);
-                if (Number.isFinite(expectedVersion) && expectedVersion !== Number(draft.version)) {
+                if (expectedVersion !== Number(draft.version)) {
                     voucherConflict(
                         'This pricelist draft was modified by someone else. Reload and try again.',
                         VoucherReasonCode.PRICELIST_VERSION_CONFLICT,
@@ -287,7 +286,7 @@ export const buildPublishPricelistUseCase = ({ repository }) => async ({ priceli
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(pricelistId, { transaction, lock: true });
-        if (!stored) pricelistNotFound(pricelistId);
+        if (!stored) pricelistNotFound('Pricelist not found', { pricelist_id: pricelistId });
 
         let published;
         if (stored.draft_of_pricelist_id != null) {
@@ -333,7 +332,7 @@ export const buildArchivePricelistUseCase = ({ repository }) => async ({ priceli
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(pricelistId, { transaction, lock: true });
-        if (!stored) pricelistNotFound(pricelistId);
+        if (!stored) pricelistNotFound('Pricelist not found', { pricelist_id: pricelistId });
         if (stored.status === 'archived') {
             voucherConflict(
                 'Pricelist is already archived.',

@@ -97,3 +97,10 @@ export const voucherNotFound = (message = 'Voucher not found', details = {}) => 
         details: { reason_code: VoucherReasonCode.VOUCHER_NOT_FOUND, ...details }
     });
 };
+
+export const pricelistNotFound = (message = 'Pricelist not found', details = {}) => {
+    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, message, {
+        statusCode: 404,
+        details: { reason_code: VoucherReasonCode.PRICELIST_NOT_FOUND, ...details }
+    });
+};

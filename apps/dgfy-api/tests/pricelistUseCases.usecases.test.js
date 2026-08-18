@@ -173,7 +173,9 @@ describe('create pricelist', () => {
 
         const result = await create({ payload: { name: 'Copy', copy_from_pricelist_id: 999 } });
 
-        expect(statusCode(result)).toBe(422);
+        // RF-2 (PR #700 review): pricelistNotFound is a resource-not-found, not a validation
+        // failure -- 404, mirroring voucherNotFound, not 422.
+        expect(statusCode(result)).toBe(404);
         expect(reasonCode(result)).toBe('PRICELIST_NOT_FOUND');
         expect(repository.__state.calls.rollbacks).toBe(1);
     });
@@ -297,6 +299,25 @@ describe('replace pricelist items', () => {
         expect(statusCode(result)).toBe(409);
         expect(reasonCode(result)).toBe('PRICELIST_VERSION_CONFLICT');
     });
+
+    // RF-3 (PR #700 review): omitting `version` on a second edit against an already-existing draft
+    // used to silently bypass the staleness check entirely (`Number.isFinite(NaN)` short-circuited
+    // the whole condition to false) -- the exact "concurrent edits are caught, not silently
+    // overwritten" guarantee this module's own comment claims. Must now conflict, same as a stale
+    // version does, rather than succeed.
+    test('an omitted version on the second edit against an existing draft is also a 409 conflict', async () => {
+        const repository = makeFakeRepository({ pricelists: [seedPricelist({ status: 'active' })] });
+        const replaceItems = buildReplacePricelistItemsUseCase({ repository });
+
+        await replaceItems({ pricelistId: 1, payload: { items: [{ item_id: 1, unit_price_centavos: 400 }] } });
+        const result = await replaceItems({
+            pricelistId: 1,
+            payload: { items: [{ item_id: 1, unit_price_centavos: 350 }] } // no `version` field at all
+        });
+
+        expect(statusCode(result)).toBe(409);
+        expect(reasonCode(result)).toBe('PRICELIST_VERSION_CONFLICT');
+    });
 });
 
 describe('publish pricelist', () => {
@@ -393,7 +414,9 @@ describe('get / list pricelists', () => {
 
         const result = await get({ pricelistId: 999 });
 
-        expect(statusCode(result)).toBe(422);
+        // RF-2 (PR #700 review): this test's own name said 404 but the assertion said 422 --
+        // self-contradictory. pricelistNotFound now actually throws 404, matching voucherNotFound.
+        expect(statusCode(result)).toBe(404);
         expect(reasonCode(result)).toBe('PRICELIST_NOT_FOUND');
     });
 
