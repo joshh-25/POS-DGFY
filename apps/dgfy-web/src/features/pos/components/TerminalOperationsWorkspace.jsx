@@ -150,6 +150,7 @@ import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
+import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5387,7 +5388,8 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {}
+  onStorefrontSetupSaved = async () => {},
+  canManageVouchers = false
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -5448,6 +5450,7 @@ function SettingsWorkspace({
     terminalRegistry: [],
     terminalRegistryMode: 'warn',
     terminalLocationBindingEnforced: false,
+    voucherPosRedemptionEnabled: false,
     settingsAccessPinEnabled: false,
     settingsAccessPin: '',
     clearSettingsAccessPin: false,
@@ -5624,7 +5627,12 @@ function SettingsWorkspace({
     { id: 'storefront', label: 'Storefront', icon: Store },
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
-      : [])
+      : []),
+    // View-only (settings:view) merchants can still see this tab -- reaching SettingsWorkspace at
+    // all already implies settings:view (PIN_PROTECTED_VIEW_MODES + canAccessSettingsDirectly gate
+    // entry at the page level), so no extra permission check gates visibility here. `canManageVouchers`
+    // (settings:edit) only gates create/edit/lifecycle actions inside the panel itself.
+    { id: 'vouchers', label: 'Vouchers', icon: Percent }
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -5923,6 +5931,7 @@ function SettingsWorkspace({
           ? String(settingsPayload?.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
           : 'warn',
         terminalLocationBindingEnforced: settingsPayload?.pos_terminal_location_binding_enforced?.value === true,
+        voucherPosRedemptionEnabled: settingsPayload?.voucher_pos_redemption_enabled?.value === true,
         settingsAccessPinEnabled: settingsPayload?.pos_settings_access_pin_enabled?.value === true,
         settingsAccessPin: '',
         clearSettingsAccessPin: false,
@@ -6380,6 +6389,7 @@ function SettingsWorkspace({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+        voucher_pos_redemption_enabled: posForm.voucherPosRedemptionEnabled === true,
         pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
         clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true,
         pos_petty_cash_symbol: String(posForm.pettyCashSymbol || 'PHP').trim() || 'PHP',
@@ -7495,6 +7505,26 @@ function SettingsWorkspace({
               />
             </div>
 
+            {/* Voucher Redemption at POS (#604) -- tenant-wide master switch, default off. Currently
+                gates nothing at runtime: POS voucher redemption itself is not built yet, so this
+                ships the setting and its server-side guard pre-gated, ahead of that feature. */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <Percent className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
+                checked={posForm.voucherPosRedemptionEnabled === true}
+                onChange={(event) => setPosForm((current) => ({ ...current, voucherPosRedemptionEnabled: event.target.checked }))}
+                disabled={locked || loading}
+              />
+            </div>
+
             {/* Location Binding Readiness */}
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -8047,6 +8077,10 @@ function SettingsWorkspace({
         />
       ) : null}
     </div>
+  );
+
+  const renderVouchersPane = () => (
+    <VoucherManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
   );
 
   const renderStorefrontPane = () => (
@@ -9018,6 +9052,7 @@ function SettingsWorkspace({
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }
+    if (renderedTab === 'vouchers') return renderVouchersPane();
     return renderPosSetupPane();
   };
 
@@ -9254,6 +9289,7 @@ export default function TerminalOperationsWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
+  canManageVouchers = false,
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -9380,6 +9416,7 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          canManageVouchers={canManageVouchers}
         />
       );
     case 'shift_controls':
@@ -9558,6 +9595,7 @@ export default function TerminalOperationsWorkspace({
     canDeleteItems,
     canEditItems,
     canManageCategories,
+    canManageVouchers,
     canManageServiceCatalog,
     canManageFnbModifiers,
     canViewFnbModifiers,

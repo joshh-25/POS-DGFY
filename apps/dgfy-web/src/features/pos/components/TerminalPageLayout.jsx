@@ -52,6 +52,7 @@ export default function TerminalPageLayout({
     canEditItems = false,
     canDeleteItems = false,
     canManageCategories = false,
+    canManageVouchers = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
     canOpenShift = false,
@@ -832,6 +833,7 @@ export default function TerminalPageLayout({
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}
+                canManageVouchers={canManageVouchers}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}

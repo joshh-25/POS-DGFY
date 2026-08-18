@@ -1,5 +1,7 @@
-// Storefront voucher redemption (Phase 105, #455). POS redemption is explicitly out of scope here
-// (gated behind #604) -- `channel` is always `'storefront'` in this module.
+// Storefront voucher redemption (Phase 105, #455). POS redemption itself is still out of scope --
+// every live caller today passes `channel: 'storefront'` -- but `buildRedeemVoucherUseCase` now
+// (#604) fails closed on `channel === 'pos'` unless the tenant-wide POS master switch is on, so the
+// gate is ready ahead of a POS caller existing rather than retrofitted after one does.
 //
 // Two use cases, deliberately different shapes:
 //   - `buildPreviewVoucherEligibilityUseCase` -- read-only. No transaction required. Looks up the
@@ -21,6 +23,7 @@ import { evaluateVoucherEligibility } from '../domain/voucherEligibilityPolicy.j
 import { calculateVoucherBenefit, VoucherBenefitError } from '../domain/voucherBenefitPolicy.js';
 import { resolveVoucherScopeItemIds } from '../domain/voucherFolderScope.js';
 import { VoucherReasonCode, voucherError, voucherConflict } from '../domain/voucherErrors.js';
+import { resolveVoucherPosRedemptionEnabled } from './voucherPosRedemptionSettingCache.js';
 
 const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 const toCentavos = (pesoAmount) => Math.round((Number(pesoAmount) || 0) * 100);
@@ -194,6 +197,24 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
             'redeemVoucherUseCase requires an open transaction',
             { statusCode: 500 }
         );
+    }
+
+    // #604: tenant-wide POS voucher redemption master switch, default off. Deliberately checked
+    // here rather than in a POS-side checkout use case, since this is the one function every future
+    // POS redemption caller will have to go through -- a tenant-wide, channel-aware, un-bypassable
+    // gate. Orthogonal to a voucher's own `channels` mask (checked separately, inside
+    // resolveEligibleBenefit's evaluateVoucherEligibility call, below) -- this can disable POS
+    // redemption tenant-wide even for a voucher whose own channels already include `pos`. No live
+    // caller passes `channel: 'pos'` yet (POS redemption itself is not built); this fails closed the
+    // moment one does, rather than defaulting open by omission.
+    if (channel === 'pos') {
+        const posRedemptionEnabled = await resolveVoucherPosRedemptionEnabled();
+        if (!posRedemptionEnabled) {
+            voucherError(
+                'Voucher redemption at POS is disabled for this store.',
+                VoucherReasonCode.VOUCHER_POS_REDEMPTION_DISABLED
+            );
+        }
     }
 
     const normalizedCode = normalizeCode(code);

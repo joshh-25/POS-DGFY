@@ -826,6 +826,15 @@ export default function TerminalPage() {
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
+  // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
+  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release
+  // (resolveEffectivePermissions only re-derives role defaults when a user's stored permissions
+  // array is empty, so a hard swap could lock out an admin/manager whose array predates the
+  // deploy-time backfill). Mirror that same dual-gate here rather than the backend accepting a
+  // request the UI itself wouldn't allow. Read-only list access is already implied by reaching the
+  // Settings pane at all (canAccessSettingsDirectly gates entry); this only gates create/edit/
+  // lifecycle actions inside the Vouchers tab.
+  const canManageVouchers = hasPermission('vouchers:manage') || hasPermission('settings:edit');
 
   useEffect(() => {
     if (locked || !isOnline) return undefined;
@@ -5584,6 +5593,7 @@ function PosRestorationLoadingScreen() {
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
+          canManageVouchers={canManageVouchers}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
