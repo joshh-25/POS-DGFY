@@ -39,7 +39,14 @@ export const VoucherReasonCode = Object.freeze({
     VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT: 'VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT',
     // ADR 0066 decision 3: checkout fails closed. A scope that resolves to zero cart-eligible items
     // is not "no discount" -- it is a redemption attempt that cannot be honored, so it blocks.
-    VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS: 'VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS'
+    VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS: 'VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS',
+
+    // #604: tenant-wide POS voucher redemption master switch, default off. Distinct from a voucher's
+    // own `channels` mask (VOUCHER_CHANNEL_BITS.pos, evaluated in voucherEligibilityPolicy.js) --
+    // this can disable POS redemption tenant-wide even for a voucher whose channels already include
+    // `pos`. No live caller exists yet (POS redemption itself is not built); this reason code exists
+    // so the gate is ready and fails closed the moment a POS caller does exist.
+    VOUCHER_POS_REDEMPTION_DISABLED: 'VOUCHER_POS_REDEMPTION_DISABLED'
 });
 
 export const voucherError = (message, reasonCode, details = {}) => {
