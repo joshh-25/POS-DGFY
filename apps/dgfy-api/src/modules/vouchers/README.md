@@ -8,7 +8,7 @@ Flow:
 `routes/vouchers.js -> voucher handlers -> voucher use cases -> voucher repository -> tenant models`
 
 The `domain/` layer sits beside that chain rather than inside it: `voucherBenefitPolicy.js` and
-`voucherEligibilityPolicy.js` are pure, zero-import functions that the use cases (and, from Phase 104,
+`voucherEligibilityPolicy.js` are pure, zero-import functions that the use cases (and, from Phase 105,
 the POS and storefront checkout paths) call. They touch no database, no clock, and no request.
 
 ## Rules
@@ -17,7 +17,7 @@ the POS and storefront checkout paths) call. They touch no database, no clock, a
   `scope_type: 'item_folder'` row covers that folder *and every descendant* via `ItemFolder.parent_id`
   (ADR 0066 decision 11). Phase 103 deliberately does **not** build that tree traversal: no such code
   exists yet, and this phase's only job with scopes is validating that each `scope_ref_id` resolves to
-  a real, non-soft-deleted `items(item_id)` or `item_folders(folder_id)` row. Phase 104 resolves the
+  a real, non-soft-deleted `items(item_id)` or `item_folders(folder_id)` row. Phase 105 resolves the
   descendant set at redemption and snapshots the resulting item ids into `voucher_redemption_lines`,
   so a later folder move cannot retroactively change what a completed redemption meant.
 
@@ -42,10 +42,10 @@ the POS and storefront checkout paths) call. They touch no database, no clock, a
   `VOUCHER_REDEMPTION_LIMIT_REACHED`, `VOUCHER_BUDGET_EXHAUSTED`, and
   `VOUCHER_QUANTITY_LIMIT_REACHED` read `vouchers.redeemed_*`, which ADR 0066 decision 4 makes a
   *derived cache*, not the source of truth. They exist so an admin screen can show "this campaign is
-  spent" without a ledger scan. Actual enforcement is Phase 104's single atomic conditional `UPDATE`.
+  spent" without a ledger scan. Actual enforcement is Phase 105's single atomic conditional `UPDATE`.
   `redemption_stats.cache_in_sync` on the get/list response compares the raw ledger aggregate against
   the cache; it is a reconciliation signal, and `false` is *expected* once reversal or adjustment rows
-  exist, since Phase 104 owns those sign conventions.
+  exist, since Phase 105 owns those sign conventions.
 
 - **No `PERMISSIONS.VOUCHERS` group exists yet — this phase reuses `SYSTEM.VIEW_SETTINGS` /
   `SYSTEM.EDIT_SETTINGS` deliberately.** Tenant roles persist their permissions as a stored array, so

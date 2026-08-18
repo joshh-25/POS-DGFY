@@ -345,8 +345,10 @@ export const voucherRepository = {
         const id = Number(voucherId);
         if (!Number.isInteger(id) || id <= 0) return 0;
 
-        const discount = Math.max(0, Math.round(Number(discountCentavos) || 0));
-        const qty = Math.max(0, Math.round(Number(quantity) || 0));
+        const rawDiscount = Number(discountCentavos);
+        const rawQty = Number(quantity);
+        const discount = Number.isFinite(rawDiscount) ? Math.max(0, Math.round(rawDiscount)) : 0;
+        const qty = Number.isFinite(rawQty) ? Math.max(0, Math.round(rawQty)) : 0;
 
         const [affectedCount] = await Voucher.update(
             {
@@ -384,8 +386,10 @@ export const voucherRepository = {
         const id = Number(voucherId);
         if (!Number.isInteger(id) || id <= 0) return 0;
 
-        const discount = Math.max(0, Math.round(Number(discountCentavos) || 0));
-        const qty = Math.max(0, Math.round(Number(quantity) || 0));
+        const rawDiscount = Number(discountCentavos);
+        const rawQty = Number(quantity);
+        const discount = Number.isFinite(rawDiscount) ? Math.max(0, Math.round(rawDiscount)) : 0;
+        const qty = Number.isFinite(rawQty) ? Math.max(0, Math.round(rawQty)) : 0;
 
         const [affectedCount] = await Voucher.update(
             {

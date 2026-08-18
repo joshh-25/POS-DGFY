@@ -241,7 +241,7 @@ const buildRedemptionStats = (voucher, stats) => {
         cached,
         // ADR 0066 decision 4: the ledger is authoritative and `redeemed_*` is a derived cache, so
         // this is a reconciliation signal, not an error condition. It compares raw ledger sums against
-        // the cache, which means `false` is EXPECTED once reversal/adjustment rows exist -- Phase 104
+        // the cache, which means `false` is EXPECTED once reversal/adjustment rows exist -- Phase 105
         // owns those sign conventions. Informational until then.
         cache_in_sync: ledger.redemption_count === cached.redeemed_count
             && ledger.total_discount_centavos === cached.redeemed_value_centavos
