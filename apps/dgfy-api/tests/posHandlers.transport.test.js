@@ -52,6 +52,7 @@ const mockPrintPosReceiptUseCase = jest.fn();
 const mockPrintPosShiftSummaryUseCase = jest.fn();
 const mockPrintPosZReadingUseCase = jest.fn();
 const mockOpenPosDrawerUseCase = jest.fn();
+const mockAuthorizePosDrawerUseCase = jest.fn();
 const mockVerifyPosTerminalUseCase = jest.fn();
 const mockGetPairedPosTerminalUseCase = jest.fn();
 const mockCreatePosParkedSaleUseCase = jest.fn();
@@ -126,6 +127,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     printPosShiftSummaryUseCase: mockPrintPosShiftSummaryUseCase,
     printPosZReadingUseCase: mockPrintPosZReadingUseCase,
     openPosDrawerUseCase: mockOpenPosDrawerUseCase,
+    authorizePosDrawerUseCase: mockAuthorizePosDrawerUseCase,
     verifyPosTerminalUseCase: mockVerifyPosTerminalUseCase,
     getPairedPosTerminalUseCase: mockGetPairedPosTerminalUseCase,
     createPosParkedSaleUseCase: mockCreatePosParkedSaleUseCase,
