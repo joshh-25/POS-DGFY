@@ -5338,9 +5338,10 @@ parked-sale replay and shift-close resolution.
   choices in Storefront checkout.
 - Route the selected method as the single PayMongo Hosted Checkout method; a
   GCash selection must create a session restricted to `gcash`.
-- Permit direct GCash Payment Intent authorization only behind explicit live
-  configuration; keep Hosted Checkout for other methods and as the GCash
-  fallback when direct mode is disabled.
+- Permit direct GCash and independently opted-in Maya Payment Intent
+  authorization behind explicit live configuration; keep Hosted Checkout for
+  cards and other methods and as the wallet fallback when direct mode is
+  disabled.
 - Preserve the existing signed webhook finalization, idempotency, settlement,
   refund, and walk-in POS physical-QR boundaries.
 - Defer BPI, UBP, BDO, Landbank, and other direct-online-banking choices until
@@ -5367,12 +5368,15 @@ parked-sale replay and shift-close resolution.
   shown; inactive methods remain hidden.
 - [ ] GCash selection sends `payment_type=gcash` and creates
   `payment_method_types=["gcash"]`.
-- [ ] Explicitly enabled live GCash creates a PayMongo Payment Intent and
-  redirects to provider authorization without opening Hosted Checkout.
+- [ ] Explicitly enabled live GCash and Maya create wallet-specific PayMongo
+  Payment Intents and redirect to provider authorization without opening Hosted
+  Checkout.
 - [ ] Live provider `livemode`, amount, and currency are validated before
   finalization.
 - [ ] Maya, GrabPay, ShopeePay, Card, and QR Ph selections preserve their exact
   method identifiers through the same payment-session endpoint.
+- [ ] Direct Maya uses `paymaya` only when its independent opt-in flags are
+  enabled; cards remain on Hosted Checkout.
 - [ ] No direct order finalizes before a verified PayMongo webhook.
 - [ ] Existing Cash, QR Ph, return recovery, and POS physical-QR behavior remain
   unchanged.

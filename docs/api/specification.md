@@ -3872,9 +3872,12 @@ Create a PayMongo online payment session for Storefront online checkout. This is
 - `idempotency_key` is required and scoped to tenant + target type.
 - With `STOREFRONT_DIRECT_GCASH_ENABLED=true` and the live confirmation gate,
   `payment_type=gcash` returns `payment_flow=direct_gcash`, a public PayMongo
-  key, Payment Intent client key, and return URL. The Storefront creates the
-  GCash Payment Method with the public key and attaches it with the client key;
-  the returned authorization URL is a provider redirect, not an order result.
+  key, Payment Intent client key, and return URL. With
+  `STOREFRONT_DIRECT_MAYA_ENABLED=true` and its live confirmation gate,
+  `payment_type=maya` returns the same browser-safe fields with
+  `payment_flow=direct_maya`. The Storefront creates the wallet-specific
+  Payment Method with the public key and attaches it with the client key; the
+  returned authorization URL is a provider redirect, not an order result.
 
 **Response (201)**
 ```json
@@ -3904,8 +3907,9 @@ Create a PayMongo online payment session for Storefront online checkout. This is
 - The legacy child-merchant `transfer_to` path is disabled compatibility behavior and must not be enabled with tenant revenue sharing.
 - PayMongo/provider processing, payout, bank, dispute, and related fees are captured from provider data or reconciliation and allocated according to the versioned tenant policy.
 - QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
-- Direct GCash sessions use the same verified `payment.paid` finalization path;
-  the browser authorization return cannot mark the order paid.
+- Direct GCash and Maya sessions use the same verified `payment.paid`
+  finalization path; the browser authorization return cannot mark the order
+  paid.
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
 Read the current public payment-session state for polling after QR Ph creation.

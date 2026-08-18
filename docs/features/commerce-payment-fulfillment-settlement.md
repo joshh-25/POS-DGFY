@@ -53,16 +53,16 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Run landlord migrations before application deployment.
 - Keep sandbox confirmation disabled in production.
 - Configure live PayMongo secret and webhook secret outside source control.
-- For direct GCash, configure the live PayMongo public key as well as the
-  explicit `STOREFRONT_DIRECT_GCASH_ENABLED=true` and
-  `STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true` flags only after PayMongo has
-  activated GCash for the account.
+- For direct GCash or Maya, configure the live PayMongo public key as well as
+  the corresponding explicit `STOREFRONT_DIRECT_<WALLET>_ENABLED=true` and
+  `STOREFRONT_DIRECT_<WALLET>_LIVE_CONFIRMED=true` flags only after PayMongo
+  has activated that wallet for the account.
 - Register the public HTTPS webhook endpoint:
   `/api/v1/commerce-payments/paymongo/webhook`.
 - Enable `payment.paid`, `payment.failed`, `qrph.expired`,
   `payment.refund.updated`, and `payment.refunded`.
 - Keep automatic payouts disabled until separately approved.
-- Direct GCash skips the PayMongo Hosted Checkout page but still redirects the
-  customer to PayMongo/GCash authorization. The signed `payment.paid` webhook,
-  provider livemode, amount, and currency remain authoritative; a browser
-  return never finalizes an order.
+- Direct GCash and Maya skip the PayMongo Hosted Checkout page but still
+  redirect the customer to provider authorization. The signed `payment.paid`
+  webhook, provider livemode, amount, and currency remain authoritative; a
+  browser return never finalizes an order. Cards remain on Hosted Checkout.
