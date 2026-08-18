@@ -170,7 +170,14 @@ export default function OrderPreviewView({ transaction, mobileResponsive = false
               <tbody className="divide-y divide-slate-100">
                 {lines.map((line, index) => (
                   <tr key={line?.line_id || line?.id || `${line?.item_id || 'item'}-${index}`}>
-                    <td className="py-1.5 px-2 align-top font-medium text-slate-900">{resolveLineName(line)}</td>
+                    <td className="py-1.5 px-2 align-top font-medium text-slate-900">
+                      {resolveLineName(line)}
+                      {Number((line?.item_discount || line?.item_discount_snapshot)?.discount_amount || 0) > 0 && (
+                        <span className="block text-[10px] font-semibold text-rose-700">
+                          Item discount: -PHP {(Number((line.item_discount || line.item_discount_snapshot).discount_amount) || 0).toFixed(2)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 px-2 text-right align-top tabular-nums text-slate-700">
                       {formatQuantity(resolveLineQuantity(line))}
                     </td>

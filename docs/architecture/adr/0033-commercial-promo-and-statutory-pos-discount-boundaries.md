@@ -196,6 +196,14 @@ older tenant schemas; it does not add or store raw PIN data.
   occupies that one slot and is rejected when it is already taken. See ADR 0066 Decision 8.
 - PR: #455 (Phase 101)
 
+### 2026-08-17 — Cashier-facing label for the generic discount type
+
+The governed generic discount keeps the existing `manual` API/database value
+for backward compatibility, but POS displays it as **Other**. This is a
+presentation-only label change; validation, PIN authorization, stored audit
+records, reports, and receipts continue to use the existing `manual` value
+where they require the canonical type.
+
 ## Authoritative Sources
 
 - `docs/START_HERE.md`

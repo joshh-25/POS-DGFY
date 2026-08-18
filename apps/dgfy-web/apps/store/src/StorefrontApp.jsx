@@ -128,6 +128,7 @@ import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCar
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
 import { useFnbGuestCheckoutOtp } from './modes/fnb/checkout/hooks/useFnbGuestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
+import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
 import { useCustomerDashboardStorefrontBridge } from './customer-dashboard/pages/useCustomerDashboardStorefrontBridge.js';
 import { useCustomerDashboardRouteFlags } from './customer-dashboard/pages/useCustomerDashboardRouteFlags.js';
@@ -698,7 +699,7 @@ export default function StorefrontApp() {
       uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
-      if (!['qrph', 'card', 'gcash', 'maya'].includes(val)) resetQrphPaymentSession();
+      if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
   }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
@@ -1400,7 +1401,7 @@ export default function StorefrontApp() {
     if (!/^CPS-[A-Z0-9]{10}$/.test(paymentSessionId)) return;
     if (paymentReturnSessionRef.current === paymentSessionId) return;
     const paymentMethod = String(params.get('payment_method') || '').trim().toLowerCase();
-    if (!['qrph', 'card', 'gcash', 'maya'].includes(paymentMethod)) return;
+    if (!isStorefrontOnlinePaymentType(paymentMethod)) return;
     paymentReturnSessionRef.current = paymentSessionId;
     const returnedStatus = String(params.get('payment_status') || '').trim().toLowerCase();
     if (isFnbOrderSubpage) setFnbOrderStep(4);
@@ -3773,6 +3774,7 @@ export default function StorefrontApp() {
     setCatalogSearch,
     goDiscovery,
     goStore,
+    goStoreOrderPage,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,

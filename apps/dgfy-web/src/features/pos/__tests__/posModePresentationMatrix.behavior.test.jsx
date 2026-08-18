@@ -19,7 +19,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'fnb',
     detailsTestId: 'fnb-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Park'],
+    visibleLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)'],
     hiddenLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room']
   }),
   Object.freeze({
@@ -29,8 +29,8 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Park'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
+    visibleLabels: ['Walk-in'],
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
   }),
   Object.freeze({
     name: 'Services',
@@ -40,7 +40,7 @@ const PROFILE_CASES = Object.freeze([
     detailsTestId: 'services-workflow-panel',
     heading: 'Service details',
     visibleLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room', 'Service Notes'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Parked Sales', 'Park & New Sale']
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Parked Sales', 'Park & New Sale']
   }),
   Object.freeze({
     name: 'generic Counter',
@@ -49,8 +49,8 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
     heading: 'Order details',
-    visibleLabels: ['Walk-in', 'Park'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Kitchen Notes', 'Visit Method', 'Client Name']
+    visibleLabels: ['Walk-in'],
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
   })
 ]);
 
@@ -59,11 +59,9 @@ const renderProfile = ({ workflowMode, effectiveCapabilities }) => {
   const presentationBundle = resolvePosPresentationBundle(posWorkflow);
   const setValue = vi.fn();
   const actions = {
-    onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
-    onApplyDiscount: vi.fn(),
     onSplitPayment: vi.fn()
   };
 
@@ -90,7 +88,6 @@ const renderProfile = ({ workflowMode, effectiveCapabilities }) => {
         setServicesNotes={setValue}
       />
       <PosCurrentSaleActions
-        presentationBundle={presentationBundle}
         {...actions}
         itemCount={2}
         printerAvailable
@@ -120,13 +117,11 @@ describe('POS mode presentation matrix', () => {
       fireEvent.click(screen.getByText('Checkout'));
       fireEvent.click(screen.getByText('Print Order'));
       fireEvent.click(screen.getByText('Open Cash Drawer'));
-      fireEvent.click(screen.getByText('Apply Discount'));
       fireEvent.click(screen.getByText('Split Payment'));
 
       expect(actions.onCheckout).toHaveBeenCalledOnce();
       expect(actions.onPrintOrder).toHaveBeenCalledOnce();
       expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
-      expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
       expect(actions.onSplitPayment).toHaveBeenCalledOnce();
     });
   });
@@ -139,7 +134,7 @@ describe('POS mode presentation matrix', () => {
     expect(actionGrid.getAttribute('data-has-parked-sale-controls')).toBe('false');
     expect(actionGrid.className).toContain('grid-cols-2');
     expect(actionGrid.className).toContain('sm:grid-cols-2');
-    expect(screen.getAllByRole('button')).toHaveLength(5);
+    expect(screen.getAllByRole('button')).toHaveLength(4);
     screen.getAllByRole('button').forEach((button) => {
       expect(button.className).toContain('min-h-[46px]');
     });
@@ -153,7 +148,7 @@ describe('POS mode presentation matrix', () => {
     renderProfile(PROFILE_CASES[2]);
     expect(await screen.findByTestId('services-workflow-panel', {}, { timeout: 5000 })).toBeDefined();
     expect(screen.queryByTestId('fnb-workflow-panel')).toBeNull();
-    expect(screen.queryByText('Kitchen Notes')).toBeNull();
+    expect(screen.queryByText('Order Notes (global)')).toBeNull();
     expect(screen.queryByText('Parked Sales')).toBeNull();
   });
 });

@@ -119,6 +119,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         sku_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `sku_snapshot` VARCHAR(100) NULL COMMENT 'Sale-time SKU snapshot; immune to later item edits (issue #178 phase 5)'"
+        }),
+        item_discount_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_discount_snapshot` JSON NULL COMMENT 'Server-calculated item-specific discount snapshot; global sale discounts remain separate'"
         })
     }),
     items: Object.freeze({
@@ -1536,8 +1539,8 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // they missed items.category above.
     pos_transactions: Object.freeze({
         payment_type: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit') NOT NULL DEFAULT 'cash'"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL DEFAULT 'cash'"
         }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
@@ -1571,7 +1574,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-18.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-18.2';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

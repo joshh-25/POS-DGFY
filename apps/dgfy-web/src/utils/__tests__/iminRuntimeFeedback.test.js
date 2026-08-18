@@ -14,7 +14,7 @@ vi.mock('sonner', () => ({
   }
 }));
 
-import { posToast } from '../iminRuntimeFeedback.js';
+import { emitIminPosFeedback, posToast } from '../iminRuntimeFeedback.js';
 
 describe('POS runtime feedback', () => {
   beforeEach(() => {
@@ -27,5 +27,23 @@ describe('POS runtime feedback', () => {
     posToast.error('Authentication required. Please provide a valid token.');
 
     expect(errorToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves missing or zero APK feedback durations unset so the UI applies its default timeout', () => {
+    const dispatchEvent = vi.fn();
+    const bridgeWindow = {
+      iMinBridge: { isIminWrapper: () => true },
+      dispatchEvent
+    };
+
+    emitIminPosFeedback({ message: 'Saved.' }, bridgeWindow);
+    emitIminPosFeedback({ message: 'Saved again.', duration: 0 }, bridgeWindow);
+
+    expect(dispatchEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      detail: expect.objectContaining({ duration: null })
+    }));
+    expect(dispatchEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      detail: expect.objectContaining({ duration: null })
+    }));
   });
 });

@@ -47,6 +47,9 @@ describe('close-report payment breakdown rendering', () => {
             expect(markup).toContain('Employee Credit (1)');
             expect(markup).toContain('Other (1)');
         });
+        expect(shiftMarkup).toContain('Total sales (excluding opening cash)');
+        expect(shiftMarkup).toContain('Opening/petty cash');
+        expect(shiftMarkup).toContain('Expected cash in drawer');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {

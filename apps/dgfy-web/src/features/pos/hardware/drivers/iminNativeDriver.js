@@ -163,9 +163,9 @@ export const iminNativeDriver = {
 
         return attachClientAuditConfirmation({ outcome, reports });
     },
-    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes } = {}) {
+    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal } = {}) {
         try {
-            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes });
+            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             return normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -178,7 +178,7 @@ export const iminNativeDriver = {
             return normalizeHardwareResult({
                 success: false,
                 driverId: this.id,
-                message: error?.message || 'Failed to print the order ticket on the iMin printer.',
+                message: error?.message || (billRequest ? 'Failed to print the bill request on the iMin printer.' : 'Failed to print the order ticket on the iMin printer.'),
                 reasonCode: 'IMIN_PRINT_FAILED'
             });
         }
@@ -251,7 +251,7 @@ export const iminNativeDriver = {
             }]
         });
     },
-    async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey } = {}) {
+    async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey, drawerAuthorizationToken } = {}) {
         if (!shiftId) {
             return normalizeHardwareResult({
                 success: false,
@@ -293,6 +293,7 @@ export const iminNativeDriver = {
                 terminalId,
                 reason,
                 idempotencyKey: createClientAuditIdempotencyKey('drawer-audit', idempotencyKey),
+                drawerAuthorizationToken,
                 driverId: this.id,
                 result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
             }]

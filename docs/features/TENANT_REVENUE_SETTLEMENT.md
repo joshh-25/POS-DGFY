@@ -22,7 +22,7 @@ regulatory requirements are approved.
 
 ### Payment Channel Boundary
 
-- Storefront Card, GCash, Maya, and QR Ph are online payments. Every enabled
+- Storefront Card, GCash, Maya, GrabPay, ShopeePay, and QR Ph are online payments. Every enabled
   method must create a landlord-owned PayMongo commerce payment session and may
   finalize an order only after verified provider confirmation.
 - Walk-in POS GCash uses the merchant's physical QR and is recorded manually as
@@ -33,6 +33,9 @@ regulatory requirements are approved.
   method only when the catalog's server-resolved `payment_capabilities` marks it
   enabled. The explicit local QR Ph sandbox override remains a non-production
   developer aid.
+- Direct online banking remains outside the current Storefront Hosted Checkout
+  contract because BPI/UBP and Brankas banks require bank-specific `bank_code`
+  handling rather than the exact method routing used by this flow.
 
 ## Amount Contract
 

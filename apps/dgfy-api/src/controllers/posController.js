@@ -77,6 +77,7 @@ export {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -154,6 +155,7 @@ import {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -231,5 +233,6 @@ export default {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 };

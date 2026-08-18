@@ -3859,7 +3859,7 @@ Route mapping note:
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
 ### POST /store/checkout/payment-sessions
-Create a PayMongo QR Ph payment session for Storefront online checkout. This is a payment handoff, not an order commit.
+Create a PayMongo online payment session for Storefront online checkout. This is a payment handoff, not an order commit.
 
 **Auth**: Optional store customer (`Store JWT`)
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
@@ -3867,7 +3867,8 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 
 **Request**
 - Same payload as `/store/checkout`.
-- `payment_type` must be `qrph`.
+- `payment_type` must be one of `qrph`, `card`, `gcash`, `maya`, `grab_pay`, or
+  `shopeepay`.
 - `idempotency_key` is required and scoped to tenant + target type.
 
 **Response (201)**

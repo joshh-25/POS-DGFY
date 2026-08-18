@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-03-06
+last_reviewed: 2026-08-18
 applies_to: all_agents_and_engineers
 topic: documentation_discovery
 ---
@@ -47,6 +47,8 @@ untagged clauses are `default`.
 - `docs/templates`: planning templates
 - `docs/generated`: generated artifacts (non-authoritative unless explicitly stated)
 - `docs/_meta`: machine-readable registry and lint metadata
+- `docs/meetings`: raw stakeholder meeting capture (`authority_level: historical` — never a rule
+  source; decisions worth keeping are routed into an ADR, a governed doc, or an issue)
 
 ## Mandatory Checks Before Implementation Plan
 1. Confirm boundaries and governance docs are cited.

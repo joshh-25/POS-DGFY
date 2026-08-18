@@ -35,6 +35,7 @@ export const emitIminPosFeedback = (
   if (!normalizedMessage) return null;
   const normalizedTone = ['success', 'error', 'warning', 'info'].includes(tone) ? tone : 'info';
   const normalizedDescription = String(description || '').trim();
+  const normalizedDuration = Number(duration);
   const signature = `${normalizedTone}:${normalizedMessage}:${normalizedDescription}`;
   const now = Date.now();
   const previous = recentMessages.get(signature) || 0;
@@ -47,7 +48,7 @@ export const emitIminPosFeedback = (
       tone: normalizedTone,
       message: normalizedMessage,
       description: normalizedDescription,
-      duration: Number.isFinite(Number(duration)) ? Number(duration) : null,
+      duration: Number.isFinite(normalizedDuration) && normalizedDuration > 0 ? normalizedDuration : null,
       source: String(source || 'POS').trim() || 'POS'
     }
   }));

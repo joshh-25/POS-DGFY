@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatAuditEventLabel, formatAuditEventLabels } from '../components/AuditWorkspacePanel.jsx';
+import { formatAuditDetailLines, formatAuditEventLabel, formatAuditEventLabels, groupAuditDetailLines } from '../components/AuditWorkspacePanel.jsx';
 
 const read = (relativePath) => fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
 
@@ -60,10 +60,90 @@ describe('POS audit workspace contract', () => {
                 authorized_by_name: 'manager-nine',
                 cashier_name: 'cashier-seven'
             }
-        })).toEqual([
-            'Applied Manual discount PHP 25.00 to order #44',
+        }, [{ location_id: 1, name: 'Space Bar - Iloilo Main Branch' }])).toEqual([
+            'Applied Other discount PHP 25.00 to order #44',
             'Authorized by manager-nine',
             'Cashier: cashier-seven'
+        ]);
+    });
+
+    it('converts structured audit changes into readable detail lines', () => {
+        expect(formatAuditDetailLines({
+            event_type: 'pos_parked_sale_created',
+            entity_type: 'pos_parked_sale',
+            changes: {
+                event: 'pos_parked_sale_created',
+                park_reference: 'PARK-DD47A99010AD',
+                line_count: 2,
+                total_amount: 175,
+                terminal_id: 'JOHN-01',
+                shift_id: 82,
+                location_id: 1,
+                access_token: 'must not be shown'
+            }
+        }, [{ location_id: 1, name: 'Space Bar - Iloilo Main Branch' }])).toEqual([
+            'Park reference: PARK-DD47A99010AD',
+            'Items: 2',
+            'Total: PHP 175.00',
+            'Terminal: JOHN-01',
+            'Shift: 82',
+            'Location: Space Bar - Iloilo Main Branch'
+        ]);
+    });
+
+    it('keeps cashier and shift identifiers as readable IDs instead of currency', () => {
+        expect(formatAuditDetailLines({
+            changes: {
+                origin_cashier_id: 7,
+                origin_shift_id: 81,
+                previous_cashier_id: 1,
+                previous_shift_id: 82,
+                cashier_id: 1,
+                shift_id: 82,
+                claimed_terminal_id: 'JOHN-01'
+            }
+        })).toEqual([
+            'Original cashier: User ID 7',
+            'Original shift: 81',
+            'Previous cashier: User ID 1',
+            'Previous shift: 82',
+            'Current cashier: User ID 1',
+            'Shift: 82',
+            'Claimed terminal: JOHN-01'
+        ]);
+    });
+
+    it('shows cashier names alongside their stable user IDs when available', () => {
+        expect(formatAuditDetailLines({
+            cashier_names: {
+                origin_cashier_id: 'Riotussuck',
+                previous_cashier_id: 'John Cashier',
+                cashier_id: 'John Cashier'
+            },
+            changes: {
+                origin_cashier_id: 7,
+                previous_cashier_id: 1,
+                cashier_id: 1
+            }
+        })).toEqual([
+            'Original cashier: Riotussuck (User ID: 7)',
+            'Previous cashier: John Cashier (User ID: 1)',
+            'Current cashier: John Cashier (User ID: 1)'
+        ]);
+    });
+
+    it('groups readable details into five-record columns and continues in pairs of columns', () => {
+        const groups = groupAuditDetailLines(Array.from({ length: 12 }, (_, index) => `Record ${index + 1}`));
+
+        expect(groups).toEqual([
+            {
+                left: ['Record 1', 'Record 2', 'Record 3', 'Record 4', 'Record 5'],
+                right: ['Record 6', 'Record 7', 'Record 8', 'Record 9', 'Record 10']
+            },
+            {
+                left: ['Record 11', 'Record 12'],
+                right: []
+            }
         ]);
     });
 
