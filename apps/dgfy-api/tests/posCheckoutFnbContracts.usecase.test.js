@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import dbStore from '../src/utils/dbStore.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
@@ -221,6 +222,158 @@ describe('POS checkout F&B contracts', () => {
             expect.objectContaining({ item_id: 1, quantity: 2 })
         ]);
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('persists an approved item-only discount and keeps global discount separate', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Coffee',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 20,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            findActiveDiscountRuleByType: jest.fn().mockResolvedValue({ id: 7, type: 'manual', is_active: true }),
+            findActiveDiscountApproverById: jest.fn().mockResolvedValue({
+                user_id: 99,
+                username: 'Manager',
+                role: 'manager',
+                is_active: true,
+                can_authorize_discounts: true,
+                pos_approval_pin_hash: await bcrypt.hash('1234', 4)
+            }),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-ITEM-DISCOUNT-001'),
+            createAuditLog: jest.fn().mockResolvedValue(null),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 502, ...header, lines };
+                return 502;
+            }),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'coffee-item-discount',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                discount_amount: 23.5,
+                item_discount_amount: 15,
+                discount_mode: 'amount',
+                discount_approval: {
+                    discount_type: 'employee',
+                    approver_user_id: 99,
+                    manager_pin: '1234'
+                },
+                governed_discount: {
+                    type: 'employee',
+                    label: 'Employee Discount',
+                    method: 'percentage',
+                    rate: 10,
+                    employee_name: 'Staff Customer'
+                },
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    item_discount: { method: 'percentage', rate: 15 },
+                    item_discount_approval: { approver_user_id: 99, manager_pin: '1234' }
+                }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(createdTransaction.discount_amount).toBe(23.5);
+        expect(createdTransaction.lines[0].line_subtotal).toBe(76.5);
+        expect(createdTransaction.lines[0].item_discount_snapshot).toEqual(expect.objectContaining({
+            discount_amount: 15,
+            rate: 15,
+            approver_user_id: 99
+        }));
+    });
+
+    it('keeps the global order note separate from the item note snapshot', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Always Available Meal',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 0,
+                cost_per_unit: 40,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-NOTES-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 502, ...header, lines };
+                return 502;
+            }),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_order_id: 71 }),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-global-and-item-notes',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_table_label_snapshot: 'T-04',
+                special_instructions: 'Less ice for the table',
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    course: 'main',
+                    special_instructions: 'No onions on this item'
+                }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(JSON.parse(createdTransaction.special_instructions)).toEqual(expect.objectContaining({
+            note: 'Less ice for the table'
+        }));
+        expect(createdTransaction.lines[0]).toEqual(expect.objectContaining({
+            fnb_special_instructions: 'No onions on this item'
+        }));
     });
 
     it('persists fiscal buyer fields and a server-owned fiscal document snapshot for fiscal invoices', async () => {

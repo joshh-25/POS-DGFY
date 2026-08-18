@@ -73,6 +73,7 @@ import {
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
     buildPrintPosZReadingUseCase,
+    buildAuthorizePosDrawerUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
 import {
@@ -111,6 +112,7 @@ import {
     buildReviewMerchantTenderReconciliationUseCase
 } from './usecases/merchantTenderReconciliationUseCases.js';
 import { paymongoService } from '../../services/paymongoService.js';
+import posDrawerAuthorizationService from './services/posDrawerAuthorizationService.js';
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
@@ -242,9 +244,14 @@ export const printPosZReadingUseCase = buildPrintPosZReadingUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });
+export const authorizePosDrawerUseCase = buildAuthorizePosDrawerUseCase({
+    posRepository,
+    authorizationService: posDrawerAuthorizationService
+});
 export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
-    deviceDriver: posDeviceDriver
+    deviceDriver: posDeviceDriver,
+    authorizationService: posDrawerAuthorizationService
 });
 export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();

@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import TerminalLockDrawer from '../components/TerminalLockDrawer.jsx';
+import TerminalWorkspaceSidebar from '../components/TerminalWorkspaceSidebar.jsx';
 
 const buildProps = (overrides = {}) => ({
   drawerOpen: true,
@@ -99,5 +100,13 @@ describe('TerminalLockDrawer contract', () => {
 
     screen.getByRole('button', { name: 'Use different account' }).click();
     expect(onUseDifferentAccount).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the unlock action interactive while locked navigation remains disabled', () => {
+    render(<TerminalWorkspaceSidebar locked showBrand={false} canViewPos />);
+
+    expect(screen.getByTestId('pos-sidebar-session-action').className).toContain('pointer-events-auto');
+    expect(screen.getByRole('button', { name: 'Unlock Terminal' }).disabled).toBe(false);
+    expect(screen.getByTestId('pos-nav-history').disabled).toBe(true);
   });
 });

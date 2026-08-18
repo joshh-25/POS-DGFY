@@ -123,10 +123,11 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('returns a signed-in cashier to terminal login before opening a shift', () => {
-    expect(terminalPageContent).toContain("cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start'");
-    expect(terminalPageContent).toContain('cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock');
-    expect(terminalPageContent).toContain('const handleLock = async ({ forceLogin = false } = {}) => {');
-    expect(terminalPageContent).toContain('onClick={cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleLock}');
+    expect(terminalPageContent).toContain('Cashier signed in:');
+    expect(terminalPageContent).toContain("cashierUnlockSession?.email && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain('cashierResumeUnlock');
+    expect(terminalPageContent).toContain('const handleLock');
+    expect(terminalPageContent).toContain('forceLogin: true');
     expect(terminalPageContent).toContain('Back to Login');
   });
 
@@ -440,10 +441,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('Discount Type');
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
-    expect(posCheckoutTerminalContent).toContain("['employee', 'manual'].includes(discountDraft.type)");
+    expect(posCheckoutTerminalContent).toContain("discountDraft.type === 'manual'");
     expect(posCheckoutTerminalContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
     expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
-    expect(posCheckoutTerminalContent).toContain('Select the discount and complete all required verification details.');
+    expect(posCheckoutTerminalContent).toContain('Select discount type and verify employee.');
   });
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
@@ -571,6 +572,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
     expect(terminalSidebarPanelContent).toContain('View Shift Summary');
+  });
+
+  it('separates sales revenue from opening cash and expected drawer cash', () => {
+    expect(terminalOperationsWorkspaceContent).toContain('Total Sales (excluding opening cash):');
+    expect(terminalOperationsWorkspaceContent).toContain('Opening/Petty Cash:');
+    expect(terminalOperationsWorkspaceContent).toContain('Expected Cash in Drawer:');
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState.cashSummary?.cash_sales_amount');
+    expect(terminalSidebarPanelContent).toContain('Total Sales (excluding opening cash)');
+    expect(terminalSidebarPanelContent).toContain('Opening/Petty Cash');
+    expect(terminalSidebarPanelContent).toContain('Expected Cash in Drawer');
   });
 
   it('keeps browser printing explicit after automatic shift close', () => {

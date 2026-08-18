@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import {
+  getStorefrontOnlinePaymentLabel,
+  isStorefrontHostedPaymentType
+} from '../../services/storefrontOnlinePaymentSession.js';
 
 const TERMINAL_PAYMENT_STATUSES = new Set([
   'finalized',
@@ -12,16 +16,6 @@ const TERMINAL_PAYMENT_STATUSES = new Set([
 const formatStatus = (value) => String(value || 'awaiting_payment')
   .replace(/_/g, ' ')
   .replace(/\b\w/g, (character) => character.toUpperCase());
-
-const getPaymentLabel = (paymentType) => (
-  paymentType === 'gcash'
-    ? 'GCash'
-    : paymentType === 'maya'
-      ? 'Maya'
-      : paymentType === 'card'
-        ? 'Card'
-        : 'QR Ph'
-);
 
 export function StorefrontOnlinePaymentPanel({
   onConfirmTestPayment,
@@ -37,8 +31,8 @@ export function StorefrontOnlinePaymentPanel({
   const terminal = TERMINAL_PAYMENT_STATUSES.has(paymentSession.status);
   const failed = ['failed', 'expired', 'cancelled', 'paid_manual_resolution_required'].includes(paymentSession.status);
   const processing = ['awaiting_payment', 'paid'].includes(paymentSession.status);
-  const paymentLabel = getPaymentLabel(paymentType);
-  const hosted = ['card', 'gcash', 'maya'].includes(paymentType);
+  const paymentLabel = getStorefrontOnlinePaymentLabel(paymentType);
+  const hosted = isStorefrontHostedPaymentType(paymentType);
   const isTestEnvironment = paymentEnvironment === 'test';
 
   return (

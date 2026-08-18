@@ -360,6 +360,44 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(hardwareText).not.toContain('Cash Received');
   });
 
+  it('keeps the physical receipt line discount breakdown aligned with the preview', () => {
+    const transaction = buildTransaction({
+      subtotal_amount: 80,
+      discount_amount: 12,
+      discount_label_snapshot: 'Employee Discount',
+      total_amount: 68,
+      lines: [{
+        line_id: 7,
+        item_id: 11,
+        item_name_snapshot: 'Garlic',
+        quantity: 1,
+        sale_price: 40,
+        line_subtotal: 68,
+        item: { name: 'Renamed Later' }
+      }],
+      discount: {
+        lines: [{
+          transaction_line_id: 7,
+          gross_eligible_amount: 80,
+          discount_amount: 12,
+          vat_removed: 0
+        }]
+      }
+    });
+
+    const hardwareText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(hardwareText).toContain('Garlic');
+    expect(hardwareText).not.toContain('Renamed Later');
+    expect(hardwareText).toContain('PHP 80.00');
+    expect(hardwareText).toContain('-PHP 12.00');
+    expect(hardwareText).toContain('NET TOTAL');
+    expect(hardwareText).toContain('PHP 68.00');
+  });
+
   it('renders and formats receipts when Android WebView does not provide replaceAll', () => {
     const originalReplaceAll = String.prototype.replaceAll;
     Object.defineProperty(String.prototype, 'replaceAll', {

@@ -61,6 +61,10 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   override to merge a hotfix into `main` during an open incident; every other case keeps "never
   merge `main`" absolute. Only runs when explicitly authorized to start an incident session.
   @.agents/skills/incident-responder/SKILL.md
+- **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
+  notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
+  slate afterward for confirmation before handing off to Planner/PM to file. Sits upstream of every
+  other role in this roster. @.agents/skills/notes/SKILL.md
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than

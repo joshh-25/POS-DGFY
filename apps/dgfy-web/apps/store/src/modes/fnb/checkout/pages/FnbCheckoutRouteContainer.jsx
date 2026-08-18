@@ -38,6 +38,10 @@ import { FnbGuestEmailVerification } from '../components/FnbGuestEmailVerificati
 import {
   buildStorefrontCheckoutPaymentOptions
 } from '../model/fnbCheckoutPaymentOptions.js';
+import {
+  isStorefrontHostedPaymentType,
+  isStorefrontOnlinePaymentType
+} from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
 
 /**
@@ -694,7 +698,7 @@ export function FnbCheckoutRouteContainer({
                   cashInfoAccent={fnbOrderBrand}
                   bodyFont={servicesBodyFont}
                 />
-                {['qrph', 'card', 'gcash', 'maya'].includes(fnbPaymentType) ? (
+                {isStorefrontOnlinePaymentType(fnbPaymentType) ? (
                   <FnbQrphPaymentPanel
                     onConfirmTestPayment={import.meta.env.DEV
                       && fnbPaymentType === 'qrph'
@@ -715,7 +719,7 @@ export function FnbCheckoutRouteContainer({
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
-            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : ['card', 'gcash', 'maya'].includes(fnbPaymentType) ? 'Continue to payment' : 'Place Order'}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? 'Continue to payment' : 'Place Order'}
             withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>

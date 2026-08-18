@@ -298,7 +298,8 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_effect_type',
         'stock_exempt_reason',
         'item_name_snapshot',
-        'sku_snapshot'
+        'sku_snapshot',
+        'item_discount_snapshot'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',
