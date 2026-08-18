@@ -23,6 +23,7 @@ describe('Storefront guest checkout OTP contract', () => {
     const modelSource = readAppSource('shared/checkout/model/guestCheckoutOtp.js');
     const hookSource = readAppSource('shared/checkout/hooks/useGuestCheckoutOtp.js');
     const fnbComponentSource = readAppSource('modes/fnb/checkout/components/FnbGuestEmailVerification.jsx');
+    const sharedVerificationSource = readAppSource('shared/components/checkout/GuestEmailVerification.jsx');
     const retailComponentSource = readAppSource('modes/retail/checkout/components/RetailOrderGuestEmailVerification.jsx');
     const simpleComponentSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutGuestEmailVerification.jsx');
     const serviceComponentSource = readAppSource('modes/services/booking/components/ServiceBookingGuestEmailVerification.jsx');
@@ -43,12 +44,16 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(hookSource).toContain('Email verification could not be completed. Please try again.');
     expect(hookSource).toContain('delivery_status');
     expect(hookSource).toContain('Email verification code could not be delivered. Please try again later.');
-    expect(fnbComponentSource).toContain('Verify your email');
-    expect(fnbComponentSource).toContain('Send again in');
+    expect(sharedVerificationSource).toContain('Verify your email');
+    expect(sharedVerificationSource).toContain('Send again in');
+    expect(sharedVerificationSource).toContain('badgeLabel');
+    expect(sharedVerificationSource).toContain('resendLabel');
+    expect(fnbComponentSource).toContain('badgeLabel="Recommended"');
+    expect(fnbComponentSource).toContain('resendLabel="Send code again"');
     expect(retailComponentSource).toContain('Verify your email');
     expect(simpleComponentSource).toContain('Verify your email');
-    expect(serviceComponentSource).toContain('Verify your email');
-    expect(serviceComponentSource).toContain('Send verification code');
+    expect(serviceComponentSource).toContain('badgeLabel="Required"');
+    expect(serviceComponentSource).toContain('resendLabel="Send verification code"');
     expect(appSource).not.toContain('shared/components/checkout/GuestEmailVerification.jsx');
     expect(customerValidationSource).toContain('isValidFnbCheckoutEmail');
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
