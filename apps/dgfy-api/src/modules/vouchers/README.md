@@ -47,12 +47,15 @@ the POS and storefront checkout paths) call. They touch no database, no clock, a
   the cache; it is a reconciliation signal, and `false` is *expected* once reversal or adjustment rows
   exist, since Phase 105 owns those sign conventions.
 
-- **No `PERMISSIONS.VOUCHERS` group exists yet — this phase reuses `SYSTEM.VIEW_SETTINGS` /
-  `SYSTEM.EDIT_SETTINGS` deliberately.** Tenant roles persist their permissions as a stored array, so
-  a new permission string would require a data migration across every existing role before the API
-  was usable at all. Reusing the pair `routes/tenantLocations.js` already uses keeps this phase to
-  code. A dedicated voucher permission group plus that backfill is named follow-up work, not an
-  oversight.
+- **`PERMISSIONS.VOUCHERS` (view/manage) landed in #655, dual-gated with the legacy pair for one
+  release.** Phase 103 originally reused `SYSTEM.VIEW_SETTINGS` / `SYSTEM.EDIT_SETTINGS` deliberately
+  (the same pair `routes/tenantLocations.js` uses), since a new permission string needs the
+  deploy-time backfill (`scripts/backfill-role-permissions.js`, idempotent and additive) to reach
+  every existing tenant role before it's usable. Every route in `routes/vouchers.js` now checks
+  `VOUCHERS.*` OR the legacy `SYSTEM.*` pair via `checkAnyPermission` — this is load-bearing, not
+  belt-and-suspenders, since `resolveEffectivePermissions` only re-derives role defaults when a
+  user's *stored* permissions array is empty. The legacy arm is dropped in a follow-up once the
+  backfill has had a full deploy cycle to run everywhere.
 
 - **Time windows fail closed.** The wrap-around arithmetic in `voucherEligibilityPolicy.js` is adapted
   from `modules/shared/utils/commercialPromoPolicy.js`'s `isActiveTime`, with both of that function's
