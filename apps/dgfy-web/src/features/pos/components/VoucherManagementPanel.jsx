@@ -27,6 +27,7 @@ import {
   pauseVoucher,
   updateVoucher
 } from '@/services/voucherService.js';
+import { listPricelists } from '@/services/pricelistService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 // Voucher merchant authoring UI (#614, Phase 103). Governed by ADR 0066.
@@ -136,7 +137,10 @@ const REASON_CODE_MESSAGES = Object.freeze({
   VOUCHER_VALIDITY_WINDOW_INVALID: 'The end date cannot be earlier than the start date.',
   VOUCHER_VALIDITY_WINDOW_ELAPSED: 'This voucher can’t be activated because its validity window has already passed. Move the end date forward first.',
   VOUCHER_TIME_WINDOW_INCOMPLETE: 'Set both a start time and an end time, or leave both blank.',
-  VOUCHER_TIME_WINDOW_DEGENERATE: 'Start time and end time cannot be equal.'
+  VOUCHER_TIME_WINDOW_DEGENERATE: 'Start time and end time cannot be equal.',
+  VOUCHER_PRICELIST_CONFLICT: 'A fixed-price voucher can carry a single price or a pricelist, not both.',
+  VOUCHER_PRICELIST_REF_NOT_FOUND: 'The selected pricelist could not be found.',
+  VOUCHER_PRICELIST_NOT_ACTIVE: 'Only a published (active) pricelist can be attached to a voucher.'
 });
 
 const getReasonCode = (data) => String(data?.errors?.reason_code || '').trim();
@@ -169,6 +173,10 @@ const blankForm = () => ({
   percentOffPercent: '',
   amountOffPesos: '',
   fixedUnitPricePesos: '',
+  // #696/#698: fixed_price carries EITHER fixedUnitPricePesos OR pricelistId, never both --
+  // fixedPriceSource picks which the form is currently expressing.
+  fixedPriceSource: 'single',
+  pricelistId: '',
   maxDiscountPesos: '',
   minSpendPesos: '',
   minQuantity: '',
@@ -205,6 +213,8 @@ const voucherToForm = (voucher, scopes = []) => ({
   percentOffPercent: voucher.benefit_class === 'percent_off' ? bpsToPercentString(voucher.percent_off_bps) : '',
   amountOffPesos: voucher.benefit_class === 'amount_off' ? centavosToPesoString(voucher.amount_off_centavos) : '',
   fixedUnitPricePesos: voucher.benefit_class === 'fixed_price' ? centavosToPesoString(voucher.fixed_unit_price_centavos) : '',
+  fixedPriceSource: voucher.pricelist_id != null ? 'pricelist' : 'single',
+  pricelistId: voucher.pricelist_id != null ? String(voucher.pricelist_id) : '',
   maxDiscountPesos: voucher.max_discount_centavos != null ? centavosToPesoString(voucher.max_discount_centavos) : '',
   minSpendPesos: voucher.min_spend_centavos != null ? centavosToPesoString(voucher.min_spend_centavos) : '',
   minQuantity: voucher.min_quantity != null ? String(voucher.min_quantity) : '',
@@ -265,7 +275,18 @@ const buildVoucherPayload = (form) => {
   } else if (form.benefitClass === 'amount_off') {
     payload.amount_off_centavos = pesoStringToCentavos(form.amountOffPesos);
   } else if (form.benefitClass === 'fixed_price') {
-    payload.fixed_unit_price_centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
+    // #696: EITHER a single pinned price OR a pricelist, never both -- the server enforces this
+    // XOR authoritatively (voucherUseCases.js's applyBenefitConfig); mirrored here so a merchant
+    // never even builds a payload that would be rejected.
+    if (form.fixedPriceSource === 'pricelist') {
+      payload.pricelist_id = form.pricelistId ? Number(form.pricelistId) : null;
+      payload.fixed_unit_price_centavos = null;
+      // A pricelist IS the scope (#696) -- no voucher_scopes rows needed.
+      payload.scopes = [];
+    } else {
+      payload.fixed_unit_price_centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
+      payload.pricelist_id = null;
+    }
   }
 
   return payload;
@@ -289,9 +310,13 @@ const validateFormLocally = (form) => {
     const centavos = pesoStringToCentavos(form.amountOffPesos);
     if (!Number.isFinite(centavos) || centavos < 1) addError('amount_off_centavos', 'Enter an amount greater than 0.');
   } else if (form.benefitClass === 'fixed_price') {
-    const centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
-    if (!Number.isFinite(centavos) || centavos < 0) addError('fixed_unit_price_centavos', 'Enter a fixed price of 0 or more.');
-    if (form.scopes.length === 0) addError('scopes', 'Add at least one item or folder scope for a fixed-price voucher.');
+    if (form.fixedPriceSource === 'pricelist') {
+      if (!form.pricelistId) addError('pricelist_id', 'Select a pricelist.');
+    } else {
+      const centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
+      if (!Number.isFinite(centavos) || centavos < 0) addError('fixed_unit_price_centavos', 'Enter a fixed price of 0 or more.');
+      if (form.scopes.length === 0) addError('scopes', 'Add at least one item or folder scope for a fixed-price voucher.');
+    }
   }
 
   if (form.weekdayFlags.every((flag) => !flag)) addError('weekday_mask', 'Select at least one day of the week.');
@@ -342,6 +367,12 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [scopeTypeDraft, setScopeTypeDraft] = useState('item');
   const [scopeRefDraft, setScopeRefDraft] = useState('');
   const [scopeSearch, setScopeSearch] = useState('');
+
+  // #696: active pricelists a fixed_price voucher may attach. Loaded the same lazy-on-demand way
+  // as the scope catalog above.
+  const [pricelistOptionsLoaded, setPricelistOptionsLoaded] = useState(false);
+  const [pricelistOptionsLoading, setPricelistOptionsLoading] = useState(false);
+  const [pricelistOptions, setPricelistOptions] = useState([]);
 
   const [lifecycleBusyId, setLifecycleBusyId] = useState(null);
   const [confirmState, setConfirmState] = useState({ open: false, voucherId: null, action: null, label: '' });
@@ -405,6 +436,30 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       loadScopeCatalog();
     }
   }, [view, form.benefitClass, scopeCatalogLoaded, scopeCatalogLoading, loadScopeCatalog]);
+
+  const loadPricelistOptions = useCallback(async () => {
+    setPricelistOptionsLoading(true);
+    try {
+      // Only `active` pricelists are attachable -- assertPricelistRef rejects a draft/archived
+      // reference server-side; filtering here just avoids offering a choice that would 422.
+      const result = await listPricelists({ status: 'active', limit: 100 });
+      setPricelistOptions(Array.isArray(result?.pricelists) ? result.pricelists : []);
+      setPricelistOptionsLoaded(true);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to load pricelists.');
+    } finally {
+      setPricelistOptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      view === 'form' && form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'pricelist'
+      && !pricelistOptionsLoaded && !pricelistOptionsLoading
+    ) {
+      loadPricelistOptions();
+    }
+  }, [view, form.benefitClass, form.fixedPriceSource, pricelistOptionsLoaded, pricelistOptionsLoading, loadPricelistOptions]);
 
   const scopeOptionsByType = { item: scopeItemOptions, item_folder: scopeFolderOptions };
 
@@ -703,7 +758,8 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       {BENEFIT_CLASS_LABEL[voucher.benefit_class] || voucher.benefit_class}
                       {voucher.benefit_class === 'percent_off' && ` · ${bpsToPercentString(voucher.percent_off_bps)}% off`}
                       {voucher.benefit_class === 'amount_off' && ` · ${peso(voucher.amount_off_centavos)} off`}
-                      {voucher.benefit_class === 'fixed_price' && ` · ${peso(voucher.fixed_unit_price_centavos)}`}
+                      {voucher.benefit_class === 'fixed_price' && voucher.pricelist_id != null && ' · Pricelist'}
+                      {voucher.benefit_class === 'fixed_price' && voucher.pricelist_id == null && ` · ${peso(voucher.fixed_unit_price_centavos)}`}
                       {' · Redeemed '}{voucher.redeemed_count || 0}{voucher.max_redemptions ? ` / ${voucher.max_redemptions}` : ''}
                     </p>
                   </div>
@@ -880,7 +936,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       <FieldError message={fieldErrors.amount_off_centavos} />
                     </div>
                   )}
-                  {form.benefitClass === 'fixed_price' && (
+                  {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'single' && (
                     <div className="space-y-1">
                       <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP)</Label>
                       <Input type="number" min="0" step="0.01" className="h-8 text-xs" value={form.fixedUnitPricePesos}
@@ -888,9 +944,46 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       <FieldError message={fieldErrors.fixed_unit_price_centavos} />
                     </div>
                   )}
+                  {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'pricelist' && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-[#0F172A]">Pricelist {pricelistOptionsLoading ? '(loading...)' : ''}</Label>
+                      <select
+                        className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold"
+                        value={form.pricelistId}
+                        onChange={(e) => setForm((current) => ({ ...current, pricelistId: e.target.value }))}
+                      >
+                        <option value="">Select a pricelist...</option>
+                        {pricelistOptions.map((option) => (
+                          <option key={option.pricelist_id} value={option.pricelist_id}>{option.name}</option>
+                        ))}
+                      </select>
+                      <FieldError message={fieldErrors.pricelist_id} />
+                      {pricelistOptions.length === 0 && !pricelistOptionsLoading && (
+                        <p className="text-[11px] text-slate-500">No active pricelists yet -- create one on the Pricelists tab first.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {form.benefitClass === 'fixed_price' && (
+                  <div className="mt-3 space-y-1.5">
+                    <Label className="text-xs font-semibold text-[#0F172A]">Price source</Label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <input type="radio" name="fixedPriceSource" checked={form.fixedPriceSource === 'single'}
+                          onChange={() => setForm((current) => ({ ...current, fixedPriceSource: 'single' }))} />
+                        Single price for the whole scope
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <input type="radio" name="fixedPriceSource" checked={form.fixedPriceSource === 'pricelist'}
+                          onChange={() => setForm((current) => ({ ...current, fixedPriceSource: 'pricelist' }))} />
+                        Pricelist (a different price per item)
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'single' && (
                   <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
                     <p className="mb-2 text-[11px] font-semibold text-slate-500">
                       Fixed-price vouchers apply only to the items/folders selected here (required).

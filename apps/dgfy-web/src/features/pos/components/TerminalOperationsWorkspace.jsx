@@ -151,6 +151,7 @@ import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
+import PricelistManagementPanel from './PricelistManagementPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5632,7 +5633,12 @@ function SettingsWorkspace({
     // all already implies settings:view (PIN_PROTECTED_VIEW_MODES + canAccessSettingsDirectly gate
     // entry at the page level), so no extra permission check gates visibility here. `canManageVouchers`
     // (settings:edit) only gates create/edit/lifecycle actions inside the panel itself.
-    { id: 'vouchers', label: 'Vouchers', icon: Percent }
+    { id: 'vouchers', label: 'Vouchers', icon: Percent },
+    // #698: standalone surface alongside Vouchers, not a sub-section of it (Pat's explicit call).
+    // Gated the same way as Vouchers -- pricelists are voucher-authoring data and reuse the same
+    // PERMISSIONS.VOUCHERS group server-side (routes/pricelists.js), so canManageVouchers is the
+    // correct gate here too; no separate canManagePricelists prop exists or is needed.
+    { id: 'pricelists', label: 'Pricelists', icon: Tags }
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -8083,6 +8089,10 @@ function SettingsWorkspace({
     <VoucherManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
   );
 
+  const renderPricelistsPane = () => (
+    <PricelistManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
+  );
+
   const renderStorefrontPane = () => (
     <div className="grid gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -9053,6 +9063,7 @@ function SettingsWorkspace({
       return renderEmployeesPane();
     }
     if (renderedTab === 'vouchers') return renderVouchersPane();
+    if (renderedTab === 'pricelists') return renderPricelistsPane();
     return renderPosSetupPane();
   };
 
