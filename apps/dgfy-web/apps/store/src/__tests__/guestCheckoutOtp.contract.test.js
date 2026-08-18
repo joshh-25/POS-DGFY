@@ -20,8 +20,8 @@ describe('Storefront guest checkout OTP contract', () => {
 
   it('shares guest OTP enforcement across transaction-capable checkout modes', () => {
     const appSource = readAppSource('StorefrontApp.jsx');
-    const modelSource = readAppSource('storefront-shared/checkout/model/guestCheckoutOtp.js');
-    const hookSource = readAppSource('storefront-shared/checkout/hooks/useGuestCheckoutOtp.js');
+    const modelSource = readAppSource('shared/checkout/model/guestCheckoutOtp.js');
+    const hookSource = readAppSource('shared/checkout/hooks/useGuestCheckoutOtp.js');
     const fnbComponentSource = readAppSource('modes/fnb/checkout/components/FnbGuestEmailVerification.jsx');
     const retailComponentSource = readAppSource('modes/retail/checkout/components/RetailOrderGuestEmailVerification.jsx');
     const simpleComponentSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutGuestEmailVerification.jsx');
@@ -54,7 +54,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
-    expect(appSource).toContain("import { useGuestCheckoutOtp } from './storefront-shared/checkout/hooks/useGuestCheckoutOtp.js';");
+    expect(appSource).toContain("import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';");
     expect(appSource).toContain('} = useGuestCheckoutOtp({');
     expect(appSource).not.toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');

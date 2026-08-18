@@ -126,7 +126,7 @@ import { useFnbCheckoutSubmission } from './modes/fnb/checkout/hooks/useFnbCheck
 import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx';
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
-import { useGuestCheckoutOtp } from './storefront-shared/checkout/hooks/useGuestCheckoutOtp.js';
+import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
