@@ -8,8 +8,7 @@ import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessSt
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
-
-const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya']);
+import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -104,7 +103,7 @@ export function SimpleCheckoutRoutePage({
   const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
     ? new Date(fnbScheduledFor).toLocaleString()
     : 'NOW';
-  const isOnlinePayment = ONLINE_PAYMENT_TYPES.has(fnbPaymentType);
+  const isOnlinePayment = isStorefrontOnlinePaymentType(fnbPaymentType);
   const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
   const paymentSubmitLabel = fnbPaymentType === 'qrph'
     ? 'Generate QR Ph'

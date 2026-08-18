@@ -37,6 +37,8 @@ const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVEN
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const posDrawerAuthorizationWindowMs = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_WINDOW_MS) || 10 * 60 * 1000;
+const posDrawerAuthorizationMaxRequests = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
 const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -90,6 +92,7 @@ const rateLimitCounters = {
   onboarding_events: 0,
   ai: 0,
   pos: 0,
+  pos_drawer_authorization: 0,
   dgfy_tenant_session: 0,
   dgfy_account_search: 0,
   registration: 0,
@@ -1058,6 +1061,45 @@ export const posLimiter = rateLimit({
       'tenant_user_terminal'
     );
     logRateLimitEvent(req, 'pos', response.retryAfterSeconds, 'tenant_user_terminal');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// Drawer authorization is a PIN-protected operation, so it needs a much
+// smaller bucket than ordinary POS reads/checkouts. Scope it to the tenant,
+// user, shift, terminal, and source address so one cashier cannot consume a
+// different cashier's allowance on a shared terminal.
+export const posDrawerAuthorizationLimiter = rateLimit({
+  windowMs: posDrawerAuthorizationWindowMs,
+  max: posDrawerAuthorizationMaxRequests,
+  message: createRateLimitError('Too many cash drawer authorization attempts. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('pos_drawer_authorization'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || userKeyFromAuthHeader(req.headers.authorization) || 'anonymous';
+    const shiftKey = req.body?.shift_id || 'unknown-shift';
+    const terminalKey = req.headers['x-pos-terminal-id'] || req.body?.terminal_id || 'unknown-terminal';
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `pos_drawer_authorization:${tenantKey}:${userKey}:${shiftKey}:${terminalKey}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many cash drawer authorization attempts. Please wait before trying again.',
+      'pos_drawer_authorization',
+      'tenant_user_shift_terminal_ip'
+    );
+    logRateLimitEvent(req, 'pos_drawer_authorization', response.retryAfterSeconds, 'tenant_user_shift_terminal_ip');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

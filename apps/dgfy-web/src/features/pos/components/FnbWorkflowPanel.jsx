@@ -43,10 +43,10 @@ export function FnbWorkflowPanel({
 
       {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
         <label className="text-[11px] text-slate-500 block font-medium">
-          Kitchen Notes
+          Order Notes (global)
           <input
             type="text"
-            placeholder="Less ice, no onions, etc."
+            placeholder="Applies to the whole order"
             value={kitchenNotes}
             onChange={(e) => setKitchenNotes(e.target.value)}
             disabled={disabled}

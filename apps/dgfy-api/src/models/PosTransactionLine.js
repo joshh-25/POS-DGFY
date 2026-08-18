@@ -89,6 +89,10 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
     fnb_kitchen_station_snapshot: {
         type: DataTypes.JSON,
         allowNull: true
+    },
+    item_discount_snapshot: {
+        type: DataTypes.JSON,
+        allowNull: true
     }
 }, {
     tableName: 'pos_transaction_lines',

@@ -43,6 +43,7 @@ export default function CashierHistoryPanel({
     state = { loading: false, records: [], pagination: null, errorMessage: '' },
     onRefresh = async () => {},
     onViewSummary = () => {},
+    activeShift = null,
     locked = false,
     isOnline = true,
     currency = 'PHP'
@@ -53,6 +54,13 @@ export default function CashierHistoryPanel({
     const records = Array.isArray(state?.records) ? state.records : [];
     const pagination = state?.pagination || {};
     const totalPages = Math.max(1, Number(pagination.totalPages || 1));
+    const activeShiftId = activeShift?.pos_terminal_shift_id || activeShift?.shift_id || null;
+    const activeShiftBusinessDate = String(activeShift?.business_date || '').slice(0, 10);
+    const activeShiftLocationId = activeShift?.location_id || activeShift?.location?.location_id || null;
+    const activeShiftIsInRecords = Boolean(
+        activeShiftId
+        && records.some((record) => String(record?.shift?.pos_terminal_shift_id || record?.shift?.shift_id || '') === String(activeShiftId))
+    );
 
     const buildFilters = useCallback((nextPage = page, nextRangeMode = rangeMode) => ({
         page: nextPage,
@@ -70,7 +78,7 @@ export default function CashierHistoryPanel({
             void refresh(1, rangeMode);
         }, 0);
         return () => window.clearTimeout(timer);
-    }, [rangeMode]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [activeShiftBusinessDate, activeShiftId, activeShiftLocationId, rangeMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -133,9 +141,31 @@ export default function CashierHistoryPanel({
                     Loading your cashier summaries...
                 </p>
             ) : records.length === 0 ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                    No cashier shift records found for this period.
-                </p>
+                activeShift && !activeShiftIsInRecords ? (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900" role="status">
+                        <p className="font-bold">
+                            Your active shift #{activeShiftId || '-'} is open, but it belongs to business date {activeShiftBusinessDate || '-'}.
+                        </p>
+                        <p className="mt-1 text-blue-800">
+                            It is not included in the selected date period. Open All records to view this shift without changing its accounting date.
+                        </p>
+                        {rangeMode === 'today' ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="mt-3 h-9 rounded-lg border-blue-300 bg-white px-3 text-xs font-extrabold text-blue-900"
+                                onClick={() => setRangeMode('all')}
+                                disabled={locked || !isOnline}
+                            >
+                                View All records
+                            </Button>
+                        ) : null}
+                    </div>
+                ) : (
+                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                        No cashier shift records found for this period.
+                    </p>
+                )
             ) : (
                 <div className="space-y-3">
                     {records.map((record) => {
@@ -174,15 +204,15 @@ export default function CashierHistoryPanel({
                                     <div className="space-y-1 rounded-lg border border-slate-200 bg-white p-3">
                                         <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Sales</p>
                                         <SummaryMetric label="Transactions" value={sales.transaction_count || 0} />
-                                        <SummaryMetric label="Total sales" value={money(sales.total_amount, currency)} strong />
+                                        <SummaryMetric label="Total sales (excluding opening cash)" value={money(sales.total_amount, currency)} strong />
                                         <SummaryMetric label="Discounts" value={money(sales.discount_amount, currency)} />
                                         <SummaryMetric label="Voids" value={`${sales.void_transaction_count || 0} · ${money(sales.void_amount, currency)}`} />
                                     </div>
                                     <div className="space-y-1 rounded-lg border border-slate-200 bg-white p-3">
                                         <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Cash reconciliation</p>
-                                        <SummaryMetric label="Opening float" value={money(cash.opening_float_amount, currency)} />
+                                        <SummaryMetric label="Opening/petty cash" value={money(cash.opening_float_amount, currency)} />
                                         <SummaryMetric label="Cash sales" value={money(cash.cash_sales_amount, currency)} />
-                                        <SummaryMetric label="Expected cash" value={money(cash.expected_cash_amount, currency)} />
+                                        <SummaryMetric label="Expected cash in drawer" value={money(cash.expected_cash_amount, currency)} />
                                         <SummaryMetric label="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                                     </div>
                                 </div>

@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-17
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -114,3 +114,17 @@ checkout code.
   external go-live blockers.
 - Existing split code remains a disabled compatibility path and must not be enabled
   together with tenant revenue sharing.
+
+## Amendments
+
+### 2026-08-17: Exact Hosted Checkout routing for active e-wallets
+
+Storefront Hosted Checkout may expose Card, GCash, Maya, GrabPay, ShopeePay, and
+QR Ph when the server-resolved PayMongo capability contract marks the method
+active. The selected method is persisted in the commerce payment session and is
+sent as the single PayMongo `payment_method_types` value; the frontend must not
+choose or fall back to a different method after selection. Direct online banking
+methods remain deferred because BPI/UBP and Brankas banks require bank-specific
+`bank_code` handling that is outside this amendment. Verified provider webhooks,
+landlord-owned payment sessions, fee snapshots, settlement hold, and refund
+rules remain unchanged.

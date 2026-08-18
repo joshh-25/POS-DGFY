@@ -95,6 +95,33 @@ describe('POS checkout discount policy validator', () => {
         expect(req.validatedData.discount_rate).toBeUndefined();
     });
 
+    it('allows an item-only discount without treating it as a global discount', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-item-12345678',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                discount_amount: 15,
+                item_discount_amount: 15,
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    sale_price: 100,
+                    item_discount: { method: 'percentage', rate: 15 },
+                    item_discount_approval: { approver_user_id: 99, manager_pin: '1234' }
+                }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.lines[0].item_discount.rate).toBe(15);
+    });
+
     it('allows a governed discount as a computed amount without generic profile or rate fields', () => {
         const req = {
             body: {

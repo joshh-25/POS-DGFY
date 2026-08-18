@@ -158,6 +158,7 @@ describe('F&B operational readiness QA contracts', () => {
     const result = await posRepository.createFnbKitchenOrderForTransaction({
       pos_transaction_id: 700,
       check_id: 88,
+      order_notes: 'Less ice',
       lines: [{ item_id: 999, quantity: 1 }],
       recipe_movements: [{ component_item_id: 41 }]
     }, { transaction, lock: true });
@@ -166,7 +167,8 @@ describe('F&B operational readiness QA contracts', () => {
     expect(FnbCheckLine.bulkCreate).not.toHaveBeenCalled();
     expect(existingCheck.update).toHaveBeenCalledWith({
       status: 'sent_to_kitchen',
-      pos_transaction_id: 700
+      pos_transaction_id: 700,
+      notes: 'Less ice'
     }, { transaction });
     expect(FnbKitchenTicket.create).toHaveBeenCalledWith(expect.objectContaining({
       check_id: 88,

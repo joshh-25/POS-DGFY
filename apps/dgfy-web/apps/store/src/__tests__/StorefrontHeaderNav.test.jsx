@@ -65,4 +65,39 @@ describe('StorefrontHeaderNav', () => {
     expect(screen.getByText('GD')).toBeTruthy();
     expect(screen.queryByText('Gaille')).toBeNull();
   });
+
+  it('renders the optional Order action and invokes it on desktop', async () => {
+    const user = userEvent.setup();
+    const onOrder = vi.fn();
+
+    render(
+      <StorefrontHeaderNav
+        {...baseProps}
+        isMobileViewport={false}
+        onOrder={onOrder}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Order' }));
+
+    expect(onOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the optional Order action in the mobile navigation drawer', async () => {
+    const user = userEvent.setup();
+    const onOrder = vi.fn();
+
+    render(
+      <StorefrontHeaderNav
+        {...baseProps}
+        isMobileViewport
+        onOrder={onOrder}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation menu' }));
+    await user.click(screen.getByRole('button', { name: 'Order' }));
+
+    expect(onOrder).toHaveBeenCalledTimes(1);
+  });
 });

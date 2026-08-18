@@ -43,6 +43,8 @@ import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecord
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
+import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
 import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
@@ -450,6 +452,33 @@ const toSerializable = (value) => (
         : value
 );
 
+const scopePosReportQueryToActor = ({ query = {}, user = {} } = {}) => {
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (role !== 'cashier') return query;
+
+    const actorId = parsePositiveInt(user?.user_id);
+    const requestedCashierId = parsePositiveInt(query?.cashier_id);
+    if (!actorId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'Authenticated cashier is required to view POS reports',
+            { statusCode: 401 }
+        );
+    }
+    if (requestedCashierId && requestedCashierId !== actorId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Cashiers may only view their own POS report',
+            { statusCode: 403 }
+        );
+    }
+
+    return {
+        ...query,
+        cashier_id: actorId
+    };
+};
+
 export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
     const baseUseCase = buildReadScopedPosReportUseCase({
         posRepository,
@@ -475,7 +504,7 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
             }
             return baseUseCase({
                 query: {
-                    ...query,
+                    ...scopePosReportQueryToActor({ query, user }),
                     date_from: dateFrom,
                     date_to: dateTo
                 },
@@ -496,6 +525,7 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const summary = overviewResult.data?.daily_report?.summary || {};
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
+        const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
         const rows = [
             ['Metric', 'Value'],
             ['Gross Sales', summary.gross_sales || 0],
@@ -506,8 +536,30 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
             ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
             ...discountRows.map((row) => [row.discount_label, row.discount_type, row.transaction_count, row.discount_amount, row.vat_removed]),
             [],
-            ['Cashier', 'Closed Shifts', 'Expected Cash', 'Cash After Shift', 'Variance'],
-            ...cashierRows.map((row) => [row.cashier_name, row.shift_money?.closed_shift_count, row.shift_money?.expected_cash_amount, row.shift_money?.closing_cash_amount, row.shift_money?.cash_variance_amount])
+            ['Cashier', 'Shift Count', 'Closed Shifts', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Cash After Shift', 'Variance'],
+            ...cashierRows.map((row) => [
+                row.cashier_name,
+                row.shift_money?.shift_count,
+                row.shift_money?.closed_shift_count,
+                row.shift_money?.opening_float_amount,
+                row.shift_money?.cash_sales_amount,
+                row.shift_money?.cash_in_total,
+                row.shift_money?.cash_out_total,
+                row.shift_money?.expected_cash_amount,
+                row.shift_money?.closing_cash_amount,
+                row.shift_money?.cash_variance_amount
+            ]),
+            [],
+            ['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales'],
+            ...transactionRows.map((row) => [
+                row.invoice_number || row.pos_transaction_id,
+                row.created_at || '',
+                row.cashier_name || '',
+                row.payment_type || '',
+                row.status || '',
+                row.total_amount || 0,
+                row.net_sales || 0
+            ])
         ];
         const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         return ok({
@@ -2123,7 +2175,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
             }
             return {
                 discountAmount: Math.min(requestedDiscount, subtotalAmount),
-                discountLabelSnapshot: requestedDiscount > 0 ? 'Manual Discount' : null,
+                discountLabelSnapshot: requestedDiscount > 0 ? 'Other Discount' : null,
                 discountRateSnapshot: null
             };
         }
@@ -2139,7 +2191,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
             const manualRate = round4(requestedRate);
             return {
                 discountAmount: Math.min(round4(subtotalAmount * (manualRate / 100)), subtotalAmount),
-                discountLabelSnapshot: manualRate > 0 ? 'Manual Discount' : null,
+                discountLabelSnapshot: manualRate > 0 ? 'Other Discount' : null,
                 discountRateSnapshot: manualRate
             };
         }
@@ -2151,7 +2203,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
                 : round4(subtotalAmount * (manualRate / 100));
             return {
                 discountAmount: Math.min(manualDiscountAmount, subtotalAmount),
-                discountLabelSnapshot: 'Manual Discount',
+                discountLabelSnapshot: 'Other Discount',
                 discountRateSnapshot: manualRate
             };
         }
@@ -2447,6 +2499,14 @@ export const buildCheckoutPosUseCase = ({
         }
 
         const lines = Array.isArray(payload.lines) ? payload.lines : [];
+        const itemDiscountApprovalByItemId = new Map(
+            lines
+                .map((line) => [
+                    Number.parseInt(line?.item_id, 10),
+                    isPlainObject(line?.item_discount_approval) ? line.item_discount_approval : null
+                ])
+                .filter(([itemId]) => Number.isInteger(itemId) && itemId > 0)
+        );
         if (lines.length === 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2593,7 +2653,25 @@ export const buildCheckoutPosUseCase = ({
                     ...(normalizeServiceOptionIds(line.selected_option_ids).length > 0
                         ? { selected_option_ids: normalizeServiceOptionIds(line.selected_option_ids) }
                         : {}),
-                    scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null
+                    scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null,
+                    ...(isPlainObject(line.item_discount)
+                        ? {
+                            item_discount: {
+                                discount_type: String(line.item_discount.discount_type || line.item_discount.type || 'manual').trim().toLowerCase(),
+                                label: String(line.item_discount.label || '').trim() || 'Item Discount',
+                                method: String(line.item_discount.method || '').trim().toLowerCase(),
+                                rate: line.item_discount.rate == null ? null : round4(line.item_discount.rate),
+                                amount: line.item_discount.amount == null ? null : round4(line.item_discount.amount),
+                                customer_name: String(line.item_discount.customer_name || '').trim() || null,
+                                id_number: String(line.item_discount.id_number || '').trim() || null,
+                                employee_name: String(line.item_discount.employee_name || '').trim() || null,
+                                employee_id: String(line.item_discount.employee_id || '').trim() || null,
+                                promo_code: String(line.item_discount.promo_code || '').trim().toUpperCase() || null,
+                                reason: String(line.item_discount.reason || '').trim().slice(0, 500) || null,
+                                approver_user_id: parsePositiveInt(line.item_discount.approver_user_id)
+                            }
+                        }
+                        : {})
                 }))
                 .sort((a, b) => a.item_id - b.item_id)
         };
@@ -2622,6 +2700,30 @@ export const buildCheckoutPosUseCase = ({
             }
 
             const settings = await getPosSettings();
+            const governedDraft = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
+            const hasItemPromo = lines.some((line) => String(line?.item_discount?.discount_type || '').trim().toLowerCase() === 'promo');
+            let discountSettings = settings;
+            if (governedDraft?.type === 'promo' || hasItemPromo) {
+                const promoSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMO_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                const promosSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMOS_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                discountSettings = {
+                    ...settings,
+                    [STOREFRONT_PROMO_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMO_SETTING_KEY] || {}),
+                        value: normalizeJsonObject(promoSetting?.setting_value, {})
+                    },
+                    [STOREFRONT_PROMOS_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMOS_SETTING_KEY] || {}),
+                        value: normalizeJsonArray(promosSetting?.setting_value, [])
+                    }
+                };
+            }
             const resolvedCheckoutLocation = await resolveLocationScope({
                 requestedLocationId,
                 userId: normalizedUserId,
@@ -2684,7 +2786,7 @@ export const buildCheckoutPosUseCase = ({
                 location_id: enforcedCheckoutLocationId,
                 restaurant_service_charge: normalizeRestaurantServiceChargeInput({
                     payload,
-                    settings,
+                    settings: discountSettings,
                     useSettings: hasFnbCheckoutContext
                 })
             });
@@ -3025,40 +3127,68 @@ export const buildCheckoutPosUseCase = ({
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
                     fnb_kitchen_station_snapshot: parsePositiveInt(line.kitchen_station_id)
                         ? { kitchen_station_id: parsePositiveInt(line.kitchen_station_id) }
-                        : null
+                        : null,
+                    item_discount_draft: line.item_discount || null,
+                    item_discount_snapshot: null
                 });
                 recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
             }
 
             subtotalAmount = round4(subtotalAmount);
-            const governedDraft = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
-            let discountSettings = settings;
-            if (governedDraft?.type === 'promo') {
-                const promoSetting = await posRepository.findSystemSettingByKey(
-                    STOREFRONT_PROMO_SETTING_KEY,
-                    { transaction, lock: true }
+            const itemDiscountApplications = [];
+            let itemPromoResolution = null;
+            for (const line of preparedLines) {
+                if (!line.item_discount_draft) continue;
+                const approval = itemDiscountApprovalByItemId.get(Number(line.item_id));
+                const approverId = parsePositiveInt(
+                    line.item_discount_draft.approver_user_id
+                    || approval?.approver_user_id
                 );
-                const promosSetting = await posRepository.findSystemSettingByKey(
-                    STOREFRONT_PROMOS_SETTING_KEY,
-                    { transaction, lock: true }
-                );
-                discountSettings = {
-                    ...settings,
-                    [STOREFRONT_PROMO_SETTING_KEY]: {
-                        ...(settings?.[STOREFRONT_PROMO_SETTING_KEY] || {}),
-                        value: normalizeJsonObject(promoSetting?.setting_value, {})
-                    },
-                    [STOREFRONT_PROMOS_SETTING_KEY]: {
-                        ...(settings?.[STOREFRONT_PROMOS_SETTING_KEY] || {}),
-                        value: normalizeJsonArray(promosSetting?.setting_value, [])
-                    }
-                };
+                if (!approverId) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'An authorized employee PIN is required for every item discount.',
+                        { statusCode: 422, details: { reason_code: 'ITEM_DISCOUNT_APPROVER_REQUIRED', item_id: line.item_id } }
+                    );
+                }
+                const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
+                const verifiedApprover = await verifyPosDiscountApprover({
+                    approver,
+                    pin: approval?.manager_pin,
+                    employeeUserId: normalizedUserId
+                });
+                const itemApplication = await resolvePosItemDiscount({
+                    draft: line.item_discount_draft,
+                    itemId: line.item_id,
+                    itemName: line.item_name,
+                    preparedLine: line,
+                    settings: discountSettings,
+                    orderMethod: normalizedOrderMethod,
+                    findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
+                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
+                });
+                itemApplication.manager_approval_id = verifiedApprover.user_id;
+                itemApplication.manager_approval_name = verifiedApprover.username || null;
+                itemApplication.manager_approved_at = new Date();
+                if (!itemPromoResolution && itemApplication.promo_application?.applied) {
+                    itemPromoResolution = itemApplication.promo_application;
+                }
+                itemDiscountApplications.push(itemApplication);
             }
+            const itemDiscountCalculation = calculatePosItemDiscounts({
+                lines: preparedLines,
+                applications: itemDiscountApplications
+            });
+            preparedLines.forEach((line, index) => {
+                line.global_discount_base_amount = itemDiscountCalculation.lines[index].global_discount_base_amount;
+                line.item_discount_snapshot = itemDiscountCalculation.lines[index].item_discount_snapshot;
+                delete line.item_discount_draft;
+            });
             const governedResolution = governedDraft
                 ? await resolvePosGovernedDiscount({
                     draft: governedDraft,
                     preparedLines,
-                    subtotalAmount,
+                    subtotalAmount: itemDiscountCalculation.total_amount,
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
@@ -3066,6 +3196,13 @@ export const buildCheckoutPosUseCase = ({
                 })
                 : null;
             const governedApplication = governedResolution?.application || null;
+            if (governedResolution?.promo?.applied && itemPromoResolution?.applied) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only one promo code can be applied to a sale.',
+                    { statusCode: 409, details: { reason_code: 'MULTIPLE_PROMO_CODES_NOT_ALLOWED' } }
+                );
+            }
             const normalizedTrustedDiscountApproval = normalizeTrustedDiscountApproval(trustedDiscountApproval);
             const normalizedDiscountApproval = isPlainObject(discountApproval)
                 ? {
@@ -3155,7 +3292,10 @@ export const buildCheckoutPosUseCase = ({
                 }
             }
             const governedCalculation = governedApplication ? calculatePosDiscount({
-                lines: preparedLines,
+                lines: preparedLines.map((line, index) => ({
+                    ...line,
+                    global_discount_base_amount: itemDiscountCalculation.lines[index].global_discount_base_amount
+                })),
                 application: {
                     type: governedApplication.type,
                     method: governedApplication.method,
@@ -3165,15 +3305,24 @@ export const buildCheckoutPosUseCase = ({
                     lines: governedApplication.lines || []
                 }
             }) : null;
-            const discountResolution = governedCalculation ? {
+            const itemDiscountAmount = itemDiscountCalculation.discount_amount;
+            const globalDiscountResolution = governedCalculation ? {
                 discountAmount: governedCalculation.discount_amount,
                 discountLabelSnapshot: governedApplication.label,
                 discountRateSnapshot: governedCalculation.rate
-            } : resolveCheckoutDiscount({ payload, subtotalAmount, settings });
-            const discountAmount = round4(discountResolution.discountAmount);
+            } : resolveCheckoutDiscount({
+                payload: {
+                    ...payload,
+                    discount_amount: round4(Math.max(0, Number(payload.discount_amount || 0) - itemDiscountAmount))
+                },
+                subtotalAmount: itemDiscountCalculation.total_amount,
+                settings
+            });
+            const globalDiscountAmount = round4(globalDiscountResolution.discountAmount);
+            const discountAmount = round4(itemDiscountAmount + globalDiscountAmount);
             const hasLegacyDiscount = !governedApplication && (
-                discountAmount > 0
-                || discountResolution.discountRateSnapshot != null
+                globalDiscountAmount > 0
+                || globalDiscountResolution.discountRateSnapshot != null
             );
             if (hasLegacyDiscount) {
                 throw new DomainError(
@@ -3184,7 +3333,7 @@ export const buildCheckoutPosUseCase = ({
             }
             const discountBeneficiary = normalizeDiscountBeneficiary({
                 payload,
-                discountLabelSnapshot: discountResolution.discountLabelSnapshot
+                discountLabelSnapshot: globalDiscountResolution.discountLabelSnapshot
             });
             const transactionSpecialInstructions = buildTransactionSpecialInstructions({
                 rawSpecialInstructions: payload.special_instructions,
@@ -3192,8 +3341,8 @@ export const buildCheckoutPosUseCase = ({
                 receiptContract: resolvedReceiptContract
             });
             const netItemsTotal = governedCalculation
-                ? round4(governedCalculation.total_amount)
-                : round4(subtotalAmount - discountAmount);
+                ? round4(itemDiscountCalculation.total_amount - governedCalculation.vat_removed - governedCalculation.discount_amount)
+                : round4(itemDiscountCalculation.total_amount - globalDiscountAmount);
             const serviceFeeResolution = resolveCheckoutServiceFee({
                 payload: { ...payload, order_method: normalizedOrderMethod },
                 grossSubtotal: subtotalAmount
@@ -3242,12 +3391,10 @@ export const buildCheckoutPosUseCase = ({
                     transaction
                 });
             }
-            const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
-
             for (const [index, line] of preparedLines.entries()) {
                 line.line_subtotal = governedCalculation
                     ? round4(governedCalculation.lines[index].final_line_amount)
-                    : round4(line.line_subtotal * adjustmentFactor);
+                    : round4(itemDiscountCalculation.lines[index].global_discount_base_amount);
             }
 
             const adjustedSubtotal = round4(
@@ -3407,8 +3554,17 @@ export const buildCheckoutPosUseCase = ({
                     vat_exempt_sales: vatExemptSales,
                     zero_rated_sales: zeroRatedSales,
                     discount_amount: discountAmount,
-                    discount_label_snapshot: discountResolution.discountLabelSnapshot,
-                    discount_rate_snapshot: discountResolution.discountRateSnapshot,
+                    discount_label_snapshot: [
+                        itemDiscountAmount > 0 ? 'Item Discount' : null,
+                        globalDiscountAmount > 0 ? globalDiscountResolution.discountLabelSnapshot : null
+                    ].filter(Boolean).join(' + ') || null,
+                    discount_rate_snapshot: itemDiscountAmount > 0 && globalDiscountAmount > 0
+                        ? null
+                        : (globalDiscountAmount > 0
+                            ? globalDiscountResolution.discountRateSnapshot
+                            : (itemDiscountApplications.length === 1 && itemDiscountApplications[0].method === 'percentage'
+                                ? itemDiscountApplications[0].rate
+                                : null)),
                     service_fee_amount: serviceFeeAmount,
                     service_fee_label_snapshot: serviceFeeResolution.serviceFeeLabelSnapshot,
                     service_fee_method_snapshot: serviceFeeResolution.serviceFeeMethodSnapshot,
@@ -3504,10 +3660,64 @@ export const buildCheckoutPosUseCase = ({
                     }
                 }, { transaction });
             }
+            if (itemDiscountAmount > 0 && typeof posRepository.createAuditLog === 'function') {
+                for (const line of preparedLines) {
+                    const snapshot = line.item_discount_snapshot;
+                    const lineDiscountAmount = round4(snapshot?.discount_amount || 0);
+                    if (!snapshot || lineDiscountAmount <= 0) continue;
+                    await posRepository.createAuditLog({
+                        user_id: normalizedUserId,
+                        entity_type: 'pos_item_discount',
+                        entity_id: posTransactionId,
+                        action: 'CREATE',
+                        event_type: 'pos_item_discount_applied',
+                        shift_id: normalizedShiftId,
+                        terminal_id: normalizedTerminalId,
+                        location_id: enforcedCheckoutLocationId,
+                        changes: {
+                            event: 'pos_item_discount_applied',
+                            transaction_id: posTransactionId,
+                            invoice_number: invoiceNumber,
+                            item_id: line.item_id,
+                            item_name: line.item_name,
+                            discount_type: snapshot.discount_type || 'manual',
+                            discount_method: snapshot.method || null,
+                            discount_rate: snapshot.rate ?? null,
+                            discount_amount: lineDiscountAmount,
+                            original_line_total: round4(Number(line.quantity || 0) * Number(line.sale_price || 0)),
+                            final_line_total: round4(line.global_discount_base_amount || 0),
+                            selected_employee_id: snapshot.employee_id || null,
+                            selected_employee_name: snapshot.employee_name || null,
+                            applied_by_user_id: normalizedUserId,
+                            applied_by_name: String(user?.username || '').trim() || null,
+                            cashier_user_id: normalizedUserId,
+                            cashier_name: String(user?.username || '').trim() || null,
+                            authorized_by_user_id: snapshot.approver_user_id || null,
+                            authorized_by_name: snapshot.approver_name || null,
+                            authorized_at: snapshot.approved_at || null,
+                            approved_by_user_id: snapshot.approver_user_id || null,
+                            approved_by_name: snapshot.approver_name || null,
+                            approved_at: snapshot.approved_at || null
+                        }
+                    }, { transaction });
+                }
+            }
             if (governedResolution?.promo?.applied) {
                 const promoUsageUpdate = buildCommercialPromoUsageUpdate({
                     settings: discountSettings,
                     promoApplication: governedResolution.promo
+                });
+                if (promoUsageUpdate) {
+                    await posRepository.updateSystemSettingValueByKey(
+                        promoUsageUpdate.key,
+                        promoUsageUpdate.value,
+                        { transaction, lock: true }
+                    );
+                }
+            } else if (itemPromoResolution?.applied) {
+                const promoUsageUpdate = buildCommercialPromoUsageUpdate({
+                    settings: discountSettings,
+                    promoApplication: itemPromoResolution
                 });
                 if (promoUsageUpdate) {
                     await posRepository.updateSystemSettingValueByKey(
@@ -3564,6 +3774,7 @@ export const buildCheckoutPosUseCase = ({
                     pos_transaction_id: posTransactionId,
                     check_id: fnbCheckId,
                     table_id: fnbTableId,
+                    order_notes: String(payload.special_instructions || '').trim() || null,
                     server_id: fnbServerId,
                     guest_count: fnbGuestCount,
                     order_method: normalizedOrderMethod,

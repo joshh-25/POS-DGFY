@@ -3,13 +3,15 @@ import { Op } from 'sequelize';
 
 const mockFindAll = jest.fn();
 const mockItemFolderFindAll = jest.fn();
+const mockShiftFindAll = jest.fn();
 
 const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll };
 const PosTransactionLineModel = { modelName: 'PosTransactionLine' };
 const ItemModel = { modelName: 'Item' };
 const ItemFolderModel = { modelName: 'ItemFolder', findAll: mockItemFolderFindAll };
 const UserModel = { modelName: 'User' };
-const PosTerminalShiftModel = { modelName: 'PosTerminalShift' };
+const PosTerminalShiftModel = { modelName: 'PosTerminalShift', findAll: mockShiftFindAll };
+const PosCashDrawerEventModel = { modelName: 'PosCashDrawerEvent' };
 const PosTransactionDiscountModel = { modelName: 'PosTransactionDiscount' };
 const PosTransactionDiscountLineModel = { modelName: 'PosTransactionDiscountLine' };
 
@@ -29,6 +31,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return UserModel;
                 case 'PosTerminalShift':
                     return PosTerminalShiftModel;
+                case 'PosCashDrawerEvent':
+                    return PosCashDrawerEventModel;
                 case 'PosTransactionDiscount':
                     return PosTransactionDiscountModel;
                 case 'PosTransactionDiscountLine':
@@ -51,6 +55,7 @@ describe('posRepository reports analytics', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockItemFolderFindAll.mockResolvedValue([]);
+        mockShiftFindAll.mockResolvedValue([]);
     });
 
     it('computes POS profit/loss using cost snapshot first and IMS fallback second', async () => {
@@ -192,6 +197,114 @@ describe('posRepository reports analytics', () => {
             quantity: 1,
             cogs: 20,
             pos_profit_loss: 30
+        }));
+    });
+
+    it('returns cashier transaction rows with shift cash reconciliation for the selected date and cashier', async () => {
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 401,
+                invoice_number: 'INV-401',
+                created_at: '2026-06-22T08:00:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 100,
+                discount_amount: 10,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 0,
+                total_amount: 90,
+                payment_type: 'cash',
+                payment_breakdown: [{ payment_type: 'cash', count: 1, amount: 90 }],
+                order_source: 'in_store',
+                order_method: 'dine_in',
+                cashier_id: 9,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                shift: {
+                    pos_terminal_shift_id: 31,
+                    business_date: '2026-06-22',
+                    terminal_id: 'POS-01',
+                    location_id: 12
+                },
+                lines: [{
+                    line_id: 401,
+                    item_id: 1,
+                    quantity: 1,
+                    cost_snapshot: 20,
+                    line_subtotal: 100,
+                    item: {
+                        item_id: 1,
+                        name: 'Chicken',
+                        sku_code: 'DGFTY-ITEM-000001',
+                        category: 'product',
+                        cost_per_unit: 20
+                    }
+                }]
+            }
+        ]);
+        mockShiftFindAll.mockResolvedValue([
+            {
+                pos_terminal_shift_id: 31,
+                business_date: '2026-06-22',
+                terminal_id: 'POS-01',
+                location_id: 12,
+                cashier_id: 9,
+                status: 'closed',
+                opening_float_amount: 500,
+                expected_cash_amount: 595,
+                closing_cash_amount: 590,
+                cash_variance_amount: -5,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                cashEvents: [
+                    { event_type: 'cash_in', amount: 10 },
+                    { event_type: 'cash_out', amount: 5 }
+                ]
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22',
+            location_id: 12,
+            cashier_id: 9
+        });
+
+        expect(result.daily_report.cashier_summary).toEqual([
+            expect.objectContaining({
+                cashier_id: 9,
+                cashier_name: 'cashier-1',
+                shift_money: expect.objectContaining({
+                    shift_count: 1,
+                    closed_shift_count: 1,
+                    opening_float_amount: 500,
+                    cash_sales_amount: 90,
+                    cash_in_total: 10,
+                    cash_out_total: 5,
+                    expected_cash_amount: 595,
+                    closing_cash_amount: 590,
+                    cash_variance_amount: -5
+                })
+            })
+        ]);
+        expect(result.daily_report.transaction_rows).toEqual([
+            expect.objectContaining({
+                invoice_number: 'INV-401',
+                cashier_name: 'cashier-1',
+                payment_type: 'cash',
+                total_amount: 90,
+                net_sales: 90
+            })
+        ]);
+
+        expect(mockShiftFindAll).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                cashier_id: 9,
+                location_id: 12,
+                business_date: expect.objectContaining({
+                    [Op.gte]: '2026-06-22',
+                    [Op.lte]: '2026-06-22'
+                })
+            })
         }));
     });
 

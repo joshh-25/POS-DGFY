@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-17
 review_by: 2027-02-09
 applies_to: fnb_menu_modifiers
 topic: fnb_specific_add_ons
@@ -21,6 +21,7 @@ The existing modifier groups, options, item assignments, POS validation, Storefr
 - A **modifier option** is a selectable value inside a group, such as `Oat milk` or `Extra cheese`, with a server-owned price delta.
 - A **combo choice** is a constrained selection of another menu component. It is not silently modeled as free text.
 - **Special instructions** are customer or cashier notes. They never change price, tax, stock, or required modifier validation.
+- POS keeps the global order note separate from item notes: the global note applies to the whole order, while an item note is stored on its individual cart/transaction line. A dine-in table number is retained as its own table snapshot and is included in the global order note at checkout without overwriting or duplicating either note.
 - One-level conditional modifier groups are supported in Phase 20. Recursive modifier trees remain outside the current contract.
 
 ## Ownership And Boundaries

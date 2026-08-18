@@ -202,4 +202,20 @@ describe('POS governed discount policy', () => {
         });
         expect(result.application.reason || '').toBe('');
     });
+
+    test('restricts employee and manual discounts to selected cart items', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                customer_name: 'Employee Buyer',
+                employee_name: 'Employee Name',
+                eligible_item_ids: [2]
+            },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 2 }]);
+    });
 });

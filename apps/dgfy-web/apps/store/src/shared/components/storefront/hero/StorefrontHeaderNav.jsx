@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, Store, User, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, ShoppingCart, Store, User, X } from 'lucide-react';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
 const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
@@ -13,6 +13,7 @@ export function StorefrontHeaderNav({
   bodyFont,
   onBack,
   onShop,
+  onOrder = null,
   onTrack = null,
   onAccount = null,
   onRegisterBusiness = null,
@@ -94,6 +95,9 @@ export function StorefrontHeaderNav({
   const drawerRows = [
     { key: 'shop', label: 'Shop', icon: ShoppingBag, onClick: onShop }
   ];
+  if (typeof onOrder === 'function') {
+    drawerRows.push({ key: 'order', label: 'Order', icon: ShoppingCart, onClick: onOrder });
+  }
   if (typeof onTrack === 'function') {
     drawerRows.push({ key: 'track', label: 'Track Order', icon: Package, onClick: onTrack });
   }
@@ -459,6 +463,15 @@ export function StorefrontHeaderNav({
             >
               Shop
             </button>
+            {typeof onOrder === 'function' && (
+              <button
+                type="button"
+                onClick={onOrder}
+                style={textStyle}
+              >
+                Order
+              </button>
+            )}
             {onTrack && (
               <button
                 type="button"

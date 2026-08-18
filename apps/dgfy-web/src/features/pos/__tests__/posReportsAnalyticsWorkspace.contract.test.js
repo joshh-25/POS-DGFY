@@ -29,4 +29,12 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('pos-report-date-input h-11 w-full min-w-0 max-w-full');
     expect(workspaceSource).toContain('order-2 min-w-0 max-w-full overflow-hidden rounded-2xl');
   });
+
+  it('prints the selected cashier cash reconciliation and filtered transaction rows', () => {
+    expect(workspaceSource).toContain('Cashier Sales & Cash Reconciliation');
+    expect(workspaceSource).toContain('dailyReport.transaction_rows');
+    expect(workspaceSource).toContain('Cash Reconciliation');
+    expect(workspaceSource).toContain('Filtered Transactions');
+    expect(workspaceSource).toContain('reportCashierLabel');
+  });
 });
