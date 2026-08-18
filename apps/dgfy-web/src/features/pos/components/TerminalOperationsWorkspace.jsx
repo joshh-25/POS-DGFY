@@ -5450,6 +5450,7 @@ function SettingsWorkspace({
     terminalRegistry: [],
     terminalRegistryMode: 'warn',
     terminalLocationBindingEnforced: false,
+    voucherPosRedemptionEnabled: false,
     settingsAccessPinEnabled: false,
     settingsAccessPin: '',
     clearSettingsAccessPin: false,
@@ -5930,6 +5931,7 @@ function SettingsWorkspace({
           ? String(settingsPayload?.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
           : 'warn',
         terminalLocationBindingEnforced: settingsPayload?.pos_terminal_location_binding_enforced?.value === true,
+        voucherPosRedemptionEnabled: settingsPayload?.voucher_pos_redemption_enabled?.value === true,
         settingsAccessPinEnabled: settingsPayload?.pos_settings_access_pin_enabled?.value === true,
         settingsAccessPin: '',
         clearSettingsAccessPin: false,
@@ -6387,6 +6389,7 @@ function SettingsWorkspace({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+        voucher_pos_redemption_enabled: posForm.voucherPosRedemptionEnabled === true,
         pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
         clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true,
         pos_petty_cash_symbol: String(posForm.pettyCashSymbol || 'PHP').trim() || 'PHP',
@@ -7498,6 +7501,26 @@ function SettingsWorkspace({
                 className="h-4 w-4 accent-[#1A4E8D] shrink-0"
                 checked={posForm.terminalLocationBindingEnforced === true}
                 onChange={(event) => setPosForm((current) => ({ ...current, terminalLocationBindingEnforced: event.target.checked }))}
+                disabled={locked || loading}
+              />
+            </div>
+
+            {/* Voucher Redemption at POS (#604) -- tenant-wide master switch, default off. Currently
+                gates nothing at runtime: POS voucher redemption itself is not built yet, so this
+                ships the setting and its server-side guard pre-gated, ahead of that feature. */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <Percent className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
+                checked={posForm.voucherPosRedemptionEnabled === true}
+                onChange={(event) => setPosForm((current) => ({ ...current, voucherPosRedemptionEnabled: event.target.checked }))}
                 disabled={locked || loading}
               />
             </div>
