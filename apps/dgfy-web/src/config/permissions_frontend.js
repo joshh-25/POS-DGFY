@@ -270,5 +270,16 @@ export const PERMISSION_GROUPS = {
             DELETE_USERS: "users:delete",
             VIEW_AUDIT: "audit:view"
         }
+    },
+    // #655. This PERMISSION_GROUPS export is only the degraded-path fallback -- the live source is
+    // the server-driven `roleCatalog.permission_groups` (GET /users/role-catalog, built by
+    // apps/dgfy-api/src/config/modeRolePresets.js's buildPermissionGroupsForMode). Kept in sync so a
+    // failed/empty catalog fetch still shows this group rather than silently omitting it.
+    VOUCHERS: {
+        label: "Vouchers",
+        permissions: {
+            VIEW: "vouchers:view",
+            MANAGE: "vouchers:manage"
+        }
     }
 };
