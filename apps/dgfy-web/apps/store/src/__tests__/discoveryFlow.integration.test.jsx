@@ -600,7 +600,7 @@ describe('storefront discovery integration flow', () => {
     expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
   });
 
-  it('does not request geolocation or location-scope normal submitted searches', async () => {
+  it('requests all matching branches once without geolocation for normal submitted searches', async () => {
     const user = userEvent.setup();
     const getCurrentPosition = vi.fn();
     Object.defineProperty(window.navigator, 'geolocation', {
@@ -622,14 +622,30 @@ describe('storefront discovery integration flow', () => {
       expect(params.get('search')).toBe('milk');
       expect(params.get('latitude')).toBeNull();
       expect(params.get('longitude')).toBeNull();
-      expect(params.get('pin_scope')).toBe('tenant_primary');
+      expect(params.get('pin_scope')).toBe('all_matching_branches');
     });
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
     expect(getCurrentPosition).not.toHaveBeenCalled();
 
     const searchValues = getDiscoveryQueryUrls(fetchMock)
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
     expect(searchValues).toContain('milk');
+  });
+
+  it('requests all matching branches once for a submitted discovery category', async () => {
+    const user = userEvent.setup();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getAllByRole('button', { name: /^Food$/i })[0]);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('search')).toBe('Food');
+      expect(params.get('pin_scope')).toBe('all_matching_branches');
+    });
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
   });
 
   it('keeps mobile discovery search results rendered after submit', async () => {
@@ -923,7 +939,7 @@ describe('storefront discovery integration flow', () => {
     expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
     const params = getLastDiscoveryParams(fetchMock);
     expect(params.get('search')).toBe('aircon');
-    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('pin_scope')).toBe('all_matching_branches');
     expect(params.get('latitude')).toBeNull();
     expect(params.get('longitude')).toBeNull();
   });
