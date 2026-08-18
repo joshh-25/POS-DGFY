@@ -27,7 +27,7 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
  * real: signed-in/guest identity, guest email OTP verification, saved addresses, the pin-drop +
  * reverse-geocode flow, and "Add Address"/"Add Location" all consume the same shared,
  * mode-agnostic infrastructure F&B/MSME already use (`useGuestCustomerIdentity`,
- * `useFnbGuestCheckoutOtp`, `useSignedInCheckoutAddresses`, `useDeliveryPinResolution` — all
+ * `useGuestCheckoutOtp`, `useSignedInCheckoutAddresses`, `useDeliveryPinResolution` — all
  * instantiated once in StorefrontApp.jsx and threaded down via useRetailOrderPageProps.js).
  * Order method, schedule, and the map pin/address-selection state are therefore *shared* global
  * state (not local to this page) since the address hooks operate on that shared state — the

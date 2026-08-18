@@ -21,6 +21,8 @@
     "lint": "eslint src apps --ext .js,.jsx",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:store": "playwright test tests/e2e/store --project=google-chrome",
+    "test:e2e:store:fast": "playwright test tests/e2e/store/storefront-mode-route-regression.spec.js --project=google-chrome --workers=1 --reporter=line",
     "test:e2e:fnb-contract": "playwright test --config=playwright.fnb-contract.config.js",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",

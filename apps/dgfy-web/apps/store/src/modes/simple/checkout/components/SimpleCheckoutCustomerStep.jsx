@@ -11,7 +11,7 @@ const SIMPLE_BRAND_DARK = '#0F5A30';
  * built for Retail (RetailOrderAccountStep.jsx). Uses the same shared, mode-agnostic identity
  * infrastructure F&B already uses: `renderGuestCheckoutEntry`/`renderGuestIdentityFields`/
  * `renderAccountOwnedIdentitySummary` (from `useGuestCustomerIdentity`, instantiated once in
- * StorefrontApp.jsx) and the guest OTP state/handlers (from `useFnbGuestCheckoutOtp`, also
+ * StorefrontApp.jsx) and the guest OTP state/handlers (from `useGuestCheckoutOtp`, also
  * instantiated once and shared across modes despite the "Fnb" name).
  */
 export function SimpleCheckoutCustomerStep({

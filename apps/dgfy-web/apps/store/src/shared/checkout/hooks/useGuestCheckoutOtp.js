@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  createFnbGuestCheckoutIntentId,
-  FNB_GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT,
-  FNB_GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT,
-  formatFnbGuestCheckoutCooldown,
+  createGuestCheckoutIntentId,
+  GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT,
+  GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT,
+  formatGuestCheckoutCooldown,
   normalizeGuestCheckoutEmail,
   normalizeGuestCheckoutOtpCode,
   RESEND_COOLDOWN_SECONDS,
-} from '../model/fnbGuestCheckoutOtp.js';
+} from '../model/guestCheckoutOtp.js';
 
-export function useFnbGuestCheckoutOtp({
+export function useGuestCheckoutOtp({
   customerEmail,
   isDgfyCustomerSignedIn,
   requestJson,
   selectedStore,
   toast,
 }) {
-  const [guestCheckoutIntentId, setGuestCheckoutIntentId] = useState(() => createFnbGuestCheckoutIntentId());
+  const [guestCheckoutIntentId, setGuestCheckoutIntentId] = useState(() => createGuestCheckoutIntentId());
   const [guestCheckoutOtpCode, setGuestCheckoutOtpCode] = useState('');
   const [guestCheckoutProof, setGuestCheckoutProof] = useState(null);
   const [guestCheckoutOtpLoading, setGuestCheckoutOtpLoading] = useState(false);
@@ -26,7 +26,7 @@ export function useFnbGuestCheckoutOtp({
 
   const normalizedEmail = normalizeGuestCheckoutEmail(customerEmail);
   const guestCheckoutOtpCooldownLabel = useMemo(
-    () => formatFnbGuestCheckoutCooldown(guestCheckoutOtpCooldownSeconds),
+    () => formatGuestCheckoutCooldown(guestCheckoutOtpCooldownSeconds),
     [guestCheckoutOtpCooldownSeconds]
   );
   const isGuestCheckoutOtpCooldownActive = guestCheckoutOtpCooldownSeconds > 0;
@@ -45,7 +45,8 @@ export function useFnbGuestCheckoutOtp({
       setGuestCheckoutProof(null);
       setGuestCheckoutOtpCode('');
       setGuestCheckoutOtpError('');
-      setGuestCheckoutIntentId(createFnbGuestCheckoutIntentId());
+      setGuestCheckoutOtpCooldownSeconds(0);
+      setGuestCheckoutIntentId(createGuestCheckoutIntentId());
     }
   }, [guestCheckoutProof, isDgfyCustomerSignedIn, normalizedEmail]);
 
@@ -62,9 +63,10 @@ export function useFnbGuestCheckoutOtp({
     setGuestCheckoutOtpError('');
   }, []);
 
-  const handleRequestGuestCheckoutOtp = useCallback(async () => {
+  const handleRequestGuestCheckoutOtp = useCallback(async (emailOverride = '') => {
     if (isDgfyCustomerSignedIn) return true;
-    if (!normalizedEmail) {
+    const requestEmail = normalizeGuestCheckoutEmail(emailOverride || customerEmail);
+    if (!requestEmail) {
       setGuestCheckoutOtpError('Enter an email address before requesting a code.');
       return false;
     }
@@ -73,11 +75,11 @@ export function useFnbGuestCheckoutOtp({
     setGuestCheckoutOtpLoading(true);
     setGuestCheckoutOtpError('');
     try {
-      const data = await requestJson(FNB_GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT, {
+      const data = await requestJson(GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT, {
         method: 'POST',
         storeSlug: selectedStore?.slug,
         body: {
-          email: normalizedEmail,
+          email: requestEmail,
           idempotency_key: guestCheckoutIntentId,
         },
       });
@@ -94,10 +96,10 @@ export function useFnbGuestCheckoutOtp({
       setGuestCheckoutOtpLoading(false);
     }
   }, [
+    customerEmail,
     guestCheckoutIntentId,
     isDgfyCustomerSignedIn,
     isGuestCheckoutOtpCooldownActive,
-    normalizedEmail,
     requestJson,
     selectedStore?.slug,
     toast,
@@ -113,7 +115,7 @@ export function useFnbGuestCheckoutOtp({
     setGuestCheckoutOtpLoading(true);
     setGuestCheckoutOtpError('');
     try {
-      const data = await requestJson(FNB_GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT, {
+      const data = await requestJson(GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT, {
         method: 'POST',
         storeSlug: selectedStore?.slug,
         body: {
@@ -122,9 +124,13 @@ export function useFnbGuestCheckoutOtp({
           idempotency_key: guestCheckoutIntentId,
         },
       });
+      const proof = String(data?.guest_checkout_proof || '').trim();
+      if (!proof) {
+        throw new Error('Email verification could not be completed. Please try again.');
+      }
       setGuestCheckoutProof({
         email: normalizedEmail,
-        proof: data?.guest_checkout_proof || '',
+        proof,
       });
       setGuestCheckoutOtpCode('');
       toast.success('Email verified. You can now place your order.');
