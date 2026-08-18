@@ -5,6 +5,62 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-08-18 — the OpenVPN hop is unnecessary on self-hosted, made opt-in (#598/#599)
+
+The network topology behind every VPN decision in this doc was never actually written down. Pat
+supplied it directly (2026-08-18):
+
+| Host | IP | Role |
+|---|---|---|
+| `vm-sieitzstaging` | `10.123.32.26` | Online runner **and** the DEV + STAGING server itself (`/opt/dgfy-dev`, `/opt/dgfy-stage` live on it) — same box, different user |
+| `vm-openproject` | `10.123.32.17` | Offline runner, a separate PC, but on the **same internal LAN** — reaches `10.123.32.26` directly, no VPN needed |
+| BETA / PROD | Linode (`172.105.122.32`) | Public-internet SSH; never needed the VPN either way |
+
+**The rule, stated once:** a job running on *any* registered self-hosted runner must not bring up
+OpenVPN for *any* environment — both runners already reach `10.123.32.26` over the internal LAN. The
+tunnel is only meaningful from a GitHub-hosted runner, which has no path to that LAN at all.
+
+This corrects the framing the 2026-08-13 section below (and #598/#599, both filed under that stale
+framing) inherited — that only `vm-sieitzstaging` was network-adjacent and `vm-openproject` still
+needed the VPN hop. `vm-openproject` never needed it either; it was simply never reachable to
+confirm that until Pat supplied its IP.
+
+**Why this was worth fixing, not just tolerating:** `verify-deployment.yml` was the one remaining
+live VPN site (`publish-platform.yml`'s callers already default `vpn_required: false`), gated on
+`inputs.environment == 'DEV' || 'STAGING'` with no way to turn it off. On 2026-08-16, during the
+first live `develop → staging` promotion, a verify dispatch landed on `vm-openproject` and hung
+indefinitely on "Connect to VPN" (run `31957380863`, #598) — it neither completed nor respected
+`gh run cancel`. The mechanism: bringing up a tunnel *into* the network the runner is already on
+rewrites that runner's own default route and DNS, which can cut it off from GitHub's control plane
+entirely — explaining why the job was unkillable rather than merely slow. #432 (general self-hosted
+stall investigation) is still open and may be chasing other instances of this same class.
+
+**Fix shipped**: `verify-deployment.yml` gained a `vpn_required` boolean input (`default: false`,
+same shape as `publish-platform.yml`'s existing one) and its three OpenVPN steps now gate on that
+input instead of the environment name. No runner affinity was added — with the VPN hop gone,
+either runner can service any environment, so pinning buys nothing today. `runs-on: ['self-hosted']`
+stays bare on both workflows.
+
+**Switch-back procedure** (kept explicitly reversible per Pat's ask, for a return to GitHub-hosted
+runners):
+1. Every active `runner_labels_json`/`runs-on` site still carries its commented hosted-runner
+   revert line directly above it (e.g. `# runner_labels_json: '["ubuntu-latest"]'  # revert to this
+   when hosted runners are back`) — uncomment it, comment the active `self-hosted` line, per site.
+2. Set `vpn_required: true` on the DEV/STAGING callers of `publish-platform.yml`
+   (`deploy.yml`/`deployment-orchestrator.yml`'s `vpn_required` passthrough).
+3. Tick the new `vpn_required` input when dispatching `verify-deployment.yml` for DEV/STAGING.
+4. No secret re-provisioning needed: `OVPN_CONFIG`/`OVPN_USERNAME`/`OVPN_PASSWORD` are **repo-level**
+   secrets (confirmed live, 2026-08-18), not scoped to the DEV/STAGING GitHub Environments as ADR
+   0030's 2026-07-06 amendment claims — they already resolve from any environment's workflow run.
+
+**Deliberately not done in this pass** (#599's item 2, still open): having `publish-platform.yml`
+skip the SSH-to-self step entirely when the runner *is* the deploy target, running `docker compose`
+locally instead. Blocked on the same fact this section documents: a job cannot currently tell which
+runner it landed on, so if `vm-openproject` picked up a DEV/STAGING dispatch, a local-compose path
+would silently deploy to the wrong machine. A distinguishing label on `vm-sieitzstaging` (it
+currently carries only `self-hosted, Linux, X64` — nothing that positively selects it) is a hard
+prerequisite, not yet added.
+
 ## Status as of 2026-08-14 — every auto-build/auto-deploy trigger removed
 
 Separate from the runner-hosting question below: as of #417, `push` no
