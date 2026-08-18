@@ -1,3 +1,7 @@
+// Chrome 80-84 iMin WebView runtime polyfill -- must be the first import so it
+// runs before any other module code (including bundled deps like
+// maplibre-gl). See ADR 0067 / #666.
+import './compat/chrome80Runtime.js';
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
