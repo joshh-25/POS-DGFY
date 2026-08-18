@@ -4847,8 +4847,12 @@ parked-sale replay and shift-close resolution.
 
 - Initiative: Services pickup-and-return round trip (laundry handoff legs), continuing #482.
 - Release: unreleased; backend API contract only (`apps/dgfy-api` + `packages/shared-constants`).
-  No storefront wiring (Phase 101), no services tracking UI (Phase 102), no POS (Phase 103) in this
-  phase.
+  No storefront wiring, no services tracking UI, and no POS in this phase — each is its own later
+  phase. *(Corrected 2026-08-17: this entry originally reserved Phases 101/102/103 by number for
+  those three follow-ups. They were never filed as ledger entries, and per this file's own
+  continuous-numbering rule the next eligible phase is taken from the highest existing entry — so
+  Phase 101 went to the voucher initiative. The services follow-ups take their numbers when they
+  are actually written.)*
 
 ### Objective and Scope
 
@@ -4896,11 +4900,9 @@ parked-sale replay and shift-close resolution.
   regression test. Eligibility gates on the per-item `service_area_type === 'item_handoff'` (ADR
   0057 clause 4), not a capability flag.
 
-
 ### Status
 
 - `in_progress`
-
 - Code written and Tier 0/1-verified (see below); not yet run against a live tenant database.
   Mirrors Phase 88's own precedent - that phase stayed `in_progress` until its migration dry-run
   ran against a restored snapshot in PR #541. This phase flips to `completed` once the equivalent
@@ -4955,6 +4957,230 @@ parked-sale replay and shift-close resolution.
   `serviceBookingValidator.test.js`, `servicesMode.usecases.test.js`,
   `serviceBookingSettlement.usecases.test.js`
 - Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+
+## Phase 101 - Voucher Governance Artifacts
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), implementing the entity scoped in #455
+  against the decision record in #454.
+- Release: unreleased; documentation and governance only. No code, no schema, no behavior change.
+  Schema and models are Phase 102; the voucher module and admin CRUD are Phase 103.
+
+### Objective and Scope
+
+- Land the three governance artifacts #455 requires up front, so every later voucher phase has a
+  cited authority rather than accumulating governance debt behind shipped code.
+- **New [ADR 0066](../architecture/adr/0066-voucher-sale-time-price-resolution.md)**
+  (`topic: voucher_sale_time_price_resolution`). Required, not optional: ADR 0029 Decision 2 is
+  `[binding]` that Catalog owns base sale price, and a voucher fixed price is a sale-time layer
+  resolved above it — the same move ADR 0050 made for affiliate pricing. Four `[binding]` clauses:
+  a voucher never mutates a persisted unit price; integer centavos throughout the voucher domain;
+  checkout fails closed while catalog display fails open; the ledger is authoritative and
+  `redeemed_*` are a derived cache with POS winning any fiscal disagreement. Seven further
+  `[default]` clauses cover the fixed-price-as-intent rule, the resolution seam, the
+  affiliate-conflict refusal, the POS single-slot constraint, the columns-first/no-JSON rule,
+  `NOT NULL` eligibility sets, and folder-descendant snapshotting.
+- **ADR 0033 amendment** (dated block, `status: amended` already set, `last_reviewed` refreshed).
+  That ADR carries zero strictness tags, so every clause is `default` tier per ADR 0039 and an
+  amendment suffices — no supersession, no tech-lead approval. Records that the
+  `system_settings.storefront_promos` JSON-storage premise no longer holds, while explicitly
+  preserving Decisions 8 and 10.
+- **ADR 0050 amendment** (#566), targeting **Consequences item 5**, not Decision 5. #566 is explicit
+  that citing Decision 5 would amend the wrong clause — that one is `[binding]` and its
+  fail-closed/fail-open asymmetry is inherited unchanged by ADR 0066 Decision 3. `status` flips to
+  `amended`. `docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md` decision A11 and
+  §7.4 are updated in lockstep, as #566 requires.
+- Corrects Phase 100's by-number reservation of Phases 101/102/103, which were never filed as
+  ledger entries.
+
+### Status
+
+- `completed`
+- Documentation-only phase with no runtime surface; its acceptance gates are the docs linters, which
+  pass. Phase 102 is the next eligible phase.
+
+### Dependencies and Governance Note
+
+- Classified `cross-boundary` per `ARCHITECTURE_GOVERNANCE.md` step 1: the voucher initiative
+  introduces a sale-time price layer above a `[binding]` Catalog clause. Step 3's last bullet
+  applies — "new cross-boundary decision with no ADR covering it: create an ADR" — which is what
+  ADR 0066 is. This phase is the governance half; no boundary is actually crossed in code until
+  Phase 104.
+- ADR 0029 Decision 2 (`[binding]`) - not amended and not weakened. ADR 0066 layers above Catalog's
+  base price and never writes back to it. `requireExplicitSalePrice` and its four call sites are
+  untouched, including `assertStorefrontPriceReady`, which must never see a voucher price.
+- ADR 0039 - amendment path followed for both 0033 and 0050; new-ADR path followed for 0066.
+  Topic uniqueness holds: `voucher_sale_time_price_resolution` collides with neither
+  `commercial_promo_and_statutory_pos_discount_boundaries` nor
+  `affiliate_buyer_facing_pricing_rule_engine`, so the one-binding-ADR-per-topic rule is satisfied.
+- ADR 0066 is deliberately **not** registered in `docs/_meta/document-registry.json`. Per ADR 0039's
+  2026-07-29 amendment, `scripts/check-adr.js` owns ADR validation; registering an ADR there would
+  fail `lint:docs`, since `status: accepted` is not a registry authority-level value.
+- No compliance impact declaration required: this phase changes only files under `docs/`, and
+  `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` matches no path here.
+  `check:compliance` reports no compliance-sensitive changes. Phases 106 and 107 will each require
+  one (`modules/pos/` and `modules/settings/` respectively); flagged now so it is planned rather
+  than discovered.
+- ADR 0066 Decision 8 records a constraint **wider than #454 decision 10**. That decision blocks
+  only fixed-price against a statutory Senior/PWD discount; the existing POS single-slot contract
+  (`UNIQUE (transaction_id)` plus a single-typed `governed_discount` payload) blocks every benefit
+  class including percent-off. Recorded as an inherited architectural constraint, not presented as
+  something #454 already decided. Revisit tracked in #605.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run lint:docs` passes (chains `check:adr --strict`).
+- [x] `npm run check:adr` passes: ADR number 0066 unique, required frontmatter present, tier tags
+  resolve, no binding-topic collision.
+- [x] `node scripts/check-adr.js --write-index` regenerated `INDEX.md`; 0050 now renders `amended`
+  and 0066 appears with its binding-clause count.
+- [x] `npm run check:compliance` reports no compliance-sensitive changes.
+- [ ] `npm run check:documentation-closure` - **not run.** It requires an `--inventoryPath` option
+  (`INVALID_ARGS: Missing required option: inventoryPath`) and is a batch-inventory gate for release
+  promotion, not a per-PR docs gate. Named rather than silently omitted; `lint:docs` is the
+  applicable gate for this phase and it passes.
+- [ ] Human review of the four `[binding]` clauses before they constrain Phases 102-107. Binding
+  clauses are the expensive tier to unwind by design; flagged for Pat rather than self-certified.
+
+### Implementation Links
+
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (new)
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md` (amended)
+- `docs/architecture/adr/0050-affiliate-buyer-facing-pricing-rule-engine.md` (amended)
+- `docs/architecture/adr/INDEX.md` (regenerated)
+- `docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md` (A11, §7.4)
+- Issue #455 - voucher entity and ledger; #454 - decision record; #453 - epic; #566 - the ADR 0050
+  amendment this phase discharges; #614 - voucher authoring, filed during this phase
+
+### Completion Record
+
+- Phase 101 completed 2026-08-17. Phase 102 (voucher schema, models, and tenant-sync registry
+  entries) is the next eligible phase.
+
+## Phase 102 - Voucher Schema, Models, and Tenant Sync Registry
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), entity scoped in #455.
+- Release: unreleased; schema and model layer only. No route, no read path, no write path. The first
+  consumer is Phase 103 (voucher module + admin CRUD).
+
+### Objective and Scope
+
+- Create four tenant tables in one migration - they are a single FK cluster, so splitting them only
+  complicates the `tableExists()` guard: `vouchers` (the campaign), `voucher_scopes` (item /
+  item_folder targeting), `voucher_redemptions` (the authoritative append-only ledger), and
+  `voucher_redemption_lines` (per-item allocations).
+- Shape follows `EmployeeCreditAccount` + `EmployeeCreditLedgerEntry`, the pattern #455 names: an
+  account/ledger split where `vouchers.redeemed_count` / `redeemed_value_centavos` /
+  `redeemed_quantity` are a derived cache of the ledger (ADR 0066 decision 4), existing so the three
+  exhaustion limits can be enforced by one atomic conditional `UPDATE` in a later
+  voucher phase.
+- Register all four in `REQUIRED_TENANT_SCHEMA_TABLES` in FK-dependency declaration order and bump
+  `TENANT_SCHEMA_CAPABILITY_VERSION` to `2026-08-17.1`. Without the registry entries the migration
+  reaches only the landlord database and live tenants never receive the tables.
+- Models declare `references` for every tenant-local FK, unlike the `EmployeeCredit*` template. New
+  tenants are provisioned by `sequelize.sync()` over the models while existing tenants get the
+  registry DDL, so omitting `references` would leave sync-provisioned tenants with no referential
+  integrity on the ledger. Verified against `tenantModelFactory.contract.test.js`'s FK-graph rule.
+
+**Four deviations from #455's written schema, each verified in code rather than assumed:**
+
+1. `location_id` references `tenant_locations(location_id)`. #455 lists `locations`; no such table
+   exists in the tenant schema.
+2. `voucher_scopes.scope_ref_id` carries no FK. It is polymorphic across `items(item_id)` and
+   `item_folders(folder_id)` depending on `scope_type`, so a real FK is impossible; the reference is
+   validated in the repository in Phase 103. #455 lists it among "every FK the ledger needs".
+3. Eligibility is `TINYINT UNSIGNED` bitmasks, not MySQL `SET`. **`DataTypes.SET` does not exist in
+   Sequelize 6.37.8** (verified: `typeof DataTypes.SET === 'undefined'`), so a `SET` column cannot
+   be expressed in the model layer at all - and `sequelize.sync()` over those models is how
+   `tenantProvisioningService.js` builds a new tenant. The bitmask keeps the invariant ADR 0066
+   decision 10 actually binds (NOT NULL, explicit default, "eligible everywhere" unrepresentable)
+   and matches the `weekday_mask` encoding #455 already mandates on the same table. ADR 0066
+   decision 10 was updated in this phase to name the encoding.
+4. Cumulative money columns are `BIGINT`, not `INT`. Centavos overflow a signed `INT` at ~21.5M
+   pesos, which is inside the range a real campaign budget can reach.
+
+### Status
+
+- `in_progress`
+- Schema and models written and Tier 0/1-verified below, but **not yet run against any MySQL
+  database** - none is reachable in this environment. Flips to `completed` once the migration has
+  been applied to a restored tenant snapshot and the registry DDL re-verified against the resulting
+  `SHOW CREATE TABLE` (see the open evidence item).
+
+### Dependencies and Governance Note
+
+- Classified `within-existing-boundary`: additive tables in the tenant database, no existing table
+  altered, no boundary crossed. The cross-boundary decision itself is ADR 0066, landed in Phase 101.
+- ADR 0066 decisions 2, 4 (`[binding]`) and 9, 10, 11 (`[default]`) - implemented as specified, with
+  decision 10 amended in this phase to name the bitmask encoding after the Sequelize `SET` finding.
+- ADR 0033 Decision 10 - unaffected. Nothing in this phase writes a discount row; the
+  `pos_transaction_discounts` pair remains the fiscal record and is untouched.
+- No compliance impact declaration required: `apps/dgfy-api/src/models/`,
+  `apps/dgfy-api/scripts/`, and `apps/dgfy-migration-runner/migrations/` match no rule in
+  `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES`; `check:compliance` reports no
+  compliance-sensitive changes. **Flagged anyway**, as Phases 88 and 100 did for their own
+  incremental exposure: `voucher_redemptions` stores `store_customer_id`, `cashier_user_id`, and a
+  `dgfy_account_id` pointer, so this phase creates a new place where redemption activity is
+  attributable to a person. The mechanical guardrail does not classify that; it is named here so it
+  is a recorded decision rather than an omission.
+- **Hard deploy-order dependency, and a live pre-existing risk.** `OPS-TSYNC-001` in
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` is **Reopened**, with four active tenant
+  databases carrying foreign-key drift as of the 2026-06-15 production verification. The tenant
+  preflight in `sync-tenant-schemas.js` is unconditional and all-or-nothing under
+  `NODE_ENV=production`, so any tenant with a pre-existing gap crash-loops the shared `dgfy-api` for
+  **every** tenant on the next restart - independent of this change, but triggered by the restart
+  this migration causes. Run
+  `node apps/dgfy-api/scripts/sync-tenant-schemas.js --mode report` (read-only, no mutation approval
+  needed) against each environment for an honest census **before** deploying this phase.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on all seven changed `.js`/`.cjs` files (Tier 0; `apps/dgfy-api` has no real
+  build step).
+- [x] `npm run check:architecture` passes: 48 modules / 472 files, 87 controllers.
+- [x] `npm run check:compliance` passes: no compliance-sensitive changes detected.
+- [x] `npm run check:tenant-schema-coverage -- --staged` passes with the migration staged - the four
+  `createTable` calls each resolve to a registered tenant table.
+- [x] `tenantModelFactory.contract.test.js` 13/13 - all four models register as tenant-scoped (they
+  are absent from `NON_TENANT_MODEL_EXPORTS`, which is what makes them tenant models) and every
+  declared FK resolves to a cloned tenant model.
+- [x] `tenantSchemaSyncScripts.test.js` 15/15, including a new case pinning declaration order, the
+  unique idempotency constraint, the NOT NULL eligibility defaults, `BIGINT` centavos, the absence
+  of a `scope_ref_id` FK, and the `tenant_locations` target.
+- [x] Model DDL generated offline via Sequelize's query generator to confirm the four tables emit
+  valid MySQL and that the bitmask columns render `TINYINT UNSIGNED NOT NULL DEFAULT n`.
+- [ ] **Migration not run against MySQL** - no database is reachable in this environment. A
+  `up` / `down` / `up` round-trip against a restored tenant snapshot is required before merge.
+- [ ] **Registry DDL is hand-derived from the migration definition, not copied from a live
+  `SHOW CREATE TABLE`** - which is this registry's own stated convention. Constraint names
+  (`<table>_ibfk_N`), key ordering, and the charset/collation clause are therefore predicted rather
+  than observed. Re-verify against a restored snapshot and correct any drift before deploy. Named
+  explicitly because a silently wrong registry entry is exactly how a tenant ends up missing a
+  table.
+- [ ] Full `npm test` - not run this session; per the repo's two-tier gate model the full suite is
+  Pat's own post-merge run, not a PR-blocking requirement.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260817000001-create-vouchers.cjs`
+- `apps/dgfy-api/src/models/Voucher.js`, `VoucherScope.js`, `VoucherRedemption.js`,
+  `VoucherRedemptionLine.js`
+- `apps/dgfy-api/src/models/index.js` (imports, associations, `db` object, named exports)
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js` (four registry entries, capability version bump)
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (decision 10 encoding)
+- Issue #455 - voucher entity and ledger; #453 - epic
+
+### Completion Record
+
+- Phase 102 remains `in_progress` until the migration runs against a restored tenant snapshot and
+  the registry DDL is re-verified against the resulting `SHOW CREATE TABLE`. This mirrors Phase 88's
+  precedent, which stayed `in_progress` until its own migration dry-run landed in PR #541.
+- Phase 103 (voucher module, pure benefit/eligibility domain, and admin CRUD per #614) is the next
+  eligible phase.
 
 ## Phase 104 - Storefront Active PayMongo E-wallet Routing
 

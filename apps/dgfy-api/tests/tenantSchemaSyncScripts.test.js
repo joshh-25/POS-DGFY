@@ -210,6 +210,114 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers the four voucher tables in foreign-key dependency order', () => {
+    const voucherTables = [
+      'vouchers',
+      'voucher_scopes',
+      'voucher_redemptions',
+      'voucher_redemption_lines'
+    ];
+    for (const table of voucherTables) {
+      expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty(table);
+    }
+
+    // Declaration order is load-bearing: buildTenantSchemaTableRepairSql preserves it, and each
+    // table's FKs point at one declared before it. A reordering would fail on a real tenant repair.
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    const positions = voucherTables.map((table) => declared.indexOf(table));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+
+    const repairs = buildTenantSchemaTableRepairSql(voucherTables);
+    expect(repairs.map((repair) => repair.table)).toEqual(voucherTables);
+    expect(repairs[0].sql).toContain('CREATE TABLE `vouchers`');
+    expect(repairs[0].sql).toContain('UNIQUE KEY `uq_vouchers_code`');
+    expect(repairs[3].sql).toContain('CREATE TABLE `voucher_redemption_lines`');
+
+    // ADR 0066 decision 4: the redemption ledger is authoritative, so its replay guard is a real
+    // unique constraint rather than an application-level check.
+    expect(repairs[2].sql).toContain('UNIQUE KEY `uq_voucher_redemptions_idempotency`');
+    expect(repairs[2].sql).toContain('`idempotency_key` varchar(160) NOT NULL');
+
+    // ADR 0066 decision 10: eligibility must be NOT NULL with an explicit default so "eligible
+    // everywhere" cannot be produced by omission -- the #459 failure mode.
+    for (const column of ['channels_mask', 'fulfillment_methods_mask', 'order_timings_mask']) {
+      expect(repairs[0].sql).toContain(`\`${column}\` tinyint unsigned NOT NULL DEFAULT`);
+    }
+
+    // ADR 0066 decision 2: integer centavos, and bigint because centavos overflow int at ~21.5M pesos.
+    expect(repairs[0].sql).toContain('`redeemed_value_centavos` bigint NOT NULL');
+    expect(repairs[0].sql).not.toContain('`redeemed_value_centavos` int ');
+
+    // voucher_scopes.scope_ref_id is polymorphic across items/item_folders, so it must NOT gain a FK.
+    expect(repairs[1].sql).toContain('`scope_ref_id` int NOT NULL');
+    expect(repairs[1].sql).not.toContain('FOREIGN KEY (`scope_ref_id`)');
+
+    // #455 says "locations"; no such table exists. Every location FK targets tenant_locations.
+    expect(repairs[2].sql).toContain('REFERENCES `tenant_locations` (`location_id`)');
+  });
+
+  // Three separate code paths can create the voucher tables, and they must agree:
+  //   1. the landlord migration (20260817000001-create-vouchers.cjs)
+  //   2. sequelize.sync() over the models -- how tenantProvisioningService.js provisions a NEW tenant
+  //   3. REQUIRED_TENANT_SCHEMA_TABLES/_INDEXES -- how an EXISTING tenant is repaired
+  // Verified against a real MySQL 8.0.46 snapshot; these assertions are what keep them in step
+  // without needing a database, since a divergence is otherwise invisible until a tenant is born.
+  it('keeps the voucher model definitions, table registry, and index registry in parity', async () => {
+    const voucherModels = {
+      vouchers: (await import('../src/models/Voucher.js')).default,
+      voucher_scopes: (await import('../src/models/VoucherScope.js')).default,
+      voucher_redemptions: (await import('../src/models/VoucherRedemption.js')).default,
+      voucher_redemption_lines: (await import('../src/models/VoucherRedemptionLine.js')).default
+    };
+
+    for (const [table, model] of Object.entries(voucherModels)) {
+      const modelIndexNames = (model.options.indexes || []).map((index) => index.name).sort();
+      const registryIndexNames = Object.keys(REQUIRED_TENANT_SCHEMA_INDEXES[table] || {}).sort();
+
+      // Without an indexes block, sync() creates only MySQL's implicit FK/unique indexes, so a new
+      // tenant silently loses every named index -- including uq_voucher_scopes_voucher_type_ref,
+      // which is an integrity constraint rather than a lookup index.
+      expect(modelIndexNames.length).toBeGreaterThan(0);
+      expect(modelIndexNames).toEqual(registryIndexNames);
+
+      // Same names again in the CREATE TABLE, so a tenant repaired by whole-table creation and one
+      // repaired index-by-index end up identical.
+      const [{ sql }] = buildTenantSchemaTableRepairSql([table]);
+      for (const indexName of registryIndexNames) {
+        expect(sql).toContain(`\`${indexName}\``);
+      }
+
+      // A new tenant's DB inherits the server default collation (utf8mb4_0900_ai_ci on MySQL 8), and
+      // pos_transaction_discounts.promo_code is utf8mb4_0900_ai_ci on every tenant. Pinning
+      // general_ci here made `v.code = d.promo_code` -- the Phase 107 promo backfill's own join --
+      // fail with ERROR 1267 Illegal mix of collations on repair-provisioned tenants only.
+      expect(sql).toContain('COLLATE=utf8mb4_0900_ai_ci');
+      expect(sql).not.toContain('utf8mb4_general_ci');
+    }
+
+    // Declaring uniqueness on the attribute instead makes Sequelize name the key after the column
+    // (`code`, `idempotency_key`), while both other paths name it `uq_*` -- and
+    // inspectRequiredTenantSchemaIndexes matches by name, so a new tenant would report as drifted
+    // forever. Declaring it in both places is worse still: two unique keys on one column.
+    expect(voucherModels.vouchers.rawAttributes.code.unique).toBeUndefined();
+    expect(voucherModels.voucher_redemptions.rawAttributes.idempotency_key.unique).toBeUndefined();
+
+    // Sequelize emits no referential action unless the attribute declares one, so these are what
+    // keep a new tenant's cascade behaviour equal to the migration's.
+    expect(voucherModels.voucher_scopes.rawAttributes.voucher_id.onDelete).toBe('CASCADE');
+    expect(voucherModels.voucher_redemption_lines.rawAttributes.voucher_redemption_id.onDelete)
+      .toBe('CASCADE');
+    for (const column of [
+      'pos_transaction_id',
+      'location_id',
+      'cashier_user_id',
+      'store_customer_id',
+      'reversal_of_redemption_id'
+    ]) {
+      expect(voucherModels.voucher_redemptions.rawAttributes[column].onDelete).toBe('SET NULL');
+    }
+  });
+
   it('registers the complete location-scoped Z-reading snapshot contract', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_z_reading_snapshots', column: 'location_id' },
