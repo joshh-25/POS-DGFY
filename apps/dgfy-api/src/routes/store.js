@@ -21,6 +21,7 @@ import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import {
     validateStoreRegister,
     validateStoreLogin,
@@ -90,13 +91,18 @@ const trackingReadCacheControl = setReadCacheControl({
     varyHeaders: ['X-Store-Slug']
 });
 
-// #603: a voucher-coded catalog/QR request resolves a per-buyer display price, same class of
-// problem as the affiliate attribution cookie (#671, not fixed here) -- a shared public cache must
-// not serve one buyer's voucher-priced response to another. `voucher_code` is a query param (not a
-// cookie), so it's simplest to just switch the response to no-store rather than try to add it to
-// `Vary`, which most shared caches don't key on query params by convention anyway.
-const bypassCacheForVoucherCode = (req, res, next) => {
-    if (String(req.query?.voucher_code || '').trim()) {
+// #603: a voucher-coded catalog/QR request resolves a per-buyer display price, and (#671) the
+// catalog use case also bakes a per-buyer affiliate selling-price override into `default_sale_price`
+// whenever the affiliate attribution cookie is present -- both are the same class of problem: a
+// shared public cache must not serve one buyer's per-buyer-priced response to another. `voucher_code`
+// is a query param and the attribution cookie isn't a cacheable `Vary` dimension for most shared
+// caches, so for both it's simplest to switch the response to no-store rather than try to key the
+// cache on either. Raw cookie-presence check only -- no tenant resolution or JSON parse needed for a
+// cache decision (the controller re-resolves the cookie's actual tenant-scoped value later).
+const bypassCacheForPerBuyerPricing = (req, res, next) => {
+    const hasVoucherCode = String(req.query?.voucher_code || '').trim().length > 0;
+    const hasAffiliateAttribution = Boolean(getCookie(req, SESSION_COOKIE_NAMES.affiliateAttribution));
+    if (hasVoucherCode || hasAffiliateAttribution) {
         return setNoStoreCacheControl(req, res, next);
     }
     return next();
@@ -112,8 +118,8 @@ const limitVoucherCodeLookups = (req, res, next) => (
         : next()
 );
 
-router.get('/catalog', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreCatalogQuery, storeController.listStoreCatalog);
-router.get('/qr/resolve', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreQrQuery, storeController.resolveStoreQr);
+router.get('/catalog', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForPerBuyerPricing, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForPerBuyerPricing, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', storeLocationsLimiter, locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
