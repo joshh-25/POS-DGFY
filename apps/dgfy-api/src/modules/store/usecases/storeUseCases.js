@@ -19,7 +19,8 @@ import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRe
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
 import {
     previewVoucherEligibilityUseCase,
-    redeemVoucherUseCase
+    redeemVoucherUseCase,
+    resolveVoucherDisplayPricesUseCase
 } from '../../vouchers/index.js';
 import {
     generateStoreCancelProof,
@@ -1124,7 +1125,26 @@ const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
     }
 };
 
-const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null, locationId = null) => {
+// #603: display-only, best-effort per item -- looks up this item's pre-resolved voucher price from
+// the once-per-request batch result (see `resolveVoucherDisplayPricesUseCase`'s callers). Unlike
+// `applyAffiliateDisplayPrice`, this does NOT overwrite `default_sale_price` in place -- #603 needs
+// both the original and the discounted price on the wire simultaneously so the storefront can render
+// a struck-through comparison, not a silent substitution.
+const applyVoucherDisplayPrice = (item, voucherDisplay) => {
+    if (!voucherDisplay || !voucherDisplay.applied) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: false };
+    }
+    if (voucherDisplay.badgeOnly) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: true };
+    }
+    const priced = voucherDisplay.pricesByItemId?.[Number(item.item_id)];
+    if (!priced) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: false };
+    }
+    return { voucherPriceApplied: true, voucherDisplayPrice: priced.voucher_price, voucherBadgeOnly: false };
+};
+
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null, locationId = null, voucherDisplay = null) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
     const imageUrl = item.image_url || null;
@@ -1138,6 +1158,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         }
         : null;
     const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
+    const { voucherPriceApplied, voucherDisplayPrice, voucherBadgeOnly } = applyVoucherDisplayPrice(item, voucherDisplay);
     return {
         item_id: item.item_id,
         name: item.name,
@@ -1148,6 +1169,9 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: displaySalePrice,
         affiliate_price_applied: affiliatePriceApplied,
+        voucher_price_applied: voucherPriceApplied,
+        voucher_display_price: voucherDisplayPrice,
+        voucher_badge_only: voucherBadgeOnly,
         vat_type: item.vat_type || 'vatable',
         image_url: imageUrl,
         image_variants: {
@@ -1882,6 +1906,7 @@ export const buildListStoreCatalogUseCase = ({
                 });
             }
 
+            const voucherCode = String(query.voucher_code || '').trim();
             const [items, affiliateSellingPriceRule] = await Promise.all([
                 storeRepository.listStoreCatalog({
                     search: query.search,
@@ -1892,10 +1917,25 @@ export const buildListStoreCatalogUseCase = ({
                     ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
                     : Promise.resolve(null)
             ]);
+            // #603: resolved once per request, after the item fetch (needs each item's folder_id
+            // for scope resolution), same batching discipline as the affiliate rule above -- a
+            // 200-item catalog page still does exactly one voucher lookup, not one per item.
+            const voucherDisplay = voucherCode
+                ? await resolveVoucherDisplayPricesUseCase({
+                    code: voucherCode,
+                    items: (Array.isArray(items) ? items : []).map((item) => ({
+                        item_id: item.item_id,
+                        folder_id: item.folder_id,
+                        default_sale_price: item.default_sale_price
+                    })),
+                    channel: 'storefront',
+                    affiliatePricingActive: affiliateSellingPriceRule != null
+                })
+                : null;
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay)
                 ));
 
             return ok({
@@ -2046,7 +2086,20 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
             const affiliateSellingPriceRule = attributionEnrollmentId
                 ? await resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
                 : null;
-            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule, requestedLocationId);
+            const qrVoucherCode = String(query.voucher_code || '').trim();
+            const voucherDisplay = qrVoucherCode
+                ? await resolveVoucherDisplayPricesUseCase({
+                    code: qrVoucherCode,
+                    items: [{
+                        item_id: result.item.item_id,
+                        folder_id: result.item.folder_id,
+                        default_sale_price: result.item.default_sale_price
+                    }],
+                    channel: 'storefront',
+                    affiliatePricingActive: affiliateSellingPriceRule != null
+                })
+                : null;
+            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay);
             return ok({
                 status: 'resolved',
                 reason_code: null,

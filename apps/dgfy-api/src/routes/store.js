@@ -15,7 +15,7 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storeVoucherLookupLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -90,8 +90,30 @@ const trackingReadCacheControl = setReadCacheControl({
     varyHeaders: ['X-Store-Slug']
 });
 
-router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
-router.get('/qr/resolve', catalogReadCacheControl, validateStoreQrQuery, storeController.resolveStoreQr);
+// #603: a voucher-coded catalog/QR request resolves a per-buyer display price, same class of
+// problem as the affiliate attribution cookie (#671, not fixed here) -- a shared public cache must
+// not serve one buyer's voucher-priced response to another. `voucher_code` is a query param (not a
+// cookie), so it's simplest to just switch the response to no-store rather than try to add it to
+// `Vary`, which most shared caches don't key on query params by convention anyway.
+const bypassCacheForVoucherCode = (req, res, next) => {
+    if (String(req.query?.voucher_code || '').trim()) {
+        return setNoStoreCacheControl(req, res, next);
+    }
+    return next();
+};
+
+// A voucher_code-bearing request is both a valid/invalid voucher-code oracle and, via the
+// no-store bypass above, a free lever to defeat the shared CDN cache -- neither route otherwise
+// carries a limiter of its own beyond the generic app-wide bucket. Only consumes budget when
+// voucher_code is actually present, so plain catalog browsing is unaffected.
+const limitVoucherCodeLookups = (req, res, next) => (
+    String(req.query?.voucher_code || '').trim()
+        ? storeVoucherLookupLimiter(req, res, next)
+        : next()
+);
+
+router.get('/catalog', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForVoucherCode, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', storeLocationsLimiter, locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);
