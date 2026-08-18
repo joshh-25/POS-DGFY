@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-18
 applies_to: issue_and_backlog_organization
 topic: issue_taxonomy
 ---
@@ -196,6 +196,31 @@ mutation {
 `Parent issue` and `Sub-issues progress` on the project board populate automatically. Do not also
 hand-maintain a checklist of issue numbers in the parent body — it will drift. A prose list is
 fine as *narrative*; the sub-issue links are the source of truth.
+
+## Updating an existing issue or epic
+
+Added 2026-08-18 (#645), closing a gap this document previously left to be inferred piecemeal from
+individual skill files' checkpoint tables — a rule found only in a skill file is a bug per this
+file's own Surface precedence in `AGENTS.md`, not a feature. This section is the authoritative one;
+skill files reference it rather than restating it.
+
+1. **Whose body it is decides who may edit it.** If you authored the issue, editing the body is
+   fine. If someone else did, **append a comment instead** — never rewrite another author's words,
+   even to fix a stale reference or add a missed detail.
+2. **Additive scope changes** — a newly discovered constraint, new acceptance criteria — go in a
+   dated `## Update YYYY-MM-DD` section appended to the body, not rewoven into the original prose.
+   The original stays legible as a record of what was asked at filing time.
+3. **Scope reduction or splitting.** If the removed scope is still wanted, file it as a sibling
+   issue and cross-reference both directions before narrowing the original — the same principle
+   the "one parent only" rule above already applies to filing.
+4. **Re-parenting a single issue** is routine, addressed the same way as initial parenting, above.
+   **Bulk re-parenting, or restructuring an existing epic's children, is a checkpoint** — a human
+   confirms the restructuring before it happens, not after.
+5. **Re-scoping an epic** requires updating its `## Definition of done` in the same edit. An epic
+   whose children no longer match its stated definition of done is the specific failure mode this
+   rule exists to prevent.
+6. **Closing an issue** (`Done` or `Cancelled`) is always a checkpoint — see "Board status
+   semantics," below, for the `Cancelled` reason-comment requirement.
 
 ---
 
