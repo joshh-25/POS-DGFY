@@ -305,6 +305,17 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         to_disabled_capabilities: Object.freeze({
             sql: "ALTER TABLE `workflow_mode_change_log` ADD COLUMN `to_disabled_capabilities` JSON NULL"
         })
+    }),
+    // #696: added to the pre-existing `vouchers` table rather than folded into that table's own
+    // CREATE TABLE entry above, matching how every other post-creation column addition in this repo
+    // is repaired. Safe to add the FK inline here (unlike `voucher_scopes.scope_ref_id`) because the
+    // table-repair pass that creates `pricelists` (below) always runs before this column-repair pass
+    // -- confirmed against this script's own driver, which applies missing tables first, then
+    // missing columns, in that fixed order.
+    vouchers: Object.freeze({
+        pricelist_id: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `pricelist_id` INT NULL, ADD CONSTRAINT `fk_vouchers_pricelist` FOREIGN KEY (`pricelist_id`) REFERENCES `pricelists` (`pricelist_id`)"
+        })
     })
 });
 
@@ -1257,6 +1268,49 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `voucher_redemption_lines_ibfk_1` FOREIGN KEY (`voucher_redemption_id`) REFERENCES `voucher_redemptions` (`voucher_redemption_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `voucher_redemption_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 111 of #696 (extends #584/ADR 0066) - a per-item pricelist a fixed_price voucher may
+    // attach instead of a single fixed_unit_price_centavos. Declared after the voucher tables so
+    // vouchers.pricelist_id's own column-repair FK (below) has something to reference; declared
+    // before pricelist_items so that table's own FK to pricelists resolves.
+    // `draft_of_pricelist_id` is a self-FK: a non-null value marks this row as the open draft
+    // revision of the published pricelist it references (#698's draft -> publish cycle).
+    pricelists: Object.freeze({
+        sql: "CREATE TABLE `pricelists` (\n"
+            + "  `pricelist_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `name` varchar(120) NOT NULL,\n"
+            + "  `description` varchar(255) DEFAULT NULL,\n"
+            + "  `status` enum('draft','active','archived') NOT NULL DEFAULT 'draft',\n"
+            + "  `draft_of_pricelist_id` int DEFAULT NULL,\n"
+            + "  `version` int NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pricelist_id`),\n"
+            + "  UNIQUE KEY `uq_pricelists_draft_of` (`draft_of_pricelist_id`),\n"
+            + "  KEY `idx_pricelists_status` (`status`),\n"
+            + "  CONSTRAINT `pricelists_ibfk_1` FOREIGN KEY (`draft_of_pricelist_id`) REFERENCES `pricelists` (`pricelist_id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Intent, not a delta (same reasoning as vouchers.fixed_unit_price_centavos, ADR 0066 decision
+    // 5) - Item.default_sale_price moves with Dispatch Order dispatches. `is_manual_override`
+    // distinguishes a deliberately-typed price from #698's SRP prefill; without it there is no way
+    // to tell an untouched row (which drifts as default_sale_price moves) from one the merchant
+    // actually priced.
+    pricelist_items: Object.freeze({
+        sql: "CREATE TABLE `pricelist_items` (\n"
+            + "  `pricelist_item_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pricelist_id` int NOT NULL,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `unit_price_centavos` bigint NOT NULL,\n"
+            + "  `is_manual_override` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pricelist_item_id`),\n"
+            + "  UNIQUE KEY `uq_pricelist_items_pricelist_item` (`pricelist_id`,`item_id`),\n"
+            + "  KEY `idx_pricelist_items_item` (`item_id`),\n"
+            + "  CONSTRAINT `pricelist_items_ibfk_1` FOREIGN KEY (`pricelist_id`) REFERENCES `pricelists` (`pricelist_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `pricelist_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     })
 });
 
@@ -1356,6 +1410,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_vouchers_kind: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_kind` (`voucher_kind`)"
+        }),
+        idx_vouchers_pricelist: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_pricelist` (`pricelist_id`)"
         })
     }),
     voucher_scopes: Object.freeze({
@@ -1398,6 +1455,24 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_voucher_redemption_lines_item: Object.freeze({
             sql: "ALTER TABLE `voucher_redemption_lines` ADD INDEX `idx_voucher_redemption_lines_item` (`item_id`)"
+        })
+    }),
+    // Pricelist indexes (#696). Same rationale as the voucher block above -- only fires for a
+    // tenant whose tables came from sequelize.sync() rather than REQUIRED_TENANT_SCHEMA_TABLES.
+    pricelists: Object.freeze({
+        idx_pricelists_status: Object.freeze({
+            sql: "ALTER TABLE `pricelists` ADD INDEX `idx_pricelists_status` (`status`)"
+        }),
+        uq_pricelists_draft_of: Object.freeze({
+            sql: "ALTER TABLE `pricelists` ADD UNIQUE INDEX `uq_pricelists_draft_of` (`draft_of_pricelist_id`)"
+        })
+    }),
+    pricelist_items: Object.freeze({
+        uq_pricelist_items_pricelist_item: Object.freeze({
+            sql: "ALTER TABLE `pricelist_items` ADD UNIQUE INDEX `uq_pricelist_items_pricelist_item` (`pricelist_id`,`item_id`)"
+        }),
+        idx_pricelist_items_item: Object.freeze({
+            sql: "ALTER TABLE `pricelist_items` ADD INDEX `idx_pricelist_items_item` (`item_id`)"
         })
     })
 });
@@ -1574,7 +1649,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-18.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-18.3';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {
