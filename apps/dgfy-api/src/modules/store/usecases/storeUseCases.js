@@ -18,6 +18,10 @@ import {
 import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
 import {
+    previewVoucherEligibilityUseCase,
+    redeemVoucherUseCase
+} from '../../vouchers/index.js';
+import {
     generateStoreCancelProof,
     generateStoreClaimToken,
     generateStoreToken,
@@ -121,6 +125,10 @@ const parsePositiveInt = (value) => {
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toCentavos = (value) => Math.round(round4(value) * 100);
+// The one conversion boundary named in ADR 0066 decision 2 -- the voucher domain speaks integer
+// centavos, the storefront checkout speaks peso, and this is where the two meet.
+const centavosToPeso = (value) => round4(Number(value || 0) / 100);
+const normalizeVoucherCode = (value) => String(value || '').trim().toUpperCase().slice(0, 64);
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
 const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -422,6 +430,7 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
         payment_type: paymentType,
         payment_timing: resolvePaymentTiming({ orderMethod, paymentType }),
         promo_code: normalizePromoCode(payload.promo_code),
+        voucher_code: normalizeVoucherCode(payload.voucher_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
         customer_phone: String(payload.customer_phone || storeCustomer?.phone || '').trim(),
         customer_email: String(payload.customer_email || storeCustomer?.email || '').trim().toLowerCase(),
@@ -1528,12 +1537,85 @@ const resolveCheckoutContext = async ({
         scheduledFor
     });
 
+    // Storefront voucher redemption (Phase 105, #455 / ADR 0066). Symmetric to promoApplication
+    // above: resolved here (for every caller of resolveCheckoutContext, quote or real checkout) so
+    // its discount folds into totalAmount the same way. Gated on `options?.transaction`:
+    //   - no transaction (the read-only quote/QRPh-session callers) -> preview only, no reservation.
+    //   - transaction present (the real checkout path) -> the full atomic reserve+ledger path,
+    //     reusing the already-open checkout transaction. This call is safe to run unconditionally
+    //     on every resolveCheckoutContext invocation -- including a checkout retry that reaches
+    //     here before buildStoreCheckoutUseCase's own idempotency-key short-circuit below -- because
+    //     redeemVoucherUseCase's own idempotency-key pre-check (step 7-8 of the redemption
+    //     sequence) finds the already-inserted ledger row on replay and moves nothing a second
+    //     time. Open design call, stated explicitly rather than silently picked: voucher and promo
+    //     ARE allowed to stack today (both discounts are summed into totalAmount below) -- nothing
+    //     in this storefront checkout enforces a single discount slot the way ADR 0066 decision 8
+    //     does for POS. See this phase's PR description for the tradeoff.
+    const voucherContext = {
+        channel: 'storefront',
+        fulfillmentMethod: orderMethod,
+        orderTiming: scheduledFor ? 'scheduled' : 'asap',
+        subtotalCentavos: toCentavos(prepared.subtotalAmount),
+        quantity: prepared.preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        affiliatePricing
+    };
+    const voucherLines = prepared.preparedLines.map((line) => ({
+        item_id: line.item_id,
+        quantity: line.quantity,
+        sale_price: line.sale_price,
+        line_subtotal: line.line_subtotal
+    }));
+
+    let voucherApplication = {
+        applied: false,
+        discountAmount: 0,
+        lineAllocations: [],
+        redemptionId: null,
+        idempotentReplay: false
+    };
+    if (normalized.voucher_code) {
+        if (options?.transaction) {
+            const redemption = await redeemVoucherUseCase({
+                code: normalized.voucher_code,
+                context: voucherContext,
+                lines: voucherLines,
+                idempotencyKey: normalized.idempotency_key,
+                channel: 'storefront',
+                storeCustomerId: storeCustomer?.customer_id || null,
+                locationId: normalized.location_id,
+                transaction: options.transaction
+            });
+            voucherApplication = {
+                applied: redemption.applied,
+                discountAmount: centavosToPeso(redemption.discountCentavos),
+                lineAllocations: redemption.lineAllocations,
+                redemptionId: redemption.redemptionId,
+                idempotentReplay: Boolean(redemption.idempotentReplay)
+            };
+        } else {
+            const preview = await previewVoucherEligibilityUseCase({
+                code: normalized.voucher_code,
+                context: voucherContext,
+                lines: voucherLines
+            });
+            voucherApplication = {
+                applied: preview.applied,
+                discountAmount: centavosToPeso(preview.discountCentavos),
+                lineAllocations: preview.lineAllocations,
+                redemptionId: null,
+                idempotentReplay: false
+            };
+        }
+    }
+
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
     const serviceFeeAmount = revenueSharingEnabled
         ? 0
         : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
-    const totalAmount = round4(prepared.subtotalAmount - promoApplication.discountAmount + deliveryFee + serviceFeeAmount);
+    const totalAmount = round4(
+        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
+    );
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
         orderMethod,
         location,
@@ -1550,6 +1632,7 @@ const resolveCheckoutContext = async ({
         prepared,
         recipePlan,
         promoApplication,
+        voucherApplication,
         deliveryFee,
         serviceFeeAmount,
         serviceFeeLabel,
@@ -2381,6 +2464,7 @@ export const buildStoreCartQuoteUseCase = ({
                 discount_amount: resolved.promoApplication.discountAmount,
                 discount_label: resolved.promoApplication.discountLabel,
                 discount_rate: resolved.promoApplication.discountRate,
+                voucher_discount_amount: resolved.voucherApplication.discountAmount,
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
@@ -2419,6 +2503,9 @@ export const buildStoreCartQuoteUseCase = ({
                         promo_code: resolved.promoApplication.enteredPromoCode,
                         message: resolved.promoApplication.message
                     }
+                    : null,
+                voucher_feedback: resolved.voucherApplication.applied
+                    ? { applied: true, voucher_code: normalizeVoucherCode(payload.voucher_code) }
                     : null
             });
         } catch (error) {
@@ -2547,6 +2634,7 @@ export const buildStoreCheckoutUseCase = ({
                 payment_type: normalized.payment_type,
                 payment_timing: normalized.payment_timing,
                 promo_code: normalized.promo_code,
+                voucher_code: normalized.voucher_code,
                 customer_name: normalized.customer_name,
                 customer_phone: normalized.customer_phone,
                 customer_email: normalized.customer_email,
@@ -2693,6 +2781,26 @@ export const buildStoreCheckoutUseCase = ({
                         { transaction, lock: true }
                     );
                 }
+            }
+
+            // Voucher redemption's sibling to the promo usage-update block above -- deliberately
+            // NOT a blind-JSON-overwrite via updateSettingByKey (that pattern is exactly what ADR
+            // 0066 decision 4 retires). Unlike promo, the voucher reservation + ledger insert
+            // already happened above, inside resolveCheckoutContext's own call to
+            // redeemVoucherUseCase (it needed to run there because totalAmount, computed in that
+            // same function, has to reflect the ACTUAL reserved discount rather than a preview
+            // number). Nothing further to do here; this comment exists so a reader following the
+            // promo pattern down to this exact spot isn't left wondering where the voucher half is.
+
+            if (resolved.voucherApplication.applied && !resolved.voucherApplication.redemptionId && !resolved.voucherApplication.idempotentReplay) {
+                // Defensive only: redeemVoucherUseCase either returns a redemptionId or throws --
+                // this should be unreachable, but a checkout must never silently claim a voucher
+                // discount with no ledger row behind it.
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Voucher redemption could not be recorded for this order.',
+                    { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
             }
 
             const shouldCreateFnbKitchenOrder = (
@@ -2857,6 +2965,7 @@ export const buildStoreCheckoutUseCase = ({
                     discount_amount: resolved.promoApplication.discountAmount,
                     discount_label: resolved.promoApplication.discountLabel,
                     discount_rate: resolved.promoApplication.discountRate,
+                    voucher_discount_amount: resolved.voucherApplication.discountAmount,
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label: resolved.serviceFeeLabel,
                     delivery_fee: resolved.deliveryFee,
@@ -2867,6 +2976,13 @@ export const buildStoreCheckoutUseCase = ({
                         applied: true,
                         promo_code: resolved.promoApplication.enteredPromoCode,
                         message: resolved.promoApplication.message
+                    }
+                    : null,
+                voucher_feedback: resolved.voucherApplication.applied
+                    ? {
+                        applied: true,
+                        voucher_code: normalized.voucher_code,
+                        redemption_id: resolved.voucherApplication.redemptionId
                     }
                     : null,
                 account_action: accountAction,

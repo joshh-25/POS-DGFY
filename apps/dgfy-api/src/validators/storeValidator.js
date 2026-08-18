@@ -43,6 +43,9 @@ const storeQuoteSchema = Joi.object({
     location_id: Joi.number().integer().positive().allow(null).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('delivery'),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // Storefront voucher redemption (Phase 105, #455). Symmetric to promo_code, but max(64) to
+    // match vouchers.code's column width -- see src/models/Voucher.js.
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
     customer_email: Joi.string().email().trim().lowercase().max(255).allow('', null).optional(),

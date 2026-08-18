@@ -319,6 +319,174 @@ export const voucherRepository = {
             };
             return accumulator;
         }, {});
+    },
+
+    // ---------------------------------------------------------------------------------------
+    // Phase 105 (#455) additions -- storefront redemption. ADR 0066 decision 4: the ledger
+    // (`voucher_redemptions` / `voucher_redemption_lines`) is authoritative; `vouchers.redeemed_*`
+    // is a derived cache maintained by the guarded UPDATE below so the atomic reservation stays a
+    // single conditional statement, same idiom as `companyRegistrationRepository.markProvisioningStarted`.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * The single atomic reservation. One conditional UPDATE guards all three exhaustion limits
+     * (redemption count / peso budget / benefit quantity) plus bumps `version` -- affected-row
+     * count `0` means at least one guard failed OR the voucher row is gone; the caller re-reads to
+     * tell which and map it to the specific reason code (ADR 0066 decision 3: fail closed, never
+     * cap at the remainder).
+     *
+     * `quantity` is rounded to the nearest integer before being written: `redeemed_quantity` and
+     * `max_benefit_quantity` are both `INTEGER` columns (a pre-existing schema decision, not
+     * something this phase revisits), while `voucher_redemption_lines.quantity` keeps full
+     * (weighed-goods) precision separately.
+     */
+    async reserveRedemption(voucherId, { discountCentavos, quantity } = {}, options = {}) {
+        const Voucher = dbStore.get('Voucher');
+        const id = Number(voucherId);
+        if (!Number.isInteger(id) || id <= 0) return 0;
+
+        const discount = Math.max(0, Math.round(Number(discountCentavos) || 0));
+        const qty = Math.max(0, Math.round(Number(quantity) || 0));
+
+        const [affectedCount] = await Voucher.update(
+            {
+                redeemed_count: literal('redeemed_count + 1'),
+                redeemed_value_centavos: literal(`redeemed_value_centavos + ${discount}`),
+                redeemed_quantity: literal(`redeemed_quantity + ${qty}`),
+                version: literal('version + 1')
+            },
+            {
+                where: {
+                    voucher_id: id,
+                    [Op.and]: [
+                        literal('(max_redemptions IS NULL OR redeemed_count < max_redemptions)'),
+                        literal(
+                            `(max_total_discount_centavos IS NULL OR redeemed_value_centavos + ${discount} <= max_total_discount_centavos)`
+                        ),
+                        literal(
+                            `(max_benefit_quantity IS NULL OR redeemed_quantity + ${qty} <= max_benefit_quantity)`
+                        )
+                    ]
+                },
+                transaction: options.transaction
+            }
+        );
+        return affectedCount;
+    },
+
+    /**
+     * Symmetric decrement for a reversal, floored at zero -- never negative, matching the
+     * validation this ADR names ("reversal must not go negative on a double-reversal or a stale
+     * read"). Unconditional (no exhaustion guard): a reversal always frees capacity back up.
+     */
+    async reverseRedemptionCounters(voucherId, { discountCentavos, quantity } = {}, options = {}) {
+        const Voucher = dbStore.get('Voucher');
+        const id = Number(voucherId);
+        if (!Number.isInteger(id) || id <= 0) return 0;
+
+        const discount = Math.max(0, Math.round(Number(discountCentavos) || 0));
+        const qty = Math.max(0, Math.round(Number(quantity) || 0));
+
+        const [affectedCount] = await Voucher.update(
+            {
+                redeemed_count: literal('GREATEST(redeemed_count - 1, 0)'),
+                redeemed_value_centavos: literal(`GREATEST(redeemed_value_centavos - ${discount}, 0)`),
+                redeemed_quantity: literal(`GREATEST(redeemed_quantity - ${qty}, 0)`),
+                version: literal('version + 1')
+            },
+            {
+                where: { voucher_id: id },
+                transaction: options.transaction
+            }
+        );
+        return affectedCount;
+    },
+
+    async createRedemptionLedgerEntry(values, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const created = await VoucherRedemption.create(values, { transaction: options.transaction });
+        return toPlain(created);
+    },
+
+    async createRedemptionLines(values, options = {}) {
+        const VoucherRedemptionLine = dbStore.get('VoucherRedemptionLine');
+        const rows = Array.isArray(values) ? values : [values];
+        if (rows.length === 0) return [];
+        await VoucherRedemptionLine.bulkCreate(rows, { transaction: options.transaction });
+        return rows;
+    },
+
+    /**
+     * List of a redemption's allocated lines, needed to mirror them (quantities/prices, discount
+     * negated) into a reversal's own lines -- not part of the task's explicitly-named repository
+     * key list, added because `buildReverseVoucherRedemptionUseCase` has no other way to read what
+     * the original redemption actually allocated.
+     */
+    async listRedemptionLines(voucherRedemptionId, options = {}) {
+        const VoucherRedemptionLine = dbStore.get('VoucherRedemptionLine');
+        const rows = await VoucherRedemptionLine.findAll({
+            where: { voucher_redemption_id: voucherRedemptionId },
+            order: [['voucher_redemption_line_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findRedemptionByIdempotencyKey(key, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const normalized = String(key ?? '').trim();
+        if (!normalized) return null;
+        const row = await VoucherRedemption.findOne({
+            where: { idempotency_key: normalized },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async findRedemptionById(voucherRedemptionId, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const row = await VoucherRedemption.findByPk(voucherRedemptionId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    /**
+     * Folder-adjacency read feeding `voucherFolderScope.js`'s descendant BFS. Whole-tenant-tree,
+     * not scoped to the vouchers's own folder scopes -- the descendant walk needs every folder's
+     * `parent_id` to find children regardless of which folders were directly scoped.
+     */
+    async listItemFolderAdjacency(options = {}) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        const rows = await ItemFolder.findAll({
+            attributes: ['folder_id', 'parent_id'],
+            where: { deleted_at: null },
+            transaction: options.transaction,
+            raw: true
+        });
+        return rows;
+    },
+
+    /**
+     * Item -> folder links, scoped to the cart's own item ids only (never a full-table scan) --
+     * feeds the same resolver's "which of these items sit under an eligible folder" half.
+     */
+    async listItemFolderLinksForItems(itemIds, options = {}) {
+        const ids = (Array.isArray(itemIds) ? itemIds : [itemIds])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+        if (ids.length === 0) return [];
+
+        const Item = dbStore.get('Item');
+        const rows = await Item.findAll({
+            where: { item_id: { [Op.in]: ids } },
+            attributes: ['item_id', 'folder_id'],
+            transaction: options.transaction,
+            raw: true
+        });
+        return rows;
     }
 };
 
