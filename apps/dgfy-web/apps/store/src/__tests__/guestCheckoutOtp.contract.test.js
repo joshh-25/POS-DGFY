@@ -54,7 +54,9 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
-    expect(appSource).toMatch(/use(?:Fnb)?GuestCheckoutOtp/);
+    expect(appSource).toContain("import { useGuestCheckoutOtp } from './storefront-shared/checkout/hooks/useGuestCheckoutOtp.js';");
+    expect(appSource).toContain('} = useGuestCheckoutOtp({');
+    expect(appSource).not.toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');
     expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');

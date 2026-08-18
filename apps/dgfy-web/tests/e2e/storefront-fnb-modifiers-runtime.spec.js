@@ -20,6 +20,7 @@ const installRuntimeDiagnostics = (page) => {
       /\/api\/v1\/(dgfy\/auth\/me|dgfy\/customer\/events|storefront\/discovery)/.test(path)
       || /^\/openfreemap\/.+\.pbf$/.test(path)
       || /^https:\/\/tiles\.openfreemap\.org\/styles\/.+/.test(request.url())
+      || /^https:\/\/tiles\.openfreemap\.org\/sprites\/.+\.png$/.test(request.url())
     )) return;
     diagnostics.push(`requestfailed: ${request.method()} ${request.url()} ${failure}`);
   });

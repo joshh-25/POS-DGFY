@@ -34,6 +34,16 @@ function storefrontPath(slug) {
   return `${routePrefix}/${encodeURIComponent(String(slug).trim())}`;
 }
 
+async function waitForCatalogReady(page) {
+  const catalogItems = page.locator('#storefront-catalog-section article');
+  await expect.poll(
+    () => catalogItems.count(),
+    { timeout: 30_000, intervals: [250, 500, 1_000] }
+  ).toBeGreaterThan(0);
+  await expect(catalogItems.first()).toBeVisible({ timeout: 30_000 });
+  return catalogItems.first();
+}
+
 async function dismissCookieBanner(page) {
   const acceptCookies = page.getByRole('button', { name: 'Accept' });
   if (await acceptCookies.isVisible().catch(() => false)) {
@@ -71,8 +81,7 @@ for (const mode of storefrontModes) {
         await page.goto(catalogUrl, { waitUntil: 'domcontentloaded' });
         await dismissCookieBanner(page);
 
-        const firstCard = page.locator('#storefront-catalog-section article').first();
-        await expect(firstCard).toBeVisible();
+        const firstCard = await waitForCatalogReady(page);
         const itemName = (await firstCard.getByRole('heading').first().innerText()).trim();
 
         await clickProductDetails(firstCard);
@@ -86,7 +95,7 @@ for (const mode of storefrontModes) {
 
         await page.goBack({ waitUntil: 'domcontentloaded' });
         await expect(page).toHaveURL(catalogUrl);
-        await expect(page.locator('#storefront-catalog-section article').first()).toBeVisible();
+        await waitForCatalogReady(page);
 
         await page.goForward({ waitUntil: 'domcontentloaded' });
         await expect(page).toHaveURL(detailUrl);
