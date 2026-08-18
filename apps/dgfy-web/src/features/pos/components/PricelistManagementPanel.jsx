@@ -33,6 +33,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 //      (`editing_pricelist_id`) and "Publish" targets that same id.
 
 const PAGE_SIZE_HINT = 1000; // items list max limit (itemValidator.js) -- covers every real tenant's catalog in one call.
+const DESKTOP_TABLE_PAGE_SIZE = 50; // #698: the desktop table paginates client-side over the already-loaded catalog.
 
 const STATUS_BADGE_CLASS = Object.freeze({
   draft: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -117,9 +118,11 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   const [isMobileViewport, setIsMobileViewport] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   const [restoreBanner, setRestoreBanner] = useState(null); // { rows, savedAt } | null
   const [isDraftRevision, setIsDraftRevision] = useState(false);
+  const [desktopPage, setDesktopPage] = useState(0);
 
   const autosaveTimerRef = useRef(null);
   const skipNextAutosaveRef = useRef(false);
+  const focusFirstRowOnPageChangeRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -290,6 +293,48 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
     return rows.filter((row) => row.name.toLowerCase().includes(needle) || row.category.toLowerCase().includes(needle));
   }, [rows, search]);
 
+  // #698's own spec asked for a paginated desktop table -- up to ~300 rows on the largest real
+  // tenant is unwieldy in one scroll region even with the sticky header. Client-side only: the
+  // whole catalog is already loaded in `rows` (one `getItems` call, see PAGE_SIZE_HINT above).
+  const desktopTotalPages = Math.max(1, Math.ceil(filteredRows.length / DESKTOP_TABLE_PAGE_SIZE));
+  const pagedRows = useMemo(
+    () => filteredRows.slice(desktopPage * DESKTOP_TABLE_PAGE_SIZE, (desktopPage + 1) * DESKTOP_TABLE_PAGE_SIZE),
+    [filteredRows, desktopPage]
+  );
+  // A new search (or the catalog itself changing) can leave `desktopPage` pointing past the end.
+  useEffect(() => {
+    setDesktopPage((page) => Math.min(page, desktopTotalPages - 1));
+  }, [desktopTotalPages]);
+  // After `setDesktopPage` advances (from the keyboard-nav handler below, page-boundary case),
+  // the newly-visible rows render on the next tick -- focus their first price input then, not now.
+  useEffect(() => {
+    if (!focusFirstRowOnPageChangeRef.current) return;
+    focusFirstRowOnPageChangeRef.current = false;
+    const firstInput = document.querySelector('[data-price-row]');
+    firstInput?.focus?.();
+    firstInput?.select?.();
+  }, [desktopPage]);
+
+  // #698's own spec: "Tab/Enter advances to the next row" on the desktop table's price input --
+  // a spreadsheet-style bulk-entry flow across up to ~300 rows. Enter never submits anything here
+  // (no <form>), so without this it's a dead key; Tab's native focus order already lands on the
+  // next row's input within one page, but not across a page boundary, which this also handles.
+  const handlePriceInputKeyDown = (event, itemId) => {
+    if (event.key !== 'Enter' && event.key !== 'Tab') return;
+    if (event.key === 'Tab' && event.shiftKey) return; // let native reverse-tab behave normally
+    event.preventDefault();
+    const currentIndex = pagedRows.findIndex((row) => row.item_id === itemId);
+    if (currentIndex === -1) return;
+    if (currentIndex < pagedRows.length - 1) {
+      const nextInput = document.querySelector(`[data-price-row="${pagedRows[currentIndex + 1].item_id}"]`);
+      nextInput?.focus?.();
+      nextInput?.select?.();
+    } else if (desktopPage < desktopTotalPages - 1) {
+      focusFirstRowOnPageChangeRef.current = true;
+      setDesktopPage((page) => page + 1);
+    }
+  };
+
   // #698: warn when a typed price is at or above SRP -- voucherBenefitPolicy.js clamps at zero, so
   // that row silently produces no discount otherwise.
   const rowNoDiscountWarning = (row) => pesoNumber(row.unit_price_pesos) >= row.srp_pesos;
@@ -400,7 +445,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
               placeholder="Search items..."
               className="h-8 w-48 text-xs"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setMobileIndex(0); }}
+              onChange={(e) => { setSearch(e.target.value); setMobileIndex(0); setDesktopPage(0); }}
             />
             <Button type="button" size="sm" variant="outline" disabled={saving || disabled || !canManage} onClick={handleSave} className="h-8 text-xs">
               <Save className="mr-1 h-3.5 w-3.5" /> {saving ? 'Saving...' : 'Save'}
@@ -428,7 +473,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
         {driftedRowCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">
             <span className="inline-flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" /> {driftedRowCount} row(s) are still priced at an older SRP snapshot.</span>
-            <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" onClick={refreshDriftedRowsToCurrentSrp}>
+            <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" disabled={disabled || !canManage} onClick={refreshDriftedRowsToCurrentSrp}>
               <RefreshCcw className="mr-1 h-3.5 w-3.5" /> Refresh to current SRP
             </Button>
           </div>
@@ -460,6 +505,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                   <Label className="text-xs font-semibold text-[#0F172A]">Voucher price (PHP)</Label>
                   <Input
                     type="number" min="0" step="0.01" className="h-10 text-sm"
+                    disabled={disabled || !canManage}
                     value={currentMobileRow.unit_price_pesos}
                     onChange={(e) => handlePriceChange(currentMobileRow.item_id, e.target.value)}
                   />
@@ -473,9 +519,10 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
             ) : <p className="text-xs text-slate-500">No items match your search.</p>}
           </div>
         ) : (
-          <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-lg border max-h-[32rem]">
-            <table className="w-full min-w-[44rem] text-sm">
-              <thead className="bg-slate-50 sticky top-0">
+          <div className="min-w-0 max-w-full rounded-lg border">
+            <div className="overflow-x-auto overflow-y-auto max-h-[32rem]">
+              <table className="w-full min-w-[44rem] text-sm">
+                <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   <th className="p-3 text-left font-medium text-slate-600">Item</th>
                   <th className="p-3 text-left font-medium text-slate-600">Category</th>
@@ -485,7 +532,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredRows.map((row) => {
+                {pagedRows.map((row) => {
                   const noDiscount = rowNoDiscountWarning(row);
                   const belowCost = rowBelowCostWarning(row);
                   return (
@@ -496,8 +543,11 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                       <td className="p-3">
                         <Input
                           type="number" min="0" step="0.01" className="h-8 w-28 text-sm"
+                          disabled={disabled || !canManage}
+                          data-price-row={row.item_id}
                           value={row.unit_price_pesos}
                           onChange={(e) => handlePriceChange(row.item_id, e.target.value)}
+                          onKeyDown={(e) => handlePriceInputKeyDown(e, row.item_id)}
                         />
                       </td>
                       <td className="p-3 text-[11px] font-semibold">
@@ -509,6 +559,22 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                 })}
               </tbody>
             </table>
+          </div>
+            {desktopTotalPages > 1 && (
+              <div className="flex items-center justify-between gap-2 border-t bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                <span>
+                  Page {desktopPage + 1} of {desktopTotalPages} ({filteredRows.length} items)
+                </span>
+                <div className="flex gap-1.5">
+                  <Button type="button" size="sm" variant="outline" className="h-7 px-2" disabled={desktopPage === 0} onClick={() => setDesktopPage((p) => Math.max(0, p - 1))}>
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="h-7 px-2" disabled={desktopPage >= desktopTotalPages - 1} onClick={() => setDesktopPage((p) => Math.min(desktopTotalPages - 1, p + 1))}>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -552,7 +618,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                   <td className="p-3 text-right">
                     <div className="inline-flex gap-1.5">
                       <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => openEditor(row)}>
-                        <Pencil className="mr-1 h-3 w-3" /> Edit items
+                        <Pencil className="mr-1 h-3 w-3" /> {canManage ? 'Edit items' : 'View items'}
                       </Button>
                       {row.status !== 'archived' && (
                         <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] text-rose-600" disabled={disabled || !canManage} onClick={() => setConfirmArchiveId(row.pricelist_id)}>
