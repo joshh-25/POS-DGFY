@@ -944,7 +944,9 @@ export const storeRepository = {
                     'current_stock',
                     'default_sale_price',
                     'vat_type',
-                    'folder_id'
+                    'folder_id',
+                    // #697: below-cost guard input for QR-resolved voucher display pricing.
+                    'cost_per_unit'
                 ],
                 include: [
                     ...buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride),
@@ -992,6 +994,8 @@ export const storeRepository = {
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         folder_id: item.folder_id ?? null,
+                        // #697: below-cost guard input for QR-resolved voucher display pricing.
+                        cost_per_unit: item.cost_per_unit,
                         image_url: mapStorefrontCatalogImageUrl(item),
                         image_variants: deriveImageAssetVariantUrls({
                             storedUrl: mapStorefrontCatalogImageUrl(item)

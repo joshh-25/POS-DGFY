@@ -58,7 +58,7 @@ const notApplied = (overrides = {}) => ({
  * @param {{repository: Object}} deps
  * @returns {(args: {
  *   code: string,
- *   items: Array<{item_id: number, folder_id: number|null, default_sale_price: number}>,
+ *   items: Array<{item_id: number, folder_id: number|null, default_sale_price: number, cost_per_unit?: number|null}>,
  *   channel?: string,
  *   affiliatePricingActive?: boolean
  * }) => Promise<{
@@ -162,6 +162,7 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
         const catalogPrice = Number(item?.default_sale_price);
         if (!(catalogPrice > 0)) continue;
         const baseUnitPriceCentavos = Math.round(catalogPrice * 100);
+        const costPerUnitCentavos = item?.cost_per_unit == null ? null : Math.round(Number(item.cost_per_unit) * 100);
 
         try {
             const benefit = calculateVoucherBenefit({
@@ -171,10 +172,20 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
                 // Order-level cap is not meaningful for a single item shown at quantity 1 in
                 // isolation on a browse card -- omit it, mirroring why amount_off is excluded above.
                 maxDiscountCentavos: null,
-                lines: [{ item_id: itemId, quantity: 1, baseUnitPriceCentavos, eligible: true }]
+                lines: [{ item_id: itemId, quantity: 1, baseUnitPriceCentavos, costPerUnitCentavos, eligible: true }]
             });
             const [allocation] = benefit.lineAllocations;
             if (!allocation || allocation.discountCentavos <= 0) continue;
+            // #697: fail OPEN per item -- show the plain catalog price rather than a voucher price
+            // that undercuts cost. Never blocks the rest of the batch, mirroring
+            // `applyAffiliateDisplayPrice`'s own asymmetry with the checkout-side guard.
+            if (benefit.belowCostLines.length > 0) {
+                logger.warn('[VoucherDisplay] Voucher price would sell below cost, showing catalog price instead', {
+                    voucher_id: voucher.voucher_id,
+                    item_id: itemId
+                });
+                continue;
+            }
             pricesByItemId[itemId] = {
                 original_price: catalogPrice,
                 voucher_price: allocation.voucherUnitPriceCentavos / 100

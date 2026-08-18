@@ -11,6 +11,15 @@
 //   - Decision 5 `[default]`: `fixed_price` is stored as intent (`fixed_unit_price_centavos`) and
 //     rendered as a derived delta `Σ qty × max(0, base_unit − fixed_unit)`, clamped at zero when the
 //     base price has fallen below the pinned price.
+//
+// Below-cost detection (#697) is deliberately benefit-class-agnostic: it compares the resolved,
+// post-cap, post-clamp `voucherUnitPriceCentavos` against an optional per-line `costPerUnitCentavos`
+// -- not `fixedUnitPriceCentavos` alone -- because a deep `percent_off` or `amount_off` can sell
+// below cost exactly as easily as a mispriced `fixed_price` line. A line with no known cost
+// (`costPerUnitCentavos == null`, matching `Item.cost_per_unit`'s `allowNull: true`) is skipped
+// rather than treated as a violation. Returned on the result as `belowCostLines`, never thrown --
+// this module has no opinion on fail-open vs fail-closed; that split is the caller's job (checkout
+// fails closed, catalog display fails open, per ADR 0066 decision 3).
 
 export const VOUCHER_BENEFIT_CLASSES = Object.freeze(['percent_off', 'amount_off', 'fixed_price']);
 
@@ -93,11 +102,15 @@ export const allocateByLargestRemainder = ({ totalCentavos, weights } = {}) => {
 const normalizeLines = (lines) => (Array.isArray(lines) ? lines : []).map((line, index) => {
     const quantity = Math.max(0, Number(line?.quantity) || 0);
     const baseUnitPriceCentavos = toNonNegativeInteger(line?.baseUnitPriceCentavos);
+    // Cost is optional -- `Item.cost_per_unit` is `allowNull: true`, and a line with no recorded
+    // cost must not be treated as a violation (matching the affiliate guard's own null-skip).
+    const costPerUnitCentavos = line?.costPerUnitCentavos == null ? null : toNonNegativeInteger(line.costPerUnitCentavos);
     return {
         index,
         item_id: line?.item_id ?? null,
         quantity,
         baseUnitPriceCentavos,
+        costPerUnitCentavos,
         // Eligibility is decided upstream (scope resolution); a line is eligible unless explicitly
         // marked otherwise, so a caller that does not scope at all gets whole-order behavior.
         eligible: line?.eligible !== false,
@@ -181,8 +194,12 @@ const resolveRawDiscount = ({
  *   rawDiscountCentavos: number,
  *   discountCentavos: number,
  *   capApplied: boolean,
- *   lineAllocations: Array<Object>
+ *   lineAllocations: Array<Object>,
+ *   belowCostLines: Array<{item_id: *, voucherUnitPriceCentavos: number, costPerUnitCentavos: number}>
  * }} `discountCentavos` is the authoritative order-level discount (post-cap, post-clamp).
+ *   `belowCostLines` (#697) is non-throwing -- empty unless a line's resolved `voucherUnitPriceCentavos`
+ *   undercuts its supplied `costPerUnitCentavos`. The caller decides whether that blocks (checkout,
+ *   fail closed) or is ignored/logged (catalog display, fail open).
  */
 export const calculateVoucherBenefit = ({
     benefitClass,
@@ -244,6 +261,9 @@ export const calculateVoucherBenefit = ({
 
     const lineAllocations = normalizedLines.map((line) => {
         const lineDiscountCentavos = perLineDiscounts[line.index];
+        const voucherUnitPriceCentavos = line.quantity > 0
+            ? Math.round(((line.quantity * line.baseUnitPriceCentavos) - lineDiscountCentavos) / line.quantity)
+            : line.baseUnitPriceCentavos;
         return {
             item_id: line.item_id,
             quantity: line.quantity,
@@ -252,13 +272,26 @@ export const calculateVoucherBenefit = ({
             // price anywhere, and decision 6 keeps the resolution seam at the order-level discount
             // slot -- which is exactly why `posDiscountCalculator.js` needs no change for any benefit
             // class. This field exists so a catalog card can render "₱8 with VOUCHER" without any
-            // caller mistaking it for a price to persist.
-            voucherUnitPriceCentavos: line.quantity > 0
-                ? Math.round(((line.quantity * line.baseUnitPriceCentavos) - lineDiscountCentavos) / line.quantity)
-                : line.baseUnitPriceCentavos,
+            // caller mistaking it for a price to persist. It also doubles as the below-cost
+            // comparison point (#697) -- see `belowCostLines` below.
+            voucherUnitPriceCentavos,
             discountCentavos: lineDiscountCentavos
         };
     });
+
+    // #697: benefit-class-agnostic below-cost detection, computed against the same resolved
+    // `voucherUnitPriceCentavos` every `lineAllocations` entry already carries, so a deep
+    // `percent_off`/`amount_off` is caught exactly like a mispriced `fixed_price`. Only lines with a
+    // known, eligible, discounted price participate -- an ineligible line was never priced by this
+    // voucher, and a line with no discount can't have gone below cost as a result of this voucher.
+    const belowCostLines = eligibleLines
+        .filter((line) => line.costPerUnitCentavos != null && perLineDiscounts[line.index] > 0)
+        .map((line) => ({
+            item_id: line.item_id,
+            voucherUnitPriceCentavos: lineAllocations[line.index].voucherUnitPriceCentavos,
+            costPerUnitCentavos: line.costPerUnitCentavos
+        }))
+        .filter((entry) => entry.voucherUnitPriceCentavos < entry.costPerUnitCentavos);
 
     return {
         benefitClass,
@@ -267,6 +300,7 @@ export const calculateVoucherBenefit = ({
         rawDiscountCentavos,
         discountCentavos,
         capApplied,
-        lineAllocations
+        lineAllocations,
+        belowCostLines
     };
 };

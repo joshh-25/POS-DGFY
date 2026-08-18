@@ -40,6 +40,10 @@ export const VoucherReasonCode = Object.freeze({
     // ADR 0066 decision 3: checkout fails closed. A scope that resolves to zero cart-eligible items
     // is not "no discount" -- it is a redemption attempt that cannot be honored, so it blocks.
     VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS: 'VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS',
+    // #697: `allow_below_cost` (stored on the voucher since #455, never previously enforced). Fails
+    // closed at redemption when the resolved voucher price on any eligible, discounted line would
+    // undercut that line's `cost_per_unit` and the voucher does not explicitly permit it.
+    VOUCHER_PRICE_BELOW_COST: 'VOUCHER_PRICE_BELOW_COST',
 
     // #604: tenant-wide POS voucher redemption master switch, default off. Distinct from a voucher's
     // own `channels` mask (VOUCHER_CHANNEL_BITS.pos, evaluated in voucherEligibilityPolicy.js) --

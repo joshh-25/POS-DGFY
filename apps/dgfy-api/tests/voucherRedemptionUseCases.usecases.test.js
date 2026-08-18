@@ -188,6 +188,20 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
         expect(repository.__state.calls).not.toContain('reserveRedemption');
         expect(repository.__state.redemptions).toHaveLength(0);
     });
+
+    // #697: the preview path shares `resolveEligibleBenefit` with redeem, so it fails closed on the
+    // same below-cost condition -- a cart quote must never promise a discount checkout will refuse.
+    it('fails closed on a below-cost line, same as redemption', async () => {
+        const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 100 });
+        const repository = makeFakeRepository({ vouchers: [voucher] });
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+        // sale_price 50 pesos / cost_snapshot 30 pesos -> pinned price 1 peso undercuts the 30-peso cost.
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+        await expectVoucherError(
+            preview({ code: 'save10', context: CONTEXT, lines: belowCostLines }),
+            VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+        );
+    });
 });
 
 describe('buildRedeemVoucherUseCase', () => {
@@ -331,6 +345,61 @@ describe('buildRedeemVoucherUseCase', () => {
         });
         expect(result.applied).toBe(true);
         expect(result.discountCentavos).toBe(1000);
+    });
+
+    describe('#697 below-cost guard', () => {
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+
+        it('fails closed with VOUCHER_PRICE_BELOW_COST when allow_below_cost is false (the default)', async () => {
+            const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 100 });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-below-cost', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+            );
+            expect(repository.__state.calls).not.toContain('reserveRedemption');
+        });
+
+        it('succeeds when allow_below_cost is true', async () => {
+            const voucher = makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: 100,
+                allow_below_cost: true
+            });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-allowed', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+        });
+
+        it('is class-agnostic: a deep percent_off below cost also fails closed', async () => {
+            const voucher = makeVoucher({ percent_off_bps: 9000 }); // 90% off
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-percent-below-cost', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+            );
+        });
+
+        it('does not block a line with no recorded cost', async () => {
+            const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 0 });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const noCostLines = [{ item_id: 1, quantity: 1, sale_price: 50, cost_snapshot: null, line_subtotal: 50 }];
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: noCostLines, idempotencyKey: 'k-no-cost', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+        });
     });
 
     describe('the three exhaustion guards', () => {

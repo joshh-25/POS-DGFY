@@ -1587,7 +1587,10 @@ const resolveCheckoutContext = async ({
         item_id: line.item_id,
         quantity: line.quantity,
         sale_price: line.sale_price,
-        line_subtotal: line.line_subtotal
+        line_subtotal: line.line_subtotal,
+        // #697: below-cost guard input. Already computed above (line 950) for the affiliate guard --
+        // no new query, just re-projected onto the voucher-facing line shape.
+        cost_snapshot: line.cost_snapshot
     }));
 
     let voucherApplication = {
@@ -1926,7 +1929,9 @@ export const buildListStoreCatalogUseCase = ({
                     items: (Array.isArray(items) ? items : []).map((item) => ({
                         item_id: item.item_id,
                         folder_id: item.folder_id,
-                        default_sale_price: item.default_sale_price
+                        default_sale_price: item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: item.cost_per_unit
                     })),
                     channel: 'storefront',
                     affiliatePricingActive: affiliateSellingPriceRule != null
@@ -2093,7 +2098,9 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                     items: [{
                         item_id: result.item.item_id,
                         folder_id: result.item.folder_id,
-                        default_sale_price: result.item.default_sale_price
+                        default_sale_price: result.item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: result.item.cost_per_unit
                     }],
                     channel: 'storefront',
                     affiliatePricingActive: affiliateSellingPriceRule != null

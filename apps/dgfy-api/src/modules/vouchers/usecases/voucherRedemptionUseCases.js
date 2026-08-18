@@ -103,6 +103,9 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         item_id: line.item_id,
         quantity: line.quantity,
         baseUnitPriceCentavos: toCentavos(line.sale_price),
+        // #697: optional -- `storeUseCases.js` supplies `cost_snapshot` (peso, nullable) on every
+        // prepared checkout line; converted here the same way `sale_price` already is.
+        costPerUnitCentavos: line.cost_snapshot == null ? null : toCentavos(line.cost_snapshot),
         eligible: eligibleItemIds == null || eligibleItemIds.has(Number(line.item_id))
     }));
 
@@ -131,6 +134,17 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
             voucherError(error.message, VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID, error.details);
         }
         throw error;
+    }
+
+    // #697: fails closed. `allow_below_cost` defaults to false, so this is a real behavior change
+    // for any already-live voucher (of any benefit class -- the check is class-agnostic) that
+    // happens to sell below cost; that tradeoff is the point of the flag, not a bug in enforcing it.
+    if (benefit.belowCostLines.length > 0 && voucher.allow_below_cost !== true) {
+        voucherError(
+            'This voucher would sell one or more items below their cost.',
+            VoucherReasonCode.VOUCHER_PRICE_BELOW_COST,
+            { voucher_id: voucher.voucher_id, below_cost_lines: benefit.belowCostLines }
+        );
     }
 
     return { voucher, benefit };
