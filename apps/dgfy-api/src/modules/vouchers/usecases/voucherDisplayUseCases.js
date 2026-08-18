@@ -178,8 +178,12 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
             if (!allocation || allocation.discountCentavos <= 0) continue;
             // #697: fail OPEN per item -- show the plain catalog price rather than a voucher price
             // that undercuts cost. Never blocks the rest of the batch, mirroring
-            // `applyAffiliateDisplayPrice`'s own asymmetry with the checkout-side guard.
-            if (benefit.belowCostLines.length > 0) {
+            // `applyAffiliateDisplayPrice`'s own asymmetry with the checkout-side guard. But when
+            // the voucher is explicitly configured with allow_below_cost: true, redemption will
+            // honor that price (voucherRedemptionUseCases.js's own `!== true` check) -- displaying
+            // the plain catalog price here regardless would contradict what checkout actually does,
+            // so only fall back when the flag is not set.
+            if (benefit.belowCostLines.length > 0 && voucher.allow_below_cost !== true) {
                 logger.warn('[VoucherDisplay] Voucher price would sell below cost, showing catalog price instead', {
                     voucher_id: voucher.voucher_id,
                     item_id: itemId

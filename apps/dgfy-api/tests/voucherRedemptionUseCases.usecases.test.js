@@ -202,6 +202,23 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
             VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
         );
     });
+
+    // RF-3 (PR #699 review): the preview path shares `resolveEligibleBenefit` with redeem, so an
+    // `allow_below_cost: true` voucher must quote successfully here too, not just at redemption --
+    // otherwise a cart preview would refuse a discount checkout would actually honor.
+    it('succeeds on a below-cost line when allow_below_cost is true, same as redemption', async () => {
+        const voucher = makeVoucher({
+            benefit_class: 'fixed_price',
+            percent_off_bps: null,
+            fixed_unit_price_centavos: 100,
+            allow_below_cost: true
+        });
+        const repository = makeFakeRepository({ vouchers: [voucher] });
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+        const result = await preview({ code: 'save10', context: CONTEXT, lines: belowCostLines });
+        expect(result.applied).toBe(true);
+    });
 });
 
 describe('buildRedeemVoucherUseCase', () => {
