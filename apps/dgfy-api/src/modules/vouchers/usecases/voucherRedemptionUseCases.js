@@ -84,19 +84,28 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         );
     }
 
-    const scopes = await repository.listScopes([voucher.voucher_id], options);
+    // #696: a pricelist-backed voucher uses the pricelist itself as the scope -- `voucher_scopes` is
+    // not consulted at all when one is attached, avoiding two sources of truth for "which items does
+    // this voucher cover". The price map's keys ARE the eligible item-id set.
     let eligibleItemIds = null;
-    if (scopes.length > 0) {
-        const folderScopeRefIds = scopes
-            .filter((scope) => scope.scope_type === 'item_folder')
-            .map((scope) => scope.scope_ref_id);
-        const cartItemIds = [...new Set((lines || []).map((line) => Number(line.item_id)))];
-        const [folders, itemFolderLinks] = await Promise.all([
-            folderScopeRefIds.length > 0 ? repository.listItemFolderAdjacency(options) : Promise.resolve([]),
-            repository.listItemFolderLinksForItems(cartItemIds, options)
-        ]);
-        const resolved = resolveVoucherScopeItemIds({ scopes, folders, items: itemFolderLinks });
-        eligibleItemIds = resolved.itemIds;
+    let fixedUnitPriceByItemId = null;
+    if (voucher.pricelist_id != null) {
+        fixedUnitPriceByItemId = await repository.listPricelistItemPrices(voucher.pricelist_id, options);
+        eligibleItemIds = new Set(Object.keys(fixedUnitPriceByItemId).map(Number));
+    } else {
+        const scopes = await repository.listScopes([voucher.voucher_id], options);
+        if (scopes.length > 0) {
+            const folderScopeRefIds = scopes
+                .filter((scope) => scope.scope_type === 'item_folder')
+                .map((scope) => scope.scope_ref_id);
+            const cartItemIds = [...new Set((lines || []).map((line) => Number(line.item_id)))];
+            const [folders, itemFolderLinks] = await Promise.all([
+                folderScopeRefIds.length > 0 ? repository.listItemFolderAdjacency(options) : Promise.resolve([]),
+                repository.listItemFolderLinksForItems(cartItemIds, options)
+            ]);
+            const resolved = resolveVoucherScopeItemIds({ scopes, folders, items: itemFolderLinks });
+            eligibleItemIds = resolved.itemIds;
+        }
     }
 
     const benefitLines = (lines || []).map((line) => ({
@@ -110,7 +119,7 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
     }));
 
     // ADR 0066 decision 3: an unresolvable scope (zero cart-eligible items) fails closed, it does
-    // not silently apply a zero discount.
+    // not silently apply a zero discount. Same rule for a pricelist that matches nothing in the cart.
     if (eligibleItemIds != null && !benefitLines.some((line) => line.eligible)) {
         voucherError(
             'Voucher scope does not match any items in this order.',
@@ -126,6 +135,7 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
             percentOffBps: voucher.percent_off_bps,
             amountOffCentavos: voucher.amount_off_centavos,
             fixedUnitPriceCentavos: voucher.fixed_unit_price_centavos,
+            fixedUnitPriceByItemId,
             maxDiscountCentavos: voucher.max_discount_centavos,
             lines: benefitLines
         });

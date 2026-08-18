@@ -62,7 +62,9 @@ const makeFakeRepository = ({
     folderIds = [10, 11],
     redemptions = {},
     skipCodePrecheck = false,
-    forceUpdateMiss = false
+    forceUpdateMiss = false,
+    // #696: { [pricelist_id]: 'draft' | 'active' | 'archived' }. Absent id => "does not exist".
+    pricelistStatusById = {}
 } = {}) => {
     const state = {
         vouchers: vouchers.map((voucher) => ({ ...voucher })),
@@ -196,6 +198,11 @@ const makeFakeRepository = ({
                 if (redemptions[voucherId]) accumulator[voucherId] = redemptions[voucherId];
                 return accumulator;
             }, {});
+        },
+
+        async findPricelistStatus(pricelistId) {
+            const status = pricelistStatusById[Number(pricelistId)];
+            return status ? { pricelist_id: Number(pricelistId), status } : null;
         }
     };
 
@@ -347,6 +354,106 @@ describe('create voucher', () => {
         expect(result.success).toBe(true);
         expect(result.data.scopes).toHaveLength(2);
         expect(result.data.scopes.map((scope) => scope.scope_type)).toEqual(['item', 'item_folder']);
+    });
+
+    describe('#696 pricelist attachment', () => {
+        const pricelistPayload = (overrides = {}) => ({
+            code: 'WHOLESALE1',
+            title: 'Wholesale pricelist',
+            benefit_class: 'fixed_price',
+            pricelist_id: 7,
+            ...overrides
+        });
+
+        test('a fixed_price voucher with an attached pricelist needs no scopes', async () => {
+            const repository = makeFakeRepository({ pricelistStatusById: { 7: 'active' } });
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({ payload: pricelistPayload(), now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.pricelist_id).toBe(7);
+            expect(result.data.voucher.fixed_unit_price_centavos).toBeNull();
+            expect(result.data.scopes).toHaveLength(0);
+        });
+
+        test('carrying both fixed_unit_price_centavos and pricelist_id is refused', async () => {
+            const repository = makeFakeRepository({ pricelistStatusById: { 7: 'active' } });
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({
+                payload: pricelistPayload({ fixed_unit_price_centavos: 500 }),
+                now: NOW
+            });
+
+            expect(statusCode(result)).toBe(422);
+            expect(reasonCode(result)).toBe('VOUCHER_PRICELIST_CONFLICT');
+            expect(repository.__state.vouchers).toHaveLength(0);
+        });
+
+        test('a fixed_price voucher with a scope but neither a price nor a pricelist is refused', async () => {
+            // A scope alone satisfies assertFixedPriceHasScope (checked first); this isolates
+            // applyBenefitConfig's own "neither" branch rather than the scope-requirement check.
+            const repository = makeFakeRepository();
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({
+                payload: {
+                    code: 'PIN0',
+                    title: 'No price',
+                    benefit_class: 'fixed_price',
+                    scopes: [{ scope_type: 'item', scope_ref_id: 1 }]
+                },
+                now: NOW
+            });
+
+            expect(statusCode(result)).toBe(422);
+            expect(reasonCode(result)).toBe('VOUCHER_BENEFIT_CONFIG_INVALID');
+        });
+
+        test('a non-existent pricelist reference rolls the create back', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({ payload: pricelistPayload(), now: NOW });
+
+            expect(statusCode(result)).toBe(422);
+            expect(reasonCode(result)).toBe('VOUCHER_PRICELIST_REF_NOT_FOUND');
+            expect(repository.__state.vouchers).toHaveLength(0);
+            expect(repository.__state.calls.rollbacks).toBe(1);
+        });
+
+        test('a draft (unpublished) pricelist cannot be attached', async () => {
+            const repository = makeFakeRepository({ pricelistStatusById: { 7: 'draft' } });
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({ payload: pricelistPayload(), now: NOW });
+
+            expect(statusCode(result)).toBe(422);
+            expect(reasonCode(result)).toBe('VOUCHER_PRICELIST_NOT_ACTIVE');
+        });
+
+        test('an archived pricelist cannot be attached', async () => {
+            const repository = makeFakeRepository({ pricelistStatusById: { 7: 'archived' } });
+            const create = buildCreateVoucherUseCase({ repository });
+
+            const result = await create({ payload: pricelistPayload(), now: NOW });
+
+            expect(statusCode(result)).toBe(422);
+            expect(reasonCode(result)).toBe('VOUCHER_PRICELIST_NOT_ACTIVE');
+        });
+
+        test('switching benefit_class away from fixed_price clears a stale pricelist_id', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreateVoucherUseCase({ repository });
+
+            // pricelist_id is silently irrelevant here since benefit_class is percent_off; the use
+            // case must null it out rather than persist stale cross-class data.
+            const result = await create({ payload: percentOffPayload({ pricelist_id: 7 }), now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.pricelist_id).toBeNull();
+        });
     });
 
     test('an inconsistent benefit configuration is refused', async () => {

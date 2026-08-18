@@ -37,8 +37,8 @@ const VOUCHER_DEFAULTS = {
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [] } = {}) => {
-    const state = { vouchers: vouchers.map((v) => ({ ...v })), scopes: scopes.map((s) => ({ ...s })), folders: folders.map((f) => ({ ...f })), calls: [] };
+const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], pricelistItemsByPricelistId = {} } = {}) => {
+    const state = { vouchers: vouchers.map((v) => ({ ...v })), scopes: scopes.map((s) => ({ ...s })), folders: folders.map((f) => ({ ...f })), pricelistItemsByPricelistId, calls: [] };
     return {
         __state: state,
         async findByCode(code) {
@@ -55,6 +55,10 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [] } = {}) =
         async listItemFolderAdjacency() {
             state.calls.push('listItemFolderAdjacency');
             return state.folders.map((f) => ({ ...f }));
+        },
+        async listPricelistItemPrices(pricelistId) {
+            state.calls.push('listPricelistItemPrices');
+            return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
         }
     };
 };
@@ -168,6 +172,30 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
 
         expect(result.applied).toBe(false);
         expect(result.reasonCode).toBe('VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT');
+    });
+
+    // #696: a pricelist-backed voucher uses the price map as its scope -- voucher_scopes is never
+    // consulted when one is attached.
+    it('resolves per-item pricelist prices and ignores voucher_scopes entirely', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: null,
+                pricelist_id: 7
+            })],
+            scopes: [{ voucher_id: 1, scope_type: 'item', scope_ref_id: 999 }],
+            pricelistItemsByPricelistId: { 7: { 1: 7000, 2: 4000 } }
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 70 });
+        // item 2's pin (4000 centavos = ₱40) undercuts its ₱50 catalog price too, so it also prices.
+        expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 40 });
+        expect(repository.__state.calls).toContain('listPricelistItemPrices');
+        expect(repository.__state.calls).not.toContain('listScopes');
     });
 
     it('excludes an item outside the voucher\'s folder scope', async () => {

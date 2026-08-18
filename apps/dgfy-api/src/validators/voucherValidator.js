@@ -76,6 +76,11 @@ const baseVoucherFields = {
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
     stackable_with_statutory: Joi.boolean(),
+    // #696: fixed_price-only, mutually exclusive with fixed_unit_price_centavos. The XOR itself is
+    // enforced in voucherUseCases.js's applyBenefitConfig (which sees the merged/stored row, not
+    // just this payload); the conditionals below and collectCrossFieldErrors only catch what a
+    // schema-only check can see.
+    pricelist_id: Joi.number().integer().positive().allow(null),
     valid_from: Joi.string().trim().pattern(DATE_ONLY_PATTERN).allow(null),
     valid_until: Joi.string().trim().pattern(DATE_ONLY_PATTERN).allow(null),
     valid_time_start: Joi.string().trim().pattern(TIME_24H_PATTERN).allow(null),
@@ -110,15 +115,35 @@ const createVoucherSchema = Joi.object({
         .when('benefit_class', { is: 'percent_off', then: Joi.required(), otherwise: Joi.forbidden() }),
     amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS)
         .when('benefit_class', { is: 'amount_off', then: Joi.required(), otherwise: Joi.forbidden() }),
+    // #696: fixed_price requires EITHER this OR pricelist_id, never both. Required only when
+    // benefit_class is fixed_price AND no pricelist_id was sent; forbidden the moment a pricelist_id
+    // is present, so a payload cannot even express both at the schema layer (the real XOR guard is
+    // voucherUseCases.js's applyBenefitConfig, which sees the merged/stored row -- this is the
+    // create-time schema-level half of it).
     fixed_unit_price_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS)
-        .when('benefit_class', { is: 'fixed_price', then: Joi.required(), otherwise: Joi.forbidden() }),
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.when('pricelist_id', { is: Joi.exist(), then: Joi.forbidden(), otherwise: Joi.required() }),
+            otherwise: Joi.forbidden()
+        }),
+    // fixed_price-only; forbidden for every other class at the schema layer too.
+    pricelist_id: Joi.number().integer().positive()
+        .when('benefit_class', { is: 'fixed_price', then: Joi.optional(), otherwise: Joi.forbidden() }),
     // A cap on an already-absolute amount is meaningless, so it is refused rather than ignored.
     max_discount_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null)
         .when('benefit_class', { is: 'amount_off', then: Joi.forbidden() }),
 
-    // `fixed_price` without a scope would pin a price on the entire catalog (#584).
+    // `fixed_price` without a scope would pin a price on the entire catalog (#584) -- UNLESS a
+    // pricelist is attached, in which case the pricelist itself is the scope (#696).
     scopes: scopesSchema.default([])
-        .when('benefit_class', { is: 'fixed_price', then: Joi.array().min(1).required() }),
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.when('pricelist_id', {
+                is: Joi.exist(),
+                then: scopesSchema.default([]),
+                otherwise: scopesSchema.default([]).min(1).required()
+            })
+        }),
 
     version: Joi.any().forbidden()
 });
@@ -198,7 +223,10 @@ const collectCrossFieldErrors = (value, { mode }) => {
     }
 
     if (mode === 'update') {
-        const sendsBenefitAmount = BENEFIT_AMOUNT_FIELDS.some((field) => has(value, field));
+        // #696: pricelist_id is treated as a fourth "benefit amount" field for the purposes of this
+        // trigger -- setting it without resending benefit_class is rejected the same way setting
+        // fixed_unit_price_centavos alone already is.
+        const sendsBenefitAmount = BENEFIT_AMOUNT_FIELDS.some((field) => has(value, field)) || has(value, 'pricelist_id');
         if (sendsBenefitAmount && !has(value, 'benefit_class')) {
             errors.push({
                 field: 'benefit_class',
@@ -206,12 +234,12 @@ const collectCrossFieldErrors = (value, { mode }) => {
             });
         }
         if (has(value, 'benefit_class')) {
+            const expected = {
+                percent_off: 'percent_off_bps',
+                amount_off: 'amount_off_centavos',
+                fixed_price: 'fixed_unit_price_centavos'
+            }[value.benefit_class];
             BENEFIT_AMOUNT_FIELDS.forEach((field) => {
-                const expected = {
-                    percent_off: 'percent_off_bps',
-                    amount_off: 'amount_off_centavos',
-                    fixed_price: 'fixed_unit_price_centavos'
-                }[value.benefit_class];
                 if (field !== expected && has(value, field) && value[field] != null) {
                     errors.push({
                         field,
@@ -223,6 +251,27 @@ const collectCrossFieldErrors = (value, { mode }) => {
                 errors.push({
                     field: 'max_discount_centavos',
                     message: 'max_discount_centavos is not allowed for benefit_class amount_off'
+                });
+            }
+            // #696: pricelist_id is fixed_price-only, and mutually exclusive with
+            // fixed_unit_price_centavos even within fixed_price -- both schema-layer checks the
+            // create-side conditional already gets for free via Joi `.when`, needed here explicitly
+            // because the update schema deliberately keeps benefit fields unconditional (see the
+            // updateVoucherSchema comment above).
+            if (value.benefit_class !== 'fixed_price' && has(value, 'pricelist_id') && value.pricelist_id != null) {
+                errors.push({
+                    field: 'pricelist_id',
+                    message: `pricelist_id is not allowed for benefit_class ${value.benefit_class}`
+                });
+            }
+            if (
+                value.benefit_class === 'fixed_price'
+                && has(value, 'fixed_unit_price_centavos') && value.fixed_unit_price_centavos != null
+                && has(value, 'pricelist_id') && value.pricelist_id != null
+            ) {
+                errors.push({
+                    field: 'pricelist_id',
+                    message: 'fixed_unit_price_centavos and pricelist_id cannot both be set'
                 });
             }
         }
