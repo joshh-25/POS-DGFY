@@ -123,30 +123,53 @@ const createVoucherSchema = Joi.object({
     amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS)
         .when('benefit_class', { is: 'amount_off', then: Joi.required(), otherwise: Joi.forbidden() }),
     // #696: fixed_price requires EITHER this OR pricelist_id, never both. Required only when
-    // benefit_class is fixed_price AND no pricelist_id was sent; forbidden the moment a pricelist_id
-    // is present, so a payload cannot even express both at the schema layer (the real XOR guard is
-    // voucherUseCases.js's applyBenefitConfig, which sees the merged/stored row -- this is the
-    // create-time schema-level half of it).
+    // benefit_class is fixed_price AND no real pricelist_id was sent; must be exactly null the
+    // moment a real pricelist_id is present, so a payload cannot even express both at the schema
+    // layer (the real XOR guard is voucherUseCases.js's applyBenefitConfig, which sees the
+    // merged/stored row -- this is the create-time schema-level half of it).
+    //
+    // #716: the UI's own payload builder sends the *inapplicable* field as an explicit `null`
+    // rather than omitting the key (VoucherManagementPanel.jsx's buildVoucherPayload) -- both
+    // fixed-price sub-modes 422'd against the old `Joi.forbidden()`/`Joi.exist()` pair, since
+    // `Joi.forbidden()` disallows the key's mere PRESENCE regardless of value, and `Joi.exist()`
+    // is satisfied by `null` (it only checks presence, not "is a real value"). Every `is` check
+    // below therefore uses `Joi.number().required()`, not `Joi.exist()` -- `.required()` is what
+    // makes an omitted/undefined sibling correctly NOT match "a pricelist is attached", the
+    // property `Joi.exist()` doesn't have.
     fixed_unit_price_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS)
         .when('benefit_class', {
             is: 'fixed_price',
-            then: Joi.when('pricelist_id', { is: Joi.exist(), then: Joi.forbidden(), otherwise: Joi.required() }),
-            otherwise: Joi.forbidden()
+            then: Joi.when('pricelist_id', {
+                is: Joi.number().required(),
+                then: Joi.valid(null),
+                otherwise: Joi.number().integer().min(0).max(MAX_CENTAVOS).required()
+            }),
+            otherwise: Joi.valid(null)
         }),
-    // fixed_price-only; forbidden for every other class at the schema layer too.
+    // fixed_price-only; must be exactly null for every other class, not merely absent (#716 --
+    // same null-tolerant shape as above, for the same reason).
     pricelist_id: Joi.number().integer().positive()
-        .when('benefit_class', { is: 'fixed_price', then: Joi.optional(), otherwise: Joi.forbidden() }),
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.optional().allow(null),
+            otherwise: Joi.valid(null)
+        }),
     // A cap on an already-absolute amount is meaningless, so it is refused rather than ignored.
     max_discount_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null)
         .when('benefit_class', { is: 'amount_off', then: Joi.forbidden() }),
 
     // `fixed_price` without a scope would pin a price on the entire catalog (#584) -- UNLESS a
     // pricelist is attached, in which case the pricelist itself is the scope (#696).
+    //
+    // #716: `is: Joi.exist()` had the same bug as above -- it's satisfied by `pricelist_id: null`
+    // (an explicit null still "exists"), so a single-price payload (which now legitimately sends
+    // `pricelist_id: null`) would have wrongly skipped the scopes requirement. `Joi.number()
+    // .required()` only matches an actual attached pricelist.
     scopes: scopesSchema.default([])
         .when('benefit_class', {
             is: 'fixed_price',
             then: Joi.when('pricelist_id', {
-                is: Joi.exist(),
+                is: Joi.number().required(),
                 then: scopesSchema.default([]),
                 otherwise: scopesSchema.default([]).min(1).required()
             })

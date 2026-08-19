@@ -1,0 +1,83 @@
+// Regression test for #716: a fixed-price voucher could not be created from the merchant UI at
+// all. `buildVoucherPayload` sends the inapplicable fixed-price field as an explicit `null` rather
+// than omitting the key -- correct and required for the update path (switching an existing
+// fixed_price voucher between "single price" and "pricelist" sub-modes must null out the stale
+// field, since the server's applyBenefitConfig sees the merged/stored row and would otherwise
+// throw VOUCHER_PRICELIST_CONFLICT if both were present). The actual bug was on the API side
+// (voucherValidator.js's createVoucherSchema rejected the key's mere presence, even when null) --
+// see apps/dgfy-api/tests/voucherValidator.test.js's "#716" block for that fix.
+//
+// This test exists because zero frontend tests covered this panel before #716 shipped -- nothing
+// here would have caught the create-schema mismatch, but it does lock in the payload shape both
+// the create and update paths actually depend on.
+
+import { describe, test, expect } from 'vitest';
+import { buildVoucherPayload, blankForm } from '../components/VoucherManagementPanel.jsx';
+
+describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
+    test('single-price sub-mode sends a real price and an explicit null pricelist_id', () => {
+        const form = {
+            ...blankForm(),
+            code: 'PIN1',
+            title: 'Single price',
+            benefitClass: 'fixed_price',
+            fixedPriceSource: 'single',
+            fixedUnitPricePesos: '50.00',
+            scopes: [{ scope_type: 'item', scope_ref_id: 1 }]
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload.fixed_unit_price_centavos).toBe(5000);
+        expect(payload.pricelist_id).toBeNull();
+        expect(payload.scopes).toEqual([{ scope_type: 'item', scope_ref_id: 1 }]);
+    });
+
+    test('pricelist sub-mode sends a real pricelist_id, an explicit null price, and no scopes', () => {
+        const form = {
+            ...blankForm(),
+            code: 'WHOLESALE1',
+            title: 'Wholesale',
+            benefitClass: 'fixed_price',
+            fixedPriceSource: 'pricelist',
+            pricelistId: '7',
+            scopes: [{ scope_type: 'item', scope_ref_id: 1 }] // stale scopes from a prior single-price edit
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload.pricelist_id).toBe(7);
+        expect(payload.fixed_unit_price_centavos).toBeNull();
+        // A pricelist IS the scope (#696) -- stale scopes must be cleared, not carried through.
+        expect(payload.scopes).toEqual([]);
+    });
+
+    test('exactly one of the two fixed-price fields is ever a real (non-null) value', () => {
+        for (const source of ['single', 'pricelist']) {
+            const form = {
+                ...blankForm(),
+                code: 'X',
+                title: 'X',
+                benefitClass: 'fixed_price',
+                fixedPriceSource: source,
+                fixedUnitPricePesos: '10.00',
+                pricelistId: '3'
+            };
+            const payload = buildVoucherPayload(form);
+            const realValues = [payload.fixed_unit_price_centavos, payload.pricelist_id].filter((v) => v !== null);
+            expect(realValues).toHaveLength(1);
+        }
+    });
+
+    test('percent_off and amount_off never emit either fixed-price field', () => {
+        for (const benefitClass of ['percent_off', 'amount_off']) {
+            const form = {
+                ...blankForm(),
+                code: 'X',
+                title: 'X',
+                benefitClass,
+                percentOffPercent: '10',
+                amountOffPesos: '50.00'
+            };
+            const payload = buildVoucherPayload(form);
+            expect(payload).not.toHaveProperty('fixed_unit_price_centavos');
+            expect(payload).not.toHaveProperty('pricelist_id');
+        }
+    });
+});

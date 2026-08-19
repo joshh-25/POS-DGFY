@@ -162,7 +162,9 @@ const describeError = (error, fallback) => {
   return REASON_CODE_MESSAGES[reasonCode] || data?.message || fallback;
 };
 
-const blankForm = () => ({
+// Exported alongside buildVoucherPayload (#716) so the regression test can start from a known-good
+// form shape rather than hand-duplicating every field.
+export const blankForm = () => ({
   voucherId: null,
   version: null,
   status: 'draft',
@@ -245,7 +247,10 @@ const voucherToForm = (voucher, scopes = []) => ({
 
 // Builds the outgoing request body field-by-field from exactly the writable columns -- never a
 // spread of the local draft -- so a server-owned/forbidden field can never leak into a PUT/POST.
-const buildVoucherPayload = (form) => {
+// Exported for #716's regression test — buildVoucherPayload is a pure function of `form`, and no
+// frontend test previously existed for this panel (how the create-schema null rejection shipped
+// undetected).
+export const buildVoucherPayload = (form) => {
   const payload = {
     code: form.code.trim().toUpperCase(),
     voucher_kind: 'promo_code',
