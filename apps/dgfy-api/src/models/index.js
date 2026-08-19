@@ -37,7 +37,6 @@ import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
-import PosOrderPayment from './PosOrderPayment.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -60,8 +59,6 @@ import Voucher from './Voucher.js';
 import VoucherScope from './VoucherScope.js';
 import VoucherRedemption from './VoucherRedemption.js';
 import VoucherRedemptionLine from './VoucherRedemptionLine.js';
-import Pricelist from './Pricelist.js';
-import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
@@ -188,7 +185,6 @@ import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
-import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
@@ -263,7 +259,6 @@ const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
-const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
@@ -425,8 +420,6 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
-Tenant.hasOne(TenantDownpaymentSettings, { foreignKey: 'tenant_id', as: 'downpaymentSettings' });
-TenantDownpaymentSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 // dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
@@ -608,12 +601,6 @@ TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_locatio
 TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
 PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
 PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
-// Phase 137 (#819) -- ADR 0069 clause 4 downpayment/balance/refund/forfeiture ledger.
-PosTransaction.hasMany(PosOrderPayment, { foreignKey: 'pos_transaction_id', as: 'orderPayments' });
-PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
-PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
-PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
-User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -750,17 +737,6 @@ VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redempti
 VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
 VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
-
-// Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
-// may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
-// self-reference (a draft revision points at the published row it will replace on publish).
-Pricelist.hasMany(PricelistItem, { foreignKey: 'pricelist_id', as: 'items' });
-PricelistItem.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
-PricelistItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
-Pricelist.belongsTo(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'publishedPricelist' });
-Pricelist.hasOne(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'draftRevision' });
-Voucher.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
-Pricelist.hasMany(Voucher, { foreignKey: 'pricelist_id', as: 'vouchers' });
 PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
@@ -1038,7 +1014,6 @@ const db = {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
-  PosOrderPayment,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1061,8 +1036,6 @@ const db = {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
-  Pricelist,
-  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -1188,7 +1161,6 @@ const db = {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings
-  ,TenantDownpaymentSettings
   ,PlatformAdminUser
   ,PlatformAdminPermission
   ,PlatformAdminSession
@@ -1247,7 +1219,6 @@ export {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
-  PosOrderPayment,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
@@ -1268,8 +1239,6 @@ export {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
-  Pricelist,
-  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -1395,7 +1364,6 @@ export {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings,
-  TenantDownpaymentSettings,
   PlatformAdminUser,
   PlatformAdminPermission,
   PlatformAdminSession,

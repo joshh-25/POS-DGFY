@@ -30,6 +30,13 @@ const stableStringify = (value) => {
 
 const hashPayload = (value) => crypto.createHash('sha256').update(stableStringify(value)).digest('hex');
 
+const isPosAdminOperator = (user = {}) => (
+    user?.is_master_admin === true
+    || user?.is_master_admin === 1
+    || user?.is_master_admin === '1'
+    || String(user?.role || '').trim().toLowerCase() === 'admin'
+);
+
 const reversalError = (code, message, statusCode, details = undefined) => (
     new DomainError(code, message, { statusCode, ...(details ? { details } : {}) })
 );
@@ -252,13 +259,11 @@ const resolveScope = async ({ posRepository, payload, user, existing, tender, tr
     const shiftId = parsePositiveInt(payload.shift_id);
     const terminalId = String(payload.terminal_id || '').trim().toUpperCase() || null;
     const locationId = parsePositiveInt(payload.terminal_location_id || payload.location_id);
+    const adminShiftBypass = isPosAdminOperator(user) && !shiftId;
     if (!actorUserId) throw reversalError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required.', 401);
-    if (!shiftId) {
-        const isCashRefund = tender.kind === 'cash';
-        throw reversalError(DomainErrorCode.VALIDATION_FAILED, isCashRefund
-            ? 'Cash allocation reversal requires the actual refunding cashier shift.'
-            : 'An open cashier shift is required for this allocation reversal.', 422, {
-            reason_code: isCashRefund ? 'POS_CASH_REFUND_SHIFT_REQUIRED' : 'POS_SHIFT_REQUIRED'
+    if (!shiftId && !adminShiftBypass) {
+        throw reversalError(DomainErrorCode.VALIDATION_FAILED, 'An open cashier shift is required for this allocation reversal.', 422, {
+            reason_code: 'POS_SHIFT_REQUIRED'
         });
     }
     if (locationId && Number(existing.location_id) !== locationId) {
@@ -270,12 +275,18 @@ const resolveScope = async ({ posRepository, payload, user, existing, tender, tr
         ? await posRepository.getTerminalShiftById(shiftId, { transaction, lock: true })
         : null;
     if (shiftId) assertOwnedOpenShift({ shift, actorUserId, terminalId, locationId });
+    if (tender.kind === 'cash' && !shiftId) {
+        throw reversalError(DomainErrorCode.VALIDATION_FAILED, 'Cash allocation reversal requires the actual refunding cashier shift.', 422, {
+            reason_code: 'POS_CASH_REFUND_SHIFT_REQUIRED'
+        });
+    }
     return {
         actorUserId,
         shiftId,
         terminalId: terminalId || shift?.terminal_id || existing.terminal_id || null,
         locationId: locationId || parsePositiveInt(existing.location_id),
-        shift
+        shift,
+        adminShiftBypass
     };
 };
 
@@ -528,7 +539,7 @@ export const buildSplitAllocationReversalUseCase = ({ posRepository, providerRec
                     allocation_pending_before: totals.pending,
                     transaction_shift_id: parsePositiveInt(context.existing.shift_id),
                     actor_shift_id: scope.shiftId,
-                    authorization_mode: 'cashier_shift',
+                    authorization_mode: scope.adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift',
                     provider_action: tender.kind === 'provider_owned' ? 'reconcile_evidence_only' : 'none',
                     confirms_adjustment_id: completionConfirmed && pendingExternal
                         ? Number(pendingExternal.pos_transaction_adjustment_id)
