@@ -35,16 +35,44 @@ const getFinalizationFailureReason = (error) => {
 // the gap was reconciliation visibility: every finalization failure landed under the same generic
 // ORDER_FINALIZATION_FAILED code, so an operator working the paid_manual_resolution_required queue
 // (commercePaymentAdminUseCases.js's retry/refund use cases) had to read a raw error message to tell
-// "the voucher ran out, decide refund vs. retry" apart from any other failure. These four codes are
-// the voucher domain's own exhaustion/conflict reasons (voucherEligibilityPolicy.js's
-// VOUCHER_ELIGIBILITY_REASON_CODES plus voucherErrors.js's VOUCHER_VERSION_CONFLICT) -- listed here
-// as literals rather than imported, matching how every other failure_code in this module is already
-// a free-standing string, not a shared cross-module enum. See ADR 0066's 2026-08-19 amendment.
+// "the voucher ran out, decide refund vs. retry" apart from any other failure. See ADR 0066's
+// 2026-08-19 amendment.
+//
+// #706 (2026-08-19): #668's original four codes covered only the three exhaustion previews plus a
+// version conflict -- but finalization re-runs the SAME full eligibility check preview did
+// (voucherRedemptionUseCases.js's resolveEligibleBenefit, shared by both), under lock, so the exact
+// same "changed between preview and finalization" race also produces these five. Each is a real,
+// user-visible state that can flip between a QRPh session's creation and its webhook-confirmed
+// finalization -- an admin edits/pauses the campaign, the customer holds an unpaid QR code past the
+// voucher's own time window, or a price/cost change during that window newly triggers the below-cost
+// guard (#697). A voucher expiring while a customer holds an unpaid QR code is, if anything, more
+// likely in practice than a redemption-count race, and previously landed as the same unhelpful
+// generic ORDER_FINALIZATION_FAILED the four-code set was built to get away from.
+//
+// Deliberately NOT added: VOUCHER_MIN_SPEND_NOT_MET, VOUCHER_MIN_QUANTITY_NOT_MET,
+// VOUCHER_NOT_STARTED, VOUCHER_TIMEZONE_UNRESOLVABLE. These are evaluated against the same cart
+// payload preview already saw -- not a race, a fixed function of data preview already had -- so if
+// one of these blocks at finalization it blocked identically at preview and the checkout should
+// never have reached a paid QRPh session in the first place. Tagging them VOUCHER_REDEMPTION_UNAVAILABLE
+// would mislead an operator into treating a data/config bug as a normal exhaustion race.
+//
+// All nine codes are the voucher domain's own reason codes (voucherEligibilityPolicy.js's
+// VOUCHER_ELIGIBILITY_REASON_CODES plus voucherErrors.js's VOUCHER_VERSION_CONFLICT and
+// VOUCHER_PRICE_BELOW_COST) -- listed here as literals rather than imported, matching how every
+// other failure_code in this module is already a free-standing string, not a shared cross-module
+// enum.
 const VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES = new Set([
   'VOUCHER_REDEMPTION_LIMIT_REACHED',
   'VOUCHER_BUDGET_EXHAUSTED',
   'VOUCHER_QUANTITY_LIMIT_REACHED',
-  'VOUCHER_VERSION_CONFLICT'
+  'VOUCHER_VERSION_CONFLICT',
+  // #706: added -- see the comment block above for why these five, and why the four deliberately
+  // excluded codes stay excluded.
+  'VOUCHER_EXPIRED',
+  'VOUCHER_NOT_ACTIVE',
+  'VOUCHER_WEEKDAY_NOT_ELIGIBLE',
+  'VOUCHER_TIME_WINDOW_BLOCKED',
+  'VOUCHER_PRICE_BELOW_COST'
 ]);
 
 const getFinalizationFailureCode = (error) => {

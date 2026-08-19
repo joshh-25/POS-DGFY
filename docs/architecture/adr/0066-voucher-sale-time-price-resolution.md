@@ -245,6 +245,39 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   provide the mechanism -- the gap closed here was visibility, not a missing capability.
 - PR: #668 follow-up to Phase 105 (#455/#661 lineage).
 
+### 2026-08-19 — Storefront enforces Decision 8; storefront voucher redemptions gain the Decision 10 audit row (#667)
+
+- Clauses fulfilled, not changed: **Decision 8** (`[default]`) and **Decision 10** (inherited from
+  ADR 0033, `[default]` tier there). Both already stated the rule; neither was actually wired up on
+  the storefront checkout path until this PR. This entry records that the gap is closed, not a
+  change to what either clause says.
+- Decision 8 gap: `resolveCheckoutContext` let `voucher_code` and `promo_code` both apply to the
+  same storefront order, summed uncapped into `totalAmount`, with no mutual-exclusivity check --
+  despite `pos_transaction_discounts` already enforcing `UNIQUE (transaction_id)` and Decision 8
+  already stating "a voucher occupies that slot" fleet-wide, not POS-only. Fixed by rejecting a
+  voucher code submitted alongside an already-applied promo code with `VOUCHER_DISCOUNT_SLOT_OCCUPIED`
+  (422), checked before either the promo or voucher benefit resolves against the ledger, so an
+  ineligible attempt never burns a redemption. Not a stacking cap -- mutual exclusivity, the same
+  shape Decision 8 already describes.
+- Decision 10 gap: because the two could stack, a storefront voucher-only order deducted the
+  voucher's discount from `totalAmount` but persisted no `pos_transaction_discounts` audit row and
+  no per-line allocations -- `discount_amount`/`discount_label_snapshot`/`discount_rate_snapshot`
+  on the order header reflected the promo only, or nothing at all on a voucher-only order. Fixed:
+  with Decision 8 now enforced, at most one governed discount exists per order, so a voucher
+  redemption writes the same audit row a promo redemption always has (`discount_type: 'voucher'`,
+  `discount_method` derived from the voucher's `benefit_class`), and the header fields reflect
+  whichever source actually applied.
+- Explicitly not a stacking-cap feature and not #695's migration arriving early: this is the
+  existing single-slot rule reaching a code path it had never been wired into. It composes with
+  #695 unchanged -- "one governed discount slot" reads identically before and after a promo code
+  becomes a `voucher_kind`.
+- Voucher codes are capped at 40 characters (previously up to 64, matching `vouchers.code
+  VARCHAR(64)`), to fit `pos_transaction_discounts.promo_code VARCHAR(40)` -- the fiscal column a
+  voucher redemption now shares with the promo path -- without widening a fiscal table. No
+  production voucher code exists yet to be narrowed out from under a merchant (storefront voucher
+  redemption is not on `main` as of this amendment).
+- PR: #667 (originally proposed, with a since-corrected rationale, as PR #705).
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that

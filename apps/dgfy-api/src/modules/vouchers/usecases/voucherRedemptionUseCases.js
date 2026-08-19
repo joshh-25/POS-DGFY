@@ -164,8 +164,9 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
  * Read-only quote path. No transaction, no reservation -- just eligibility + benefit calc, so a
  * cart preview can show "voucher applies, -₱X" without touching the ledger.
  *
- * @returns {{applied: boolean, voucherId: number|null, code: string|null, benefitClass:
- *   string|null, discountCentavos: number, lineAllocations: Array<Object>}}
+ * @returns {{applied: boolean, voucherId: number|null, code: string|null, title: string|null,
+ *   badge: string|null, benefitClass: string|null, percentOffBps: number|null,
+ *   discountCentavos: number, lineAllocations: Array<Object>}}
  */
 export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async ({
     code,
@@ -174,7 +175,10 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
 } = {}) => {
     const normalizedCode = normalizeCode(code);
     if (!normalizedCode) {
-        return { applied: false, voucherId: null, code: null, benefitClass: null, discountCentavos: 0, lineAllocations: [] };
+        return {
+            applied: false, voucherId: null, code: null, title: null, badge: null,
+            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+        };
     }
 
     const { voucher, benefit } = await resolveEligibleBenefit({ repository, code, context, lines });
@@ -183,7 +187,13 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
         applied: true,
         voucherId: voucher.voucher_id,
         code: voucher.code,
+        // #667 Phase 110: threaded through so a caller building a fiscal discount-label snapshot
+        // (mirroring commercialPromoPolicy.js's `badge || title || fallback`) doesn't need a second
+        // lookup -- the voucher row is already in scope here.
+        title: voucher.title,
+        badge: voucher.badge,
         benefitClass: voucher.benefit_class,
+        percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
         lineAllocations: benefit.lineAllocations
     };
@@ -203,7 +213,9 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
  *        (decision 11 -- a later folder move must not retroactively change what this meant).
  *
  * @returns {{applied: boolean, idempotentReplay: boolean, redemptionId: number|null,
- *   voucherId: number|null, discountCentavos: number, lineAllocations: Array<Object>}}
+ *   voucherId: number|null, code: string|null, title: string|null, badge: string|null,
+ *   benefitClass: string|null, percentOffBps: number|null, discountCentavos: number,
+ *   lineAllocations: Array<Object>}}
  */
 export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     code,
@@ -221,6 +233,23 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
             'redeemVoucherUseCase requires an open transaction',
             { statusCode: 500 }
         );
+    }
+
+    // #693: the empty-code short-circuit must run BEFORE the POS master-switch guard below, not
+    // after. This function's own contract (see the module docstring above) is "an EMPTY code is a
+    // silent no-op... an entered code that fails to resolve fails closed" -- an empty code was never
+    // supposed to reach any resolution logic, gate included. With the guard ordered first, a POS
+    // checkout carrying NO voucher code at all (channel: 'pos', code: '') threw 422
+    // VOUCHER_POS_REDEMPTION_DISABLED whenever the tenant-wide switch was off (its default), instead
+    // of the benign no-op every other empty-code caller gets. Latent today -- no live caller passes
+    // channel: 'pos' yet -- but would have broken the first POS checkout the moment one did.
+    const normalizedCode = normalizeCode(code);
+    if (!normalizedCode) {
+        return {
+            applied: false, idempotentReplay: false, redemptionId: null, voucherId: null,
+            code: null, title: null, badge: null, benefitClass: null, percentOffBps: null,
+            discountCentavos: 0, lineAllocations: []
+        };
     }
 
     // #604: tenant-wide POS voucher redemption master switch, default off. Deliberately checked
@@ -241,11 +270,6 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         }
     }
 
-    const normalizedCode = normalizeCode(code);
-    if (!normalizedCode) {
-        return { applied: false, idempotentReplay: false, redemptionId: null, voucherId: null, discountCentavos: 0, lineAllocations: [] };
-    }
-
     const normalizedIdempotencyKey = String(idempotencyKey || '').trim();
     if (!normalizedIdempotencyKey) {
         throw new DomainError(
@@ -262,13 +286,25 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
 
     const existing = await repository.findRedemptionByIdempotencyKey(ledgerIdempotencyKey, options);
     if (existing) {
+        const existingDiscountCentavos = Number(existing.discount_centavos);
         return {
             applied: true,
             idempotentReplay: true,
             redemptionId: existing.voucher_redemption_id,
             voucherId: voucher.voucher_id,
-            discountCentavos: Number(existing.discount_centavos),
-            lineAllocations: []
+            code: voucher.code,
+            title: voucher.title,
+            badge: voucher.badge,
+            benefitClass: voucher.benefit_class,
+            percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
+            discountCentavos: existingDiscountCentavos,
+            // #667 Phase 110: only trust this replay's freshly-recomputed allocations if they'd sum
+            // to the same discount the existing ledger row already recorded -- a re-run whose
+            // recomputed benefit disagrees with what was actually reserved (voucher edited between
+            // the original attempt and this replay) must not hand the caller allocations that don't
+            // match the ledger truth. Empty is safe here: the caller's own defensive guard (checkout
+            // use case) only requires non-empty allocations on a FRESH (non-replay) redemption.
+            lineAllocations: existingDiscountCentavos === benefit.discountCentavos ? benefit.lineAllocations : []
         };
     }
 
@@ -339,6 +375,8 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         idempotency_key: ledgerIdempotencyKey
     }, { transaction });
 
+    // Ledger rows only ever record lines this voucher actually discounted -- an ineligible or
+    // zero-discount line has nothing to reverse and would just be dead weight in the ledger.
     const redemptionLines = benefit.lineAllocations
         .filter((line) => line.quantity > 0 && line.discountCentavos > 0)
         .map((line) => ({
@@ -359,7 +397,18 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         idempotentReplay: false,
         redemptionId: ledgerEntry.voucher_redemption_id,
         voucherId: voucher.voucher_id,
+        code: voucher.code,
+        title: voucher.title,
+        badge: voucher.badge,
+        benefitClass: voucher.benefit_class,
+        percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
-        lineAllocations: redemptionLines
+        // #667 Phase 110: the UNFILTERED allocation set (same length/order as the input `lines`),
+        // not `redemptionLines` above -- a caller building a fiscal audit-row allocation needs to
+        // map positionally against its own transaction lines (`storeRepository.js`'s
+        // `createOnlineTransactionWithLines`, the same shape the promo path already uses), and a
+        // filtered, ledger-row-shaped array can't be indexed that way. `redemptionLines` stays the
+        // ledger's own record; this is a separate, caller-facing shape.
+        lineAllocations: benefit.lineAllocations
     };
 };

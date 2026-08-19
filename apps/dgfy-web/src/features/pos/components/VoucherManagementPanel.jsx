@@ -49,7 +49,10 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 // known `version`.
 
 const PAGE_SIZE = 20;
-const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,63}$/;
+// #667 Phase 110: capped at 40, not the server column's full 64, to match
+// apps/dgfy-api/src/validators/voucherValidator.js's narrower cap -- see that file's comment for
+// why (the fiscal audit-row column a voucher redemption now writes into is VARCHAR(40)).
+const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,39}$/;
 
 // Bitmask <-> checkbox-triad conversion. Bit meanings mirror
 // `voucherEligibilityPolicy.js`'s VOUCHER_CHANNEL_BITS / VOUCHER_FULFILLMENT_BITS /
@@ -300,7 +303,7 @@ const validateFormLocally = (form) => {
   const normalizedCode = form.code.trim().toUpperCase();
   if (!normalizedCode) addError('code', 'Code is required.');
   else if (!VOUCHER_CODE_PATTERN.test(normalizedCode)) {
-    addError('code', 'Code must be 3-64 characters: A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit.');
+    addError('code', 'Code must be 3-40 characters: A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit.');
   }
 
   if (form.benefitClass === 'percent_off') {
@@ -870,6 +873,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                     <Input
                       className="h-8 text-xs uppercase"
                       value={form.code}
+                      maxLength={40}
                       disabled={!codeEditable}
                       onChange={(e) => setForm((current) => ({ ...current, code: e.target.value.toUpperCase() }))}
                     />
