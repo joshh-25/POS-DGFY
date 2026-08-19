@@ -38,6 +38,13 @@ export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = nu
  * error handling, and request-sequencing guards are unchanged from the
  * shell.
  */
+// #672: appends `voucher_code` to a catalog query string when present, deduplicating the identical
+// param-append logic that would otherwise be repeated at all three fetch sites below.
+const withVoucherCodeParam = (query, voucherCode) => {
+  const normalized = String(voucherCode || '').trim();
+  return normalized ? `${query}&voucher_code=${encodeURIComponent(normalized)}` : query;
+};
+
 export function useStoreCatalogLoader({
   routeSlug,
   routeSubpage,
@@ -47,7 +54,8 @@ export function useStoreCatalogLoader({
   selectedStore,
   setSelectedStore,
   setRouteSlug,
-  preferredStoreLocationSelection
+  preferredStoreLocationSelection,
+  voucherCode
 }) {
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
@@ -79,6 +87,19 @@ export function useStoreCatalogLoader({
   // instead of merely ignoring their eventual response via the sequence
   // guard above -- an actual abort rather than a wasted in-flight request.
   const storeLoadAbortControllerRef = useRef(null);
+  // #694: `openStoreBySlug` reads the CURRENT voucher code via this ref rather than depending on
+  // the `voucherCode` prop directly. Before #694 nothing changed `voucherCode` after mount (it only
+  // ever arrived once, from a `?voucher=` link), so `openStoreBySlug` depending on it was harmless.
+  // Once a catalog-page voucher-entry button can change it live, that dependency would re-identify
+  // this whole callback on every applied code -- and the effect below re-runs `openStoreBySlug` on
+  // every identity change, firing a full store reload (profile + locations + catalog, clearing
+  // `storeLocations`/`selectedLocationId` along the way) for what should be a catalog-only refetch.
+  // The location-aware effect further down intentionally keeps `voucherCode` as a real dependency --
+  // that one is exactly the codepath that SHOULD refetch on a voucher change.
+  const voucherCodeRef = useRef(voucherCode);
+  useEffect(() => {
+    voucherCodeRef.current = voucherCode;
+  }, [voucherCode]);
 
   // Shared by both catalog-fetch call sites (openStoreBySlug's own fetch and
   // the location-aware effect's) -- previously duplicated inline in each.
@@ -192,9 +213,9 @@ export function useStoreCatalogLoader({
       // against the scoped one that follows. Wrapped so it never rejects
       // (tagged result instead) -- nothing may ever await it if the
       // locations fetch itself throws before reaching the branch below.
-      const speculativeCatalogPromise = requestJson(buildCatalogRequestUrl({
+      const speculativeCatalogPromise = requestJson(withVoucherCodeParam(buildCatalogRequestUrl({
         isServicesMode: isServicesStorefront
-      }), { storeSlug: profile.slug, signal })
+      }), voucherCodeRef.current), { storeSlug: profile.slug, signal })
         .then((data) => ({ data }))
         .catch((error) => ({ error }));
 
@@ -270,16 +291,16 @@ export function useStoreCatalogLoader({
         // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
         // fetch above for why.
         catalogData = await requestJson(
-          buildCatalogRequestUrl({
+          withVoucherCodeParam(buildCatalogRequestUrl({
             isServicesMode: isServicesStorefront,
             locationId: resolvedCatalogLocationId
-          }),
+          }), voucherCodeRef.current),
           { storeSlug: profile.slug, signal }
         );
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       applyCatalogResponse(catalogData);
-      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}`;
+      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}::${voucherCodeRef.current || ''}`;
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
@@ -302,6 +323,7 @@ export function useStoreCatalogLoader({
         storeLoadInFlightRef.current = false;
       }
     }
+  // voucherCode is deliberately NOT a dependency here -- see voucherCodeRef's own comment above.
   }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setRouteSlug, setSelectedStore]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
@@ -326,7 +348,7 @@ export function useStoreCatalogLoader({
       // mid-flight and this effect's deps change before openStoreBySlug's
       // own catalog request has even landed, firing a redundant one.
       if (storeLoadInFlightRef.current) return;
-      const catalogKey = `${selectedStore.slug}::${selectedLocationId ?? ''}`;
+      const catalogKey = `${selectedStore.slug}::${selectedLocationId ?? ''}::${voucherCode || ''}`;
       // Already fetched (by openStoreBySlug or a prior run of this effect)
       // -- a re-render that doesn't actually change the resolved
       // store+location shouldn't refetch. refreshStorePageForTenantSetup
@@ -337,12 +359,12 @@ export function useStoreCatalogLoader({
       setLoadingCatalog(true);
       setCatalogError('');
       try {
-        const catalogQuery = buildCatalogRequestUrl({
+        const catalogQuery = withVoucherCodeParam(buildCatalogRequestUrl({
           isServicesMode: normalizeBusinessMode(
             selectedStore?.workflow_mode || selectedStore?.ops_workflow_mode
           ) === 'services',
           locationId: selectedLocationId
-        });
+        }), voucherCode);
         // No `cache: 'no-store'` (issue #282, Phase B) -- see openStoreBySlug's
         // profile fetch above for why.
         const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, signal: abortController.signal });
@@ -364,7 +386,7 @@ export function useStoreCatalogLoader({
       cancelled = true;
       abortController.abort();
     };
-  }, [applyCatalogResponse, isStorePage, selectedStore?.slug, selectedLocationId]);
+  }, [applyCatalogResponse, isStorePage, selectedStore?.slug, selectedLocationId, voucherCode]);
 
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const nextLocationId = nextValue ? Number(nextValue) : null;

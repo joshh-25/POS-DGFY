@@ -46,7 +46,13 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).not.toContain("'Verify'");
     expect(checkoutContent).toContain('{!isEmployeeCreditPayment && !splitPaymentReady && (');
     expect(checkoutContent).toContain("cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined");
-    expect(checkoutContent).toContain("const shouldOpenDrawer = String(transaction?.payment_type || '').trim().toLowerCase() === 'cash'");
+    // Checkout still auto-opens the drawer for a cash sale...
+    expect(checkoutContent).toContain('openDrawerAfterPrint: isCashPayment');
+    expect(checkoutContent).toContain("reason: 'checkout_auto_print'");
+    // ...but a reprint must never pulse it. Cashier-initiated opens go through the
+    // PIN/reason modal instead, so the old payment_type-derived reprint behavior is gone.
+    expect(checkoutContent).toContain('const shouldOpenDrawer = false;');
+    expect(checkoutContent).not.toContain("const shouldOpenDrawer = String(transaction?.payment_type || '').trim().toLowerCase() === 'cash'");
   });
 
   it('uses permissioned account, lookup, and report endpoints', () => {

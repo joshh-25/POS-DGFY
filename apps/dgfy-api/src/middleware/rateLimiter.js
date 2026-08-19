@@ -29,6 +29,12 @@ const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING
 const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
 const storeLocationsWindowMs = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_WINDOW_MS) || 60 * 1000; // 1 minute
 const storeLocationsMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+// #678 (voucher catalog display seam): a voucher_code query param on the public catalog/QR
+// routes is both a valid/invalid voucher-code oracle and a lever that forces those responses to
+// no-store, bypassing the shared CDN cache. Scoped tightly -- this only gates requests that
+// actually carry voucher_code, never the plain catalog browse path.
+const storeVoucherLookupWindowMs = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_WINDOW_MS) || 60 * 1000; // 1 minute
+const storeVoucherLookupMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -37,6 +43,8 @@ const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVEN
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const posDrawerAuthorizationWindowMs = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_WINDOW_MS) || 10 * 60 * 1000;
+const posDrawerAuthorizationMaxRequests = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
 const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -85,11 +93,13 @@ const rateLimitCounters = {
   store_tracking: 0,
   store_tracking_read: 0,
   store_locations: 0,
+  store_voucher_lookup: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
   ai: 0,
   pos: 0,
+  pos_drawer_authorization: 0,
   dgfy_tenant_session: 0,
   dgfy_account_search: 0,
   registration: 0,
@@ -789,6 +799,42 @@ export const storeLocationsLimiter = rateLimit({
   },
 });
 
+// #678: throttles the voucher_code-bearing path of the public catalog/QR routes specifically
+// (see routes/store.js's limitVoucherCodeLookups) -- a voucher code is both an enumerable
+// oracle and, via the no-store cache bypass it also triggers, a way to force every request to
+// skip the shared CDN cache. IP + store-slug keyed, same shape as storeLocationsLimiter above.
+export const storeVoucherLookupLimiter = rateLimit({
+  windowMs: storeVoucherLookupWindowMs,
+  max: storeVoucherLookupMaxRequests,
+  message: createRateLimitError('Too many voucher lookups. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_voucher_lookup'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const storeSlug = normalizeStoreLimiterSlug(req.headers?.['x-store-slug']) || 'unknown-store';
+    return `store_voucher_lookup:${ip}:${storeSlug}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many voucher lookups. Please wait before trying again.',
+      'store_voucher_lookup',
+      'ip_store_slug'
+    );
+    logRateLimitEvent(req, 'store_voucher_lookup', response.retryAfterSeconds, 'ip_store_slug');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Public storefront discovery limiter (search/list/map/profile lookups).
 export const storefrontDiscoveryLimiter = rateLimit({
   windowMs: storefrontDiscoveryWindowMs,
@@ -1058,6 +1104,45 @@ export const posLimiter = rateLimit({
       'tenant_user_terminal'
     );
     logRateLimitEvent(req, 'pos', response.retryAfterSeconds, 'tenant_user_terminal');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// Drawer authorization is a PIN-protected operation, so it needs a much
+// smaller bucket than ordinary POS reads/checkouts. Scope it to the tenant,
+// user, shift, terminal, and source address so one cashier cannot consume a
+// different cashier's allowance on a shared terminal.
+export const posDrawerAuthorizationLimiter = rateLimit({
+  windowMs: posDrawerAuthorizationWindowMs,
+  max: posDrawerAuthorizationMaxRequests,
+  message: createRateLimitError('Too many cash drawer authorization attempts. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('pos_drawer_authorization'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || userKeyFromAuthHeader(req.headers.authorization) || 'anonymous';
+    const shiftKey = req.body?.shift_id || 'unknown-shift';
+    const terminalKey = req.headers['x-pos-terminal-id'] || req.body?.terminal_id || 'unknown-terminal';
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `pos_drawer_authorization:${tenantKey}:${userKey}:${shiftKey}:${terminalKey}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many cash drawer authorization attempts. Please wait before trying again.',
+      'pos_drawer_authorization',
+      'tenant_user_shift_terminal_ip'
+    );
+    logRateLimitEvent(req, 'pos_drawer_authorization', response.retryAfterSeconds, 'tenant_user_shift_terminal_ip');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

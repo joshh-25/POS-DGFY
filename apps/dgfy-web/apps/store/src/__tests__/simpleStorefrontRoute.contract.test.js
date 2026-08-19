@@ -91,4 +91,16 @@ describe('Simple storefront route boundary', () => {
     expect(shell).toContain("import { TrackingDrawerMount } from '../../tracking/components/TrackingDrawerMount.jsx';");
     expect(shell).toContain('{isSimpleMode && <TrackingDrawerMount {...simpleTrackingDrawerProps} />}');
   });
+
+  it('wires the existing order route into the MSME storefront header', () => {
+    const app = readSource('StorefrontApp.jsx');
+    const heroBandProps = readSource('app/hooks/useStorefrontHeroBandProps.js');
+    const heroBand = readSource('app/pages/StorefrontHeroBandContainer.jsx');
+    const simpleHero = readSource('modes/simple/storefront/components/SimpleHero.jsx');
+
+    expect(app).toContain('goStoreOrderPage,');
+    expect(heroBandProps).toContain('goStoreOrderPage,');
+    expect(heroBand).toContain('goStoreOrderPage={goStoreOrderPage}');
+    expect(simpleHero).toContain("onOrder={() => goStoreOrderPage({ initialTab: 'checkout' })}");
+  });
 });

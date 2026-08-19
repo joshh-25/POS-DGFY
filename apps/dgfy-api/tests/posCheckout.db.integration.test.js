@@ -407,6 +407,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const discount = await models.PosTransactionDiscount.findOne({
             where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
         });
+        const transaction = await models.PosTransaction.findByPk(checkoutResult.data.transaction.pos_transaction_id);
         const audit = await models.AuditLog.findOne({
             where: {
                 entity_type: 'pos_discount',
@@ -418,6 +419,9 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(discount.employee_id).toBe(String(cashier.user_id));
         expect(discount.employee_name).toBe(cashier.username);
         expect(discount.self_approved).toBe(false);
+        expect(Number(discount.discount_amount)).toBe(9.5);
+        expect(Number(transaction.discount_amount)).toBe(9.5);
+        expect(Number(transaction.total_amount)).toBe(85.5);
         expect(audit.user_id).toBe(cashier.user_id);
         expect(typeof audit.changes === 'string' ? JSON.parse(audit.changes) : audit.changes).toEqual(expect.objectContaining({
             selected_employee_id: String(cashier.user_id),

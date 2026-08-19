@@ -353,7 +353,8 @@ const buildHealthySequelizeMock = () => ({
                     stock_effect_type: { allowNull: false },
                     stock_exempt_reason: { allowNull: true },
                     item_name_snapshot: {},
-                    sku_snapshot: {}
+                    sku_snapshot: {},
+                    item_discount_snapshot: {}
                 },
                 pos_terminal_shifts: {
                     pos_terminal_shift_id: {},

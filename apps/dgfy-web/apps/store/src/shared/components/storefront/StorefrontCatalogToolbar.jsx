@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Box, ChevronDown, Filter, LayoutGrid, List, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { StorefrontDropdown } from '../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { VoucherCodePanel } from './VoucherCodePanel.jsx';
 
 /**
  * Search/sort/category toolbar for the classic catalog section (eyebrow +
@@ -16,6 +17,9 @@ const StorefrontCatalogToolbar = ({
   FNB_CATEGORY_ICON_MAP,
   STYLES,
   catalogSearch,
+  checkoutVoucherCode,
+  setCheckoutVoucherCode,
+  handleVoucherCardApply,
   filteredFnbViewModel,
   fnbCategoryDropdownRef,
   fnbSortOption,
@@ -69,6 +73,24 @@ const StorefrontCatalogToolbar = ({
   const isCompactToolbar = modeAdapter.catalogToolbarVariant === 'services-compact';
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const catalogSearchInputRef = useRef(null);
+
+  // #694: a second, more prominent entry point into #672's already-wired apply pipeline --
+  // applying a code here re-fetches the catalog in place (useStoreCatalogLoader.js already keys
+  // its fetch on voucherCode), so no new data flow is needed, just this render.
+  const voucherEntry = handleVoucherCardApply ? (
+    <VoucherCodePanel
+      code={checkoutVoucherCode}
+      onChange={setCheckoutVoucherCode}
+      onClear={() => setCheckoutVoucherCode?.('')}
+      onApplyVoucher={handleVoucherCardApply}
+      compact
+      accentColor={toolbarAccent}
+      bodyFont={toolbarBodyFont}
+      isMobile={isMobileViewport}
+      helperText="Prices update in place below -- no need to open checkout."
+      triggerLabel="Have a voucher code? Apply it here"
+    />
+  ) : null;
 
   if (isMobileViewport) {
     // Keep the category and filter rows aligned with the mobile catalog gutter.
@@ -184,6 +206,12 @@ const StorefrontCatalogToolbar = ({
             )}
           </div>
         </div>
+
+        {voucherEntry && (
+          <div style={{ width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
+            {voucherEntry}
+          </div>
+        )}
       </div>
     );
   }
@@ -220,9 +248,12 @@ const StorefrontCatalogToolbar = ({
           <h2 style={{ margin: 0, fontSize: isCompactToolbar ? 26.4 : 36, fontWeight: isCompactToolbar ? 800 : 900, color: toolbarTextPrimary || STYLES.colors.dark, letterSpacing: isCompactToolbar ? 'normal' : '-0.03em', lineHeight: isCompactToolbar ? '33px' : undefined, fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
           {modeAdapter.catalogSubtitle ? <p style={{ margin: 0, color: toolbarTextMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720 }}>{modeAdapter.catalogSubtitle}</p> : null}
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: isCompactToolbar ? 6 : 10, padding: isCompactToolbar ? '6px 13px' : '10px 14px', borderRadius: isCompactToolbar ? 8 : 999, background: isCompactToolbar ? '#fff' : (toolbarTheme.surfaceInset || '#fff3e8'), border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary || STYLES.colors.dark, fontSize: isCompactToolbar ? 12 : 13, fontWeight: 800, lineHeight: isCompactToolbar ? '19px' : undefined }}>
-          <span style={{ width: isCompactToolbar ? 7 : 8, height: isCompactToolbar ? 7 : 8, borderRadius: 999, background: toolbarAccent }} />
-          {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: isCompactToolbar ? 6 : 10, padding: isCompactToolbar ? '6px 13px' : '10px 14px', borderRadius: isCompactToolbar ? 8 : 999, background: isCompactToolbar ? '#fff' : (toolbarTheme.surfaceInset || '#fff3e8'), border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary || STYLES.colors.dark, fontSize: isCompactToolbar ? 12 : 13, fontWeight: 800, lineHeight: isCompactToolbar ? '19px' : undefined }}>
+            <span style={{ width: isCompactToolbar ? 7 : 8, height: isCompactToolbar ? 7 : 8, borderRadius: 999, background: toolbarAccent }} />
+            {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
+          </div>
+          {voucherEntry && <div style={{ width: 260 }}>{voucherEntry}</div>}
         </div>
       </div>
 

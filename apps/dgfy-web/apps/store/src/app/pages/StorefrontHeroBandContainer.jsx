@@ -50,6 +50,9 @@ export function StorefrontHeroBandContainer(props) {
     goDiscovery,
     goStore,
     goStoreCatalogPage,
+    goStoreOrderPage,
+    hasServiceCart,
+    goStoreBookingPage,
     cartCount,
     modeAdapter,
     isBrandingImageBlocked,
@@ -218,6 +221,7 @@ export function StorefrontHeroBandContainer(props) {
               setCatalogSearch={setCatalogSearch}
               goDiscovery={goDiscovery}
               goStore={goStore}
+              goStoreOrderPage={goStoreOrderPage}
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               modeAdapter={modeAdapter}

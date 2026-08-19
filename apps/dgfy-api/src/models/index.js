@@ -54,6 +54,12 @@ import PosESalesReport from './PosESalesReport.js';
 import Employee from './Employee.js';
 import EmployeeCreditAccount from './EmployeeCreditAccount.js';
 import EmployeeCreditLedgerEntry from './EmployeeCreditLedgerEntry.js';
+import Voucher from './Voucher.js';
+import VoucherScope from './VoucherScope.js';
+import VoucherRedemption from './VoucherRedemption.js';
+import VoucherRedemptionLine from './VoucherRedemptionLine.js';
+import Pricelist from './Pricelist.js';
+import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
@@ -696,6 +702,33 @@ EmployeeCreditLedgerEntry.belongsTo(User, { foreignKey: 'actor_user_id', as: 'ac
 EmployeeCreditLedgerEntry.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 EmployeeCreditLedgerEntry.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'pos_transaction_id', as: 'employeeCreditLedgerEntries' });
+
+// Vouchers (#455, ADR 0066). Campaign -> scopes, campaign -> redemption ledger -> per-item lines.
+// `scope_ref_id` is polymorphic across items/item_folders, so it gets no association here.
+Voucher.hasMany(VoucherScope, { foreignKey: 'voucher_id', as: 'scopes' });
+VoucherScope.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+Voucher.hasMany(VoucherRedemption, { foreignKey: 'voucher_id', as: 'redemptions' });
+VoucherRedemption.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+VoucherRedemption.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+VoucherRedemption.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+VoucherRedemption.belongsTo(User, { foreignKey: 'cashier_user_id', as: 'cashier' });
+VoucherRedemption.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+VoucherRedemption.belongsTo(VoucherRedemption, { foreignKey: 'reversal_of_redemption_id', as: 'reversalOf' });
+VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redemption_id', as: 'lines' });
+VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
+VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+
+// Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
+// may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
+// self-reference (a draft revision points at the published row it will replace on publish).
+Pricelist.hasMany(PricelistItem, { foreignKey: 'pricelist_id', as: 'items' });
+PricelistItem.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+PricelistItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Pricelist.belongsTo(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'publishedPricelist' });
+Pricelist.hasOne(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'draftRevision' });
+Voucher.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+Pricelist.hasMany(Voucher, { foreignKey: 'pricelist_id', as: 'vouchers' });
 PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
@@ -990,6 +1023,12 @@ const db = {
   Employee,
   EmployeeCreditAccount,
   EmployeeCreditLedgerEntry,
+  Voucher,
+  VoucherScope,
+  VoucherRedemption,
+  VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -1188,6 +1227,12 @@ export {
   Employee,
   EmployeeCreditAccount,
   EmployeeCreditLedgerEntry,
+  Voucher,
+  VoucherScope,
+  VoucherRedemption,
+  VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,

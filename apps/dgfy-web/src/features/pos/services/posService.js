@@ -342,6 +342,15 @@ export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {})
     }
 };
 
+export const authorizePosDrawerOpen = async (payload = {}) => {
+    const response = await api.post('/pos/device/authorize-drawer', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined
+    });
+    return response.data?.data;
+};
+
 const CLIENT_RESULT_AUDIT_MAX_ATTEMPTS = 3;
 
 const shouldRetryClientResultAudit = (error) => {
@@ -362,6 +371,7 @@ export const reportPosDeviceClientResult = async ({
     terminalId,
     reason,
     idempotencyKey,
+    drawerAuthorizationToken,
     driverId,
     result
 }) => {
@@ -373,6 +383,7 @@ export const reportPosDeviceClientResult = async ({
                 transaction_id: transactionId || undefined,
                 terminal_id: terminalId || undefined,
                 reason: reason || 'client_driver_report',
+                drawer_authorization_token: drawerAuthorizationToken || undefined,
                 client_driver_id: driverId,
                 client_result: result
             }, { silent: true });

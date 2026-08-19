@@ -1,5 +1,4 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
@@ -37,10 +36,10 @@ export default function TerminalPageLayout({
     terminalRegistry = [],
     terminalRegistryMode = 'warn',
     registryEnforced = false,
-    headerSubtitle,
     mobileNavOpen,
     setMobileNavOpen,
     isDesktopWide,
+    isTabletLayout = false,
     canViewPos,
     canViewAudit = false,
     onboardingRestricted = false,
@@ -53,6 +52,7 @@ export default function TerminalPageLayout({
     canEditItems = false,
     canDeleteItems = false,
     canManageCategories = false,
+    canManageVouchers = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
     canOpenShift = false,
@@ -279,24 +279,32 @@ export default function TerminalPageLayout({
   const primaryNotificationAction = notifications[0]?.onClick || null;
   const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
   const currentCompanyId = String(terminalUser?.company?.id || '').trim();
+  const isFloatingSidebarLayout = IS_DGFY_POS_SURFACE
+    ? (isTabletLayout || !isDesktopWide)
+    : !isDesktopWide;
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
-    ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
+    ? (isTabletLayout
+      ? 'md:grid md:grid-cols-[68px_minmax(0,1fr)]'
+      : `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`)
     : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
-  const persistentSidebarClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
+  const persistentSidebarClassName = isTabletLayout
+    ? 'flex min-h-0 overflow-hidden'
+    : IS_DGFY_POS_SURFACE
+      ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
     : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden';
-  const persistentSidebarFallbackClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden lg:block bg-white p-4 text-sm text-slate-500'
+  const persistentSidebarFallbackClassName = isTabletLayout
+    ? 'block bg-white p-2 text-sm text-slate-500'
+    : IS_DGFY_POS_SURFACE
+      ? 'hidden lg:block bg-white p-4 text-sm text-slate-500'
     : 'hidden xl:block bg-white p-4 text-sm text-slate-500';
-  const persistentSidebarBodyClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
+  const persistentSidebarBodyClassName = isTabletLayout
+    ? 'flex h-full w-full min-h-0 touch-pan-y'
+    : IS_DGFY_POS_SURFACE
+      ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
     : 'hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:touch-pan-y';
   const headerShellClassName = IS_DGFY_POS_SURFACE
     ? 'flex min-h-[38px] min-w-0 items-center justify-between gap-2 lg:min-h-[46px] lg:gap-3'
     : 'flex min-h-[56px] min-w-0 items-center justify-between gap-2.5';
-  const headerSubtitleClassName = IS_DGFY_POS_SURFACE
-    ? 'mt-1 hidden max-w-3xl text-[11px] leading-4 text-pos-muted lg:block'
-    : 'mt-1 hidden max-w-3xl text-[12px] leading-4 text-pos-muted md:block';
   const compactBellClassName = IS_DGFY_POS_SURFACE
     ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
     : 'hidden';
@@ -306,8 +314,10 @@ export default function TerminalPageLayout({
   const desktopIdentityClassName = IS_DGFY_POS_SURFACE
     ? 'hidden min-w-0 shrink-0 items-center gap-2 lg:flex'
     : 'flex min-w-0 shrink-0 items-center gap-2.5';
-  const overlayContainerClassName = IS_DGFY_POS_SURFACE
-    ? 'fixed inset-0 z-50 lg:hidden'
+  const overlayContainerClassName = isTabletLayout
+    ? 'fixed inset-0 z-50'
+    : IS_DGFY_POS_SURFACE
+      ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
@@ -531,11 +541,12 @@ export default function TerminalPageLayout({
   return (
     <div className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
-      {!effectiveSidebarCollapsed && (
+      {(!effectiveSidebarCollapsed || isTabletLayout) && (
         <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
           <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
             <TerminalWorkspaceSidebar
               className={persistentSidebarBodyClassName}
+              isCollapsed={isTabletLayout}
               locked={locked}
               isOnline={isOnline}
               isMsmeMode={isMsmeMode}
@@ -579,7 +590,7 @@ export default function TerminalPageLayout({
               type="button"
               onClick={() => {
                 if (locked) return;
-                if (isDesktopWide) {
+                if (!isFloatingSidebarLayout) {
                   setSidebarCollapsed((collapsed) => !collapsed);
                   return;
                 }
@@ -587,8 +598,8 @@ export default function TerminalPageLayout({
               }}
               disabled={locked}
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
-              aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
-              aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
+              aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
+              aria-pressed={!isFloatingSidebarLayout ? effectiveSidebarCollapsed : undefined}
             >
               <Menu className="h-6 w-6" />
             </button>
@@ -607,10 +618,13 @@ export default function TerminalPageLayout({
                   </span>
                 </div>
               </div>
-              <p className={headerSubtitleClassName}>{headerSubtitle}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+            <div
+              data-testid="pos-header-park-slot"
+              className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10"
+            />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
             {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
@@ -672,7 +686,7 @@ export default function TerminalPageLayout({
         </div>
       )}
 
-      {!isDesktopWide && mobileNavOpen && (
+      {isFloatingSidebarLayout && mobileNavOpen && (
         <div className={overlayContainerClassName}>
           <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
           <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar, #FFFFFF)' }}>
@@ -794,7 +808,7 @@ export default function TerminalPageLayout({
             <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
             {posViewMode === 'audit' ? (
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading audit history...</div>}>
-                <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} />
+                <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} locations={locationsState?.locations || []} />
               </Suspense>
             ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
@@ -819,6 +833,7 @@ export default function TerminalPageLayout({
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}
+                canManageVouchers={canManageVouchers}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}

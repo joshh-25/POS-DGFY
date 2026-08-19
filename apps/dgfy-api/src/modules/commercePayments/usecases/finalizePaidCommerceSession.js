@@ -22,11 +22,39 @@ const getFinalizationFailureReason = (error) => {
   return message.slice(0, 1000);
 };
 
-const getFinalizationFailureCode = (error) => (
-  /idempotency[_ ]key.*different.*payload/i.test(String(error?.message || ''))
+// #668: a voucher's redemption limit can be exhausted by a concurrent order in the window between
+// QRPh session-creation (preview only -- storeUseCases.js's resolveCheckoutContext only reserves
+// when a transaction is already open, which a payment-session preview never has) and
+// webhook-confirmed finalization (the real atomic reserveRedemption, run here via
+// storeCheckoutUseCase). Finalization can then fail *after* PayMongo has already reported the
+// payment as paid. Accepted as-is -- this mirrors the same flow's existing, already-accepted
+// stock/location-availability race (not a new bug class); reserving the voucher earlier, at session
+// creation, would instead hold a redemption slot hostage for a session the customer never actually
+// pays, and this flow has no session-expiry release mechanism to hedge that today
+// (reverseVoucherRedemptionUseCase exists but has no live caller yet). What #668 actually named as
+// the gap was reconciliation visibility: every finalization failure landed under the same generic
+// ORDER_FINALIZATION_FAILED code, so an operator working the paid_manual_resolution_required queue
+// (commercePaymentAdminUseCases.js's retry/refund use cases) had to read a raw error message to tell
+// "the voucher ran out, decide refund vs. retry" apart from any other failure. These four codes are
+// the voucher domain's own exhaustion/conflict reasons (voucherEligibilityPolicy.js's
+// VOUCHER_ELIGIBILITY_REASON_CODES plus voucherErrors.js's VOUCHER_VERSION_CONFLICT) -- listed here
+// as literals rather than imported, matching how every other failure_code in this module is already
+// a free-standing string, not a shared cross-module enum. See ADR 0066's 2026-08-19 amendment.
+const VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES = new Set([
+  'VOUCHER_REDEMPTION_LIMIT_REACHED',
+  'VOUCHER_BUDGET_EXHAUSTED',
+  'VOUCHER_QUANTITY_LIMIT_REACHED',
+  'VOUCHER_VERSION_CONFLICT'
+]);
+
+const getFinalizationFailureCode = (error) => {
+  if (VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES.has(error?.details?.reason_code)) {
+    return 'VOUCHER_REDEMPTION_UNAVAILABLE';
+  }
+  return /idempotency[_ ]key.*different.*payload/i.test(String(error?.message || ''))
     ? 'IDEMPOTENCY_PAYLOAD_CONFLICT'
-    : 'ORDER_FINALIZATION_FAILED'
-);
+    : 'ORDER_FINALIZATION_FAILED';
+};
 
 const persistFinalizationFailure = async ({
   commercePaymentRepository,

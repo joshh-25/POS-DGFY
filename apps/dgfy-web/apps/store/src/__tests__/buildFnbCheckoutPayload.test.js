@@ -30,6 +30,29 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.promo_code).toBe('SAVE20');
   });
 
+  it('includes the normalized voucher code as a separate field from promo_code (#672)', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed', businessId: 'tenant-spacebar' },
+      orderMethod: 'delivery',
+      customerName: 'Bob Harris',
+      customerPhone: '+639171234567',
+      customerEmail: 'bob@example.com',
+      isDeliveryOrder: true,
+      deliveryAddress: 'Mandurriao, Iloilo City',
+      customerPin: { latitude: 10.7, longitude: 122.5 },
+      promoCode: ' save20 ',
+      voucherCode: ' fest2026 ',
+      fnbScheduleMode: 'asap',
+      fnbScheduledFor: '',
+      fnbSpecialInstructions: '',
+      cart: [{ item_id: 1, quantity: 2 }]
+    });
+
+    expect(payload.promo_code).toBe('SAVE20');
+    expect(payload.voucher_code).toBe('FEST2026');
+  });
+
   it('trims customer contact fields and retains readable address text for pickup orders', () => {
     const payload = buildFnbCheckoutPayload({
       selectedLocationId: 'branch-1',

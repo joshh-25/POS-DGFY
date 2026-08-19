@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
@@ -25,6 +25,16 @@ export default function ShiftCloseSummaryPrintView({
     title = 'Cashier Shift Sales Summary',
     businessSettings = {}
 }) {
+    // Chrome 80-84 iMin POS WebView has no CSS :has() (Chrome 105+), so this can't
+    // rely on `body:has(.pos-shift-summary-print-shell)` -- that silently degrades to
+    // "rule doesn't match", printing the whole app instead of just the summary. Mirror
+    // OnlineOrderReceiptModal.jsx's existing body-class toggle pattern instead. Hook runs
+    // unconditionally (rules of hooks), guarded by `report` for the class itself.
+    useEffect(() => {
+        if (typeof document === 'undefined' || !report) return undefined;
+        document.body.classList.add('pos-shift-summary-printing');
+        return () => document.body.classList.remove('pos-shift-summary-printing');
+    }, [report]);
     if (!report) return null;
     const shift = report.shift || {};
     const cash = report.cash_summary || {};
@@ -60,7 +70,7 @@ export default function ShiftCloseSummaryPrintView({
                     <Row name="Subtotal" value={`${currency} ${money(sales.subtotal_amount)}`} />
                     <Row name="Discounts" value={`${currency} ${money(sales.discount_amount)}`} />
                     <Row name="VAT" value={`${currency} ${money(sales.vat_amount)}`} />
-                    <Row name="Total sales" value={`${currency} ${money(sales.total_amount)}`} strong />
+                    <Row name="Total sales (excluding opening cash)" value={`${currency} ${money(sales.total_amount)}`} strong />
                     <Row name={`POS voids (${sales.void_transaction_count || 0})`} value={`${currency} ${money(sales.void_amount)}`} />
                 </section>
 
@@ -77,11 +87,11 @@ export default function ShiftCloseSummaryPrintView({
 
                 <section className="space-y-1 py-2">
                     <p className="font-black uppercase">Cash reconciliation</p>
-                    <Row name="Opening float" value={`${currency} ${money(cash.opening_float_amount)}`} />
+                    <Row name="Opening/petty cash" value={`${currency} ${money(cash.opening_float_amount)}`} />
                     <Row name="Cash sales" value={`${currency} ${money(cash.cash_sales_amount)}`} />
                     <Row name="Cash in" value={`${currency} ${money(cash.cash_in_total)}`} />
                     <Row name="Cash out" value={`${currency} ${money(cash.cash_out_total)}`} />
-                    <Row name="Expected cash" value={`${currency} ${money(cash.expected_cash_amount)}`} />
+                    <Row name="Expected cash in drawer" value={`${currency} ${money(cash.expected_cash_amount)}`} />
                     <Row name="Closing cash" value={reconciliationMoney(cash.closing_cash_amount, currency, 'Not closed')} />
                     <Row name="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                 </section>

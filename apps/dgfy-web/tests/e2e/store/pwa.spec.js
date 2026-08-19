@@ -10,6 +10,6 @@ test.describe('Storefront PWA Audits', () => {
     
     // Storefront app shell should link the PWA manifest
     const manifestLink = page.locator('link[rel="manifest"]');
-    await expect(manifestLink).toHaveAttribute('href', /.*manifest\.webmanifest/);
+    await expect(manifestLink).toHaveAttribute('href', /\/manifest(?:-[^/]+)?\.webmanifest$/);
   });
 });

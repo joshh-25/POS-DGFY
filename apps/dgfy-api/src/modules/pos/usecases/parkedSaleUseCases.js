@@ -171,7 +171,8 @@ const resolveOwnedOpenShift = async ({
     payload = {},
     user,
     transaction = null,
-    terminalRequired = false
+    terminalRequired = false,
+    allowShared = false
 }) => {
     const userId = toPositiveInt(user?.user_id);
     if (!userId) throw buildParkedSaleError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required.', 401);
@@ -195,7 +196,10 @@ const resolveOwnedOpenShift = async ({
             shift_id: shiftId
         });
     }
-    if (toPositiveInt(shift.cashier_id) !== userId) {
+    // Parked sales are a location-level handoff queue. Listing and claiming
+    // may be performed by another authorized cashier at the same location;
+    // create, re-park, complete, and cancel still require shift ownership.
+    if (!allowShared && toPositiveInt(shift.cashier_id) !== userId) {
         throw buildParkedSaleError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the cashier who opened the shift may manage its parked sales.', 403, {
             reason_code: 'POS_SHIFT_OWNER_REQUIRED',
             shift_id: shiftId
@@ -502,7 +506,8 @@ export const buildListPosParkedSalesUseCase = ({ posRepository }) => async ({ qu
             posRepository,
             payload: query,
             user,
-            terminalRequired: false
+            terminalRequired: false,
+            allowShared: true
         });
         const statuses = query.status ? [query.status] : ACTIVE_PARKED_STATUSES;
         const sales = await posRepository.listParkedSales({
@@ -533,7 +538,8 @@ export const buildClaimPosParkedSaleUseCase = ({ posRepository }) => async ({ pa
             payload,
             user,
             transaction,
-            terminalRequired: true
+            terminalRequired: true,
+            allowShared: true
         });
         const row = await posRepository.getParkedSaleById(normalizedId, { transaction, lock: true });
         if (!row) throw buildParkedSaleError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Parked POS sale not found.', 404);

@@ -18,6 +18,11 @@ import {
 import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
 import {
+    previewVoucherEligibilityUseCase,
+    redeemVoucherUseCase,
+    resolveVoucherDisplayPricesUseCase
+} from '../../vouchers/index.js';
+import {
     generateStoreCancelProof,
     generateStoreClaimToken,
     generateStoreToken,
@@ -67,13 +72,27 @@ import { STOREFRONT_ORDER_METHODS } from '../../shared/constants/orderMethods.js
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
-const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya']);
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay'];
+const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya', 'grab_pay', 'shopeepay']);
 const HOSTED_PAYMENT_METHOD_TYPES = Object.freeze({
     card: 'card',
     gcash: 'gcash',
-    maya: 'paymaya'
+    maya: 'paymaya',
+    grab_pay: 'grab_pay',
+    shopeepay: 'shopeepay'
 });
+const PAYMENT_METHOD_CAPABILITY_ALIASES = Object.freeze({
+    card: Object.freeze(['card']),
+    gcash: Object.freeze(['gcash']),
+    maya: Object.freeze(['paymaya', 'maya']),
+    grab_pay: Object.freeze(['grab_pay']),
+    shopeepay: Object.freeze(['shopeepay', 'shopee_pay']),
+    qrph: Object.freeze(['qrph'])
+});
+
+export const getHostedPaymentMethodType = (paymentType) => (
+    HOSTED_PAYMENT_METHOD_TYPES[String(paymentType || '').trim().toLowerCase()] || null
+);
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
     delivery: 'supports_delivery',
@@ -107,6 +126,10 @@ const parsePositiveInt = (value) => {
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toCentavos = (value) => Math.round(round4(value) * 100);
+// The one conversion boundary named in ADR 0066 decision 2 -- the voucher domain speaks integer
+// centavos, the storefront checkout speaks peso, and this is where the two meet.
+const centavosToPeso = (value) => round4(Number(value || 0) / 100);
+const normalizeVoucherCode = (value) => String(value || '').trim().toUpperCase().slice(0, 64);
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
 const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -408,6 +431,7 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
         payment_type: paymentType,
         payment_timing: resolvePaymentTiming({ orderMethod, paymentType }),
         promo_code: normalizePromoCode(payload.promo_code),
+        voucher_code: normalizeVoucherCode(payload.voucher_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
         customer_phone: String(payload.customer_phone || storeCustomer?.phone || '').trim(),
         customer_email: String(payload.customer_email || storeCustomer?.email || '').trim().toLowerCase(),
@@ -1101,7 +1125,26 @@ const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
     }
 };
 
-const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null, locationId = null) => {
+// #603: display-only, best-effort per item -- looks up this item's pre-resolved voucher price from
+// the once-per-request batch result (see `resolveVoucherDisplayPricesUseCase`'s callers). Unlike
+// `applyAffiliateDisplayPrice`, this does NOT overwrite `default_sale_price` in place -- #603 needs
+// both the original and the discounted price on the wire simultaneously so the storefront can render
+// a struck-through comparison, not a silent substitution.
+const applyVoucherDisplayPrice = (item, voucherDisplay) => {
+    if (!voucherDisplay || !voucherDisplay.applied) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: false };
+    }
+    if (voucherDisplay.badgeOnly) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: true };
+    }
+    const priced = voucherDisplay.pricesByItemId?.[Number(item.item_id)];
+    if (!priced) {
+        return { voucherPriceApplied: false, voucherDisplayPrice: null, voucherBadgeOnly: false };
+    }
+    return { voucherPriceApplied: true, voucherDisplayPrice: priced.voucher_price, voucherBadgeOnly: false };
+};
+
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null, locationId = null, voucherDisplay = null) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
     const imageUrl = item.image_url || null;
@@ -1115,6 +1158,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         }
         : null;
     const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
+    const { voucherPriceApplied, voucherDisplayPrice, voucherBadgeOnly } = applyVoucherDisplayPrice(item, voucherDisplay);
     return {
         item_id: item.item_id,
         name: item.name,
@@ -1125,6 +1169,9 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: displaySalePrice,
         affiliate_price_applied: affiliatePriceApplied,
+        voucher_price_applied: voucherPriceApplied,
+        voucher_display_price: voucherDisplayPrice,
+        voucher_badge_only: voucherBadgeOnly,
         vat_type: item.vat_type || 'vatable',
         image_url: imageUrl,
         image_variants: {
@@ -1514,12 +1561,88 @@ const resolveCheckoutContext = async ({
         scheduledFor
     });
 
+    // Storefront voucher redemption (Phase 105, #455 / ADR 0066). Symmetric to promoApplication
+    // above: resolved here (for every caller of resolveCheckoutContext, quote or real checkout) so
+    // its discount folds into totalAmount the same way. Gated on `options?.transaction`:
+    //   - no transaction (the read-only quote/QRPh-session callers) -> preview only, no reservation.
+    //   - transaction present (the real checkout path) -> the full atomic reserve+ledger path,
+    //     reusing the already-open checkout transaction. This call is safe to run unconditionally
+    //     on every resolveCheckoutContext invocation -- including a checkout retry that reaches
+    //     here before buildStoreCheckoutUseCase's own idempotency-key short-circuit below -- because
+    //     redeemVoucherUseCase's own idempotency-key pre-check (step 7-8 of the redemption
+    //     sequence) finds the already-inserted ledger row on replay and moves nothing a second
+    //     time. Open design call, stated explicitly rather than silently picked: voucher and promo
+    //     ARE allowed to stack today (both discounts are summed into totalAmount below) -- nothing
+    //     in this storefront checkout enforces a single discount slot the way ADR 0066 decision 8
+    //     does for POS. See this phase's PR description for the tradeoff.
+    const voucherContext = {
+        channel: 'storefront',
+        fulfillmentMethod: orderMethod,
+        orderTiming: scheduledFor ? 'scheduled' : 'asap',
+        subtotalCentavos: toCentavos(prepared.subtotalAmount),
+        quantity: prepared.preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        affiliatePricing
+    };
+    const voucherLines = prepared.preparedLines.map((line) => ({
+        item_id: line.item_id,
+        quantity: line.quantity,
+        sale_price: line.sale_price,
+        line_subtotal: line.line_subtotal,
+        // #697: below-cost guard input. Already computed above (line 950) for the affiliate guard --
+        // no new query, just re-projected onto the voucher-facing line shape.
+        cost_snapshot: line.cost_snapshot
+    }));
+
+    let voucherApplication = {
+        applied: false,
+        discountAmount: 0,
+        lineAllocations: [],
+        redemptionId: null,
+        idempotentReplay: false
+    };
+    if (normalized.voucher_code) {
+        if (options?.transaction) {
+            const redemption = await redeemVoucherUseCase({
+                code: normalized.voucher_code,
+                context: voucherContext,
+                lines: voucherLines,
+                idempotencyKey: normalized.idempotency_key,
+                channel: 'storefront',
+                storeCustomerId: storeCustomer?.customer_id || null,
+                locationId: normalized.location_id,
+                transaction: options.transaction
+            });
+            voucherApplication = {
+                applied: redemption.applied,
+                discountAmount: centavosToPeso(redemption.discountCentavos),
+                lineAllocations: redemption.lineAllocations,
+                redemptionId: redemption.redemptionId,
+                idempotentReplay: Boolean(redemption.idempotentReplay)
+            };
+        } else {
+            const preview = await previewVoucherEligibilityUseCase({
+                code: normalized.voucher_code,
+                context: voucherContext,
+                lines: voucherLines
+            });
+            voucherApplication = {
+                applied: preview.applied,
+                discountAmount: centavosToPeso(preview.discountCentavos),
+                lineAllocations: preview.lineAllocations,
+                redemptionId: null,
+                idempotentReplay: false
+            };
+        }
+    }
+
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
     const serviceFeeAmount = revenueSharingEnabled
         ? 0
         : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
-    const totalAmount = round4(prepared.subtotalAmount - promoApplication.discountAmount + deliveryFee + serviceFeeAmount);
+    const totalAmount = round4(
+        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
+    );
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
         orderMethod,
         location,
@@ -1536,6 +1659,7 @@ const resolveCheckoutContext = async ({
         prepared,
         recipePlan,
         promoApplication,
+        voucherApplication,
         deliveryFee,
         serviceFeeAmount,
         serviceFeeLabel,
@@ -1626,7 +1750,9 @@ const resolveStorefrontPaymentCapabilities = async ({
     revenueSharingEnabled
 }) => {
     const supportsHostedCapabilityLookup = typeof paymongoService?.getPaymentMethodCapabilities === 'function';
-    const paymentTypes = supportsHostedCapabilityLookup ? ['card', 'gcash', 'maya', 'qrph'] : ['qrph'];
+    const paymentTypes = supportsHostedCapabilityLookup
+        ? ['card', 'gcash', 'maya', 'grab_pay', 'shopeepay', 'qrph']
+        : ['qrph'];
     const disabled = (reasonCode) => Object.fromEntries(paymentTypes.map((paymentType) => [paymentType, {
             enabled: false,
             environment: paymongoMode,
@@ -1665,16 +1791,18 @@ const resolveStorefrontPaymentCapabilities = async ({
         const providerMethods = supportsHostedCapabilityLookup
             ? await paymongoService.getPaymentMethodCapabilities()
             : ['qrph'];
-        const hasProviderMethod = (method) => providerMethods.includes(method);
+        const hasProviderMethod = (paymentType) => (
+            (PAYMENT_METHOD_CAPABILITY_ALIASES[paymentType] || [getHostedPaymentMethodType(paymentType)])
+                .some((method) => providerMethods.includes(method))
+        );
         const capabilities = Object.fromEntries(paymentTypes.map((paymentType) => [paymentType, {
             enabled: false,
             environment: paymongoMode,
             reason_code: 'PAYMENT_METHOD_NOT_AVAILABLE'
         }]));
 
-        for (const paymentType of supportsHostedCapabilityLookup ? ['card', 'gcash', 'maya'] : []) {
-            const providerMethod = HOSTED_PAYMENT_METHOD_TYPES[paymentType];
-            if (revenueSharingEnabled && hasProviderMethod(providerMethod)) {
+        for (const paymentType of supportsHostedCapabilityLookup ? Object.keys(HOSTED_PAYMENT_METHOD_TYPES) : []) {
+            if (revenueSharingEnabled && hasProviderMethod(paymentType)) {
                 capabilities[paymentType] = {
                     enabled: true,
                     environment: paymongoMode,
@@ -1781,6 +1909,7 @@ export const buildListStoreCatalogUseCase = ({
                 });
             }
 
+            const voucherCode = String(query.voucher_code || '').trim();
             const [items, affiliateSellingPriceRule] = await Promise.all([
                 storeRepository.listStoreCatalog({
                     search: query.search,
@@ -1791,10 +1920,27 @@ export const buildListStoreCatalogUseCase = ({
                     ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
                     : Promise.resolve(null)
             ]);
+            // #603: resolved once per request, after the item fetch (needs each item's folder_id
+            // for scope resolution), same batching discipline as the affiliate rule above -- a
+            // 200-item catalog page still does exactly one voucher lookup, not one per item.
+            const voucherDisplay = voucherCode
+                ? await resolveVoucherDisplayPricesUseCase({
+                    code: voucherCode,
+                    items: (Array.isArray(items) ? items : []).map((item) => ({
+                        item_id: item.item_id,
+                        folder_id: item.folder_id,
+                        default_sale_price: item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: item.cost_per_unit
+                    })),
+                    channel: 'storefront',
+                    affiliatePricingActive: affiliateSellingPriceRule != null
+                })
+                : null;
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay)
                 ));
 
             return ok({
@@ -1945,7 +2091,22 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
             const affiliateSellingPriceRule = attributionEnrollmentId
                 ? await resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
                 : null;
-            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule, requestedLocationId);
+            const qrVoucherCode = String(query.voucher_code || '').trim();
+            const voucherDisplay = qrVoucherCode
+                ? await resolveVoucherDisplayPricesUseCase({
+                    code: qrVoucherCode,
+                    items: [{
+                        item_id: result.item.item_id,
+                        folder_id: result.item.folder_id,
+                        default_sale_price: result.item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: result.item.cost_per_unit
+                    }],
+                    channel: 'storefront',
+                    affiliatePricingActive: affiliateSellingPriceRule != null
+                })
+                : null;
+            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay);
             return ok({
                 status: 'resolved',
                 reason_code: null,
@@ -2363,6 +2524,7 @@ export const buildStoreCartQuoteUseCase = ({
                 discount_amount: resolved.promoApplication.discountAmount,
                 discount_label: resolved.promoApplication.discountLabel,
                 discount_rate: resolved.promoApplication.discountRate,
+                voucher_discount_amount: resolved.voucherApplication.discountAmount,
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
@@ -2401,6 +2563,9 @@ export const buildStoreCartQuoteUseCase = ({
                         promo_code: resolved.promoApplication.enteredPromoCode,
                         message: resolved.promoApplication.message
                     }
+                    : null,
+                voucher_feedback: resolved.voucherApplication.applied
+                    ? { applied: true, voucher_code: normalizeVoucherCode(payload.voucher_code) }
                     : null
             });
         } catch (error) {
@@ -2529,6 +2694,7 @@ export const buildStoreCheckoutUseCase = ({
                 payment_type: normalized.payment_type,
                 payment_timing: normalized.payment_timing,
                 promo_code: normalized.promo_code,
+                voucher_code: normalized.voucher_code,
                 customer_name: normalized.customer_name,
                 customer_phone: normalized.customer_phone,
                 customer_email: normalized.customer_email,
@@ -2675,6 +2841,26 @@ export const buildStoreCheckoutUseCase = ({
                         { transaction, lock: true }
                     );
                 }
+            }
+
+            // Voucher redemption's sibling to the promo usage-update block above -- deliberately
+            // NOT a blind-JSON-overwrite via updateSettingByKey (that pattern is exactly what ADR
+            // 0066 decision 4 retires). Unlike promo, the voucher reservation + ledger insert
+            // already happened above, inside resolveCheckoutContext's own call to
+            // redeemVoucherUseCase (it needed to run there because totalAmount, computed in that
+            // same function, has to reflect the ACTUAL reserved discount rather than a preview
+            // number). Nothing further to do here; this comment exists so a reader following the
+            // promo pattern down to this exact spot isn't left wondering where the voucher half is.
+
+            if (resolved.voucherApplication.applied && !resolved.voucherApplication.redemptionId && !resolved.voucherApplication.idempotentReplay) {
+                // Defensive only: redeemVoucherUseCase either returns a redemptionId or throws --
+                // this should be unreachable, but a checkout must never silently claim a voucher
+                // discount with no ledger row behind it.
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Voucher redemption could not be recorded for this order.',
+                    { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
             }
 
             const shouldCreateFnbKitchenOrder = (
@@ -2839,6 +3025,7 @@ export const buildStoreCheckoutUseCase = ({
                     discount_amount: resolved.promoApplication.discountAmount,
                     discount_label: resolved.promoApplication.discountLabel,
                     discount_rate: resolved.promoApplication.discountRate,
+                    voucher_discount_amount: resolved.voucherApplication.discountAmount,
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label: resolved.serviceFeeLabel,
                     delivery_fee: resolved.deliveryFee,
@@ -2849,6 +3036,13 @@ export const buildStoreCheckoutUseCase = ({
                         applied: true,
                         promo_code: resolved.promoApplication.enteredPromoCode,
                         message: resolved.promoApplication.message
+                    }
+                    : null,
+                voucher_feedback: resolved.voucherApplication.applied
+                    ? {
+                        applied: true,
+                        voucher_code: normalized.voucher_code,
+                        redemption_id: resolved.voucherApplication.redemptionId
                     }
                     : null,
                 account_action: accountAction,
@@ -2987,7 +3181,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             if (!ONLINE_PAYMENT_TYPES.has(requestedPaymentType)) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Only QR Ph, card, GCash, or Maya can create an online payment session.',
+                    'Only QR Ph, card, GCash, Maya, GrabPay, or ShopeePay can create an online payment session.',
                     { statusCode: 422 }
                 );
             }
@@ -3053,7 +3247,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             if (requestedPaymentType !== 'qrph' && !tenantRevenueSharingEnabled) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
-                    'Card, GCash, and Maya checkout requires the tenant revenue collection policy to be enabled.',
+                    'Card, GCash, Maya, GrabPay, and ShopeePay checkout requires the tenant revenue collection policy to be enabled.',
                     {
                         statusCode: 409,
                         details: { code: 'TENANT_REVENUE_POLICY_NOT_READY' }
@@ -3279,7 +3473,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                             currency: 'PHP',
                             quantity: 1
                         }],
-                        paymentMethodTypes: [HOSTED_PAYMENT_METHOD_TYPES[requestedPaymentType]],
+                        paymentMethodTypes: [getHostedPaymentMethodType(requestedPaymentType)],
                         successUrl,
                         cancelUrl,
                         referenceNumber: publicReference,

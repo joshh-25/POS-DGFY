@@ -126,8 +126,9 @@ import { useFnbCheckoutSubmission } from './modes/fnb/checkout/hooks/useFnbCheck
 import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx';
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
-import { useFnbGuestCheckoutOtp } from './modes/fnb/checkout/hooks/useFnbGuestCheckoutOtp.js';
+import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
+import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
 import { useCustomerDashboardStorefrontBridge } from './customer-dashboard/pages/useCustomerDashboardStorefrontBridge.js';
 import { useCustomerDashboardRouteFlags } from './customer-dashboard/pages/useCustomerDashboardRouteFlags.js';
@@ -138,6 +139,7 @@ import {
   readStoreReviewToken,
   readStoreServiceItemId,
   readStoreSubpage,
+  readStoreVoucherCode,
   readTrackingPinFromQuery,
   setCustomStorefrontRouteContext,
   STORE_BOOKING_SUBPAGE,
@@ -704,11 +706,17 @@ export default function StorefrontApp() {
       uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
-      if (!['qrph', 'card', 'gcash', 'maya'].includes(val)) resetQrphPaymentSession();
+      if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
   }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
+  // #672: like checkoutPromoCode, plain component state -- not persisted across reload, matching
+  // the existing promo-code precedent rather than introducing a new persistence layer (the
+  // zustand store's cartSlice.js explicitly documents that persist middleware isn't wired yet).
+  // Initial value only: captures a shareable `?voucher=` link on first load; typed/applied codes
+  // after that are session-only, same as promo.
+  const [checkoutVoucherCode, setCheckoutVoucherCode] = useState(() => readStoreVoucherCode());
 
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
     if (!routeSlug || typeof window === 'undefined') return null;
@@ -747,7 +755,8 @@ export default function StorefrontApp() {
     selectedStore,
     setSelectedStore,
     setRouteSlug,
-    preferredStoreLocationSelection
+    preferredStoreLocationSelection,
+    voucherCode: checkoutVoucherCode
   });
 
   const [orderMethod, setOrderMethod] = useState('delivery');
@@ -1435,7 +1444,7 @@ export default function StorefrontApp() {
     if (!/^CPS-[A-Z0-9]{10}$/.test(paymentSessionId)) return;
     if (paymentReturnSessionRef.current === paymentSessionId) return;
     const paymentMethod = String(params.get('payment_method') || '').trim().toLowerCase();
-    if (!['qrph', 'card', 'gcash', 'maya'].includes(paymentMethod)) return;
+    if (!isStorefrontOnlinePaymentType(paymentMethod)) return;
     paymentReturnSessionRef.current = paymentSessionId;
     const returnedStatus = String(params.get('payment_status') || '').trim().toLowerCase();
     if (isFnbOrderSubpage) setFnbOrderStep(4);
@@ -1840,6 +1849,7 @@ export default function StorefrontApp() {
   const {
     activeOrderMethodLabel,
     appliedPromoDiscountText,
+    appliedVoucherDiscountText,
     checkoutAllowed,
     checkoutBlockReason,
     fnbCartStatusLabel,
@@ -1847,6 +1857,9 @@ export default function StorefrontApp() {
     promoDiscountSummaryRow,
     promoStatusMessage,
     promoStatusTone,
+    voucherDiscountSummaryRow,
+    voucherStatusMessage,
+    voucherStatusTone,
     requireQuoteForCheckout,
     serviceCartValidationIssues,
     simpleOrderMethodOptions,
@@ -1899,7 +1912,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, isStorePage]);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -2269,7 +2282,7 @@ export default function StorefrontApp() {
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
-  } = useFnbGuestCheckoutOtp({
+  } = useGuestCheckoutOtp({
     customerEmail,
     isDgfyCustomerSignedIn,
     requestJson,
@@ -2287,12 +2300,14 @@ export default function StorefrontApp() {
   const {
     buildPayload: checkoutPayload,
     handlePromoCardApply,
+    handleVoucherCardApply,
     requestQuote,
   } = useFnbCheckoutQuote({
     accessCapabilities,
     cart,
     checkoutPermitted,
     checkoutPromoCode,
+    checkoutVoucherCode,
     customerEmail,
     customerName,
     customerPhone,
@@ -2309,6 +2324,7 @@ export default function StorefrontApp() {
     selectedLocationId,
     selectedStore,
     setCheckoutPromoCode,
+    setCheckoutVoucherCode,
     setQuoteError,
     setQuoteNeedsRefresh,
     setQuoteResult,
@@ -2565,13 +2581,19 @@ export default function StorefrontApp() {
     renderPromoCodePanel
   } = useFnbCheckoutPromoRenderers({
     appliedPromoDiscountText,
+    appliedVoucherDiscountText,
     checkoutPromoCode,
+    checkoutVoucherCode,
     handlePromoCardApply,
+    handleVoucherCardApply,
     promoSectionModel,
     promoStatusMessage,
     promoStatusTone,
+    voucherStatusMessage,
+    voucherStatusTone,
     servicesBodyFont,
-    setCheckoutPromoCode
+    setCheckoutPromoCode,
+    setCheckoutVoucherCode
   });
 
   const serviceCartDrawerProps = useServiceCartDrawerProps({
@@ -2949,6 +2971,7 @@ export default function StorefrontApp() {
     money,
     orderMethod,
     promoDiscountSummaryRow,
+    voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
@@ -3055,6 +3078,7 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
+    voucherDiscountSummaryRow,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
     quoteError,
@@ -3109,6 +3133,7 @@ export default function StorefrontApp() {
   ), [cart]);
   useEffect(() => {
     const normalizedPromoCode = String(checkoutPromoCode || '').trim().toUpperCase();
+    const normalizedVoucherCode = String(checkoutVoucherCode || '').trim().toUpperCase();
     const shouldAutoSyncFnbQuote = (
       isFnbMode
       && isStorePage
@@ -3137,6 +3162,7 @@ export default function StorefrontApp() {
       fnbScheduleMode || '',
       fnbScheduledFor || '',
       normalizedPromoCode,
+      normalizedVoucherCode,
       fnbAutoQuoteCartSignature,
       activePinnedDeliveryAddress || ''
     ].join('::');
@@ -3145,7 +3171,7 @@ export default function StorefrontApp() {
     fnbAutoQuoteSyncKeyRef.current = syncKey;
     let cancelled = false;
     setQuoteError('');
-    requestQuote({ promoCodeOverride: normalizedPromoCode, silent: true }).catch((error) => {
+    requestQuote({ promoCodeOverride: normalizedPromoCode, voucherCodeOverride: normalizedVoucherCode, silent: true }).catch((error) => {
       if (cancelled) return;
       fnbAutoQuoteSyncKeyRef.current = '';
       const violation = extractStockViolation(error);
@@ -3166,6 +3192,7 @@ export default function StorefrontApp() {
     cart.length,
     checkoutPermitted,
     checkoutPromoCode,
+    checkoutVoucherCode,
     extractStockViolation,
     fnbAutoQuoteCartSignature,
     fnbCustomerStepComplete,
@@ -3253,6 +3280,7 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
+    voucherDiscountSummaryRow,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
     renderAccountOwnedIdentitySummary,
@@ -3697,6 +3725,9 @@ export default function StorefrontApp() {
     checkoutError,
     checkoutLoading,
     checkoutPromoCode,
+    checkoutVoucherCode,
+    setCheckoutVoucherCode,
+    handleVoucherCardApply,
     checkoutResult,
     customerEmail,
     customerName,
@@ -3882,6 +3913,9 @@ export default function StorefrontApp() {
     goDiscovery,
     goStore,
     goStoreCatalogPage,
+    goStoreOrderPage,
+    hasServiceCart,
+    goStoreBookingPage,
     cartCount,
     modeAdapter,
     isBrandingImageBlocked,

@@ -15,12 +15,13 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storeVoucherLookupLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import {
     validateStoreRegister,
     validateStoreLogin,
@@ -90,8 +91,35 @@ const trackingReadCacheControl = setReadCacheControl({
     varyHeaders: ['X-Store-Slug']
 });
 
-router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
-router.get('/qr/resolve', catalogReadCacheControl, validateStoreQrQuery, storeController.resolveStoreQr);
+// #603: a voucher-coded catalog/QR request resolves a per-buyer display price, and (#671) the
+// catalog use case also bakes a per-buyer affiliate selling-price override into `default_sale_price`
+// whenever the affiliate attribution cookie is present -- both are the same class of problem: a
+// shared public cache must not serve one buyer's per-buyer-priced response to another. `voucher_code`
+// is a query param and the attribution cookie isn't a cacheable `Vary` dimension for most shared
+// caches, so for both it's simplest to switch the response to no-store rather than try to key the
+// cache on either. Raw cookie-presence check only -- no tenant resolution or JSON parse needed for a
+// cache decision (the controller re-resolves the cookie's actual tenant-scoped value later).
+const bypassCacheForPerBuyerPricing = (req, res, next) => {
+    const hasVoucherCode = String(req.query?.voucher_code || '').trim().length > 0;
+    const hasAffiliateAttribution = Boolean(getCookie(req, SESSION_COOKIE_NAMES.affiliateAttribution));
+    if (hasVoucherCode || hasAffiliateAttribution) {
+        return setNoStoreCacheControl(req, res, next);
+    }
+    return next();
+};
+
+// A voucher_code-bearing request is both a valid/invalid voucher-code oracle and, via the
+// no-store bypass above, a free lever to defeat the shared CDN cache -- neither route otherwise
+// carries a limiter of its own beyond the generic app-wide bucket. Only consumes budget when
+// voucher_code is actually present, so plain catalog browsing is unaffected.
+const limitVoucherCodeLookups = (req, res, next) => (
+    String(req.query?.voucher_code || '').trim()
+        ? storeVoucherLookupLimiter(req, res, next)
+        : next()
+);
+
+router.get('/catalog', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForPerBuyerPricing, validateStoreCatalogQuery, storeController.listStoreCatalog);
+router.get('/qr/resolve', catalogReadCacheControl, limitVoucherCodeLookups, bypassCacheForPerBuyerPricing, validateStoreQrQuery, storeController.resolveStoreQr);
 router.get('/services/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateServiceCatalogQuery, listPublicServiceCatalog);
 router.get('/locations', storeLocationsLimiter, locationsReadCacheControl, storeController.listStoreLocations);
 router.post('/auth/register', setNoStoreCacheControl, storeAuthLimiter, validateStoreRegister, storeController.registerStoreCustomer);

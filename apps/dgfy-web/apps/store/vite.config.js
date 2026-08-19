@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+import esCompatGuardPlugin from '../../build/esCompatGuardPlugin.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build:store` so it can't
 // perturb production build size/timing. See issue #282's Phase A baseline:
@@ -86,6 +87,7 @@ export default defineConfig(async () => {
   base: normalizedBasePath,
   plugins: [
     react(),
+    esCompatGuardPlugin(),
     ...buildSentryVitePlugins(appSurface),
     ...(shouldAnalyzeBundle
       ? [visualizer({

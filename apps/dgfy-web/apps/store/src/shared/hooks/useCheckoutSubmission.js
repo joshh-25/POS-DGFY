@@ -1,6 +1,8 @@
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 import {
   createStorefrontOnlinePaymentSession,
+  getStorefrontOnlinePaymentLabel,
+  isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType
 } from '../services/storefrontOnlinePaymentSession.js';
 
@@ -348,12 +350,12 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         setQrphPaymentSession(paymentSession);
-        if (['card', 'gcash', 'maya'].includes(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
+        if (isStorefrontHostedPaymentType(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
           window.location.assign(paymentSession.checkout_url);
         } else {
           toast.success(fnbPaymentType === 'qrph'
             ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
-            : `${fnbPaymentType === 'gcash' ? 'GCash' : fnbPaymentType === 'maya' ? 'Maya' : 'Card'} payment created. Complete it on PayMongo to continue.`);
+            : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);
         }
         return;
       }
@@ -362,7 +364,7 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
-          ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
+          ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,
           payment_type: fnbPaymentType

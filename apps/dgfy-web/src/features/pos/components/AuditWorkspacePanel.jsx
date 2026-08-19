@@ -24,6 +24,7 @@ const HUMAN_EVENT_LABELS = Object.freeze({
     pos_transaction_voided: 'Transaction voided',
     void: 'Transaction voided',
     pos_discount_applied: 'Discount applied',
+    pos_item_discount_applied: 'Item discount applied',
     print_receipt: 'Receipt printed',
     print_original: 'Receipt printed',
     print_reprint: 'Receipt reprinted',
@@ -68,6 +69,7 @@ const HUMAN_ENTITY_LABELS = Object.freeze({
     pos_transaction: 'transaction',
     pos_parked_sale: 'parked sale',
     pos_discount: 'discount',
+    pos_item_discount: 'item discount',
     pos_z_reading: 'Z-reading',
     pos_cash_drawer_event: 'cash drawer activity',
     terminal_registration: 'POS terminal',
@@ -150,6 +152,11 @@ const humanizeToken = (value) => String(value || '')
     .replace(/\s+/g, ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const humanizeDiscountType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'manual' ? 'Other' : humanizeToken(value);
+};
+
 const uniqueLabels = (labels) => Array.from(new Set(labels.filter(Boolean)));
 
 const formatAuditValue = (value) => {
@@ -174,6 +181,91 @@ const formatAuditOrderReference = (entry, changes) => {
 const formatAuditItemReference = (entry, changes) => {
     const itemId = changes.item_id || entry.entity_id;
     return itemId ? `item #${itemId}` : 'item';
+};
+
+const AUDIT_DETAIL_KEY_LABELS = Object.freeze({
+    park_reference: 'Park reference',
+    line_count: 'Items',
+    total_amount: 'Total',
+    subtotal_amount: 'Subtotal',
+    discount_amount: 'Discount',
+    discount_rate: 'Discount rate',
+    rate: 'Rate',
+    terminal_id: 'Terminal',
+    claimed_terminal_id: 'Claimed terminal',
+    shift_id: 'Shift',
+    origin_shift_id: 'Original shift',
+    previous_shift_id: 'Previous shift',
+    location_id: 'Location',
+    cashier_id: 'Current cashier',
+    origin_cashier_id: 'Original cashier',
+    previous_cashier_id: 'Previous cashier',
+    user_id: 'User',
+    pos_transaction_id: 'Order',
+    transaction_id: 'Order',
+    order_id: 'Order',
+    revision: 'Revision',
+    status: 'Status',
+    reason: 'Reason',
+    cancel_reason: 'Cancellation reason'
+});
+
+const AUDIT_MONEY_KEY_PATTERN = /(amount|price|fee|cash|subtotal|total|discount|balance|variance|sales|tax)/i;
+const AUDIT_RATE_KEY_PATTERN = /(^|_)rate$/i;
+const AUDIT_IDENTIFIER_KEY_PATTERN = /(^|_)id$/i;
+const AUDIT_CASHIER_ID_PATTERN = /^(origin_|previous_)?cashier_id$/i;
+const AUDIT_SENSITIVE_KEY_PATTERN = /(password|passwd|pin|token|secret|authorization|access[_-]?token|refresh[_-]?token)/i;
+
+const formatAuditDetailKey = (key) => AUDIT_DETAIL_KEY_LABELS[key] || humanizeToken(key);
+
+const formatAuditDetailValue = (key, value, locationNames = new Map(), cashierNames = {}) => {
+    if (value === null || value === undefined || String(value).trim() === '') return 'None';
+    if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+    if (key === 'location_id') {
+        const locationId = Number(value);
+        return locationNames.get(locationId) || `Location ID ${String(value)}`;
+    }
+    if (key === 'discount_type') return humanizeDiscountType(value);
+    if (AUDIT_CASHIER_ID_PATTERN.test(key)) {
+        const cashierId = String(value);
+        const cashierName = String(cashierNames?.[key] || '').trim();
+        return cashierName ? `${cashierName} (User ID: ${cashierId})` : `User ID ${cashierId}`;
+    }
+    if (AUDIT_IDENTIFIER_KEY_PATTERN.test(key)) return String(value);
+    if (AUDIT_RATE_KEY_PATTERN.test(key) && Number.isFinite(Number(value))) return `${Number(value).toFixed(2)}%`;
+    if (AUDIT_MONEY_KEY_PATTERN.test(key) && Number.isFinite(Number(value))) return formatAuditMoney(value);
+    if (typeof value === 'number') return String(value);
+    if (Array.isArray(value)) return value.map((entry) => formatAuditDetailValue(key, entry)).join(', ');
+    if (key === 'park_reference' || key === 'terminal_id') return String(value);
+    return humanizeToken(value);
+};
+
+export const formatAuditDetailLines = (entry = {}, locations = []) => {
+    const changes = parseAuditChanges(entry.changes);
+    const cashierNames = entry?.cashier_names && typeof entry.cashier_names === 'object' && !Array.isArray(entry.cashier_names)
+        ? entry.cashier_names
+        : {};
+    const locationNames = new Map(
+        (Array.isArray(locations) ? locations : [])
+            .map((location) => [Number(location?.location_id), String(location?.name || '').trim()])
+            .filter(([locationId, name]) => Number.isInteger(locationId) && locationId > 0 && name)
+    );
+    return Object.entries(changes)
+        .filter(([key, value]) => key !== 'event' && !AUDIT_SENSITIVE_KEY_PATTERN.test(key) && value !== undefined && value !== null)
+        .filter(([, value]) => typeof value !== 'object' || Array.isArray(value))
+        .map(([key, value]) => `${formatAuditDetailKey(key)}: ${formatAuditDetailValue(key, value, locationNames, cashierNames)}`);
+};
+
+export const groupAuditDetailLines = (lines = []) => {
+    const groups = [];
+    for (let index = 0; index < lines.length; index += 10) {
+        const group = lines.slice(index, index + 10);
+        groups.push({
+            left: group.slice(0, 5),
+            right: group.slice(5, 10)
+        });
+    }
+    return groups;
 };
 
 const resolveSettingLabels = (changes) => {
@@ -322,15 +414,17 @@ const resolveTransactionLabels = (entry, eventType, changes) => {
 
 const resolveDiscountLabels = (entry, eventType, changes) => {
     const entityType = String(entry.entity_type || '').trim().toLowerCase();
-    if (entityType !== 'pos_discount' && eventType !== 'pos_discount_applied') return [];
+    if (entityType !== 'pos_discount' && entityType !== 'pos_item_discount'
+        && eventType !== 'pos_discount_applied' && eventType !== 'pos_item_discount_applied') return [];
     const hasDiscountEvidence = eventType === 'pos_discount_applied'
+        || eventType === 'pos_item_discount_applied'
         || changes.discount_type
         || changes.discount_amount !== undefined
         || changes.authorized_by_user_id
         || changes.approved_by_user_id;
     if (!hasDiscountEvidence) return [];
     const orderReference = formatAuditOrderReference(entry, changes);
-    const type = humanizeToken(changes.discount_type || 'discount');
+    const type = humanizeDiscountType(changes.discount_type || 'discount');
     const amount = changes.discount_amount === undefined ? '' : ` ${formatAuditMoney(changes.discount_amount)}`;
     const authorizedBy = String(
         changes.authorized_by_name
@@ -338,7 +432,10 @@ const resolveDiscountLabels = (entry, eventType, changes) => {
         || (changes.authorized_by_user_id ? `employee #${changes.authorized_by_user_id}` : '')
     ).trim();
     const cashier = String(changes.cashier_name || changes.applied_by_name || '').trim();
-    const labels = [`Applied ${type} discount${amount} to ${orderReference}`];
+    const itemReference = entityType === 'pos_item_discount'
+        ? ` for ${String(changes.item_name || '').trim() || formatAuditItemReference(entry, changes)}`
+        : '';
+    const labels = [`Applied ${type} discount${amount}${itemReference} to ${orderReference}`];
     if (authorizedBy) labels.push(`Authorized by ${authorizedBy}`);
     if (cashier && cashier !== authorizedBy) labels.push(`Cashier: ${cashier}`);
     return labels;
@@ -498,7 +595,7 @@ const formatDetails = (changes) => {
     }
 };
 
-export default function AuditWorkspacePanel({ locked = false, isOnline = true, canViewAudit = false }) {
+export default function AuditWorkspacePanel({ locked = false, isOnline = true, canViewAudit = false, locations = [] }) {
     const [filters, setFilters] = useState({ search: '' });
     const [appliedFilters, setAppliedFilters] = useState(filters);
     const [data, setData] = useState({ logs: [], pagination: { page: 1, limit: 25, total: 0, total_pages: 1 } });
@@ -591,7 +688,10 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
                     </div>
                     {logs.length === 0 && !loading ? <div className="p-8 text-center text-sm text-slate-500">No audit entries match these filters.</div> : null}
                     <div className="divide-y divide-slate-100">
-                        {logs.map((entry) => (
+                        {logs.map((entry) => {
+                            const readableDetails = formatAuditDetailLines(entry, locations);
+                            const detailGroups = groupAuditDetailLines(readableDetails);
+                            return (
                             <article key={entry.log_id} className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:px-4">
                                 <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -601,11 +701,38 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
                                     </div>
                                     <p className="mt-1 text-xs font-semibold text-slate-700">{entry.actor?.username || 'System'}{entry.terminal_id ? ` · ${entry.terminal_id}` : ''}{entry.shift_id ? ` · Shift ${entry.shift_id}` : ''}</p>
                                     {entry.reason ? <p className="mt-1 text-xs text-rose-700">Reason: {entry.reason}</p> : null}
-                                    {entry.changes && Object.keys(entry.changes).length > 0 ? <details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold text-slate-500">View details</summary><pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-4 text-slate-100">{formatDetails(entry.changes)}</pre></details> : null}
+                                    {entry.changes && Object.keys(entry.changes).length > 0 ? (
+                                        <details className="mt-2">
+                                            <summary className="cursor-pointer text-[11px] font-bold text-slate-500">View readable details</summary>
+                                            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                                                {detailGroups.length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {detailGroups.map((group, groupIndex) => (
+                                                            <div key={`audit-detail-group-${groupIndex}`} className={group.right.length > 0 ? 'grid gap-x-6 gap-y-1 sm:grid-cols-2' : undefined}>
+                                                                <ul className="space-y-1">
+                                                                    {group.left.map((line, lineIndex) => <li key={`audit-detail-${groupIndex}-left-${lineIndex}`}>{line}</li>)}
+                                                                </ul>
+                                                                {group.right.length > 0 ? (
+                                                                    <ul className="space-y-1">
+                                                                        {group.right.map((line, lineIndex) => <li key={`audit-detail-${groupIndex}-right-${lineIndex}`}>{line}</li>)}
+                                                                    </ul>
+                                                                ) : null}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : <p>No readable details available.</p>}
+                                            </div>
+                                            <details className="mt-2">
+                                                <summary className="cursor-pointer text-[10px] font-bold text-slate-400">View technical JSON</summary>
+                                                <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-4 text-slate-100">{formatDetails(entry.changes)}</pre>
+                                            </details>
+                                        </details>
+                                    ) : null}
                                 </div>
                                 <time className="text-xs font-semibold text-slate-500 sm:text-right">{formatDate(entry.timestamp)}</time>
                             </article>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-3">

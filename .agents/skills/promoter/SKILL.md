@@ -76,7 +76,26 @@ checked against the wrong environment.
 | Dispatching `deploy-main.yml` (BETA+PROD dual-deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. The sole exception is the `incident-responder` role's narrow, explicit-phrase-gated override (`.agents/skills/incident-responder/SKILL.md`); that override belongs to that role, not this one |
 | `verify-deployment.yml` reports FAIL | Report it and stop — **there is no rollback to call.** #495 (rollback mechanism) is still open; say so plainly rather than implying a recovery path exists |
-| The first live run of this role | Report-only regardless of outcome — produce the promotion plan and PR bodies, let Pat confirm before it runs unattended, matching the calibration already used for `implement`/`pr-reviewer`/`observer`/`verifier` |
+| The first live run of this role, for anything **not** already covered by a specific dated row above | Report-only regardless of outcome — produce the plan and let Pat confirm before it runs unattended, matching the calibration already used for `implement`/`pr-reviewer`/`observer`/`verifier` |
+
+### Resolving the first-live-run row against the specific dated rows (2026-08-16)
+
+The `develop → staging` leg's first live run (2026-08-16, PR #595) surfaced a real ambiguity: the
+generic "first live run is report-only" row above and the specific, dated "`deploy.yml` for
+`DEV`/`STAGING` is unattended" row three rows up both apply to the same action, and pointed opposite
+directions. Resolved by Pat the same day: **the specific, dated override row wins.** The
+`develop`/`staging`-scoped rows above (pre-flight, branch cut, PR open, merge into
+`develop`/`staging`, dispatching `deploy.yml` for `DEV`/`STAGING`, dispatching
+`verify-deployment.yml`) already carry their own explicit pre-authorization and are not additionally
+gated by "first live run" — that generic row now only bites where no specific row already covers the
+action. It remains in full force for everything the `staging → main` leg's rows already gate
+(`deploy-main.yml`, merging `main`) — those keep asking every time regardless of run count, first or
+hundredth. First-run evidence for the `develop → staging` leg: PR #595 merged clean
+(`mergeStateStatus: CLEAN`, 4/4 checks green); the first `deploy.yml --ref staging` dispatch
+(run `31954803389`) failed on a transient GHCR push timeout on the `frontend` image (`dgfy-api` and
+`dgfy-migration-runner` pushed fine; the downstream `publish` job never ran, so nothing was actually
+touched server-side); a retry dispatch (run `31955916496`) was cancelled before completing, and a
+second retry (run `31956577646`) succeeded, completing the deploy.
 
 ## Composite-flow chaining
 

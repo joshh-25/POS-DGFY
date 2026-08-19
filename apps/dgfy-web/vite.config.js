@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { configDefaults } from 'vitest/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import esCompatGuardPlugin from './build/esCompatGuardPlugin.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000'
@@ -20,7 +21,7 @@ const devSecurityHeaders = {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), esCompatGuardPlugin()],
   resolve: {
     alias: [
       // More specific aliases must come first

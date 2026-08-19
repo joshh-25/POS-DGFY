@@ -61,7 +61,7 @@ import {
   refreshBrowserSession
 } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
+import { isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
@@ -146,6 +146,8 @@ const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
+const TABLET_TERMINAL_MIN_WIDTH_PX = 768;
+const TABLET_TERMINAL_MAX_WIDTH_PX = 1279;
 
 const buildTerminalBusinessSettings = (settings = {}) => ({
   pos_registered_name: String(settings?.pos_registered_name?.value || '').trim(),
@@ -675,6 +677,11 @@ export default function TerminalPage() {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX;
   });
+  const [isTabletLayout, setIsTabletLayout] = useState(() => {
+    if (!IS_DGFY_POS_SURFACE || typeof window === 'undefined') return false;
+    return window.innerWidth >= TABLET_TERMINAL_MIN_WIDTH_PX
+      && window.innerWidth <= TABLET_TERMINAL_MAX_WIDTH_PX;
+  });
 
   useEffect(() => {
     if (!closedShiftReportOpen || !closedShiftReport || !closedShiftReportAutoPrint || typeof window === 'undefined' || typeof window.print !== 'function') return undefined;
@@ -819,6 +826,15 @@ export default function TerminalPage() {
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
+  // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
+  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release
+  // (resolveEffectivePermissions only re-derives role defaults when a user's stored permissions
+  // array is empty, so a hard swap could lock out an admin/manager whose array predates the
+  // deploy-time backfill). Mirror that same dual-gate here rather than the backend accepting a
+  // request the UI itself wouldn't allow. Read-only list access is already implied by reaching the
+  // Settings pane at all (canAccessSettingsDirectly gates entry); this only gates create/edit/
+  // lifecycle actions inside the Vouchers tab.
+  const canManageVouchers = hasPermission('vouchers:manage') || hasPermission('settings:edit');
 
   useEffect(() => {
     if (locked || !isOnline) return undefined;
@@ -2755,17 +2771,6 @@ export default function TerminalPage() {
       window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
     }
   }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
-
-  const headerSubtitle = useMemo(() => {
-    const terminalLabel = activeTerminalId || 'No terminal selected';
-    const modeLabel = getWorkflowModeLabel(workflowMode);
-    if (loadingUser) return 'Loading terminal session...';
-    if (locked) return `Terminal locked (${terminalLabel}) [${modeLabel}]. Sign in from the right panel.`;
-    if (isMsmeMode) {
-      return `Terminal ${terminalLabel}: MSME cashier workspace for checkout, history, receipt preview, and shift open/close.`;
-    }
-    return `Terminal ${terminalLabel}: cashier workspace for sell, orders, history, receipts, and shift controls.`;
-  }, [activeTerminalId, isMsmeMode, loadingUser, locked, workflowMode]);
 
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
@@ -5179,7 +5184,11 @@ export default function TerminalPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleResize = () => {
-      setIsDesktopWide(window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
+      const viewportWidth = window.innerWidth;
+      setIsDesktopWide(viewportWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
+      setIsTabletLayout(IS_DGFY_POS_SURFACE
+        && viewportWidth >= TABLET_TERMINAL_MIN_WIDTH_PX
+        && viewportWidth <= TABLET_TERMINAL_MAX_WIDTH_PX);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -5187,10 +5196,10 @@ export default function TerminalPage() {
   }, []);
 
   useEffect(() => {
-    if (isDesktopWide) {
+    if (isDesktopWide && !isTabletLayout) {
       setMobileNavOpen(false);
     }
-  }, [isDesktopWide]);
+  }, [isDesktopWide, isTabletLayout]);
 
   useEffect(() => {
     const wasLocked = terminalLayoutLockedRef.current;
@@ -5282,7 +5291,7 @@ export default function TerminalPage() {
     }
   }, [activeViewModes, posViewMode]);
 
-  const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
+  const effectiveSidebarCollapsed = isTabletLayout ? true : (isDesktopWide ? sidebarCollapsed : false);
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
   const shiftOpeningModalOpen = (
@@ -5568,10 +5577,10 @@ function PosRestorationLoadingScreen() {
           terminalRegistry={activeTerminalRegistry}
           terminalRegistryMode={terminalRegistryMode}
           registryEnforced={registryEnforced}
-          headerSubtitle={headerSubtitle}
           mobileNavOpen={mobileNavOpen}
           setMobileNavOpen={setMobileNavOpen}
           isDesktopWide={isDesktopWide}
+          isTabletLayout={isTabletLayout}
           canViewPos={canViewPos}
           canViewAudit={canViewAudit}
           onboardingRestricted={setupFlowActive}
@@ -5584,6 +5593,7 @@ function PosRestorationLoadingScreen() {
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
+          canManageVouchers={canManageVouchers}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}

@@ -165,8 +165,8 @@ export default function POSParkedSalesDialog({
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && closeDialog()}>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-hidden p-0" data-testid="pos-parked-sales-dialog">
-                <DialogHeader className="border-b border-slate-200 px-5 py-4">
+            <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-2xl flex-col overflow-hidden p-0 sm:max-h-[90vh]" data-testid="pos-parked-sales-dialog">
+                <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
                     <div className="flex items-start justify-between gap-3 pr-7">
                         <div>
                             <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
@@ -180,7 +180,7 @@ export default function POSParkedSalesDialog({
                     </div>
                 </DialogHeader>
 
-                <div className="dgfy-pos-scrollbar-hidden min-h-0 overflow-y-auto px-5 py-4" aria-busy={loading || claimLoadingId !== null || cancelLoadingId !== null}>
+                <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4" aria-busy={loading || claimLoadingId !== null || cancelLoadingId !== null}>
                     {cartHasItems && (
                         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800" role="alert">
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -302,7 +302,7 @@ export default function POSParkedSalesDialog({
                     )}
                 </div>
 
-                <DialogFooter className="border-t border-slate-200 px-5 py-3">
+                <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-3">
                     <div className="flex w-full items-center justify-between gap-3">
                         <span className="text-xs font-semibold text-slate-500">{activeRows.length} active parked sale{activeRows.length === 1 ? '' : 's'}</span>
                         <Button type="button" variant="outline" onClick={closeDialog} disabled={claimLoadingId !== null || cancelLoadingId !== null}>Close</Button>

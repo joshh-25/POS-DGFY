@@ -150,6 +150,8 @@ import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
+import VoucherManagementPanel from './VoucherManagementPanel.jsx';
+import PricelistManagementPanel from './PricelistManagementPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -1043,13 +1045,19 @@ function ShiftControlsWorkspace({
     },
     {
       icon: CircleDollarSign,
-      label: 'Opening Float:',
+      label: 'Opening/Petty Cash:',
       value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
     },
     {
+      icon: Receipt,
+      label: 'Total Sales (excluding opening cash):',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
+      valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
+    },
+    {
       icon: Banknote,
-      label: 'Expected Cash:',
+      label: 'Expected Cash in Drawer:',
       value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
@@ -1654,11 +1662,11 @@ function ShiftControlsWorkspace({
         ) : (
           <div className="mt-3 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-              <span className="text-xs font-semibold text-slate-600">Current shift sales</span>
+              <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
               <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
             </div>
             <p className="text-xs text-slate-600">
-              Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
+              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
@@ -1795,6 +1803,7 @@ function ShiftControlsWorkspace({
       state={cashierHistoryState}
       onRefresh={refreshCashierHistory}
       onViewSummary={handleViewCashierHistoryShift}
+      activeShift={activeShift}
       locked={locked}
       isOnline={isOnline}
       currency={terminalMeta.pettyCashSymbol}
@@ -5380,7 +5389,8 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {}
+  onStorefrontSetupSaved = async () => {},
+  canManageVouchers = false
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -5441,6 +5451,7 @@ function SettingsWorkspace({
     terminalRegistry: [],
     terminalRegistryMode: 'warn',
     terminalLocationBindingEnforced: false,
+    voucherPosRedemptionEnabled: false,
     settingsAccessPinEnabled: false,
     settingsAccessPin: '',
     clearSettingsAccessPin: false,
@@ -5617,7 +5628,17 @@ function SettingsWorkspace({
     { id: 'storefront', label: 'Storefront', icon: Store },
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
-      : [])
+      : []),
+    // View-only (settings:view) merchants can still see this tab -- reaching SettingsWorkspace at
+    // all already implies settings:view (PIN_PROTECTED_VIEW_MODES + canAccessSettingsDirectly gate
+    // entry at the page level), so no extra permission check gates visibility here. `canManageVouchers`
+    // (settings:edit) only gates create/edit/lifecycle actions inside the panel itself.
+    { id: 'vouchers', label: 'Vouchers', icon: Percent },
+    // #698: standalone surface alongside Vouchers, not a sub-section of it (Pat's explicit call).
+    // Gated the same way as Vouchers -- pricelists are voucher-authoring data and reuse the same
+    // PERMISSIONS.VOUCHERS group server-side (routes/pricelists.js), so canManageVouchers is the
+    // correct gate here too; no separate canManagePricelists prop exists or is needed.
+    { id: 'pricelists', label: 'Pricelists', icon: Tags }
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -5916,6 +5937,7 @@ function SettingsWorkspace({
           ? String(settingsPayload?.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
           : 'warn',
         terminalLocationBindingEnforced: settingsPayload?.pos_terminal_location_binding_enforced?.value === true,
+        voucherPosRedemptionEnabled: settingsPayload?.voucher_pos_redemption_enabled?.value === true,
         settingsAccessPinEnabled: settingsPayload?.pos_settings_access_pin_enabled?.value === true,
         settingsAccessPin: '',
         clearSettingsAccessPin: false,
@@ -6373,6 +6395,7 @@ function SettingsWorkspace({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+        voucher_pos_redemption_enabled: posForm.voucherPosRedemptionEnabled === true,
         pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
         clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true,
         pos_petty_cash_symbol: String(posForm.pettyCashSymbol || 'PHP').trim() || 'PHP',
@@ -7488,6 +7511,26 @@ function SettingsWorkspace({
               />
             </div>
 
+            {/* Voucher Redemption at POS (#604) -- tenant-wide master switch, default off. Currently
+                gates nothing at runtime: POS voucher redemption itself is not built yet, so this
+                ships the setting and its server-side guard pre-gated, ahead of that feature. */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <Percent className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
+                checked={posForm.voucherPosRedemptionEnabled === true}
+                onChange={(event) => setPosForm((current) => ({ ...current, voucherPosRedemptionEnabled: event.target.checked }))}
+                disabled={locked || loading}
+              />
+            </div>
+
             {/* Location Binding Readiness */}
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -8040,6 +8083,14 @@ function SettingsWorkspace({
         />
       ) : null}
     </div>
+  );
+
+  const renderVouchersPane = () => (
+    <VoucherManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
+  );
+
+  const renderPricelistsPane = () => (
+    <PricelistManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
   );
 
   const renderStorefrontPane = () => (
@@ -9011,6 +9062,8 @@ function SettingsWorkspace({
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }
+    if (renderedTab === 'vouchers') return renderVouchersPane();
+    if (renderedTab === 'pricelists') return renderPricelistsPane();
     return renderPosSetupPane();
   };
 
@@ -9137,7 +9190,7 @@ function SettingsWorkspace({
               POS Discount Approval PIN
             </DialogTitle>
             <DialogDescription>
-              This PIN is used only to approve Employee and Manual discounts. It cannot be viewed after saving.
+              This PIN is used to approve POS discounts. It cannot be viewed after saving.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -9146,7 +9199,7 @@ function SettingsWorkspace({
               <p className="mt-1 text-xs text-slate-500">
                 {approvalPinUser?.pos_approval_pin_configured
                   ? 'A PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure a PIN this approver will enter for Employee and Manual discounts.'}
+                  : 'Configure a PIN this approver will enter for POS discounts.'}
               </p>
             </div>
             <div>
@@ -9247,6 +9300,7 @@ export default function TerminalOperationsWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
+  canManageVouchers = false,
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -9373,6 +9427,7 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          canManageVouchers={canManageVouchers}
         />
       );
     case 'shift_controls':
@@ -9551,6 +9606,7 @@ export default function TerminalOperationsWorkspace({
     canDeleteItems,
     canEditItems,
     canManageCategories,
+    canManageVouchers,
     canManageServiceCatalog,
     canManageFnbModifiers,
     canViewFnbModifiers,

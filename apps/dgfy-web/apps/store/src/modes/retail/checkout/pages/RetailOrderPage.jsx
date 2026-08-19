@@ -27,7 +27,7 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
  * real: signed-in/guest identity, guest email OTP verification, saved addresses, the pin-drop +
  * reverse-geocode flow, and "Add Address"/"Add Location" all consume the same shared,
  * mode-agnostic infrastructure F&B/MSME already use (`useGuestCustomerIdentity`,
- * `useFnbGuestCheckoutOtp`, `useSignedInCheckoutAddresses`, `useDeliveryPinResolution` — all
+ * `useGuestCheckoutOtp`, `useSignedInCheckoutAddresses`, `useDeliveryPinResolution` — all
  * instantiated once in StorefrontApp.jsx and threaded down via useRetailOrderPageProps.js).
  * Order method, schedule, and the map pin/address-selection state are therefore *shared* global
  * state (not local to this page) since the address hooks operate on that shared state — the
@@ -74,6 +74,7 @@ export function RetailOrderPage({
   onSelectAddress,
   orderMethod = 'delivery',
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   pinLocationError = '',
   pinLocationLoading = false,
   renderAccountOwnedIdentitySummary,
@@ -197,6 +198,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -262,6 +264,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -301,6 +304,7 @@ export function RetailOrderPage({
                 money={money}
                 onImageError={onImageError}
                 promoDiscountSummaryRow={promoDiscountSummaryRow}
+                voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
@@ -322,6 +326,7 @@ export function RetailOrderPage({
             onCheckout={onCheckout}
             onImageError={onImageError}
             promoDiscountSummaryRow={promoDiscountSummaryRow}
+            voucherDiscountSummaryRow={voucherDiscountSummaryRow}
             promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont, isMobile: true })}
             onStepChange={setStep}
             orderStep={step}

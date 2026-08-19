@@ -33,6 +33,11 @@ const AUDIT_SEARCH_ALIASES = Object.freeze({
     reject: ['rejected', 'declined', 'cancelled', 'failed'],
     rejected: ['reject', 'declined', 'cancelled', 'failed']
 });
+const AUDIT_CASHIER_ID_KEYS = Object.freeze([
+    'cashier_id',
+    'origin_cashier_id',
+    'previous_cashier_id'
+]);
 const parseJsonObject = (value) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return value;
     if (typeof value !== 'string' || !value.trim()) return {};
@@ -102,9 +107,15 @@ const buildWhere = (query = {}) => {
     return where;
 };
 
-const serialize = (row) => {
+const serialize = (row, cashierNames = new Map()) => {
     const plain = toPlain(row) || {};
     const changes = scrubSecrets(parseJsonObject(plain.changes));
+    const readableCashierNames = AUDIT_CASHIER_ID_KEYS.reduce((names, key) => {
+        const cashierId = positiveInt(changes[key]);
+        const cashierName = cashierId ? cashierNames.get(cashierId) : null;
+        if (cashierName) names[key] = cashierName;
+        return names;
+    }, {});
     return {
         log_id: plain.log_id,
         event_type: plain.event_type || changes.event || changes.event_type || changes.operation || `${plain.entity_type}.${String(plain.action || '').toLowerCase()}`,
@@ -121,9 +132,36 @@ const serialize = (row) => {
         location_id: plain.location_id || changes.location_id || null,
         reason: plain.reason || changes.reason || changes.void_reason || changes.cancel_reason || null,
         request_id: plain.request_id || changes.request_id || null,
+        cashier_names: readableCashierNames,
         changes,
         timestamp: plain.timestamp || null
     };
+};
+
+const resolveCashierNames = async (User, rows) => {
+    if (!User || typeof User.findAll !== 'function') return new Map();
+    const cashierIds = Array.from(new Set((rows || []).flatMap((row) => {
+        const changes = parseJsonObject(toPlain(row)?.changes);
+        return AUDIT_CASHIER_ID_KEYS
+            .map((key) => positiveInt(changes[key]))
+            .filter(Boolean);
+    })));
+    if (cashierIds.length === 0) return new Map();
+    try {
+        const users = await User.findAll({
+            where: { user_id: { [Op.in]: cashierIds } },
+            attributes: ['user_id', 'username']
+        });
+        return new Map((users || [])
+            .map((user) => {
+                const plain = toPlain(user) || {};
+                return [positiveInt(plain.user_id), String(plain.username || '').trim()];
+            })
+            .filter(([userId, username]) => userId && username));
+    } catch {
+        // A missing user-directory lookup must not make the audit history unavailable.
+        return new Map();
+    }
 };
 
 export const auditRepository = {
@@ -142,8 +180,9 @@ export const auditRepository = {
             distinct: true
         });
         const total = Number(result.count || 0);
+        const cashierNames = await resolveCashierNames(User, result.rows || []);
         return {
-            logs: (result.rows || []).map(serialize),
+            logs: (result.rows || []).map((row) => serialize(row, cashierNames)),
             pagination: {
                 page,
                 limit,

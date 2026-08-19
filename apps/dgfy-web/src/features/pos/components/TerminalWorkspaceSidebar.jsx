@@ -29,7 +29,8 @@ const NavButton = ({
   icon: Icon,
   disabled = false,
   caption = '',
-  testId = ''
+  testId = '',
+  collapsed = false
 }) => (
   <button
     type="button"
@@ -37,24 +38,29 @@ const NavButton = ({
     onPointerEnter={onPrefetch}
     onFocus={onPrefetch}
     disabled={disabled}
+    title={collapsed ? label : undefined}
+    aria-label={collapsed ? label : undefined}
     data-testid={testId || undefined}
-    className={`flex min-w-0 w-full items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-left transition ${
+    className={`flex min-w-0 w-full transition ${collapsed
+      ? 'h-11 items-center justify-center rounded-xl border px-0'
+      : 'items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-left'} ${
       active
         ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
         : 'border-slate-200 bg-white text-[#0F172A] hover:border-blue-200 hover:bg-slate-50'
     } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
   >
-    <Icon className={`mt-0.5 h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-[#1A4E8D]'}`} />
-    <div className="min-w-0">
+    <Icon className={`${collapsed ? 'h-5 w-5' : 'mt-0.5 h-[18px] w-[18px]'} shrink-0 ${active ? 'text-white' : 'text-[#1A4E8D]'}`} />
+    {!collapsed && <div className="min-w-0">
       <span className="block truncate text-[12px] font-extrabold leading-4">{label}</span>
       {caption ? <p className={`mt-1 line-clamp-2 text-[10.5px] leading-[14px] ${active ? 'text-white/80' : 'text-[#64748B]'}`}>{caption}</p> : null}
-    </div>
+    </div>}
   </button>
 );
 
 export default function TerminalWorkspaceSidebar({
   className = '',
   showBrand = true,
+  isCollapsed = false,
   showIdentityInSidebar = false,
   locked = false,
   isOnline = true,
@@ -141,7 +147,7 @@ export default function TerminalWorkspaceSidebar({
       }}
     >
       <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
-        {showBrand && (
+        {showBrand && !isCollapsed && (
         <div className="relative overflow-hidden bg-transparent px-3 pt-3 pb-2 text-center">
           <div className="flex items-center justify-center">
             <img
@@ -172,8 +178,17 @@ export default function TerminalWorkspaceSidebar({
           ) : null}
         </div>
         )}
+        {showBrand && isCollapsed && (
+          <div className="flex justify-center px-2 py-3">
+            <img
+              src={DGFY_POS_LOGO}
+              alt="DGFY"
+              className="h-8 w-8 object-cover object-left"
+            />
+          </div>
+        )}
 
-        {IS_DGFY_POS_SURFACE && showIdentityInSidebar && (
+        {IS_DGFY_POS_SURFACE && showIdentityInSidebar && !isCollapsed && (
         <div className="px-3 pb-3 pt-1">
           <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
@@ -187,9 +202,9 @@ export default function TerminalWorkspaceSidebar({
         </div>
         )}
 
-        <div className={`px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
-        <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>
-        <div className="mt-3 space-y-2">
+        <div className={isCollapsed ? 'px-2 py-3' : `px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
+        {!isCollapsed && <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
+        <div className={isCollapsed ? 'space-y-2' : 'mt-3 space-y-2'}>
           <NavButton
             label="Sell"
             icon={ShoppingCart}
@@ -198,6 +213,7 @@ export default function TerminalWorkspaceSidebar({
             onPrefetch={() => onPrefetchViewMode('checkout')}
             disabled={locked || onboardingRestricted || !navigationShiftReady}
             caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
+            collapsed={isCollapsed}
           />
           <NavButton
             label="History"
@@ -212,6 +228,7 @@ export default function TerminalWorkspaceSidebar({
                 : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift')))
             }
             testId="pos-nav-history"
+            collapsed={isCollapsed}
           />
           {!isCashierRole && (
             <NavButton
@@ -227,6 +244,7 @@ export default function TerminalWorkspaceSidebar({
                 : (!isOnline ? 'Cached offline estimate only' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')))
               }
               testId="pos-nav-reports"
+              collapsed={isCollapsed}
             />
           )}
           <NavButton
@@ -252,6 +270,7 @@ export default function TerminalWorkspaceSidebar({
                           : (isCashierRole ? 'View store items only' : 'Manage items and categories'))))))
             }
             testId="pos-nav-items"
+            collapsed={isCollapsed}
           />
           {showServiceOperations && (
             <NavButton
@@ -261,6 +280,7 @@ export default function TerminalWorkspaceSidebar({
               onClick={() => onSelectViewMode('services')}
               onPrefetch={() => onPrefetchViewMode('services')}
               disabled={locked || !isOnline || onboardingRestricted || !canAccessServiceOperations}
+              collapsed={isCollapsed}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -288,6 +308,7 @@ export default function TerminalWorkspaceSidebar({
                    ? 'Unlock terminal to continue'
                  : (!isOnline ? 'Available online only' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to view branch orders' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress branch orders'))))
                }
+               collapsed={isCollapsed}
              />
            )}
           <NavButton
@@ -298,11 +319,12 @@ export default function TerminalWorkspaceSidebar({
             onPrefetch={() => onPrefetchViewMode('shift_controls')}
             disabled={locked || onboardingRestricted}
             caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
+            collapsed={isCollapsed}
           />
         </div>
 
-        <div className="my-5 border-t border-slate-200" />
-        <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>
+        <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
+        {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>}
         <div className="space-y-2">
           <NavButton
             label="Settings"
@@ -319,6 +341,7 @@ export default function TerminalWorkspaceSidebar({
                   : 'Profile, POS setup, and storefront tools'))
             }
             testId="pos-nav-settings"
+            collapsed={isCollapsed}
           />
           {!isCashierRole && (
             <NavButton
@@ -333,6 +356,7 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
               }
               testId="pos-nav-affiliates"
+              collapsed={isCollapsed}
             />
           )}
           {canViewAudit && (
@@ -345,20 +369,24 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Admin-only activity log for POS and account changes')}
               testId="pos-nav-audit"
+              collapsed={isCollapsed}
             />
           )}
         </div>
 
-        <div data-testid="pos-sidebar-session-action" className="mt-5 border-t border-slate-200 pt-5">
+          <div
+          data-testid="pos-sidebar-session-action"
+          className={`pointer-events-auto ${isCollapsed ? 'mt-3 pt-3' : 'mt-5 pt-5'} border-t border-slate-200 ${locked ? 'relative z-10' : ''}`}
+        >
           {locked ? (
-            <Button type="button" className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]" onClick={onUnlock}>
+            <Button type="button" className={`${isCollapsed ? 'h-11 w-full rounded-xl p-0' : 'h-12 w-full rounded-lg'} flex items-center justify-center gap-2 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]`} onClick={onUnlock} title={isCollapsed ? 'Unlock terminal' : undefined} aria-label={isCollapsed ? 'Unlock terminal' : undefined}>
               <LogIn className="h-4 w-4" />
-              Unlock Terminal
+              {!isCollapsed && 'Unlock Terminal'}
             </Button>
           ) : (
-            <Button type="button" variant="outline" className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-[#0F172A] transition hover:bg-slate-100" onClick={onLock}>
+            <Button type="button" variant="outline" className={`${isCollapsed ? 'h-11 w-full rounded-xl p-0' : 'h-12 w-full rounded-lg'} flex items-center justify-center gap-2 border border-slate-300 bg-slate-50 text-[13px] font-extrabold text-[#0F172A] transition hover:bg-slate-100`} onClick={onLock} title={isCollapsed ? 'Lock terminal' : undefined} aria-label={isCollapsed ? 'Lock terminal' : undefined}>
               <Lock className="h-4 w-4" />
-              Lock Terminal
+              {!isCollapsed && 'Lock Terminal'}
             </Button>
           )}
         </div>

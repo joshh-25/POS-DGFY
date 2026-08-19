@@ -34,6 +34,7 @@ export function RetailOrderSummaryContent({
   money,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
@@ -61,6 +62,7 @@ export function RetailOrderSummaryContent({
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     ...(promoDiscountSummaryRow ? [{ ...promoDiscountSummaryRow, color: '#15803d' }] : []),
+    ...(voucherDiscountSummaryRow ? [{ ...voucherDiscountSummaryRow, color: '#7c3aed' }] : []),
     { label: 'Fees & Taxes', value: money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0)) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
   ];

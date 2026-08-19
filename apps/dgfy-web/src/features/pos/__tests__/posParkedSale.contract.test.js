@@ -10,9 +10,13 @@ const actionComponentSource = fs.readFileSync(
 );
 
 describe('POS Park & New Sale cashier flow', () => {
-    it('renders an explicit add-only park action', () => {
+    it('separates parked-sales history from the explicit add-only park action', () => {
+        expect(componentSource).toContain('data-testid="pos-header-parked-sales-history-button"');
+        expect(componentSource).toContain('CarTaxiFront');
+        expect(componentSource).toContain("currentViewMode === 'checkout'");
+        expect(componentSource).toContain('onClick={openParkedSalesHistory}');
+        expect(componentSource).not.toContain('data-testid="pos-header-open-parked-sales"');
         expect(actionComponentSource).toContain('data-testid="pos-park-sale-button"');
-        expect(actionComponentSource).toContain(": 'Park'");
         expect(componentSource).toContain('createPosParkedSale');
     });
 
@@ -55,6 +59,35 @@ describe('POS Park & New Sale cashier flow', () => {
         expect(componentSource).toContain('onQueueOfflineOperation');
     });
 
+    it('exits parked-sale editing when the final item is removed without cancelling the parked sale', () => {
+        expect(componentSource).toContain('const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () =>');
+        expect(componentSource).toContain('void cancelActiveParkedSaleEditingAfterCartEmpty();');
+        expect(componentSource).toContain('await reparkPosParkedSale(parkedSaleId, {');
+        expect(componentSource).toContain('snapshot,');
+        expect(componentSource).toContain('The parked sale is still claimed and the current items were kept.');
+        expect(componentSource).toContain('remains available for the next cashier.');
+        expect(componentSource).toContain('setActiveParkedSale(null);');
+        expect(componentSource).toContain('Editing was cancelled because all items were removed.');
+        expect(componentSource).not.toContain('cancelPosParkedSale');
+        expect(componentSource).not.toContain('PARKED_SALE_EMPTY_CART_CANCEL_REASON');
+
+        const editingCancelStart = componentSource.indexOf('const cancelActiveParkedSaleEditingAfterCartEmpty');
+        const reparkRequest = componentSource.indexOf('await reparkPosParkedSale(parkedSaleId, {', editingCancelStart);
+        const clearDraft = componentSource.indexOf('clearPosCartDraft(offlineSnapshotScope, activeShiftId);', editingCancelStart);
+        expect(reparkRequest).toBeGreaterThan(editingCancelStart);
+        expect(clearDraft).toBeGreaterThan(reparkRequest);
+    });
+
+    it('cancels Pay checkout by returning the claimed parked sale to the queue and clearing current sale', () => {
+        expect(componentSource).toContain('const [parkedSalePayContext, setParkedSalePayContext] = useState(null);');
+        expect(componentSource).toContain('setParkedSalePayContext(normalizedAction === \'pay\'');
+        expect(componentSource).toContain('const releaseClaimedParkedSaleAfterPayCancel = useCallback(async () =>');
+        expect(componentSource).toContain('await reparkPosParkedSale(parkedSaleId, {');
+        expect(componentSource).toContain('The parked sale is available again.');
+        expect(componentSource).toContain('if (parkedSalePayContext && activeParkedSale?.pos_parked_sale_id)');
+        expect(componentSource).toContain('void handleCancelCheckout();');
+    });
+
     it('does not retrieve parked sales or auto-replace the new cart automatically', () => {
         expect(componentSource).not.toContain('fetchPosParkedSales');
         expect(componentSource).not.toContain('claimPosParkedSale');
@@ -62,10 +95,11 @@ describe('POS Park & New Sale cashier flow', () => {
     });
 
     it('provides header parked-sale actions and a guarded clear-current-sale action', () => {
-        expect(componentSource).toContain('data-testid="pos-header-open-parked-sales"');
+        expect(componentSource).toContain('data-testid="pos-header-parked-sales-history-button"');
         expect(componentSource).toContain('setParkedSalesDialogOpen(true);');
-        expect(componentSource).not.toContain('data-testid="pos-header-park"');
+        expect(actionComponentSource).toContain('data-testid="pos-park-sale-button"');
         expect(componentSource).toContain('data-testid="pos-clear-current-sale"');
+        expect(componentSource.match(/data-testid="pos-clear-current-sale"/g)).toHaveLength(1);
         expect(componentSource).toContain('data-testid="pos-clear-current-sale-dialog"');
         expect(componentSource).toContain('data-testid="pos-confirm-clear-current-sale"');
         expect(componentSource).toContain('clearPosCartDraft(offlineSnapshotScope, activeShiftId);');

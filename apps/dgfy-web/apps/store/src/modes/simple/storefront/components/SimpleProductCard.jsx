@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { VoucherPriceDisplay, VoucherAppliedBadge } from '../../../../shared/components/storefront/VoucherPriceDisplay.jsx';
 import { SIMPLE_CATEGORY_ICON_MAP } from '../model/simpleCategoryIconMap.jsx';
 
 /**
@@ -102,6 +103,7 @@ const SimpleProductCard = ({
               Affiliate price
             </div>
           )}
+          <VoucherAppliedBadge item={item} style={{ top: 6, right: 6 }} />
 
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
@@ -118,7 +120,7 @@ const SimpleProductCard = ({
             fontFamily: cardUiFont,
             lineHeight: 1
           }}>
-            {money(item.default_sale_price ?? 0)}
+            <VoucherPriceDisplay item={item} money={money} size="sm" />
           </div>
         </div>
 
@@ -251,6 +253,7 @@ const SimpleProductCard = ({
             Affiliate price
           </div>
         )}
+        <VoucherAppliedBadge item={item} style={{ top: isMobileViewport ? 10 : 16, right: isMobileViewport ? 10 : 16, fontSize: 10, padding: '3px 8px' }} />
         <div style={{
           position: 'absolute',
           right: isMobileViewport ? 10 : 16,
@@ -267,7 +270,7 @@ const SimpleProductCard = ({
           fontFamily: cardUiFont,
           lineHeight: 1
         }}>
-          {money(item.default_sale_price ?? 0)}
+          <VoucherPriceDisplay item={item} money={money} />
         </div>
         {categoryLabel ? (
           <div style={{ position: 'absolute', left: isMobileViewport ? 10 : 12, bottom: isMobileViewport ? 10 : 12, maxWidth: '55%', padding: isMobileViewport ? '5px 8px' : '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.94)', color: accentDeep, fontSize: isMobileViewport ? 10 : 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: cardUiFont }}>

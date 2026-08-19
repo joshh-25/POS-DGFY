@@ -72,9 +72,9 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0047 | [Platform Admin Identity and Page RBAC](0047-platform-admin-identity-and-page-rbac.md) | `accepted` | platform_admin_identity_rbac | 2027-01-28 | 0 |
 | 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
 | 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
-| 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `accepted` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
+| 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `amended` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
-| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
+| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `amended` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `amended` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
 | 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
 | 0055 | [Tenant-Scoped POS Catalog Realtime Invalidation](0055-tenant-scoped-pos-catalog-realtime-invalidation.md) | `accepted` | tenant_scoped_pos_catalog_realtime_invalidation | 2027-02-08 | 0 |
@@ -88,6 +88,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
+| 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `accepted` | voucher_sale_time_price_resolution | 2027-02-17 | 4 |
+| 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `accepted` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 2 |
 
 ## Renumbered (collision stubs)
 

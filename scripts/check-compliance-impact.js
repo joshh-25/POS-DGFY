@@ -37,6 +37,16 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
+    pattern: /^apps\/dgfy-api\/src\/modules\/vouchers\//,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^apps\/dgfy-api\/src\/modules\/store\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/modules\/payments\//,
     surfaces: ['payments'],
     minimumClassification: 'major'

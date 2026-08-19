@@ -31,6 +31,7 @@ export function useFnbCheckoutQuote({
   cart,
   checkoutPermitted,
   checkoutPromoCode,
+  checkoutVoucherCode,
   customerEmail,
   customerName,
   customerPhone,
@@ -47,6 +48,7 @@ export function useFnbCheckoutQuote({
   selectedLocationId,
   selectedStore,
   setCheckoutPromoCode,
+  setCheckoutVoucherCode,
   setQuoteError,
   setQuoteNeedsRefresh,
   setQuoteResult,
@@ -56,7 +58,14 @@ export function useFnbCheckoutQuote({
   buildStockExceededMessage,
   extractStockViolation,
 }) {
-  const buildPayload = useCallback((promoCode = checkoutPromoCode, cartOverride = cart) => buildFnbCheckoutPayload({
+  // #672: voucherCode is a second, independent override alongside promoCode -- the two checkout
+  // discounts are separate fields (see buildFnbCheckoutPayload.js), so each needs its own override
+  // rather than reusing promoCode's single positional slot.
+  const buildPayload = useCallback(({
+    promoCode = checkoutPromoCode,
+    voucherCode = checkoutVoucherCode,
+    cartOverride = cart
+  } = {}) => buildFnbCheckoutPayload({
     selectedLocationId,
     selectedStore,
     orderMethod,
@@ -67,6 +76,7 @@ export function useFnbCheckoutQuote({
     deliveryAddress,
     customerPin,
     promoCode,
+    voucherCode,
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
@@ -74,6 +84,7 @@ export function useFnbCheckoutQuote({
   }), [
     cart,
     checkoutPromoCode,
+    checkoutVoucherCode,
     customerEmail,
     customerName,
     customerPhone,
@@ -88,14 +99,19 @@ export function useFnbCheckoutQuote({
     selectedStore,
   ]);
 
-  const requestQuote = useCallback(async ({ promoCodeOverride = checkoutPromoCode, successMessage = '', silent = false } = {}) => {
+  const requestQuote = useCallback(async ({
+    promoCodeOverride = checkoutPromoCode,
+    voucherCodeOverride = checkoutVoucherCode,
+    successMessage = '',
+    silent = false
+  } = {}) => {
     if (!selectedStore) return null;
 
     const data = await requestJson('/api/v1/store/cart/quote', {
       method: 'POST',
       storeSlug: selectedStore.slug,
       authToken: readStoreAuthToken(),
-      body: buildPayload(promoCodeOverride),
+      body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
     setQuoteResult(data);
     setQuoteNeedsRefresh(false);
@@ -106,6 +122,7 @@ export function useFnbCheckoutQuote({
   }, [
     buildPayload,
     checkoutPromoCode,
+    checkoutVoucherCode,
     readStoreAuthToken,
     requestJson,
     selectedStore,
@@ -188,9 +205,83 @@ export function useFnbCheckoutQuote({
     toast,
   ]);
 
+  // #672: symmetric to handlePromoCardApply above, for the separate voucher_code field. Mirrors the
+  // same "added but not yet server-validated" early-return shape (closed hours, empty cart, offline
+  // checkout) and the same stock-violation/deferred-customer-validation error handling.
+  const handleVoucherCardApply = useCallback(async (voucherCode) => {
+    const normalizedVoucherCode = String(voucherCode || '').trim().toUpperCase();
+    if (!normalizedVoucherCode) return;
+
+    setCheckoutVoucherCode(normalizedVoucherCode);
+    setQuoteError('');
+
+    if (!Array.isArray(cart) || cart.length === 0) {
+      toast.success(`Voucher code ${normalizedVoucherCode} added. Add items to validate the discount.`);
+      return;
+    }
+    if (!selectedStore) {
+      toast.success(`Voucher code ${normalizedVoucherCode} added.`);
+      return;
+    }
+    if (storefrontClosedByHours) {
+      const message = storefrontHoursLabel
+        ? `Voucher code ${normalizedVoucherCode} added. It will validate during business hours: ${storefrontHoursLabel}.`
+        : `Voucher code ${normalizedVoucherCode} added. It will validate when ordering opens again.`;
+      toast.info(message);
+      return;
+    }
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      toast.info(`Voucher code ${normalizedVoucherCode} added. It will validate when online checkout is available.`);
+      return;
+    }
+
+    try {
+      await requestQuote({
+        voucherCodeOverride: normalizedVoucherCode,
+        successMessage: `Voucher code ${normalizedVoucherCode} applied.`,
+      });
+      trackFunnelEvent(ANALYTICS_EVENTS.VOUCHER_CODE_APPLIED, {
+        store_slug: selectedStore?.slug,
+        voucher_code: normalizedVoucherCode
+      });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setQuoteError(message);
+        toast.error(message);
+        return;
+      }
+      if (isDeferredCustomerValidation(error)) {
+        setQuoteNeedsRefresh(true);
+        toast.success(`Voucher code ${normalizedVoucherCode} added. It will apply after customer details are completed.`);
+        return;
+      }
+      const message = normalizeErrorMessage(error, 'Unable to apply voucher code right now.');
+      setQuoteError(message);
+      toast.error(message);
+    }
+  }, [
+    accessCapabilities.quote,
+    buildStockExceededMessage,
+    cart,
+    checkoutPermitted,
+    extractStockViolation,
+    normalizeErrorMessage,
+    requestQuote,
+    selectedStore,
+    setCheckoutVoucherCode,
+    setQuoteError,
+    setQuoteNeedsRefresh,
+    storefrontClosedByHours,
+    storefrontHoursLabel,
+    toast,
+  ]);
+
   return {
     buildPayload,
     handlePromoCardApply,
+    handleVoucherCardApply,
     requestQuote,
   };
 }

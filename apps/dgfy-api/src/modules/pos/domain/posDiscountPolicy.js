@@ -40,12 +40,13 @@ export const resolvePosGovernedDiscount = async ({
     subtotalAmount = 0,
     settings = {},
     orderMethod = '',
+    requireCustomerName = true,
     findActiveRule,
     findActiveEmployee
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const type = text(draft.type).toLowerCase();
-    if (type && type !== 'employee' && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
+    if (requireCustomerName && type && type !== 'employee' && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
         validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
     }
 
@@ -111,6 +112,20 @@ export const resolvePosGovernedDiscount = async ({
         application.rate = Number(rule.rate ?? 20);
         application.amount = null;
         application.lines = selectedItems.map((entry) => ({ item_id: entry.item_id, ...(entry.eligible_quantity != null ? { eligible_quantity: entry.eligible_quantity } : {}) }));
+    }
+
+    if (['employee', 'manual'].includes(type)) {
+        const selectedItemIds = [...new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : [])
+            .map(positiveInt)
+            .filter(Boolean))];
+        if (selectedItemIds.length > 0) {
+            const linesByItemId = new Map(preparedLines.map((line) => [positiveInt(line.item_id), line]));
+            const selectedLines = selectedItemIds.filter((itemId) => linesByItemId.has(itemId));
+            if (selectedLines.length === 0) {
+                validationError('The selected discount items are no longer in the cart.', 'DISCOUNT_ITEM_SELECTION_INVALID');
+            }
+            application.lines = selectedLines.map((itemId) => ({ item_id: itemId }));
+        }
     }
 
     if (type === 'employee') {

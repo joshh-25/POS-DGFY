@@ -6,10 +6,12 @@
 # (2026-07-02)" section for the scoped decision that supersedes those rules
 # for this specific image-based deployment path.
 #
-# For environments whose server isn't directly reachable from GitHub Actions
-# (currently DEV/STAGING), set `vpn_required: true` to connect to a VPN via
-# OpenVPN before the SSH steps run -- see that ADR's "Amendment (2026-07-06)"
-# section for the scoped decision covering this VPN-gated variant.
+# `vpn_required: true` connects to a VPN via OpenVPN before the SSH steps run -- see that ADR's
+# "Amendment (2026-07-06)" section for the scoped decision covering this VPN-gated variant. As of
+# #598/#599, every registered self-hosted runner sits on the same internal LAN as the DEV/STAGING
+# server (vm-sieitzstaging IS that server), so no caller needs this today -- it exists as a
+# fallback for a GitHub-hosted runner, which would need it. See docs/ops/
+# CI_RUNNER_MIGRATION_HANDOFF.md for the current topology and the switch-back procedure.
 #
 # Assumes infrastructure/docker/docker-compose.yml + a filled-in .env +
 # nginx/ have already been copied to /opt/dgfy-platform on the target
@@ -40,7 +42,7 @@ on:
         required: true
         type: string
       vpn_required:
-        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see header comment
         required: false
         type: boolean
         default: false

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
+import esCompatGuardPlugin from '../../build/esCompatGuardPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,7 +58,7 @@ export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-pos'),
   base: './',
-  plugins: [react(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
   },

@@ -145,6 +145,33 @@ describe('parked sale use cases', () => {
         }));
     });
 
+    it('lists the shared location queue for another cashier', async () => {
+        const harness = buildHarness({
+            parkedSales: [{
+                pos_parked_sale_id: 101,
+                status: 'parked',
+                shift_id: 41,
+                cashier_id: 15,
+                location_id: 3,
+                snapshot: JSON.stringify({ lines: [{ item_id: 7, quantity: 1 }] })
+            }]
+        });
+        const useCase = buildListPosParkedSalesUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            query: { shift_id: 41, location_id: 3 },
+            user: { user_id: 22 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.parked_sales).toHaveLength(1);
+        expect(harness.posRepository.listParkedSales).toHaveBeenCalledWith(expect.objectContaining({
+            locationId: 3,
+            sharedLocation: true,
+            statuses: ['parked', 'claimed']
+        }));
+    });
+
     it('returns parsed MariaDB JSON text after claiming a parked sale', async () => {
         const snapshot = {
             lines: [{ item_id: 9, item_name: 'Chicken Frankie Roll', quantity: 1, sale_price: 150 }]

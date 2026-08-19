@@ -104,3 +104,7 @@ export const readStoreReviewToken = () => readQueryParam('review_token', '');
 export const readTrackingPinFromQuery = () => String(readQueryParam('pin', '') || '').trim().toUpperCase();
 
 export const readAffiliateShortCode = () => readQueryParam('p', '');
+
+// #672: initial voucher-code capture from a shareable link, e.g. `?voucher=FEST2026`. Mirrors
+// readAffiliateShortCode's `?p=` pattern rather than inventing a different param-reading shape.
+export const readStoreVoucherCode = () => readQueryParam('voucher', '');
