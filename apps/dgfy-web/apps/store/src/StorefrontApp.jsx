@@ -985,7 +985,10 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     selectedStoreSlug: selectedStore?.slug
   });
-  const fnbTrackingMode = isFnbMode ? 'fnb' : 'services';
+  // The F&B runtime is kept F&B-only. Services uses the dedicated runtime
+  // immediately below, even though both hooks must be instantiated here to
+  // preserve React hook ordering across storefront modes.
+  const fnbTrackingMode = 'fnb';
   const fnbTrackingAdapterRegistry = useMemo(
     () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
     []
@@ -3999,6 +4002,7 @@ export default function StorefrontApp() {
     serviceBookingReviewProps,
     storefrontCheckoutSummaryProps,
     fnbTrackingRouteProps,
+    servicesTrackingRouteProps,
     retailTrackingRouteProps,
     simpleTrackingDrawerProps,
     showOrderSuccessAnimation

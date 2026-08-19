@@ -15,6 +15,7 @@ import { FnbCartDrawerHeader } from '../../modes/fnb/checkout/components/FnbCart
 import { FnbCartDrawerSurface } from '../../modes/fnb/checkout/pages/FnbCartDrawerSurface.jsx';
 import { FnbCheckoutRouteContainer } from '../../modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx';
 import { FnbTrackingRouteContainer } from '../../modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
+import { ServicesTrackingRouteContainer } from '../../modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx';
 import { RetailTrackingRouteContainer } from '../../modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx';
 import { TrackingDrawerMount } from '../../tracking/components/TrackingDrawerMount.jsx';
 
@@ -71,6 +72,7 @@ export function StorefrontCartDrawerShellContainer(props) {
     fnbCheckoutRouteProps,
     serviceBookingReviewProps,
     fnbTrackingRouteProps,
+    servicesTrackingRouteProps,
     retailTrackingRouteProps,
     simpleTrackingDrawerProps,
     showOrderSuccessAnimation
@@ -244,11 +246,12 @@ export function StorefrontCartDrawerShellContainer(props) {
               <ServiceBookingReviewContainer {...serviceBookingReviewProps} />
             )}
 
-            {!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />}
+            {!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />}
+            {isServicesMode && <ServicesTrackingRouteContainer {...servicesTrackingRouteProps} visible={checkoutTab === 'track'} />}
             {isRetailMode && <RetailTrackingRouteContainer {...retailTrackingRouteProps} renderDrawer={false} />}
 
       </StorefrontCheckoutDrawerFrame>
-      {!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />}
+      {!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />}
       {isRetailMode && <RetailTrackingRouteContainer {...retailTrackingRouteProps} visible={false} />}
       {isSimpleMode && <TrackingDrawerMount {...simpleTrackingDrawerProps} />}
       <StorefrontOrderSuccessOverlay visible={showOrderSuccessAnimation} />
