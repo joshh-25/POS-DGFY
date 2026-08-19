@@ -8,6 +8,12 @@ export function ServiceBookingConfirmation({
   confirmationAmount,
   checkoutResult,
   money,
+  servicesPrimary = '#0f766e',
+  servicesPrimaryDark = '#134e4a',
+  servicesPrimarySoft = '#ecfeff',
+  servicesPrimaryBorder = 'rgba(15,118,110,0.2)',
+  servicesPrimaryShadow = 'rgba(15,118,110,0.24)',
+  onTrackBooking,
   onResetAndBackToServices,
 }) {
   const bookingReferences = Array.isArray(checkoutResult?.bookings)
@@ -67,7 +73,7 @@ export function ServiceBookingConfirmation({
           <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking references</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {bookingReferences.map((reference) => (
-              <span key={reference} style={{ display: 'inline-flex', alignItems: 'center', minHeight: 34, borderRadius: 999, background: '#eff6ff', color: '#1d4ed8', padding: '0 12px', fontSize: 13, fontWeight: 800 }}>
+              <span key={reference} style={{ display: 'inline-flex', alignItems: 'center', minHeight: 34, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimaryDark, border: `1px solid ${servicesPrimaryBorder}`, padding: '0 12px', fontSize: 13, fontWeight: 800 }}>
                 {reference}
               </span>
             ))}
@@ -76,6 +82,24 @@ export function ServiceBookingConfirmation({
       )}
 
       <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12, flexWrap: 'wrap' }}>
+        {confirmationReference && typeof onTrackBooking === 'function' && (
+          <button
+            type="button"
+            onClick={onTrackBooking}
+            style={{
+              minHeight: 46,
+              borderRadius: 14,
+              border: `1px solid ${servicesPrimary}`,
+              background: '#fff',
+              color: servicesPrimaryDark,
+              padding: '0 18px',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Track booking
+          </button>
+        )}
         {(paymentLinks.length > 0 ? paymentLinks : (checkoutResult?.payment?.checkout_url ? [checkoutResult.payment] : [])).map((payment, index) => (
           <a
             key={`${payment?.checkout_url || 'payment'}-${index}`}
@@ -88,7 +112,7 @@ export function ServiceBookingConfirmation({
               justifyContent: 'center',
               minHeight: 46,
               borderRadius: 14,
-              background: '#0f766e',
+              background: servicesPrimary,
               color: '#fff',
               padding: '0 18px',
               fontWeight: 800,
@@ -105,11 +129,12 @@ export function ServiceBookingConfirmation({
             minHeight: 46,
             borderRadius: 14,
             border: 'none',
-            background: '#1a4e8d',
+            background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`,
             color: '#fff',
             padding: '0 18px',
             fontWeight: 800,
             cursor: 'pointer',
+            boxShadow: `0 10px 24px ${servicesPrimaryShadow}`,
           }}
         >
           Back to Services

@@ -78,6 +78,10 @@ export function useCheckoutSubmission({
   serviceCartLines,
   serviceCartValidationIssues,
   serviceDraftQuantity,
+  serviceOrderMethod,
+  servicesLocalSimulationEnabled,
+  isServicesLocalSimulationMethod,
+  createServicesLocalSimulation,
   servicePaymentTiming,
   serviceIntakeResponses,
   setCart,
@@ -200,7 +204,7 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
+    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
@@ -230,6 +234,44 @@ export function useCheckoutSubmission({
       const message = 'Verify your email before placing this order.';
       setCheckoutError(message);
       toast.error(message);
+      return;
+    }
+    const shouldCreateLocalServicesSimulation = isServicesMode
+      && servicesLocalSimulationEnabled
+      && typeof isServicesLocalSimulationMethod === 'function'
+      && isServicesLocalSimulationMethod(serviceOrderMethod);
+    if (shouldCreateLocalServicesSimulation) {
+      const localSimulation = createServicesLocalSimulation({
+        customerAddress,
+        customerEmail,
+        customerName,
+        customerPhone,
+        fallbackAmount: totalsForDisplay?.total_amount,
+        routeSlug,
+        selectedStore,
+        serviceAppointmentAt,
+        serviceBookingLine,
+        serviceCartLines,
+        serviceOrderMethod
+      });
+      setCart([]);
+      setSelectedServiceCartLineId('');
+      setCheckoutResult(null);
+      setTrackingPinInput(localSimulation.tracking_pin);
+      setSelectedTrackingPin(localSimulation.tracking_pin);
+      writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, localSimulation.tracking_pin);
+      setServiceAppointmentAt('');
+      setServiceDraftQuantity(1);
+      setServiceDraftNotes('');
+      setServiceIntakeResponses({});
+      setServicePaymentPreviewMethod('qr');
+      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+      setServicePaymentPreviewReceiptName('');
+      setShowOrderSuccessAnimation(false);
+      setCheckoutTab('track');
+      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: serviceOrderMethod });
+      clearCheckoutAuthResumeDraft();
+      toast.success('Local Services preview created. No backend booking was submitted.');
       return;
     }
     const cartSnapshot = cart.map((line) => ({ ...line }));
@@ -271,6 +313,7 @@ export function useCheckoutSubmission({
           bookingPageIntakeFields,
           customerAddress,
           bookingFieldPlan,
+          serviceAppointmentAt,
           createIdempotencyKey: createStorefrontIdempotencyKey
         });
         if (!servicesSubmitContract.compatible) {
@@ -428,9 +471,19 @@ export function useCheckoutSubmission({
           setCheckoutTab('track');
         }
       }
-      if (data?.booking?.public_reference) {
-        setTrackingPinInput(data.booking.public_reference);
-        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
+      const serviceBookingReferences = isServicesMode
+        ? [
+          data?.booking?.public_reference,
+          ...(Array.isArray(data?.bookings) ? data.bookings.map((booking) => booking?.public_reference) : [])
+        ]
+          .map((reference) => String(reference || '').trim().toUpperCase())
+          .filter(Boolean)
+        : [];
+      const submittedServiceTrackingPin = serviceBookingReferences[0] || '';
+      if (submittedServiceTrackingPin) {
+        setTrackingPinInput(submittedServiceTrackingPin);
+        setSelectedTrackingPin(submittedServiceTrackingPin);
+        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, submittedServiceTrackingPin);
       }
       setCart([]);
       if (hasServiceCart) {
@@ -450,14 +503,18 @@ export function useCheckoutSubmission({
         void handleLoadAccountPanel();
       }
       const submittedTrackingPin = String(data?.tracking_pin || '').trim().toUpperCase();
-      if (submittedTrackingPin && !hasServiceCart) {
+      const trackingPinToOpen = isServicesMode ? submittedServiceTrackingPin : submittedTrackingPin;
+      if ((isServicesMode && submittedServiceTrackingPin) || (submittedTrackingPin && !hasServiceCart)) {
         setShowOrderSuccessAnimation(false);
         if (orderSuccessAnimationTimerRef.current) {
           window.clearTimeout(orderSuccessAnimationTimerRef.current);
           orderSuccessAnimationTimerRef.current = null;
         }
         setCheckoutResult(null);
-        goStoreTrackPage({ pin: submittedTrackingPin });
+        goStoreTrackPage({
+          pin: trackingPinToOpen,
+          serviceHandoff: isServicesMode ? serviceOrderMethod : ''
+        });
       } else {
         setFnbOrderStep(4);
         if (isSimpleMode) {

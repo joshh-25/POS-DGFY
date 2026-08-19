@@ -3,6 +3,9 @@ import React from 'react';
 export function ServiceBookingEmptyState({
   onBrowseServices,
   isMobileViewport,
+  servicesPrimary = '#0f766e',
+  servicesPrimaryDark = '#134e4a',
+  servicesPrimaryShadow = 'rgba(15,118,110,0.24)',
 }) {
   return (
     <section
@@ -33,11 +36,12 @@ export function ServiceBookingEmptyState({
             minHeight: 46,
             borderRadius: 14,
             border: 'none',
-            background: '#1a4e8d',
+            background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`,
             color: '#fff',
             padding: '0 18px',
             fontWeight: 800,
             cursor: 'pointer',
+            boxShadow: `0 10px 24px ${servicesPrimaryShadow}`,
           }}
         >
           Browse Services

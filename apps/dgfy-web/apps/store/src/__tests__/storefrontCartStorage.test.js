@@ -45,7 +45,8 @@ describe('storefront cart storage', () => {
       quantity: 2,
       price: '120',
       has_modifier_groups: true,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }],
+      selected_options: [{ option_id: 81, group_id: 8, group_name: 'Package size', group_type: 'variation', name: 'First 5 kilos' }]
     })).toMatchObject({
       item_id: 12,
       cart_line_id: '12:default',
@@ -53,7 +54,9 @@ describe('storefront cart storage', () => {
       quantity: 2,
       price: 120,
       has_modifier_groups: true,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }],
+      selected_option_ids: [81],
+      selected_options: [expect.objectContaining({ option_id: 81, group_id: 8, name: 'First 5 kilos' })]
     });
     expect(normalizeStorefrontCartLine({ item_id: 12, quantity: 0 })).toBeNull();
   });

@@ -50,6 +50,27 @@ const missing = [
   ...requiredQualityMarkers.filter((marker) => !qualityWorkflow.includes(marker)).map((marker) => `pr-quality-checks.yml:${marker}`)
 ];
 
+// #726: RUNNER_HEAVY_JSON and BUILD_CACHE_FROM are a paired flip, not two independent anchors --
+// the cache backend's viability depends on which runner tier is active (empty/no-cache on
+// self-hosted, 'type=gha' on hosted; see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md). A half-flip
+// silently reproduces either #726's outage (self-hosted + network cache back on) or throws away a
+// real cache hit for nothing (hosted + no cache). Checked here, not just documented, because a
+// documented-only invariant is exactly the kind of thing a fast anchor edit skips reading first.
+const runnerHeavyMatch = prChecks.match(/RUNNER_HEAVY_JSON:\s*&runner_heavy\s*'([^']*)'/);
+const cacheFromMatch = prChecks.match(/BUILD_CACHE_FROM:\s*&build_cache_from\s*'([^']*)'/);
+if (!runnerHeavyMatch || !cacheFromMatch) {
+  missing.push('pr-checks.yml: could not find RUNNER_HEAVY_JSON/BUILD_CACHE_FROM anchors to check runner/cache consistency (#726) -- did an anchor name change?');
+} else {
+  const isSelfHosted = runnerHeavyMatch[1].includes('self-hosted');
+  const hasCache = cacheFromMatch[1].trim() !== '';
+  if (isSelfHosted && hasCache) {
+    missing.push('pr-checks.yml: RUNNER_HEAVY_JSON is self-hosted but BUILD_CACHE_FROM is non-empty -- this reproduces #726 (the Actions cache costs ~21x the build it skips on self-hosted). Flip BUILD_CACHE_FROM back to empty, or confirm the runner anchor is actually meant to be hosted.');
+  }
+  if (!isSelfHosted && !hasCache) {
+    missing.push("pr-checks.yml: RUNNER_HEAVY_JSON is hosted but BUILD_CACHE_FROM is empty -- hosted runners are ephemeral with no local layer cache at all, so this throws away a real cache hit for nothing. Flip BUILD_CACHE_FROM back to 'type=gha'.");
+  }
+}
+
 if (qualityWorkflow.includes('continue-on-error')) {
   missing.push('pr-quality-checks.yml:continue-on-error is forbidden for blocking quality gates');
 }

@@ -15,10 +15,18 @@ import {
   locationsMatchProfileSnapshot,
   normalizeProfileLocations
 } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
+import { normalizeBusinessMode } from '../../discovery/model/businessModePins.js';
 import { buildAccessPolicyStorePatch } from '../model/customerAccess.js';
 import { buildWorkflowCapabilityStorePatch } from '../model/workflowCapabilities.js';
 import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
+
+export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = null } = {}) => {
+  const basePath = isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog';
+  const query = new URLSearchParams({ limit: '120' });
+  if (locationId != null) query.set('location_id', String(locationId));
+  return `${basePath}?${query.toString()}`;
+};
 
 /**
  * Stateful hook that owns storefront catalog/location loading.
@@ -104,7 +112,11 @@ export function useStoreCatalogLoader({
     if (accessPatch || capabilityPatch || paymentCapabilitiesPatch) {
       setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch } : prev));
     }
-    setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
+    setCatalog(
+      Array.isArray(catalogData?.items)
+        ? catalogData.items
+        : (Array.isArray(catalogData?.services) ? catalogData.services : [])
+    );
   }, [setSelectedStore]);
 
   const markBrandingImageError = useCallback((key) => {
@@ -182,6 +194,9 @@ export function useStoreCatalogLoader({
       }
       loadedProfile = profile;
       setSelectedStore(profile);
+      const isServicesStorefront = normalizeBusinessMode(
+        profile?.workflow_mode || profile?.ops_workflow_mode
+      ) === 'services';
       let resolvedCatalogLocationId = null;
       const profileLocations = normalizeProfileLocations(profile);
       loadedProfileLocations = profileLocations;
@@ -198,7 +213,9 @@ export function useStoreCatalogLoader({
       // against the scoped one that follows. Wrapped so it never rejects
       // (tagged result instead) -- nothing may ever await it if the
       // locations fetch itself throws before reaching the branch below.
-      const speculativeCatalogPromise = requestJson(withVoucherCodeParam('/api/v1/store/catalog?limit=120', voucherCodeRef.current), { storeSlug: profile.slug, signal })
+      const speculativeCatalogPromise = requestJson(withVoucherCodeParam(buildCatalogRequestUrl({
+        isServicesMode: isServicesStorefront
+      }), voucherCodeRef.current), { storeSlug: profile.slug, signal })
         .then((data) => ({ data }))
         .catch((error) => ({ error }));
 
@@ -274,7 +291,10 @@ export function useStoreCatalogLoader({
         // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
         // fetch above for why.
         catalogData = await requestJson(
-          withVoucherCodeParam(`/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`, voucherCodeRef.current),
+          withVoucherCodeParam(buildCatalogRequestUrl({
+            isServicesMode: isServicesStorefront,
+            locationId: resolvedCatalogLocationId
+          }), voucherCodeRef.current),
           { storeSlug: profile.slug, signal }
         );
       }
@@ -339,9 +359,12 @@ export function useStoreCatalogLoader({
       setLoadingCatalog(true);
       setCatalogError('');
       try {
-        const catalogQuery = withVoucherCodeParam(selectedLocationId == null
-          ? '/api/v1/store/catalog?limit=120'
-          : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`, voucherCode);
+        const catalogQuery = withVoucherCodeParam(buildCatalogRequestUrl({
+          isServicesMode: normalizeBusinessMode(
+            selectedStore?.workflow_mode || selectedStore?.ops_workflow_mode
+          ) === 'services',
+          locationId: selectedLocationId
+        }), voucherCode);
         // No `cache: 'no-store'` (issue #282, Phase B) -- see openStoreBySlug's
         // profile fetch above for why.
         const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, signal: abortController.signal });
