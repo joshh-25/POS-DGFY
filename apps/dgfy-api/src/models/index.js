@@ -36,6 +36,7 @@ import PosTransaction from './PosTransaction.js';
 import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
+import PosTransactionAdjustment from './PosTransactionAdjustment.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -582,6 +583,26 @@ PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' })
 PosTransaction.belongsTo(EmployeeCreditAccount, { foreignKey: 'employee_credit_account_id', as: 'employeeCreditAccount' });
 PosTransaction.belongsTo(User, { foreignKey: 'employee_credit_user_id', as: 'employeeCreditEmployee' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_transaction_id', as: 'adjustments' });
+PosTransactionAdjustment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosTransactionAdjustment.belongsTo(PosPaymentAllocation, { foreignKey: 'pos_payment_allocation_id', as: 'paymentAllocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'original_cashier_id', as: 'originalCashier' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'original_shift_id', as: 'originalShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'original_location_id', as: 'originalLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'actor_shift_id', as: 'actorShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'actor_location_id', as: 'actorLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+PosTransactionAdjustment.belongsTo(PosCashDrawerEvent, { foreignKey: 'cash_drawer_event_id', as: 'cashDrawerEvent' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'original_cashier_id', as: 'originalTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_user_id', as: 'actorTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'approved_by', as: 'approvedTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'original_shift_id', as: 'originalTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_shift_id', as: 'actorTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_location_id', as: 'originalTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
+PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
+PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -1005,6 +1026,7 @@ const db = {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1211,6 +1233,7 @@ export {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,

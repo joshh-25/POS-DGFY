@@ -233,6 +233,7 @@ const listTransactionsQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
+    cashier_name: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
@@ -587,6 +588,48 @@ const cashDrawerEventSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required()
 });
 
+const cashRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const externalRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    external_reference: Joi.string().trim().min(3).max(255).required(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
+});
+
+const providerRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    provider_reason: Joi.string().valid('requested_by_customer', 'duplicate', 'fraudulent', 'others').default('others')
+});
+
+const splitAllocationReversalSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    amount: Joi.number().positive().precision(4).allow(null).optional(),
+    external_reference: Joi.string().trim().min(3).max(255).allow('', null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
+});
+
 const closeTerminalShiftSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     terminal_id: Joi.string().trim().uppercase().max(100).allow('', null).optional(),
@@ -694,7 +737,7 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
-    shift_id: Joi.number().integer().positive().required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
@@ -929,6 +972,10 @@ export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params',
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
+export const validateCashRefundPosTransaction = validateSchema(cashRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateExternalRefundPosTransaction = validateSchema(externalRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateProviderRefundPosTransaction = validateSchema(providerRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateSplitAllocationReversal = validateSchema(splitAllocationReversalSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
