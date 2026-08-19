@@ -53,7 +53,12 @@ moment that doc changes). This file names *where* each rule lives; go read it th
 7. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
    A pending or red check is not evidence of a broken PR by itself — this repo has a known pattern
    of transient `docker.io` anonymous-token timeouts unrelated to any given diff — but it is always
-   reported, never silently waited past.
+   reported, never silently waited past. **Also check for a `## Local CI` comment** (`gh pr view <N>
+   --comments`) — when GitHub's checks are stuck (`queued`/`in_progress` with no terminal result
+   coming, or the runners are verifiably offline), that comment is the evidence artifact
+   `AGENTS.md`'s Merge Safety carve-out allows in place of a green check on `develop`/`staging`. See
+   the Merge policy table below for exactly when it may be acted on — it is never sufficient by
+   itself; the carve-out's full precondition list lives in `AGENTS.md`, not restated here.
 8. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
 
@@ -94,9 +99,10 @@ Rules for filling this in:
 | Condition | Action |
 |---|---|
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` (true merge commit, never `--squash`) — unattended, no confirmation needed |
-| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never |
+| Base `develop` or `staging`, verdict `APPROVE`, GitHub's checks are stuck (verified `runner_offline` / `queue_starvation` / `billing_allocation_failure`, not merely slow) **and** a `## Local CI` comment reads `PASS` | `gh pr merge <N> --merge --delete-branch`, citing the `## Local CI` comment as evidence in the merge — the bounded carve-out in `AGENTS.md`'s Merge Safety section, full precondition list there. Still never `--squash` |
+| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never. The local-CI carve-out above **also never applies to `main`** |
 | Verdict `BLOCK`, any base | Never merge |
-| Checks red, or still pending, any base | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
+| Checks red, or still pending, any base, with no qualifying `## Local CI` comment | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
 
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in
