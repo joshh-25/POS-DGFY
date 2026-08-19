@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ValidIdPanel } from './ValidIdPanel.jsx';
 
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 describe('ValidIdPanel', () => {
-  it('renders the compact upload state responsively and transitions to a local pending preview', () => {
+  it('renders the compact upload state responsively and transitions to a local pending preview', async () => {
     render(<ValidIdPanel isMobileViewport theme={theme} accountPanel={{ me: {} }} profileVerification={incompleteProfile} />);
 
     expect(screen.getByRole('region', { name: 'Upload Valid ID' })).toBeTruthy();
@@ -46,6 +46,11 @@ describe('ValidIdPanel', () => {
     fireEvent.change(screen.getByLabelText('Back of ID (optional)'), { target: { files: [new File(['back'], 'back.png', { type: 'image/png' })] } });
     fireEvent.click(screen.getByRole('button', { name: 'Upload ID' }));
 
+    expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('pending');
+    expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusSpin');
+    await waitFor(() => expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('success'));
+    expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusCheck');
+    fireEvent.click(screen.getByRole('button', { name: 'Close status' }));
     expect(screen.getByRole('region', { name: 'Valid ID details' })).toBeTruthy();
     expect(screen.getByText('Pending verification')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'View back of valid ID' })).toBeTruthy();

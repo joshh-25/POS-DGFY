@@ -56,7 +56,7 @@ function InputWithIcon({ icon: Icon, ...props }) {
   );
 }
 
-export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, accountPanel, onClose }) {
+export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, accountPanel, onClose, onStatusChange }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -88,24 +88,35 @@ export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, acco
       }
       setIsSubmitting(true);
       setFeedback('');
+      onStatusChange?.({ mode, status: 'pending' });
+      onClose();
       try {
         await changeDgfyPassword({
           current_password: currentPassword,
           new_password: newPassword,
           confirm_password: confirmPassword
         });
-        setFeedback('Password updated successfully.');
+        onStatusChange?.({ mode, status: 'success' });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } catch (error) {
-        setFeedback(error?.response?.data?.message || 'Unable to update your password right now.');
+        onStatusChange?.({ mode, status: 'error', message: error?.response?.data?.message || 'Unable to update your password right now.' });
       } finally {
         setIsSubmitting(false);
       }
       return;
     }
-    setFeedback(`${copy.title} is ready for backend integration.`);
+    setIsSubmitting(true);
+    const statusSubject = mode === 'email' ? 'Email update' : 'Phone update';
+    const message = `${statusSubject} is not connected to a saving service yet. The verification UI is ready for backend integration.`;
+    onStatusChange?.({
+      mode,
+      status: 'pending',
+      nextStatus: { mode, status: 'error', message },
+      delay: 650
+    });
+    onClose();
   };
 
   return (
@@ -159,7 +170,7 @@ export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, acco
             </>
           )}
 
-          {feedback && <div role="status" style={{ borderRadius: 7, background: theme.infoBg, color: theme.primary, padding: '8px 10px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.micro, lineHeight: 1.4 }}>{feedback}</div>}
+          {feedback && <div role="alert" style={{ borderRadius: 7, background: '#fff0f0', color: '#b91c1c', padding: '8px 10px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.micro, lineHeight: 1.4 }}>{feedback}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'minmax(0, 0.68fr) minmax(0, 1.32fr)' : '1fr 1fr', gap: 8, borderTop: `1px solid ${theme.border}`, paddingTop: 12 }}>
             <button type="button" onClick={onClose} style={{ minHeight: isMobileViewport ? 44 : 40, border: `1px solid ${theme.border}`, borderRadius: 7, background: '#fff', color: theme.text, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: 'pointer', padding: '0 10px' }}>Cancel</button>
             <button type="submit" disabled={isSubmitting} style={{ minHeight: isMobileViewport ? 44 : 40, border: 0, borderRadius: 7, background: theme.primary, color: '#fff', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: isSubmitting ? 'wait' : 'pointer', opacity: isSubmitting ? 0.7 : 1, padding: '0 16px' }}>{isSubmitting ? 'Updating...' : copy.submitLabel}</button>
