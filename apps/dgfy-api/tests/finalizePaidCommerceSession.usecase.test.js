@@ -278,6 +278,135 @@ describe('finalizePaidCommerceSession', () => {
     );
   });
 
+  // #706: #668's original four codes covered only exhaustion/version-conflict. Finalization re-runs
+  // the SAME full eligibility check preview did (voucherRedemptionUseCases.js's
+  // resolveEligibleBenefit), under lock -- so the same "changed between preview and finalization"
+  // race also produces these five, each a real state that can flip in that window (campaign edited,
+  // time window elapsed, below-cost guard newly triggered).
+  describe.each([
+    ['VOUCHER_EXPIRED', 'Voucher has expired.'],
+    ['VOUCHER_NOT_ACTIVE', 'Voucher is not active.'],
+    ['VOUCHER_WEEKDAY_NOT_ELIGIBLE', 'Voucher is not valid on this day of the week.'],
+    ['VOUCHER_TIME_WINDOW_BLOCKED', 'Voucher is not valid at this time of day.'],
+    ['VOUCHER_PRICE_BELOW_COST', 'This voucher would sell one or more items below their cost.']
+  ])('#706: widened reason code %s', (reasonCode, message) => {
+    it('tags the finalization failure VOUCHER_REDEMPTION_UNAVAILABLE, not the generic code', async () => {
+      const tenant = {
+        id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11b',
+        name: 'Masu Cafe',
+        plan: 'standard',
+        subscription_status: 'active'
+      };
+      const session = {
+        session_id: 16,
+        tenant_id: tenant.id,
+        public_reference: `CPS-${reasonCode}`,
+        status: 'paid',
+        provider_payment_id: 'pay_voucher_widen',
+        checkout_payload: JSON.stringify({
+          customer_name: 'Buyer',
+          customer_email: 'buyer@example.com',
+          voucher_code: 'PHARMA8'
+        }),
+        idempotency_key: `checkout:CPS-${reasonCode}`
+      };
+      const updateSessionById = jest.fn().mockResolvedValue({
+        ...session,
+        status: 'paid_manual_resolution_required',
+        failure_code: 'VOUCHER_REDEMPTION_UNAVAILABLE',
+        failure_reason: message
+      });
+      storeCheckoutUseCase.mockResolvedValueOnce({
+        success: false,
+        error: Object.assign(new Error(message), {
+          statusCode: reasonCode === 'VOUCHER_PRICE_BELOW_COST' ? 422 : 409,
+          details: { reason_code: reasonCode, voucher_id: 42 }
+        })
+      });
+      const commercePaymentRepository = {
+        findTenantById: jest.fn().mockResolvedValue(tenant),
+        updateSessionById
+      };
+
+      await expect(finalizePaidCommerceSession({
+        session,
+        resource: { id: 'pay_voucher_widen', attributes: { status: 'paid' } },
+        providerEventId: `evt_${reasonCode}`,
+        commercePaymentRepository
+      })).rejects.toMatchObject({
+        message: 'Payment received; order finalization is pending retry.'
+      });
+
+      expect(updateSessionById).toHaveBeenCalledWith(
+        session.session_id,
+        expect.objectContaining({
+          status: 'paid_manual_resolution_required',
+          failure_code: 'VOUCHER_REDEMPTION_UNAVAILABLE',
+          failure_reason: message
+        })
+      );
+    });
+  });
+
+  // #706: the deliberately-excluded codes (deterministic against a fixed cart payload, not a race)
+  // must keep falling through to the generic code -- confirming the exclusion is real, not an
+  // oversight.
+  it('#706: a deterministic (non-race) voucher failure stays tagged ORDER_FINALIZATION_FAILED', async () => {
+    const tenant = {
+      id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11c',
+      name: 'Masu Cafe',
+      plan: 'standard',
+      subscription_status: 'active'
+    };
+    const session = {
+      session_id: 17,
+      tenant_id: tenant.id,
+      public_reference: 'CPS-VOUCHERMINSPEND',
+      status: 'paid',
+      provider_payment_id: 'pay_voucher_minspend',
+      checkout_payload: JSON.stringify({
+        customer_name: 'Buyer',
+        customer_email: 'buyer@example.com',
+        voucher_code: 'PHARMA8'
+      }),
+      idempotency_key: 'checkout:CPS-VOUCHERMINSPEND'
+    };
+    const updateSessionById = jest.fn().mockResolvedValue({
+      ...session,
+      status: 'paid_manual_resolution_required',
+      failure_code: 'ORDER_FINALIZATION_FAILED',
+      failure_reason: 'Minimum spend for this voucher was not met.'
+    });
+    storeCheckoutUseCase.mockResolvedValueOnce({
+      success: false,
+      error: Object.assign(new Error('Minimum spend for this voucher was not met.'), {
+        statusCode: 422,
+        details: { reason_code: 'VOUCHER_MIN_SPEND_NOT_MET', voucher_id: 42 }
+      })
+    });
+    const commercePaymentRepository = {
+      findTenantById: jest.fn().mockResolvedValue(tenant),
+      updateSessionById
+    };
+
+    await expect(finalizePaidCommerceSession({
+      session,
+      resource: { id: 'pay_voucher_minspend', attributes: { status: 'paid' } },
+      providerEventId: 'evt_voucher_minspend',
+      commercePaymentRepository
+    })).rejects.toMatchObject({
+      message: 'Payment received; order finalization is pending retry.'
+    });
+
+    expect(updateSessionById).toHaveBeenCalledWith(
+      session.session_id,
+      expect.objectContaining({
+        status: 'paid_manual_resolution_required',
+        failure_code: 'ORDER_FINALIZATION_FAILED'
+      })
+    );
+  });
+
   it('does not create another order for an already finalized session', async () => {
     const session = {
       session_id: 11,
