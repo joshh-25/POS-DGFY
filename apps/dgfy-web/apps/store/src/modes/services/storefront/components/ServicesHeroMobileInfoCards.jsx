@@ -9,6 +9,7 @@ import {
   Maximize
 } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
+import { ServiceImage } from '../../ServiceImage.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
@@ -100,7 +101,7 @@ const ServicesHeroMobileInfoCards = ({
                 <div className="no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
                   {previewImages.map((url, index) => (
                     <div key={`${url}-${index}`} style={{ width: 84, minWidth: 84, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
-                      <img src={url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <ServiceImage imageSources={{ src: url }} alt="" sizes="120px" width={120} height={72} fallbackLabel="" />
                     </div>
                   ))}
                 </div>

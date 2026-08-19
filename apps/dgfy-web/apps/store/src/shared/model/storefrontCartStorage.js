@@ -48,11 +48,60 @@ const normalizeCartModifier = (entry) => {
   };
 };
 
+const normalizeSelectedServiceOption = (entry) => {
+  if (!entry || typeof entry !== 'object') return null;
+  const optionId = Number(entry.option_id);
+  if (!Number.isInteger(optionId) || optionId <= 0) return null;
+  return {
+    option_id: optionId,
+    group_id: Number(entry.group_id) || null,
+    group_name: optionalText(entry.group_name),
+    group_type: entry.group_type === 'variation' ? 'variation' : 'addon',
+    name: optionalText(entry.name),
+    price_adjustment_centavos: Number(entry.price_adjustment_centavos || 0) || 0,
+    duration_adjustment_minutes: Number(entry.duration_adjustment_minutes || 0) || 0
+  };
+};
+
+const normalizeServiceOptionGroup = (group) => {
+  if (!group || typeof group !== 'object') return null;
+  const groupId = Number(group.group_id);
+  if (!Number.isInteger(groupId) || groupId <= 0) return null;
+  const options = (Array.isArray(group.options) ? group.options : [])
+    .map((option) => normalizeSelectedServiceOption({
+      ...option,
+      group_id: groupId,
+      group_name: group.name,
+      group_type: group.group_type
+    }))
+    .filter(Boolean);
+  if (options.length === 0) return null;
+  return {
+    group_id: groupId,
+    name: optionalText(group.name),
+    description: optionalText(group.description),
+    group_type: group.group_type === 'variation' ? 'variation' : 'addon',
+    selection_type: group.selection_type === 'multi' ? 'multi' : 'single',
+    min_selections: Math.max(0, Number(group.min_selections || 0)),
+    max_selections: Math.max(1, Number(group.max_selections || 1)),
+    is_required: group.is_required === true,
+    options
+  };
+};
+
 export const normalizeStorefrontCartLine = (line) => {
   if (!line || typeof line !== 'object') return null;
   const itemId = Number(line.item_id);
   const quantity = Math.max(0, Number(line.quantity || 0) || 0);
   if (!Number.isFinite(itemId) || itemId <= 0 || quantity <= 0) return null;
+
+  const selectedOptions = (Array.isArray(line.selected_options) ? line.selected_options : [])
+    .map(normalizeSelectedServiceOption)
+    .filter(Boolean);
+  const selectedOptionIds = [...new Set([
+    ...(Array.isArray(line.selected_option_ids) ? line.selected_option_ids : []),
+    ...selectedOptions.map((option) => option.option_id)
+  ].map(Number).filter((optionId) => Number.isInteger(optionId) && optionId > 0))];
 
   return {
     item_id: itemId,
@@ -75,6 +124,11 @@ export const normalizeStorefrontCartLine = (line) => {
     durationLabel: optionalText(line.durationLabel),
     line_modifiers: (Array.isArray(line.line_modifiers) ? line.line_modifiers : [])
       .map(normalizeCartModifier)
+      .filter(Boolean),
+    selected_option_ids: selectedOptionIds,
+    selected_options: selectedOptions,
+    service_option_groups: (Array.isArray(line.service_option_groups) ? line.service_option_groups : [])
+      .map(normalizeServiceOptionGroup)
       .filter(Boolean),
     service_notes: optionalText(line.service_notes),
     service_schedule_at: optionalText(line.service_schedule_at),

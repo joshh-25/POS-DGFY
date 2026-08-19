@@ -31,14 +31,22 @@ export const Badge = ({ children, background, color, border, style }) => (
   </span>
 );
 
-export const PrimaryButton = ({ children, onClick, disabled, style }) => (
+export const PrimaryButton = ({
+  children,
+  onClick,
+  disabled,
+  style,
+  accentColor = ACTION_TOKENS.brand,
+  accentDarkColor = ACTION_TOKENS.brandDark,
+  shadowColor = 'rgba(234,88,12,0.2)'
+}) => (
   <button
     onClick={onClick}
     disabled={disabled}
     style={{
       background: disabled
         ? ACTION_TOKENS.border
-        : `linear-gradient(135deg, ${ACTION_TOKENS.brand}, ${ACTION_TOKENS.brandDark})`,
+        : `linear-gradient(135deg, ${accentColor}, ${accentDarkColor})`,
       color: '#fff',
       border: 'none',
       borderRadius: ACTION_TOKENS.buttonRadius,
@@ -46,7 +54,7 @@ export const PrimaryButton = ({ children, onClick, disabled, style }) => (
       fontSize: 14,
       fontWeight: 800,
       cursor: disabled ? 'not-allowed' : 'pointer',
-      boxShadow: disabled ? 'none' : '0 10px 24px rgba(234,88,12,0.2)',
+      boxShadow: disabled ? 'none' : `0 10px 24px ${shadowColor}`,
       transition: 'all 0.2s ease',
       ...style
     }}

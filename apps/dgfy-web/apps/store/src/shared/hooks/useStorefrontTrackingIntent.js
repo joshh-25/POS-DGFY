@@ -41,6 +41,7 @@ export function useStorefrontTrackingIntent({
   guestTrackedOrders,
   handleLoadAccountPanel,
   isDgfyCustomerSignedIn,
+  isServicesMode,
   isStorePage,
   routeSlug,
   selectedStore,
@@ -55,6 +56,14 @@ export function useStorefrontTrackingIntent({
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
 
   const openTrackPanel = () => {
+    if (isServicesMode) {
+      const normalizedPin = String(trackingDrawerOrders?.[0]?.tracking_pin || '').trim().toUpperCase();
+      setIsGuestTrackingDrawerOpen(false);
+      setIsCheckoutOpen(false);
+      const goStoreTrackPage = getGoStoreTrackPage();
+      goStoreTrackPage({ pin: normalizedPin, storeSlug: selectedStore?.slug || routeSlug });
+      return;
+    }
     if (isStorePage || canOpenTrackingDrawer) {
       if (isDgfyCustomerSignedIn) {
         handleLoadAccountPanel();
