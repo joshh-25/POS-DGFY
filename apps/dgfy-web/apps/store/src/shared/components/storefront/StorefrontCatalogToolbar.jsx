@@ -88,7 +88,8 @@ const StorefrontCatalogToolbar = ({
       bodyFont={toolbarBodyFont}
       isMobile={isMobileViewport}
       helperText="Prices update in place below -- no need to open checkout."
-      triggerLabel="Have a voucher code? Apply it here"
+      // #750: the longer copy ("...Apply it here") wrapped the trigger to two lines inside this
+      // toolbar's fixed 260px container. Falls back to VoucherCodePanel's own shorter default.
     />
   ) : null;
 
@@ -253,7 +254,7 @@ const StorefrontCatalogToolbar = ({
             <span style={{ width: isCompactToolbar ? 7 : 8, height: isCompactToolbar ? 7 : 8, borderRadius: 999, background: toolbarAccent }} />
             {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
           </div>
-          {voucherEntry && <div style={{ width: 260 }}>{voucherEntry}</div>}
+          {voucherEntry && <div style={{ width: 260, minWidth: 0 }}>{voucherEntry}</div>}
         </div>
       </div>
 

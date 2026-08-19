@@ -74,7 +74,7 @@ export function SimpleCatalogToolbar({
       bodyFont={bodyFont}
       isMobile={isMobileViewport}
       helperText="Prices update in place below -- no need to open checkout."
-      triggerLabel="Have a voucher code? Apply it here"
+      // #750: see StorefrontCatalogToolbar.jsx's own note -- same fix, same reasoning.
     />
   ) : null;
 
@@ -166,7 +166,7 @@ export function SimpleCatalogToolbar({
         </div>
         <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: '#FFFBF0', border: `1px solid ${border}`, color: textPrimary, fontSize: 13, fontWeight: 700, fontFamily: bodyFont }}><span style={{ width: 8, height: 8, borderRadius: 999, background: accent }} />{filteredCatalogViewModel?.totalItems || 0} items available</div>
-          {voucherEntry && <div style={{ width: 260 }}>{voucherEntry}</div>}
+          {voucherEntry && <div style={{ width: 260, minWidth: 0 }}>{voucherEntry}</div>}
         </div>
       </div>
 
