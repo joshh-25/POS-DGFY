@@ -24,18 +24,33 @@ import {
 // voucher-authoring data, and a dedicated `PERMISSIONS.PRICELISTS` group would need
 // `scripts/backfill-role-permissions.js` plus a full deploy cycle before any existing tenant role
 // could actually use it -- exactly the transition #655/#686 are already working through for
-// vouchers themselves. Reusing VOUCHERS sidesteps that entirely.
+// vouchers themselves.
+//
+// #718: reusing `PERMISSIONS.VOUCHERS` does NOT sidestep that transition -- an earlier version of
+// this comment claimed it did, which was backwards. `VOUCHERS` is exactly the new group that
+// needs the backfill; reusing it here means this route inherits the SAME unmet-backfill exposure
+// `routes/vouchers.js` already carries and already dual-gates against (see its own comment). Every
+// route below is now dual-gated the identical way, for the identical reason: `VOUCHERS.*` OR the
+// legacy `SYSTEM.*` pair, via `checkAnyPermission` -- load-bearing, not belt-and-suspenders, since
+// `resolveEffectivePermissions` (utils/userPermissions.js) only falls back to role defaults when a
+// user's *stored* permissions array is empty. Drop the legacy `SYSTEM.*` arm here in the SAME
+// follow-up that drops it from `routes/vouchers.js` (#686) -- not before, and not separately; a
+// pricelist and a voucher share one authoring surface, and this file must not fall out of sync
+// with the file it was always meant to mirror.
 //
 // No DELETE route by design, matching vouchers: archive IS the delete.
 const router = express.Router();
 
 const canViewPricelists = checkAnyPermission([
     PERMISSIONS.VOUCHERS.actions.VIEW,
-    PERMISSIONS.VOUCHERS.actions.MANAGE
+    PERMISSIONS.VOUCHERS.actions.MANAGE,
+    PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
+    PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
 ]);
 
 const canManagePricelists = checkAnyPermission([
-    PERMISSIONS.VOUCHERS.actions.MANAGE
+    PERMISSIONS.VOUCHERS.actions.MANAGE,
+    PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
 ]);
 
 router.get(
