@@ -248,6 +248,24 @@ describe('buildRedeemVoucherUseCase', () => {
         expect(repository.__state.calls).toHaveLength(0);
     });
 
+    // #693: the POS master-switch guard used to run BEFORE this empty-code short-circuit, so a POS
+    // checkout carrying no voucher code at all reached `resolveVoucherPosRedemptionEnabled()` --
+    // which reads a real SystemSetting model with no test double here -- and threw
+    // VOUCHER_POS_REDEMPTION_DISABLED (or, with no live DB, an unrelated connection error) instead
+    // of the same benign no-op every other empty-code caller gets. This deliberately does NOT mock
+    // resolveVoucherPosRedemptionEnabled: if the ordering ever regresses, this test fails loudly
+    // (reject/timeout against a real, unconnected Sequelize model) rather than passing by accident.
+    it('is a no-op for an empty code on the POS channel, even with the master switch off (#693)', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: '', context: CONTEXT, lines: LINES, idempotencyKey: 'abc12345',
+            channel: 'pos', transaction: FAKE_TRANSACTION
+        });
+        expect(result.applied).toBe(false);
+        expect(repository.__state.calls).toHaveLength(0);
+    });
+
     it('reserves, writes the ledger entry, and writes per-line allocations in order', async () => {
         const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
         const redeem = buildRedeemVoucherUseCase({ repository });
