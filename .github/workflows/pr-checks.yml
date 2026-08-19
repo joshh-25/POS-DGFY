@@ -32,6 +32,11 @@ env:
   # scripts/check-pr-quality-workflow.js, which asserts *runner_heavy).
   RUNNER_LIGHT_JSON: &runner_light '["self-hosted"]'
   RUNNER_HEAVY_JSON: &runner_heavy '["self-hosted"]'
+  # Empty on self-hosted: the Actions cache service serves these runners at 49-69 KB/s, so
+  # importing the layer cache costs ~21x the build it skips (#726). Revert to type=gha when
+  # hosted runners are back -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md.
+  BUILD_CACHE_FROM: &build_cache_from ''
+  # BUILD_CACHE_FROM: &build_cache_from 'type=gha'  # revert to this when hosted runners are back
 
 # Deliberately just `changes` plus one build-check job per deployable (this
 # repo splits `apps/dgfy-api` from `apps/dgfy-migration-runner`, so that's
@@ -87,6 +92,7 @@ jobs:
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from
 
   dgfy-migration-runner-build-check:
     needs: changes
@@ -94,6 +100,7 @@ jobs:
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from
 
   frontend-build-check:
     needs: changes
@@ -101,3 +108,4 @@ jobs:
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from
