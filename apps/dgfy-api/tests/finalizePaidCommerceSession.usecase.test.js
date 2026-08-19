@@ -219,6 +219,65 @@ describe('finalizePaidCommerceSession', () => {
     );
   });
 
+  it('#668: tags a voucher-exhaustion finalization failure distinctly from a generic one', async () => {
+    const tenant = {
+      id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a',
+      name: 'Masu Cafe',
+      plan: 'standard',
+      subscription_status: 'active'
+    };
+    const session = {
+      session_id: 15,
+      tenant_id: tenant.id,
+      public_reference: 'CPS-VOUCHERRACE',
+      status: 'paid',
+      provider_payment_id: 'pay_voucher_race',
+      checkout_payload: JSON.stringify({
+        customer_name: 'Buyer',
+        customer_email: 'buyer@example.com',
+        voucher_code: 'PHARMA8'
+      }),
+      idempotency_key: 'checkout:CPS-VOUCHERRACE'
+    };
+    const updateSessionById = jest.fn().mockResolvedValue({
+      ...session,
+      status: 'paid_manual_resolution_required',
+      failure_code: 'VOUCHER_REDEMPTION_UNAVAILABLE',
+      failure_reason: 'Voucher has reached its redemption limit.'
+    });
+    // Mirrors the shape voucherConflict() (voucherErrors.js) actually throws: statusCode 409,
+    // details.reason_code one of the atomic reservation's exhaustion codes.
+    storeCheckoutUseCase.mockResolvedValueOnce({
+      success: false,
+      error: Object.assign(new Error('Voucher has reached its redemption limit.'), {
+        statusCode: 409,
+        details: { reason_code: 'VOUCHER_REDEMPTION_LIMIT_REACHED', voucher_id: 42 }
+      })
+    });
+    const commercePaymentRepository = {
+      findTenantById: jest.fn().mockResolvedValue(tenant),
+      updateSessionById
+    };
+
+    await expect(finalizePaidCommerceSession({
+      session,
+      resource: { id: 'pay_voucher_race', attributes: { status: 'paid' } },
+      providerEventId: 'evt_voucher_race',
+      commercePaymentRepository
+    })).rejects.toMatchObject({
+      message: 'Payment received; order finalization is pending retry.'
+    });
+
+    expect(updateSessionById).toHaveBeenCalledWith(
+      session.session_id,
+      expect.objectContaining({
+        status: 'paid_manual_resolution_required',
+        failure_code: 'VOUCHER_REDEMPTION_UNAVAILABLE',
+        failure_reason: 'Voucher has reached its redemption limit.'
+      })
+    );
+  });
+
   it('does not create another order for an already finalized session', async () => {
     const session = {
       session_id: 11,

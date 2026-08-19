@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-08-18
+last_reviewed: 2026-08-19
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -215,6 +215,36 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   time instead of once.
 - PR: #696 follow-up to Phase 101-109 (#455 lineage), stacked on #697.
 
+### 2026-08-19 — QRPh payment-then-redemption race: accepted, made reconcilable (#668)
+
+- Clause amended: **Consequences item 3** (untagged -- Consequences record effects, not Decisions,
+  so no strictness tier applies). Previously stated storefront "has no refund reversal path" for a
+  cancelled order in general. Extended below to name a second, related gap and how it was closed.
+- Change: a QRPh voucher preview (session creation -- `resolveCheckoutContext`'s own comment on the
+  `options?.transaction` gate: no transaction open yet means preview-only, no reservation) can be
+  outrun by a concurrent order that exhausts the same voucher's redemption limit before the
+  webhook-confirmed finalization runs the real `reserveRedemption`. Finalization then fails *after*
+  the customer's payment has already succeeded.
+- **Accepted as-is**, matching this flow's existing, already-accepted stock/location-availability
+  race -- not a new bug class. Reserving at session-creation instead would hold a redemption slot
+  hostage for a session the customer never pays, and this flow has no session-expiry release
+  mechanism to hedge that (`reverseVoucherRedemptionUseCase` exists, from #455's ledger design, but
+  has no live caller anywhere yet).
+- What changed: `finalizePaidCommerceSession.js` previously tagged every finalization failure with
+  the same generic `ORDER_FINALIZATION_FAILED` code. A failure whose `reason_code` is one of the
+  voucher exhaustion/conflict codes (`VOUCHER_REDEMPTION_LIMIT_REACHED`, `VOUCHER_BUDGET_EXHAUSTED`,
+  `VOUCHER_QUANTITY_LIMIT_REACHED`, `VOUCHER_VERSION_CONFLICT`) is now tagged
+  `VOUCHER_REDEMPTION_UNAVAILABLE` instead, so the `paid_manual_resolution_required` queue
+  (`commercePaymentAdminUseCases.js`'s existing retry/refund use cases) surfaces which lever
+  actually applies -- retrying only helps once the voucher's limit frees up; a refund is the other
+  option -- instead of requiring an operator to read a raw error message to tell this apart from
+  every other finalization failure.
+- Reason: the race itself was already accepted precedent (the stock/location case). What #668
+  actually flagged as missing was "no described reconciliation path." The generic
+  `paid_manual_resolution_required` status plus the existing retry/refund admin use cases already
+  provide the mechanism -- the gap closed here was visibility, not a missing capability.
+- PR: #668 follow-up to Phase 105 (#455/#661 lineage).
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
@@ -236,4 +266,5 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
 5. Issue #454 — voucher decision record; #455 — entity and ledger; #453 — epic; #697 — this
    amendment's below-cost enforcement gap; #696 — the per-item pricelist amendment above; #584 —
    the `fixed_price` benefit class this extends; #569 — B2B deferral, not reversed by #696
-   (#454 decision 2 is the carve-out)
+   (#454 decision 2 is the carve-out); #661 — the storefront voucher redemption PR both #667 and
+   #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above
