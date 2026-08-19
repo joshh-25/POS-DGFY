@@ -267,7 +267,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     {governedDiscount.senior_pwd_id_number && <div className="flex justify-between gap-2 text-slate-600"><span>Senior/PWD ID</span><span className="text-right">{governedDiscount.senior_pwd_id_number}</span></div>}
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
-                    {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>Promo Code</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
+                    {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>{governedDiscount.discount_type === 'voucher' ? 'Voucher Code' : 'Promo Code'}</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
                     {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{displayDiscountType(governedDiscount.discount_type)}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
