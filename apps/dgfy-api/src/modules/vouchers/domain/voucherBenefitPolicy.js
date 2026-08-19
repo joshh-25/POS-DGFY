@@ -302,7 +302,13 @@ export const calculateVoucherBenefit = ({
             // caller mistaking it for a price to persist. It also doubles as the below-cost
             // comparison point (#697) -- see `belowCostLines` below.
             voucherUnitPriceCentavos,
-            discountCentavos: lineDiscountCentavos
+            discountCentavos: lineDiscountCentavos,
+            // Carried through from the normalized input line rather than recomputed, so a caller
+            // building a fiscal audit-row allocation (#667 Phase 110) can tell which lines this
+            // voucher actually priced without re-deriving eligibility or re-multiplying qty*price.
+            // Additive -- no existing caller destructures this object exhaustively.
+            eligible: line.eligible,
+            lineSubtotalCentavos: line.lineSubtotalCentavos
         };
     });
 

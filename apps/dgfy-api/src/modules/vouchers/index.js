@@ -1,5 +1,6 @@
 import { voucherRepository } from './repositories/voucherRepository.js';
 import { pricelistRepository } from './repositories/pricelistRepository.js';
+import { VoucherReasonCode } from './domain/voucherErrors.js';
 import {
     buildActivateVoucherUseCase,
     buildArchiveVoucherUseCase,
@@ -51,3 +52,9 @@ export const updatePricelistUseCase = buildUpdatePricelistUseCase({ repository: 
 export const replacePricelistItemsUseCase = buildReplacePricelistItemsUseCase({ repository: pricelistRepository });
 export const publishPricelistUseCase = buildPublishPricelistUseCase({ repository: pricelistRepository });
 export const archivePricelistUseCase = buildArchivePricelistUseCase({ repository: pricelistRepository });
+
+// #667 -- the voucher domain's single reason-code registry, re-exported so a caller outside this
+// module (storeUseCases.js's storefront/promo stacking check) can reference a voucher reason code
+// by name instead of a free-floating string literal, matching the registry's own stated purpose
+// ("re-exported... so the registry cannot drift" -- voucherErrors.js's header comment).
+export { VoucherReasonCode };
