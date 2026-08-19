@@ -45,6 +45,14 @@ export const VoucherReasonCode = Object.freeze({
     // undercut that line's `cost_per_unit` and the voucher does not explicitly permit it.
     VOUCHER_PRICE_BELOW_COST: 'VOUCHER_PRICE_BELOW_COST',
 
+    // #667 / ADR 0066 decision 8: storefront had no equivalent of POS's single-governed-discount-
+    // slot rule -- voucher_code and promo_code both applied and summed at storefront checkout, with
+    // no cap and no mutual-exclusivity check. Reuses the same reason code decision 8 already
+    // documents for POS (a voucher yields to an already-occupied discount slot) rather than
+    // inventing a storefront-specific code -- see storeUseCases.js's resolveCheckoutContext, the
+    // first actual caller of this code (POS voucher redemption itself is not built yet).
+    VOUCHER_DISCOUNT_SLOT_OCCUPIED: 'VOUCHER_DISCOUNT_SLOT_OCCUPIED',
+
     // #604: tenant-wide POS voucher redemption master switch, default off. Distinct from a voucher's
     // own `channels` mask (VOUCHER_CHANNEL_BITS.pos, evaluated in voucherEligibilityPolicy.js) --
     // this can disable POS redemption tenant-wide even for a voucher whose channels already include

@@ -20,7 +20,8 @@ import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliateP
 import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
-    resolveVoucherDisplayPricesUseCase
+    resolveVoucherDisplayPricesUseCase,
+    VoucherReasonCode
 } from '../../vouchers/index.js';
 import {
     generateStoreCancelProof,
@@ -1571,10 +1572,32 @@ const resolveCheckoutContext = async ({
     //     here before buildStoreCheckoutUseCase's own idempotency-key short-circuit below -- because
     //     redeemVoucherUseCase's own idempotency-key pre-check (step 7-8 of the redemption
     //     sequence) finds the already-inserted ledger row on replay and moves nothing a second
-    //     time. Open design call, stated explicitly rather than silently picked: voucher and promo
-    //     ARE allowed to stack today (both discounts are summed into totalAmount below) -- nothing
-    //     in this storefront checkout enforces a single discount slot the way ADR 0066 decision 8
-    //     does for POS. See this phase's PR description for the tradeoff.
+    //     time.
+    //
+    // #667 / ADR 0066 decision 8 (2026-08-19 amendment): voucher and promo used to stack
+    // unconditionally here, with no cap and no mutual-exclusivity check -- nothing in this storefront
+    // checkout enforced a single discount slot the way decision 8 already does for POS. Fixed by
+    // mirroring that same invariant rather than inventing a separate capped-stacking policy for the
+    // same class of problem: a voucher code submitted alongside a promo code that already resolved
+    // to an applied discount is rejected outright, the same way an incoming POS voucher yields to an
+    // already-occupied discount slot. Checked here, before either quote/preview or the real
+    // reservation runs, so a customer sees the same rejection at preview time that checkout would
+    // enforce, and so an ineligible voucher attempt never burns a redemption slot for a request that
+    // was always going to be rejected.
+    if (promoApplication.applied && normalized.voucher_code) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A voucher code cannot be combined with an already-applied promo code on this order.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: VoucherReasonCode.VOUCHER_DISCOUNT_SLOT_OCCUPIED,
+                    promo_code: normalized.promo_code || null
+                }
+            }
+        );
+    }
+
     const voucherContext = {
         channel: 'storefront',
         fulfillmentMethod: orderMethod,
