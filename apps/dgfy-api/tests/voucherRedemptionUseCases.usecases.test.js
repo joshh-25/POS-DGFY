@@ -172,7 +172,10 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
         const repository = makeFakeRepository();
         const preview = buildPreviewVoucherEligibilityUseCase({ repository });
         const result = await preview({ code: '', context: CONTEXT, lines: LINES });
-        expect(result).toEqual({ applied: false, voucherId: null, code: null, benefitClass: null, discountCentavos: 0, lineAllocations: [] });
+        expect(result).toEqual({
+            applied: false, voucherId: null, code: null, title: null, badge: null,
+            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+        });
     });
 
     it('fails closed with VOUCHER_NOT_FOUND for an entered-but-unknown code', async () => {
@@ -411,7 +414,17 @@ describe('buildRedeemVoucherUseCase', () => {
             });
             expect(result.applied).toBe(true);
             expect(result.discountCentavos).toBe(2000); // only item 1's line discounts
-            expect(result.lineAllocations.find((line) => line.item_id === 2)).toBeUndefined();
+            // #667 Phase 110: `result.lineAllocations` is now the UNFILTERED per-input-line array
+            // (needed by a fiscal-audit-row caller to map positionally against its own transaction
+            // lines), so it legitimately includes item 2 with `eligible: false, discountCentavos: 0`
+            // -- that is not what this test is actually checking. What "an unpriced cart line gets
+            // no discount" really asserts is that the LEDGER never persists a row for it, which is
+            // `repository.__state.lines` (the fake's record of `createRedemptionLines` calls), not
+            // the returned allocations.
+            const item2Allocation = result.lineAllocations.find((line) => line.item_id === 2);
+            expect(item2Allocation.eligible).toBe(false);
+            expect(item2Allocation.discountCentavos).toBe(0);
+            expect(repository.__state.lines.find((line) => line.item_id === 2)).toBeUndefined();
         });
 
         it('fails closed when the pricelist matches nothing in the cart', async () => {
