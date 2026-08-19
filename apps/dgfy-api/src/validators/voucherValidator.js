@@ -16,7 +16,14 @@
 import Joi from 'joi';
 import { VOUCHER_STATUSES } from '../modules/vouchers/domain/voucherEligibilityPolicy.js';
 
-const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,63}$/;
+// Capped at 40, not the column's full 64 (`vouchers.code` is VARCHAR(64)) -- #667 Phase 110:
+// `pos_transaction_discounts.promo_code`, the fiscal audit-row column a voucher redemption now
+// writes into (shared with the promo path), is VARCHAR(40). Storefront voucher redemption is not
+// on `main` as of this change, so no production voucher code exists yet to be narrowed out from
+// under a merchant -- capping here avoids widening a fiscal table's column for a length no
+// existing code needs. Revisit together if `vouchers.code` itself is ever widened past 40 for an
+// unrelated reason.
+const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,39}$/;
 const TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,7 +71,7 @@ const scopesSchema = Joi.array()
 // place. `createVoucherSchema` re-declares each defaulted key below.
 const baseVoucherFields = {
     code: Joi.string().trim().uppercase().pattern(VOUCHER_CODE_PATTERN).messages({
-        'string.pattern.base': 'code must be 3-64 characters of A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit'
+        'string.pattern.base': 'code must be 3-40 characters of A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit'
     }),
     voucher_kind: Joi.string().valid('promo_code'),
     title: Joi.string().trim().min(2).max(255),
