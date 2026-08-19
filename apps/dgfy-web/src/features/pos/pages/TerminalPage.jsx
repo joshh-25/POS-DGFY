@@ -173,6 +173,10 @@ const OPERATIONS_VIEW_MODES = [
   'settings_pos',
   'settings_storefront',
   'settings_affiliates',
+  // #732: Vouchers/Pricelists promoted out of the Settings tab strip to their own top-level modes,
+  // mirroring settings_affiliates's own promotion.
+  'settings_vouchers',
+  'settings_pricelists',
   'shift_controls',
   'cash_drawer',
   'close_shift',
@@ -182,8 +186,8 @@ const OPERATIONS_VIEW_MODES = [
   'services',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates'];
-const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'terminal_setup']);
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists'];
+const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
 const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
@@ -735,6 +739,19 @@ export default function TerminalPage() {
     return permissions.includes(permission);
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
+  // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
+  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release
+  // (resolveEffectivePermissions only re-derives role defaults when a user's stored permissions
+  // array is empty, so a hard swap could lock out an admin/manager whose array predates the
+  // deploy-time backfill). Mirror that same dual-gate here rather than the backend accepting a
+  // request the UI itself wouldn't allow. This only gates create/edit/lifecycle actions inside
+  // the Vouchers/Pricelists panels; view access is `canViewVouchers`, below.
+  const canManageVouchers = hasPermission('vouchers:manage') || hasPermission('settings:edit');
+  // #732: Vouchers/Pricelists moved out of the Settings tab strip to their own top-level nav
+  // modes, so view access is no longer implied by "reached SettingsWorkspace at all" -- it needs
+  // its own gate here, mirroring routes/pricelists.js's own dual-gate exactly:
+  // VOUCHERS.VIEW/VOUCHERS.MANAGE OR the legacy SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS pair.
+  const canViewVouchers = canManageVouchers || hasPermission('vouchers:view') || hasPermission('settings:view');
 
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
@@ -745,12 +762,14 @@ export default function TerminalPage() {
       ? workflowScopedModes
       : workflowScopedModes.filter((mode) => mode !== 'incoming_queue');
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
-    const roleScopedModes = queueScopedModes.filter((mode) => mode !== 'audit' || canViewAudit);
+    const roleScopedModes = queueScopedModes
+      .filter((mode) => mode !== 'audit' || canViewAudit)
+      .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers);
     if (normalizedRole === 'cashier') {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canViewAudit, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -826,15 +845,6 @@ export default function TerminalPage() {
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
-  // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
-  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release
-  // (resolveEffectivePermissions only re-derives role defaults when a user's stored permissions
-  // array is empty, so a hard swap could lock out an admin/manager whose array predates the
-  // deploy-time backfill). Mirror that same dual-gate here rather than the backend accepting a
-  // request the UI itself wouldn't allow. Read-only list access is already implied by reaching the
-  // Settings pane at all (canAccessSettingsDirectly gates entry); this only gates create/edit/
-  // lifecycle actions inside the Vouchers tab.
-  const canManageVouchers = hasPermission('vouchers:manage') || hasPermission('settings:edit');
 
   useEffect(() => {
     if (locked || !isOnline) return undefined;
@@ -5594,6 +5604,7 @@ function PosRestorationLoadingScreen() {
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
           canManageVouchers={canManageVouchers}
+          canViewVouchers={canViewVouchers}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}

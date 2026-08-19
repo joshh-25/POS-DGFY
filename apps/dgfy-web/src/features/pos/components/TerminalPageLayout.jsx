@@ -53,6 +53,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canManageVouchers = false,
+    canViewVouchers = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
     canOpenShift = false,
@@ -554,6 +555,7 @@ export default function TerminalPageLayout({
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
               canViewAudit={canViewAudit}
+              canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showServiceOperations={workflowMode === 'services'}
               showIncomingQueue={showIncomingQueue}
@@ -717,6 +719,7 @@ export default function TerminalPageLayout({
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
                 canViewAudit={canViewAudit}
+                canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
                 showServiceOperations={workflowMode === 'services'}
                 showIncomingQueue={showIncomingQueue}
@@ -834,6 +837,7 @@ export default function TerminalPageLayout({
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}
                 canManageVouchers={canManageVouchers}
+                onSelectViewMode={handleSelectViewMode}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}

@@ -51,6 +51,7 @@ import {
   UserRound,
   Users,
   Tags,
+  Ticket,
   Trash2,
   TrendingUp,
   Truck,
@@ -212,6 +213,17 @@ const MODE_META = {
     icon: Percent,
     title: 'Affiliates',
     subtitle: 'Enroll affiliates, set commission rates, generate share codes, and review earnings.'
+  },
+  // #732: promoted out of the Settings tab strip, top-level nav now, mirroring settings_affiliates.
+  settings_vouchers: {
+    icon: Ticket,
+    title: 'Vouchers',
+    subtitle: 'Create and manage vouchers, codes, and redemption rules.'
+  },
+  settings_pricelists: {
+    icon: Tags,
+    title: 'Pricelists',
+    subtitle: 'Set per-item fixed prices for wholesale/B2B-via-B2C vouchers.'
   },
   items: {
     icon: ClipboardList,
@@ -5389,8 +5401,10 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {},
-  canManageVouchers = false
+  onStorefrontSetupSaved = async () => {}
+  // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
+  // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
+  // here.
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -5628,17 +5642,9 @@ function SettingsWorkspace({
     { id: 'storefront', label: 'Storefront', icon: Store },
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
-      : []),
-    // View-only (settings:view) merchants can still see this tab -- reaching SettingsWorkspace at
-    // all already implies settings:view (PIN_PROTECTED_VIEW_MODES + canAccessSettingsDirectly gate
-    // entry at the page level), so no extra permission check gates visibility here. `canManageVouchers`
-    // (settings:edit) only gates create/edit/lifecycle actions inside the panel itself.
-    { id: 'vouchers', label: 'Vouchers', icon: Percent },
-    // #698: standalone surface alongside Vouchers, not a sub-section of it (Pat's explicit call).
-    // Gated the same way as Vouchers -- pricelists are voucher-authoring data and reuse the same
-    // PERMISSIONS.VOUCHERS group server-side (routes/pricelists.js), so canManageVouchers is the
-    // correct gate here too; no separate canManagePricelists prop exists or is needed.
-    { id: 'pricelists', label: 'Pricelists', icon: Tags }
+      : [])
+    // #732: Vouchers and Pricelists moved out of this tab strip to their own top-level nav modes
+    // (settings_vouchers / settings_pricelists) -- see the outer renderWorkspace switch.
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -8085,14 +8091,6 @@ function SettingsWorkspace({
     </div>
   );
 
-  const renderVouchersPane = () => (
-    <VoucherManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
-  );
-
-  const renderPricelistsPane = () => (
-    <PricelistManagementPanel disabled={locked || loading} canManage={canManageVouchers} />
-  );
-
   const renderStorefrontPane = () => (
     <div className="grid gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -9062,8 +9060,6 @@ function SettingsWorkspace({
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }
-    if (renderedTab === 'vouchers') return renderVouchersPane();
-    if (renderedTab === 'pricelists') return renderPricelistsPane();
     return renderPosSetupPane();
   };
 
@@ -9301,6 +9297,7 @@ export default function TerminalOperationsWorkspace({
   canDeleteItems = false,
   canManageCategories = false,
   canManageVouchers = false,
+  onSelectViewMode = () => {},
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -9427,7 +9424,6 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-          canManageVouchers={canManageVouchers}
         />
       );
     case 'shift_controls':
@@ -9550,6 +9546,29 @@ export default function TerminalOperationsWorkspace({
           sectionId={sectionIds.affiliates}
         />
       );
+    // #732: promoted out of the Settings tab strip. Reaching either of these top-level modes at
+    // all already implies view access (canViewVouchers gates the sidebar NavButton and the
+    // view-mode allowlist in TerminalPage.jsx, mirroring routes/pricelists.js's own
+    // VOUCHERS.VIEW/VOUCHERS.MANAGE/SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS dual-gate) --
+    // canManageVouchers (settings:edit / vouchers:manage) only gates create/edit/lifecycle
+    // actions inside each panel itself, same as before the promotion.
+    case 'settings_vouchers':
+      return (
+        <VoucherManagementPanel
+          disabled={locked}
+          canManage={canManageVouchers}
+          sectionId={sectionIds.vouchers}
+          onNavigateToPricelists={() => onSelectViewMode('settings_pricelists')}
+        />
+      );
+    case 'settings_pricelists':
+      return (
+        <PricelistManagementPanel
+          disabled={locked}
+          canManage={canManageVouchers}
+          sectionId={sectionIds.pricelists}
+        />
+      );
     case 'items':
       return (
         <ItemsCatalogWorkspace
@@ -9607,6 +9626,7 @@ export default function TerminalOperationsWorkspace({
     canEditItems,
     canManageCategories,
     canManageVouchers,
+    onSelectViewMode,
     canManageServiceCatalog,
     canManageFnbModifiers,
     canViewFnbModifiers,
