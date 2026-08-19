@@ -347,7 +347,7 @@ const validateFormLocally = (form) => {
 
 const FieldError = ({ message }) => (message ? <p className="mt-1 text-[11px] font-semibold text-rose-600">{message}</p> : null);
 
-export default function VoucherManagementPanel({ disabled = false, canManage = false, sectionId }) {
+export default function VoucherManagementPanel({ disabled = false, canManage = false, sectionId, onNavigateToPricelists }) {
   const [view, setView] = useState('list');
 
   const [vouchers, setVouchers] = useState([]);
@@ -874,7 +874,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Basics</h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Code</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Code <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <Input
                       className="h-8 text-xs uppercase"
                       value={form.code}
@@ -888,21 +888,26 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                     )}
                   </div>
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Title</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Title <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <Input className="h-8 text-xs" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
                     <FieldError message={fieldErrors.title} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Subtitle</Label>
                     <Input className="h-8 text-xs" value={form.subtitle} onChange={(e) => setForm((current) => ({ ...current, subtitle: e.target.value }))} />
+                    {/* #733: optional, and honestly stated as such -- this field has no consumer
+                        anywhere in the codebase today, not merely "not shown yet". */}
+                    <p className="text-[11px] text-slate-400">Optional. Not displayed anywhere yet.</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Badge</Label>
                     <Input className="h-8 text-xs" value={form.badge} onChange={(e) => setForm((current) => ({ ...current, badge: e.target.value }))} />
+                    <p className="text-[11px] text-slate-400">Optional. Shown as the discount label once applied, if set -- falls back to Title otherwise.</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Validity text</Label>
                     <Input className="h-8 text-xs" value={form.validityText} onChange={(e) => setForm((current) => ({ ...current, validityText: e.target.value }))} />
+                    <p className="text-[11px] text-slate-400">Optional. Not displayed anywhere yet.</p>
                   </div>
                 </div>
               </div>
@@ -911,7 +916,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Benefit</h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Benefit type</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Benefit type <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <select
                       className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold"
                       value={form.benefitClass}
@@ -967,8 +972,22 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         ))}
                       </select>
                       <FieldError message={fieldErrors.pricelist_id} />
+                      {/* #736: was a dead-end ("...on the Pricelists tab first") -- Pricelists
+                          isn't a tab anymore (#732 promoted it to its own top-level nav mode), and
+                          this now navigates there directly instead of just naming where to go. */}
                       {pricelistOptions.length === 0 && !pricelistOptionsLoading && (
-                        <p className="text-[11px] text-slate-500">No active pricelists yet -- create one on the Pricelists tab first.</p>
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2">
+                          <p className="text-[11px] text-slate-500">No active pricelists yet.</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 shrink-0 text-[11px]"
+                            onClick={() => onNavigateToPricelists?.()}
+                          >
+                            Create a pricelist
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1078,10 +1097,15 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       <Checkbox checked={form.allowBelowCost} onCheckedChange={(checked) => setForm((current) => ({ ...current, allowBelowCost: checked === true }))} />
                       Allow selling below cost
                     </label>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-                      <Checkbox checked={form.stackableWithStatutory} onCheckedChange={(checked) => setForm((current) => ({ ...current, stackableWithStatutory: checked === true }))} />
-                      Stackable with statutory discounts
-                    </label>
+                    {/* #734: 'Stackable with statutory discounts' removed -- the stored
+                        stackable_with_statutory column had zero policy readers anywhere in the
+                        codebase and, if actually wired up, would contradict ADR 0066 Decision 8
+                        (a single governed discount slot per POS transaction). Whether a
+                        fixed-price voucher may combine with the statutory Senior/PWD 20% is an
+                        open policy question tracked in #605 -- that's where this gets decided,
+                        not here. Form state/mapper/submit payload below are left untouched so the
+                        API contract and an existing voucher's stored value round-trip unchanged
+                        (always sends stackable_with_statutory: false for a new voucher). */}
                   </div>
                 </div>
               </div>
