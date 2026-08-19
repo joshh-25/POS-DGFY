@@ -1,10 +1,10 @@
 # Services Storefront Frontend Handoff
 
-**Audience:** Services backend and platform developers  
-**Date:** 2026-08-17  
-**Branch:** `codex/services-checkout-ui`  
-**Local commit range:** `origin/develop..HEAD`  
-**Status:** Frontend-only local laundry storefront template; not pushed and not production-backed
+**Audience:** Services backend and platform developers<br />
+**Date:** 2026-08-17<br />
+**Branch:** `codex/services-checkout-ui`<br />
+**Local commit range:** `origin/develop..HEAD`<br />
+**Status:** Frontend-only laundry storefront template; pushed to PR #629; not production-backed
 
 ## 1. Executive summary
 
@@ -21,8 +21,9 @@ backend can persist pickup/return legs, collection events, or quote lifecycle
 states.
 
 The five feature commits in this branch change only the web storefront build
-and its frontend tests. This handoff is recorded in a separate documentation
-commit. None of these six local commits adds or modifies backend routes,
+and its frontend tests. The branch also contains the Services tracking
+ownership review fix and the develop synchronization commits. None of these
+Services commits adds or modifies backend routes,
 validators, database tables, migrations, service booking persistence, payment
 processing, or real tracking events. The unrelated dirty worktree changes are
 intentionally outside this handoff and must not be included in a Services
@@ -388,8 +389,8 @@ These are the five Services feature commits currently ahead of `origin/develop`:
 | `9ff598f7` | `feat(services-checkout)` | Now/schedule timing, calendar/year/date/time selection, availability derivation, payment/review labels, mobile summary, and scheduling UX. |
 | `3358f7df` | `feat(services-tracking)` | Services tracking responsive layout, typography, item image rendering, timeline overflow fix, and removal of local-only helper UI. |
 
-The documentation itself is the separate local commit
-`8894241a docs(services-storefront): add frontend backend handoff`.
+The documentation itself was added in commit
+`3f5a55b6 docs(services-storefront): add frontend backend handoff`.
 
 The committed push scope is limited to the storefront web application and its
 frontend tests under `apps/dgfy-web/apps/store/`, plus the shared web files
