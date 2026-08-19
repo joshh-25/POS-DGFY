@@ -1,11 +1,12 @@
 import { normalizeServiceFormFields } from './serviceBookingFields.js';
+import { resolveServiceBookingScheduleAt } from '../../../../shared/model/serviceBookingScheduleResolver.js';
 
-export function buildServiceCartValidationIssues(serviceCartLines = []) {
+export function buildServiceCartValidationIssues(serviceCartLines = [], fallbackScheduleAt = '') {
   return [
     ...serviceCartLines.flatMap((line) => {
       const lineName = line?.variantName || line?.name || 'Service';
       const lineIssues = [];
-      if (!String(line?.service_schedule_at || '').trim()) {
+      if (!resolveServiceBookingScheduleAt(line, fallbackScheduleAt)) {
         lineIssues.push({
           cart_line_id: line?.cart_line_id || '',
           item_id: line?.item_id,

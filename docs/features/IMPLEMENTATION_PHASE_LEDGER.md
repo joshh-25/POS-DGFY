@@ -5762,3 +5762,108 @@ parked-sale replay and shift-close resolution.
 
 - Phase 109 completed 2026-08-18 via PR #687, landing on `develop` via PR #684. Next eligible phase:
   110.
+
+## Phase 110 - Voucher Governed Discount Slot and Fiscal Audit Row, Race-Code Widening, Compliance Gate Coverage
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), audited for backlog reconciliation
+  2026-08-18/19 after the Phase 101-109 wave (PRs #661-#704) shipped without ever being checked
+  against the still-open backlog.
+- Release: four `develop`-targeted PRs (#708, #709, #710, #711), merged in that order deliberately —
+  #711's new compliance rule landing last so it would not retroactively demand a declaration from
+  #710.
+
+### Objective and Scope
+
+- **#708 (Refs #667)** — enforce ADR 0066 Decision 8 (one governed discount slot per transaction) on
+  the storefront checkout path, where it had never been wired up despite already being accepted and
+  already relied on by `pos_transaction_discounts`' `UNIQUE (transaction_id)`. A voucher code
+  submitted alongside an already-applied promo code now rejects 422
+  `VOUCHER_DISCOUNT_SLOT_OCCUPIED` before either benefit resolves, burning no redemption. With that
+  guarantee in place, a voucher-only storefront order now writes the same `pos_transaction_discounts`
+  fiscal audit row and per-line allocations a promo order already did (ADR 0066 Decision 10) — a
+  confirmed compliance gap in already-merged code, not new behavior. Voucher codes capped at 40 chars
+  (from 64) to fit the shared audit column with no migration. Supersedes PR #705 (reopened,
+  corrected, re-landed — #705's guard was right; the reviewing session's earlier `BLOCK` verdict on
+  it was wrong and was retracted in public comments on #705 and #667).
+- **#709 (Refs #693)** — reorder `voucherRedemptionUseCases.js`'s POS master-switch guard to run
+  after the empty-code short-circuit, not before. Required a manual merge-conflict resolution against
+  #708 (both touched the same file) — resolved keeping #693's guard position with #708's enriched
+  return shape.
+- **#710 (Refs #706)** — widen `finalizePaidCommerceSession.js`'s
+  `VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES` from 4 to 9: adds `VOUCHER_EXPIRED`,
+  `VOUCHER_NOT_ACTIVE`, `VOUCHER_WEEKDAY_NOT_ELIGIBLE`, `VOUCHER_TIME_WINDOW_BLOCKED`,
+  `VOUCHER_PRICE_BELOW_COST` — all of which the redeem branch's under-lock full eligibility re-run
+  can actually raise, and which previously landed as a generic `ORDER_FINALIZATION_FAILED`.
+  Deliberately excludes deterministic-for-a-fixed-payload codes (`VOUCHER_MIN_SPEND_NOT_MET`,
+  `VOUCHER_MIN_QUANTITY_NOT_MET`, `VOUCHER_NOT_STARTED`, `VOUCHER_TIMEZONE_UNRESOLVABLE`) since those
+  are not races and a distinct code there would mislead an operator.
+- **#711 (Refs #707)** — add `modules/commercePayments/` and `routes/commercePayments.js` (the QRPh
+  money-capture module) to `COMPLIANCE_SENSITIVE_RULES`, which had covered `modules/pos|vouchers|
+  store|payments|settings|compliance/` but not this one.
+- Board reconciliation alongside the code: closed #602 and #584 as already-implemented (found during
+  the same audit, no code changes needed); #667 corrected from "deferred to #695" to "resolved by
+  this phase."
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 101-105's voucher entity, redemption ledger, and storefront redemption path (all
+  four PRs touch code those phases built).
+- ADR 0066 amended (not superseded) with a dated 2026-08-19 entry recording that Decisions 8 and 10
+  are now *enforced* on the storefront path, not changed — both were already-accepted `[default]`
+  clauses.
+- Classification: `major`, `surfaces: payments,pos,terminal` for #708 (`modules/store/` +
+  `modules/vouchers/`); `major`, `surfaces: pos,terminal` for #709; existing declaration extended for
+  #710; no compliance-sensitive path in #711 itself (it changes the scanner's own rule set, not a
+  scanned path).
+- Every merge overrode a red/pending CI check state — logged explicitly on each PR via a public
+  override comment naming the bypassed check and the substituted local evidence, per AGENTS.md's
+  Merge Safety rule, at the user's explicit direction (`docker.io` token-timeout and a shared stuck
+  base-image layer, unrelated to any of the four diffs, confirmed via direct `docker build`
+  reproduction rather than a CI rerun).
+
+### Acceptance and Validation Evidence
+
+- [x] Real `docker build` (not npm-level substitution) run locally for all four PRs against the
+      Dockerfiles `pr-checks.yml` itself builds from, simulating that workflow rather than trusting
+      npm tests alone — required a lima Docker VM memory bump (4GiB → 6GiB) to avoid an OOM (exit
+      137) building 3 concurrent Vite apps.
+- [x] Full composed test suite against merged `develop` tip (`d2b0380c`) — 464/464 passing across 19
+      suites, not just each branch tested in isolation.
+- [x] `npm run check:compliance` — PASS on merged tip.
+- [x] `npm run check:architecture` — OK, 49 modules / 491 code files.
+- [x] `npm run check:adr --strict` — OK, 74 ADRs.
+- No integration test exercises a full storefront-voucher-checkout end-to-end (would need a live
+  MySQL instance or a DI seam for `buildStoreCheckoutUseCase`); disclosed as a gap in PR #708's own
+  Testing Evidence rather than implied covered — this absence is why the fiscal-audit-row defect
+  shipped undetected in the first place.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+  `apps/dgfy-api/src/modules/vouchers/domain/voucherBenefitPolicy.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js`
+- `apps/dgfy-api/src/validators/voucherValidator.js`
+- `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`,
+  `apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx`
+- `scripts/check-compliance-impact.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-19 amendment)
+- `docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md`,
+  `docs/compliance/impact-declarations/2026-08-19-voucher-pos-guard-order.md`
+- Branches `fix/667-voucher-governed-discount-slot`, `fix/693-voucher-pos-guard-order`,
+  `fix/706-widen-voucher-race-codes`, `chore/707-compliance-commerce-payments`; PRs #708/#709/#710/#711
+- Issues #667, #693, #706, #707 (all `Refs`, now `For QA`); #602, #584 (closed as already-implemented);
+  #453 - epic
+
+### Completion Record
+
+- Phase 110 completed 2026-08-18 via PRs #708 (`61b1809c`), #709 (`9648685a`), #710 (`4ecd5f2a`),
+  #711 (`d2b0380c`), merged in that order onto `develop`. Next eligible phase: 111.
