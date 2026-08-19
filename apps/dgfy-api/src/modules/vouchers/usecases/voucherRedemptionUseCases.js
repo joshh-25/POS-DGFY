@@ -90,6 +90,19 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
     let eligibleItemIds = null;
     let fixedUnitPriceByItemId = null;
     if (voucher.pricelist_id != null) {
+        // #717: `assertPricelistRef` (voucherUseCases.js) only checks status at ATTACH time. A
+        // pricelist archived after a voucher already attached it was previously never re-checked,
+        // so the voucher kept redeeming at the archived prices indefinitely. Fails closed here --
+        // checkout is the higher-stakes side of the fail-open/fail-closed split (ADR 0066 decision
+        // 3); voucherDisplayUseCases.js takes the opposite, fail-open branch for the same check.
+        const pricelistStatus = await repository.findPricelistStatus(voucher.pricelist_id, options);
+        if (!pricelistStatus || pricelistStatus.status !== 'active') {
+            voucherError(
+                'This voucher\'s pricelist is no longer active.',
+                VoucherReasonCode.VOUCHER_PRICELIST_NOT_ACTIVE,
+                { voucher_id: voucher.voucher_id, pricelist_id: voucher.pricelist_id, status: pricelistStatus?.status || null }
+            );
+        }
         fixedUnitPriceByItemId = await repository.listPricelistItemPrices(voucher.pricelist_id, options);
         eligibleItemIds = new Set(Object.keys(fixedUnitPriceByItemId).map(Number));
     } else {
