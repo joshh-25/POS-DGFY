@@ -5,6 +5,37 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-08-19 — cache backend added as a third flippable anchor (#726)
+
+Measured: the `type=gha` Docker layer cache costs ~21x the build it's meant to skip on the current
+self-hosted pool (the Actions cache service serves these runners at 49-69 KB/s; a `push: false`
+PR build-check with **zero** actual compute still spent 19+ minutes importing that cache before
+`timeout-minutes` killed it). Full measurements in #726.
+
+**Fix shipped**: `pr-checks.yml` gained a third workflow-level anchor, `BUILD_CACHE_FROM`, next to
+the existing `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON` pair -- empty on self-hosted, disabling
+`cache-from` entirely on the three PR build-check reusables (`pr-dgfy-api-build-checks.yml`,
+`pr-frontend-build-checks.yml`, `pr-migration-runner-build-checks.yml`, each gained a matching
+`cache_from` input). **This is deliberately not a deletion of `cache-from`** -- on GitHub-hosted
+runners the calculus inverts: hosted VMs are ephemeral with no local layer cache at all, and they
+sit on the same network as the Actions cache service, where `type=gha` is a genuine win. The anchor
+exists so that stays a one-line flip, not a re-implementation.
+
+**Switch-back procedure update**: the existing "every active `runner_labels_json`/`runs-on` site
+carries a commented hosted-runner revert line directly above it" step (below) now also covers
+`BUILD_CACHE_FROM` -- it carries its own commented revert line
+(`# BUILD_CACHE_FROM: &build_cache_from 'type=gha'  # revert to this when hosted runners are back`)
+in `pr-checks.yml`'s `env:` block, right next to the runner anchors it's paired with. Flip both
+together, not just the runner anchors -- a self-hosted pool with the network cache re-enabled
+reproduces exactly the outage #726 fixes; hosted runners with no cache at all throws away a real
+win for nothing. `scripts/check-pr-quality-workflow.js` asserts the two stay consistent.
+
+**Not touched by this pass** (deferred to #728, gated on a measured dispatch first): the deploy-path
+reusables (`deploy-api.yml`, `deploy-frontend.yml`, `deploy-migration-runner.yml`) still hardcode
+`cache-from`/`cache-to: type=gha,mode=max` -- those builds push to GHCR regardless, so the cache
+isn't pure overhead there the way it is on a `push: false` PR check, and #726 explicitly says not to
+flip that blind.
+
 ## Status as of 2026-08-18 — the OpenVPN hop is unnecessary on self-hosted, made opt-in (#598/#599)
 
 The network topology behind every VPN decision in this doc was never actually written down. Pat

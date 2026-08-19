@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { ServiceImage } from '../../ServiceImage.jsx';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the "Review Your Booking" summary
@@ -25,6 +25,8 @@ export function ServiceBookingReviewContainer({
   serviceIntakeResponses,
   servicePaymentOptions,
   servicePaymentTiming,
+  servicesPrimary,
+  servicesPrimaryDark,
   setCartImageErrors,
   setCheckoutTab,
 }) {
@@ -50,7 +52,8 @@ export function ServiceBookingReviewContainer({
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
               <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
                 {(firstServiceLine?.thumbnail_url || firstServiceLine?.image_url) && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
-                  <StorefrontResponsiveImage
+                  <ServiceImage
+                    item={firstServiceLine}
                     imageSources={resolveStorefrontImageSources(firstServiceLine, { preferred: 'thumbnail' })}
                     alt={firstServiceLine.name}
                     sizes="88px"
@@ -58,6 +61,7 @@ export function ServiceBookingReviewContainer({
                     height={88}
                     loading="lazy"
                     decoding="async"
+                    fallbackLabel=""
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={() => {
                       const normalizedLineItemId = Number(firstServiceLine.item_id);
@@ -75,7 +79,7 @@ export function ServiceBookingReviewContainer({
               </div>
               <div style={{ display: 'grid', gap: 8 }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
                   </div>
                   <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
@@ -145,7 +149,7 @@ export function ServiceBookingReviewContainer({
             <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
             <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
           </div>
-          <div style={{ borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
+          <div style={{ borderRadius: 16, background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`, color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
               <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
@@ -158,7 +162,7 @@ export function ServiceBookingReviewContainer({
             <button
               type="button"
               onClick={() => setCheckoutTab('checkout')}
-              style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: '#0f766e', color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
+              style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: servicesPrimary, color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
             >
               Continue to Checkout
             </button>

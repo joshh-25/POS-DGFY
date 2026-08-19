@@ -155,13 +155,29 @@ export function useCartMutations({
   };
 
   const addToCart = (item, options = {}) => {
-    if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
+    const isServiceItem = isServiceCatalogItem(item);
+    if (isServiceItem ? !bookingPermitted : !productCartPermitted) {
       toast.error('This storefront is not accepting online checkout right now.');
       return;
     }
     const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
     const lineModifiers = normalizeCartLineModifiers(options?.line_modifiers);
     const modifierKey = buildCartModifierKey(lineModifiers);
+    const selectedServiceOptions = (Array.isArray(options?.selected_options) ? options.selected_options : [])
+      .map((entry) => ({
+        option_id: Number(entry?.option_id),
+        group_id: Number(entry?.group_id),
+        group_name: String(entry?.group_name || '').trim(),
+        group_type: entry?.group_type === 'variation' ? 'variation' : 'addon',
+        name: String(entry?.name || '').trim(),
+        price_adjustment_centavos: Number(entry?.price_adjustment_centavos || 0) || 0,
+        duration_adjustment_minutes: Number(entry?.duration_adjustment_minutes || 0) || 0
+      }))
+      .filter((entry) => Number.isInteger(entry.option_id) && entry.option_id > 0 && entry.name);
+    const selectedServiceOptionIds = [...new Set([
+      ...(Array.isArray(options?.selected_option_ids) ? options.selected_option_ids : []),
+      ...selectedServiceOptions.map((entry) => entry.option_id)
+    ].map(Number).filter((optionId) => Number.isInteger(optionId) && optionId > 0))];
     let stockWarning = '';
     const normalizedItemId = Number(item?.item_id);
     if (Number.isFinite(normalizedItemId)) {
@@ -172,7 +188,10 @@ export function useCartMutations({
         return next;
       });
     }
-    const price = Number(item.default_sale_price ?? 0);
+    const configuredUnitPrice = Number(options?.unit_price);
+    const price = isServiceItem && Number.isFinite(configuredUnitPrice)
+      ? configuredUnitPrice
+      : Number(item.default_sale_price ?? 0);
     const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
     const imageSources = resolveStorefrontImageSources(item, { preferred: 'thumbnail' });
     const baseLine = {
@@ -180,7 +199,7 @@ export function useCartMutations({
       cart_line_id: options?.cart_line_id || `${item.item_id}:${modifierKey || 'default'}`,
       name: item.name,
       variantName: item.variantName || '',
-      category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+      category: isServiceItem ? 'service' : String(item.category || '').trim().toLowerCase(),
       service_detail: item.service_detail || null,
       quantity: requestedQuantity,
       price,
@@ -194,10 +213,15 @@ export function useCartMutations({
       serviceAreaLabel: item.serviceAreaLabel || '',
       durationLabel: item.durationLabel || '',
       line_modifiers: lineModifiers,
-      has_modifier_groups: Array.isArray(item?.fnb_modifier_groups) && item.fnb_modifier_groups.length > 0
+      has_modifier_groups: Array.isArray(item?.fnb_modifier_groups) && item.fnb_modifier_groups.length > 0,
+      selected_option_ids: selectedServiceOptionIds,
+      selected_options: selectedServiceOptions,
+      service_option_groups: Array.isArray(options?.service_option_groups)
+        ? options.service_option_groups
+        : []
     };
     setCart((prev) => {
-      if (isServiceCatalogItem(item)) {
+      if (isServiceItem) {
         const serviceCartLineId = options?.cart_line_id || createStorefrontIdempotencyKey(`service-line-${item.item_id}`);
         return [...prev, {
           ...baseLine,
@@ -239,7 +263,7 @@ export function useCartMutations({
         quantity: maxStock > 0 ? requestedQuantity : 0
       }];
     });
-    if (isServiceCatalogItem(item)) {
+    if (isServiceItem) {
       setCheckoutTab('review');
       setIsCheckoutOpen(false);
       animateCartCardToFab(options?.sourceRect || null);
@@ -261,7 +285,7 @@ export function useCartMutations({
       item_name: item?.name,
       price,
       quantity: requestedQuantity,
-      category: isServiceCatalogItem(item) ? 'service' : item?.category
+      category: isServiceItem ? 'service' : item?.category
     });
   };
 

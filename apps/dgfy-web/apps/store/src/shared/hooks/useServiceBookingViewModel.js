@@ -32,6 +32,7 @@ export function useServiceBookingViewModel({
   serviceDraftNotes,
   serviceDraftQuantity,
   serviceIntakeResponses,
+  serviceRequiresSchedule = true,
   servicePaymentOptions,
   servicePaymentTiming,
   setCart,
@@ -127,7 +128,7 @@ export function useServiceBookingViewModel({
       toast.error(message);
       return;
     }
-    if (!serviceAppointmentAt) {
+    if (serviceRequiresSchedule && !serviceAppointmentAt) {
       const message = 'Choose a preferred appointment date and time before adding this booking.';
       setCheckoutError(message);
       toast.error(message);
