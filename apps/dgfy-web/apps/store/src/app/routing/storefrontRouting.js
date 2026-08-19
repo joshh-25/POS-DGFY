@@ -3,27 +3,27 @@
 // /store/ — outbound links built by storePath() still use the canonical /tenant-store/
 // prefix; /s/ only needs to be *recognized* on the way in.
 const TENANT_STORE_PATH_PATTERNS = [
-  /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^\/store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^\/s\/([^/]+)(?:\/[^/]+)?$/i
+  /^\/tenant-store\/([^/]+)(?:\/[^/]+){0,2}$/i,
+  /^\/store\/([^/]+)(?:\/[^/]+){0,2}$/i,
+  /^\/s\/([^/]+)(?:\/[^/]+){0,2}$/i
 ];
 
 const TENANT_STORE_HASH_PATTERNS = [
-  /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^#\/store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^#\/s\/([^/]+)(?:\/[^/]+)?$/i
+  /^#\/tenant-store\/([^/]+)(?:\/[^/]+){0,2}$/i,
+  /^#\/store\/([^/]+)(?:\/[^/]+){0,2}$/i,
+  /^#\/s\/([^/]+)(?:\/[^/]+){0,2}$/i
 ];
 
 const TENANT_STORE_SUBPAGE_PATTERNS = [
-  /^\/tenant-store\/[^/]+\/([^/]+)$/i,
-  /^\/store\/[^/]+\/([^/]+)$/i,
-  /^\/s\/[^/]+\/([^/]+)$/i
+  /^\/tenant-store\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i,
+  /^\/store\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i,
+  /^\/s\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i
 ];
 
 const TENANT_STORE_SUBPAGE_HASH_PATTERNS = [
-  /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
-  /^#\/store\/[^/]+\/([^/]+)$/i,
-  /^#\/s\/[^/]+\/([^/]+)$/i
+  /^#\/tenant-store\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i,
+  /^#\/store\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i,
+  /^#\/s\/[^/]+\/([^/]+)(?:\/[^/]+)?$/i
 ];
 
 const normalizeRouteSlug = (value) => String(value || '').trim().toLowerCase();
@@ -80,7 +80,7 @@ export const readStoreSubpage = () => {
   const path = window.location.pathname || '';
   if (customStorefrontRouteContext?.slug) {
     const segment = normalizeRouteSlug(path.split('/').filter(Boolean)[0]);
-    return [STORE_BOOKING_SUBPAGE, STORE_ORDER_SUBPAGE, STORE_TRACK_SUBPAGE, STORE_SERVICE_SUBPAGE, STORE_ITEM_SUBPAGE].includes(segment)
+    return [STORE_BOOKING_SUBPAGE, STORE_ORDER_SUBPAGE, STORE_TRACK_SUBPAGE, STORE_SERVICE_SUBPAGE, STORE_ITEM_SUBPAGE, 'account'].includes(segment)
       ? segment
       : null;
   }
