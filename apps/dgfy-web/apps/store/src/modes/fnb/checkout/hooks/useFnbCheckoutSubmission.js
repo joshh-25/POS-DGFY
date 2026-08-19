@@ -174,7 +174,9 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0,
+          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
+          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 

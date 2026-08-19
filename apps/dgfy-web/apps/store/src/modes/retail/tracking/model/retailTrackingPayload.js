@@ -84,7 +84,12 @@ export function toRetailTrackingViewState(trackingPayload) {
       || 'Promo / Discount'
     ).trim(),
     serviceFeeAmount: numberOrNull(source.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
-    totalAmount: numberOrNull(source.totalAmount ?? root?.total_amount ?? raw?.total_amount ?? order?.total_amount ?? raw?.order_total),
+    // #747: `order?.total_amount` (the server-persisted value) now outranks `root?.total_amount` /
+    // `raw?.total_amount` -- those can carry a client-snapshotted pre-submission total (see
+    // useCheckoutSubmission.js / useFnbCheckoutSubmission.js) that doesn't reflect a just-applied
+    // voucher discount. Defensive, for every caller of this parser, not just the two already fixed
+    // at their source.
+    totalAmount: numberOrNull(source.totalAmount ?? order?.total_amount ?? root?.total_amount ?? raw?.total_amount ?? raw?.order_total),
     branchName: String(source.branchName || location?.name || payloadDisplay?.branch_name || orderDisplay?.branch_name || root?.branch_name || raw?.branch_name || '').trim(),
     branchAddress: String(source.branchAddress || location?.full_address || location?.address_line || payloadDisplay?.branch_address || orderDisplay?.branch_address || root?.branch_address || raw?.branch_address || '').trim(),
     deliveryAddress: String(source.deliveryAddress || order?.delivery_address || payloadDisplay?.delivery_address || orderDisplay?.delivery_address || root?.delivery_address || raw?.delivery_address || payloadDisplay?.customer_address || orderDisplay?.customer_address || root?.customer_address || raw?.customer_address || '').trim(),

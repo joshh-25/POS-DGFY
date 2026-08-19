@@ -413,7 +413,11 @@ export function useCheckoutSubmission({
               order_method: productData?.order?.order_method || orderMethod,
               order: productData?.order || null,
               order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
-              total_amount: totalsForDisplay?.total_amount ?? 0
+              // #747: prefer the server-persisted total over the client's pre-submission snapshot
+              // -- the client value doesn't reflect a just-applied voucher discount, and
+              // retailTrackingPayload.js's own `??` chain would otherwise let this poisoned
+              // top-level field shadow the correct nested order.total_amount.
+              total_amount: productData?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
             }, productData.tracking_pin);
           }
           setQuoteResult(null);
@@ -465,7 +469,8 @@ export function useCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // #747: see the partial-booking-failure branch above for why -- same fix, same reasoning.
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
