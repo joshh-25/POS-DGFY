@@ -9,6 +9,7 @@ const {
   detectComponents,
   classifyCiUnavailability,
   renderComment,
+  findLatestLocalCiComment,
 } = require('./pr-checks');
 
 // --- anti-drift: PATH_FILTERS must stay verbatim in sync with the workflow -
@@ -162,6 +163,7 @@ test('renderComment always includes a non-empty "Not reproduced locally" section
     checks: [{ name: 'x', localEquivalent: 'y', result: 'pass' }],
     tier: 'fast',
     host: { platform: 'darwin', arch: 'arm64', nodeVersion: 'v24.0.0' },
+    headSha: 'abc123def456',
   });
   assert.match(comment, /## Local CI — PASS/);
   assert.match(comment, /\*\*Not reproduced locally:\*\*/);
@@ -175,6 +177,59 @@ test('renderComment states the override was not invoked when the result is not P
     checks: [{ name: 'x', localEquivalent: 'y', result: 'fail' }],
     tier: 'fast',
     host: { platform: 'darwin', arch: 'arm64', nodeVersion: 'v24.0.0' },
+    headSha: 'abc123def456',
   });
   assert.match(comment, /not invoked/);
+});
+
+// PR #725 RF-2: the comment must name the commit it is evidence for, so a
+// reviewer can catch a stale comment (posted for an earlier commit) rather
+// than treating it as valid merge evidence for the PR's current head.
+test('renderComment states the commit SHA it is evidence for', () => {
+  const comment = renderComment({
+    overallResult: 'PASS',
+    unavailability: { reason: 'runner_offline', evidence: 'test evidence' },
+    checks: [{ name: 'x', localEquivalent: 'y', result: 'pass' }],
+    tier: 'fast',
+    host: { platform: 'darwin', arch: 'arm64', nodeVersion: 'v24.0.0' },
+    headSha: 'deadbeef1234',
+  });
+  assert.match(comment, /Commit: deadbeef1234/);
+  assert.match(comment, /evidence for commit `deadbeef1234` only/);
+});
+
+// --- findLatestLocalCiComment ---------------------------------------------
+// PR #725 RF-1: gh pr comment --edit-last edits the last comment by the
+// *authenticated user*, not the last `## Local CI` comment -- unsafe on a
+// repo where every role shares one identity. This is the replacement that
+// scopes the edit to a comment this tool itself owns.
+
+test('findLatestLocalCiComment returns null when no comment matches the prefix', () => {
+  const found = findLatestLocalCiComment(1, () => [
+    { id: 1, body: '## Review — APPROVE\n...' },
+    { id: 2, body: 'just a regular comment' },
+  ]);
+  assert.equal(found, null);
+});
+
+test('findLatestLocalCiComment ignores comments from other tools, like a pr-reviewer verdict', () => {
+  const found = findLatestLocalCiComment(1, () => [
+    { id: 1, body: '## Local CI — PASS\nCommit: aaa' },
+    { id: 2, body: '## Review — BLOCK\n...' },
+  ]);
+  assert.equal(found.id, 1);
+});
+
+test('findLatestLocalCiComment returns the most recent Local CI comment when several exist', () => {
+  const found = findLatestLocalCiComment(1, () => [
+    { id: 1, body: '## Local CI — FAIL\nCommit: aaa' },
+    { id: 2, body: '## Review — COMMENT\n...' },
+    { id: 3, body: '## Local CI — PASS\nCommit: bbb' },
+  ]);
+  assert.equal(found.id, 3);
+});
+
+test('findLatestLocalCiComment tolerates a non-array response', () => {
+  const found = findLatestLocalCiComment(1, () => null);
+  assert.equal(found, null);
 });

@@ -63,6 +63,12 @@ a skill file (this file's own Surface precedence calls that a bug):
 - **The comment result is `PASS`.** `scripts/pr-checks.js --post` itself refuses to post when its
   classifier reports `healthy` (no verified unavailability) — that refusal is what keeps this from
   being a routine bypass; do not work around it by omitting `--post`'s own gate.
+- **The comment's stated `Commit:` SHA equals the PR's current head.** Verify with `gh pr view <N>
+  --json headRefOid` before merging. A comment is evidence for the commit it was generated against,
+  not for the PR in general — if a later commit landed (a Worker's follow-up push is the common
+  case), the comment is stale and does not qualify; a mismatch is treated exactly like no qualifying
+  comment at all, not as a lesser confirmation step. Added 2026-08-19 (#725 RF-2) after the first
+  version of this carve-out shipped with no commit binding at all.
 
 Everything else about the hard stop above is unchanged: this carve-out extends *what evidence can
 satisfy it*, not who may skip it or on which branch.

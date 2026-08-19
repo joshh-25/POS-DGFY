@@ -38,6 +38,10 @@ const REPO_SLUG = 'Sieitzz/dgfy-platform';
 // must change with them -- pr-checks.test.js asserts each pattern below
 // still appears verbatim in the workflow file, so a drift fails the test
 // instead of silently diverging.
+// The workflow also carries an ANDROID filter (shared-changed-paths.yml:149).
+// Deliberately not ported here -- Android isn't one of the four checks this
+// tool reproduces, and it doesn't gate a develop/staging merge today. Not an
+// oversight (#725 RF-3).
 const PATH_FILTERS = {
   frontend: /^(apps\/dgfy-web\/|packages\/pos-receipt\/|packages\/shared-constants\/|infrastructure\/docker\/frontend\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
   dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
@@ -281,14 +285,17 @@ function runFullTierDockerChecks(checks, components) {
 
 // --- output -------------------------------------------------------------
 
-function renderComment({ overallResult, unavailability, checks, tier, host }) {
+function renderComment({ overallResult, unavailability, checks, tier, host, headSha }) {
   const rows = checks.map((c) => `| ${c.name} | ${c.localEquivalent} | ${c.result} |`).join('\n');
   const notReproduced = tier === 'full' ? NOT_REPRODUCED_LOCALLY.filter((l) => !l.includes('the three image builds')) : [...NOT_REPRODUCED_LOCALLY, 'the three image builds themselves (fast tier only checks dependency resolution / syntax)'];
   return `## Local CI — ${overallResult}
 
 CI unavailable because: ${unavailability.reason} — ${unavailability.evidence}
+Commit: ${headSha}
 Host: ${host.platform}/${host.arch}, node ${host.nodeVersion}. Tier: ${tier}.
-**These are local runs, not CI runs.**
+**These are local runs, not CI runs.** This comment is evidence for commit \`${headSha}\` only —
+a merge reviewer must confirm this matches the PR's current head commit before treating it as
+qualifying evidence (a later push invalidates it; re-run instead of reusing).
 
 | CI check | Local equivalent | Result |
 |---|---|---|
@@ -301,11 +308,40 @@ ${notReproduced.map((l) => `- ${l}`).join('\n')}
 `;
 }
 
-function postComment(prNumber, body) {
+// `gh pr comment --edit-last` edits the last comment by the *currently
+// authenticated user*, not the last `## Local CI` comment specifically. This
+// repo has no separate bot identity -- every role, pr-reviewer included,
+// authenticates as the same account -- so `--edit-last` would silently
+// overwrite an unrelated comment (a pr-reviewer `## Review` verdict, a
+// Worker's reply addressing findings) if one landed after the last Local CI
+// post. Scope the edit to a comment this tool itself owns instead, found by
+// its `## Local CI —` body prefix, not by authorship (#725 RF-1).
+function findLatestLocalCiComment(prNumber, fetcher = defaultCommentsFetcher) {
+  const comments = fetcher(prNumber);
+  if (!Array.isArray(comments)) return null;
+  // The REST list endpoint returns comments in ascending creation order, and
+  // this only inspects the first page (per_page=100) -- more than 100
+  // comments on one PR is not a realistic case for this repo today.
+  const matches = comments.filter((c) => typeof c.body === 'string' && c.body.startsWith('## Local CI —'));
+  return matches.length > 0 ? matches[matches.length - 1] : null;
+}
+
+function defaultCommentsFetcher(prNumber) {
+  return captureJson('gh', ['api', `repos/${REPO_SLUG}/issues/${prNumber}/comments?per_page=100`]);
+}
+
+function postComment(prNumber, body, deps = {}) {
   const tmpFile = path.join(repoRoot, '.tmp', 'pr-checks', `comment-${prNumber}.md`);
   fs.mkdirSync(path.dirname(tmpFile), { recursive: true });
   fs.writeFileSync(tmpFile, body);
-  const result = spawnSync('gh', ['pr', 'comment', String(prNumber), '--body-file', tmpFile, '--edit-last', '--create-if-none'], { stdio: 'inherit', cwd: repoRoot });
+
+  const findComment = deps.findLatestLocalCiComment || findLatestLocalCiComment;
+  const existing = findComment(prNumber);
+  if (existing) {
+    const result = spawnSync('gh', ['api', '-X', 'PATCH', `repos/${REPO_SLUG}/issues/comments/${existing.id}`, '-F', `body=@${tmpFile}`], { stdio: 'inherit', cwd: repoRoot });
+    return result.status === 0;
+  }
+  const result = spawnSync('gh', ['pr', 'comment', String(prNumber), '--body-file', tmpFile], { stdio: 'inherit', cwd: repoRoot });
   return result.status === 0;
 }
 
@@ -335,7 +371,7 @@ function main() {
   const unavailability = classifyCiUnavailability({ headSha, thresholdMinutes: options.thresholdMinutes, nowMs: Date.now() });
 
   const host = { platform: process.platform, arch: process.arch, nodeVersion: process.version };
-  const comment = renderComment({ overallResult, unavailability, checks, tier: options.tier, host });
+  const comment = renderComment({ overallResult, unavailability, checks, tier: options.tier, host, headSha });
 
   const reportPath = options.report || path.join(repoRoot, '.tmp', 'pr-checks', `${headSha}.json`);
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -381,6 +417,8 @@ module.exports = {
   detectComponents,
   classifyCiUnavailability,
   renderComment,
+  findLatestLocalCiComment,
+  postComment,
   runCommand,
   captureStdout,
 };
