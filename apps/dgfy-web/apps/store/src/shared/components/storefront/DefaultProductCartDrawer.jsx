@@ -39,8 +39,17 @@ export function DefaultProductCartDrawer({
   onUpdateQuantity,
   renderPromoCodePanel,
   servicesBodyFont,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
+  // #746: this drawer used to render `cartTotal` unconditionally, which has zero voucher
+  // awareness -- applying a voucher here never moved the number on screen. `cartTotal` stays the
+  // fallback (so an untouched cart is byte-identical to before this fix); when a voucher discount
+  // is active, subtract it directly rather than switching to `totalsForDisplay.total_amount`,
+  // which also folds in the service fee and would change the displayed total for every cart, not
+  // just voucher ones.
+  const hasVoucherDiscount = voucherDiscountAmount > 0;
+  const displayTotal = hasVoucherDiscount ? Math.max(0, cartTotal - voucherDiscountAmount) : cartTotal;
   return (
     <div
       style={{
@@ -169,6 +178,12 @@ export function DefaultProductCartDrawer({
               <span>Subtotal</span>
               <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartSubtotal)}</span>
             </div>
+            {hasVoucherDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>Voucher Discount</span>
+                <span style={{ fontWeight: 700 }}>- {money(voucherDiscountAmount)}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -176,7 +191,7 @@ export function DefaultProductCartDrawer({
               <div style={{ fontSize: 18, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
             </div>
-            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>
 
           <button

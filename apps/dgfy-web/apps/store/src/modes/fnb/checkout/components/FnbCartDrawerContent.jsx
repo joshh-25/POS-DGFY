@@ -28,7 +28,11 @@ export function FnbCartDrawerContent({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  voucherDiscountAmount = 0,
 }) {
+  // #746: see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning, ported here.
+  const hasVoucherDiscount = voucherDiscountAmount > 0;
+  const displayTotal = hasVoucherDiscount ? Math.max(0, cartTotal - voucherDiscountAmount) : cartTotal;
   return (              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
                   {cart.length === 0 ? (
@@ -216,13 +220,19 @@ export function FnbCartDrawerContent({
                         <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartAddOnsTotal)}</span>
                       </div>
                     ) : null}
+                    {hasVoucherDiscount && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                        <span>Voucher Discount</span>
+                        <span style={{ fontWeight: 700 }}>- {money(voucherDiscountAmount)}</span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Total</div>
                       <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
                     </div>
-                    <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+                    <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 900, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
                   </div>
                   <button
                     type="button"

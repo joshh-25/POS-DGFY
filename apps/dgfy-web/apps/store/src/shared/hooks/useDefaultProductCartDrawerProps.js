@@ -29,6 +29,7 @@ export function useDefaultProductCartDrawerProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
   const closeDrawer = useCallback(() => {
@@ -78,6 +79,7 @@ export function useDefaultProductCartDrawerProps({
       onUpdateQuantity: updateQty,
       renderPromoCodePanel,
       servicesBodyFont,
+      voucherDiscountAmount,
       withAssetOrigin
     }
   }), [
@@ -101,6 +103,7 @@ export function useDefaultProductCartDrawerProps({
     servicesBodyFont,
     toggleDrawer,
     updateQty,
+    voucherDiscountAmount,
     withAssetOrigin
   ]);
 }

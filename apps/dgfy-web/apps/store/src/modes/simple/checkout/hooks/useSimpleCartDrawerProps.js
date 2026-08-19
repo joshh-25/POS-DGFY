@@ -22,6 +22,7 @@ export function useSimpleCartDrawerProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
   const closeDrawer = useCallback(() => {
@@ -72,6 +73,7 @@ export function useSimpleCartDrawerProps({
       servicesPrimary,
       servicesPrimaryDark,
       servicesPrimaryShadowStrong,
+      voucherDiscountAmount,
       withAssetOrigin
     }
   }), [
@@ -97,6 +99,7 @@ export function useSimpleCartDrawerProps({
     servicesPrimaryShadowStrong,
     toggleDrawer,
     updateQty,
+    voucherDiscountAmount,
     withAssetOrigin
   ]);
 }

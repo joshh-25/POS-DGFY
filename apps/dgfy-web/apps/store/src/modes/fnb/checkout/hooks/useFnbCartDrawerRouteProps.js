@@ -29,6 +29,7 @@ export function useFnbCartDrawerRouteProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
   return useMemo(() => ({
@@ -53,6 +54,7 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    voucherDiscountAmount,
     withAssetOrigin
   }), [
     cart,
@@ -79,6 +81,7 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    voucherDiscountAmount,
     withAssetOrigin
   ]);
 }
