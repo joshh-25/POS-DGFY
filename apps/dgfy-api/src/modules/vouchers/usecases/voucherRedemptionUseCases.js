@@ -235,6 +235,23 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         );
     }
 
+    // #693: the empty-code short-circuit must run BEFORE the POS master-switch guard below, not
+    // after. This function's own contract (see the module docstring above) is "an EMPTY code is a
+    // silent no-op... an entered code that fails to resolve fails closed" -- an empty code was never
+    // supposed to reach any resolution logic, gate included. With the guard ordered first, a POS
+    // checkout carrying NO voucher code at all (channel: 'pos', code: '') threw 422
+    // VOUCHER_POS_REDEMPTION_DISABLED whenever the tenant-wide switch was off (its default), instead
+    // of the benign no-op every other empty-code caller gets. Latent today -- no live caller passes
+    // channel: 'pos' yet -- but would have broken the first POS checkout the moment one did.
+    const normalizedCode = normalizeCode(code);
+    if (!normalizedCode) {
+        return {
+            applied: false, idempotentReplay: false, redemptionId: null, voucherId: null,
+            code: null, title: null, badge: null, benefitClass: null, percentOffBps: null,
+            discountCentavos: 0, lineAllocations: []
+        };
+    }
+
     // #604: tenant-wide POS voucher redemption master switch, default off. Deliberately checked
     // here rather than in a POS-side checkout use case, since this is the one function every future
     // POS redemption caller will have to go through -- a tenant-wide, channel-aware, un-bypassable
@@ -251,15 +268,6 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
                 VoucherReasonCode.VOUCHER_POS_REDEMPTION_DISABLED
             );
         }
-    }
-
-    const normalizedCode = normalizeCode(code);
-    if (!normalizedCode) {
-        return {
-            applied: false, idempotentReplay: false, redemptionId: null, voucherId: null,
-            code: null, title: null, badge: null, benefitClass: null, percentOffBps: null,
-            discountCentavos: 0, lineAllocations: []
-        };
     }
 
     const normalizedIdempotencyKey = String(idempotencyKey || '').trim();
