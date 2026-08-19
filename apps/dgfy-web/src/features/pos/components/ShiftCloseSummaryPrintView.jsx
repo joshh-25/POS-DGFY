@@ -72,6 +72,12 @@ export default function ShiftCloseSummaryPrintView({
                     <Row name="VAT" value={`${currency} ${money(sales.vat_amount)}`} />
                     <Row name="Total sales (excluding opening cash)" value={`${currency} ${money(sales.total_amount)}`} strong />
                     <Row name={`POS voids (${sales.void_transaction_count || 0})`} value={`${currency} ${money(sales.void_amount)}`} />
+                    {Number(sales.post_close_void_transaction_count || 0) > 0 ? (
+                        <Row
+                            name={`Post-close voids (${sales.post_close_void_transaction_count})`}
+                            value={`${currency} ${money(sales.post_close_void_amount)}`}
+                        />
+                    ) : null}
                 </section>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">

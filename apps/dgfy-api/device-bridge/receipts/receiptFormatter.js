@@ -131,6 +131,13 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
     buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
     buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
+    ...(Number(sales.post_close_void_transaction_count || 0) > 0
+      ? [buildKeyValueLine(
+        `Post-close voids (${sales.post_close_void_transaction_count})`,
+        money(sales.post_close_void_amount),
+        normalizedWidth
+      )]
+      : []),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);

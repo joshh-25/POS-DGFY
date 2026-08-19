@@ -569,6 +569,9 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
         pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
         pair(`POS voids (${sales.void_transaction_count || 0})`, formatShiftSummaryValue(sales.void_amount)),
+        ...(Number(sales.post_close_void_transaction_count || 0) > 0
+            ? [pair(`Post-close voids (${sales.post_close_void_transaction_count})`, formatShiftSummaryValue(sales.post_close_void_amount))]
+            : []),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
