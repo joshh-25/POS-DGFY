@@ -37,8 +37,18 @@ const VOUCHER_DEFAULTS = {
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], pricelistItemsByPricelistId = {} } = {}) => {
-    const state = { vouchers: vouchers.map((v) => ({ ...v })), scopes: scopes.map((s) => ({ ...s })), folders: folders.map((f) => ({ ...f })), pricelistItemsByPricelistId, calls: [] };
+const makeFakeRepository = ({
+    vouchers = [], scopes = [], folders = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {}
+} = {}) => {
+    const state = {
+        vouchers: vouchers.map((v) => ({ ...v })),
+        scopes: scopes.map((s) => ({ ...s })),
+        folders: folders.map((f) => ({ ...f })),
+        pricelistItemsByPricelistId,
+        // #717: defaults to 'active' unless a test explicitly overrides a pricelist's status.
+        pricelistStatusById,
+        calls: []
+    };
     return {
         __state: state,
         async findByCode(code) {
@@ -59,6 +69,14 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], pricelis
         async listPricelistItemPrices(pricelistId) {
             state.calls.push('listPricelistItemPrices');
             return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
+        },
+        async findPricelistStatus(pricelistId) {
+            state.calls.push('findPricelistStatus');
+            const id = Number(pricelistId);
+            const status = Object.prototype.hasOwnProperty.call(state.pricelistStatusById, id)
+                ? state.pricelistStatusById[id]
+                : 'active';
+            return { pricelist_id: id, status };
         }
     };
 };
@@ -196,6 +214,30 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 40 });
         expect(repository.__state.calls).toContain('listPricelistItemPrices');
         expect(repository.__state.calls).not.toContain('listScopes');
+    });
+
+    // #717: attach-time status checking (voucherUseCases.js's assertPricelistRef) does not protect
+    // against a pricelist archived AFTER a voucher already attached it -- this is the use-time
+    // re-check that closes that gap. Display fails OPEN (contrast the redemption use case's
+    // fail-closed behavior, covered in voucherRedemptionUseCases.usecases.test.js) -- falls back to
+    // the plain catalog price rather than blocking the whole catalog response.
+    it('fails open (shows catalog prices) when the attached pricelist has been archived', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: null,
+                pricelist_id: 7
+            })],
+            pricelistItemsByPricelistId: { 7: { 1: 7000, 2: 4000 } },
+            pricelistStatusById: { 7: 'archived' }
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(false);
+        expect(result.pricesByItemId).toEqual({});
+        expect(repository.__state.calls).not.toContain('listPricelistItemPrices');
     });
 
     it('excludes an item outside the voucher\'s folder scope', async () => {
