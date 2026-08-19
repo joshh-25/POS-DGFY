@@ -227,6 +227,91 @@ describe('#696 pricelist attachment on create', () => {
     });
 });
 
+describe('#716 create tolerates the real UI payload — an explicit null on the inapplicable field', () => {
+    // VoucherManagementPanel.jsx's buildVoucherPayload sends the *other* branch's field as an
+    // explicit `null` rather than omitting the key. Both of the next two cases are the real
+    // payloads the UI builds -- both 422'd before this fix (`Joi.forbidden()` disallows the key's
+    // mere presence, and `Joi.exist()` is satisfied by `null`).
+    test('single-price sub-mode: fixed_unit_price_centavos set, pricelist_id explicitly null', () => {
+        const { error, value } = validate(createVoucherSchema, {
+            code: 'PIN9',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: null,
+            scopes: [{ scope_type: 'item', scope_ref_id: 1 }]
+        });
+        expect(error).toBeUndefined();
+        expect(value.fixed_unit_price_centavos).toBe(5000);
+        expect(value.pricelist_id).toBeNull();
+    });
+
+    test('pricelist sub-mode: pricelist_id set, fixed_unit_price_centavos explicitly null', () => {
+        const { error, value } = validate(createVoucherSchema, {
+            code: 'WHOLESALE2',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: null,
+            pricelist_id: 7,
+            scopes: []
+        });
+        expect(error).toBeUndefined();
+        expect(value.pricelist_id).toBe(7);
+        expect(value.fixed_unit_price_centavos).toBeNull();
+    });
+
+    test('single-price sub-mode with no scopes is still refused — null pricelist_id must not skip the scope requirement', () => {
+        // Regression for the same Joi.exist()-matches-null bug, in the scopes conditional: an
+        // explicit `pricelist_id: null` must NOT be read as "a pricelist is attached".
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN10',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: null,
+            scopes: []
+        });
+        expect(errorFields(error)).toContain('scopes');
+    });
+
+    test('a real value on the inapplicable field is still rejected, even alongside the correct one', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN11',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: 7,
+            scopes: []
+        });
+        expect(errorFields(error)).toContain('fixed_unit_price_centavos');
+    });
+
+    test('both fields null on fixed_price is still rejected — one of the two is mandatory', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN12',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: null,
+            pricelist_id: null
+        });
+        expect(errorFields(error)).toContain('fixed_unit_price_centavos');
+    });
+
+    test('pricelist_id: null on percent_off is accepted as a no-op', () => {
+        const { error, value } = validate(createVoucherSchema, validCreatePayload({ pricelist_id: null }));
+        expect(error).toBeUndefined();
+        expect(value.pricelist_id).toBeNull();
+    });
+
+    test('fixed_unit_price_centavos: null on amount_off is accepted as a no-op', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'FLAT51', title: 'Valid title', benefit_class: 'amount_off', amount_off_centavos: 500,
+            fixed_unit_price_centavos: null
+        });
+        expect(error).toBeUndefined();
+    });
+});
+
 describe('scopes', () => {
     test('duplicate (scope_type, scope_ref_id) pairs are rejected', () => {
         const { error } = validate(createVoucherSchema, validCreatePayload({
