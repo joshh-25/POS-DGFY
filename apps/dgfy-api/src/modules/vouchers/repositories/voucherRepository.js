@@ -513,6 +513,11 @@ export const voucherRepository = {
         const row = await Pricelist.findByPk(id, {
             attributes: ['pricelist_id', 'status'],
             transaction: options.transaction,
+            // #717: `raw: true` + `lock` don't combine cleanly in every Sequelize/dialect pairing,
+            // but `options.lock` was previously dropped here entirely (contrast pricelistRepository.js,
+            // which honors it) -- no FOR UPDATE was ever taken on this read despite the redemption
+            // path passing `lock: true` in good faith. Locking only matters with a transaction present.
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
             raw: true
         });
         return row || null;
@@ -532,6 +537,11 @@ export const voucherRepository = {
             where: { pricelist_id: id },
             attributes: ['item_id', 'unit_price_centavos'],
             transaction: options.transaction,
+            // #717: same lock-drop as findPricelistStatus above -- the redemption path already
+            // builds `{ transaction, lock: true }` (voucherRedemptionUseCases.js) specifically so a
+            // concurrent publish (publishDraftIntoParent's delete-and-reinsert) can't shift prices
+            // mid-redemption; this method silently discarded that intent.
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
             raw: true
         });
         return rows.reduce((map, row) => {

@@ -45,6 +45,8 @@ const REASON_CODE_MESSAGES = Object.freeze({
   PRICELIST_NOT_FOUND: 'This pricelist could not be found.',
   PRICELIST_VERSION_CONFLICT: 'This pricelist was changed elsewhere. Reloading the latest version.',
   PRICELIST_ARCHIVED_IMMUTABLE: 'Archived pricelists cannot be modified.',
+  // #717: raised by POST /:id/archive when at least one voucher still attaches this pricelist.
+  PRICELIST_IN_USE_BY_VOUCHER: 'This pricelist is attached to one or more vouchers and cannot be archived. Detach it from every voucher first.',
   PRICELIST_ITEM_REF_NOT_FOUND: 'One or more items on this pricelist could not be found.',
   PRICELIST_NOT_PUBLISHABLE: 'This pricelist is already live and is not a pending draft revision.'
 });

@@ -341,6 +341,19 @@ export const buildArchivePricelistUseCase = ({ repository }) => async ({ priceli
             );
         }
 
+        // #717: countVouchersUsingPricelist exists precisely to give this signal (see its own
+        // docstring below) but was previously called only from getPricelist, informationally --
+        // nothing actually stopped an archive. Checked inside the same lock/transaction as the
+        // status flip below, so a voucher attach racing this archive can't slip through either way.
+        const attachedVoucherCount = await repository.countVouchersUsingPricelist(stored.pricelist_id, { transaction });
+        if (attachedVoucherCount > 0) {
+            voucherConflict(
+                `Pricelist is attached to ${attachedVoucherCount} voucher(s) and cannot be archived.`,
+                VoucherReasonCode.PRICELIST_IN_USE_BY_VOUCHER,
+                { pricelist_id: stored.pricelist_id, attached_voucher_count: attachedVoucherCount }
+            );
+        }
+
         const affected = await repository.updatePricelistWithVersion(
             stored.pricelist_id,
             { status: 'archived' },

@@ -389,6 +389,36 @@ describe('archive pricelist', () => {
         expect(statusCode(result)).toBe(409);
         expect(reasonCode(result)).toBe('PRICELIST_ARCHIVED_IMMUTABLE');
     });
+
+    // #717: countVouchersUsingPricelist previously informed the GET response only -- nothing
+    // actually stopped an archive while a voucher still attached this pricelist, silently leaving
+    // that voucher pricing every future redemption against a retired price list.
+    test('archiving a pricelist still attached to a voucher is refused', async () => {
+        const repository = makeFakeRepository({
+            pricelists: [seedPricelist({ status: 'active' })],
+            vouchersByPricelistId: { 1: 2 }
+        });
+        const archive = buildArchivePricelistUseCase({ repository });
+
+        const result = await archive({ pricelistId: 1 });
+
+        expect(statusCode(result)).toBe(409);
+        expect(reasonCode(result)).toBe('PRICELIST_IN_USE_BY_VOUCHER');
+        expect(result.error.details.attached_voucher_count).toBe(2);
+    });
+
+    test('archiving a pricelist with zero attached vouchers still succeeds', async () => {
+        const repository = makeFakeRepository({
+            pricelists: [seedPricelist({ status: 'active' })],
+            vouchersByPricelistId: { 1: 0 }
+        });
+        const archive = buildArchivePricelistUseCase({ repository });
+
+        const result = await archive({ pricelistId: 1 });
+
+        expect(result.success).toBe(true);
+        expect(result.data.pricelist.status).toBe('archived');
+    });
 });
 
 describe('get / list pricelists', () => {

@@ -131,6 +131,16 @@ export const buildResolveVoucherDisplayPricesUseCase = ({ repository }) => async
     let fixedUnitPriceByItemId = null;
     try {
         if (voucher.pricelist_id != null) {
+            // #717: status is checked at attach-time only in voucherUseCases.js's assertPricelistRef;
+            // an archived pricelist was never re-checked here, so a voucher's catalog display price
+            // kept reflecting a retired pricelist indefinitely. Fails OPEN, matching this module's own
+            // contract (module docstring above) -- suppress the voucher price, fall back to catalog
+            // price, same as every other resolution failure in this function. Checkout is where this
+            // fails closed instead (voucherRedemptionUseCases.js).
+            const pricelistStatus = await repository.findPricelistStatus(voucher.pricelist_id);
+            if (!pricelistStatus || pricelistStatus.status !== 'active') {
+                return notApplied({ voucherId: voucher.voucher_id, code: voucher.code, benefitClass: voucher.benefit_class });
+            }
             fixedUnitPriceByItemId = await repository.listPricelistItemPrices(voucher.pricelist_id);
             scopeItemIds = new Set(Object.keys(fixedUnitPriceByItemId).map(Number));
         } else {

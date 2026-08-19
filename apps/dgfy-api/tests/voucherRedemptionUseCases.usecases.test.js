@@ -55,13 +55,19 @@ const CONTEXT = {
 
 const LINES = [{ item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 }];
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {} } = {}) => {
+const makeFakeRepository = ({
+    vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {}
+} = {}) => {
     const state = {
         vouchers: vouchers.map((v) => ({ ...v })),
         scopes: scopes.map((s) => ({ ...s })),
         folders: folders.map((f) => ({ ...f })),
         items: items.map((i) => ({ ...i })),
         pricelistItemsByPricelistId,
+        // #717: defaults to 'active' for any pricelist referenced by pricelistItemsByPricelistId --
+        // an explicit override (e.g. `{ [id]: 'archived' }`) is only needed by tests exercising the
+        // new use-time re-check.
+        pricelistStatusById,
         redemptions: [],
         lines: [],
         nextRedemptionId: 1,
@@ -107,6 +113,15 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = 
         async listPricelistItemPrices(pricelistId) {
             state.calls.push('listPricelistItemPrices');
             return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
+        },
+
+        async findPricelistStatus(pricelistId) {
+            state.calls.push('findPricelistStatus');
+            const id = Number(pricelistId);
+            const status = Object.prototype.hasOwnProperty.call(state.pricelistStatusById, id)
+                ? state.pricelistStatusById[id]
+                : 'active';
+            return { pricelist_id: id, status };
         },
 
         async findRedemptionByIdempotencyKey(key) {
@@ -457,6 +472,42 @@ describe('buildRedeemVoucherUseCase', () => {
                 }),
                 VoucherReasonCode.VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS
             );
+        });
+
+        // #717: attach-time status checking (voucherUseCases.js's assertPricelistRef) does not
+        // protect against a pricelist archived AFTER a voucher already attached it -- this is the
+        // use-time re-check that closes that gap. Checkout fails closed (contrast the display
+        // use case's fail-open behavior, covered in voucherDisplayUseCases.usecases.test.js).
+        it('fails closed with VOUCHER_PRICELIST_NOT_ACTIVE when the attached pricelist has been archived', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } },
+                pricelistStatusById: { 7: 'archived' }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-4', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICELIST_NOT_ACTIVE
+            );
+            // Fails BEFORE the price lookup and before anything reserves -- an archived pricelist
+            // must not burn a redemption either.
+            expect(repository.__state.calls).not.toContain('listPricelistItemPrices');
+            expect(repository.__state.calls).not.toContain('reserveRedemption');
+        });
+
+        it('succeeds when the attached pricelist is still active (explicit status, not just the default)', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } },
+                pricelistStatusById: { 7: 'active' }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-5', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
         });
     });
 

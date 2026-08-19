@@ -67,16 +67,22 @@ export const VoucherReasonCode = Object.freeze({
     VOUCHER_PRICELIST_CONFLICT: 'VOUCHER_PRICELIST_CONFLICT',
     VOUCHER_PRICELIST_REF_NOT_FOUND: 'VOUCHER_PRICELIST_REF_NOT_FOUND',
     // A voucher may only attach an `active` pricelist -- a `draft` pricelist's rows are still being
-    // edited (and may be mid-autosave), and an `archived` one is retired. This is checked at
-    // attach-time only, matching how `assertScopeRefsExist` validates scope references at attach-time
-    // and not continuously; a pricelist archived after a voucher already attached it is not retroactively
-    // detached.
+    // edited (and may be mid-autosave), and an `archived` one is retired. `assertPricelistRef`
+    // (voucherUseCases.js) checks this at attach-time. #717: status is now ALSO re-checked at use
+    // time (redemption and display), not attach-time only -- see voucherRedemptionUseCases.js and
+    // voucherDisplayUseCases.js. This code is raised by both checks.
     VOUCHER_PRICELIST_NOT_ACTIVE: 'VOUCHER_PRICELIST_NOT_ACTIVE',
 
     // Pricelist lifecycle codes, mirroring the equivalent voucher codes above one for one.
     PRICELIST_NOT_FOUND: 'PRICELIST_NOT_FOUND',
     PRICELIST_VERSION_CONFLICT: 'PRICELIST_VERSION_CONFLICT',
     PRICELIST_ARCHIVED_IMMUTABLE: 'PRICELIST_ARCHIVED_IMMUTABLE',
+    // #717: raised by POST /:id/archive when at least one voucher still references this pricelist
+    // (`countVouchersUsingPricelist`, checked inside the same lock as the archive itself) -- without
+    // this, archiving a pricelist a live voucher attached silently left that voucher pricing every
+    // future redemption against a retired price list (VOUCHER_PRICELIST_NOT_ACTIVE closes that gap
+    // at use-time; this code is the earlier, better UX -- catch it before the archive commits).
+    PRICELIST_IN_USE_BY_VOUCHER: 'PRICELIST_IN_USE_BY_VOUCHER',
     PRICELIST_ITEM_REF_NOT_FOUND: 'PRICELIST_ITEM_REF_NOT_FOUND',
     // Raised by POST /:id/publish when the target is neither a draft revision
     // (`draft_of_pricelist_id` set) nor a first-time-publishable draft (`status: 'draft'` with no

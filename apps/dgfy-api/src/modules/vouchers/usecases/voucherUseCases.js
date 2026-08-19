@@ -282,8 +282,10 @@ const assertScopeRefs = async (repository, scopes, transaction) => {
  * #696: validate a voucher's `pricelist_id` reference the same way `assertScopeRefs` validates
  * scope references -- inside the transaction, before the write, so a bad reference rolls the whole
  * create/update back. A voucher may only attach an `active` pricelist: `draft` rows may be
- * mid-autosave, and `archived` ones are retired. Checked at attach-time only, matching
- * `assertScopeRefsExist`'s own attach-time-only contract.
+ * mid-autosave, and `archived` ones are retired. Checked here at attach-time, matching
+ * `assertScopeRefsExist`'s own attach-time-only contract -- but #717 ALSO re-checks status at use
+ * time now (voucherRedemptionUseCases.js, fail-closed; voucherDisplayUseCases.js, fail-open), so a
+ * pricelist archived after a voucher already attached it is no longer silently honored forever.
  */
 const assertPricelistRef = async (repository, pricelistId, transaction) => {
     if (pricelistId == null) return;
