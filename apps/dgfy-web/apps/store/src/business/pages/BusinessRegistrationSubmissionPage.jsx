@@ -40,7 +40,7 @@ export function BusinessRegistrationSubmissionPage() {
               <div>
                 <h2 className="text-sm font-bold text-[#10233f] sm:text-base">We&apos;ll notify you by email</h2>
                 <p className="mt-1 text-xs leading-5 text-[#667085] sm:text-sm">
-                  Check your inbox (and spam folder) for updates.
+                  Check your email inbox (or spam folder) for updates.
                 </p>
               </div>
             </div>
