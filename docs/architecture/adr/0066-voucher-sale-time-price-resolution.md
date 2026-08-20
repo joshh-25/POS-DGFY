@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-08-19
+last_reviewed: 2026-08-20
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -277,6 +277,50 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   production voucher code exists yet to be narrowed out from under a merchant (storefront voucher
   redemption is not on `main` as of this amendment).
 - PR: #667 (originally proposed, with a since-corrected rationale, as PR #705).
+
+### 2026-08-20 — POS voucher redemption ships; narrows #454 decision 6 to capture a customer name (#712)
+
+- Clause narrowed: **#454 decision 6** (*"POS: redemption is transaction-only, no buyer identity
+  captured -- the cashier just enters or scans the code"*), a closed decision record, not itself an
+  ADR clause, but the governing statement this ADR's Decision 8/Consequences item 2 depend on. Not
+  reversed -- narrowed. This ADR carries no clause of its own asserting POS captures no identity, so
+  nothing here needed a `[binding]`/`[default]` supersession; the narrowing is recorded here because
+  this is where POS voucher redemption's behavior is otherwise documented.
+- Change: POS voucher redemption now requires a customer name, matching the pre-existing POS
+  promo-code requirement (`posDiscountPolicy.js`'s `DISCOUNT_CUSTOMER_NAME_REQUIRED` guard, which
+  already excluded only `employee` and the statutory types -- a `voucher` type falls under it with
+  no code change to that guard itself). Settled by Pat, 2026-08-20, during the same session that
+  scoped #712.
+- What this does NOT change: the name is a free-typed string landing on the existing
+  `pos_transaction_discounts.customer_name` column (nullable, no migration). No
+  `store_customer_id`/`dgfy_account_id` is linked to a POS voucher redemption. #586's two-tier
+  tracking model therefore survives unchanged -- per-campaign tracking (redemption count, peso
+  cost, channel mix) already worked on both channels; per-customer tracking (who redeemed, repeat
+  usage) still only works on storefront, exactly as #454 decision 6 originally scoped it. This is a
+  friction/identity-capture narrowing at the point of sale, not a reversal of what tracking
+  capability POS contributes.
+- Gate, for completeness (not itself a narrowing -- restates what #712 implements): a voucher is
+  redeemable at POS when `voucher_pos_redemption_enabled` (#604, tenant-wide, default off) is on
+  **and** the specific voucher's `channels_mask` includes the POS bit (`VOUCHER_CHANNEL_BITS.pos`,
+  already evaluated by `voucherEligibilityPolicy.js`). No `voucher_kind`-based restriction was added
+  -- `channels_mask` already answers "usable at POS," so a second gating mechanism was rejected as
+  redundant.
+- Approval: a voucher discount requires a manager PIN at POS, parity with every other governed
+  discount type per ADR 0033 Decision 7 -- no exception carved out. Flagged, not silently accepted:
+  a follow-up issue questions whether this parity is right for a voucher specifically, since the
+  discount amount is merchant-set and server-enforced rather than cashier-chosen the way a Manual
+  discount is; that issue does not change today's behavior.
+- Also fixed in the same PR, not a clause change: `redeemVoucherUseCase`'s ledger idempotency key
+  was hardcoded to a `storefront:` prefix regardless of the caller's actual `channel` -- a POS
+  redemption would have shared the storefront idempotency namespace. Now derived from `channel`.
+- Also: POS never runs a voucher's discount through `calculatePosDiscount` (the generic percentage/
+  fixed-amount redistributor already used for promo/senior/pwd/employee/manual). A voucher's
+  per-line discounts are already authoritative, computed once by `calculateVoucherBenefit` --
+  re-deriving them via proportional redistribution would silently diverge from that computation,
+  most visibly for `fixed_price` (Decision 5's per-line delta, not a proportional split of one
+  total). `posVoucherDiscountCalculator.js`'s `buildVoucherGovernedCalculation` builds the same
+  return shape directly from `lineAllocations` instead.
+- PR: #712 (child of epic #453).
 
 ## Decision (continued)
 

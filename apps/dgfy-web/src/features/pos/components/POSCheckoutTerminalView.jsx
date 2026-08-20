@@ -22,6 +22,7 @@ import {
     Search,
     ShieldCheck,
     Tag,
+    Ticket,
     UserRound,
     X,
     Eye,
@@ -70,6 +71,9 @@ const DISCOUNT_TYPE_OPTIONS = [
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
     { value: 'pwd', label: 'PWD', icon: Accessibility },
     { value: 'promo', label: 'Promo', icon: Tag },
+    // #712: POS voucher redemption. No client-side validation like Promo -- there is no
+    // enumerating endpoint for a store's vouchers, so the code is submitted and the server decides.
+    { value: 'voucher', label: 'Voucher', icon: Ticket },
     { value: 'manual', label: 'Other', icon: Pencil }
 ];
 
@@ -1687,7 +1691,7 @@ return (
                     </DialogHeader>
 
                     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-                        <div className="grid grid-cols-5 gap-1.5" role="tablist" aria-label="Discount Type">
+                        <div className="grid grid-cols-6 gap-1.5" role="tablist" aria-label="Discount Type">
                             {DISCOUNT_TYPE_OPTIONS.map((option) => {
                                 const TypeIcon = option.icon;
                                 const active = discountDraft.type === option.value;
@@ -1721,7 +1725,7 @@ return (
                         <div id="discount-type-panel" role="tabpanel" className="space-y-3">
                             <div className="grid gap-2.5 sm:grid-cols-2">
                                 {discountDraft.type !== 'employee' && (
-                                    <div className={`space-y-1 ${['senior', 'pwd', 'promo'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
+                                    <div className={`space-y-1 ${['senior', 'pwd', 'promo', 'voucher'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
                                         <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
                                         <div className="relative">
                                             <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -1757,6 +1761,24 @@ return (
                                                 onChange={(e) => setDiscountDraft((p) => ({ ...p, promo_code: e.target.value }))}
                                             />
                                         </div>
+                                    </div>
+                                )}
+
+                                {discountDraft.type === 'voucher' && (
+                                    <div className="space-y-1 col-span-1">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Voucher Code <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <Ticket className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input
+                                                className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                placeholder="Enter voucher code"
+                                                value={discountDraft.voucher_code || ''}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, voucher_code: e.target.value }))}
+                                            />
+                                        </div>
+                                        {/* No client-side code validation, unlike Promo -- nothing enumerates a
+                                            store's vouchers for the POS client. The server decides on submit. */}
+                                        <p className="text-[11px] font-medium text-[#64748B]">Discount amount is confirmed at checkout</p>
                                     </div>
                                 )}
                             </div>

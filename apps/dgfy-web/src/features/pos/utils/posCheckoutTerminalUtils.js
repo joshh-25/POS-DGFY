@@ -37,7 +37,7 @@ export const normalizePromoCode = (value) => String(value || '').trim().toUpperC
 
 export const EMPTY_DISCOUNT_DRAFT = {
     type: 'employee', method: 'percentage', rate: '15', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: ''
+    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: '', voucher_code: ''
 };
 
 export const calculateGovernedDiscount = (cart, application) => {

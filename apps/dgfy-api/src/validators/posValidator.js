@@ -84,7 +84,10 @@ const discountBeneficiarySchema = Joi.object({
 });
 
 const governedDiscountSchema = Joi.object({
-    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
+    // #712: sale-level only -- a voucher's own voucher_scopes/pricelist decides which lines it
+    // touches, matching how the storefront already works. No per-line voucher entry
+    // (checkoutLineSchema.item_discount, below) is added for this type.
+    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').required(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
     method: Joi.string().valid('percentage', 'fixed').optional(),
     rate: Joi.number().min(0).max(100).allow(null).optional(),
@@ -95,6 +98,10 @@ const governedDiscountSchema = Joi.object({
     employee_id: Joi.string().trim().max(100).allow('', null).optional(),
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // 40 matches VOUCHER_CODE_PATTERN's own cap (voucherValidator.js) -- narrower than
+    // vouchers.code's VARCHAR(64) because the fiscal audit column this rides on
+    // (pos_transaction_discounts.promo_code) is itself VARCHAR(40).
+    voucher_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     reason: Joi.string().trim().max(500).allow('', null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
@@ -111,7 +118,7 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
-    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').optional()
 });
 
 const checkoutPosSchema = Joi.object({
