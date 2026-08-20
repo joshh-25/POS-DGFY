@@ -748,7 +748,7 @@ return (
                                 configuredLargeSrc: largePosImageSrc,
                                 src: posImageSrc
                             } = imageSources;
-                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
+                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(String(item.item_id));
                             const cartQuantityForItem = safeCart
                                 .filter((line) => line.item_id === item.item_id)
                                 .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
@@ -805,13 +805,21 @@ return (
                                                     if (advanceAssetImageFallback(event, [largePosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
-                                                        next.add(item.item_id);
+                                                        next.add(String(item.item_id));
                                                         return next;
                                                     });
                                                 }}
                                             />
                                         ) : (
-                                            <div className="flex h-full w-full items-center justify-center text-center">
+                                            <div
+                                                className="flex h-full w-full items-center justify-center bg-slate-100 text-center"
+                                                style={imageSources.placeholderSrc ? {
+                                                    backgroundImage: `url(${imageSources.placeholderSrc})`,
+                                                    backgroundPosition: 'center',
+                                                    backgroundRepeat: 'no-repeat',
+                                                    backgroundSize: 'cover'
+                                                } : undefined}
+                                            >
                                                 {isLoadingServiceOptions ? (
                                                     <span className="px-2 text-xs font-semibold text-[#64748B]">Loading options…</span>
                                                 ) : null}

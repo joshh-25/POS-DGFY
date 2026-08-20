@@ -3,6 +3,11 @@ import { getFolders } from '@/services/itemService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { fetchPosCatalog } from '../services/posService';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
+import { buildOfflinePosScopeKey } from '../services/offlinePosScope.js';
+import {
+    loadPosCatalogImageFailures,
+    savePosCatalogImageFailures
+} from '../services/posCatalogImageFailureStore.js';
 import {
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
@@ -46,8 +51,29 @@ export const usePosCatalogWorkflow = ({
     setReceiptSettings = () => {},
     setLowStockDisplayThreshold = () => {}
 } = {}) => {
+    const catalogImageFailureScope = useMemo(() => ({
+        tenantId: offlineSnapshotScope?.tenantId ?? offlineSnapshotScope?.tenant_id,
+        terminalId: offlineSnapshotScope?.terminalId ?? offlineSnapshotScope?.terminal_id,
+        locationId: offlineSnapshotScope?.locationId ?? offlineSnapshotScope?.location_id,
+        userId: offlineSnapshotScope?.userId ?? offlineSnapshotScope?.user_id
+    }), [
+        offlineSnapshotScope?.locationId,
+        offlineSnapshotScope?.location_id,
+        offlineSnapshotScope?.tenantId,
+        offlineSnapshotScope?.tenant_id,
+        offlineSnapshotScope?.terminalId,
+        offlineSnapshotScope?.terminal_id,
+        offlineSnapshotScope?.userId,
+        offlineSnapshotScope?.user_id
+    ]);
+    const catalogImageFailureScopeKey = useMemo(
+        () => buildOfflinePosScopeKey(catalogImageFailureScope),
+        [catalogImageFailureScope]
+    );
     const [catalog, setCatalog] = useState([]);
-    const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
+    const [catalogImageErrors, setCatalogImageErrorsState] = useState(
+        () => loadPosCatalogImageFailures(catalogImageFailureScope)
+    );
     const [catalogError, setCatalogError] = useState('');
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
@@ -85,6 +111,28 @@ export const usePosCatalogWorkflow = ({
     const searchBackspaceIntervalRef = useRef(null);
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
+    const catalogImageFailuresDirtyRef = useRef(false);
+
+    const setCatalogImageErrors = useCallback((nextOrUpdater) => {
+        setCatalogImageErrorsState((previous) => {
+            const next = typeof nextOrUpdater === 'function'
+                ? nextOrUpdater(previous)
+                : nextOrUpdater;
+            catalogImageFailuresDirtyRef.current = true;
+            return next instanceof Set ? new Set(next) : new Set(Array.isArray(next) ? next : []);
+        });
+    }, []);
+
+    useEffect(() => {
+        catalogImageFailuresDirtyRef.current = false;
+        setCatalogImageErrorsState(loadPosCatalogImageFailures(catalogImageFailureScope));
+    }, [catalogImageFailureScope, catalogImageFailureScopeKey]);
+
+    useEffect(() => {
+        if (!catalogImageFailuresDirtyRef.current || !catalogImageFailureScopeKey) return;
+        savePosCatalogImageFailures(catalogImageFailureScope, catalogImageErrors);
+        catalogImageFailuresDirtyRef.current = false;
+    }, [catalogImageErrors, catalogImageFailureScope, catalogImageFailureScopeKey]);
 
     useEffect(() => {
         catalogSnapshotRef.current = catalog;
@@ -148,7 +196,6 @@ export const usePosCatalogWorkflow = ({
             const data = await fetchPosCatalog(buildCatalogRequestParams(search, selectedLocationId));
             if (catalogRequestSequenceRef.current !== requestSequence) return;
             setCatalog(data || []);
-            setCatalogImageErrors(new Set());
             if (!search) {
                 saveCatalogSnapshot(data || []);
             }
@@ -302,8 +349,14 @@ export const usePosCatalogWorkflow = ({
         [catalogForDisplay, catalogPage, catalogPageSize]
     );
     const nextCatalogImageUrls = useMemo(
-        () => getNextCatalogImageUrls(catalogForDisplay, catalogPage, catalogPageSize, totalCatalogPages),
-        [catalogForDisplay, catalogPage, catalogPageSize, totalCatalogPages]
+        () => getNextCatalogImageUrls(
+            catalogForDisplay,
+            catalogPage,
+            catalogPageSize,
+            totalCatalogPages,
+            catalogImageErrors
+        ),
+        [catalogForDisplay, catalogImageErrors, catalogPage, catalogPageSize, totalCatalogPages]
     );
     const visibleCatalogRange = useMemo(
         () => getVisibleCatalogRange(catalogForDisplay.length, catalogPage, catalogPageSize, visibleCatalogItems.length),
