@@ -63,6 +63,8 @@ export function SimpleCatalogToolbar({
 
   // #694: same entry point StorefrontCatalogToolbar.jsx adds for fnb/retail -- applying a code here
   // re-fetches the catalog in place, no new data flow needed.
+  // #750 (RF-5, PR #753 review): see StorefrontCatalogToolbar.jsx's own note -- same fix, same
+  // reasoning. No `triggerLabel` passed here deliberately.
   const voucherEntry = handleVoucherCardApply ? (
     <VoucherCodePanel
       code={checkoutVoucherCode}
@@ -74,7 +76,6 @@ export function SimpleCatalogToolbar({
       bodyFont={bodyFont}
       isMobile={isMobileViewport}
       helperText="Prices update in place below -- no need to open checkout."
-      // #750: see StorefrontCatalogToolbar.jsx's own note -- same fix, same reasoning.
     />
   ) : null;
 
