@@ -42,10 +42,10 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
     expect(fs.existsSync(oldPath)).toBe(false);
   });
 
-  // #776/#695: PromoCodePanel hidden from checkout (not deleted -- see the hook's own comment for
-  // why), since every real promo this codebase had was converted into a voucher and its settings
-  // deleted by the #695 migration, leaving PromoCodePanel with nothing to apply against.
-  // PromoCodePanel.jsx itself must still exist -- only the renderer's usage of it is gone.
+  // #776/#695: PromoCodePanel merged into VoucherCodePanel rather than stacked alongside it (see
+  // the renderer hook's own comment for the full reasoning) -- its "Available Promos" listing lives
+  // on in VoucherCodePanel's availableOffers prop instead. PromoCodePanel.jsx itself must still
+  // exist -- only the renderer's usage of it is gone.
   it('no longer renders PromoCodePanel from the checkout promo-panel renderer', () => {
     const source = promoRenderersSource();
     expect(source).not.toContain('<PromoCodePanel');
@@ -55,6 +55,11 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
   it('PromoCodePanel.jsx itself is left in place, not deleted', () => {
     const panelPath = path.join(appRoot, 'modes/fnb/checkout/components/PromoCodePanel.jsx');
     expect(fs.existsSync(panelPath)).toBe(true);
+  });
+
+  it('the checkout promo-panel renderer feeds promoSectionModel into VoucherCodePanel as availableOffers', () => {
+    const source = promoRenderersSource();
+    expect(source).toMatch(/availableOffers=\{Array\.isArray\(promoSectionModel\) \? promoSectionModel : \[\]\}/);
   });
 
   for (const [label, sourceFn] of [
