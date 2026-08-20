@@ -1,9 +1,13 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Menu, UserRound } from 'lucide-react';
+import { Bell, Info, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
 import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import {
+  POS_UPDATE_NOTICE_EVENT,
+  readPosUpdateNoticeState
+} from '../utils/posUpdateNotice.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
@@ -28,6 +32,44 @@ const preloadWorkspaceForViewMode = (viewMode) => (
     ? loadPOSCheckoutTerminal().catch(() => {})
     : loadTerminalOperationsWorkspace().catch(() => {})
 );
+
+function PosUpdateNotice() {
+  const [notice, setNotice] = useState(() => readPosUpdateNoticeState());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const syncNotice = () => setNotice(readPosUpdateNoticeState());
+    window.addEventListener(POS_UPDATE_NOTICE_EVENT, syncNotice);
+    syncNotice();
+    return () => window.removeEventListener(POS_UPDATE_NOTICE_EVENT, syncNotice);
+  }, []);
+
+  if (!notice) return null;
+
+  return (
+    <div
+      className="fixed right-3 top-3 z-[100] w-[calc(100vw-1.5rem)] max-w-[24rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.16)]"
+      role="status"
+      data-testid="pos-update-ready-notice"
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white" aria-hidden="true">
+          <Info size={13} strokeWidth={2.5} />
+        </span>
+        <p className="min-w-0 flex-1 font-medium leading-5">{notice.blockedMessage || notice.message}</p>
+        {notice.activate ? (
+          <button
+            type="button"
+            className="shrink-0 rounded-md bg-slate-950 px-2.5 py-1.5 text-[11px] font-extrabold text-white hover:bg-slate-800"
+            onClick={() => notice.activate?.()}
+          >
+            Update now
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export default function TerminalPageLayout({
     locked,
@@ -176,6 +218,7 @@ export default function TerminalPageLayout({
     setFormData,
     dgfyPosState = {},
     emailCompanyLookup = {},
+    unlockFailure = null,
     submitting,
     handleLogin,
     handleDayCloseLogin = null,
@@ -378,6 +421,19 @@ export default function TerminalPageLayout({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [notificationsOpen, companyMenuOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const documentScrollLockClassName = 'dgfy-pos-document-scroll-lock';
+    document.documentElement.classList.add(documentScrollLockClassName);
+    document.body?.classList.add(documentScrollLockClassName);
+
+    return () => {
+      document.documentElement.classList.remove(documentScrollLockClassName);
+      document.body?.classList.remove(documentScrollLockClassName);
+    };
+  }, []);
 
   const notificationPanel = null;
 
@@ -643,6 +699,7 @@ export default function TerminalPageLayout({
       </div>
 
       <IminTerminalFeedback />
+      <PosUpdateNotice />
 
       <div
         ref={workspacePaneRef}
@@ -938,6 +995,7 @@ export default function TerminalPageLayout({
           setFormData={setFormData}
           dgfyPosState={dgfyPosState}
           emailCompanyLookup={emailCompanyLookup}
+          unlockFailure={unlockFailure}
           terminalIdOptions={terminalIdOptions}
           terminalRegistry={terminalRegistry}
           terminalRegistryMode={terminalRegistryMode}

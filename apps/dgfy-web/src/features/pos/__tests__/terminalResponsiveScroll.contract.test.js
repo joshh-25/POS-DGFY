@@ -48,6 +48,18 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
   });
 
+  it('locks only the outer POS document scroll while preserving inner scroll regions', () => {
+    expect(terminalLayoutContent).toContain("const documentScrollLockClassName = 'dgfy-pos-document-scroll-lock';");
+    expect(terminalLayoutContent).toContain('document.documentElement.classList.add(documentScrollLockClassName);');
+    expect(terminalLayoutContent).toContain('document.body?.classList.add(documentScrollLockClassName);');
+    expect(terminalLayoutContent).toContain('document.documentElement.classList.remove(documentScrollLockClassName);');
+    expect(terminalLayoutContent).toContain('document.body?.classList.remove(documentScrollLockClassName);');
+    expect(appStylesContent).toContain('html.dgfy-pos-document-scroll-lock,');
+    expect(appStylesContent).toContain('body.dgfy-pos-document-scroll-lock {');
+    expect(appStylesContent).toContain('overflow: hidden;');
+    expect(posHistoryContent).toContain('overflow-y-auto');
+  });
+
   it('keeps the mobile navigation control available in the persistent header', () => {
     expect(terminalLayoutContent).toContain("aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}");
     expect(terminalLayoutContent).toContain('setMobileNavOpen(true);');

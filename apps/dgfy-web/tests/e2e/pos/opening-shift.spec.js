@@ -100,8 +100,17 @@ test.describe('POS opening-shift flow', () => {
         return;
       }
 
+      const incomingQueueEnabled = await page
+        .getByRole('button', { name: /^Orders \(/ })
+        .isVisible()
+        .catch(() => false);
+
       const existingOpenShiftDialog = page.locator('div.fixed.inset-0').filter({ hasText: 'No open shift is active.' }).last();
-      if (!(await existingOpenShiftDialog.isVisible().catch(() => false))) {
+      const dialogAppeared = await existingOpenShiftDialog
+        .waitFor({ state: 'visible', timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!dialogAppeared) {
         await page.getByRole('button', { name: /^Shift/ }).click();
         await expect(page.getByText('Open Shift', { exact: true }).last()).toBeVisible();
       }
@@ -124,6 +133,15 @@ test.describe('POS opening-shift flow', () => {
       await openingInput.fill(String(createdOpeningCash));
       await expect(openButton).toBeEnabled();
 
+      const incomingQueueResponsePromise = incomingQueueEnabled
+        ? page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return url.pathname.endsWith('/api/v1/pos/incoming-orders')
+            && Number(url.searchParams.get('shift_id')) > 0
+            && Number(url.searchParams.get('location_id')) > 0;
+        }, { timeout: 15_000 }).catch(() => null)
+        : Promise.resolve(null);
+
       const openResponsePromise = page.waitForResponse(
         (response) => /\/api\/v1\/pos\/terminal\/shifts\/open$/.test(new URL(response.url()).pathname),
         { timeout: 15_000 }
@@ -139,6 +157,12 @@ test.describe('POS opening-shift flow', () => {
       const openedCurrentBody = await readJson(openedCurrentResponse);
       expect(openedCurrentResponse.status(), `opened shift could not be read back: ${JSON.stringify(openedCurrentBody)}`).toBe(200);
       expect(openedCurrentBody?.data?.shift?.pos_terminal_shift_id).toBe(createdShiftId);
+
+      if (incomingQueueEnabled) {
+        const incomingQueueResponse = await incomingQueueResponsePromise;
+        expect(incomingQueueResponse, 'newly opened shift did not trigger an incoming queue refresh').toBeTruthy();
+        expect(incomingQueueResponse.status()).toBe(200);
+      }
     } finally {
       if (createdShiftId) {
         await closeCreatedShift(page.request, authHeaders, createdShiftId, createdOpeningCash);

@@ -106,4 +106,23 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Day Close / Z-reading' }));
     expect(onDayCloseSubmit).toHaveBeenCalledTimes(1);
   });
+
+  it('does not render a duplicate inline sign-in failure block', () => {
+    render(
+      <TerminalLockDrawer
+        drawerOpen
+        formData={{ ...baseFormData, email: 'admin@test.com', password: 'wrong-password' }}
+        setFormData={vi.fn()}
+        dgfyPosState={{ authenticated: false, companies: [] }}
+        unlockFailure={{ message: 'Invalid email or password.', status: 401, ref: 'POS-TEST-401' }}
+        submitting={false}
+        onSubmit={vi.fn()}
+        onLegacySubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('pos-terminal-login-error')).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'DGFY or Cashier Email' })).toBeTruthy();
+    expect(screen.getByLabelText('Password')).toBeTruthy();
+  });
 });

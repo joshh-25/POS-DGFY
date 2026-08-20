@@ -346,6 +346,11 @@ body {
   font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
 }
 
+html.dgfy-pos-document-scroll-lock,
+body.dgfy-pos-document-scroll-lock {
+  overflow: hidden;
+}
+
 @supports (height: 100dvh) {
   .dgfy-pos-shell {
     height: 100dvh;

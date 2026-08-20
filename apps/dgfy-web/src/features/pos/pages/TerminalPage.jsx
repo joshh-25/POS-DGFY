@@ -115,7 +115,11 @@ import {
   blurActiveTerminalEditor,
   restoreTerminalViewportAfterUnlock
 } from '../utils/terminalViewportRecovery.js';
-import { isPosOnlineOrderQueueEnabled } from '../utils/posOperationalVisibility.js';
+import {
+  hasUsableIncomingOrderShift,
+  isIncomingOrderShiftUnavailableError,
+  isPosOnlineOrderQueueEnabled
+} from '../utils/posOperationalVisibility.js';
 import {
   DEFAULT_POS_TEXT_SIZE,
   readPosTextSizePreference,
@@ -493,10 +497,8 @@ export default function TerminalPage() {
   });
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
-  // Persistent inline failure surfaced in the Open Shift dialogs, replacing
-  // reliance on the auto-dismissing top-right toast for a failure the
-  // cashier needs to actually read and possibly relay to a supervisor. See
-  // reportTerminalFailure below, which is what populates this.
+  // Failure details are retained for the Open Shift dialogs. Direct terminal
+  // sign-in failures use the floating toast so the login drawer stays clear.
   const [unlockFailure, setUnlockFailure] = useState(null);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
@@ -547,7 +549,7 @@ export default function TerminalPage() {
     loading: false
   });
   const [legacyDgfyLinkBannerDismissed, setLegacyDgfyLinkBannerDismissed] = useState(false);
-  const posHardware = usePosHardware();
+  const posHardware = usePosHardware({ enabled: Boolean(terminalUser) });
 
   const [shiftState, setShiftState] = useState({
     loading: false,
@@ -631,6 +633,7 @@ export default function TerminalPage() {
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const shiftClosedToastIdRef = useRef(null);
+  const incomingOrdersShiftBlockedRef = useRef(false);
   const [incomingOrderModalOpen, setIncomingOrderModalOpen] = useState(false);
   const [incomingOrderReceiptOpen, setIncomingOrderReceiptOpen] = useState(false);
   const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
@@ -1414,11 +1417,14 @@ export default function TerminalPage() {
 
   useEffect(() => {
     const shiftLocationId = Number(shiftState?.shift?.location_id || 0);
-    const shiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
-    const hasActiveShiftLocation = Number.isInteger(shiftLocationId)
-      && shiftLocationId > 0
-      && Number.isInteger(shiftId)
-      && shiftId > 0;
+    const hasActiveShiftLocation = hasUsableIncomingOrderShift({
+      pos_terminal_shift_id: shiftState?.shift?.pos_terminal_shift_id,
+      location_id: shiftState?.shift?.location_id,
+      status: shiftState?.shift?.status,
+      closed_at: shiftState?.shift?.closed_at,
+      closedAt: shiftState?.shift?.closedAt
+    });
+    incomingOrdersShiftBlockedRef.current = !hasActiveShiftLocation;
     setQueueLocationScopeId(hasActiveShiftLocation ? shiftLocationId : null);
     setIncomingOrdersState({
       loading: false,
@@ -1430,7 +1436,14 @@ export default function TerminalPage() {
         ? 'Open a shift to view orders for this branch.'
         : ''
     });
-  }, [onlineOrderQueueEnabled, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
+  }, [
+    onlineOrderQueueEnabled,
+    shiftState?.shift?.closedAt,
+    shiftState?.shift?.closed_at,
+    shiftState?.shift?.location_id,
+    shiftState?.shift?.pos_terminal_shift_id,
+    shiftState?.shift?.status
+  ]);
 
   const refreshIncomingOrders = useCallback(async ({ silent = false } = {}) => {
     if (!onlineOrderQueueEnabled) {
@@ -1466,6 +1479,15 @@ export default function TerminalPage() {
         ...previous,
         loading: false
       }));
+      return;
+    }
+    if (incomingOrdersShiftBlockedRef.current) {
+      setIncomingOrdersState({
+        loading: false,
+        orders: [],
+        accessState: 'shift_required',
+        errorMessage: 'Open a shift to view orders for this branch.'
+      });
       return;
     }
     const activeQueueShiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
@@ -1511,16 +1533,28 @@ export default function TerminalPage() {
       });
     } catch (error) {
       const isForbidden = error?.response?.status === 403;
+      const isShiftUnavailable = isIncomingOrderShiftUnavailableError(error);
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (isShiftUnavailable) {
+        incomingOrdersShiftBlockedRef.current = true;
+        setShiftState((previous) => {
+          const currentShiftId = Number(previous?.shift?.pos_terminal_shift_id || 0);
+          return currentShiftId === activeQueueShiftId
+            ? { loading: false, shift: null, cashSummary: null, salesSummary: null }
+            : previous;
+        });
+      }
       setIncomingOrdersState({
         loading: false,
         orders: [],
-        accessState: isForbidden ? 'forbidden' : 'error',
-        errorMessage: isForbidden
+        accessState: isShiftUnavailable ? 'shift_required' : (isForbidden ? 'forbidden' : 'error'),
+        errorMessage: isShiftUnavailable
+          ? 'Open a shift to view orders for this branch.'
+          : (isForbidden
           ? (error?.response?.data?.message || 'Incoming orders are limited to the active shift location.')
-          : (offline ? 'You are offline. Incoming queue refresh is temporarily unavailable.' : (error?.response?.data?.message || 'Failed to load incoming online orders.'))
+          : (offline ? 'You are offline. Incoming queue refresh is temporarily unavailable.' : (error?.response?.data?.message || 'Failed to load incoming online orders.')))
       });
-      if (!silent && !offline) {
+      if (!isShiftUnavailable && !silent && !offline) {
         toast.error(error?.response?.data?.message || 'Failed to load incoming online orders.');
       }
     }
@@ -2925,17 +2959,16 @@ export default function TerminalPage() {
   // resolves the operator-facing message the same way the toast always has,
   // classifies whether it was a real network failure, a real HTTP error, or
   // a locally-thrown check (see classifyTerminalLoginFailure), then (a)
-  // keeps the toast for at-a-glance visibility, (b) populates the inline
-  // panel with a short reference code so the message survives long enough
-  // to read and can be relayed to a supervisor, and (c) sends it to Sentry
+  // keeps the toast for at-a-glance visibility, (b) retains a short reference
+  // code for the Open Shift dialog when that flow needs it, and (c) sends it to Sentry
   // -- including local throws, which never touch axios and were previously
   // invisible in observability entirely.
-  const reportTerminalFailure = (error, flow) => {
+  const reportTerminalFailure = (error, flow, { showToast = true } = {}) => {
     const message = resolveTerminalLoginErrorMessage(error);
     const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
     const method = String(error?.config?.method || '').toUpperCase() || '';
     const ref = createTerminalErrorRef();
-    toast.error(message);
+    if (showToast) toast.error(message);
     setUnlockFailure({ message, method, requestPath, status, ref });
     captureTerminalFlowFailure({ error, flow, ref, requestPath, status, kind });
   };
@@ -3074,6 +3107,7 @@ export default function TerminalPage() {
       openingFloatAmount: '',
       openingNote: ''
     });
+    setDrawerOpen(false);
     setTerminalUnlockModalOpen(false);
     setUnlockFailure(null);
     await notifyStockAlertsAfterUnlock();
@@ -5770,6 +5804,7 @@ function PosRestorationLoadingScreen() {
           setFormData={setFormData}
           dgfyPosState={dgfyPosState}
           emailCompanyLookup={emailCompanyLookup}
+          unlockFailure={unlockFailure}
           submitting={submitting}
           handleLogin={handleDgfyPosLogin}
           handleDayCloseLogin={(event) => handleDgfyPosLogin(event, { intent: 'day_close' })}

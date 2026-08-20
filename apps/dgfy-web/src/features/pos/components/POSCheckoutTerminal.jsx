@@ -27,6 +27,7 @@ import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
+import { publishPosUpdateSafetyState } from '../utils/posUpdateSafety.js';
 import { getItemDiscountDraft } from '../utils/posItemDiscount.js';
 import {
     EMPTY_DISCOUNT_DRAFT,
@@ -211,7 +212,7 @@ export default function POSCheckoutTerminal({
     const [commercialPromoConfig, setCommercialPromoConfig] = useState([]);
     const [discountApprovers, setDiscountApprovers] = useState([]);
     const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
-    const posHardware = usePosHardware();
+    const posHardware = usePosHardware({ enabled: Boolean(terminalUser) });
     const [imagePreview, setImagePreview] = useState(null);
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
     useEffect(() => {
@@ -249,17 +250,11 @@ export default function POSCheckoutTerminal({
         terminalUser?.id,
         terminalUser?.user_id
     ]);
-    const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
-    const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
-    useEffect(() => {
-        if (!checkoutConfirmModalOpen || !customerPaymentAmountAutoFilled) return;
-        setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
-    }, [cartTotal, checkoutConfirmModalOpen, customerPaymentAmountAutoFilled]);
     const offlineSnapshotScope = useMemo(() => ({
         tenantId: providedOfflineSnapshotScope?.tenantId,
         terminalId: providedOfflineSnapshotScope?.terminalId || normalizedTerminalId,
@@ -472,6 +467,7 @@ export default function POSCheckoutTerminal({
         isCashPayment,
         isEmployeeCreditPayment,
         customerPaymentAmount,
+        customerPaymentAmountState,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
         customerPaymentChange,
@@ -496,7 +492,7 @@ export default function POSCheckoutTerminal({
         eligibleDiscountItemIds: safeEligibleDiscountItemIds,
         normalizedFnbContext,
         paymentType,
-        customerPaymentAmountInput,
+        checkoutConfirmModalOpen,
         employeeCreditAccount,
         selectedEmployeeCreditOption,
         splitPaymentSession
@@ -589,6 +585,52 @@ export default function POSCheckoutTerminal({
             document.body.classList.remove('pos-modal-scroll-lock');
         };
     }, [checkoutConfirmModalOpen, discountModalOpen, drawerAuthorizationModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen, splitPaymentDialogOpen]);
+
+    useEffect(() => {
+        if (!IS_DGFY_POS_SURFACE) return undefined;
+        publishPosUpdateSafetyState({
+            cartLineCount: safeCart.length,
+            checkoutLoading,
+            checkoutConfirmModalOpen,
+            splitPaymentDialogOpen,
+            splitPaymentSession,
+            replayingQueuedCheckouts,
+            receiptPrinting,
+            billRequestPrinting,
+            receiptPreviewModalOpen,
+            drawerOpening,
+            drawerAuthorizationModalOpen,
+            drawerAuthorizationSubmitting,
+            activeParkedSale,
+            parkedSalePayContext,
+            discountModalOpen,
+            discountApplying
+        });
+    }, [
+        activeParkedSale,
+        billRequestPrinting,
+        checkoutConfirmModalOpen,
+        checkoutLoading,
+        discountApplying,
+        discountModalOpen,
+        drawerAuthorizationModalOpen,
+        drawerAuthorizationSubmitting,
+        drawerOpening,
+        parkedSalePayContext,
+        receiptPreviewModalOpen,
+        receiptPrinting,
+        replayingQueuedCheckouts,
+        safeCart.length,
+        splitPaymentDialogOpen,
+        splitPaymentSession
+    ]);
+
+    useEffect(() => {
+        if (!IS_DGFY_POS_SURFACE) return undefined;
+        return () => {
+            publishPosUpdateSafetyState({});
+        };
+    }, []);
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -750,8 +792,7 @@ export default function POSCheckoutTerminal({
         setDiscountModalOpen,
         setShowDiscountPin,
         setAffiliateCodeInput,
-        setCustomerPaymentAmountInput,
-        setCustomerPaymentAmountAutoFilled,
+        ...customerPaymentAmountState,
         setCheckoutConfirmModalOpen,
         setMobileCheckoutPanelOpen,
         setItemOptionsLineKey,
@@ -1330,8 +1371,7 @@ export default function POSCheckoutTerminal({
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
         currentViewMode,
-        customerPaymentAmountInput,
-        customerPaymentAmountAutoFilled,
+        ...customerPaymentAmountState,
         customerPaymentChange,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
@@ -1497,8 +1537,7 @@ export default function POSCheckoutTerminal({
         setClearSaleConfirmOpen,
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
-        setCustomerPaymentAmountInput,
-        setCustomerPaymentAmountAutoFilled,
+        ...customerPaymentAmountState,
         setDiscountDraft,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,

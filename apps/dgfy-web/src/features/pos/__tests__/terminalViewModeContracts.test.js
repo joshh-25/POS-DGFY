@@ -360,8 +360,17 @@ describe('POS terminal view-mode contracts', () => {
   it('enforces incoming queue access-state handling in TerminalPage', () => {
     expect(terminalPageContent).toContain("accessState: 'forbidden'");
     expect(terminalPageContent).toContain("accessState: 'allowed'");
-    expect(terminalPageContent).toContain("accessState: isForbidden ? 'forbidden' : 'error'");
+    expect(terminalPageContent).toContain("accessState: isShiftUnavailable ? 'shift_required' : (isForbidden ? 'forbidden' : 'error')");
     expect(terminalPageContent).toContain("if (!canViewPos && ['incoming_queue'].includes(posViewMode)) {");
+  });
+
+  it('stops incoming-order polling after a closed-shift response and resumes for a new shift', () => {
+    expect(terminalPageContent).toContain('incomingOrdersShiftBlockedRef');
+    expect(terminalPageContent).toContain('hasUsableIncomingOrderShift({');
+    expect(terminalPageContent).toContain('isIncomingOrderShiftUnavailableError(error)');
+    expect(terminalPageContent).toContain("errorMessage: 'Open a shift to view orders for this branch.'");
+    expect(terminalPageContent).toContain('incomingOrdersShiftBlockedRef.current = true;');
+    expect(terminalPageContent).toContain('setShiftState((previous) => {');
   });
 
   it('does not load compliance gate context or block POS checkout from terminal readiness', () => {

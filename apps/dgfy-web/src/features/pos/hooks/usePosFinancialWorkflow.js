@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { calculatePosItemDiscounts } from '../utils/posItemDiscount.js';
 import {
     calculateGovernedDiscount,
@@ -26,10 +27,13 @@ export const usePosFinancialWorkflow = ({
     normalizedFnbContext = null,
     paymentType = 'cash',
     customerPaymentAmountInput = '',
+    checkoutConfirmModalOpen = false,
     employeeCreditAccount = null,
     selectedEmployeeCreditOption = null,
     splitPaymentSession = null
 } = {}) => {
+    const [customerPaymentAmountInputValue, setCustomerPaymentAmountInput] = useState(customerPaymentAmountInput);
+    const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);
     const safeCart = getSafeRows(cart);
     const safeDiscountProfiles = getSafeRows(discountProfiles);
     const safeEligibleDiscountItemIds = getSafeRows(eligibleDiscountItemIds);
@@ -154,11 +158,15 @@ export const usePosFinancialWorkflow = ({
     })();
 
     const cartTotal = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
+    useEffect(() => {
+        if (!checkoutConfirmModalOpen || !customerPaymentAmountAutoFilled) return;
+        setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+    }, [cartTotal, checkoutConfirmModalOpen, customerPaymentAmountAutoFilled]);
     const cartTotalQuantity = safeCart.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
     const isCashPayment = paymentType === 'cash';
     const isEmployeeCreditPayment = paymentType === 'employee_credit';
     const customerPaymentAmount = (() => {
-        const parsed = Number(customerPaymentAmountInput);
+        const parsed = Number(customerPaymentAmountInputValue);
         if (!Number.isFinite(parsed) || parsed < 0) return 0;
         return round4(parsed);
     })();
@@ -214,6 +222,12 @@ export const usePosFinancialWorkflow = ({
         isCashPayment,
         isEmployeeCreditPayment,
         customerPaymentAmount,
+        customerPaymentAmountState: {
+            customerPaymentAmountInput: customerPaymentAmountInputValue,
+            setCustomerPaymentAmountInput,
+            customerPaymentAmountAutoFilled,
+            setCustomerPaymentAmountAutoFilled
+        },
         customerPaymentFieldLabel,
         customerPaymentShortfall,
         customerPaymentChange,
