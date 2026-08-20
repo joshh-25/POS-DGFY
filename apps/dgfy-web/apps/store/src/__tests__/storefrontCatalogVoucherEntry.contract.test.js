@@ -42,6 +42,26 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
     expect(fs.existsSync(oldPath)).toBe(false);
   });
 
+  // #776/#695: PromoCodePanel merged into VoucherCodePanel rather than stacked alongside it (see
+  // the renderer hook's own comment for the full reasoning) -- its "Available Promos" listing lives
+  // on in VoucherCodePanel's availableOffers prop instead. PromoCodePanel.jsx itself must still
+  // exist -- only the renderer's usage of it is gone.
+  it('no longer renders PromoCodePanel from the checkout promo-panel renderer', () => {
+    const source = promoRenderersSource();
+    expect(source).not.toContain('<PromoCodePanel');
+    expect(source).not.toContain("from '../components/PromoCodePanel.jsx'");
+  });
+
+  it('PromoCodePanel.jsx itself is left in place, not deleted', () => {
+    const panelPath = path.join(appRoot, 'modes/fnb/checkout/components/PromoCodePanel.jsx');
+    expect(fs.existsSync(panelPath)).toBe(true);
+  });
+
+  it('the checkout promo-panel renderer feeds promoSectionModel into VoucherCodePanel as availableOffers', () => {
+    const source = promoRenderersSource();
+    expect(source).toMatch(/availableOffers=\{Array\.isArray\(promoSectionModel\) \? promoSectionModel : \[\]\}/);
+  });
+
   for (const [label, sourceFn] of [
     ['StorefrontCatalogToolbar (fnb + retail)', storefrontCatalogToolbarSource],
     ['SimpleCatalogToolbar', simpleCatalogToolbarSource]

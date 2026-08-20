@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 
-import { PromoCodePanel } from '../components/PromoCodePanel.jsx';
 import { VoucherCodePanel } from '../../../../shared/components/storefront/VoucherCodePanel.jsx';
 
 export function useFnbCheckoutPromoRenderers({
@@ -19,12 +18,23 @@ export function useFnbCheckoutPromoRenderers({
   setCheckoutPromoCode,
   setCheckoutVoucherCode
 }) {
-  // #672: renders both the promo panel and the (separate, independent) voucher panel stacked as
-  // one node. Every one of this renderer's existing call sites across retail/simple/fnb checkout
-  // pages just embeds a single returned node (either directly or via a `promoPanel` prop) -- adding
-  // the voucher panel here, rather than touching each of those ~11 call sites individually, gets it
-  // wired everywhere `renderPromoCodePanel` already renders, with the same regression surface as
-  // editing zero of those files.
+  // #672 originally rendered both the promo panel and the (separate, independent) voucher panel
+  // stacked as one node -- every call site across retail/simple/fnb checkout pages just embeds a
+  // single returned node, so wiring both here reached everywhere with zero call-site edits.
+  //
+  // #776/#695: merged into a single VoucherCodePanel rather than stacking two fields. PromoCodePanel
+  // (unused here now, still present at ../components/PromoCodePanel.jsx) is not deleted -- matches
+  // Pat's call to defer the legacy promo engine's actual removal until the voucher-based system is
+  // prod-proven -- but its "Available Promos" listing has been ported into VoucherCodePanel
+  // (availableOffers, fed from promoSectionModel below) so nothing customer-visible is lost. Every
+  // "Use" click on a listed offer now applies through handleVoucherCardApply -- see
+  // VoucherCodePanel.jsx's own file header for why that's safe: every real promo this codebase had
+  // was already converted into a voucher by the #695 migration, and the merchant-facing "Add Promo"
+  // authoring field is frozen in the same change. promoStatusMessage/promoStatusTone/
+  // appliedPromoDiscountText/handlePromoCardApply/checkoutPromoCode/setCheckoutPromoCode are left
+  // fully wired in this hook's signature even though nothing renders them anymore -- unwinding them
+  // would ripple into the same ~11 call sites the original comment above was written to avoid
+  // touching, for a change that's supposed to be UI-only.
   const renderPromoCodePanel = useCallback(({
     compact = false,
     accentColor = '#0f766e',
@@ -32,20 +42,6 @@ export function useFnbCheckoutPromoRenderers({
     isMobile = false
   } = {}) => (
     <div style={{ display: 'grid', gap: 8 }}>
-      <PromoCodePanel
-        code={checkoutPromoCode}
-        onChange={setCheckoutPromoCode}
-        onClear={() => setCheckoutPromoCode('')}
-        onApplyPromo={handlePromoCardApply}
-        statusMessage={promoStatusMessage}
-        statusTone={promoStatusTone}
-        appliedDiscountText={appliedPromoDiscountText}
-        compact={compact}
-        accentColor={accentColor}
-        bodyFont={bodyFont}
-        isMobile={isMobile}
-        availablePromos={Array.isArray(promoSectionModel) ? promoSectionModel : []}
-      />
       <VoucherCodePanel
         code={checkoutVoucherCode}
         onChange={setCheckoutVoucherCode}
@@ -57,6 +53,7 @@ export function useFnbCheckoutPromoRenderers({
         compact={compact}
         bodyFont={bodyFont}
         isMobile={isMobile}
+        availableOffers={Array.isArray(promoSectionModel) ? promoSectionModel : []}
       />
     </div>
   ), [

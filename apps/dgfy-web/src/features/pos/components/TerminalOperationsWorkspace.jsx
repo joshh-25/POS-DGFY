@@ -8655,10 +8655,19 @@ function SettingsWorkspace({
           <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <Label>Promo Codes</Label>
-                <p className="text-[12px] text-slate-500">Commercial storefront promo codes. Senior/PWD discounts stay separate in POS discount rules.</p>
+                <Label>Promo Codes (Legacy)</Label>
+                <p className="text-[12px] text-slate-500">
+                  Promo codes now run on Vouchers -- create new discount codes there instead. Any
+                  existing promo below stays editable, but creating a new one is disabled so nothing
+                  new falls outside the voucher system (#776/#695).
+                </p>
               </div>
-              <Button type="button" variant="outline" onClick={addStorefrontPromo} disabled={storefrontPromoCards.length >= 50}>
+              {/* #776/#695: frozen, not removed -- matches deferring the legacy promo engine's
+                  actual removal until the voucher-based system is prod-proven. Every real promo
+                  this codebase had was already converted to a voucher by the #695 migration, so
+                  this button being disabled blocks zero real merchant workflow today; it exists to
+                  stop a NEW promo being created outside the voucher system going forward. */}
+              <Button type="button" variant="outline" onClick={addStorefrontPromo} disabled title="Promo codes have moved to Vouchers. Create new discount codes there instead.">
                 <Plus className="mr-1 h-4 w-4" />Add Promo
               </Button>
             </div>
