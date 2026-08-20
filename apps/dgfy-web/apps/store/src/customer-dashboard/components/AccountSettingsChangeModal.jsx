@@ -113,7 +113,7 @@ export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, acco
     onStatusChange?.({
       mode,
       status: 'pending',
-      nextStatus: { mode, status: 'error', message },
+      nextStatus: { mode, status: 'unavailable', message },
       delay: 650
     });
     onClose();

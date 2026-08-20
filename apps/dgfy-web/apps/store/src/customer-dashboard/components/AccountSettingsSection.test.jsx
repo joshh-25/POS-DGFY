@@ -145,7 +145,7 @@ describe('AccountSettingsSection responsive composition', () => {
 
     expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('pending');
     expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusSpin');
-    await waitFor(() => expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('error'));
+    await waitFor(() => expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('unavailable'));
     expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusError');
     expect(screen.getByText('Email update is not connected to a saving service yet. The verification UI is ready for backend integration.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
