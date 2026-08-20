@@ -295,7 +295,11 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     const options = { transaction, lock: true };
     const { voucher, benefit } = await resolveEligibleBenefit({ repository, code, context, lines, options });
 
-    const ledgerIdempotencyKey = `storefront:${normalizedIdempotencyKey}:${voucher.voucher_id}`;
+    // #712: derived from the caller's `channel`, not hardcoded -- a hardcoded 'storefront:' prefix
+    // would put a POS redemption's idempotency key in the same namespace as a storefront one,
+    // letting an unrelated storefront replay collide with (or be collided into by) a POS checkout
+    // sharing the same idempotency key value.
+    const ledgerIdempotencyKey = `${channel}:${normalizedIdempotencyKey}:${voucher.voucher_id}`;
 
     const existing = await repository.findRedemptionByIdempotencyKey(ledgerIdempotencyKey, options);
     if (existing) {

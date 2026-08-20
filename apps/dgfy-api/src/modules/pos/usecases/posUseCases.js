@@ -42,7 +42,15 @@ import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
+import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+// #712: direct ESM import of the singleton use case, matching the one existing cross-module
+// precedent (storeUseCases.js imports the same set from '../../vouchers/index.js').
+import {
+    previewVoucherEligibilityUseCase,
+    redeemVoucherUseCase,
+    VoucherReasonCode
+} from '../../vouchers/index.js';
 import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
 import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
@@ -234,7 +242,7 @@ const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && 
 const normalizeTrustedDiscountApproval = (approval = null) => {
     if (!isPlainObject(approval)) return null;
     const discountType = String(approval.discount_type || '').trim().toLowerCase();
-    if (!['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType)) return null;
+    if (!['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(discountType)) return null;
     const approverUserId = parsePositiveInt(approval.approver_user_id);
     if (!approverUserId) return null;
     return {
@@ -2686,6 +2694,10 @@ export const buildCheckoutPosUseCase = ({
                     approver_user_id: parsePositiveInt(payload.governed_discount.approver_user_id),
                     reason: String(payload.governed_discount.reason || '').trim() || null,
                     promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
+                    // #712: must be in the idempotency request hash -- without it, two checkouts
+                    // differing only by voucher code would hash identically and the second would be
+                    // served as a false idempotent replay.
+                    voucher_code: String(payload.governed_discount.voucher_code || '').trim().toUpperCase() || null,
                     eligible_item_ids: [...new Set((payload.governed_discount.eligible_item_ids || [])
                         .map((itemId) => parsePositiveInt(itemId))
                         .filter(Boolean))],
@@ -3242,6 +3254,37 @@ export const buildCheckoutPosUseCase = ({
                 line.item_discount_snapshot = itemDiscountCalculation.lines[index].item_discount_snapshot;
                 delete line.item_discount_draft;
             });
+            // #712: bound with the checkout's own transaction/idempotency key/channel so
+            // posDiscountPolicy.js stays DB-agnostic -- same shape as findActiveRule/
+            // findActiveEmployee just above. `quoteOnly` is the only discriminator POS has for
+            // preview-vs-redeem (storefront uses `options?.transaction` presence instead, but POS
+            // always has an open transaction) -- a mis-wired quote path would otherwise burn a real
+            // redemption on every price check.
+            const redeemVoucher = governedDraft?.type === 'voucher'
+                ? async ({ code, lines: voucherLines }) => {
+                    const resolve = quoteOnly ? previewVoucherEligibilityUseCase : redeemVoucherUseCase;
+                    const context = {
+                        channel: 'pos',
+                        fulfillmentMethod: null,
+                        orderTiming: 'asap',
+                        subtotalCentavos: toCurrencyCents(itemDiscountCalculation.total_amount),
+                        quantity: preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0)
+                    };
+                    if (quoteOnly) {
+                        return resolve({ code, context, lines: voucherLines });
+                    }
+                    return resolve({
+                        code,
+                        context,
+                        lines: voucherLines,
+                        idempotencyKey,
+                        channel: 'pos',
+                        storeCustomerId: null,
+                        locationId: requestedLocationId,
+                        transaction
+                    });
+                }
+                : null;
             const governedResolution = governedDraft
                 ? await resolvePosGovernedDiscount({
                     draft: governedDraft,
@@ -3250,15 +3293,24 @@ export const buildCheckoutPosUseCase = ({
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
-                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
+                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction }),
+                    redeemVoucher
                 })
                 : null;
             const governedApplication = governedResolution?.application || null;
-            if (governedResolution?.promo?.applied && itemPromoResolution?.applied) {
+            const governedVoucher = governedResolution?.voucher || null;
+            if ((governedResolution?.promo?.applied || governedVoucher?.applied) && itemPromoResolution?.applied) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Only one promo code can be applied to a sale.',
-                    { statusCode: 409, details: { reason_code: 'MULTIPLE_PROMO_CODES_NOT_ALLOWED' } }
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: governedVoucher?.applied
+                                ? VoucherReasonCode.VOUCHER_DISCOUNT_SLOT_OCCUPIED
+                                : 'MULTIPLE_PROMO_CODES_NOT_ALLOWED'
+                        }
+                    }
                 );
             }
             const normalizedTrustedDiscountApproval = normalizeTrustedDiscountApproval(trustedDiscountApproval);
@@ -3277,7 +3329,11 @@ export const buildCheckoutPosUseCase = ({
                         discount_type: String(payload.discount_approval.discount_type || '').trim().toLowerCase()
                     }
                     : null);
-            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual'].includes(governedApplication.type)) {
+            // #712: voucher requires a manager PIN, parity with ADR 0033 Decision 7 (Pat's call,
+            // 2026-08-20) -- the amount is merchant-set and server-enforced, not cashier-chosen, but
+            // the same approval discipline applies to every governed discount type without
+            // exception today. See the follow-up issue filed against this decision.
+            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(governedApplication.type)) {
                 if (normalizedDiscountApproval?.discount_type
                     && normalizedDiscountApproval.discount_type !== governedApplication.type) {
                     throw new DomainError(
@@ -3349,20 +3405,29 @@ export const buildCheckoutPosUseCase = ({
                     governedApplication.self_approved = false;
                 }
             }
-            const governedCalculation = governedApplication ? calculatePosDiscount({
-                lines: preparedLines.map((line, index) => ({
-                    ...line,
-                    global_discount_base_amount: itemDiscountCalculation.lines[index].global_discount_base_amount
-                })),
-                application: {
-                    type: governedApplication.type,
-                    method: governedApplication.method,
-                    rate: governedApplication.rate,
-                    amount: governedApplication.amount,
-                    max_discount_amount: governedApplication.max_discount_amount,
-                    lines: governedApplication.lines || []
-                }
-            }) : null;
+            // #712: a voucher's per-line discounts are already authoritative (computed once inside
+            // redeemVoucher, above) -- calculatePosDiscount's generic rate/amount redistribution
+            // must never re-derive them. See posVoucherDiscountCalculator.js's header comment for
+            // why the two are not interchangeable, especially for fixed_price.
+            const governedDiscountLines = preparedLines.map((line, index) => ({
+                ...line,
+                global_discount_base_amount: itemDiscountCalculation.lines[index].global_discount_base_amount
+            }));
+            const governedCalculation = governedApplication
+                ? (governedApplication.type === 'voucher'
+                    ? buildVoucherGovernedCalculation({ lines: governedDiscountLines, voucher: governedVoucher })
+                    : calculatePosDiscount({
+                        lines: governedDiscountLines,
+                        application: {
+                            type: governedApplication.type,
+                            method: governedApplication.method,
+                            rate: governedApplication.rate,
+                            amount: governedApplication.amount,
+                            max_discount_amount: governedApplication.max_discount_amount,
+                            lines: governedApplication.lines || []
+                        }
+                    }))
+                : null;
             const itemDiscountAmount = itemDiscountCalculation.discount_amount;
             const globalDiscountResolution = governedCalculation ? {
                 discountAmount: governedCalculation.discount_amount,

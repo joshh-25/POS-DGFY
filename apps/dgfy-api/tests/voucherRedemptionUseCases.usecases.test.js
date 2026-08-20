@@ -318,6 +318,31 @@ describe('buildRedeemVoucherUseCase', () => {
         expect(repository.__state.lines[0].discount_centavos).toBe(1000);
     });
 
+    // #712: the ledger idempotency key must be namespaced by the CALLER's channel, not hardcoded to
+    // 'storefront:' -- otherwise a POS redemption and a storefront redemption sharing the same
+    // idempotencyKey value would collide in the same namespace and one would be served as a false
+    // replay of the other. Uses a synthetic channel value (not 'pos') deliberately: a real 'pos'
+    // channel here would exercise `resolveVoucherPosRedemptionEnabled()`'s master-switch check,
+    // which reads a real SystemSetting model with no test double in this suite (see the #693 test
+    // above) -- this test isolates the idempotency-key string logic itself, independent of that.
+    it('namespaces the ledger idempotency key by channel, not a hardcoded storefront: prefix', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: 'SAVE10',
+            context: CONTEXT,
+            lines: LINES,
+            idempotencyKey: 'checkout-key-1',
+            channel: 'kiosk',
+            transaction: FAKE_TRANSACTION
+        });
+
+        expect(result.applied).toBe(true);
+        expect(repository.__state.redemptions).toHaveLength(1);
+        expect(repository.__state.redemptions[0].idempotency_key).toBe('kiosk:checkout-key-1:1');
+        expect(repository.__state.redemptions[0].idempotency_key).not.toBe('storefront:checkout-key-1:1');
+    });
+
     it('is idempotent: a replayed checkout key returns the existing row and does not re-mutate', async () => {
         const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
         const redeem = buildRedeemVoucherUseCase({ repository });
