@@ -29,6 +29,10 @@ export function useFnbCartDrawerRouteProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  isQuoteStale = false,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
   return useMemo(() => ({
@@ -53,6 +57,10 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    isQuoteStale,
+    voucherDiscountAmount,
     withAssetOrigin
   }), [
     cart,
@@ -79,6 +87,10 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    isQuoteStale,
+    voucherDiscountAmount,
     withAssetOrigin
   ]);
 }

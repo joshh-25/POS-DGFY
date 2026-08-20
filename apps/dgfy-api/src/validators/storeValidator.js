@@ -43,6 +43,9 @@ const storeQuoteSchema = Joi.object({
     location_id: Joi.number().integer().positive().allow(null).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('delivery'),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // Storefront voucher redemption (Phase 105, #455). Symmetric to promo_code, but max(64) to
+    // match vouchers.code's column width -- see src/models/Voucher.js.
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
     customer_email: Joi.string().email().trim().lowercase().max(255).allow('', null).optional(),
@@ -117,12 +120,14 @@ const storeOrderHistoryQuerySchema = Joi.object({
 const storeCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
     limit: Joi.number().integer().min(1).max(200).default(60),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storeQrQuerySchema = Joi.object({
     code: Joi.string().trim().max(512).required(),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storefrontFollowBaseSchema = Joi.object({

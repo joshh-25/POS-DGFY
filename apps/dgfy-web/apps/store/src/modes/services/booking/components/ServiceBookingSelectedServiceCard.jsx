@@ -1,5 +1,6 @@
 import React from 'react';
 import { CalendarDays, Clock3 } from 'lucide-react';
+import { ServiceImage } from '../../ServiceImage.jsx';
 
 export function ServiceBookingSelectedServiceCard({
   STYLES,
@@ -36,7 +37,7 @@ export function ServiceBookingSelectedServiceCard({
               width: isMobileViewport ? 58 : 72,
               height: isMobileViewport ? 58 : 72,
               borderRadius: isMobileViewport ? 16 : 20,
-              background: 'linear-gradient(135deg,#eff6ff,#dbeafe)',
+              background: `linear-gradient(135deg, ${servicesPrimarySoft}, #ffffff)`,
               border: `1px solid ${servicesPrimaryBorder}`,
               display: 'grid',
               placeItems: 'center',
@@ -44,7 +45,16 @@ export function ServiceBookingSelectedServiceCard({
               gridRow: isMobileViewport ? '1 / span 2' : 'auto',
             }}
           >
-            <CalendarDays size={isMobileViewport ? 24 : 30} />
+            <ServiceImage
+              item={activeBookingService}
+              alt={serviceBookingSummaryTitle}
+              sizes={isMobileViewport ? '58px' : '72px'}
+              width={isMobileViewport ? 58 : 72}
+              height={isMobileViewport ? 58 : 72}
+              fallbackLabel=""
+              fallbackIcon={<CalendarDays size={isMobileViewport ? 24 : 30} />}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           </div>
 
           <div style={{ minWidth: 0, display: 'grid', gap: 6 }}>

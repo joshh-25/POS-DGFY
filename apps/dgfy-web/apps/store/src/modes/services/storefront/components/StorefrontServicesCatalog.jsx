@@ -1,11 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   MessageCircle,
-  Search,
-  ShoppingBag,
-  SlidersHorizontal,
-  Sparkles
+  ShoppingBag
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -13,7 +10,7 @@ import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontReviewModal } from '../../../../shared/components/storefront/StorefrontReviewModal.jsx';
-import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { ServiceImage } from '../../ServiceImage.jsx';
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from '../../../../shared/components/storefront/sections/StorefrontPromoSection.jsx';
 import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from '../../../../shared/components/storefront/sections/StorefrontReviewsSection.jsx';
 import { StorefrontFooterSection as SharedStorefrontFooterSection } from '../../../../shared/components/storefront/sections/StorefrontFooterSection.jsx';
@@ -23,7 +20,7 @@ import { STOREFRONT_CLOSED_TITLE } from '../../../../shared/model/storefrontClos
 import { openStorefrontActionLink } from '../../../../shared/utils/externalLinks.js';
 import { money } from '../../../../shared/utils/storefrontFormatters.js';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
-import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
+import { getServicesFlowPresentation } from '../../booking/model/servicesLocalFlow.js';
 import {
   BOOKING_FIELD_STYLE,
   buildServicePaymentOptions,
@@ -31,17 +28,18 @@ import {
 } from '../../booking/model/serviceBookingFields.js';
 import {
   combineDateAndTimeParts,
-  formatLongDateLabel,
-  getPreferredBookingTimeForDate
+  formatLongDateLabel
 } from '../../booking/model/serviceBookingSchedule.js';
 import { ServiceBookingConfirmation } from '../../booking/components/ServiceBookingConfirmation.jsx';
 import { ServiceBookingEmptyState } from '../../booking/components/ServiceBookingEmptyState.jsx';
 import { ServiceBookingLocationSection } from '../../booking/components/ServiceBookingLocationSection.jsx';
 import { ServiceBookingSummaryCard } from '../../booking/components/ServiceBookingSummaryCard.jsx';
+import { ServiceBookingMobileSummaryPanel } from '../../booking/components/ServiceBookingMobileSummaryPanel.jsx';
 import { ServiceBookingJourneyHeader } from '../../booking/components/ServiceBookingJourneyHeader.jsx';
 import { ServiceBookingAddOnsStep } from '../../booking/components/ServiceBookingAddOnsStep.jsx';
 import { ServiceBookingStepAccount, ServiceBookingStepFulfillment, ServiceBookingStepReviewPayment } from '../../booking/components/ServiceBookingSteps.jsx';
-import { ServicesFilterModal } from './ServicesFilterModal.jsx';
+import { ServicesCatalogToolbar } from './ServicesCatalogToolbar.jsx';
+import { ServiceCatalogCard } from './ServiceCatalogCard.jsx';
 import { ServicesPaginationBar } from './ServicesPaginationBar.jsx';
 
 /**
@@ -60,6 +58,7 @@ export function StorefrontServicesCatalog({
   fulfillmentStepComplete,
   activeBookingService,
   addToCart,
+  bookingCalendarDateOptions,
   bookingDateOptions,
   bookingFieldPlan,
   bookingPagePaymentOptions,
@@ -68,12 +67,14 @@ export function StorefrontServicesCatalog({
   bookingSummaryAmount,
   bookingSummaryQuantity,
   bookingTimeSlotOptions,
+  getPreferredBookingTimeForDate,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
   catalog,
   catalogError,
   catalogSearch,
   checkoutError,
+  checkoutLoading,
   checkoutPromoCode,
   checkoutResult,
   customerPin,
@@ -84,6 +85,7 @@ export function StorefrontServicesCatalog({
   filteredCatalog,
   getCartFlySourceRect,
   goStoreCatalogPage,
+  goStoreTrackPage,
   handleAddPinnedLocation,
   handleCheckout,
   handlePinMyLocation,
@@ -104,14 +106,12 @@ export function StorefrontServicesCatalog({
   isMobileViewport,
   isReviewModalOpen,
   isServiceDetailsSubpage,
-  isServiceFilterOpen,
   itemsToRender,
   loadingCatalog,
   missingCustomerInformation,
   missingScheduleAndServiceInfo,
   openPreferredBookingDatePicker,
   openServiceCartEditor,
-  openServiceDetail,
   pinLocationError,
   pinLocationLoading,
   promoSectionModel,
@@ -138,15 +138,14 @@ export function StorefrontServicesCatalog({
   serviceDurationFilter,
   serviceHeroModel,
   serviceIntakeResponses,
-  serviceLineAddOns,
-  setServiceLineAddOns,
   groupedServiceLineItems,
   serviceSpecialInstructions,
   setServiceSpecialInstructions,
-  serviceLocationLandmarkNote,
   serviceLocationSummaryDraft,
   serviceOrderMethod,
   setServiceOrderMethod,
+  serviceScheduleMode,
+  setServiceScheduleMode,
   servicePage,
   servicePageSize,
   servicePaymentTiming,
@@ -159,7 +158,6 @@ export function StorefrontServicesCatalog({
   servicesPrimaryBorder,
   servicesPrimaryDark,
   servicesPrimaryShadow,
-  servicesPrimaryShadowStrong,
   servicesPrimarySoft,
   servicesViewModel,
   setActiveServiceTab,
@@ -168,7 +166,6 @@ export function StorefrontServicesCatalog({
   setCustomerPin,
   setDeliveryLocationAction,
   setIsReviewModalOpen,
-  setIsServiceFilterOpen,
   setReviewDraft,
   setSelectedSavedLocationId,
   setServiceAppointmentAt,
@@ -178,7 +175,6 @@ export function StorefrontServicesCatalog({
   setServiceDraftQuantity,
   setServiceDurationFilter,
   setServiceIntakeResponses,
-  setServiceLocationLandmarkNote,
   setServicePage,
   setServicePageSize,
   setServicePaymentTiming,
@@ -192,6 +188,7 @@ export function StorefrontServicesCatalog({
   submitFnbItemReview,
   viewportWidth
 }) {
+  const [servicesViewMode, setServicesViewMode] = useState('list');
   const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
   const availabilityFilteredServices = searchFilteredServices.filter((item) => {
     if (serviceAvailabilityFilter === 'available') return isItemAvailable(item);
@@ -220,49 +217,36 @@ export function StorefrontServicesCatalog({
   const totalServicePages = Math.max(1, Math.ceil(sortedServices.length / Math.max(1, Number(servicePageSize || 8))));
   const resolvedServicePage = Math.min(Math.max(1, Number(servicePage || 1)), totalServicePages);
   const paginatedServices = sortedServices.slice((resolvedServicePage - 1) * servicePageSize, resolvedServicePage * servicePageSize);
-  const servicePageStart = sortedServices.length === 0 ? 0 : ((resolvedServicePage - 1) * servicePageSize) + 1;
-  const servicePageEnd = Math.min(sortedServices.length, resolvedServicePage * servicePageSize);
   const hasActiveFilters = serviceAvailabilityFilter !== 'all' || serviceAreaFilter !== 'all' || serviceDurationFilter !== 'all';
   const hasSearchQuery = catalogSearch.trim().length > 0;
+  const servicePrimaryButtonProps = {
+    accentColor: servicesPrimary,
+    accentDarkColor: servicesPrimaryDark,
+    shadowColor: servicesPrimaryShadow
+  };
   const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
   const reviewSummary = serviceHeroModel?.reviewSummary || null;
   const reviewScore = Number(reviewSummary?.score);
   const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
   const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
   const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
-  const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
-  const controlRadius = 18;
-  const serviceCategoryOptions = [
-    {
-      key: '',
-      label: 'All Services',
-      count: servicesViewModel.allServices.length,
-      icon: Sparkles
-    },
-    ...servicesViewModel.serviceGroups.map((group) => ({
-      key: group.categoryKey,
-      label: group.categoryMeta?.label || group.categoryKey,
-      count: group.items.length,
-      icon: SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles
-    }))
-  ];
+  const catalogPresentation = serviceHeroModel?.catalogPresentation || {};
+  const catalogMaxWidth = Number(catalogPresentation.maxWidth) || 1216;
+  const catalogHorizontalPadding = Number.isFinite(Number(catalogPresentation.horizontalPadding))
+    ? Number(catalogPresentation.horizontalPadding)
+    : 24;
+  const catalogUsesOuterGutter = catalogPresentation.usesOuterGutter === true;
+  const catalogFrameWidth = !isMobileViewport && catalogUsesOuterGutter
+    ? `calc(100% - ${catalogHorizontalPadding * 2}px)`
+    : '100%';
   const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
   const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-  const servicesSectionTitle = isLeadGenLayout
-    ? 'Service Highlights'
-    : isBookingHeavyLayout
-      ? 'Choose a Service'
-      : 'Services';
-  const servicesSectionSubtitle = isLeadGenLayout
-    ? 'Start with the core services, then contact or book the team from the storefront.'
-    : isBookingHeavyLayout
-      ? 'Pick the service you need, review what to prepare, and continue to booking when you are ready.'
-      : 'Browse available services from this storefront.';
   const servicesGridColumns = isMobileViewport
     ? '1fr'
     : isLeadGenLayout
       ? 'repeat(2, minmax(0, 1fr))'
       : (viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))');
+  const servicesGridGap = isMobileViewport ? 18 : 24;
   if (isServiceDetailsSubpage) {
     const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
     return (
@@ -283,7 +267,7 @@ export function StorefrontServicesCatalog({
                 <ArrowLeft size={22} strokeWidth={2.5} />
               </button>
               <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <div style={{ fontSize: 11, fontWeight: 900, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Service details
                 </div>
                 <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -294,13 +278,16 @@ export function StorefrontServicesCatalog({
 
             {!isMobileViewport && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                {serviceHeroModel.profileImageUrl ? (
-                  <img src={serviceHeroModel.profileImageUrl} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
-                ) : (
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                    <ShoppingBag size={18} color="#f97316" />
-                  </div>
-                )}
+                <ServiceImage
+                  imageSources={serviceHeroModel.profileImageSources}
+                  alt={`${serviceHeroModel.name} profile`}
+                  sizes="34px"
+                  width={34}
+                  height={34}
+                  fallbackLabel=""
+                  fallbackStyle={{ borderRadius: '50%', border: '1px solid #e2e8f0' }}
+                  fallbackIcon={<ShoppingBag size={18} color={servicesPrimary} />}
+                />
                 <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
                   {serviceHeroModel.name}
                 </div>
@@ -309,7 +296,7 @@ export function StorefrontServicesCatalog({
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flex: 1 }}>
               {supportHref ? (
-                <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: '#f97316', color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)', whiteSpace: 'nowrap' }}>
+                <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: servicesPrimary, color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: `0 4px 12px ${servicesPrimaryShadow}`, whiteSpace: 'nowrap' }}>
                   <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
                   {isMobileViewport ? 'Message' : 'Message Us'}
                 </button>
@@ -318,7 +305,7 @@ export function StorefrontServicesCatalog({
           </div>
         </div>
 
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#f8fafc', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
           <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             {!detailPageServiceItem ? (
               <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 28, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16, maxWidth: 760 }}>
@@ -329,14 +316,14 @@ export function StorefrontServicesCatalog({
                   </p>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                  <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>Browse Services</PrimaryButton>
+                  <PrimaryButton {...servicePrimaryButtonProps} onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>Browse Services</PrimaryButton>
                 </div>
               </section>
             ) : (
               <div style={{ display: 'grid', gap: 24 }}>
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <Badge background="#fff7ed" color={STYLES.colors.brand} border="#fdba74">
+                    <Badge background={servicesPrimarySoft} color={servicesPrimaryDark} border={servicesPrimaryBorder}>
                       {detailPageServiceItem.categoryMeta?.label || 'Service'}
                     </Badge>
                     <Badge background="#ffffff" color={STYLES.colors.dark} border="#dbe5ee">
@@ -354,21 +341,15 @@ export function StorefrontServicesCatalog({
                 <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
                   <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
                     <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
-                      {resolveStorefrontImageSources(detailPageServiceItem, { preferred: 'large' }).src ? (
-                        <StorefrontResponsiveImage
-                          alt={detailPageServiceItem.variantName || detailPageServiceItem.name}
-                          imageSources={resolveStorefrontImageSources(detailPageServiceItem, { preferred: 'large' })}
-                          loading="eager"
-                          sizes={isMobileViewport ? '100vw' : '400px'}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          width={400}
-                          height={isMobileViewport ? 260 : 240}
-                        />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                          No image
-                        </div>
-                      )}
+                      <ServiceImage
+                        item={detailPageServiceItem}
+                        alt={detailPageServiceItem.variantName || detailPageServiceItem.name}
+                        loading="eager"
+                        sizes={isMobileViewport ? '100vw' : '400px'}
+                        width={400}
+                        height={isMobileViewport ? 260 : 240}
+                        fallbackLabel="No service image"
+                      />
                     </div>
                     <div style={{ padding: isMobileViewport ? 18 : 22, display: 'grid', gap: 18 }}>
                       <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
@@ -380,7 +361,7 @@ export function StorefrontServicesCatalog({
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                        <PrimaryButton style={{ minHeight: 46 }} onClick={(event) => addToCart(detailPageServiceItem, { sourceRect: getCartFlySourceRect(event) })}>
+                        <PrimaryButton {...servicePrimaryButtonProps} style={{ minHeight: 46 }} onClick={(event) => addToCart(detailPageServiceItem, { sourceRect: getCartFlySourceRect(event) })}>
                           Add to Cart
                         </PrimaryButton>
                         <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
@@ -437,7 +418,9 @@ export function StorefrontServicesCatalog({
   }
   if (isBookingSubpage) {
     const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
-    const bookingConfirmation = checkoutResult?.booking || null;
+    const bookingConfirmation = checkoutResult?.booking
+      || (Array.isArray(checkoutResult?.bookings) ? checkoutResult.bookings[0] : null)
+      || null;
     const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
     const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
     const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
@@ -488,15 +471,20 @@ export function StorefrontServicesCatalog({
                 <ArrowLeft size={18} />
               </button>
               <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                {serviceHeroModel.profileImageUrl ? (
-                  <img src={serviceHeroModel.profileImageUrl} alt={`${serviceHeroModel.name} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>
-                )}
+                <ServiceImage
+                  imageSources={serviceHeroModel.profileImageSources}
+                  alt={`${serviceHeroModel.name} profile`}
+                  sizes="40px"
+                  width={40}
+                  height={40}
+                  fallbackLabel=""
+                  fallbackStyle={{ borderRadius: '50%' }}
+                  fallbackIcon={<ShoppingBag size={18} color={servicesPrimary} />}
+                />
               </div>
               <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {serviceOrderMethod === 'pickup' ? 'Pickup order' : 'Delivery order'}
+                  {getServicesFlowPresentation(serviceOrderMethod).shortLabel}
                 </div>
                 <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: '#1e293b', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {serviceHeroModel.name}
@@ -517,7 +505,7 @@ export function StorefrontServicesCatalog({
         </div>
 
         <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#fff' }}>
-          <div style={{ maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '24px 16px 40px' : '20px 40px 40px', boxSizing: 'border-box' }}>
+          <div style={{ maxWidth: 1264, margin: '0 auto', width: '100%', padding: isMobileViewport ? '40px 16px calc(env(safe-area-inset-bottom, 0px) + 196px)' : '80px 24px 80px', boxSizing: 'border-box' }}>
             {bookingConfirmation ? (
               <ServiceBookingConfirmation
                 isMobileViewport={isMobileViewport}
@@ -526,6 +514,12 @@ export function StorefrontServicesCatalog({
                 confirmationAmount={confirmationAmount}
                 checkoutResult={checkoutResult}
                 money={money}
+                servicesPrimary={servicesPrimary}
+                servicesPrimaryDark={servicesPrimaryDark}
+                servicesPrimarySoft={servicesPrimarySoft}
+                servicesPrimaryBorder={servicesPrimaryBorder}
+                servicesPrimaryShadow={servicesPrimaryShadow}
+                onTrackBooking={() => goStoreTrackPage({ pin: confirmationReference, serviceHandoff: serviceOrderMethod })}
                 onResetAndBackToServices={() => {
                   setCheckoutResult(null);
                   goStoreCatalogPage();
@@ -535,10 +529,13 @@ export function StorefrontServicesCatalog({
               <ServiceBookingEmptyState
                 isMobileViewport={isMobileViewport}
                 onBrowseServices={goStoreCatalogPage}
+                servicesPrimary={servicesPrimary}
+                servicesPrimaryDark={servicesPrimaryDark}
+                servicesPrimaryShadow={servicesPrimaryShadow}
               />
             ) : (
             <>
-            <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 18 }}>
+            <div style={{ display: 'grid', gap: isMobileViewport ? 32 : 32 }}>
               <ServiceBookingJourneyHeader
                 accentColor={servicesPrimary}
                 accentSoft={servicesPrimarySoft}
@@ -554,13 +551,15 @@ export function StorefrontServicesCatalog({
                 serviceOrderMethod={serviceOrderMethod}
               />
 
-              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.45fr) minmax(300px, 380px)', alignItems: 'start' }}>
+              <div style={{ display: 'grid', gap: isMobileViewport ? 20 : 20, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(300px, 358.8px)', alignItems: 'start' }}>
                 <section style={{ display: 'grid', gap: 18, minWidth: 0 }}>
 
                   {serviceBookingStep === 1 && (
                     <ServiceBookingStepAccount
                       GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
+                      primaryButtonProps={servicePrimaryButtonProps}
+                      servicesPrimary={servicesPrimary}
                       renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
                       renderGuestIdentityFields={renderGuestIdentityFields}
                       renderGuestCheckoutEntry={renderGuestCheckoutEntry}
@@ -582,9 +581,11 @@ export function StorefrontServicesCatalog({
                       onRequestGuestCheckoutOtp={onRequestGuestCheckoutOtp}
                       onVerifyGuestCheckoutOtp={onVerifyGuestCheckoutOtp}
                       servicesBodyFont={servicesBodyFont}
+                      servicesDisplayFont={servicesDisplayFont}
                       toast={toast}
                       onBack={goStoreCatalogPage}
                       setServiceBookingStep={setServiceBookingStep}
+                      referenceStyle
                     />
                   )}
 
@@ -593,17 +594,19 @@ export function StorefrontServicesCatalog({
                       STYLES={STYLES}
                       GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
+                      primaryButtonProps={servicePrimaryButtonProps}
                       isMobileViewport={isMobileViewport}
+                      money={money}
                       servicesPrimary={servicesPrimary}
                       servicesPrimarySoft={servicesPrimarySoft}
                       servicesPrimaryBorder={servicesPrimaryBorder}
+                      servicesDisplayFont={servicesDisplayFont}
                       serviceLines={serviceLines}
                       onEditLine={handleEditServiceLine}
-                      serviceLineAddOns={serviceLineAddOns}
-                      setServiceLineAddOns={setServiceLineAddOns}
                       specialInstructions={serviceSpecialInstructions}
                       setSpecialInstructions={setServiceSpecialInstructions}
                       setServiceBookingStep={setServiceBookingStep}
+                      referenceStyle
                     />
                   )}
 
@@ -614,7 +617,9 @@ export function StorefrontServicesCatalog({
                       StorefrontDropdown={StorefrontDropdown}
                       GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
+                      primaryButtonProps={servicePrimaryButtonProps}
                       activeBookingService={activeBookingService}
+                      bookingCalendarDateOptions={bookingCalendarDateOptions}
                       bookingDateOptions={bookingDateOptions}
                       bookingFieldPlan={bookingFieldPlan}
                       bookingPreferredDateInputRef={bookingPreferredDateInputRef}
@@ -628,19 +633,27 @@ export function StorefrontServicesCatalog({
                       isMobileViewport={isMobileViewport}
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
+                      serviceScheduleMode={serviceScheduleMode}
                       serviceDraftQuantity={serviceDraftQuantity}
                       serviceIntakeResponses={serviceIntakeResponses}
                       serviceUnitType={serviceUnitType}
                       servicesPrimary={servicesPrimary}
+                      servicesPrimarySoft={servicesPrimarySoft}
                       servicesPrimaryBorder={servicesPrimaryBorder}
+                      servicesDisplayFont={servicesDisplayFont}
                       servicesPrimaryShadow={servicesPrimaryShadow}
                       setServiceAppointmentAt={setServiceAppointmentAt}
+                      setServiceScheduleMode={setServiceScheduleMode}
                       setServiceDraftQuantity={setServiceDraftQuantity}
                       setServiceIntakeResponses={setServiceIntakeResponses}
                       setServiceUnitType={setServiceUnitType}
                       shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
                       serviceOrderMethod={serviceOrderMethod}
-                      onOrderMethodChange={setServiceOrderMethod}
+                      onOrderMethodChange={(nextMethod) => {
+                        setServiceOrderMethod(nextMethod);
+                        setServiceScheduleMode('now');
+                        if (nextMethod === 'quote') setServiceAppointmentAt('');
+                      }}
                       renderLocationSection={() => (
                         <ServiceBookingLocationSection
                           STYLES={STYLES}
@@ -658,8 +671,6 @@ export function StorefrontServicesCatalog({
                           setDeliveryLocationAction={setDeliveryLocationAction}
                           customerPin={customerPin}
                           setCustomerPin={setCustomerPin}
-                          serviceLocationLandmarkNote={serviceLocationLandmarkNote}
-                          setServiceLocationLandmarkNote={setServiceLocationLandmarkNote}
                           handlePinMyLocation={handlePinMyLocation}
                           pinLocationLoading={pinLocationLoading}
                           deliveryLocationAction={deliveryLocationAction}
@@ -677,6 +688,7 @@ export function StorefrontServicesCatalog({
                       toast={toast}
                       syncServiceBookingDraft={syncServiceBookingDraft}
                       setServiceBookingStep={setServiceBookingStep}
+                      referenceStyle
                     />
                   )}
 
@@ -687,6 +699,7 @@ export function StorefrontServicesCatalog({
                       StorefrontDropdown={StorefrontDropdown}
                       GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
+                      primaryButtonProps={servicePrimaryButtonProps}
                       servicesPrimary={servicesPrimary}
                       servicesPrimarySoft={servicesPrimarySoft}
                       servicesPrimaryBorder={servicesPrimaryBorder}
@@ -711,20 +724,59 @@ export function StorefrontServicesCatalog({
                       setServiceBookingStep={setServiceBookingStep}
                       toast={toast}
                       handleCheckout={handleCheckout}
+                      referenceStyle
                     />
                   )}
                 </section>
 
-                <ServiceBookingSummaryCard
-                  isMobileViewport={isMobileViewport}
-                  STYLES={STYLES}
-                  servicesPrimary={servicesPrimary}
-                  money={money}
-                  bookingSummaryAmount={bookingSummaryAmount}
-                  summaryRows={serviceBookingSummaryRows}
-                  serviceLineItems={groupedServiceLineItems}
-                />
+                {!isMobileViewport ? (
+                  <ServiceBookingSummaryCard
+                    isMobileViewport={isMobileViewport}
+                    STYLES={STYLES}
+                    servicesPrimary={servicesPrimary}
+                    servicesPrimarySoft={servicesPrimarySoft}
+                    servicesPrimaryBorder={servicesPrimaryBorder}
+                    servicesDisplayFont={servicesDisplayFont}
+                    money={money}
+                    bookingSummaryAmount={bookingSummaryAmount}
+                    summaryRows={serviceBookingSummaryRows}
+                    serviceLineItems={groupedServiceLineItems}
+                  />
+                ) : null}
               </div>
+              <ServiceBookingMobileSummaryPanel
+                accountStepComplete={accountStepComplete}
+                bookingSummaryAmount={bookingSummaryAmount}
+                bookingSummaryQuantity={bookingSummaryQuantity}
+                checkoutLoading={checkoutLoading}
+                fulfillmentStepComplete={fulfillmentStepComplete}
+                isMobileViewport={isMobileViewport}
+                isQuoteFlow={serviceOrderMethod === 'quote'}
+                money={money}
+                onBack={() => {
+                  if (serviceBookingStep <= 1) {
+                    goStoreCatalogPage();
+                    return;
+                  }
+                  setServiceBookingStep(serviceBookingStep - 1);
+                }}
+                onPrimary={() => {
+                  if (serviceBookingStep < 4) {
+                    setServiceBookingStep(serviceBookingStep + 1);
+                    return;
+                  }
+                  handleCheckout();
+                }}
+                serviceBookingStep={serviceBookingStep}
+                serviceLineItems={groupedServiceLineItems}
+                servicePaymentTiming={servicePaymentTiming}
+                servicesBodyFont={servicesBodyFont}
+                servicesDisplayFont={servicesDisplayFont}
+                servicesPrimary={servicesPrimary}
+                servicesPrimaryDark={servicesPrimaryDark}
+                servicesPrimaryShadow={servicesPrimaryShadow}
+                summaryRows={serviceBookingSummaryRows}
+              />
             </div>
             </>
             )}
@@ -747,325 +799,95 @@ export function StorefrontServicesCatalog({
           width: '100vw'
         }}
       >
+        <ServicesCatalogToolbar
+          catalogSearch={catalogSearch}
+          isMobileViewport={isMobileViewport}
+          resolvedTab={resolvedTab}
+          serviceSortOption={serviceSortOption}
+          servicesBodyFont={servicesBodyFont}
+          servicesDisplayFont={servicesDisplayFont}
+          servicesPrimary={servicesPrimary}
+          servicesPrimaryDark={servicesPrimaryDark}
+          servicesPrimarySoft={servicesPrimarySoft}
+          servicesPrimaryBorder={servicesPrimaryBorder}
+          servicesPrimaryShadow={servicesPrimaryShadow}
+          servicesViewMode={servicesViewMode}
+          catalogPresentation={catalogPresentation}
+          servicesViewModel={servicesViewModel}
+          setActiveServiceTab={setActiveServiceTab}
+          setCatalogSearch={setCatalogSearch}
+          setServiceSortOption={setServiceSortOption}
+          setServicesViewMode={setServicesViewMode}
+          visibleServiceCount={sortedServices.length}
+        />
         <div
           style={{
-            maxWidth: 1320,
-            width: '100%',
+            maxWidth: catalogMaxWidth,
+            width: catalogFrameWidth,
             margin: '0 auto',
-            paddingLeft: isMobileViewport ? 16 : 24,
-            paddingRight: isMobileViewport ? 16 : 24,
+            paddingLeft: isMobileViewport ? 16 : (catalogUsesOuterGutter ? 0 : catalogHorizontalPadding),
+            paddingRight: isMobileViewport ? 16 : (catalogUsesOuterGutter ? 0 : catalogHorizontalPadding),
+            boxSizing: 'border-box',
             display: 'grid',
             gap: 18
           }}
         >
-          <div style={{ display: 'grid', gap: 6 }}>
-            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
-              {servicesSectionTitle}
-            </h2>
-            <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>{servicesSectionSubtitle}</p>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: isMobileViewport ? 'column' : 'row',
-              gap: 12,
-              alignItems: isMobileViewport ? 'stretch' : 'center',
-              width: '100%'
-            }}
-          >
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                border: '1px solid #e5e7eb',
-                borderRadius: controlRadius,
-                background: '#f8fafc',
-                padding: '0 12px 0 14px',
-                minHeight: 44,
-                width: '100%',
-                flex: isMobileViewport ? '0 0 auto' : '1 1 0',
-                maxWidth: isMobileViewport ? '100%' : 620
-              }}
-            >
-              <Search size={16} color="#64748b" />
-              <input
-                value={catalogSearch}
-                onChange={(event) => setCatalogSearch(event.target.value)}
-                placeholder="Search items in this store catalog..."
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
-                  width: '100%',
-                  minWidth: 0,
-                  fontSize: 14,
-                  color: STYLES.colors.text
-                }}
-              />
-            </label>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: isMobileViewport ? 'column' : 'row',
-                gap: 12,
-                alignItems: isMobileViewport ? 'stretch' : 'center',
-                marginLeft: isMobileViewport ? 0 : 'auto',
-                width: isMobileViewport ? '100%' : 'auto',
-                flexShrink: 0
-              }}
-            >
-              <StorefrontDropdown
-                value={resolvedTab}
-                onChange={setActiveServiceTab}
-                options={serviceCategoryOptions.map((option) => ({
-                  value: option.key,
-                  label: `${option.label} (${option.count})`,
-                  icon: option.icon
-                }))}
-                triggerStyle={{
-                  minHeight: 44,
-                  borderRadius: controlRadius,
-                  width: isMobileViewport ? '100%' : 240,
-                  flexShrink: 0,
-                  boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
-                }}
-                containerStyle={{
-                  width: isMobileViewport ? '100%' : 240,
-                  flexShrink: 0
-                }}
-                menuStyle={{ borderRadius: 20 }}
-              />
-
-              <StorefrontDropdown
-                value={serviceSortOption}
-                onChange={setServiceSortOption}
-                options={[
-                  { value: 'recommended', label: 'Recommended' },
-                  { value: 'price_asc', label: 'Price: Low to High' },
-                  { value: 'price_desc', label: 'Price: High to Low' }
-                ]}
-                triggerStyle={{
-                  minHeight: 44,
-                  borderRadius: controlRadius,
-                  width: isMobileViewport ? '100%' : 240,
-                  flexShrink: 0,
-                  boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
-                }}
-                containerStyle={{
-                  width: isMobileViewport ? '100%' : 240,
-                  flexShrink: 0
-                }}
-                menuStyle={{ borderRadius: 20 }}
-              />
-
-              <button
-                type="button"
-                onClick={() => setIsServiceFilterOpen((prev) => !prev)}
-                style={{
-                  minHeight: 44,
-                  borderRadius: controlRadius,
-                  border: `1px solid ${servicesPrimary}`,
-                  background: isServiceFilterOpen || hasActiveFilters ? servicesPrimaryDark : servicesPrimary,
-                  color: '#ffffff',
-                  padding: '0 18px',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  width: isMobileViewport ? '100%' : 'auto',
-                  minWidth: isMobileViewport ? 0 : 128,
-                  flexShrink: 0,
-                  boxShadow:
-                    isServiceFilterOpen || hasActiveFilters
-                      ? `0 10px 24px ${servicesPrimaryShadowStrong}`
-                      : `0 8px 20px ${servicesPrimaryShadow}`
-                }}
-              >
-                <SlidersHorizontal size={16} />
-                Filters
-              </button>
-            </div>
-          </div>
           {filteredCatalog.length === 0 && !loadingCatalog && !catalogError && (
             <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
               <button
                 type="button"
                 onClick={refreshStorePageForTenantSetup}
-                style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
+                style={{ borderRadius: 10, border: `1px solid ${servicesPrimary}`, background: '#fff', color: servicesPrimary, padding: '8px 12px', fontWeight: 700 }}
               >
                 Check Again
               </button>
             </div>
           )}
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              gap: 12,
-              flexWrap: 'wrap'
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isMobileViewport ? 'flex-start' : 'flex-end',
-                gap: 12,
-                flexWrap: 'wrap',
-                marginLeft: isMobileViewport ? 0 : 'auto'
-              }}
-            >
-              <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                {sortedServices.length} service{sortedServices.length === 1 ? '' : 's'} shown
-              </div>
-              {sortedServices.length > 0 && (
-                <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                  Showing {servicePageStart}-{servicePageEnd}
-                </div>
-              )}
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServiceAvailabilityFilter('all');
-                    setServiceAreaFilter('all');
-                    setServiceDurationFilter('all');
-                  }}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: servicesPrimary,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    padding: 0,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Clear filters
-                </button>
-              )}
+          {hasActiveFilters ? (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setServiceAvailabilityFilter('all');
+                  setServiceAreaFilter('all');
+                  setServiceDurationFilter('all');
+                }}
+                style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 13, fontWeight: 700, padding: 0, cursor: 'pointer' }}
+              >
+                Clear filters
+              </button>
             </div>
-          </div>
+          ) : null}
 
-          {isServiceFilterOpen && (
-            <ServicesFilterModal
-              isMobileViewport={isMobileViewport}
-              serviceAvailabilityFilter={serviceAvailabilityFilter}
-              onAvailabilityChange={setServiceAvailabilityFilter}
-              serviceAreaFilter={serviceAreaFilter}
-              onAreaChange={setServiceAreaFilter}
-              serviceDurationFilter={serviceDurationFilter}
-              onDurationChange={setServiceDurationFilter}
-              onClose={() => setIsServiceFilterOpen(false)}
-            />
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: servicesGridGap }}>
             {paginatedServices.map((item) => {
               const imageSources = resolveStorefrontImageSources(item, { preferred: 'medium' });
               const available = isItemAvailable(item);
-              const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
               return (
-                <div
+                <ServiceCatalogCard
                   key={item.item_id}
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 18,
-                    overflow: 'hidden',
-                    boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => openServiceDetail(item)}
-                >
-                  <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: '#f3f4f6', position: 'relative', overflow: 'hidden' }}>
-                    {imageSources.src ? (
-                      <StorefrontResponsiveImage
-                        alt=""
-                        imageSources={imageSources}
-                        sizes="(max-width: 720px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                        width={400}
-                        height={184}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          display: 'grid',
-                          placeItems: 'center',
-                          color: STYLES.colors.muted,
-                          fontSize: 13
-                        }}
-                      >
-                        No image
-                      </div>
-                    )}
-                    {!available && (
-                      <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                        <Badge background="#fff7ed" color="#c2410c" border="#fdba74">
-                          Unavailable
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ padding: 16, display: 'grid', gap: 10, flex: 1 }}>
-                    <div>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
-                        <ServiceCategoryIcon size={13} />
-                        <span>{item.categoryMeta?.label || 'Service'}</span>
-                      </div>
-                      <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, lineHeight: 1.25, color: STYLES.colors.dark }}>
-                        {item.variantName || item.name}
-                      </h4>
-                    </div>
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: 12,
-                        color: STYLES.colors.text,
-                        lineHeight: 1.45,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}
-                    >
-                      {item.description || 'Professional service options synced from SKUpervisor.'}
-                    </p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
-                        {item.serviceAreaLabel}
-                      </span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
-                        {item.durationLabel}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
-                      <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Starting at</div>
-                      <div style={{ fontSize: 18, fontWeight: 900, color: servicesPrimaryDark }}>{money(item.default_sale_price ?? 0)}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 8 }}>
-                        <GhostButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); openServiceDetail(item); }}>
-                          View Details
-                        </GhostButton>
-                        <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(event) }); }} disabled={!available}>
-                          Add to Cart
-                        </PrimaryButton>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  item={item}
+                  imageSources={imageSources}
+                  available={available}
+                  isMobileViewport={isMobileViewport}
+                  money={money}
+                  servicesPrimary={servicesPrimary}
+                  servicesPrimaryDark={servicesPrimaryDark}
+                  servicesPrimarySoft={servicesPrimarySoft}
+                  servicesPrimaryBorder={servicesPrimaryBorder}
+                  servicesPrimaryShadow={servicesPrimaryShadow}
+                  servicesViewMode={servicesViewMode}
+                  servicesDisplayFont={servicesDisplayFont}
+                  servicesBodyFont={servicesBodyFont}
+                  addActionLabel={catalogPresentation.addActionLabel}
+                  unavailableLabel={catalogPresentation.unavailableLabel}
+                  missingImageLabel={catalogPresentation.missingImageLabel}
+                  onAdd={(event, serviceOptions = {}) => addToCart(item, {
+                    ...serviceOptions,
+                    sourceRect: getCartFlySourceRect(event)
+                  })}
+                />
               );
             })}
 
@@ -1130,14 +952,9 @@ export function StorefrontServicesCatalog({
           : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
         titleFontFamily={servicesDisplayFont}
         bodyFontFamily={servicesBodyFont}
-        cardVariant="white"
         writeButtonColor={servicesPrimary}
-        sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-        contentMaxWidth={1280}
         titleSize={isMobileViewport ? 28 : 36}
         subtitleSize={isMobileViewport ? 14 : 16}
-        collapseSpacing
-        summaryEnabled
         starSymbol="*"
       />
 
@@ -1147,7 +964,7 @@ export function StorefrontServicesCatalog({
           eyebrowColor={servicesPrimary}
           titleFontFamily={servicesDisplayFont}
           starColor="#f59e0b"
-          starBg="#fff7ed"
+          starBg="#fffbeb"
           starShadow="0 10px 20px rgba(245,158,11,0.16)"
           keyPrefix="review-rating"
           messagePlaceholder="Tell customers what stood out about the service, response time, or booking experience."
@@ -1165,7 +982,6 @@ export function StorefrontServicesCatalog({
         description={serviceHeroModel.tagline || serviceHeroModel.aboutText || 'Service storefront powered by SKUpervisor content.'}
         displayFont={servicesDisplayFont}
         bodyFontFamily={servicesBodyFont}
-        sectionPadding={isMobileViewport ? '28px 16px 24px' : '48px 32px 36px'}
         badgeLinks={serviceHeroModel.footerLinks.filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))}
         columns={[
           {

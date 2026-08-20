@@ -150,7 +150,7 @@ export const deriveVoucherStatus = ({ voucher, now = new Date(), timezone = DEFA
  *
  * Collect-all, never short-circuit. Checks 11-13 (the three exhaustion limits) are PREVIEW ONLY:
  * they read `vouchers.redeemed_*`, which ADR 0066 decision 4 makes a derived cache, not the source of
- * truth. Actual enforcement is Phase 104's single atomic conditional UPDATE against the ledger.
+ * truth. Actual enforcement is Phase 105's single atomic conditional UPDATE against the ledger.
  *
  * @returns {{eligible: boolean, reasons: Array<{reason_code: string, message: string, details: Object}>}}
  */
@@ -302,7 +302,7 @@ export const evaluateVoucherEligibility = ({ voucher, context = {} } = {}) => {
         });
     }
 
-    // 11-13. Exhaustion previews only. Phase 104 enforces these atomically against the ledger.
+    // 11-13. Exhaustion previews only. Phase 105 enforces these atomically against the ledger.
     if (voucher.max_redemptions != null
         && Number(voucher.redeemed_count ?? 0) >= Number(voucher.max_redemptions)) {
         addReason(REASON.VOUCHER_REDEMPTION_LIMIT_REACHED, 'Voucher has reached its redemption limit.', {

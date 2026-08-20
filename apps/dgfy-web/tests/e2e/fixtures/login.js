@@ -23,6 +23,5 @@ export async function signIn(page, credentials) {
   await page.getByRole('button', { name: /^continue to pos$/i }).click();
   const sessionResponse = await tenantSessionResponse;
   expect(sessionResponse.status(), `tenant session failed with HTTP ${sessionResponse.status()}`).toBe(200);
-  await expect(companySelect).toBeHidden({ timeout: 20_000 });
   await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
 }

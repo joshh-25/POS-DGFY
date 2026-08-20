@@ -4,10 +4,22 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
-  isStorefrontOnlinePaymentType
+  isStorefrontOnlinePaymentType,
+  startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
+// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
+// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
+// and it was still being set from the client's pre-submission totalsForDisplay, not the
+// server-persisted order.
+const resolveTrackedTotals = (order, fallbackTotals) => {
+  const serverTotal = Number(order?.total_amount);
+  return Number.isFinite(serverTotal)
+    ? { ...fallbackTotals, total_amount: serverTotal }
+    : fallbackTotals;
+};
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -124,10 +136,26 @@ export function useFnbCheckoutSubmission({
           requestJson,
           storeSlug: selectedStore.slug
         });
-        setQrphPaymentSession(paymentSession);
-        if (isStorefrontHostedPaymentType(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
-          window.location.assign(paymentSession.checkout_url);
+        if (isStorefrontDirectPaymentSession(paymentSession)) {
+          const directPayment = await startStorefrontDirectPayment({
+            billing: {
+              name: customerName,
+              email: customerEmail,
+              phone: customerPhone
+            },
+            paymentSession
+          });
+          setQrphPaymentSession(paymentSession);
+          if (typeof window !== 'undefined') window.location.assign(directPayment.redirectUrl);
         } else {
+          setQrphPaymentSession(paymentSession);
+        }
+        if (!isStorefrontDirectPaymentSession(paymentSession)
+          && isStorefrontHostedPaymentType(fnbPaymentType)
+          && paymentSession.checkout_url
+          && typeof window !== 'undefined') {
+          window.location.assign(paymentSession.checkout_url);
+        } else if (!isStorefrontDirectPaymentSession(paymentSession)) {
           toast.success(fnbPaymentType === 'qrph'
             ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
             : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);
@@ -149,7 +177,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
@@ -174,7 +202,9 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0,
+          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
+          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 

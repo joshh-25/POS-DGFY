@@ -22,6 +22,7 @@ export function RetailOrderMobileSummaryPanel({
   onCheckout,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   onStepChange,
   orderStep,
@@ -95,6 +96,7 @@ export function RetailOrderMobileSummaryPanel({
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} color="#15803d" /> : null}
+                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} color="#7c3aed" /> : null}
                 <SummaryRow label="Fees & Taxes" value={money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0))} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>

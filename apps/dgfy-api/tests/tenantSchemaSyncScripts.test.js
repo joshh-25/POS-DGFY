@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
   assertTenantSchemaMutationModeAllowed,
@@ -13,7 +13,9 @@ import {
   REQUIRED_TENANT_SCHEMA_TABLES,
   buildTenantSchemaEnumRepairSql,
   repairItemFolderCategoryLifecycleSchema,
-  repairPosParkedSaleOriginOwnership
+  repairPosParkedSaleOriginOwnership,
+  normalizeTenantSchemaTableRepairSql,
+  resolveTenantSchemaRepairCollation
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
@@ -120,15 +122,17 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_catalog_overrides', column: 'pos_best_seller_mode' },
       { table: 'pos_transaction_lines', column: 'stock_effect_type' },
       { table: 'pos_transaction_lines', column: 'stock_exempt_reason' },
+      { table: 'pos_transaction_adjustments', column: 'pos_payment_allocation_id' },
       { table: 'service_item_details', column: 'addons_enabled' }
     ]);
 
-    expect(repairs).toHaveLength(5);
+    expect(repairs).toHaveLength(6);
     expect(repairs[0].sql).toContain('ADD COLUMN `pos_always_available`');
     expect(repairs[1].sql).toContain('ADD COLUMN `pos_best_seller_mode`');
     expect(repairs[2].sql).toContain("ENUM('inventory_issue','stock_exempt')");
     expect(repairs[3].sql).toContain('ADD COLUMN `stock_exempt_reason`');
-    expect(repairs[4].sql).toContain('ADD COLUMN `addons_enabled`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `pos_payment_allocation_id`');
+    expect(repairs[5].sql).toContain('ADD COLUMN `addons_enabled`');
   });
 
   it('registers storefront_catalog_overrides as a whole-table backfill target', () => {
@@ -256,6 +260,27 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[2].sql).toContain('REFERENCES `tenant_locations` (`location_id`)');
   });
 
+  it('normalizes MySQL 8-only table collations for compatible local repair targets', () => {
+    const [repair] = buildTenantSchemaTableRepairSql(['pos_transaction_adjustments']);
+    const normalized = normalizeTenantSchemaTableRepairSql(repair.sql, 'utf8mb4_general_ci');
+
+    expect(repair.sql).toContain('COLLATE=utf8mb4_0900_ai_ci');
+    expect(normalized).toContain('COLLATE=utf8mb4_general_ci');
+    expect(normalized).not.toContain('utf8mb4_0900_ai_ci');
+  });
+
+  it('falls back to the target schema collation when MySQL 8 collation is unavailable', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([[{ DEFAULT_COLLATION_NAME: 'utf8mb4_general_ci' }]])
+        .mockResolvedValueOnce([[{ Collation: 'utf8mb4_general_ci' }]])
+    };
+
+    await expect(resolveTenantSchemaRepairCollation(connection, 'sku_tenant_test'))
+      .resolves.toBe('utf8mb4_general_ci');
+  });
+
   // Three separate code paths can create the voucher tables, and they must agree:
   //   1. the landlord migration (20260817000001-create-vouchers.cjs)
   //   2. sequelize.sync() over the models -- how tenantProvisioningService.js provisions a NEW tenant
@@ -282,8 +307,24 @@ describe('tenant schema sync script contracts', () => {
 
       // Same names again in the CREATE TABLE, so a tenant repaired by whole-table creation and one
       // repaired index-by-index end up identical.
+      //
+      // #696 exception: idx_vouchers_pricelist is deliberately NOT in this whole-table DDL string.
+      // vouchers.pricelist_id was added to an ALREADY-SHIPPED table via a column-repair entry (not
+      // baked into REQUIRED_TENANT_SCHEMA_TABLES.vouchers.sql, since that would require declaring
+      // `pricelists` before `vouchers` -- reordering an existing table risks the exact
+      // "REFERENCES an undeclared table" failure `service_booking_lines`'s own comment above warns
+      // about). This mirrors the pre-existing fnb_modifier_groups.parent_modifier_option_id case
+      // (also a column-repair-only FK, absent from that table's own whole-table DDL). The two-pass
+      // repair driver still converges a from-scratch tenant to the same end state: table-repair
+      // creates `vouchers` without the column, then column-repair (which queries real DB state, not
+      // this static string) adds it immediately after -- confirmed by
+      // `apps/dgfy-api/scripts/sync-tenant-schemas.js`'s own ordering, tables always applied before
+      // columns.
       const [{ sql }] = buildTenantSchemaTableRepairSql([table]);
-      for (const indexName of registryIndexNames) {
+      const namesExpectedInWholeTableDdl = table === 'vouchers'
+        ? registryIndexNames.filter((name) => name !== 'idx_vouchers_pricelist')
+        : registryIndexNames;
+      for (const indexName of namesExpectedInWholeTableDdl) {
         expect(sql).toContain(`\`${indexName}\``);
       }
 
@@ -316,6 +357,82 @@ describe('tenant schema sync script contracts', () => {
     ]) {
       expect(voucherModels.voucher_redemptions.rawAttributes[column].onDelete).toBe('SET NULL');
     }
+  });
+
+  // #696: registers pricelists/pricelist_items the same way the voucher tables above are guarded --
+  // without this, the two new tables would ship with no cross-path check at all, which is exactly
+  // the drift class the voucher parity test above exists to catch.
+  it('registers the two pricelist tables after the voucher tables, in FK-dependency order', () => {
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    expect(declared).toContain('pricelists');
+    expect(declared).toContain('pricelist_items');
+    expect(declared.indexOf('pricelists')).toBeGreaterThan(declared.indexOf('vouchers'));
+    expect(declared.indexOf('pricelist_items')).toBeGreaterThan(declared.indexOf('pricelists'));
+
+    const repairs = buildTenantSchemaTableRepairSql(['pricelists', 'pricelist_items']);
+    expect(repairs[0].sql).toContain('CREATE TABLE `pricelists`');
+    expect(repairs[0].sql).toContain('UNIQUE KEY `uq_pricelists_draft_of`');
+    expect(repairs[1].sql).toContain('CREATE TABLE `pricelist_items`');
+    expect(repairs[1].sql).toContain('UNIQUE KEY `uq_pricelist_items_pricelist_item` (`pricelist_id`,`item_id`)');
+
+    // Same money convention as every other centavos column in this initiative (ADR 0066 decision 2).
+    expect(repairs[1].sql).toContain('`unit_price_centavos` bigint NOT NULL');
+    expect(repairs[1].sql).not.toContain('`unit_price_centavos` int ');
+
+    // pricelist_items.item_id DOES get a real FK, unlike voucher_scopes.scope_ref_id -- it isn't
+    // polymorphic, so there is no reason to withhold it.
+    expect(repairs[1].sql).toContain('FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)');
+  });
+
+  it('registers the vouchers.pricelist_id column-repair entry with its FK, applied after pricelists exists', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.vouchers).toHaveProperty('pricelist_id');
+    const [repair] = buildTenantSchemaRepairSql([{ table: 'vouchers', column: 'pricelist_id' }]);
+    expect(repair.sql).toContain('ADD COLUMN `pricelist_id` INT NULL');
+    expect(repair.sql).toContain('REFERENCES `pricelists` (`pricelist_id`)');
+  });
+
+  // #713: same repair-only mechanism as pricelist_id above -- REQUIRED_TENANT_SCHEMA_TABLES'
+  // vouchers CREATE TABLE string is a pre-existing landlord-DB snapshot and is deliberately not
+  // edited; every tenant gets this column from the repair pass instead.
+  it('registers the vouchers.is_publicly_listed column-repair entry, defaulting to false', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.vouchers).toHaveProperty('is_publicly_listed');
+    const [repair] = buildTenantSchemaRepairSql([{ table: 'vouchers', column: 'is_publicly_listed' }]);
+    expect(repair.sql).toContain('ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0');
+  });
+
+  // Mirrors the voucher parity test above, same three-code-path rationale: the landlord migration,
+  // sequelize.sync() (new-tenant provisioning), and this registry (existing-tenant repair) must all
+  // agree, and nothing else in this suite would catch a divergence between them.
+  it('keeps the pricelist model definitions, table registry, and index registry in parity', async () => {
+    const pricelistModels = {
+      pricelists: (await import('../src/models/Pricelist.js')).default,
+      pricelist_items: (await import('../src/models/PricelistItem.js')).default
+    };
+
+    for (const [table, model] of Object.entries(pricelistModels)) {
+      const modelIndexNames = (model.options.indexes || []).map((index) => index.name).sort();
+      const registryIndexNames = Object.keys(REQUIRED_TENANT_SCHEMA_INDEXES[table] || {}).sort();
+
+      expect(modelIndexNames.length).toBeGreaterThan(0);
+      expect(modelIndexNames).toEqual(registryIndexNames);
+
+      const [{ sql }] = buildTenantSchemaTableRepairSql([table]);
+      for (const indexName of registryIndexNames) {
+        expect(sql).toContain(`\`${indexName}\``);
+      }
+
+      expect(sql).toContain('COLLATE=utf8mb4_0900_ai_ci');
+      expect(sql).not.toContain('utf8mb4_general_ci');
+    }
+
+    // Sequelize emits no referential action unless the attribute declares one.
+    expect(pricelistModels.pricelists.rawAttributes.draft_of_pricelist_id.onDelete).toBe('CASCADE');
+    expect(pricelistModels.pricelist_items.rawAttributes.pricelist_id.onDelete).toBe('CASCADE');
+
+    // Uniqueness declared in the model's indexes block, not the attribute -- same reasoning the
+    // voucher parity test asserts: the attribute form names the key after the column instead of
+    // `uq_*`, and inspectRequiredTenantSchemaIndexes matches by name.
+    expect(pricelistModels.pricelists.rawAttributes.draft_of_pricelist_id.unique).toBeUndefined();
   });
 
   it('registers the complete location-scoped Z-reading snapshot contract', () => {

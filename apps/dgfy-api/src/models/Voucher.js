@@ -79,6 +79,16 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: false,
     defaultValue: false
   },
+  // #696: a fixed_price voucher carries EITHER fixed_unit_price_centavos (one price, above) OR a
+  // pricelist (N prices for N items), never both -- enforced in voucherUseCases.js's
+  // applyBenefitConfig, not the schema. Nullable: most vouchers never attach one.
+  pricelist_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'pricelists', key: 'pricelist_id' },
+    // A pricelist in use by a voucher must not vanish out from under it.
+    onDelete: 'RESTRICT'
+  },
   stackable_with_statutory: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -109,6 +119,15 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.TINYINT.UNSIGNED,
     allowNull: false,
     defaultValue: 1
+  },
+  // #713: independent of channels_mask above. channels_mask controls where a code is USABLE
+  // (storefront/POS); this controls whether the voucher is ADVERTISED on the public storefront
+  // discovery page. A B2B pricelist voucher (#696) wants POS-usable and unadvertised -- the reverse
+  // combination channels_mask alone can't express.
+  is_publicly_listed: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   },
   fulfillment_methods_mask: {
     type: DataTypes.TINYINT.UNSIGNED,
@@ -175,7 +194,8 @@ const Voucher = sequelize.define('Voucher', {
   indexes: [
     { name: 'uq_vouchers_code', unique: true, fields: ['code'] },
     { name: 'idx_vouchers_status_validity', fields: ['status', 'valid_from', 'valid_until'] },
-    { name: 'idx_vouchers_kind', fields: ['voucher_kind'] }
+    { name: 'idx_vouchers_kind', fields: ['voucher_kind'] },
+    { name: 'idx_vouchers_pricelist', fields: ['pricelist_id'] }
   ]
 });
 

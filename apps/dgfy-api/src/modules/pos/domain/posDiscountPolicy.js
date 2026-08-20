@@ -34,6 +34,10 @@ const resolveRuleApplication = ({ draft, rule }) => {
     };
 };
 
+// Local one-liner, matching the existing convention: storeUseCases.js:129 defines the same helper
+// the same way for the same reason -- a single one-liner doesn't earn a shared module.
+const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
 export const resolvePosGovernedDiscount = async ({
     draft,
     preparedLines = [],
@@ -42,7 +46,12 @@ export const resolvePosGovernedDiscount = async ({
     orderMethod = '',
     requireCustomerName = true,
     findActiveRule,
-    findActiveEmployee
+    findActiveEmployee,
+    // #712: bound by the caller (posUseCases.js) with the open checkout transaction, idempotency
+    // key, and channel already captured -- this domain module stays DB-agnostic, same pattern as
+    // findActiveRule/findActiveEmployee above. Signature: async ({ code, lines }) => redemption
+    // result (redeemVoucherUseCase's or previewVoucherEligibilityUseCase's return shape).
+    redeemVoucher
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const type = text(draft.type).toLowerCase();
@@ -70,6 +79,53 @@ export const resolvePosGovernedDiscount = async ({
                 lines: promo.eligibleItemIds.map((itemId) => ({ item_id: itemId }))
             },
             promo
+        };
+    }
+
+    if (type === 'voucher') {
+        if (typeof redeemVoucher !== 'function') {
+            throw new Error('redeemVoucher dependency is required for voucher governed discounts');
+        }
+        const voucherCode = text(draft.voucher_code);
+        if (!voucherCode) {
+            validationError('Voucher code is required.', 'VOUCHER_CODE_REQUIRED');
+        }
+        // Sale-level only (settled 2026-08-20, #712) -- a voucher's own `voucher_scopes`/pricelist
+        // decides which lines it touches, exactly as on the storefront. Pass every prepared line;
+        // the redemption use case resolves eligibility itself.
+        const voucherLines = preparedLines.map((line) => ({
+            item_id: line.item_id,
+            quantity: line.quantity,
+            sale_price: line.sale_price,
+            line_subtotal: line.line_subtotal ?? line.global_discount_base_amount,
+            cost_snapshot: line.cost_snapshot
+        }));
+        const voucher = await redeemVoucher({ code: voucherCode, lines: voucherLines });
+        if (!voucher?.applied) {
+            return { application: null, promo: null, voucher: null };
+        }
+        return {
+            application: {
+                ...draft,
+                type: 'voucher',
+                label: voucher.badge || voucher.title || `Voucher (${voucher.code})`,
+                method: voucher.benefitClass === 'percent_off' ? 'percentage' : 'fixed',
+                // percentOffBps is basis points (10000 = 100%), matching storeUseCases.js's
+                // identical `round4(redemption.percentOffBps / 100)` conversion.
+                rate: voucher.benefitClass === 'percent_off'
+                    ? round4(Number(voucher.percentOffBps || 0) / 100)
+                    : null,
+                amount: null,
+                // Reuses the fiscal `promo_code` column -- matches the storefront's
+                // `buildVoucherDiscountRecord` (storeUseCases.js:1413-1432) and is why
+                // ReceiptPrintView.jsx already prints "Voucher Code" off this same field.
+                promo_code: voucher.code,
+                lines: (voucher.lineAllocations || [])
+                    .filter((allocation) => allocation.eligible !== false)
+                    .map((allocation) => ({ item_id: allocation.item_id }))
+            },
+            promo: null,
+            voucher
         };
     }
 

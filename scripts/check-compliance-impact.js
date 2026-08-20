@@ -37,7 +37,26 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
+    pattern: /^apps\/dgfy-api\/src\/modules\/vouchers\//,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^apps\/dgfy-api\/src\/modules\/store\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/modules\/payments\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    // #707: the QRPh money-capture module -- webhook-confirmed payment finalization, order
+    // creation, and the paid_manual_resolution_required reconciliation queue -- was absent from
+    // this list despite `modules/payments/` and `modules/store/` both being covered. Same floor as
+    // those two neighbors, not a new tier.
+    pattern: /^apps\/dgfy-api\/src\/modules\/commercePayments\//,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
@@ -58,6 +77,13 @@ const COMPLIANCE_SENSITIVE_RULES = [
   },
   {
     pattern: /^apps\/dgfy-api\/src\/routes\/payments\.js$/,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    // #707: the route file lives outside modules/, so the commercePayments/ directory rule above
+    // does not cover it -- same reasoning as the routes/payments.js rule immediately above.
+    pattern: /^apps\/dgfy-api\/src\/routes\/commercePayments\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },

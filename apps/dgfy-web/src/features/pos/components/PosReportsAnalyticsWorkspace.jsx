@@ -332,9 +332,7 @@ function PosReportsAnalyticsWorkspace({
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (!reportData) {
-            setReportData(null);
-          }
+          setReportData((current) => current || null);
           setError(loadError?.response?.data?.message || 'Failed to load POS reports.');
         }
       } finally {
@@ -378,6 +376,7 @@ function PosReportsAnalyticsWorkspace({
   const hasData = Boolean(reportData) && (
     Number(summaryCards.total_transactions || 0) > 0
     || Number(summaryCards.total_sales || 0) > 0
+    || Number(dailyReport.adjustment_summary?.adjustment_count || 0) > 0
     || (trendSeries || []).length > 0
   );
 
@@ -724,6 +723,33 @@ function PosReportsAnalyticsWorkspace({
                   <MetricCard label="POS Profit/Loss" value={money(dailyReport.summary?.pos_profit_loss, currencySymbol)} tone={Number(dailyReport.summary?.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'} />
                   <MetricCard label="Profit Margin" value={percent(dailyReport.summary?.profit_margin)} tone={Number(dailyReport.summary?.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'} />
                 </div>
+              </SectionCard>
+
+              <SectionCard title="Refund & Adjustment Events">
+                <p className="mb-3 text-xs font-semibold text-slate-500">
+                  These rows use the refund/adjustment event timestamp. They disclose after-close activity without changing a prior Z-reading or subtracting an already-voided sale twice.
+                </p>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard label="Adjustment events" value={Number(dailyReport.adjustment_summary?.adjustment_count || 0)} />
+                  <MetricCard label="Completed amount" value={money(dailyReport.adjustment_summary?.succeeded_amount, currencySymbol)} />
+                  <MetricCard label="Pending amount" value={money(dailyReport.adjustment_summary?.pending_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.pending_amount || 0) > 0 ? 'negative' : 'default'} />
+                  <MetricCard label="Manual review" value={money(dailyReport.adjustment_summary?.manual_review_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.manual_review_amount || 0) > 0 ? 'negative' : 'default'} />
+                </div>
+                <DataTable
+                  columns={[
+                    { key: 'event_at', label: 'Event Datetime', render: (row) => printDateTime(row.event_at) },
+                    { key: 'invoice_number', label: 'Invoice', render: (row) => row.invoice_number || row.pos_transaction_id },
+                    { key: 'adjustment_type', label: 'Action', render: (row) => String(row.adjustment_type || '').replace(/_/g, ' ') },
+                    { key: 'status', label: 'Status', render: (row) => String(row.status || '').replace(/_/g, ' ') },
+                    { key: 'amount', label: 'Amount', align: 'right', render: (row) => money(row.amount, currencySymbol) },
+                    { key: 'original_cashier_name', label: 'Original Cashier', render: (row) => row.original_cashier_name || row.original_cashier_id || '-' },
+                    { key: 'actor_name', label: 'Actioned By', render: (row) => row.actor_name || row.actor_user_id || '-' },
+                    { key: 'actor_shift_id', label: 'Actor Shift', render: (row) => row.actor_shift_id || 'No shift' },
+                    { key: 'adjustment_reference', label: 'Reference' }
+                  ]}
+                  rows={Array.isArray(dailyReport.adjustment_rows) ? dailyReport.adjustment_rows : []}
+                  emptyMessage="No refund or adjustment events were recorded in this event-date range."
+                />
               </SectionCard>
 
               <div className="grid gap-4 xl:grid-cols-2">

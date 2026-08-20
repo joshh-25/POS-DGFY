@@ -30,6 +30,7 @@ export function SimpleCheckoutSummaryContent({
   money,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
@@ -56,6 +57,7 @@ export function SimpleCheckoutSummaryContent({
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
+    ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     { label: 'Fees & Taxes', value: money((totals.service_fee_amount || 0) + (totals.vat_amount || 0)) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }

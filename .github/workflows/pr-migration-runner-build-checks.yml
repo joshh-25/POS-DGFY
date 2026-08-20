@@ -19,6 +19,14 @@ on:
         required: false
         type: string
         default: linux/amd64
+      cache_from:
+        description: >-
+          Cache backend for cache-from, e.g. "type=gha". Empty disables the
+          cache entirely -- see #726: the Actions cache endpoint currently
+          costs ~21x the build it's meant to skip on self-hosted runners.
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build-check:
@@ -27,7 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      # Only needed when platforms actually requests arm64 -- the default (amd64-only) proof
+      # of build has no cross-arch step to emulate. Costs ~20s plus a 31MB binfmt cache entry
+      # per ref for nothing when skipped unconditionally (#727).
+      - if: contains(inputs.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -46,4 +58,4 @@ jobs:
           file: infrastructure/docker/dgfy-migration-runner/Dockerfile
           platforms: ${{ inputs.platforms }}
           push: false
-          cache-from: type=gha,scope=migration-runner
+          cache-from: ${{ inputs.cache_from != '' && format('{0},scope=migration-runner', inputs.cache_from) || '' }}

@@ -26,6 +26,7 @@ import IndustrySelect from '../../../../../src/features/registration/IndustrySel
 
 import { writeDgfyAuthToken } from '../../auth/storefrontSessionStorage.js';
 import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';
+import { buildBusinessRegistrationSubmissionPath } from '../model/businessRegistrationSubmission.js';
 
 const getFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
 const getFlowDocuments = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.documents || [];
@@ -285,7 +286,7 @@ export default function StorefrontBusinessGrowPage() {
       toast.success('Registration submitted for approval.');
 
       if (registrationData.application_id) {
-        window.location.assign(resolveSkupervisorUrl(`/register-company/status/${registrationData.application_id}`));
+        navigate(buildBusinessRegistrationSubmissionPath(registrationData.application_id));
         return;
       }
       throw new Error('Registration submitted without an application reference. Please contact DGFY support.');

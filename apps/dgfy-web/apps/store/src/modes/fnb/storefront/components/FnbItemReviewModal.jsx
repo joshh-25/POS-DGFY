@@ -18,7 +18,8 @@ function maskReviewerName(value) {
   const normalized = String(value || '').trim();
   if (!normalized) return 'Anonymous customer';
   const [firstName = '', ...remainingNames] = normalized.split(/\s+/);
-  const lastInitial = remainingNames.at(-1)?.[0] || '';
+  // Chrome 80-84 iMin/old-handset WebView has no Array.prototype.at (ES2022 / Chrome 92+). See #666.
+  const lastInitial = remainingNames[remainingNames.length - 1]?.[0] || '';
   return `${firstName}${lastInitial ? ` ${lastInitial}.` : ''}`;
 }
 

@@ -75,7 +75,9 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260812000008-add-pos-provider-refund-reconciliation.cjs' },
         { name: '20260813000001-create-pos-merchant-tender-reconciliations.cjs' },
         { name: '20260813000002-add-pos-parked-sale-revision.cjs' },
-        { name: '20260815000002-add-pos-parked-sale-origin-ownership.cjs' }
+        { name: '20260815000002-add-pos-parked-sale-origin-ownership.cjs' },
+        { name: '20260819000001-create-pos-transaction-adjustments.cjs' },
+        { name: '20260819000002-add-pos-split-allocation-reversal-state.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -198,7 +200,9 @@ const buildHealthySequelizeMock = () => ({
                     provider_refund_ids: {},
                     provider_refund_event_id: {},
                     provider_refund_status: {},
-                    provider_refunded_at: {}
+                    provider_refunded_at: {},
+                    reversed_amount: {},
+                    reversal_status: {}
                 },
                 pos_merchant_tender_reconciliations: {
                     pos_merchant_tender_reconciliation_id: {},
@@ -219,6 +223,43 @@ const buildHealthySequelizeMock = () => ({
                     reviewed_by: {},
                     reviewed_at: {},
                     supersedes_reconciliation_id: {}
+                },
+                pos_transaction_adjustments: {
+                    pos_transaction_adjustment_id: {},
+                    adjustment_reference: {},
+                    pos_transaction_id: {},
+                    pos_payment_allocation_id: {},
+                    original_cashier_id: {},
+                    original_shift_id: {},
+                    original_terminal_id: {},
+                    original_location_id: {},
+                    actor_user_id: {},
+                    actor_shift_id: {},
+                    actor_terminal_id: {},
+                    actor_location_id: {},
+                    adjustment_type: {},
+                    tender_type: {},
+                    amount: {},
+                    currency: {},
+                    status: {},
+                    reason: {},
+                    idempotency_key: {},
+                    request_hash: {},
+                    approved_by: {},
+                    approved_at: {},
+                    external_reference: {},
+                    provider: {},
+                    provider_reference: {},
+                    provider_event_id: {},
+                    cash_drawer_event_id: {},
+                    failure_code: {},
+                    failure_reason: {},
+                    retry_count: {},
+                    last_retry_at: {},
+                    completed_at: {},
+                    failed_at: {},
+                    cancelled_at: {},
+                    metadata: {}
                 },
                 pos_parked_sales: {
                     pos_parked_sale_id: {},

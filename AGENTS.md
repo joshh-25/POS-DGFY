@@ -35,6 +35,44 @@ This rule governs the action (`gh pr merge` or equivalent), not one named role �
 the acting session is running as `pr-reviewer`, `implement`, or unrostered. See #544 for the incident
 (PR #510) that exposed the rule existing only inside `pr-reviewer`'s own policy table.
 
+### Bounded carve-out — merging on local CI evidence when GitHub's checks are unavailable
+
+Added 2026-08-19 (#662/#724), after two distinct failures of the check-run pipeline itself:
+2026-08-18's self-hosted runners going fully offline mid-promotion, and 2026-08-19's **queue
+starvation** — both runners `online`, yet PRs sitting `queued`/`in_progress` for hours before being
+cancelled with no conclusion ever produced (measured: four PRs cancelled after ~3h that finished in
+1–2 minutes once a runner freed). Either way the hard stop above never resolves on its own — nothing
+about "wait for a terminal result" holds when no terminal result is coming.
+
+`scripts/pr-checks.js` (`npm run check:pr`) reproduces the PR checks locally and — under `--post` —
+posts one `## Local CI` PR comment as the evidence artifact. That comment may authorize a merge
+**only** when every one of the following holds, all restated here rather than left to live only in
+a skill file (this file's own Surface precedence calls that a bug):
+
+- **Base is `develop` or `staging`. Never `main`** — no exception, matching every other role's
+  absolute rule on `main`.
+- **Unavailability is verified, not assumed**, as exactly one of three classified reasons:
+  `runner_offline` (every runner non-`online`, `gh api repos/:repo/actions/runners`),
+  `queue_starvation` (runners online, but this SHA's checks sit `queued`/`in_progress` past a
+  threshold or were `cancelled` without a conclusion), or `billing_allocation_failure` (the existing
+  verified reason, via `scripts/collect-github-actions-unavailability.js`). A check that is merely
+  *slow but progressing* is none of these and does not qualify.
+- **The `## Local CI` comment is posted before the merge**, never after, and states its own
+  overall result plus a non-empty "Not reproduced locally" list — never silently substituting for
+  CI.
+- **The comment result is `PASS`.** `scripts/pr-checks.js --post` itself refuses to post when its
+  classifier reports `healthy` (no verified unavailability) — that refusal is what keeps this from
+  being a routine bypass; do not work around it by omitting `--post`'s own gate.
+- **The comment's stated `Commit:` SHA equals the PR's current head.** Verify with `gh pr view <N>
+  --json headRefOid` before merging. A comment is evidence for the commit it was generated against,
+  not for the PR in general — if a later commit landed (a Worker's follow-up push is the common
+  case), the comment is stale and does not qualify; a mismatch is treated exactly like no qualifying
+  comment at all, not as a lesser confirmation step. Added 2026-08-19 (#725 RF-2) after the first
+  version of this carve-out shipped with no commit binding at all.
+
+Everything else about the hard stop above is unchanged: this carve-out extends *what evidence can
+satisfy it*, not who may skip it or on which branch.
+
 ## Roles
 
 This repo defines specialized agent roles for repeated jobs — planning, implementing, reviewing —

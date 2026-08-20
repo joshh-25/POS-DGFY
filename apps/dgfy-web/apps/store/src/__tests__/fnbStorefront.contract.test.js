@@ -33,6 +33,7 @@ const cartDrawerShellContainerSource = () => readSource('app/pages/StorefrontCar
 const checkoutSubmissionSource = () => readSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
 const signedInCheckoutAddressesSource = () => readSource('modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js');
 const fnbTrackingContainerSource = () => readSource('modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx');
+const servicesTrackingContainerSource = () => readSource('modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx');
 const fnbTrackingAdapterSource = () => readSource('modes/fnb/tracking/model/fnbTrackingAdapter.js');
 const fnbTrackingPayloadSource = () => readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
 const fnbTrackingDrawerTotalsSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawerTotals.jsx');
@@ -301,6 +302,18 @@ describe('Food & Beverage storefront contract', () => {
     expect(payload).toContain('display');
     expect(payload).toContain('Array.isArray(order?.lines)');
     expect(payload).toContain('deliveryAddress');
+  });
+
+  it('routes Services tracking through the Services-owned runtime and drawer outlet', () => {
+    const source = appSource();
+    const shell = cartDrawerShellContainerSource();
+
+    expect(source).toContain("trackingMode: 'services'");
+    expect(source).toContain('const servicesTrackingRouteProps = buildServicesTrackingRouteProps');
+    expect(shell).toContain('ServicesTrackingRouteContainer');
+    expect(shell).toContain("visible={checkoutTab === 'track'}");
+    expect(shell).toContain('!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer');
+    expect(servicesTrackingContainerSource()).toContain('ServicesTrackingRoutePage');
   });
 
   it('preserves promo discount labels across F&B tracking summaries', () => {

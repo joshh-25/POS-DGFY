@@ -120,6 +120,18 @@ describe('eligibility masks — null and zero are unrepresentable', () => {
         expect(value.voucher_kind).toBe('promo_code');
         expect(value.allow_below_cost).toBe(false);
         expect(value.stackable_with_statutory).toBe(false);
+        expect(value.is_publicly_listed).toBe(false);
+    });
+
+    // #713: independent of channels_mask -- controls storefront advertising, not code usability.
+    test('is_publicly_listed accepts an explicit true on create and update', () => {
+        const created = validate(createVoucherSchema, validCreatePayload({ is_publicly_listed: true }));
+        expect(created.error).toBeUndefined();
+        expect(created.value.is_publicly_listed).toBe(true);
+
+        const updated = validate(updateVoucherSchema, { is_publicly_listed: true, version: 0 });
+        expect(updated.error).toBeUndefined();
+        expect(updated.value.is_publicly_listed).toBe(true);
     });
 
     test('an out-of-range mask is rejected', () => {
@@ -191,6 +203,124 @@ describe('benefit-class conditionals on create', () => {
     test('an unrecognized benefit class is rejected', () => {
         const { error } = validate(createVoucherSchema, validCreatePayload({ benefit_class: 'buy_one_get_one' }));
         expect(errorFields(error)).toContain('benefit_class');
+    });
+});
+
+describe('#696 pricelist attachment on create', () => {
+    test('fixed_price with a pricelist_id needs no fixed_unit_price_centavos and no scopes', () => {
+        const { error, value } = validate(createVoucherSchema, {
+            code: 'WHOLESALE1', title: 'Valid title', benefit_class: 'fixed_price', pricelist_id: 7
+        });
+        expect(error).toBeUndefined();
+        expect(value.pricelist_id).toBe(7);
+        expect(value.fixed_unit_price_centavos).toBeUndefined();
+        expect(value.scopes).toEqual([]);
+    });
+
+    test('sending both fixed_unit_price_centavos and pricelist_id is rejected', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN8',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 800,
+            pricelist_id: 7,
+            scopes: [{ scope_type: 'item', scope_ref_id: 1 }]
+        });
+        // fixed_unit_price_centavos becomes forbidden the moment pricelist_id is present.
+        expect(errorFields(error)).toContain('fixed_unit_price_centavos');
+    });
+
+    test('pricelist_id is forbidden for percent_off and amount_off', () => {
+        expect(errorFields(validate(createVoucherSchema, validCreatePayload({ pricelist_id: 7 })).error))
+            .toContain('pricelist_id');
+        expect(errorFields(validate(createVoucherSchema, {
+            code: 'FLAT50', title: 'Valid title', benefit_class: 'amount_off', amount_off_centavos: 500, pricelist_id: 7
+        }).error)).toContain('pricelist_id');
+    });
+});
+
+describe('#716 create tolerates the real UI payload — an explicit null on the inapplicable field', () => {
+    // VoucherManagementPanel.jsx's buildVoucherPayload sends the *other* branch's field as an
+    // explicit `null` rather than omitting the key. Both of the next two cases are the real
+    // payloads the UI builds -- both 422'd before this fix (`Joi.forbidden()` disallows the key's
+    // mere presence, and `Joi.exist()` is satisfied by `null`).
+    test('single-price sub-mode: fixed_unit_price_centavos set, pricelist_id explicitly null', () => {
+        const { error, value } = validate(createVoucherSchema, {
+            code: 'PIN9',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: null,
+            scopes: [{ scope_type: 'item', scope_ref_id: 1 }]
+        });
+        expect(error).toBeUndefined();
+        expect(value.fixed_unit_price_centavos).toBe(5000);
+        expect(value.pricelist_id).toBeNull();
+    });
+
+    test('pricelist sub-mode: pricelist_id set, fixed_unit_price_centavos explicitly null', () => {
+        const { error, value } = validate(createVoucherSchema, {
+            code: 'WHOLESALE2',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: null,
+            pricelist_id: 7,
+            scopes: []
+        });
+        expect(error).toBeUndefined();
+        expect(value.pricelist_id).toBe(7);
+        expect(value.fixed_unit_price_centavos).toBeNull();
+    });
+
+    test('single-price sub-mode with no scopes is still refused — null pricelist_id must not skip the scope requirement', () => {
+        // Regression for the same Joi.exist()-matches-null bug, in the scopes conditional: an
+        // explicit `pricelist_id: null` must NOT be read as "a pricelist is attached".
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN10',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: null,
+            scopes: []
+        });
+        expect(errorFields(error)).toContain('scopes');
+    });
+
+    test('a real value on the inapplicable field is still rejected, even alongside the correct one', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN11',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: 5000,
+            pricelist_id: 7,
+            scopes: []
+        });
+        expect(errorFields(error)).toContain('fixed_unit_price_centavos');
+    });
+
+    test('both fields null on fixed_price is still rejected — one of the two is mandatory', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'PIN12',
+            title: 'Valid title',
+            benefit_class: 'fixed_price',
+            fixed_unit_price_centavos: null,
+            pricelist_id: null
+        });
+        expect(errorFields(error)).toContain('fixed_unit_price_centavos');
+    });
+
+    test('pricelist_id: null on percent_off is accepted as a no-op', () => {
+        const { error, value } = validate(createVoucherSchema, validCreatePayload({ pricelist_id: null }));
+        expect(error).toBeUndefined();
+        expect(value.pricelist_id).toBeNull();
+    });
+
+    test('fixed_unit_price_centavos: null on amount_off is accepted as a no-op', () => {
+        const { error } = validate(createVoucherSchema, {
+            code: 'FLAT51', title: 'Valid title', benefit_class: 'amount_off', amount_off_centavos: 500,
+            fixed_unit_price_centavos: null
+        });
+        expect(error).toBeUndefined();
     });
 });
 
@@ -331,6 +461,38 @@ describe('cross-field rules via the middleware', () => {
         });
         expect(res.statusCode).toBe(422);
         expect(res.body.errors.map((row) => row.field)).toContain('max_discount_centavos');
+    });
+
+    test('an update sending pricelist_id without benefit_class is a 422 (#696)', async () => {
+        const { res } = await runMiddleware(validateUpdateVoucher, {
+            body: { version: 0, pricelist_id: 7 }
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.body.errors.map((row) => row.field)).toContain('benefit_class');
+    });
+
+    test('an update sending pricelist_id for a non-fixed_price class is a 422 (#696)', async () => {
+        const { res } = await runMiddleware(validateUpdateVoucher, {
+            body: { version: 0, benefit_class: 'percent_off', percent_off_bps: 1000, pricelist_id: 7 }
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.body.errors.map((row) => row.field)).toContain('pricelist_id');
+    });
+
+    test('an update sending both fixed_unit_price_centavos and pricelist_id is a 422 (#696)', async () => {
+        const { res } = await runMiddleware(validateUpdateVoucher, {
+            body: { version: 0, benefit_class: 'fixed_price', fixed_unit_price_centavos: 800, pricelist_id: 7 }
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.body.errors.map((row) => row.field)).toContain('pricelist_id');
+    });
+
+    test('an update attaching only pricelist_id (with benefit_class resent) passes through', async () => {
+        const { nextCalled, req } = await runMiddleware(validateUpdateVoucher, {
+            body: { version: 0, benefit_class: 'fixed_price', pricelist_id: 7 }
+        });
+        expect(nextCalled).toBe(true);
+        expect(req.validatedData.pricelist_id).toBe(7);
     });
 
     test('an update sending only one half of the time window is allowed through to the use case', async () => {

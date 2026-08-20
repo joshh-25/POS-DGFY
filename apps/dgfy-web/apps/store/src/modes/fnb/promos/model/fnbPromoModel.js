@@ -131,10 +131,39 @@ const normalizePromoEntry = (entry, { catalogIndex, catalogCategoryIndex } = {})
   };
 };
 
+// #713: a voucher entry (storefront_vouchers, added to the discovery snapshot by
+// storefrontDiscoveryIndexService.js's buildPublicStorefrontVouchers) is a DIFFERENT raw shape
+// than a promo entry -- `code` not `promo_code`, `percent_off_bps` (basis points) not
+// `discount_percent` (0-100). Adapted to the promo entry's own raw field names HERE, once, so
+// `normalizePromoEntry` below needs no voucher-specific branches at all -- vouchers become
+// ordinary promo candidates the moment they leave this function.
+const adaptVoucherToPromoEntryShape = (voucher) => {
+  const percentOffBps = Number(voucher?.percent_off_bps);
+  const discountPercent = Number.isFinite(percentOffBps) && percentOffBps > 0
+    ? percentOffBps / 100
+    : null;
+  return {
+    title: voucher?.title,
+    subtitle: voucher?.subtitle,
+    badge: voucher?.badge,
+    // A non-percent_off voucher (amount_off/fixed_price) has no single percent to show -- the
+    // badge/title still convey the offer, matching how the catalog-display seam (#603) also gives
+    // amount_off a badge only, never a fabricated price. No discount_label fallback is synthesized
+    // here; an empty discount label degrades to `normalizePromoEntry`'s own "PROMO" default.
+    discount_percent: discountPercent,
+    promo_code: voucher?.code,
+    validity_text: voucher?.validity_text,
+    active: voucher?.active !== false
+  };
+};
+
 const getPromoCandidates = ({ selectedStore, supportingPromo }) => {
   const candidates = [];
   const storePromos = parseOptionalArray(selectedStore?.storefront_promos);
   if (storePromos.length > 0) candidates.push(...storePromos);
+
+  const storeVouchers = parseOptionalArray(selectedStore?.storefront_vouchers);
+  if (storeVouchers.length > 0) candidates.push(...storeVouchers.map(adaptVoucherToPromoEntryShape));
 
   const normalizedSupportingPromo = parseOptionalObject(supportingPromo);
   const modernCandidateCount = candidates.length;

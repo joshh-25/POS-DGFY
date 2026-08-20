@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 // Mocked at the same specifier StorefrontBusinessGrowPage.jsx itself imports
 // from (frontend/src, a cross-app import — see the component's own comment)
@@ -53,9 +53,15 @@ const dgfyLegalTerms = {
   }
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="router-location">{location.pathname}{location.search}</output>;
+}
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={['/business/grow']}>
     <StorefrontBusinessGrowPage />
+    <LocationProbe />
   </MemoryRouter>
 );
 
@@ -148,6 +154,8 @@ describe('StorefrontBusinessGrowPage — registration Industry picker', () => {
 
     const call = apiMock.post.mock.calls[0][0];
     expect(call).not.toHaveProperty('workflowMode');
-    await waitFor(() => expect(mockLocation.assign).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('router-location').textContent)
+      .toBe('/business-registration-submission?application_id=application-carinderia'));
+    expect(mockLocation.assign).not.toHaveBeenCalled();
   });
 });

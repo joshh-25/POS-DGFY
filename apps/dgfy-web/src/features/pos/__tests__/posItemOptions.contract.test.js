@@ -3,7 +3,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const checkoutPath = path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx');
-const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
+const checkoutViewPath = path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx');
+const checkoutContent = [checkoutPath, checkoutViewPath]
+  .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+  .join('\n');
 
 describe('POS Current Sale item options contract', () => {
   it('opens one item options modal from the item itself', () => {

@@ -17,7 +17,7 @@ import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from '../../modes/fnb/storefront/model/fnbCommunityModel.js';
 import { buildFnbPromoSectionModel } from '../../modes/fnb/promos/model/fnbPromoModel.js';
-import { buildServiceFallbackReasons } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
+import { buildServiceFallbackReasons, buildServicesCatalogPresentation } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
 import { buildSimpleFallbackReasons } from '../../modes/simple/storefront/model/simpleStorefrontPresentation.js';
 import {
   deriveStorefrontRegistrationYear,
@@ -145,6 +145,8 @@ export function useStorefrontCatalog({
         categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
       });
     const ratingLabel = formatRatingSummary(reviewSummary);
+    const modeLabel = heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow;
+    const catalogPresentation = buildServicesCatalogPresentation({ modeAdapter, modeLabel });
     const reviewCount = Number((reviewSummary?.total_count ?? reviewSummary?.totalCount) || 0);
     const serviceCounts = {
       total: Number(servicesViewModel?.totalServices || 0),
@@ -170,7 +172,8 @@ export function useStorefrontCatalog({
       tagline: heroSectionModel?.tagline || '',
       statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
       ratingLabel,
-      modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
+      modeLabel,
+      catalogPresentation,
       locationLabel: addressLine || locationName || 'Location details coming soon',
       aboutText: heroSectionModel?.aboutText || '',
       sectionAboutText: heroSectionModel?.aboutText || '',
@@ -232,9 +235,7 @@ export function useStorefrontCatalog({
     servicesViewModel,
     servicesLayoutMode,
     heroSectionModel,
-    modeAdapter.heroDescription,
-    modeAdapter.heroEyebrow,
-    modeAdapter.primaryActionLabel,
+    modeAdapter,
     bookingPermitted,
     checkoutPermitted
   ]);
@@ -377,7 +378,6 @@ export function useStorefrontCatalog({
     supportingSectionModel,
     catalog,
     storeLocations,
-    modeAdapter.heroDescription,
     modeAdapter.heroEyebrow,
     modeAdapter.primaryActionLabel,
     checkoutPermitted,

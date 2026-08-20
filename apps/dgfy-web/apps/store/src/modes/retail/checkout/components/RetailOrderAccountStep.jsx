@@ -11,7 +11,7 @@ const RETAIL_ACCENT_DARK = '#1a4586';
  * identity infrastructure F&B/MSME already use:
  * `renderGuestCheckoutEntry`/`renderGuestIdentityFields`/`renderAccountOwnedIdentitySummary`
  * (from `useGuestCustomerIdentity`, instantiated once in `StorefrontApp.jsx`) and the guest OTP
- * state/handlers (from `useFnbGuestCheckoutOtp`, also instantiated once and shared across
+ * state/handlers (from `useGuestCheckoutOtp`, also instantiated once and shared across
  * modes despite the "Fnb" name — it takes no F&B-specific state). No new backend calls were
  * added here; this step is now real, not a placeholder.
  */

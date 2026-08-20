@@ -36,6 +36,7 @@ import PosTransaction from './PosTransaction.js';
 import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
+import PosTransactionAdjustment from './PosTransactionAdjustment.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -58,6 +59,8 @@ import Voucher from './Voucher.js';
 import VoucherScope from './VoucherScope.js';
 import VoucherRedemption from './VoucherRedemption.js';
 import VoucherRedemptionLine from './VoucherRedemptionLine.js';
+import Pricelist from './Pricelist.js';
+import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
@@ -580,6 +583,26 @@ PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' })
 PosTransaction.belongsTo(EmployeeCreditAccount, { foreignKey: 'employee_credit_account_id', as: 'employeeCreditAccount' });
 PosTransaction.belongsTo(User, { foreignKey: 'employee_credit_user_id', as: 'employeeCreditEmployee' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_transaction_id', as: 'adjustments' });
+PosTransactionAdjustment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosTransactionAdjustment.belongsTo(PosPaymentAllocation, { foreignKey: 'pos_payment_allocation_id', as: 'paymentAllocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'original_cashier_id', as: 'originalCashier' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'original_shift_id', as: 'originalShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'original_location_id', as: 'originalLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'actor_shift_id', as: 'actorShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'actor_location_id', as: 'actorLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+PosTransactionAdjustment.belongsTo(PosCashDrawerEvent, { foreignKey: 'cash_drawer_event_id', as: 'cashDrawerEvent' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'original_cashier_id', as: 'originalTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_user_id', as: 'actorTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'approved_by', as: 'approvedTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'original_shift_id', as: 'originalTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_shift_id', as: 'actorTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_location_id', as: 'originalTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
+PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
+PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -716,6 +739,17 @@ VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redempti
 VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
 VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+
+// Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
+// may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
+// self-reference (a draft revision points at the published row it will replace on publish).
+Pricelist.hasMany(PricelistItem, { foreignKey: 'pricelist_id', as: 'items' });
+PricelistItem.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+PricelistItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Pricelist.belongsTo(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'publishedPricelist' });
+Pricelist.hasOne(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'draftRevision' });
+Voucher.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+Pricelist.hasMany(Voucher, { foreignKey: 'pricelist_id', as: 'vouchers' });
 PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
@@ -992,6 +1026,7 @@ const db = {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1014,6 +1049,8 @@ const db = {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -1196,6 +1233,7 @@ export {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
@@ -1216,6 +1254,8 @@ export {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,

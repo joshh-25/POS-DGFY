@@ -6,6 +6,7 @@ import { StorefrontDirectionsEta } from '../../../../shared/components/storefron
 
 const ServicesHeroDesktopContactLocation = ({
   deliveryPlatformLinks,
+  hasAboutOrGallerySection,
   hasContactRows,
   hasMapData,
   modeAdapter,
@@ -21,7 +22,7 @@ const ServicesHeroDesktopContactLocation = ({
   StorefrontExpandableBusinessHours,
   visibleContactRows
 }) => (
-  <div style={{ display: 'grid', gap: 14, paddingLeft: 26, borderLeft: '1px solid #eef2f6', alignContent: 'start' }}>
+  <div style={{ display: 'grid', gap: 14, paddingLeft: hasAboutOrGallerySection ? 26 : 0, borderLeft: hasAboutOrGallerySection ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>
     <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Contact & Location</div>
     <div style={{ display: 'grid', gridTemplateColumns: hasMapData ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
       {hasContactRows && (

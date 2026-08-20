@@ -1,3 +1,38 @@
+// #712: voucher redemption-time reason codes (voucherEligibilityPolicy.js / voucherErrors.js).
+// VoucherManagementPanel.jsx's REASON_CODE_MESSAGES map is authoring-only (CRUD/lifecycle codes) --
+// this is the redemption-time set a cashier can actually hit at checkout, which had no frontend
+// copy anywhere before this. Both use the same `errors.reason_code` object shape.
+const VOUCHER_REASON_MESSAGES = Object.freeze({
+  VOUCHER_NOT_FOUND: 'Voucher code was not found.',
+  VOUCHER_NOT_ACTIVE: 'This voucher is not active.',
+  VOUCHER_NOT_STARTED: "This voucher's validity period hasn't started yet.",
+  VOUCHER_EXPIRED: 'This voucher has expired.',
+  VOUCHER_WEEKDAY_NOT_ELIGIBLE: "This voucher isn't valid today.",
+  VOUCHER_TIME_WINDOW_BLOCKED: "This voucher isn't valid at this time.",
+  VOUCHER_TIME_WINDOW_DEGENERATE: 'This voucher has an invalid time window. Contact an admin.',
+  VOUCHER_TIMEZONE_UNRESOLVABLE: 'Could not verify this voucher\'s validity window. Try again.',
+  VOUCHER_CHANNEL_NOT_ELIGIBLE: "This voucher isn't enabled for in-store (POS) redemption.",
+  VOUCHER_FULFILLMENT_NOT_ELIGIBLE: "This voucher isn't valid for this order type.",
+  VOUCHER_ORDER_TIMING_NOT_ELIGIBLE: "This voucher isn't valid for this order timing.",
+  VOUCHER_MIN_SPEND_NOT_MET: "This order doesn't meet the voucher's minimum spend.",
+  VOUCHER_MIN_QUANTITY_NOT_MET: "This order doesn't meet the voucher's minimum quantity.",
+  VOUCHER_REDEMPTION_LIMIT_REACHED: 'This voucher has reached its redemption limit.',
+  VOUCHER_BUDGET_EXHAUSTED: "This voucher's discount budget has been used up.",
+  VOUCHER_QUANTITY_LIMIT_REACHED: 'This voucher has reached its quantity limit.',
+  VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT: 'This voucher cannot combine with an active affiliate price.',
+  VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS: "None of the items in this order are covered by this voucher.",
+  VOUCHER_PRICE_BELOW_COST: 'This voucher would price an item below cost. Contact an admin.',
+  VOUCHER_DISCOUNT_SLOT_OCCUPIED: 'Only one discount can be applied to a sale. Remove the other discount first.',
+  VOUCHER_POS_REDEMPTION_DISABLED: 'Voucher redemption is not enabled for this store. Contact an admin.',
+  VOUCHER_CODE_REQUIRED: 'Voucher code is required.'
+});
+
+export const buildVoucherReasonMessage = (error) => {
+  const details = error?.response?.data?.errors || error?.response?.data?.details || {};
+  const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
+  return VOUCHER_REASON_MESSAGES[reasonCode] || null;
+};
+
 export const buildFnbRecipeBlockerMessage = (error) => {
   const details = error?.response?.data?.errors || error?.response?.data?.details || {};
   const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
@@ -22,6 +57,8 @@ export const buildFnbRecipeBlockerMessage = (error) => {
 export const buildValidationDetailMessage = (error) => {
   const fnbRecipeBlocker = buildFnbRecipeBlockerMessage(error);
   if (fnbRecipeBlocker) return fnbRecipeBlocker;
+  const voucherReasonMessage = buildVoucherReasonMessage(error);
+  if (voucherReasonMessage) return voucherReasonMessage;
   if (error?.response?.status !== 422) return null;
 
   const validationErrors = error?.response?.data?.errors;

@@ -91,6 +91,19 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- VOUCHERS (#655) ---
+    // Split out of SYSTEM.VIEW_SETTINGS/EDIT_SETTINGS, which Phase 103 (#614) deliberately reused as
+    // a scoping shortcut -- see routes/vouchers.js's own comment. Dual-gated for one release
+    // alongside the legacy SYSTEM pair (see routes/vouchers.js) so no existing admin/manager loses
+    // access before the deploy-time backfill (scripts/backfill-role-permissions.js) has run.
+    VOUCHERS: {
+        label: "Vouchers",
+        actions: {
+            VIEW: "vouchers:view",     // View voucher campaigns
+            MANAGE: "vouchers:manage", // Create, edit, and change lifecycle status of voucher campaigns
+        }
+    },
+
     // --- SERVICES MODE ---
     SERVICES: {
         label: "Services",
@@ -231,7 +244,9 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.VIEW_USERS,
         PERMISSIONS.SYSTEM.actions.DELETE_USERS,
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
-        PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES
+        PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
+        PERMISSIONS.VOUCHERS.actions.VIEW,
+        PERMISSIONS.VOUCHERS.actions.MANAGE
     ],
     staff: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,

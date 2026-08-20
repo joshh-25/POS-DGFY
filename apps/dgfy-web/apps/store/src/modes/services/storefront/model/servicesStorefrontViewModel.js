@@ -18,8 +18,8 @@ const CATEGORY_PRESETS = Object.freeze({
   aircon_cleaning: Object.freeze({
     label: 'Aircon Cleaning',
     iconToken: 'aircon',
-    accent: '#0369a1',
-    accentBg: '#f0f9ff',
+    accent: '#134e4a',
+    accentBg: '#ecfeff',
     howItWorks: [
       'Choose the correct unit type and service size.',
       'Share the address, number of units, and preferred schedule.',
@@ -35,11 +35,11 @@ const CATEGORY_PRESETS = Object.freeze({
 
 const CATEGORY_COLORS = Object.freeze([
   { accent: '#0f766e', accentBg: '#f0fdfa' },
-  { accent: '#0369a1', accentBg: '#eff6ff' },
-  { accent: '#7c3aed', accentBg: '#f5f3ff' },
-  { accent: '#c2410c', accentBg: '#fff7ed' },
-  { accent: '#be123c', accentBg: '#fff1f2' },
-  { accent: '#1a4e8d', accentBg: '#eff6ff' },
+  { accent: '#134e4a', accentBg: '#ecfeff' },
+  { accent: '#0f172a', accentBg: '#f8fafc' },
+  { accent: '#0f766e', accentBg: '#fffbeb' },
+  { accent: '#134e4a', accentBg: '#f8fafc' },
+  { accent: '#0f172a', accentBg: '#ecfeff' },
   { accent: '#0f766e', accentBg: '#ecfeff' }
 ]);
 

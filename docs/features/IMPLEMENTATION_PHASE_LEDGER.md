@@ -5318,18 +5318,19 @@ parked-sale replay and shift-close resolution.
 ### Completion Record
 
 - Phase 103 completed 2026-08-18. Phase 105 (POS and storefront redemption: atomic limit enforcement
-  against the ledger, folder-descendant scope resolution, and the reversal path) is the next eligible
+  against the ledger, folder-descendant scope resolution, and the reversal path) was the next eligible
   phase for the voucher initiative — renumbered from this entry's originally-planned 104 because
   Phase 104 (below) was concurrently claimed by an unrelated Storefront PayMongo initiative that
-  merged into `develop` first; per this ledger's continuous-numbering rule, 105 is the next unclaimed
-  number, not 104.
+  merged into `develop` first; per this ledger's continuous-numbering rule, 105 was the next unclaimed
+  number, not 104. Phase 105 has since completed (PR #661, 2026-08-18) — see its own entry after
+  Phase 104 below.
 
 ## Phase 104 - Storefront Active PayMongo E-wallet Routing
 
 ### Initiative and Release
 
 - Initiative: Storefront payment-method capability expansion.
-- Release: Storefront Hosted Checkout active e-wallet/card method selection.
+- Release: Storefront PayMongo active e-wallet/card method selection and direct GCash authorization.
 
 ### Objective and Scope
 
@@ -5337,6 +5338,10 @@ parked-sale replay and shift-close resolution.
   choices in Storefront checkout.
 - Route the selected method as the single PayMongo Hosted Checkout method; a
   GCash selection must create a session restricted to `gcash`.
+- Permit direct GCash and independently opted-in Maya Payment Intent
+  authorization behind explicit live configuration; keep Hosted Checkout for
+  cards and other methods and as the wallet fallback when direct mode is
+  disabled.
 - Preserve the existing signed webhook finalization, idempotency, settlement,
   refund, and walk-in POS physical-QR boundaries.
 - Defer BPI, UBP, BDO, Landbank, and other direct-online-banking choices until
@@ -5363,8 +5368,15 @@ parked-sale replay and shift-close resolution.
   shown; inactive methods remain hidden.
 - [ ] GCash selection sends `payment_type=gcash` and creates
   `payment_method_types=["gcash"]`.
+- [ ] Explicitly enabled live GCash and Maya create wallet-specific PayMongo
+  Payment Intents and redirect to provider authorization without opening Hosted
+  Checkout.
+- [ ] Live provider `livemode`, amount, and currency are validated before
+  finalization.
 - [ ] Maya, GrabPay, ShopeePay, Card, and QR Ph selections preserve their exact
   method identifiers through the same payment-session endpoint.
+- [ ] Direct Maya uses `paymaya` only when its independent opt-in flags are
+  enabled; cards remain on Hosted Checkout.
 - [ ] No direct order finalizes before a verified PayMongo webhook.
 - [ ] Existing Cash, QR Ph, return recovery, and POS physical-QR behavior remain
   unchanged.
@@ -5380,8 +5392,925 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-migration-runner/migrations/20260817000001-expand-storefront-paymongo-payment-methods.cjs`
 - `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js`
 - `apps/dgfy-web/apps/store/src/shared/services/storefrontOnlinePaymentSession.js`
+- `apps/dgfy-api/src/modules/commercePayments/usecases/processVerifiedPaidCommerceSession.js`
+- Issue #679
 
 ### Completion Record
 
 - Phase 104 remains in progress until the acceptance gates and live-capability
   verification pass. Phase 105 is the next eligible phase after completion.
+
+## Phase 105 - Storefront Voucher Redemption: Atomic Reservation, Ledger, and Reversal
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), entity scoped in #455, authoring surface
+  scoped in #614. Continues Phase 103's backend module.
+- Release: storefront checkout only. POS redemption is deferred behind #604 (tenant-wide POS voucher
+  master switch, not yet built); the catalog display seam (#603) and the dedicated
+  `PERMISSIONS.VOUCHERS` group (#655) are both separate, not-yet-landed follow-ups.
+
+### Objective and Scope
+
+- Add `domain/voucherFolderScope.js` — a pure, cycle-safe BFS descendant-folder resolver over
+  `ItemFolder.parent_id`, used to resolve which cart lines a folder-scoped voucher applies to.
+- Add `usecases/voucherRedemptionUseCases.js` — `buildPreviewVoucherEligibilityUseCase` (no
+  transaction, read-only preview used by the QRPh payment-session path) and
+  `buildRedeemVoucherUseCase` (the real atomic path: row-lock the voucher, resolve scope, compute the
+  benefit, then a single guarded conditional `UPDATE` against `redeemed_count` /
+  `redeemed_value_centavos` / `redeemed_quantity`, bumping `version`, inside the already-open checkout
+  transaction).
+- Add `usecases/voucherReversalUseCases.js` — `buildReverseVoucherRedemptionUseCase`, a symmetric
+  decrement floored at zero with its own `entry_type:'reversal'` ledger row. No live caller yet:
+  `buildCancelStoreOrderUseCase` has no `status:'voided'` path today, so storefront has no
+  cancel/refund hook. Built ahead of that caller per this phase's own scope, covered by a direct unit
+  test instead of an integration path.
+- Wire the checkout seam into `storeUseCases.js`'s `resolveCheckoutContext`: no-transaction callers
+  (quote/QRPh-session preview) get eligibility + benefit calculation only; the transactional checkout
+  path gets the full atomic reserve + idempotency-keyed ledger insert
+  (`` `storefront:${checkoutIdempotencyKey}:${voucher_id}` ``), reusing the checkout's own transaction
+  rather than opening a second one.
+- Add `voucher_code` to `storeValidator.js`'s checkout payload schema, symmetric to the existing
+  `promo_code`.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Governed by ADR 0066 (`docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`).
+- Classified as a new authoritative money-moving ledger write path
+  (`voucher_redemptions`/`voucher_redemption_lines`); no compliance declaration was required or
+  written because `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` has no pattern
+  covering `modules/vouchers/` or `modules/store/` — a confirmed scanner gap, tracked separately
+  (#670), not a compliance exemption for this phase's own change.
+- Two known, deliberately deferred limitations, both filed as follow-ups rather than fixed here:
+  voucher and promo-code discounts currently stack at storefront checkout with no single-slot cap
+  unlike POS (#667), and the QRPh payment-session flow can succeed a payment before the real
+  reservation runs at webhook-confirmed finalization, which can roll back an already-paid order if the
+  voucher is exhausted in between (#668).
+
+### Acceptance and Validation Evidence
+
+- [x] `reserveRedemption`'s guarded conditional `UPDATE` returns `0` affected rows (mapped to the
+      specific exhaustion reason code) rather than silently over-redeeming when the voucher's
+      redemption count, peso budget, or benefit quantity limit is reached.
+- [x] A checkout retry sharing the same idempotency key returns the already-committed ledger row
+      (`idempotentReplay: true`) without a second `reserveRedemption` call — no double-fire on retry.
+- [x] Folder-scoped vouchers resolve descendant folders cycle-safely and fail closed (422) when the
+      scope matches zero eligible cart lines.
+- [x] Unit and use-case tests for the folder-scope resolver, redemption use case, and reversal use
+      case (`tests/voucherFolderScope.unit.test.js`,
+      `tests/voucherRedemptionUseCases.usecases.test.js`,
+      `tests/voucherReversalUseCases.usecases.test.js`).
+- [x] `node --check` on all 11 changed/new files, `check:architecture`, `check:adr`, and
+      `check:compliance` all pass. Local Jest could not run in the implementing worktree (no
+      `node_modules` installed) — stated in PR #661 rather than silently skipped.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherFolderScope.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `voucherReversalUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js` (+8 methods)
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js` (+2 reason codes)
+- `apps/dgfy-api/src/modules/vouchers/index.js` (composition-root wiring)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (checkout-seam hookup)
+- `apps/dgfy-api/src/validators/storeValidator.js` (`voucher_code`)
+- `apps/dgfy-api/tests/voucherFolderScope.unit.test.js`,
+  `voucherRedemptionUseCases.usecases.test.js`, `voucherReversalUseCases.usecases.test.js`
+- PR #661, merged to `develop` as `f4011814` (2026-08-18)
+- Issue #455 - voucher entity and ledger (`Refs`, left open — POS redemption remains, gated behind
+  #604); #614 - voucher authoring UI (separate, in progress); #453 - epic
+
+### Completion Record
+
+- Phase 105 completed 2026-08-18 via PR #661. Phase 106 (storefront voucher catalog display seam,
+  #603) is the next eligible phase for the voucher initiative.
+
+## Phase 106 - Storefront Voucher Catalog Display Seam
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #603 (API half only — the
+  storefront-consuming UI is split out as #672, not yet built). Continues Phase 105's checkout-path
+  module with a read-only display-time counterpart.
+- Release: storefront public catalog and QR-resolve endpoints only. Recorded retroactively — PR #678
+  merged to `develop` before this ledger entry was written, a gap this entry corrects rather than
+  repeats (see Phase 107's own note on the same class of miss).
+
+### Objective and Scope
+
+- Add `usecases/voucherDisplayUseCases.js` — `buildResolveVoucherDisplayPricesUseCase`, a third
+  sibling of the redemption preview/redeem pair, deliberately not built on `resolveEligibleBenefit`
+  (which requires prepared cart lines and throws on ineligibility — both wrong for a browse page with
+  no cart yet). Fail-open by design: any resolution failure (voucher not found, unresolvable
+  timezone, malformed benefit config, one bad item in a batch) falls back to the plain catalog price
+  rather than blocking the response, mirroring `storeUseCases.js`'s `applyAffiliateDisplayPrice`
+  template. Only the campaign-level (structural) eligibility reasons block display; basket
+  minimums/fulfillment/order-timing are unknowable pre-cart and are not evaluated against display.
+- `percent_off` and `fixed_price` resolve to a rewritten per-item price at quantity 1;
+  `amount_off` gets badge-only display (an order-level cap has no well-defined single-item price
+  shown in isolation).
+- ADR 0066 decision 7 mirrored at display time: a `fixed_price` voucher under active affiliate
+  attribution is refused identically to checkout, so a displayed price never contradicts what
+  checkout will actually allow.
+- Wire `folder_id` into `storeRepository.js`'s attribute lists and row mappings (3 methods:
+  `listStoreCatalog`, `findSellableItemsByIds`, `resolvePublicBarcode`) so folder-scoped vouchers can
+  resolve against catalog items at display time, reusing `resolveVoucherScopeItemIds` as-is.
+- Add `voucher_code` to both catalog query validators; wire response fields `voucher_price_applied`,
+  `voucher_display_price`, `voucher_badge_only` (additive — `default_sale_price` is never
+  overwritten, unlike the affiliate pricing precedent, so a struck-through UI can render both values).
+- Cache correctness: a `voucher_code`-bearing request switches the shared 45s public cache to
+  no-store (`bypassCacheForVoucherCode`, later generalized to `bypassCacheForPerBuyerPricing` by
+  #671's fix for the parallel affiliate-cookie gap).
+- Rate limiting: `storeVoucherLookupLimiter` (20 req/min/store in prod) added ahead of the cache
+  bypass, since `voucher_code` on a public unauthenticated route is a valid/invalid-code oracle.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Governed by ADR 0066, same as Phase 105.
+- Classification: `major`, `surfaces: payments,pos,terminal` — the first phase to actually require a
+  declaration under #676's newly-added `COMPLIANCE_SENSITIVE_RULES` coverage for `modules/vouchers/`
+  and `modules/store/` (the gap Phase 105 shipped ahead of).
+
+### Acceptance and Validation Evidence
+
+- [x] 11 unit tests (`tests/voucherDisplayUseCases.usecases.test.js`) covering empty/not-found code,
+      percent_off/fixed_price pricing (incl. zero-clamp), amount_off badge-only, every campaign-level
+      gate, confirmation that non-structural reasons do not block display, the affiliate/fixed-price
+      conflict, folder-scope exclusion, and fail-open on a repository error.
+- [x] Full regression pass, 373 tests, 0 failures (run against the main checkout's installed
+      `node_modules`, symlinked into the implementing worktree for the run only).
+- [x] `check:architecture` OK (49 modules, 487 files; 88 controller files).
+- [x] Two reviewer-found blockers fixed pre-merge, not left as follow-ups: declaration `surfaces`
+      corrected to also cover the `pos,terminal` rule (`ec806f09`), and a dedicated
+      `storeVoucherLookupLimiter` added since neither route otherwise carried a limiter beyond the
+      app-wide bucket (`7bcc1420`).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherDisplayUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/index.js` (composition-root wiring)
+- `apps/dgfy-api/src/modules/store/repositories/storeRepository.js` (`folder_id` plumbing)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (`applyVoucherDisplayPrice`,
+  `serializeStoreCatalogItem`)
+- `apps/dgfy-api/src/routes/store.js` (`bypassCacheForVoucherCode`, `limitVoucherCodeLookups`)
+- `apps/dgfy-api/src/validators/storeValidator.js` (`voucher_code` query param)
+- `apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`
+- `docs/compliance/impact-declarations/2026-08-18-voucher-catalog-display-seam.md`
+- PR #678, merged to `develop` as `bbf866fe` (2026-08-18)
+- Issue #603 - display seam (`Refs`, left open — #603 stays `In progress` until #672, the
+  storefront-consuming UI half, also lands); #672 - storefront voucher-code entry + shared
+  struck-through price component (separate, not yet built); #671 - the parallel affiliate-cache gap
+  this phase's cache mechanism was later reused to fix; #453 - epic
+
+### Completion Record
+
+- Phase 106 completed 2026-08-18 via PR #678, recorded retroactively in this entry. Phase 107
+  (voucher merchant authoring UI, #614) is the next eligible phase for the voucher initiative.
+
+## Phase 107 - Voucher Merchant Authoring UI
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #614 — the merchant-facing client
+  for Phase 103's already-shipped voucher admin CRUD API.
+- Release: POS/Terminal settings surface only. Does not process a transaction, move money, or touch
+  the POS drawer — it is a campaign-configuration UI, not a checkout-path change.
+
+### Objective and Scope
+
+- Add `VoucherManagementPanel.jsx` (new, standalone) and its thin API client `voucherService.js`
+  (new), wired as a new `vouchers` pane in the existing POS/Terminal settings tab bar alongside
+  employees/affiliates, gated the same way the API it calls already is (`settings:view` /
+  `settings:edit` — see #655 for the dedicated `PERMISSIONS.VOUCHERS` group tracked separately).
+- Status machine mirrored client-side from `voucherUseCases.js`'s `ALLOWED_STATUS_TRANSITIONS`, so an
+  invalid transition is caught before the request is even sent, with the backend's `409
+  VOUCHER_INVALID_STATUS_TRANSITION` as the authoritative fallback. `status` itself is never
+  form-editable — only the dedicated activate/pause/archive actions can change it.
+- Every update carries the voucher's `version` from the last GET/PUT response; a `409
+  VOUCHER_VERSION_CONFLICT` (a concurrent redemption or another merchant's edit landed first) surfaces
+  a reload-and-discard prompt rather than silently overwriting server state — the exact
+  read-modify-write clobber bug the legacy Promo Codes editor this UI is modeled after was prone to.
+  Server-owned redemption counters (`redeemed_count`, `redeemed_value_centavos`,
+  `redeemed_quantity`) are never sent back on create or update.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 103's voucher admin CRUD API (PR #641, #614's backend half) and Phase 102's
+  schema/models. No backend code changes in this phase.
+- Classification: `major`, `surfaces: pos,terminal` — forced by the
+  `^apps/dgfy-web/src/features/pos/` compliance rule.
+- ADR 0067 (Chrome 80 browser-support baseline, landed the same day) applies to every file in this
+  phase; confirmed zero restricted runtime methods before this phase was committed.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run build:pos` — real Vite production build of the POS/Terminal surface this panel ships
+      in (also the surface ADR 0067's Layer 2 es-compat gate runs inside).
+- [x] `npm run check:compliance` — this phase's own declaration gate.
+- [x] `npm run check:architecture` — architecture boundary check against the merge-result tree.
+- [x] No backend changes, so no migration/tenant-schema verification applies. Local Jest could not be
+      run in the implementing worktree (no `node_modules` installed) — stated here rather than
+      silently omitted; the PR body carries the same note.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx` (new)
+- `apps/dgfy-web/src/services/voucherService.js` (new)
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  `TerminalPageLayout.jsx`, `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx` (tab wiring)
+- `docs/compliance/impact-declarations/2026-08-18-voucher-merchant-authoring-ui.md`
+- Branch `feature/614-voucher-merchant-ui`, PR against `develop` (see issue #614 for the merged PR
+  once open)
+- Issue #614 - authoring UI (`Refs`, left open — #655's dedicated permission group deliberately not
+  included in this phase); #453 - epic
+
+### Completion Record
+
+- Phase 107 completed 2026-08-18. Next eligible phase: 108 (`PERMISSIONS.VOUCHERS` group, #655).
+
+## Phase 108 - Dedicated PERMISSIONS.VOUCHERS Group
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #655. Closes the gap named as
+  deliberate follow-up work in three places (PR #641's description, `modules/vouchers/README.md`,
+  `routes/vouchers.js`'s own inline comment).
+- Release: permission-config and route-gate change only, dual-gated for one release rather than a
+  hard cutover.
+
+### Objective and Scope
+
+- Add a `VOUCHERS` group (`view`/`manage`) to `apps/dgfy-api/src/config/permissions.js`, added to
+  `DEFAULT_ROLE_PERMISSIONS.manager` (admin inherits via `getAllPermissions()`).
+- Re-verified against `develop` before implementing: no data migration needed.
+  `scripts/backfill-role-permissions.js` already performs an idempotent, additive, cross-tenant
+  permission merge, already wired into `scripts/deploy.sh` ahead of the pm2 reload.
+- Dual-gate all 7 routes in `routes/vouchers.js` — `VOUCHERS.*` OR the legacy
+  `SYSTEM.VIEW_SETTINGS`/`EDIT_SETTINGS` pair, via the existing `checkAnyPermission` middleware —
+  for one release, since `resolveEffectivePermissions` only re-derives role defaults when a user's
+  stored permissions array is empty. The legacy arm's removal is filed as a dated follow-up (#686),
+  not left open-ended.
+- Add `VOUCHERS` to `config/modeRolePresets.js`'s `PERMISSION_GROUP_VISIBILITY` for every workflow
+  mode, and bump `ROLE_CATALOG_VERSION` — without this the group would exist but never reach
+  `GET /users/role-catalog`, the actual source the user-management UI reads (not
+  `permissions_frontend.js`'s `PERMISSION_GROUPS`, which is only a degraded-path fallback, mirrored
+  here for consistency but not the live path).
+- Update #614's `canManageVouchers` in `TerminalPage.jsx` to the same dual-gate.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 103's voucher admin CRUD API and Phase 107's authoring UI (#614), whose
+  `canManageVouchers` this phase updates.
+- Classification: `major`, `surfaces: pos,terminal` — forced, matching Phase 107's declaration.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on all three touched backend files (`config/permissions.js`,
+      `config/modeRolePresets.js`, `routes/vouchers.js`) — OK.
+- [x] `npm run build:pos` — real Vite production build of the touched POS/Terminal surface.
+- [x] `npm run check:compliance` — PASS.
+- [x] `npm run check:architecture` — OK (49 modules / 488 files; 88 controller files).
+- No new tests: permission-config and route-gate wiring against the repo's existing
+  `checkAnyPermission` implementation, not new business logic. Local Jest could not be run in the
+  implementing worktree (no `node_modules` installed).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/config/permissions.js`, `config/modeRolePresets.js`
+- `apps/dgfy-api/src/routes/vouchers.js`, `modules/vouchers/README.md`
+- `apps/dgfy-web/src/config/permissions_frontend.js`,
+  `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`
+- `docs/compliance/impact-declarations/2026-08-18-vouchers-permission-group.md`
+- Branch `feature/655-vouchers-permission-group`, PR #685 (base `feature/614-voucher-merchant-ui`)
+- Issue #655 (`Closes`); #686 - legacy-arm removal follow-up; #453 - epic
+
+### Completion Record
+
+- Phase 108 completed 2026-08-18 via PR #685. Next eligible phase: 109 (POS voucher master switch,
+  #604).
+
+## Phase 109 - POS Voucher Redemption Master Switch
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), scoped in #604.
+- Release: gate-only change — ships the tenant-wide switch ahead of POS voucher redemption itself,
+  which does not yet exist (Phase 105/PR #661 was storefront checkout only). No runtime behavior
+  changes for any existing caller.
+
+### Objective and Scope
+
+- Add a tenant-wide setting, `voucher_pos_redemption_enabled` (default `false`), registered in both
+  Joi schemas (`settingsValidator.js`). No seeding/migration — an absent `system_settings` row
+  already reads falsy in every consumer, which is the correct default.
+- Add a tenant-scoped 15s-TTL read-path cache, `voucherPosRedemptionSettingCache.js`, modeled on the
+  existing `inventoryAuthoritySettingsCache.js` pattern (relies on the TTL for staleness, same as
+  its precedent — not wired into `updateSettingsUseCase.js`'s cache-invalidate list).
+- Add a fail-closed guard inside `buildRedeemVoucherUseCase` itself, checked on `channel === 'pos'`
+  — tenant-wide and un-bypassable by any future POS-side caller, since every POS redemption path
+  must go through this one function. New `VOUCHER_POS_REDEMPTION_DISABLED` reason code. Orthogonal
+  to a voucher's own `channels` mask (`VOUCHER_CHANNEL_BITS.pos`), evaluated separately per #604's
+  own body.
+- Add a merchant-facing toggle to the existing POS Setup pane (`TerminalOperationsWorkspace.jsx`),
+  following the Strict Shift Location Binding toggle end to end.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 103's voucher domain/CRUD and Phase 105's storefront redemption path (the guard
+  lives in the same shared use case Phase 105 built). No dependency on Phase 107/108's authoring UI
+  or permission group.
+- Classification: `major`, `surfaces: pos,terminal` (declaration approved by Pat before staging).
+- Known gap, tracked separately, not fixed in this phase: the `channel === 'pos'` guard in
+  `voucherRedemptionUseCases.js` runs before the function's own empty-code short-circuit — inert
+  today (no live POS caller exists to exercise the ordering) but a latent bug once one does. Flagged
+  in PR #687's review (unfixed) and again in PR #684's review; filed as #693, parented under #604,
+  rather than fixed inline here.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on all four touched/new backend files — OK.
+- [x] `npm run build:pos` — real Vite production build of the touched settings surface.
+- [x] `npm run check:compliance` — PASS (declaration on file for `voucherErrors.js`,
+      `voucherRedemptionUseCases.js`, `voucherPosRedemptionSettingCache.js`,
+      `TerminalOperationsWorkspace.jsx`, `classification: major`, `surfaces: pos,terminal`).
+- [x] `npm run check:architecture` — OK (49 modules / 488 files; 88 controller files).
+- No test coverage for the `channel === 'pos'` branch beyond the syntax check, disclosed plainly in
+  the compliance declaration rather than implied: nothing in the codebase yet constructs a call with
+  `channel: 'pos'`, since POS redemption doesn't exist yet. Tracked as part of #693's definition of
+  done, not deferred silently.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherPosRedemptionSettingCache.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/validators/settingsValidator.js`
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `docs/compliance/impact-declarations/2026-08-18-pos-voucher-master-switch.md`
+- Branch `feature/604-pos-voucher-master-switch`, PR #687 (base `feature/614-voucher-merchant-ui`)
+- Issue #604 (`Refs` on the PR; closed manually post-merge, see PR #684's own review); #693 —
+  guard-ordering follow-up; #453 - epic
+
+### Completion Record
+
+- Phase 109 completed 2026-08-18 via PR #687, landing on `develop` via PR #684. Next eligible phase:
+  110.
+
+## Phase 110 - Voucher Governed Discount Slot and Fiscal Audit Row, Race-Code Widening, Compliance Gate Coverage
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), audited for backlog reconciliation
+  2026-08-18/19 after the Phase 101-109 wave (PRs #661-#704) shipped without ever being checked
+  against the still-open backlog.
+- Release: four `develop`-targeted PRs (#708, #709, #710, #711), merged in that order deliberately —
+  #711's new compliance rule landing last so it would not retroactively demand a declaration from
+  #710.
+
+### Objective and Scope
+
+- **#708 (Refs #667)** — enforce ADR 0066 Decision 8 (one governed discount slot per transaction) on
+  the storefront checkout path, where it had never been wired up despite already being accepted and
+  already relied on by `pos_transaction_discounts`' `UNIQUE (transaction_id)`. A voucher code
+  submitted alongside an already-applied promo code now rejects 422
+  `VOUCHER_DISCOUNT_SLOT_OCCUPIED` before either benefit resolves, burning no redemption. With that
+  guarantee in place, a voucher-only storefront order now writes the same `pos_transaction_discounts`
+  fiscal audit row and per-line allocations a promo order already did (ADR 0066 Decision 10) — a
+  confirmed compliance gap in already-merged code, not new behavior. Voucher codes capped at 40 chars
+  (from 64) to fit the shared audit column with no migration. Supersedes PR #705 (reopened,
+  corrected, re-landed — #705's guard was right; the reviewing session's earlier `BLOCK` verdict on
+  it was wrong and was retracted in public comments on #705 and #667).
+- **#709 (Refs #693)** — reorder `voucherRedemptionUseCases.js`'s POS master-switch guard to run
+  after the empty-code short-circuit, not before. Required a manual merge-conflict resolution against
+  #708 (both touched the same file) — resolved keeping #693's guard position with #708's enriched
+  return shape.
+- **#710 (Refs #706)** — widen `finalizePaidCommerceSession.js`'s
+  `VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES` from 4 to 9: adds `VOUCHER_EXPIRED`,
+  `VOUCHER_NOT_ACTIVE`, `VOUCHER_WEEKDAY_NOT_ELIGIBLE`, `VOUCHER_TIME_WINDOW_BLOCKED`,
+  `VOUCHER_PRICE_BELOW_COST` — all of which the redeem branch's under-lock full eligibility re-run
+  can actually raise, and which previously landed as a generic `ORDER_FINALIZATION_FAILED`.
+  Deliberately excludes deterministic-for-a-fixed-payload codes (`VOUCHER_MIN_SPEND_NOT_MET`,
+  `VOUCHER_MIN_QUANTITY_NOT_MET`, `VOUCHER_NOT_STARTED`, `VOUCHER_TIMEZONE_UNRESOLVABLE`) since those
+  are not races and a distinct code there would mislead an operator.
+- **#711 (Refs #707)** — add `modules/commercePayments/` and `routes/commercePayments.js` (the QRPh
+  money-capture module) to `COMPLIANCE_SENSITIVE_RULES`, which had covered `modules/pos|vouchers|
+  store|payments|settings|compliance/` but not this one.
+- Board reconciliation alongside the code: closed #602 and #584 as already-implemented (found during
+  the same audit, no code changes needed); #667 corrected from "deferred to #695" to "resolved by
+  this phase."
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 101-105's voucher entity, redemption ledger, and storefront redemption path (all
+  four PRs touch code those phases built).
+- ADR 0066 amended (not superseded) with a dated 2026-08-19 entry recording that Decisions 8 and 10
+  are now *enforced* on the storefront path, not changed — both were already-accepted `[default]`
+  clauses.
+- Classification: `major`, `surfaces: payments,pos,terminal` for #708 (`modules/store/` +
+  `modules/vouchers/`); `major`, `surfaces: pos,terminal` for #709; existing declaration extended for
+  #710; no compliance-sensitive path in #711 itself (it changes the scanner's own rule set, not a
+  scanned path).
+- Every merge overrode a red/pending CI check state — logged explicitly on each PR via a public
+  override comment naming the bypassed check and the substituted local evidence, per AGENTS.md's
+  Merge Safety rule, at the user's explicit direction (`docker.io` token-timeout and a shared stuck
+  base-image layer, unrelated to any of the four diffs, confirmed via direct `docker build`
+  reproduction rather than a CI rerun).
+
+### Acceptance and Validation Evidence
+
+- [x] Real `docker build` (not npm-level substitution) run locally for all four PRs against the
+      Dockerfiles `pr-checks.yml` itself builds from, simulating that workflow rather than trusting
+      npm tests alone — required a lima Docker VM memory bump (4GiB → 6GiB) to avoid an OOM (exit
+      137) building 3 concurrent Vite apps.
+- [x] Full composed test suite against merged `develop` tip (`d2b0380c`) — 464/464 passing across 19
+      suites, not just each branch tested in isolation.
+- [x] `npm run check:compliance` — PASS on merged tip.
+- [x] `npm run check:architecture` — OK, 49 modules / 491 code files.
+- [x] `npm run check:adr --strict` — OK, 74 ADRs.
+- No integration test exercises a full storefront-voucher-checkout end-to-end (would need a live
+  MySQL instance or a DI seam for `buildStoreCheckoutUseCase`); disclosed as a gap in PR #708's own
+  Testing Evidence rather than implied covered — this absence is why the fiscal-audit-row defect
+  shipped undetected in the first place.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+  `apps/dgfy-api/src/modules/vouchers/domain/voucherBenefitPolicy.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js`
+- `apps/dgfy-api/src/validators/voucherValidator.js`
+- `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`,
+  `apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx`
+- `scripts/check-compliance-impact.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-19 amendment)
+- `docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md`,
+  `docs/compliance/impact-declarations/2026-08-19-voucher-pos-guard-order.md`
+- Branches `fix/667-voucher-governed-discount-slot`, `fix/693-voucher-pos-guard-order`,
+  `fix/706-widen-voucher-race-codes`, `chore/707-compliance-commerce-payments`; PRs #708/#709/#710/#711
+- Issues #667, #693, #706, #707 (all `Refs`, now `For QA`); #602, #584 (closed as already-implemented);
+  #453 - epic
+
+### Completion Record
+
+- Phase 110 completed 2026-08-18 via PRs #708 (`61b1809c`), #709 (`9648685a`), #710 (`4ecd5f2a`),
+  #711 (`d2b0380c`), merged in that order onto `develop`. Next eligible phase: 111.
+
+## Phase 111 - POS Checkout Terminal Decomposition
+
+- Initiative/release: POS maintainability; behavior-preserving R0-R9 refactor.
+- Objective/scope: replace the checkout monolith with a compatibility shell, focused hooks, views, and pure utilities; POS only.
+- Status: `completed`; dependencies: ADR 0031 and the existing POS UI/API contracts.
+- Acceptance/evidence: shell/view contracts, full POS/F&B regression, production build, and authenticated browser certification passed in aggregate under Phase 132.
+- Completion: 2026-08-20. Links: `docs/features/POS_CHECKOUT_TERMINAL_REFACTOR.md`, `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`.
+
+## Phase 112 - Administrator No-Shift Void Certification
+
+- Initiative/release: accountable POS void lifecycle.
+- Objective/scope: allow an authorized administrator to void without opening/reassigning a shift while preserving cashier shift enforcement.
+- Status: `completed`; dependencies: Phase 111 and ADR 0031's administrator exception.
+- Acceptance/evidence: route/use-case tests and authenticated closed-shift admin-void E2E passed.
+- Completion: 2026-08-20. Links: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-web/tests/e2e/pos/admin-void.spec.js`.
+
+## Phase 113 - Receipt and Dialog Presentation Extraction
+
+- Initiative/release: POS terminal refactor.
+- Objective/scope: move receipt preview, dialogs, and presentation markup out of the compatibility shell without UI/API change.
+- Status: `completed`; dependencies: Phase 111.
+- Acceptance/evidence: receipt, terminal view-mode, and shell contract tests passed.
+- Completion: 2026-08-20. Links: `POSCheckoutTerminalView.jsx`, `POSCheckoutTerminalReceiptDialogs.jsx`.
+
+## Phase 114 - POS-Native Cashier Void Permission Control
+
+- Initiative/release: cashier accountability.
+- Objective/scope: independently manage `pos:void` and `pos:cash_drawer_adjust` inside POS Settings while preserving unrelated permissions.
+- Status: `completed`; dependencies: existing user permission APIs.
+- Acceptance/evidence: POS Settings contract and backend authorization tests passed.
+- Completion: 2026-08-20. Links: `TerminalOperationsWorkspace.jsx`, `posSettingsCashier.contract.test.js`.
+
+## Phase 115 - Voided Transaction Visibility
+
+- Initiative/release: POS history/audit UX.
+- Objective/scope: retain voided sales in History with status, reason, actor, timestamp, receipt audit, and original cashier/shift attribution.
+- Status: `completed`; dependencies: Phase 112.
+- Acceptance/evidence: history/search/receipt contracts and live E2E passed.
+- Completion: 2026-08-20. Links: `POSTransactionHistoryPanel.jsx`, `usePosHistoryVoidWorkflow.js`.
+
+## Phase 116 - Paid-Void Lifecycle Contract
+
+- Initiative/release: refund governance discovery.
+- Objective/scope: define distinct unpaid, cash, merchant-owned digital, provider-owned, Employee Credit, split-tender, and post-close outcomes.
+- Status: `completed`; dependencies: Phases 112 and 115.
+- Acceptance/evidence: approved contract is documented in the POS flow, API specification, ADR 0031, and split-payment contract.
+- Completion: 2026-08-20. Links: `docs/features/POS_CASHIER_TERMINAL_FLOW.md`, `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+
+## Phase 117 - Transaction Adjustment Evidence Foundation
+
+- Initiative/release: additive POS financial evidence.
+- Objective/scope: create tenant-local append-only adjustment persistence with original and actor context, idempotency, provider/external, retry, and drawer links.
+- Status: `completed`; dependencies: Phase 116 and tenant schema registry.
+- Acceptance/evidence: migration/model/repository/runtime-schema tests passed; landlord and 14/14 tenant schemas are current.
+- Completion: 2026-08-20. Links: migration `20260819000001-create-pos-transaction-adjustments.cjs`, `PosTransactionAdjustment.js`.
+
+## Phase 118 - Internal Void Evidence Wiring
+
+- Initiative/release: accountable internal void.
+- Objective/scope: write one deterministic succeeded `void` adjustment in the same transaction as the internal void.
+- Status: `completed`; dependencies: Phase 117.
+- Acceptance/evidence: idempotency, attribution, rollback, and duplicate-void tests passed.
+- Completion: 2026-08-20. Links: `posUseCases.js`, `posRepository.js`.
+
+## Phase 119 - Financial Outcome Classification
+
+- Initiative/release: fail-closed refund routing.
+- Objective/scope: derive refund-required state and next action from persisted transaction/tender evidence without performing a refund.
+- Status: `completed`; dependencies: Phase 118.
+- Acceptance/evidence: outcome-domain and void-response matrix tests passed.
+- Completion: 2026-08-20. Links: `posVoidFinancialOutcome.js`.
+
+## Phase 120 - Adjustment Read Projection
+
+- Initiative/release: auditable transaction detail.
+- Objective/scope: expose sanitized adjustments and latest financial outcome without read-side mutations or raw request metadata.
+- Status: `completed`; dependencies: Phases 117-119.
+- Acceptance/evidence: repository/detail/history read tests passed.
+- Completion: 2026-08-20. Links: `posRepository.js`, `posHandlers.js`.
+
+## Phase 121 - Financial Follow-Up Presentation
+
+- Initiative/release: truthful POS refund status UX.
+- Objective/scope: show whether cash, external, provider, or split follow-up is required without presenting an internal void as a completed refund.
+- Status: `completed`; dependencies: Phase 120.
+- Acceptance/evidence: receipt/history presentation contracts passed.
+- Completion: 2026-08-20. Links: `POSCheckoutTerminalReceiptDialogs.jsx`, `POSTransactionHistoryPanel.jsx`.
+
+## Phase 122 - Reusable Administrator-Void E2E
+
+- Initiative/release: state-changing browser certification.
+- Objective/scope: provide credential-safe, diagnostic E2E coverage with opt-in cleanup limited to the configured disposable cashier's stale shift.
+- Status: `completed`; dependencies: Phases 112 and 121 plus disposable sandbox credentials.
+- Acceptance/evidence: Google Chrome E2E passed 1/1 with admin no-shift void, cashier refund, drawer, history, and report assertions.
+- Completion: 2026-08-20. Links: `tests/e2e/pos/admin-void.spec.js`, `tests/e2e/fixtures/posVoid.js`.
+
+## Phase 123 - Runtime and Tenant Schema Readiness
+
+- Initiative/release: deploy-safe schema convergence.
+- Objective/scope: register adjustment and split-reversal tables/columns/indexes in runtime audit and additive tenant repair.
+- Status: `completed`; dependencies: Phase 117 migrations.
+- Acceptance/evidence: landlord migrations are current; tenant repair/report succeeded 14/14 at capability `2026-08-20.1`.
+- Completion: 2026-08-20. Links: `scripts/sync-tenant-schemas.js`, `runtimeSchemaAuditService.js`.
+
+## Phase 124 - Paid-Refund Lifecycle Gates
+
+- Initiative/release: server-authoritative refund eligibility.
+- Objective/scope: require prior void, supported paid tender, terminal scope, actor permission/shift rules, and idempotency before financial follow-up.
+- Status: `completed`; dependencies: Phases 116-123.
+- Acceptance/evidence: negative authorization, validation, ownership, and replay matrix passed.
+- Completion: 2026-08-20. Links: `posValidator.js`, POS refund use cases.
+
+## Phase 125 - Paid-Cash Refund and Drawer Event
+
+- Initiative/release: physical cash accountability.
+- Objective/scope: atomically record cash refund evidence and one linked `cash_out` event on the acting cashier's owned open shift.
+- Status: `completed`; dependencies: Phase 124 and `pos:cash_drawer_adjust`.
+- Acceptance/evidence: cash refund use-case/route tests and authenticated E2E passed.
+- Completion: 2026-08-20. Links: `cashRefundUseCases.js`.
+
+## Phase 126 - Merchant-Owned Digital Reversal Evidence
+
+- Initiative/release: walk-in digital reversal accountability.
+- Objective/scope: record external reference under manual review, then require explicit same-reference confirmation; never call PayMongo.
+- Status: `completed`; dependencies: Phase 124.
+- Acceptance/evidence: evidence, confirmation, duplicate-reference, actor-shift, and no-provider-call tests passed.
+- Completion: 2026-08-20. Links: `externalRefundUseCases.js`.
+
+## Phase 127 - Provider-Owned Refund Adapter
+
+- Initiative/release: verified online provider refund.
+- Objective/scope: verify server-owned PayMongo payment/session identity and exact amount/method/currency before refund submission; preserve retry state.
+- Status: `completed`; dependencies: Phase 124 and commerce payment ownership records.
+- Acceptance/evidence: provider success, pending, failure, replay, mismatch, and unsupported-tender tests passed.
+- Completion: 2026-08-20. Links: `providerRefundUseCases.js`, `commercePaymentAdminUseCases.js`.
+
+## Phase 128 - Split-Tender Allocation Reversal
+
+- Initiative/release: allocation-level refund lifecycle.
+- Objective/scope: reverse each successful cash, merchant-owned, or provider-owned allocation with server-maintained amount/status summaries.
+- Status: `completed`; dependencies: Phases 125-127 and migration `20260819000002`.
+- Acceptance/evidence: partial/full, over-refund, idempotency, ownership, and provider-evidence tests passed.
+- Completion: 2026-08-20. Links: `splitAllocationReversalUseCases.js`, `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+
+## Phase 129 - Post-Close and Post-Z Accounting
+
+- Initiative/release: immutable close reporting.
+- Objective/scope: report later adjustments by their event timestamp without rewriting a prior shift summary/Z-reading or double-subtracting the void.
+- Status: `completed`; dependencies: Phases 117-128.
+- Acceptance/evidence: close-boundary, same-second, cashier-history, daily-report, and zero-value breakdown regressions passed.
+- Completion: 2026-08-20. Links: `posRepository.js`, `PosReportsAnalyticsWorkspace.jsx`, `ShiftCloseSummaryPrintView.jsx`.
+
+## Phase 130 - POS Refund Workflow and Permission UX
+
+- Initiative/release: operator-facing refund completion.
+- Objective/scope: route History's Refund/Continue Refund action to the server-classified cash, external, provider, or split workflow and show acting authority requirements.
+- Status: `completed`; dependencies: Phases 114 and 124-129.
+- Acceptance/evidence: workflow dialog, permission, history, receipt, and terminal contracts passed.
+- Completion: 2026-08-20. Links: `POSRefundWorkflowDialog.jsx`, `usePosHistoryVoidWorkflow.js`.
+
+## Phase 131 - Refund Lifecycle Failure Matrix
+
+- Initiative/release: deterministic release certification.
+- Objective/scope: cover authorization, validation, idempotency, ownership, provider mismatch/retry, report attribution, and browser runtime failures.
+- Status: `completed`; dependencies: Phases 124-130.
+- Acceptance/evidence: backend 22 suites/190 tests, frontend 104 files/515 tests, and authenticated E2E 1/1 passed.
+- Completion: 2026-08-20. Links: POS backend suites and `tests/e2e/pos/admin-void.spec.js`.
+
+## Phase 132 - Paid-Refund Release Closure
+
+- Initiative/release: PR #681 combined Storefront payment and POS accountability closure.
+- Objective/scope: merge current `develop`, resolve conflicts, apply landlord/tenant migrations, validate, document, push, and update the open PR without merging or deploying it.
+- Status: `completed`; dependencies: Phases 111-131 and `develop` commit `498d20f45`.
+- Acceptance/evidence: merge completed; landlord migration is current; tenant schemas passed 14/14; backend 190 tests, frontend 515 tests, POS build, authenticated E2E, architecture, and compliance gates passed.
+- Completion: 2026-08-20. Links: PR #681, issues #679 and #754,
+  `docs/compliance/impact-declarations/2026-08-20-pos-accountable-void-refund-lifecycle.md`,
+  and commits `f84acb9c3`, `313a9351d`, `54976dbab`, `96f8eeb54`, `f3cfb5844`, and `f62be4275`.
+
+### POS initiative numbering reconciliation
+
+The POS work was discussed under temporary working labels before the Phase 110
+voucher ledger landed on `develop`. To preserve the authoritative continuous
+sequence, working Phase 107 maps to canonical Phase 111; working Phases 113-133
+map in order to canonical Phases 112-132. Historical approvals are preserved by
+this mapping and were not renumbered in-place in any merged ledger entry. Next
+eligible repository phase at the time this note was written: 133.
+
+**Update, 2026-08-20:** #761 flagged that #696 (voucher pricelist entity) shipped without ever
+getting a phase entry — filed when Phase 111 was still open, before this section's own numbering
+reconciliation claimed 111 for the unrelated POS decomposition initiative above. #761's underlying
+finding stands; the number it named does not. Per this ledger's own continuous-sequence rule
+(phases are assigned in documentation order, not backdated to match when the code actually merged —
+see Phase 110's own retroactive-audit precedent), the missing #696 entry and this session's new
+work take the next two eligible numbers below, **133** and **134**. Next eligible repository phase
+after this update: **135**.
+
+## Phase 133 - Voucher Pricelist Entity (retroactive entry for #696)
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Retroactively documented 2026-08-20 per
+  #761 -- the code shipped 2026-08-18 (PR #700) but the ledger entry was never written.
+- Release: PR #700, merged to `develop` 2026-08-18.
+
+### Objective and Scope
+
+- Extends #584's `fixed_price` benefit class from one pinned price for every scoped item to a real
+  per-item wholesale pricelist -- N prices for N items, not one price applied uniformly.
+- New tenant tables: `pricelists` (`name`, `description`, `status` draft/active/archived, `version`
+  optimistic lock, timestamps) and `pricelist_items` (`pricelist_id`, `item_id`,
+  `unit_price_centavos`, `is_manual_override`, unique on `(pricelist_id, item_id)`).
+  `is_manual_override` is load-bearing, not bookkeeping -- it distinguishes a deliberately-typed
+  price from an autofilled SRP default, since `Item.default_sale_price` moves on Dispatch Order
+  dispatches and an unmarked row would start granting an unintended discount as SRP rises.
+- `vouchers.pricelist_id` (new nullable FK column, `ON DELETE RESTRICT`) lets a `fixed_price`
+  voucher attach a pricelist instead of a single scalar price -- mutually exclusive with
+  `fixed_unit_price_centavos`, enforced in `voucherUseCases.js`'s `applyBenefitConfig`, not the
+  schema. When a pricelist is attached, it **is** the scope -- `voucher_scopes` is not consulted.
+- Explicitly not a reversal of #569 (B2B deferral) -- per #454 decision 2, vouchers serve the
+  B2B-shaped need through a B2C mechanism without building B2B itself.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-103's voucher entity and benefit-resolution domain (`voucherBenefitPolicy.js`
+  extended, not replaced).
+- Classification: `major`, `surfaces: pos,terminal,payments` --
+  `docs/compliance/impact-declarations/2026-08-18-voucher-pricelist-entity.md`.
+- ADR 0066 Decision 5 amended 2026-08-18 to extend the `fixed_price` intent-not-stored-delta
+  principle from a single scalar to a pricelist.
+
+### Acceptance and Validation Evidence
+
+- Backend unit tests for pricelist-backed voucher resolution (fails closed when the pricelist
+  matches nothing in the cart, when the attached pricelist is archived; succeeds when active) --
+  see `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`'s `#696 pricelist-backed
+  voucher` block.
+- `check:compliance`, `check:architecture`, `check:adr` passed on the merging PR.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260818000001-create-pricelists.cjs`
+- `apps/dgfy-api/src/models/Pricelist.js`, `apps/dgfy-api/src/models/PricelistItem.js`
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherBenefitPolicy.js`
+- `apps/dgfy-web/src/features/pos/components/PricelistManagementPanel.jsx`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-18 amendment)
+
+## Phase 134 - POS Voucher Redemption
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Issue #712, filed after a backlog audit
+  found POS voucher redemption did not exist as a real feature anywhere in the codebase despite the
+  #604 master switch and the channel-mask eligibility check both already being built and waiting for
+  a caller.
+- Release: single `develop`-targeted PR (`feature/712-pos-voucher-redemption`).
+
+### Objective and Scope
+
+- Wires `redeemVoucherUseCase`/`previewVoucherEligibilityUseCase` into `checkoutPosUseCase`, sale-
+  level only (a voucher's own `voucher_scopes`/pricelist decides which lines it touches, matching
+  the storefront path -- no per-line voucher entry was added).
+- Gate: `voucher_pos_redemption_enabled` (#604, tenant-wide, default off) **and** the specific
+  voucher's `channels_mask` including the POS bit. No `voucher_kind`-based restriction -- rejected as
+  a redundant second gating mechanism for the same question `channels_mask` already answers.
+- Customer name required, matching the existing POS promo-code requirement -- narrows #454 decision
+  6 (ADR 0066 amendment, 2026-08-20, above); manager PIN required, parity with ADR 0033 Decision 7,
+  no exception (a follow-up issue questions this parity without changing today's behavior).
+- Two defects found and fixed while wiring this, neither previously covered by any test:
+  1. `redeemVoucherUseCase`'s ledger idempotency key was hardcoded to a `storefront:` prefix
+     regardless of the caller's `channel` -- a POS redemption would have shared the storefront
+     idempotency namespace. Now derived from `channel`.
+  2. POS's `quoteOnly` checkout path (used by `createPosPaymentSessionUseCase`) would otherwise have
+     called `redeemVoucherUseCase` unconditionally and burned a real redemption on a mere price
+     check -- `quoteOnly` is the discriminator that selects `previewVoucherEligibilityUseCase`
+     instead, since POS (unlike the storefront) always has an open transaction and so cannot use
+     transaction-presence as the preview/redeem signal.
+- A voucher's discount is never run through `calculatePosDiscount` (the generic redistributor used
+  by promo/senior/pwd/employee/manual) -- `posVoucherDiscountCalculator.js`'s
+  `buildVoucherGovernedCalculation` builds the same return-shape contract directly from the
+  voucher's own authoritative `lineAllocations`, since re-deriving a `fixed_price` voucher's per-line
+  discount via proportional redistribution would silently diverge from ADR 0066 Decision 5's
+  per-line delta.
+- Frontend: a sixth discount-type card (Voucher) in the POS checkout modal, no client-side code
+  validation (unlike Promo, no endpoint enumerates a store's vouchers), and a new redemption-time
+  reason-code copy map (`posCheckoutErrorMessages.js`) -- `VoucherManagementPanel.jsx`'s existing map
+  is authoring-only and covered none of the codes a cashier can actually hit at checkout.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-105 (voucher entity, redemption ledger, master switch) and Phase 110
+  (governed discount slot / fiscal audit row pattern, reused rather than re-derived).
+- Classification: `major`, `surfaces: pos,terminal` --
+  `docs/compliance/impact-declarations/2026-08-20-pos-voucher-redemption.md`.
+- ADR 0066 amended 2026-08-20 (above) narrowing #454 decision 6.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/posDiscountPolicy.unit.test.js`'s `voucher discounts (#712)` block -- customer
+  name requirement, voucher-code requirement before calling the redemption dependency, percent_off
+  and fixed-benefit application shaping, sale-level-only line scoping, and a regression guard against
+  the voucher branch ever reaching `UNSUPPORTED_DISCOUNT_TYPE`.
+- `apps/dgfy-api/tests/posVoucherDiscountCalculator.unit.test.js` -- proportional-split divergence
+  guard, ineligible-line zeroing, VAT always zero (never statutory), method/rate resolution, and a
+  full subtotal/discount/final-line-amount reconciliation.
+- `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`'s new channel-namespacing
+  regression test (idempotency key prefix derived from `channel`, not hardcoded).
+- `apps/dgfy-api/tests/posValidator.discountPolicy.test.js` -- accepts a governed voucher discount
+  and a voucher `discount_approval`, rejects an over-length voucher code, rejects a voucher
+  `discount_type` on a per-line `item_discount` (sale-level-only boundary).
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posCheckoutErrorMessages.test.js` -- voucher
+  reason-code coverage including the 409 `VOUCHER_DISCOUNT_SLOT_OCCUPIED` case, which the generic
+  422-only validation-message path would otherwise miss.
+- `discountTypeCards.contract.test.js` updated for six cards; `build:pos` and `build:skupervisor`
+  both clean.
+- No live-database integration test exercises a full POS-voucher-checkout end-to-end -- disclosed as
+  a gap rather than implied covered, same disclosure Phase 110 made for the equivalent storefront
+  gap.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`,
+  `apps/dgfy-api/src/modules/pos/domain/posVoucherDiscountCalculator.js` (new)
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/validators/posValidator.js`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`,
+  `POSCheckoutTerminalView.jsx`, `apps/dgfy-web/src/features/pos/utils/posCheckoutTerminalUtils.js`,
+  `posCheckoutErrorMessages.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-20 amendment)
+
+## Phase 135 - Voucher Public Listing Flag and Storefront Discovery
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Issue #713, filed after a backlog audit
+  found the voucher entity has no public marketing/discovery surface -- the legacy promo engine
+  advertises active promos as "Current Promos" storefront cards; a voucher, once redeemable, had no
+  equivalent way for a customer to discover it exists without already knowing a code.
+- Release: single `develop`-targeted PR (`feature/713-voucher-public-listing`).
+
+### Objective and Scope
+
+- New `vouchers.is_publicly_listed BOOLEAN NOT NULL DEFAULT false` column, deliberately independent
+  of the pre-existing `channels_mask` -- `channels_mask` controls where a code is USABLE
+  (storefront/POS), this controls whether it's ADVERTISED on the public storefront. A B2B pricelist
+  voucher (#696) can be POS-usable and unadvertised, the combination `channels_mask` alone cannot
+  express. Default `false` because no existing "usable but unadvertised" concept exists for this
+  column to preserve -- every active promo is unconditionally advertised today.
+- Backend: `storefrontDiscoveryIndexService.js`'s snapshot builder gains
+  `buildPublicStorefrontVouchers`, querying `active`, `is_publicly_listed` vouchers per tenant and
+  filtering each through `evaluateVoucherEligibility`'s existing channel/weekday/time-window checks
+  (via `voucherDisplayUseCases.js`'s `DISPLAY_RELEVANT_REASON_CODES`, exported and reused rather than
+  re-derived -- the exact same "unknowable before a cart exists" filter that module's own
+  code-in/price-out display path already applies). Fails open on a query error, mirroring that
+  module's own convention -- a bad voucher lookup must never blank the whole discovery snapshot.
+- Frontend: no new component. `fnbPromoModel.js`'s `getPromoCandidates` gains
+  `storefront_vouchers` as a second candidate source, adapted into the exact raw shape a
+  `storefront_promos` entry already has (`code` -> `promo_code`, `percent_off_bps` basis points ->
+  `discount_percent` 0-100) before the existing normalize/dedupe/cap pipeline ever sees it --
+  vouchers become ordinary promo candidates the moment they leave the adapter, so
+  `StorefrontPromoSection.jsx` and all five of its mode-specific consumers render a voucher card
+  identically to a promo card with zero changes to any of them. A promo and a voucher sharing the
+  same code dedupe to whichever was collected first (`storefront_promos` before
+  `storefront_vouchers`), matching the existing storefront_promos-before-legacy-storefront_promo
+  precedence order.
+- A non-`percent_off` voucher (amount_off/fixed_price) surfaces on its title/badge with no
+  fabricated discount label, matching the catalog-display seam's (#603) own convention of giving
+  amount_off a badge only, never an invented percentage or price.
+- Cache-key concern from #713's own body, resolved (not deferred): unlike the affiliate-attribution
+  class of bug (#671), voucher listing eligibility depends only on `now`/`timezone` -- the same
+  page-level, periodically-refreshed values `storefront_open`/business-hours status already use in
+  this same snapshot -- never on anything visitor-specific (no affiliate code, no session, no
+  customer id). No new per-visitor cache variance is introduced.
+- Disclosed, not silently accepted: because this projection is time/weekday-aware and the discovery
+  index snapshot is built periodically (not per-request), a voucher can appear or disappear from the
+  storefront listing between syncs as its validity window opens or closes -- the legacy promo
+  projection (`parsePublicCommercialPromos`) does no such time-of-day/weekday filtering at all, so
+  this is more precise than the promo engine's own equivalent, not less, but the staleness window
+  itself is inherited from the existing sync cadence, not newly introduced.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-106 (voucher entity, benefit/eligibility domain, catalog display seam). No
+  code dependency on Phase 134 (POS voucher redemption) -- the two PRs are independent; Phase 134
+  merged first purely by scheduling/priority order (#712 was Pat's stated priority), not because
+  #713 requires it.
+- Classification: `major`, `surfaces: pos,terminal` --
+  `docs/compliance/impact-declarations/2026-08-20-voucher-public-listing.md`.
+- No ADR amendment required -- `is_publicly_listed` adds a new, independent eligibility axis; it
+  does not narrow, reverse, or contradict any existing ADR 0066 decision or consequence.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` -- new column-repair registration test.
+- `apps/dgfy-api/tests/voucherValidator.test.js`, `voucherUseCases.usecases.test.js` -- create/update
+  schema defaults and writable-column coverage for `is_publicly_listed`.
+- `apps/dgfy-api/tests/storefrontDiscoveryIndexService.catalogVisibility.test.js` -- two new tests:
+  only active + publicly-listed + storefront-channel-eligible vouchers are listed (a POS-only
+  publicly-listed voucher is confirmed excluded), and the projection fails open (empty list, not a
+  thrown error) when the `Voucher` model is unavailable on a tenant connection.
+  `voucherDisplayUseCases.usecases.test.js` -- confirms the exported `DISPLAY_RELEVANT_REASON_CODES`
+  reuse didn't change that module's own 16 existing tests.
+- `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.test.js` -- four new tests: a
+  percent_off voucher adapts correctly (bps -> percent conversion verified), a non-percent_off
+  voucher surfaces without a fabricated discount label, a voucher sharing a promo's code dedupes
+  correctly, and an inactive voucher is dropped.
+- `apps/dgfy-web/src/features/pos/__tests__/voucherManagementPayload.test.js` -- two new tests:
+  `is_publicly_listed` defaults to `false` and is independent of `channelFlags`/`channels_mask`.
+- `npm run build:pos` and `npm run build:skupervisor` both pass.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260820000001-add-voucher-public-listing.cjs`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/models/Voucher.js`
+- `apps/dgfy-api/src/validators/voucherValidator.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+  `voucherDisplayUseCases.js`
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`
+- `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.js`

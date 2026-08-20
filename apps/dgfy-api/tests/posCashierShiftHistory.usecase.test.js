@@ -118,4 +118,86 @@ describe('POS cashier shift history', () => {
         }));
         expect(getShiftCashSalesTotal).not.toHaveBeenCalled();
     });
+
+    it('shows an administrator void made after close as a post-close cashier-history adjustment', async () => {
+        const listCashierShiftHistory = jest.fn().mockResolvedValue({
+            rows: [{
+                pos_terminal_shift_id: 46,
+                business_date: '2026-08-15',
+                terminal_id: 'COUNTER-01',
+                location_id: 9,
+                cashier_id: 7,
+                status: 'closed',
+                opened_at: '2026-08-15T01:00:00.000Z',
+                closed_at: '2026-08-15T09:00:00.000Z',
+                opening_float_amount: 1000,
+                closing_cash_amount: 1450,
+                cash_variance_amount: 0,
+                cashEvents: []
+            }],
+            pagination: { page: 1, limit: 10, total: 1, totalPages: 1 }
+        });
+        const getZReadingSummary = jest.fn().mockResolvedValue({
+            transaction_count: 3,
+            total_amount: 450,
+            void_transaction_count: 0,
+            void_amount: 0,
+            voided_item_count: 0,
+            payment_breakdown: [{ payment_type: 'cash', count: 3, amount: 450 }]
+        });
+        const getPostCloseVoidSummaryForShift = jest.fn().mockResolvedValue({
+            post_close_void_transaction_count: 1,
+            post_close_void_amount: 125,
+            post_close_voided_item_count: 1
+        });
+        const getPostCloseAdjustmentSummaryForShift = jest.fn().mockResolvedValue({
+            post_close_adjustment_count: 1,
+            post_close_refund_amount: 125,
+            post_close_pending_amount: 0,
+            post_close_manual_review_amount: 0,
+            post_close_adjustments: [{
+                adjustment_reference: 'PRA-46',
+                original_cashier_id: 7,
+                actor_user_id: 1,
+                actor_name: 'Admin One',
+                actor_shift_id: null,
+                status: 'succeeded',
+                amount: 125
+            }]
+        });
+        const useCase = buildGetCashierShiftHistoryUseCase({
+            posRepository: {
+                listCashierShiftHistory,
+                getZReadingSummary,
+                getPostCloseVoidSummaryForShift,
+                getPostCloseAdjustmentSummaryForShift
+            },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
+        });
+
+        const result = await useCase({
+            query: { date_from: '2026-08-15', date_to: '2026-08-15' },
+            user: { user_id: 7, username: 'Cashier One' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(getPostCloseVoidSummaryForShift).toHaveBeenCalledWith({
+            shiftId: 46,
+            closedAt: '2026-08-15T09:00:00.000Z',
+            terminalId: 'COUNTER-01',
+            locationId: 9
+        });
+        expect(result.data.records[0].sales_summary).toEqual(expect.objectContaining({
+            void_transaction_count: 1,
+            void_amount: 125,
+            post_close_void_transaction_count: 1,
+            post_close_void_amount: 125,
+            post_close_adjustment_count: 1,
+            post_close_refund_amount: 125,
+            post_close_adjustments: [expect.objectContaining({
+                actor_name: 'Admin One',
+                actor_shift_id: null
+            })]
+        }));
+    });
 });

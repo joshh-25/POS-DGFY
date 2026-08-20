@@ -48,12 +48,16 @@ export function useCheckoutTotalsAndGating({
       ? Number(quoteResult.service_fee_amount)
       : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
-    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount + deliveryFee + serviceFee;
+    // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
+    // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).
+    const voucherDiscountAmount = quoteResult?.voucher_discount_amount != null ? Number(quoteResult.voucher_discount_amount) : 0;
+    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount - voucherDiscountAmount + deliveryFee + serviceFee;
     return {
       subtotal_amount: subtotal,
       discount_amount: discountAmount,
       discount_label: quoteResult?.discount_label || 'Promo Discount',
       discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
+      voucher_discount_amount: voucherDiscountAmount,
       service_fee_amount: serviceFee,
       service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
       delivery_fee: deliveryFee,
@@ -69,11 +73,33 @@ export function useCheckoutTotalsAndGating({
   const promoStatusTone = checkoutError || quoteError
     ? 'error'
     : (activePromoFeedback?.applied ? 'success' : 'idle');
-  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
+  // #746: these four derived display values feed VoucherCodePanel/PromoCodePanel and the checkout
+  // summary, while the cart drawer's total is decided by resolveCartDiscountDisplay. When the two
+  // disagree the shopper sees "Discount applied: PHPX off" sitting above a total that ignores it --
+  // which is exactly what "the code is accepted but the discount never appears" looked like. Apply
+  // the same exceeds-cart suppression the drawer uses so the panel can never claim a discount the
+  // total refuses to honour.
+  const combinedDiscountAmount = Math.max(0, Number(totalsForDisplay.discount_amount) || 0)
+    + Math.max(0, Number(totalsForDisplay.voucher_discount_amount) || 0);
+  const discountsExceedCart = combinedDiscountAmount > (Number(cartTotal) || 0);
+  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0 && !discountsExceedCart
     ? `${money(totalsForDisplay.discount_amount)} off`
     : '';
-  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0
+  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0 && !discountsExceedCart
     ? { label: totalsForDisplay.discount_label || 'Promo Discount', value: `- ${money(totalsForDisplay.discount_amount)}` }
+    : null;
+  // #672: symmetric to the promo trio above. voucher_feedback carries no `.message` field
+  // (unlike promo_feedback), so the applied-state message is a fixed string here.
+  const activeVoucherFeedback = checkoutResult?.voucher_feedback || quoteResult?.voucher_feedback || null;
+  const voucherStatusMessage = checkoutError || quoteError || (activeVoucherFeedback?.applied ? 'Voucher code applied.' : '');
+  const voucherStatusTone = checkoutError || quoteError
+    ? 'error'
+    : (activeVoucherFeedback?.applied ? 'success' : 'idle');
+  const appliedVoucherDiscountText = totalsForDisplay.voucher_discount_amount > 0 && !discountsExceedCart
+    ? `${money(totalsForDisplay.voucher_discount_amount)} off`
+    : '';
+  const voucherDiscountSummaryRow = totalsForDisplay.voucher_discount_amount > 0 && !discountsExceedCart
+    ? { label: 'Voucher Discount', value: `- ${money(totalsForDisplay.voucher_discount_amount)}` }
     : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
   const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
@@ -117,7 +143,9 @@ export function useCheckoutTotalsAndGating({
   return {
     activeOrderMethodLabel,
     activePromoFeedback,
+    activeVoucherFeedback,
     appliedPromoDiscountText,
+    appliedVoucherDiscountText,
     checkoutAllowed,
     checkoutBlockReason,
     fnbCartStatusLabel,
@@ -125,6 +153,9 @@ export function useCheckoutTotalsAndGating({
     promoDiscountSummaryRow,
     promoStatusMessage,
     promoStatusTone,
+    voucherDiscountSummaryRow,
+    voucherStatusMessage,
+    voucherStatusTone,
     requireQuoteForCheckout,
     serviceCartValidationIssues,
     simpleOrderMethodOptions,

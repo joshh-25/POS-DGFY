@@ -35,6 +35,7 @@ export function StorefrontCatalogRouteContainer(props) {
     activeBookingService,
     activeServiceLocationSummary,
     addToCart,
+    bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
     bookingPagePaymentOptions,
@@ -43,13 +44,18 @@ export function StorefrontCatalogRouteContainer(props) {
     bookingSummaryAmount,
     bookingSummaryQuantity,
     bookingTimeSlotOptions,
+    getPreferredBookingTimeForDate,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     catalog,
     catalogError,
     catalogSearch,
     checkoutError,
+    checkoutLoading,
     checkoutPromoCode,
+    checkoutVoucherCode,
+    setCheckoutVoucherCode,
+    handleVoucherCardApply,
     checkoutResult,
     customerEmail,
     customerName,
@@ -61,6 +67,7 @@ export function StorefrontCatalogRouteContainer(props) {
     applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
+    goStoreTrackPage,
     handleAddPinnedLocation,
     handleCheckout,
     handlePinMyLocation,
@@ -119,8 +126,6 @@ export function StorefrontCatalogRouteContainer(props) {
     serviceDurationFilter,
     serviceHeroModel,
     serviceIntakeResponses,
-    serviceLineAddOns,
-    setServiceLineAddOns,
     groupedServiceLineItems,
     serviceSpecialInstructions,
     setServiceSpecialInstructions,
@@ -287,6 +292,7 @@ export function StorefrontCatalogRouteContainer(props) {
         activeBookingService={activeBookingService}
         activeServiceLocationSummary={activeServiceLocationSummary}
         addToCart={addToCart}
+        bookingCalendarDateOptions={bookingCalendarDateOptions}
         bookingDateOptions={bookingDateOptions}
         bookingFieldPlan={bookingFieldPlan}
         bookingPagePaymentOptions={bookingPagePaymentOptions}
@@ -295,12 +301,14 @@ export function StorefrontCatalogRouteContainer(props) {
         bookingSummaryAmount={bookingSummaryAmount}
         bookingSummaryQuantity={bookingSummaryQuantity}
         bookingTimeSlotOptions={bookingTimeSlotOptions}
+        getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
         canAddPinnedLocation={canAddPinnedLocation}
         canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
         catalog={catalog}
         catalogError={catalogError}
         catalogSearch={catalogSearch}
         checkoutError={checkoutError}
+        checkoutLoading={checkoutLoading}
         checkoutPromoCode={checkoutPromoCode}
         checkoutResult={checkoutResult}
         customerEmail={customerEmail}
@@ -314,6 +322,7 @@ export function StorefrontCatalogRouteContainer(props) {
         filteredCatalog={filteredCatalog}
         getCartFlySourceRect={getCartFlySourceRect}
         goStoreCatalogPage={goStoreCatalogPage}
+        goStoreTrackPage={goStoreTrackPage}
         handleAddPinnedLocation={handleAddPinnedLocation}
         handleCheckout={handleCheckout}
         handlePinMyLocation={handlePinMyLocation}
@@ -343,7 +352,6 @@ export function StorefrontCatalogRouteContainer(props) {
         missingStepOneAdditionalFields={missingStepOneAdditionalFields}
         openPreferredBookingDatePicker={openPreferredBookingDatePicker}
         openServiceCartEditor={openServiceCartEditor}
-        openServiceDetail={openServiceDetail}
         pinLocationError={pinLocationError}
         pinLocationLoading={pinLocationLoading}
         promoSectionModel={promoSectionModel}
@@ -374,8 +382,6 @@ export function StorefrontCatalogRouteContainer(props) {
         serviceDurationFilter={serviceDurationFilter}
         serviceHeroModel={serviceHeroModel}
         serviceIntakeResponses={serviceIntakeResponses}
-        serviceLineAddOns={serviceLineAddOns}
-        setServiceLineAddOns={setServiceLineAddOns}
         groupedServiceLineItems={groupedServiceLineItems}
         serviceSpecialInstructions={serviceSpecialInstructions}
         setServiceSpecialInstructions={setServiceSpecialInstructions}
@@ -454,6 +460,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch,
           catalogState,
           categoryDropdownRef: fnbCategoryDropdownRef,
+          checkoutVoucherCode,
+          setCheckoutVoucherCode,
+          handleVoucherCardApply,
           filteredCatalog,
           filteredCatalogViewModel: filteredFnbViewModel,
           getCartFlySourceRect,
@@ -516,6 +525,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch={catalogSearch}
           catalogState={catalogState}
           categoryDropdownRef={fnbCategoryDropdownRef}
+          checkoutVoucherCode={checkoutVoucherCode}
+          setCheckoutVoucherCode={setCheckoutVoucherCode}
+          handleVoucherCardApply={handleVoucherCardApply}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}
@@ -582,6 +594,9 @@ export function StorefrontCatalogRouteContainer(props) {
           catalogSearch={catalogSearch}
           catalogState={catalogState}
           categoryDropdownRef={fnbCategoryDropdownRef}
+          checkoutVoucherCode={checkoutVoucherCode}
+          setCheckoutVoucherCode={setCheckoutVoucherCode}
+          handleVoucherCardApply={handleVoucherCardApply}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}

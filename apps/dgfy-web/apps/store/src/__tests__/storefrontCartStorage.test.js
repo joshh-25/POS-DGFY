@@ -45,7 +45,8 @@ describe('storefront cart storage', () => {
       quantity: 2,
       price: '120',
       has_modifier_groups: true,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }],
+      selected_options: [{ option_id: 81, group_id: 8, group_name: 'Package size', group_type: 'variation', name: 'First 5 kilos' }]
     })).toMatchObject({
       item_id: 12,
       cart_line_id: '12:default',
@@ -53,7 +54,9 @@ describe('storefront cart storage', () => {
       quantity: 2,
       price: 120,
       has_modifier_groups: true,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }],
+      selected_option_ids: [81],
+      selected_options: [expect.objectContaining({ option_id: 81, group_id: 8, name: 'First 5 kilos' })]
     });
     expect(normalizeStorefrontCartLine({ item_id: 12, quantity: 0 })).toBeNull();
   });
@@ -160,6 +163,39 @@ describe('storefront cart storage', () => {
     clearStorefrontCartSnapshot('kusina');
     expect(localStorage.removeItem).toHaveBeenCalledWith(buildStorefrontCartStorageKey('kusina'));
     expect(storage.has(buildStorefrontCartStorageKey('kusina'))).toBe(false);
+  });
+
+  // #768: an applied voucher/promo code was lost on refresh -- it only ever lived in React state,
+  // never in this snapshot. Rides alongside the cart lines now, same key, same lifecycle.
+  it('carries an applied voucher/promo code through write and read', () => {
+    installLocalStorage();
+    writeStorefrontCartSnapshot({
+      storeSlug: 'kusina',
+      mode: 'fnb',
+      cart: [{ item_id: 10, cart_line_id: '10:default', name: 'Americano', quantity: 1, price: 110 }],
+      voucherCode: 'graceoffer',
+      promoCode: 'save10'
+    });
+
+    // Normalized uppercase, matching how the storefront treats voucher/promo codes elsewhere.
+    expect(readStorefrontCartSnapshot('kusina', { mode: 'fnb' })).toMatchObject({
+      voucherCode: 'GRACEOFFER',
+      promoCode: 'SAVE10'
+    });
+  });
+
+  it('defaults voucher/promo code to an empty string when none was applied', () => {
+    installLocalStorage();
+    writeStorefrontCartSnapshot({
+      storeSlug: 'kusina',
+      mode: 'fnb',
+      cart: [{ item_id: 10, cart_line_id: '10:default', name: 'Americano', quantity: 1, price: 110 }]
+    });
+
+    expect(readStorefrontCartSnapshot('kusina', { mode: 'fnb' })).toMatchObject({
+      voucherCode: '',
+      promoCode: ''
+    });
   });
 
   it('preserves services booking cart fields for refresh restore', () => {
