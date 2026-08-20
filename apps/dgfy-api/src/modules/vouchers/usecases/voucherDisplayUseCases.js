@@ -24,7 +24,11 @@ const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 // (11-13 in that module's numbering) are a derived cache per ADR 0066 decision 4, not something
 // display should block on. Sourced from the policy module's own reason-code enum rather than
 // duplicated string literals, so a rename there doesn't silently desync this filter.
-const DISPLAY_RELEVANT_REASON_CODES = new Set([
+// #713: exported for reuse by storefrontDiscoveryIndexService.js's public-listing projection --
+// the same "unknowable before a cart exists" reasoning applies there too (a browse-page listing
+// has no basket, fulfillment method, or order timing yet, same as this module's own display-price
+// resolution).
+export const DISPLAY_RELEVANT_REASON_CODES = new Set([
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_NOT_ACTIVE,
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_NOT_STARTED,
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_EXPIRED,
