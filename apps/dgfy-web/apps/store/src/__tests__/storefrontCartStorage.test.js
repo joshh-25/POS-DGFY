@@ -165,6 +165,39 @@ describe('storefront cart storage', () => {
     expect(storage.has(buildStorefrontCartStorageKey('kusina'))).toBe(false);
   });
 
+  // #768: an applied voucher/promo code was lost on refresh -- it only ever lived in React state,
+  // never in this snapshot. Rides alongside the cart lines now, same key, same lifecycle.
+  it('carries an applied voucher/promo code through write and read', () => {
+    installLocalStorage();
+    writeStorefrontCartSnapshot({
+      storeSlug: 'kusina',
+      mode: 'fnb',
+      cart: [{ item_id: 10, cart_line_id: '10:default', name: 'Americano', quantity: 1, price: 110 }],
+      voucherCode: 'graceoffer',
+      promoCode: 'save10'
+    });
+
+    // Normalized uppercase, matching how the storefront treats voucher/promo codes elsewhere.
+    expect(readStorefrontCartSnapshot('kusina', { mode: 'fnb' })).toMatchObject({
+      voucherCode: 'GRACEOFFER',
+      promoCode: 'SAVE10'
+    });
+  });
+
+  it('defaults voucher/promo code to an empty string when none was applied', () => {
+    installLocalStorage();
+    writeStorefrontCartSnapshot({
+      storeSlug: 'kusina',
+      mode: 'fnb',
+      cart: [{ item_id: 10, cart_line_id: '10:default', name: 'Americano', quantity: 1, price: 110 }]
+    });
+
+    expect(readStorefrontCartSnapshot('kusina', { mode: 'fnb' })).toMatchObject({
+      voucherCode: '',
+      promoCode: ''
+    });
+  });
+
   it('preserves services booking cart fields for refresh restore', () => {
     const { storage } = installLocalStorage();
     const written = writeStorefrontCartSnapshot({

@@ -29,14 +29,22 @@ const RETAIL_LINE = {
 
 function usePersistenceHarness({ mode, storeSlug }) {
   const [cart, setCart] = useState([LAUNDRY_LINE]);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [promoCode, setPromoCode] = useState('');
   useStorefrontCartPersistence({
     cart,
     enabled: true,
     mode,
+    promoCode,
     setCart,
-    storeSlug
+    setPromoCode,
+    setVoucherCode,
+    storeSlug,
+    voucherCode
   });
-  return { cart, setCart };
+  return {
+    cart, setCart, voucherCode, setVoucherCode, promoCode, setPromoCode
+  };
 }
 
 describe('useStorefrontCartPersistence', () => {
@@ -142,5 +150,92 @@ describe('useStorefrontCartPersistence', () => {
 
     await waitFor(() => expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })).toBeNull());
     expect(readStorefrontCartSnapshot('another-retail-store', { mode: 'retail' })).not.toBeNull();
+  });
+
+  // #768: applying a voucher only updated React state, initialized exclusively from a URL query
+  // param that applying a code never rewrites -- so it was lost on any refresh even though the
+  // cart lines survived. These pin the fix: the code rides the same snapshot as the cart.
+  describe('#768 voucher/promo code persistence', () => {
+    it('restores an applied voucher code after a hard-refresh remount', async () => {
+      const firstRender = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+
+      await waitFor(() => expect(firstRender.result.current.cart).toEqual([]));
+      act(() => firstRender.result.current.setCart([RETAIL_LINE]));
+      act(() => firstRender.result.current.setVoucherCode('GRACEOFFER'));
+      await waitFor(() => {
+        expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })?.voucherCode).toBe('GRACEOFFER');
+      });
+      firstRender.unmount();
+
+      const refreshedRender = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+
+      await waitFor(() => expect(refreshedRender.result.current.cart[0]).toMatchObject(RETAIL_LINE));
+      expect(refreshedRender.result.current.voucherCode).toBe('GRACEOFFER');
+    });
+
+    it('restores an applied promo code the same way', async () => {
+      const firstRender = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+
+      await waitFor(() => expect(firstRender.result.current.cart).toEqual([]));
+      act(() => firstRender.result.current.setCart([RETAIL_LINE]));
+      act(() => firstRender.result.current.setPromoCode('SAVE10'));
+      await waitFor(() => {
+        expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })?.promoCode).toBe('SAVE10');
+      });
+      firstRender.unmount();
+
+      const refreshedRender = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+
+      await waitFor(() => expect(refreshedRender.result.current.promoCode).toBe('SAVE10'));
+    });
+
+    it('does not carry a voucher code over to a different store', async () => {
+      writeStorefrontCartSnapshot({
+        storeSlug: 'northline-retail',
+        mode: 'retail',
+        cart: [RETAIL_LINE],
+        voucherCode: 'GRACEOFFER'
+      });
+
+      const { result, rerender } = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+      await waitFor(() => expect(result.current.voucherCode).toBe('GRACEOFFER'));
+
+      rerender({ mode: 'retail', storeSlug: 'another-retail-store' });
+      await waitFor(() => expect(result.current.cart).toEqual([]));
+      expect(result.current.voucherCode).toBe('');
+    });
+
+    it('clears the voucher code when the cart empties after checkout', async () => {
+      writeStorefrontCartSnapshot({
+        storeSlug: 'northline-retail',
+        mode: 'retail',
+        cart: [RETAIL_LINE],
+        voucherCode: 'GRACEOFFER'
+      });
+
+      const { result } = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail' } }
+      );
+      await waitFor(() => expect(result.current.cart).toHaveLength(1));
+      act(() => result.current.setCart([]));
+
+      await waitFor(() => expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })).toBeNull());
+    });
   });
 });

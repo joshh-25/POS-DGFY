@@ -976,11 +976,16 @@ export default function StorefrontApp() {
     cart,
     enabled: isFnbMode || isServicesMode || isRetailMode,
     mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : '')),
+    // #768: rides along in the same snapshot as the cart lines -- see that hook's own note.
+    promoCode: checkoutPromoCode,
     setCart,
+    setPromoCode: setCheckoutPromoCode,
+    setVoucherCode: setCheckoutVoucherCode,
     // Route state changes synchronously when another storefront is selected.
     // Prefer it over the previous async profile so cart hydration/clearing
     // targets the destination store immediately.
-    storeSlug: routeSlug || selectedStore?.slug
+    storeSlug: routeSlug || selectedStore?.slug,
+    voucherCode: checkoutVoucherCode
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const isSimpleOrderSubpage = isSimpleMode && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
@@ -2334,8 +2339,10 @@ export default function StorefrontApp() {
     fnbScheduledFor,
     fnbSpecialInstructions,
     isDeliveryOrder,
+    isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     orderMethod,
+    readDgfyAuthToken,
     readStoreAuthToken,
     requestJson,
     selectedLocationId,

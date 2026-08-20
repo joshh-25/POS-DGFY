@@ -42,8 +42,17 @@ export function useFnbCheckoutQuote({
   fnbScheduledFor,
   fnbSpecialInstructions,
   isDeliveryOrder,
+  // #746: requestQuote previously used readStoreAuthToken() unconditionally, the same as a guest.
+  // A signed-in DGFY customer's identity lives on their account, not in these local form fields --
+  // without their real token the server's optionalStoreCustomer middleware never resolves it, so
+  // the quote falls back to requiring customer_name/phone/email exactly as it does for a guest who
+  // hasn't typed anything yet. The actual checkout-submission hooks
+  // (useFnbCheckoutSubmission.js, useCheckoutSubmission.js) already select the right token this way
+  // -- requestQuote was the one path that never did.
+  isDgfyCustomerSignedIn,
   normalizeErrorMessage,
   orderMethod,
+  readDgfyAuthToken,
   readStoreAuthToken,
   requestJson,
   selectedLocationId,
@@ -117,7 +126,7 @@ export function useFnbCheckoutQuote({
     const data = await requestJson('/api/v1/store/cart/quote', {
       method: 'POST',
       storeSlug: selectedStore.slug,
-      authToken: readStoreAuthToken(),
+      authToken: isDgfyCustomerSignedIn ? (readDgfyAuthToken() || readStoreAuthToken()) : readStoreAuthToken(),
       body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
     setQuoteResult(data);
@@ -132,6 +141,8 @@ export function useFnbCheckoutQuote({
     cartSignature,
     checkoutPromoCode,
     checkoutVoucherCode,
+    isDgfyCustomerSignedIn,
+    readDgfyAuthToken,
     readStoreAuthToken,
     requestJson,
     selectedStore,

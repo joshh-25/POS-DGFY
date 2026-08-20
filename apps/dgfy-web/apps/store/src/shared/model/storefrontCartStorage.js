@@ -164,11 +164,19 @@ export const normalizeStorefrontCartSnapshot = (value, options = {}) => {
     .filter(Boolean);
   if (cart.length === 0) return null;
 
+  // #768: an applied voucher/promo code is scoped to the same store+mode as the cart it was
+  // applied against, so it rides along in the same snapshot rather than a second storage key --
+  // one read, one write, no separate expiry/mode-mismatch logic to keep in sync with the cart's own.
+  const voucherCode = optionalText(value.voucherCode).toUpperCase();
+  const promoCode = optionalText(value.promoCode).toUpperCase();
+
   return {
     version: STOREFRONT_CART_STORAGE_VERSION,
     storeSlug: snapshotStoreSlug,
     mode: snapshotMode || currentMode,
     cart,
+    voucherCode,
+    promoCode,
     savedAt,
     expiresAt
   };
@@ -207,8 +215,10 @@ export const writeStorefrontCartSnapshot = ({
   cart,
   mode = '',
   now = Date.now(),
+  promoCode = '',
   storeSlug,
-  ttlMs = STOREFRONT_CART_STORAGE_TTL_MS
+  ttlMs = STOREFRONT_CART_STORAGE_TTL_MS,
+  voucherCode = ''
 } = {}) => {
   if (typeof window === 'undefined') return null;
   const key = buildStorefrontCartStorageKey(storeSlug);
@@ -220,6 +230,8 @@ export const writeStorefrontCartSnapshot = ({
     storeSlug: normalizedStoreSlug,
     mode: normalizedMode,
     cart,
+    voucherCode,
+    promoCode,
     savedAt: now,
     expiresAt: now + ttlMs
   }, {

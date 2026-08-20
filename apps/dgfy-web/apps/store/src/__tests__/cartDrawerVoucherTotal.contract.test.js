@@ -74,4 +74,32 @@ describe('cart drawer voucher/promo total', () => {
     expect(arm).not.toMatch(/isFnbMode/);
     expect(arm).toMatch(/hasAppliedDiscountCode/);
   });
+
+  // #746: live-verified 2026-08-20 -- a signed-in DGFY customer applied a voucher and it still
+  // never appeared, even with all guest identity fields satisfied. requestQuote sent
+  // `readStoreAuthToken()` unconditionally (the guest/store-scoped token), never checking sign-in
+  // status, so a signed-in shopper's quote request carried no usable identity and the server fell
+  // back to requiring the same guest customer_name/phone/email fields. The two hooks that place a
+  // real order (useFnbCheckoutSubmission.js, useCheckoutSubmission.js) already select the token
+  // correctly -- requestQuote was the one path that never did.
+  it('requestQuote selects the DGFY account token for a signed-in shopper, matching checkout submission', () => {
+    const source = read('modes/fnb/checkout/hooks/useFnbCheckoutQuote.js');
+
+    expect(source).toMatch(
+      /authToken: isDgfyCustomerSignedIn \? \(readDgfyAuthToken\(\) \|\| readStoreAuthToken\(\)\) : readStoreAuthToken\(\)/
+    );
+    // Must not regress to the old unconditional call anywhere in the request.
+    expect(source).not.toMatch(/authToken: readStoreAuthToken\(\),/);
+  });
+
+  it('the storefront shell threads sign-in state and the account token into the quote hook', () => {
+    const source = read('StorefrontApp.jsx');
+    const callSite = source.slice(
+      source.indexOf('} = useFnbCheckoutQuote({'),
+      source.indexOf('const handleFnbCheckout = useFnbCheckoutSubmission({')
+    );
+
+    expect(callSite).toMatch(/isDgfyCustomerSignedIn,/);
+    expect(callSite).toMatch(/readDgfyAuthToken,/);
+  });
 });
