@@ -347,7 +347,7 @@ const validateFormLocally = (form) => {
 
 const FieldError = ({ message }) => (message ? <p className="mt-1 text-[11px] font-semibold text-rose-600">{message}</p> : null);
 
-export default function VoucherManagementPanel({ disabled = false, canManage = false, sectionId }) {
+export default function VoucherManagementPanel({ disabled = false, canManage = false, sectionId, onNavigateToPricelists }) {
   const [view, setView] = useState('list');
 
   const [vouchers, setVouchers] = useState([]);
@@ -381,6 +381,10 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [pricelistOptionsLoaded, setPricelistOptionsLoaded] = useState(false);
   const [pricelistOptionsLoading, setPricelistOptionsLoading] = useState(false);
   const [pricelistOptions, setPricelistOptions] = useState([]);
+  // RF-6 (PR #762 review): #736's second acceptance criterion -- a merchant holding only a DRAFT
+  // (unpublished) pricelist should see copy that says so, not the same "no pricelists yet" a
+  // merchant with genuinely zero pricelists sees. null = not yet probed.
+  const [hasDraftPricelist, setHasDraftPricelist] = useState(null);
 
   const [lifecycleBusyId, setLifecycleBusyId] = useState(null);
   const [confirmState, setConfirmState] = useState({ open: false, voucherId: null, action: null, label: '' });
@@ -451,8 +455,21 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       // Only `active` pricelists are attachable -- assertPricelistRef rejects a draft/archived
       // reference server-side; filtering here just avoids offering a choice that would 422.
       const result = await listPricelists({ status: 'active', limit: 100 });
-      setPricelistOptions(Array.isArray(result?.pricelists) ? result.pricelists : []);
+      const activeOptions = Array.isArray(result?.pricelists) ? result.pricelists : [];
+      setPricelistOptions(activeOptions);
       setPricelistOptionsLoaded(true);
+      // RF-6: only probe for a draft when the active list came back empty -- no extra request in
+      // the common case where the merchant already has an attachable pricelist.
+      if (activeOptions.length === 0) {
+        try {
+          const draftResult = await listPricelists({ status: 'draft', limit: 1 });
+          setHasDraftPricelist((Array.isArray(draftResult?.pricelists) ? draftResult.pricelists : []).length > 0);
+        } catch {
+          setHasDraftPricelist(false);
+        }
+      } else {
+        setHasDraftPricelist(false);
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to load pricelists.');
     } finally {
@@ -869,12 +886,16 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
               </div>
             )}
 
+            {/* RF-5 (PR #762 review): an asterisk with no key is only half a convention. */}
+            <p className="text-[11px] font-semibold text-slate-500">
+              <span className="text-rose-600" aria-hidden="true">*</span> required
+            </p>
             <fieldset disabled={formLocked} className="space-y-3">
               <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Basics</h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Code</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Code <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <Input
                       className="h-8 text-xs uppercase"
                       value={form.code}
@@ -888,21 +909,26 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                     )}
                   </div>
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Title</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Title <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <Input className="h-8 text-xs" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
                     <FieldError message={fieldErrors.title} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Subtitle</Label>
                     <Input className="h-8 text-xs" value={form.subtitle} onChange={(e) => setForm((current) => ({ ...current, subtitle: e.target.value }))} />
+                    {/* #733: optional, and honestly stated as such -- this field has no consumer
+                        anywhere in the codebase today, not merely "not shown yet". */}
+                    <p className="text-[11px] text-slate-400">Optional. Not displayed anywhere yet.</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Badge</Label>
                     <Input className="h-8 text-xs" value={form.badge} onChange={(e) => setForm((current) => ({ ...current, badge: e.target.value }))} />
+                    <p className="text-[11px] text-slate-400">Optional. Shown as the discount label once applied, if set -- falls back to Title otherwise.</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Validity text</Label>
                     <Input className="h-8 text-xs" value={form.validityText} onChange={(e) => setForm((current) => ({ ...current, validityText: e.target.value }))} />
+                    <p className="text-[11px] text-slate-400">Optional. Not displayed anywhere yet.</p>
                   </div>
                 </div>
               </div>
@@ -911,7 +937,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Benefit</h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Benefit type</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">Benefit type <span className="text-rose-600" aria-hidden="true">*</span></Label>
                     <select
                       className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold"
                       value={form.benefitClass}
@@ -925,7 +951,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   {form.benefitClass === 'percent_off' && (
                     <>
                       <div className="space-y-1">
-                        <Label className="text-xs font-semibold text-[#0F172A]">Percent off (%)</Label>
+                        <Label className="text-xs font-semibold text-[#0F172A]">Percent off (%) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                         <Input type="number" min="0.01" max="100" step="0.01" className="h-8 text-xs" value={form.percentOffPercent}
                           onChange={(e) => setForm((current) => ({ ...current, percentOffPercent: e.target.value }))} />
                         <FieldError message={fieldErrors.percent_off_bps} />
@@ -939,7 +965,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'amount_off' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (PHP)</Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0.01" step="0.01" className="h-8 text-xs" value={form.amountOffPesos}
                         onChange={(e) => setForm((current) => ({ ...current, amountOffPesos: e.target.value }))} />
                       <FieldError message={fieldErrors.amount_off_centavos} />
@@ -947,7 +973,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'single' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP)</Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0" step="0.01" className="h-8 text-xs" value={form.fixedUnitPricePesos}
                         onChange={(e) => setForm((current) => ({ ...current, fixedUnitPricePesos: e.target.value }))} />
                       <FieldError message={fieldErrors.fixed_unit_price_centavos} />
@@ -967,8 +993,28 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         ))}
                       </select>
                       <FieldError message={fieldErrors.pricelist_id} />
+                      {/* #736: was a dead-end ("...on the Pricelists tab first") -- Pricelists
+                          isn't a tab anymore (#732 promoted it to its own top-level nav mode), and
+                          this now navigates there directly instead of just naming where to go. */}
                       {pricelistOptions.length === 0 && !pricelistOptionsLoading && (
-                        <p className="text-[11px] text-slate-500">No active pricelists yet -- create one on the Pricelists tab first.</p>
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2">
+                          {/* RF-6: a draft pricelist exists but isn't attachable yet -- distinct
+                              copy from "you have none at all", per #736's own acceptance. */}
+                          <p className="text-[11px] text-slate-500">
+                            {hasDraftPricelist
+                              ? 'You have a draft pricelist -- publish it to use it here.'
+                              : 'No active pricelists yet.'}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 shrink-0 text-[11px]"
+                            onClick={() => onNavigateToPricelists?.()}
+                          >
+                            {hasDraftPricelist ? 'Go to Pricelists' : 'Create a pricelist'}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1078,10 +1124,15 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       <Checkbox checked={form.allowBelowCost} onCheckedChange={(checked) => setForm((current) => ({ ...current, allowBelowCost: checked === true }))} />
                       Allow selling below cost
                     </label>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-                      <Checkbox checked={form.stackableWithStatutory} onCheckedChange={(checked) => setForm((current) => ({ ...current, stackableWithStatutory: checked === true }))} />
-                      Stackable with statutory discounts
-                    </label>
+                    {/* #734: 'Stackable with statutory discounts' removed -- the stored
+                        stackable_with_statutory column had zero policy readers anywhere in the
+                        codebase and, if actually wired up, would contradict ADR 0066 Decision 8
+                        (a single governed discount slot per POS transaction). Whether a
+                        fixed-price voucher may combine with the statutory Senior/PWD 20% is an
+                        open policy question tracked in #605 -- that's where this gets decided,
+                        not here. Form state/mapper/submit payload below are left untouched so the
+                        API contract and an existing voucher's stored value round-trip unchanged
+                        (always sends stackable_with_statutory: false for a new voucher). */}
                   </div>
                 </div>
               </div>
