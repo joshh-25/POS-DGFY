@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
     POS_VOID_ADMIN_CREDENTIALS,
     POS_VOID_CASHIER_CREDENTIALS,
+    POS_VOID_STALE_SHIFT_CLEANUP_ENABLED,
     POS_VOID_TERMINAL_ID,
     closePosVoidTestShift,
     createPosVoidTrainingSale,
@@ -101,11 +102,6 @@ test.describe('POS administrator void flow', () => {
                 Boolean(adminShift),
                 `The configured admin already owns open shift #${adminShift?.pos_terminal_shift_id}; use a dedicated no-shift admin account.`
             );
-            testInfo.skip(
-                adminShiftState.terminal_occupancy?.status === 'occupied_by_other',
-                `The configured terminal already has an open shift #${adminShiftState.terminal_occupancy?.shift_id || 'owned by another cashier'}; use an idle sandbox terminal.`
-            );
-
             cashierAuthHeaders = await signInPosVoidActor(cashierPage, POS_VOID_CASHIER_CREDENTIALS);
             const cashierUser = await getPosUser(cashierPage, cashierAuthHeaders);
             const cashierPermissions = Array.isArray(cashierUser?.permissions) ? cashierUser.permissions : [];
@@ -113,7 +109,26 @@ test.describe('POS administrator void flow', () => {
                 cashierUser?.is_master_admin !== true && (!cashierPermissions.includes('pos:void') || !cashierPermissions.includes('pos:cash_drawer_adjust')),
                 'The configured cashier must have pos:void and pos:cash_drawer_adjust for the cash-refund certification step.'
             );
-            const cashierShift = await getCurrentShift(cashierPage, cashierAuthHeaders, locationId);
+            const cashierShiftState = await getTerminalShiftState(cashierPage, cashierAuthHeaders, locationId);
+            let cashierShift = cashierShiftState.shift || null;
+            if (adminShiftState.terminal_occupancy?.status === 'occupied_by_other') {
+                testInfo.skip(
+                    !cashierShift,
+                    'The configured terminal is occupied by an account other than the configured E2E cashier; refusing automatic cleanup.'
+                );
+                testInfo.skip(
+                    !POS_VOID_STALE_SHIFT_CLEANUP_ENABLED,
+                    `The configured test cashier owns open shift #${cashierShift?.pos_terminal_shift_id}; set E2E_POS_VOID_CLEAN_STALE_SHIFT=true to close it safely before certification.`
+                );
+                expect(String(cashierShift.terminal_id || '').trim().toUpperCase()).toBe(POS_VOID_TERMINAL_ID);
+                await closePosVoidTestShift(
+                    cashierPage,
+                    cashierAuthHeaders,
+                    Number(cashierShift.pos_terminal_shift_id),
+                    Number(cashierShiftState.cash_summary?.expected_cash_amount || 0)
+                );
+                cashierShift = null;
+            }
             testInfo.skip(
                 Boolean(cashierShift),
                 `The configured cashier already owns open shift #${cashierShift?.pos_terminal_shift_id}; use a dedicated sandbox cashier account.`

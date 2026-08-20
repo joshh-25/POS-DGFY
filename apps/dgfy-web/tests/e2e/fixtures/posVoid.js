@@ -4,6 +4,7 @@ import { signIn } from './login.js';
 const TERMINAL_STORAGE_KEY = 'pos_terminal_identity_v1';
 
 export const POS_VOID_FLOW_ENABLED = process.env.E2E_POS_VOID_FLOW_ENABLED === 'true';
+export const POS_VOID_STALE_SHIFT_CLEANUP_ENABLED = process.env.E2E_POS_VOID_CLEAN_STALE_SHIFT === 'true';
 export const POS_VOID_TERMINAL_ID = String(process.env.E2E_POS_VOID_TERMINAL_ID || '').trim().toUpperCase();
 export const POS_VOID_ADMIN_CREDENTIALS = {
     email: String(process.env.E2E_POS_VOID_ADMIN_EMAIL || '').trim(),
