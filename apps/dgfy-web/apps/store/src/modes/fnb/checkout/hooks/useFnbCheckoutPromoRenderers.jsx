@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 
-import { PromoCodePanel } from '../components/PromoCodePanel.jsx';
 import { VoucherCodePanel } from '../../../../shared/components/storefront/VoucherCodePanel.jsx';
 
 export function useFnbCheckoutPromoRenderers({
@@ -19,12 +18,20 @@ export function useFnbCheckoutPromoRenderers({
   setCheckoutPromoCode,
   setCheckoutVoucherCode
 }) {
-  // #672: renders both the promo panel and the (separate, independent) voucher panel stacked as
-  // one node. Every one of this renderer's existing call sites across retail/simple/fnb checkout
-  // pages just embeds a single returned node (either directly or via a `promoPanel` prop) -- adding
-  // the voucher panel here, rather than touching each of those ~11 call sites individually, gets it
-  // wired everywhere `renderPromoCodePanel` already renders, with the same regression surface as
-  // editing zero of those files.
+  // #672 originally rendered both the promo panel and the (separate, independent) voucher panel
+  // stacked as one node -- every call site across retail/simple/fnb checkout pages just embeds a
+  // single returned node, so wiring both here reached everywhere with zero call-site edits.
+  //
+  // #776/#695: PromoCodePanel is hidden here, deliberately NOT deleted -- matches Pat's call to
+  // defer the legacy promo engine's actual removal until the voucher-based system is prod-proven.
+  // It's dead weight regardless of that timeline though: the #695 migration already converted every
+  // real promo this codebase had (SAVE20/FIRSTORDER/SPPROMO) into vouchers and deleted their
+  // `storefront_promo(s)` settings rows, so PromoCodePanel currently has nothing left to apply
+  // against on any tenant. All the promo-specific props/state below (checkoutPromoCode,
+  // promoStatusMessage, promoSectionModel, handlePromoCardApply, ...) are left fully wired rather
+  // than stripped from this hook's signature -- unwinding them would ripple into the same ~11 call
+  // sites the original comment above was written to avoid touching, for a change that's supposed to
+  // be UI-only.
   const renderPromoCodePanel = useCallback(({
     compact = false,
     accentColor = '#0f766e',
@@ -32,20 +39,6 @@ export function useFnbCheckoutPromoRenderers({
     isMobile = false
   } = {}) => (
     <div style={{ display: 'grid', gap: 8 }}>
-      <PromoCodePanel
-        code={checkoutPromoCode}
-        onChange={setCheckoutPromoCode}
-        onClear={() => setCheckoutPromoCode('')}
-        onApplyPromo={handlePromoCardApply}
-        statusMessage={promoStatusMessage}
-        statusTone={promoStatusTone}
-        appliedDiscountText={appliedPromoDiscountText}
-        compact={compact}
-        accentColor={accentColor}
-        bodyFont={bodyFont}
-        isMobile={isMobile}
-        availablePromos={Array.isArray(promoSectionModel) ? promoSectionModel : []}
-      />
       <VoucherCodePanel
         code={checkoutVoucherCode}
         onChange={setCheckoutVoucherCode}
