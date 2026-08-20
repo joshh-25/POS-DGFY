@@ -381,6 +381,10 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [pricelistOptionsLoaded, setPricelistOptionsLoaded] = useState(false);
   const [pricelistOptionsLoading, setPricelistOptionsLoading] = useState(false);
   const [pricelistOptions, setPricelistOptions] = useState([]);
+  // RF-6 (PR #762 review): #736's second acceptance criterion -- a merchant holding only a DRAFT
+  // (unpublished) pricelist should see copy that says so, not the same "no pricelists yet" a
+  // merchant with genuinely zero pricelists sees. null = not yet probed.
+  const [hasDraftPricelist, setHasDraftPricelist] = useState(null);
 
   const [lifecycleBusyId, setLifecycleBusyId] = useState(null);
   const [confirmState, setConfirmState] = useState({ open: false, voucherId: null, action: null, label: '' });
@@ -451,8 +455,21 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       // Only `active` pricelists are attachable -- assertPricelistRef rejects a draft/archived
       // reference server-side; filtering here just avoids offering a choice that would 422.
       const result = await listPricelists({ status: 'active', limit: 100 });
-      setPricelistOptions(Array.isArray(result?.pricelists) ? result.pricelists : []);
+      const activeOptions = Array.isArray(result?.pricelists) ? result.pricelists : [];
+      setPricelistOptions(activeOptions);
       setPricelistOptionsLoaded(true);
+      // RF-6: only probe for a draft when the active list came back empty -- no extra request in
+      // the common case where the merchant already has an attachable pricelist.
+      if (activeOptions.length === 0) {
+        try {
+          const draftResult = await listPricelists({ status: 'draft', limit: 1 });
+          setHasDraftPricelist((Array.isArray(draftResult?.pricelists) ? draftResult.pricelists : []).length > 0);
+        } catch {
+          setHasDraftPricelist(false);
+        }
+      } else {
+        setHasDraftPricelist(false);
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to load pricelists.');
     } finally {
@@ -869,6 +886,10 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
               </div>
             )}
 
+            {/* RF-5 (PR #762 review): an asterisk with no key is only half a convention. */}
+            <p className="text-[11px] font-semibold text-slate-500">
+              <span className="text-rose-600" aria-hidden="true">*</span> required
+            </p>
             <fieldset disabled={formLocked} className="space-y-3">
               <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Basics</h4>
@@ -930,7 +951,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   {form.benefitClass === 'percent_off' && (
                     <>
                       <div className="space-y-1">
-                        <Label className="text-xs font-semibold text-[#0F172A]">Percent off (%)</Label>
+                        <Label className="text-xs font-semibold text-[#0F172A]">Percent off (%) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                         <Input type="number" min="0.01" max="100" step="0.01" className="h-8 text-xs" value={form.percentOffPercent}
                           onChange={(e) => setForm((current) => ({ ...current, percentOffPercent: e.target.value }))} />
                         <FieldError message={fieldErrors.percent_off_bps} />
@@ -944,7 +965,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'amount_off' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (PHP)</Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0.01" step="0.01" className="h-8 text-xs" value={form.amountOffPesos}
                         onChange={(e) => setForm((current) => ({ ...current, amountOffPesos: e.target.value }))} />
                       <FieldError message={fieldErrors.amount_off_centavos} />
@@ -952,7 +973,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'single' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP)</Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0" step="0.01" className="h-8 text-xs" value={form.fixedUnitPricePesos}
                         onChange={(e) => setForm((current) => ({ ...current, fixedUnitPricePesos: e.target.value }))} />
                       <FieldError message={fieldErrors.fixed_unit_price_centavos} />
@@ -977,7 +998,13 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                           this now navigates there directly instead of just naming where to go. */}
                       {pricelistOptions.length === 0 && !pricelistOptionsLoading && (
                         <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2">
-                          <p className="text-[11px] text-slate-500">No active pricelists yet.</p>
+                          {/* RF-6: a draft pricelist exists but isn't attachable yet -- distinct
+                              copy from "you have none at all", per #736's own acceptance. */}
+                          <p className="text-[11px] text-slate-500">
+                            {hasDraftPricelist
+                              ? 'You have a draft pricelist -- publish it to use it here.'
+                              : 'No active pricelists yet.'}
+                          </p>
                           <Button
                             type="button"
                             variant="outline"
@@ -985,7 +1012,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                             className="h-7 shrink-0 text-[11px]"
                             onClick={() => onNavigateToPricelists?.()}
                           >
-                            Create a pricelist
+                            {hasDraftPricelist ? 'Go to Pricelists' : 'Create a pricelist'}
                           </Button>
                         </div>
                       )}
