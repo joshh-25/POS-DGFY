@@ -165,6 +165,18 @@ export default (sequelize) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        // #713: fix -- this column was never declared here, so
+        // syncStorefrontDiscoveryIndexForTenant's `.create(snapshot)` silently dropped
+        // `storefront_vouchers` before it ever reached the DB (Sequelize only persists attributes
+        // the model declares). storefrontDiscoveryIndexService.js's buildPublicStorefrontVouchers
+        // computed the right value in memory the whole time; it just never survived a save. Caught
+        // 2026-08-20 via live testing against a real voucher, not by the original test suite --
+        // that suite asserted the builder function's return value directly and never exercised a
+        // real persist-and-read round trip through this model.
+        storefront_vouchers: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         storefront_ui_v2_enabled: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
