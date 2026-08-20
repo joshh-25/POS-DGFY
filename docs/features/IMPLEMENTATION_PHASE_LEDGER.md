@@ -6066,4 +6066,155 @@ voucher ledger landed on `develop`. To preserve the authoritative continuous
 sequence, working Phase 107 maps to canonical Phase 111; working Phases 113-133
 map in order to canonical Phases 112-132. Historical approvals are preserved by
 this mapping and were not renumbered in-place in any merged ledger entry. Next
-eligible repository phase: 133.
+eligible repository phase at the time this note was written: 133.
+
+**Update, 2026-08-20:** #761 flagged that #696 (voucher pricelist entity) shipped without ever
+getting a phase entry — filed when Phase 111 was still open, before this section's own numbering
+reconciliation claimed 111 for the unrelated POS decomposition initiative above. #761's underlying
+finding stands; the number it named does not. Per this ledger's own continuous-sequence rule
+(phases are assigned in documentation order, not backdated to match when the code actually merged —
+see Phase 110's own retroactive-audit precedent), the missing #696 entry and this session's new
+work take the next two eligible numbers below, **133** and **134**. Next eligible repository phase
+after this update: **135**.
+
+## Phase 133 - Voucher Pricelist Entity (retroactive entry for #696)
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Retroactively documented 2026-08-20 per
+  #761 -- the code shipped 2026-08-18 (PR #700) but the ledger entry was never written.
+- Release: PR #700, merged to `develop` 2026-08-18.
+
+### Objective and Scope
+
+- Extends #584's `fixed_price` benefit class from one pinned price for every scoped item to a real
+  per-item wholesale pricelist -- N prices for N items, not one price applied uniformly.
+- New tenant tables: `pricelists` (`name`, `description`, `status` draft/active/archived, `version`
+  optimistic lock, timestamps) and `pricelist_items` (`pricelist_id`, `item_id`,
+  `unit_price_centavos`, `is_manual_override`, unique on `(pricelist_id, item_id)`).
+  `is_manual_override` is load-bearing, not bookkeeping -- it distinguishes a deliberately-typed
+  price from an autofilled SRP default, since `Item.default_sale_price` moves on Dispatch Order
+  dispatches and an unmarked row would start granting an unintended discount as SRP rises.
+- `vouchers.pricelist_id` (new nullable FK column, `ON DELETE RESTRICT`) lets a `fixed_price`
+  voucher attach a pricelist instead of a single scalar price -- mutually exclusive with
+  `fixed_unit_price_centavos`, enforced in `voucherUseCases.js`'s `applyBenefitConfig`, not the
+  schema. When a pricelist is attached, it **is** the scope -- `voucher_scopes` is not consulted.
+- Explicitly not a reversal of #569 (B2B deferral) -- per #454 decision 2, vouchers serve the
+  B2B-shaped need through a B2C mechanism without building B2B itself.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-103's voucher entity and benefit-resolution domain (`voucherBenefitPolicy.js`
+  extended, not replaced).
+- Classification: `major`, `surfaces: pos,terminal,payments` --
+  `docs/compliance/impact-declarations/2026-08-18-voucher-pricelist-entity.md`.
+- ADR 0066 Decision 5 amended 2026-08-18 to extend the `fixed_price` intent-not-stored-delta
+  principle from a single scalar to a pricelist.
+
+### Acceptance and Validation Evidence
+
+- Backend unit tests for pricelist-backed voucher resolution (fails closed when the pricelist
+  matches nothing in the cart, when the attached pricelist is archived; succeeds when active) --
+  see `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`'s `#696 pricelist-backed
+  voucher` block.
+- `check:compliance`, `check:architecture`, `check:adr` passed on the merging PR.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260818000001-create-pricelists.cjs`
+- `apps/dgfy-api/src/models/Pricelist.js`, `apps/dgfy-api/src/models/PricelistItem.js`
+- `apps/dgfy-api/src/modules/vouchers/domain/voucherBenefitPolicy.js`
+- `apps/dgfy-web/src/features/pos/components/PricelistManagementPanel.jsx`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-18 amendment)
+
+## Phase 134 - POS Voucher Redemption
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Issue #712, filed after a backlog audit
+  found POS voucher redemption did not exist as a real feature anywhere in the codebase despite the
+  #604 master switch and the channel-mask eligibility check both already being built and waiting for
+  a caller.
+- Release: single `develop`-targeted PR (`feature/712-pos-voucher-redemption`).
+
+### Objective and Scope
+
+- Wires `redeemVoucherUseCase`/`previewVoucherEligibilityUseCase` into `checkoutPosUseCase`, sale-
+  level only (a voucher's own `voucher_scopes`/pricelist decides which lines it touches, matching
+  the storefront path -- no per-line voucher entry was added).
+- Gate: `voucher_pos_redemption_enabled` (#604, tenant-wide, default off) **and** the specific
+  voucher's `channels_mask` including the POS bit. No `voucher_kind`-based restriction -- rejected as
+  a redundant second gating mechanism for the same question `channels_mask` already answers.
+- Customer name required, matching the existing POS promo-code requirement -- narrows #454 decision
+  6 (ADR 0066 amendment, 2026-08-20, above); manager PIN required, parity with ADR 0033 Decision 7,
+  no exception (a follow-up issue questions this parity without changing today's behavior).
+- Two defects found and fixed while wiring this, neither previously covered by any test:
+  1. `redeemVoucherUseCase`'s ledger idempotency key was hardcoded to a `storefront:` prefix
+     regardless of the caller's `channel` -- a POS redemption would have shared the storefront
+     idempotency namespace. Now derived from `channel`.
+  2. POS's `quoteOnly` checkout path (used by `createPosPaymentSessionUseCase`) would otherwise have
+     called `redeemVoucherUseCase` unconditionally and burned a real redemption on a mere price
+     check -- `quoteOnly` is the discriminator that selects `previewVoucherEligibilityUseCase`
+     instead, since POS (unlike the storefront) always has an open transaction and so cannot use
+     transaction-presence as the preview/redeem signal.
+- A voucher's discount is never run through `calculatePosDiscount` (the generic redistributor used
+  by promo/senior/pwd/employee/manual) -- `posVoucherDiscountCalculator.js`'s
+  `buildVoucherGovernedCalculation` builds the same return-shape contract directly from the
+  voucher's own authoritative `lineAllocations`, since re-deriving a `fixed_price` voucher's per-line
+  discount via proportional redistribution would silently diverge from ADR 0066 Decision 5's
+  per-line delta.
+- Frontend: a sixth discount-type card (Voucher) in the POS checkout modal, no client-side code
+  validation (unlike Promo, no endpoint enumerates a store's vouchers), and a new redemption-time
+  reason-code copy map (`posCheckoutErrorMessages.js`) -- `VoucherManagementPanel.jsx`'s existing map
+  is authoring-only and covered none of the codes a cashier can actually hit at checkout.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-105 (voucher entity, redemption ledger, master switch) and Phase 110
+  (governed discount slot / fiscal audit row pattern, reused rather than re-derived).
+- Classification: `major`, `surfaces: pos,terminal` --
+  `docs/compliance/impact-declarations/2026-08-20-pos-voucher-redemption.md`.
+- ADR 0066 amended 2026-08-20 (above) narrowing #454 decision 6.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/posDiscountPolicy.unit.test.js`'s `voucher discounts (#712)` block -- customer
+  name requirement, voucher-code requirement before calling the redemption dependency, percent_off
+  and fixed-benefit application shaping, sale-level-only line scoping, and a regression guard against
+  the voucher branch ever reaching `UNSUPPORTED_DISCOUNT_TYPE`.
+- `apps/dgfy-api/tests/posVoucherDiscountCalculator.unit.test.js` -- proportional-split divergence
+  guard, ineligible-line zeroing, VAT always zero (never statutory), method/rate resolution, and a
+  full subtotal/discount/final-line-amount reconciliation.
+- `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`'s new channel-namespacing
+  regression test (idempotency key prefix derived from `channel`, not hardcoded).
+- `apps/dgfy-api/tests/posValidator.discountPolicy.test.js` -- accepts a governed voucher discount
+  and a voucher `discount_approval`, rejects an over-length voucher code, rejects a voucher
+  `discount_type` on a per-line `item_discount` (sale-level-only boundary).
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posCheckoutErrorMessages.test.js` -- voucher
+  reason-code coverage including the 409 `VOUCHER_DISCOUNT_SLOT_OCCUPIED` case, which the generic
+  422-only validation-message path would otherwise miss.
+- `discountTypeCards.contract.test.js` updated for six cards; `build:pos` and `build:skupervisor`
+  both clean.
+- No live-database integration test exercises a full POS-voucher-checkout end-to-end -- disclosed as
+  a gap rather than implied covered, same disclosure Phase 110 made for the equivalent storefront
+  gap.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`,
+  `apps/dgfy-api/src/modules/pos/domain/posVoucherDiscountCalculator.js` (new)
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`
+- `apps/dgfy-api/src/validators/posValidator.js`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`,
+  `POSCheckoutTerminalView.jsx`, `apps/dgfy-web/src/features/pos/utils/posCheckoutTerminalUtils.js`,
+  `posCheckoutErrorMessages.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-20 amendment)
