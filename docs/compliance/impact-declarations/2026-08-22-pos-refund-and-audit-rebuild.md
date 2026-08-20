@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal,payments
 reason_codes_impacted: POS_REFUND_AUDIT_AND_REVERSAL
 policy_version: 2026.08.22
-verification_evidence: pos-refund-contract-tests,split-reversal-tests,backend-syntax-checks
+verification_evidence: pos-refund-contract-tests,split-reversal-tests,pos-terminal-contract-tests,backend-syntax-checks
 rollback_note: Revert the refund/audit implementation and retain additive adjustment tables until no dependent records remain.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
