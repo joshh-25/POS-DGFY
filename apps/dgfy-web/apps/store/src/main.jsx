@@ -14,6 +14,7 @@ import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
+import BusinessRegistrationSubmissionPage from './business/pages/BusinessRegistrationSubmissionPage.jsx';
 import { initBrowserSentry, setSentryRoute } from '../../../src/observability/sentryClient.js';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import {
@@ -132,6 +133,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontBusinessGrowPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/business-registration-submission"
+          element={(
+            <>
+              <BusinessRegistrationSubmissionPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

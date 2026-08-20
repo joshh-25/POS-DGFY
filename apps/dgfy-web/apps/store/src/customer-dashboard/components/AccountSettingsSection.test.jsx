@@ -121,12 +121,36 @@ describe('AccountSettingsSection responsive composition', () => {
     fireEvent.change(modal.querySelector('input[placeholder="Confirm new password"]'), { target: { value: 'NewPass2!' } });
     fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
 
+    expect(screen.queryByTestId('account-settings-change-modal')).toBeNull();
+    expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('pending');
     await waitFor(() => expect(changeDgfyPassword).toHaveBeenCalledWith({
       current_password: 'CurrentPass1!',
       new_password: 'NewPass2!',
       confirm_password: 'NewPass2!'
     }));
-    expect(screen.getByRole('status').textContent).toContain('Password updated successfully.');
+    await waitFor(() => expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('success'));
+    expect(screen.getByText('Password updated!')).toBeTruthy();
+    expect(screen.getByText('Your password has been updated successfully.')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('account-action-status-modal')).toBeNull(), { timeout: 2500 });
+  });
+
+  it('shows the frontend-only pending and blocked states for email updates without claiming persistence', async () => {
+    render(<AccountSettingsSection isMobileViewport={false} theme={theme} accountIdentityInitials="HS" accountIdentityName="Henndry Sy" accountPanel={{ me: { is_email_verified: true, email: 'customer@example.com' } }} overviewPhone="+639123456789" overviewEmail="customer@example.com" profileVerification={profileVerification} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Email Address' }));
+    const modal = screen.getByTestId('account-settings-change-modal');
+    fireEvent.change(modal.querySelector('input[placeholder="Enter new email address"]'), { target: { value: 'new@example.com' } });
+    fireEvent.change(modal.querySelector('input[placeholder="Enter 6-digit code"]'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify & Update Email' }));
+
+    expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('pending');
+    expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusSpin');
+    await waitFor(() => expect(screen.getByTestId('account-action-status-modal').getAttribute('data-status')).toBe('unavailable'));
+    expect(screen.getByTestId('account-action-status-icon').style.animation).toContain('dgfyAccountStatusError');
+    expect(screen.getByText('Email update is not connected to a saving service yet. The verification UI is ready for backend integration.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.queryByTestId('account-action-status-modal')).toBeNull();
+    expect(screen.getByTestId('account-settings-change-modal')).toBeTruthy();
   });
 
   it('opens the frontend-only Edit Profile modal with the requested fields and subtitle', () => {
