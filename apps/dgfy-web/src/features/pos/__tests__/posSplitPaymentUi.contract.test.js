@@ -2,8 +2,26 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const checkoutSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
+const checkoutSource = [
+    fs.readFileSync(
+        path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
+        path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
+        path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
+        'utf8'
+    ),
+].join('\n');
+const checkoutWorkflowSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/features/pos/hooks/usePosCheckoutWorkflow.js'),
+    'utf8'
+);
+const financialWorkflowSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/features/pos/hooks/usePosFinancialWorkflow.js'),
     'utf8'
 );
 const splitDialogSource = fs.readFileSync(
@@ -25,16 +43,16 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('Edit Split Payment');
         expect(checkoutSource).toContain('<POSSplitPaymentWorkflow');
         expect(splitDialogSource).toContain('parked_sale_id: parkedSaleId || undefined');
-        expect(checkoutSource).toContain('handleSplitPaymentOpenChange(true);');
+        expect(checkoutWorkflowSource).toContain('handleSplitPaymentOpenChange(true);');
         expect(checkoutSource).toContain('onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : handleCheckout}');
-        expect(checkoutSource).toContain('completePosPaymentSession');
-        expect(checkoutSource).toContain('const splitPaymentCheckoutContext = useMemo');
+        expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
+        expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
         expect(splitDialogSource).toContain('sessionOpenAttemptRef');
         expect(checkoutSource).toContain('data-testid="pos-split-payment-cancel-dialog"');
         expect(checkoutSource).toContain('handleCancelCheckout');
-        expect(checkoutSource).toContain('cancelPosPaymentAllocation');
-        expect(checkoutSource).toContain('cancelPosPaymentSession');
+        expect(checkoutWorkflowSource).toContain('cancelPosPaymentAllocation');
+        expect(checkoutWorkflowSource).toContain('cancelPosPaymentSession');
         expect(checkoutSource).toContain('Reverse & Start New');
     });
 
@@ -43,10 +61,10 @@ describe('POS split-payment UI contract', () => {
         expect(currentSaleActionsSource).toContain('Split Payment');
         expect(checkoutSource).toContain('onSplitPayment={openSplitPaymentModal}');
         expect(checkoutSource).toContain('onReadyToComplete={handleCompletePreparedSplitPayment}');
-        expect(checkoutSource).toContain('const isReady = round4(sessionToComplete?.remaining_amount) === 0;');
-        expect(checkoutSource).toContain("setReceiptPreviewSource('order_preview')");
-        expect(checkoutSource).toContain('setReceiptPreviewModalOpen(true)');
-        expect(checkoutSource).toContain('splitPaymentReturnToCheckoutRef.current = false');
+        expect(checkoutWorkflowSource).toContain('const isReady = round4(sessionToComplete?.remaining_amount) === 0;');
+        expect(checkoutWorkflowSource).toContain("setReceiptPreviewSource('order_preview')");
+        expect(checkoutWorkflowSource).toContain('setReceiptPreviewModalOpen(true)');
+        expect(checkoutWorkflowSource).toContain('splitPaymentReturnToCheckoutRef.current = false');
     });
 
     it('clears an exact zero when a payment amount field receives focus', () => {
@@ -126,23 +144,24 @@ describe('POS split-payment UI contract', () => {
     });
 
     it('builds the split-payment checkout snapshot only after every render dependency is initialized', () => {
-        const snapshotContextIndex = checkoutSource.indexOf('const splitPaymentCheckoutContext = useMemo');
-        const requiredDependencyDeclarations = [
-            'const safeCart = toArray(cart)',
-            'const selectedDiscount = useMemo',
-            'const manualDiscountRate = useMemo',
-            'const manualDiscountAmount = useMemo',
+        const snapshotContextIndex = checkoutWorkflowSource.indexOf('const splitPaymentCheckoutContext = useMemo');
+        const financialWorkflowCallIndex = checkoutSource.indexOf('usePosFinancialWorkflow({');
+        const requiredFinancialDeclarations = [
+            'const safeCart = getSafeRows(cart)',
+            'const selectedDiscount = safeDiscountProfiles.find',
+            'const manualDiscountRate = (() =>',
+            'const manualDiscountAmount = (() =>',
             'const calculatedDiscountAmount = appliedDiscount',
-            'const normalizedFnbContext = useMemo'
+            'normalizedFnbContext = null'
         ];
 
         expect(snapshotContextIndex).toBeGreaterThan(-1);
+        expect(financialWorkflowCallIndex).toBeGreaterThan(-1);
+        expect(checkoutSource.indexOf('} = usePosCheckoutWorkflow({')).toBeGreaterThan(financialWorkflowCallIndex);
         expect(splitWorkflowSource).toContain('const buildCheckoutSnapshot = (context = {}) => ({');
         expect(splitWorkflowSource).toContain('const checkoutSnapshot = useMemo');
-        requiredDependencyDeclarations.forEach((declaration) => {
-            const dependencyIndex = checkoutSource.indexOf(declaration);
-            expect(dependencyIndex).toBeGreaterThan(-1);
-            expect(snapshotContextIndex).toBeGreaterThan(dependencyIndex);
+        requiredFinancialDeclarations.forEach((declaration) => {
+            expect(financialWorkflowSource).toContain(declaration);
         });
     });
 

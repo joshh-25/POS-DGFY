@@ -16,7 +16,14 @@
 import Joi from 'joi';
 import { VOUCHER_STATUSES } from '../modules/vouchers/domain/voucherEligibilityPolicy.js';
 
-const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,63}$/;
+// Capped at 40, not the column's full 64 (`vouchers.code` is VARCHAR(64)) -- #667 Phase 110:
+// `pos_transaction_discounts.promo_code`, the fiscal audit-row column a voucher redemption now
+// writes into (shared with the promo path), is VARCHAR(40). Storefront voucher redemption is not
+// on `main` as of this change, so no production voucher code exists yet to be narrowed out from
+// under a merchant -- capping here avoids widening a fiscal table's column for a length no
+// existing code needs. Revisit together if `vouchers.code` itself is ever widened past 40 for an
+// unrelated reason.
+const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,39}$/;
 const TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,7 +71,7 @@ const scopesSchema = Joi.array()
 // place. `createVoucherSchema` re-declares each defaulted key below.
 const baseVoucherFields = {
     code: Joi.string().trim().uppercase().pattern(VOUCHER_CODE_PATTERN).messages({
-        'string.pattern.base': 'code must be 3-64 characters of A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit'
+        'string.pattern.base': 'code must be 3-40 characters of A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit'
     }),
     voucher_kind: Joi.string().valid('promo_code'),
     title: Joi.string().trim().min(2).max(255),
@@ -76,6 +83,15 @@ const baseVoucherFields = {
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
     stackable_with_statutory: Joi.boolean(),
+    // #713: independent of channels_mask -- controls public storefront advertising, not code
+    // usability. No "eligible everywhere by omission" hazard like the four masks above, so a plain
+    // boolean default (rather than a NOT-NULL-no-default invariant) is appropriate here.
+    is_publicly_listed: Joi.boolean(),
+    // #696: fixed_price-only, mutually exclusive with fixed_unit_price_centavos. The XOR itself is
+    // enforced in voucherUseCases.js's applyBenefitConfig (which sees the merged/stored row, not
+    // just this payload); the conditionals below and collectCrossFieldErrors only catch what a
+    // schema-only check can see.
+    pricelist_id: Joi.number().integer().positive().allow(null),
     valid_from: Joi.string().trim().pattern(DATE_ONLY_PATTERN).allow(null),
     valid_until: Joi.string().trim().pattern(DATE_ONLY_PATTERN).allow(null),
     valid_time_start: Joi.string().trim().pattern(TIME_24H_PATTERN).allow(null),
@@ -101,6 +117,7 @@ const createVoucherSchema = Joi.object({
     voucher_kind: baseVoucherFields.voucher_kind.default('promo_code'),
     allow_below_cost: baseVoucherFields.allow_below_cost.default(false),
     stackable_with_statutory: baseVoucherFields.stackable_with_statutory.default(false),
+    is_publicly_listed: baseVoucherFields.is_publicly_listed.default(false),
     weekday_mask: baseVoucherFields.weekday_mask.default(127),
     channels_mask: baseVoucherFields.channels_mask.default(1),
     fulfillment_methods_mask: baseVoucherFields.fulfillment_methods_mask.default(3),
@@ -110,15 +127,58 @@ const createVoucherSchema = Joi.object({
         .when('benefit_class', { is: 'percent_off', then: Joi.required(), otherwise: Joi.forbidden() }),
     amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS)
         .when('benefit_class', { is: 'amount_off', then: Joi.required(), otherwise: Joi.forbidden() }),
+    // #696: fixed_price requires EITHER this OR pricelist_id, never both. Required only when
+    // benefit_class is fixed_price AND no real pricelist_id was sent; must be exactly null the
+    // moment a real pricelist_id is present, so a payload cannot even express both at the schema
+    // layer (the real XOR guard is voucherUseCases.js's applyBenefitConfig, which sees the
+    // merged/stored row -- this is the create-time schema-level half of it).
+    //
+    // #716: the UI's own payload builder sends the *inapplicable* field as an explicit `null`
+    // rather than omitting the key (VoucherManagementPanel.jsx's buildVoucherPayload) -- both
+    // fixed-price sub-modes 422'd against the old `Joi.forbidden()`/`Joi.exist()` pair, since
+    // `Joi.forbidden()` disallows the key's mere PRESENCE regardless of value, and `Joi.exist()`
+    // is satisfied by `null` (it only checks presence, not "is a real value"). Every `is` check
+    // below therefore uses `Joi.number().required()`, not `Joi.exist()` -- `.required()` is what
+    // makes an omitted/undefined sibling correctly NOT match "a pricelist is attached", the
+    // property `Joi.exist()` doesn't have.
     fixed_unit_price_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS)
-        .when('benefit_class', { is: 'fixed_price', then: Joi.required(), otherwise: Joi.forbidden() }),
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.when('pricelist_id', {
+                is: Joi.number().required(),
+                then: Joi.valid(null),
+                otherwise: Joi.number().integer().min(0).max(MAX_CENTAVOS).required()
+            }),
+            otherwise: Joi.valid(null)
+        }),
+    // fixed_price-only; must be exactly null for every other class, not merely absent (#716 --
+    // same null-tolerant shape as above, for the same reason).
+    pricelist_id: Joi.number().integer().positive()
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.optional().allow(null),
+            otherwise: Joi.valid(null)
+        }),
     // A cap on an already-absolute amount is meaningless, so it is refused rather than ignored.
     max_discount_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null)
         .when('benefit_class', { is: 'amount_off', then: Joi.forbidden() }),
 
-    // `fixed_price` without a scope would pin a price on the entire catalog (#584).
+    // `fixed_price` without a scope would pin a price on the entire catalog (#584) -- UNLESS a
+    // pricelist is attached, in which case the pricelist itself is the scope (#696).
+    //
+    // #716: `is: Joi.exist()` had the same bug as above -- it's satisfied by `pricelist_id: null`
+    // (an explicit null still "exists"), so a single-price payload (which now legitimately sends
+    // `pricelist_id: null`) would have wrongly skipped the scopes requirement. `Joi.number()
+    // .required()` only matches an actual attached pricelist.
     scopes: scopesSchema.default([])
-        .when('benefit_class', { is: 'fixed_price', then: Joi.array().min(1).required() }),
+        .when('benefit_class', {
+            is: 'fixed_price',
+            then: Joi.when('pricelist_id', {
+                is: Joi.number().required(),
+                then: scopesSchema.default([]),
+                otherwise: scopesSchema.default([]).min(1).required()
+            })
+        }),
 
     version: Joi.any().forbidden()
 });
@@ -198,7 +258,10 @@ const collectCrossFieldErrors = (value, { mode }) => {
     }
 
     if (mode === 'update') {
-        const sendsBenefitAmount = BENEFIT_AMOUNT_FIELDS.some((field) => has(value, field));
+        // #696: pricelist_id is treated as a fourth "benefit amount" field for the purposes of this
+        // trigger -- setting it without resending benefit_class is rejected the same way setting
+        // fixed_unit_price_centavos alone already is.
+        const sendsBenefitAmount = BENEFIT_AMOUNT_FIELDS.some((field) => has(value, field)) || has(value, 'pricelist_id');
         if (sendsBenefitAmount && !has(value, 'benefit_class')) {
             errors.push({
                 field: 'benefit_class',
@@ -206,12 +269,12 @@ const collectCrossFieldErrors = (value, { mode }) => {
             });
         }
         if (has(value, 'benefit_class')) {
+            const expected = {
+                percent_off: 'percent_off_bps',
+                amount_off: 'amount_off_centavos',
+                fixed_price: 'fixed_unit_price_centavos'
+            }[value.benefit_class];
             BENEFIT_AMOUNT_FIELDS.forEach((field) => {
-                const expected = {
-                    percent_off: 'percent_off_bps',
-                    amount_off: 'amount_off_centavos',
-                    fixed_price: 'fixed_unit_price_centavos'
-                }[value.benefit_class];
                 if (field !== expected && has(value, field) && value[field] != null) {
                     errors.push({
                         field,
@@ -223,6 +286,27 @@ const collectCrossFieldErrors = (value, { mode }) => {
                 errors.push({
                     field: 'max_discount_centavos',
                     message: 'max_discount_centavos is not allowed for benefit_class amount_off'
+                });
+            }
+            // #696: pricelist_id is fixed_price-only, and mutually exclusive with
+            // fixed_unit_price_centavos even within fixed_price -- both schema-layer checks the
+            // create-side conditional already gets for free via Joi `.when`, needed here explicitly
+            // because the update schema deliberately keeps benefit fields unconditional (see the
+            // updateVoucherSchema comment above).
+            if (value.benefit_class !== 'fixed_price' && has(value, 'pricelist_id') && value.pricelist_id != null) {
+                errors.push({
+                    field: 'pricelist_id',
+                    message: `pricelist_id is not allowed for benefit_class ${value.benefit_class}`
+                });
+            }
+            if (
+                value.benefit_class === 'fixed_price'
+                && has(value, 'fixed_unit_price_centavos') && value.fixed_unit_price_centavos != null
+                && has(value, 'pricelist_id') && value.pricelist_id != null
+            ) {
+                errors.push({
+                    field: 'pricelist_id',
+                    message: 'fixed_unit_price_centavos and pricelist_id cannot both be set'
                 });
             }
         }

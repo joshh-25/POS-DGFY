@@ -240,6 +240,68 @@ export class PayMongoService {
         }
     }
 
+    getPublicKey() {
+        return this.publicKey || null;
+    }
+
+    async createDirectWalletPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        metadata = {},
+        returnUrl = null,
+        paymentMethod,
+        paymentFlow,
+        paymentMethodLabel
+    }) {
+        const publicKey = this.getPublicKey();
+        if (!publicKey) {
+            throw new Error('PAYMONGO_PUBLIC_KEY is not configured');
+        }
+
+        const allowedPaymentMethods = new Set(['gcash', 'paymaya']);
+        if (!allowedPaymentMethods.has(paymentMethod)) {
+            throw new Error('Direct PayMongo wallet payment method is not supported');
+        }
+
+        const paymentIntent = await this.createPaymentIntent({
+            amount,
+            currency,
+            description,
+            paymentMethodAllowed: [paymentMethod],
+            metadata
+        });
+        const clientKey = String(paymentIntent?.attributes?.client_key || '').trim();
+        if (!paymentIntent?.id || !clientKey) {
+            throw new Error(`PayMongo did not return a usable ${paymentMethodLabel} Payment Intent client key`);
+        }
+
+        return {
+            paymentFlow,
+            paymentIntent,
+            publicKey,
+            returnUrl
+        };
+    }
+
+    async createDirectGcashPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'gcash',
+            paymentFlow: 'direct_gcash',
+            paymentMethodLabel: 'GCash'
+        });
+    }
+
+    async createDirectMayaPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'paymaya',
+            paymentFlow: 'direct_maya',
+            paymentMethodLabel: 'Maya'
+        });
+    }
+
     async getPaymentMethodCapabilities({ cacheTtlMs = 15_000 } = {}) {
         const now = Date.now();
         if (this.paymentMethodCapabilitiesCache && this.paymentMethodCapabilitiesCache.expiresAt > now) {

@@ -14,6 +14,7 @@ export const buildFnbCheckoutPayload = ({
   deliveryAddress,
   customerPin,
   promoCode,
+  voucherCode,
   fnbScheduleMode,
   fnbScheduledFor,
   fnbSpecialInstructions,
@@ -25,6 +26,10 @@ export const buildFnbCheckoutPayload = ({
   customer_phone: String(customerPhone || '').trim(),
   customer_email: String(customerEmail || '').trim(),
   promo_code: String(promoCode || '').trim().toUpperCase(),
+  // #672: voucher_code is a separate field from promo_code -- the two are independent checkout
+  // discounts today (ADR 0066/#453's eventual promo->voucher_kind generalization hasn't happened
+  // yet), so this does not touch the promo_code line above.
+  voucher_code: String(voucherCode || '').trim().toUpperCase(),
   delivery_address: String(deliveryAddress || '').trim(),
   delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,

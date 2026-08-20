@@ -1,11 +1,21 @@
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
+const STOREFRONT_SERVICE_HANDOFF_KEY_PREFIX = 'dgfy_store_service_handoff_v1';
 
 const normalizeTrackingStoreSlug = (value = '') => String(value || '').trim().toLowerCase();
 
 export const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
 
 const getLastTrackingPinStorageKey = (slug = '') => `${STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX}:${normalizeTrackingStoreSlug(slug)}`;
+
+const normalizeServiceHandoff = (value = '') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'pickup' || normalized === 'delivery' ? normalized : '';
+};
+
+const getServiceHandoffStorageKey = (slug = '', pin = '') => (
+  `${STOREFRONT_SERVICE_HANDOFF_KEY_PREFIX}:${normalizeTrackingStoreSlug(slug)}:${String(pin || '').trim().toUpperCase()}`
+);
 
 export const readLastTrackingPinForStore = (slug = '') => {
   if (typeof window === 'undefined') return '';
@@ -20,6 +30,23 @@ export const writeLastTrackingPinForStore = (slug = '', pin = '') => {
   const normalizedPin = String(pin || '').trim().toUpperCase();
   if (!normalizedSlug || !normalizedPin) return;
   window.localStorage.setItem(getLastTrackingPinStorageKey(normalizedSlug), normalizedPin);
+};
+
+export const readServiceHandoffForBooking = (slug = '', pin = '') => {
+  if (typeof window === 'undefined') return '';
+  const normalizedSlug = normalizeTrackingStoreSlug(slug);
+  const normalizedPin = String(pin || '').trim().toUpperCase();
+  if (!normalizedSlug || !normalizedPin) return '';
+  return normalizeServiceHandoff(window.localStorage.getItem(getServiceHandoffStorageKey(normalizedSlug, normalizedPin)));
+};
+
+export const writeServiceHandoffForBooking = (slug = '', pin = '', handoff = '') => {
+  if (typeof window === 'undefined') return;
+  const normalizedSlug = normalizeTrackingStoreSlug(slug);
+  const normalizedPin = String(pin || '').trim().toUpperCase();
+  const normalizedHandoff = normalizeServiceHandoff(handoff);
+  if (!normalizedSlug || !normalizedPin || !normalizedHandoff) return;
+  window.localStorage.setItem(getServiceHandoffStorageKey(normalizedSlug, normalizedPin), normalizedHandoff);
 };
 
 const getTrackedOrdersStorageKey = (slug = '') => `${STOREFRONT_TRACKED_ORDERS_KEY_PREFIX}:${normalizeTrackingStoreSlug(slug)}`;

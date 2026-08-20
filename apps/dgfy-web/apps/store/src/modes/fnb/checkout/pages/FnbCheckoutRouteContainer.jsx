@@ -39,6 +39,7 @@ import {
   buildStorefrontCheckoutPaymentOptions
 } from '../model/fnbCheckoutPaymentOptions.js';
 import {
+  getStorefrontOnlinePaymentLabel,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
@@ -133,6 +134,7 @@ export function FnbCheckoutRouteContainer({
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
   quoteError,
@@ -573,6 +575,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={false}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
               scheduleLabel={fnbScheduleSummaryLabel}
               totals={totalsForDisplay}
@@ -650,6 +653,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={false}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
               scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
               totals={totalsForDisplay}
@@ -719,7 +723,7 @@ export function FnbCheckoutRouteContainer({
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
-            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? 'Continue to payment' : 'Place Order'}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}` : 'Place Order'}
             withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
@@ -742,6 +746,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={true}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={null}
               scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
               totals={totalsForDisplay}
@@ -783,6 +788,7 @@ export function FnbCheckoutRouteContainer({
           onToggleSummary={() => setShowFnbMobileOrderSummary((previous) => !previous)}
           orderStep={fnbOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          voucherDiscountSummaryRow={voucherDiscountSummaryRow}
           promoPanel={fnbOrderStep === 4 ? null : renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={fnbScheduleSummaryLabel}
           setSummaryOpen={setShowFnbMobileOrderSummary}

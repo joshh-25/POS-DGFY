@@ -7,14 +7,16 @@ import {
   MousePointer2,
   X
 } from 'lucide-react';
-import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
-import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { ServiceImage } from '../../ServiceImage.jsx';
 
 export function ServicesDiscoveryDetailModal({
   Badge,
   GhostButton,
   PrimaryButton,
   STYLES,
+  servicesPrimary,
+  servicesPrimaryDark,
+  servicesPrimaryShadow,
   checkoutError,
   closeServiceDetail,
   isBookingSubpage,
@@ -40,8 +42,6 @@ export function ServicesDiscoveryDetailModal({
   storefrontClosedByHours
 }) {
   if (!selectedServiceDetail || isBookingSubpage || isServiceDetailsSubpage) return null;
-
-  const imageSources = resolveStorefrontImageSources(selectedServiceDetail, { preferred: 'large' });
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
@@ -71,21 +71,15 @@ export function ServicesDiscoveryDetailModal({
         }}
       >
         <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
-          {imageSources.src ? (
-            <StorefrontResponsiveImage
-              alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
-              imageSources={imageSources}
-              loading="eager"
-              sizes={isMobileViewport ? '100vw' : '360px'}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              width={360}
-              height={isMobileViewport ? 220 : 540}
-            />
-          ) : (
-            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-              No image
-            </div>
-          )}
+          <ServiceImage
+            item={selectedServiceDetail}
+            alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
+            loading="eager"
+            sizes={isMobileViewport ? '100vw' : '360px'}
+            width={360}
+            height={isMobileViewport ? 220 : 540}
+            fallbackLabel="No service image"
+          />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
           <button
             type="button"
@@ -109,7 +103,7 @@ export function ServicesDiscoveryDetailModal({
           </button>
           <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
+              <Badge background="rgba(255,255,255,.92)" color={servicesPrimaryDark} border="rgba(255,255,255,.92)">
                 {selectedServiceDetail.categoryMeta?.label || 'Service'}
               </Badge>
               <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
@@ -157,7 +151,7 @@ export function ServicesDiscoveryDetailModal({
           <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
             <section style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <CalendarDays size={18} color="#f97316" />
+                <CalendarDays size={18} color={servicesPrimary} />
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
                   <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
@@ -201,7 +195,7 @@ export function ServicesDiscoveryDetailModal({
 
             <section style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileText size={18} color="#f97316" />
+                <FileText size={18} color={servicesPrimary} />
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
                   <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
@@ -221,7 +215,7 @@ export function ServicesDiscoveryDetailModal({
             {selectedServiceIntakeFields.length > 0 && (
               <section style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <CheckCircle2 size={18} color="#f97316" />
+                  <CheckCircle2 size={18} color={servicesPrimary} />
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
                     <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
@@ -295,7 +289,7 @@ export function ServicesDiscoveryDetailModal({
                 <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
                   Cancel
                 </GhostButton>
-                <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
+                <PrimaryButton accentColor={servicesPrimary} accentDarkColor={servicesPrimaryDark} shadowColor={servicesPrimaryShadow} style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
                   Add to Booking
                 </PrimaryButton>
               </div>

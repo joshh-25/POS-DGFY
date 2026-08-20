@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType
 } from '../../services/storefrontOnlinePaymentSession.js';
 
@@ -32,7 +33,8 @@ export function StorefrontOnlinePaymentPanel({
   const failed = ['failed', 'expired', 'cancelled', 'paid_manual_resolution_required'].includes(paymentSession.status);
   const processing = ['awaiting_payment', 'paid'].includes(paymentSession.status);
   const paymentLabel = getStorefrontOnlinePaymentLabel(paymentType);
-  const hosted = isStorefrontHostedPaymentType(paymentType);
+  const directPayment = isStorefrontDirectPaymentSession(paymentSession);
+  const hosted = isStorefrontHostedPaymentType(paymentType) && !directPayment;
   const isTestEnvironment = paymentEnvironment === 'test';
 
   return (
@@ -49,11 +51,17 @@ export function StorefrontOnlinePaymentPanel({
       }}
     >
       <div style={{ fontSize: 15, fontWeight: 800, color: failed ? '#991b1b' : '#1e3a8a' }}>
-        {hosted ? `Pay via ${paymentLabel}` : `Pay via QR Ph${isTestEnvironment ? ' (PayMongo test)' : ''}`}
+        {directPayment
+          ? `Pay via ${paymentLabel}`
+          : hosted
+            ? `Pay via ${paymentLabel}`
+            : `Pay via QR Ph${isTestEnvironment ? ' (PayMongo test)' : ''}`}
       </div>
       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#334155' }}>
-        {hosted
-          ? `Continue to PayMongo to complete your ${paymentLabel} payment. Payment confirmation updates automatically.`
+        {directPayment
+          ? `Continue in the ${paymentLabel} app or browser authorization screen. Payment confirmation updates automatically when you return.`
+          : hosted
+            ? `Continue to PayMongo to complete your ${paymentLabel} payment. Payment confirmation updates automatically.`
           : `This QR contains the exact order total. Complete it through ${isTestEnvironment ? 'the PayMongo test flow' : 'your banking or wallet app'}; payment confirmation updates automatically.`}
       </p>
       {paymentSession.qr_code_image_url ? (

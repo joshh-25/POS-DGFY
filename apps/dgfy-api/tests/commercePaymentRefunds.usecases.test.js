@@ -83,6 +83,34 @@ describe('commerce payment refund use-cases', () => {
     });
   });
 
+  it('keeps an ambiguous provider failure pending for reconciliation instead of retrying blindly', async () => {
+    const commercePaymentRepository = buildRepository({
+      sumRefundCentavosByStatuses: jest.fn()
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(5000)
+    });
+    const paymongoService = {
+      createRefund: jest.fn().mockRejectedValue(new Error('socket timeout'))
+    };
+    const useCase = buildCreateCommercePaymentRefundUseCase({ commercePaymentRepository, paymongoService });
+
+    const result = await useCase({
+      paymentSessionId: baseSession.public_reference,
+      payload: { amount_centavos: 5000, refund_strategy: 'proportional' },
+      actor: 'pos:99'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.refund).toEqual(expect.objectContaining({
+      status: 'pending',
+      failure_code: 'PROVIDER_REFUND_PENDING_RECONCILIATION'
+    }));
+    expect(result.data.provider_confirmation_required).toBe(true);
+    expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(baseSession.session_id, {
+      status: 'refund_pending'
+    });
+  });
+
   it('reconciles refund webhooks by provider refund id before session metadata lookup', async () => {
     const commercePaymentRepository = buildRepository({
       sumRefundCentavosByStatuses: jest.fn()

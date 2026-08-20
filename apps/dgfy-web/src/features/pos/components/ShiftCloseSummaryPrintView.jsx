@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
@@ -25,6 +25,16 @@ export default function ShiftCloseSummaryPrintView({
     title = 'Cashier Shift Sales Summary',
     businessSettings = {}
 }) {
+    // Chrome 80-84 iMin POS WebView has no CSS :has() (Chrome 105+), so this can't
+    // rely on `body:has(.pos-shift-summary-print-shell)` -- that silently degrades to
+    // "rule doesn't match", printing the whole app instead of just the summary. Mirror
+    // OnlineOrderReceiptModal.jsx's existing body-class toggle pattern instead. Hook runs
+    // unconditionally (rules of hooks), guarded by `report` for the class itself.
+    useEffect(() => {
+        if (typeof document === 'undefined' || !report) return undefined;
+        document.body.classList.add('pos-shift-summary-printing');
+        return () => document.body.classList.remove('pos-shift-summary-printing');
+    }, [report]);
     if (!report) return null;
     const shift = report.shift || {};
     const cash = report.cash_summary || {};
@@ -62,6 +72,12 @@ export default function ShiftCloseSummaryPrintView({
                     <Row name="VAT" value={`${currency} ${money(sales.vat_amount)}`} />
                     <Row name="Total sales (excluding opening cash)" value={`${currency} ${money(sales.total_amount)}`} strong />
                     <Row name={`POS voids (${sales.void_transaction_count || 0})`} value={`${currency} ${money(sales.void_amount)}`} />
+                    {Number(sales.post_close_void_transaction_count || 0) > 0 ? (
+                        <Row
+                            name={`Post-close voids (${sales.post_close_void_transaction_count})`}
+                            value={`${currency} ${money(sales.post_close_void_amount)}`}
+                        />
+                    ) : null}
                 </section>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">

@@ -13,7 +13,11 @@ import { employeeCreditService } from '../employeeCredit/index.js';
 import { serviceRepository } from '../services/repositories/serviceRepository.js';
 import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
 import { buildCalculateServiceQuoteUseCase } from '../services/usecases/calculateServiceQuoteUseCase.js';
-import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js';
+import {
+    commercePaymentRepository,
+    createCommercePaymentRefundUseCase,
+    handleCommerceOrderLifecycleUseCase
+} from '../commercePayments/index.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
 import {
@@ -68,6 +72,10 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
+import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
+import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRefundUseCases.js';
+import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
     buildPrintPosReceiptUseCase,
@@ -168,6 +176,18 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService
+});
+export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
+export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
+export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({
+    posRepository,
+    commercePaymentRepository,
+    createCommercePaymentRefundUseCase,
+    paymongoService
+});
+export const splitAllocationReversalUseCase = buildSplitAllocationReversalUseCase({
+    posRepository,
+    providerReconciler: createPosPayMongoReconciler({ paymongoService })
 });
 export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
 export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });

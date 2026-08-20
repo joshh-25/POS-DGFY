@@ -173,6 +173,7 @@ export default function CashierHistoryPanel({
                         const cash = record?.cash_summary || {};
                         const sales = record?.sales_summary || {};
                         const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
+                        const postCloseAdjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
                         const shiftId = shift.pos_terminal_shift_id || shift.shift_id;
                         return (
                             <article key={shiftId} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -207,6 +208,20 @@ export default function CashierHistoryPanel({
                                         <SummaryMetric label="Total sales (excluding opening cash)" value={money(sales.total_amount, currency)} strong />
                                         <SummaryMetric label="Discounts" value={money(sales.discount_amount, currency)} />
                                         <SummaryMetric label="Voids" value={`${sales.void_transaction_count || 0} · ${money(sales.void_amount, currency)}`} />
+                                        {Number(sales.post_close_void_transaction_count || 0) > 0 ? (
+                                            <SummaryMetric
+                                                label="Post-close voids"
+                                                value={`${sales.post_close_void_transaction_count} · ${money(sales.post_close_void_amount, currency)}`}
+                                            />
+                                        ) : null}
+                                        {Number(sales.post_close_adjustment_count || 0) > 0 ? (
+                                            <>
+                                                <SummaryMetric label="Post-close refund actions" value={sales.post_close_adjustment_count} />
+                                                <SummaryMetric label="Completed after close" value={money(sales.post_close_refund_amount, currency)} />
+                                                <SummaryMetric label="Pending after close" value={money(sales.post_close_pending_amount, currency)} />
+                                                <SummaryMetric label="Manual review after close" value={money(sales.post_close_manual_review_amount, currency)} />
+                                            </>
+                                        ) : null}
                                     </div>
                                     <div className="space-y-1 rounded-lg border border-slate-200 bg-white p-3">
                                         <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Cash reconciliation</p>
@@ -216,6 +231,22 @@ export default function CashierHistoryPanel({
                                         <SummaryMetric label="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                                     </div>
                                 </div>
+
+                                {postCloseAdjustments.length > 0 ? (
+                                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid={`post-close-adjustments-${shiftId}`}>
+                                        <p className="text-xs font-black uppercase tracking-wide text-amber-900">Post-close adjustment accountability</p>
+                                        <div className="mt-2 space-y-2">
+                                            {postCloseAdjustments.map((adjustment) => (
+                                                <div key={adjustment.pos_transaction_adjustment_id || adjustment.adjustment_reference} className="rounded-lg border border-amber-200 bg-white p-2 text-xs text-slate-700">
+                                                    <p className="font-black capitalize text-slate-900">{String(adjustment.adjustment_type || 'adjustment').replace(/_/g, ' ')} · {money(adjustment.amount, currency)}</p>
+                                                    <p className="mt-1">Status: <span className="font-bold">{String(adjustment.status || 'unknown').replace(/_/g, ' ')}</span></p>
+                                                    <p>Actioned by: <span className="font-bold">{adjustment.actor_name || adjustment.actor_user_id || '-'}</span> · Acting shift: <span className="font-bold">{adjustment.actor_shift_id || 'No acting shift'}</span></p>
+                                                    <p>Reference: <span className="font-bold">{adjustment.adjustment_reference || '-'}</span> · {formatDateTime(adjustment.event_at)}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
 
                                 <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                                     <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Payment methods</p>

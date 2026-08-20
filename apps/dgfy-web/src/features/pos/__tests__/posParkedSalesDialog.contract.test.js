@@ -10,14 +10,23 @@ const terminalSource = fs.readFileSync(
     path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
     'utf8'
 );
+const terminalViewSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+    'utf8'
+);
+const terminalRenderSource = `${terminalSource}\n${terminalViewSource}`;
+const workflowSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/features/pos/hooks/usePosCheckoutWorkflow.js'),
+    'utf8'
+);
 const actionSource = fs.readFileSync(
     path.resolve(process.cwd(), 'src/features/pos/components/PosCurrentSaleActions.jsx'),
     'utf8'
 );
 describe('POS parked-sales pay/resume contract', () => {
     it('loads only while the dialog is open and exposes Pay/Resume actions without Refresh', () => {
-        expect(terminalSource).toContain('posPresentationBundle.currentSaleActions.showParkedSaleControls');
-        expect(terminalSource).toContain('data-testid="pos-header-parked-sales-history-button"');
+        expect(terminalRenderSource).toContain('posPresentationBundle.currentSaleActions.showParkedSaleControls');
+        expect(terminalRenderSource).toContain('data-testid="pos-header-parked-sales-history-button"');
         expect(actionSource).toContain('data-testid="pos-park-sale-button"');
         expect(dialogSource).toContain('data-testid="pos-parked-sales-dialog"');
         expect(dialogSource).toContain('flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-2xl flex-col overflow-hidden p-0 sm:max-h-[90vh]');
@@ -34,11 +43,11 @@ describe('POS parked-sales pay/resume contract', () => {
 
     it('shows the customer or order name with the short parked-sale ID instead of the long stored reference', () => {
         expect(dialogSource).toContain('formatParkedSaleDisplayName(row)');
-        expect(terminalSource).toContain('formatParkedSaleDisplayName(claimedSale)');
-        expect(terminalSource).toContain('formatParkedSaleDisplayName(parkedSale)');
-        expect(terminalSource).toContain('data-testid="pos-park-sale-name-dialog"');
-        expect(terminalSource).toContain('Customer / Order Name');
-        expect(terminalSource).toContain('parked_sale_name: parkedSaleName');
+        expect(workflowSource).toContain('formatParkedSaleDisplayName(claimedSale)');
+        expect(workflowSource).toContain('formatParkedSaleDisplayName(parkedSale)');
+        expect(terminalRenderSource).toContain('data-testid="pos-park-sale-name-dialog"');
+        expect(terminalRenderSource).toContain('Customer / Order Name');
+        expect(workflowSource).toContain('parked_sale_name: parkedSaleName');
         expect(dialogSource).not.toContain('row?.park_reference ||');
     });
 
@@ -53,18 +62,18 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('Pay or Resume requires an empty current sale. Park or clear the current sale first.');
         expect(dialogSource).toContain('Parked carts from this branch will appear here for any authorized cashier.');
         expect(dialogSource).toContain('Shared with authorized cashiers at this branch.');
-        expect(terminalSource).toContain("const normalizedAction = action === 'resume' ? 'resume' : 'pay';");
-        expect(terminalSource).toContain("message: normalizedAction === 'resume'");
+        expect(workflowSource).toContain("const normalizedAction = action === 'resume' ? 'resume' : 'pay';");
+        expect(workflowSource).toContain("message: normalizedAction === 'resume'");
     });
 
     it('hydrates the checkout only after the server claim succeeds', () => {
         const claimRequest = dialogSource.indexOf('const claimed = await claimPosParkedSale');
         const claimedCallback = dialogSource.indexOf('await onClaimed(claimed, normalizedAction);', claimRequest);
-        const terminalHydration = terminalSource.indexOf('const resumedLines = buildResumedCartLines');
+        const terminalHydration = workflowSource.indexOf('const resumedLines = buildResumedCartLines');
 
         expect(claimedCallback).toBeGreaterThan(claimRequest);
-        expect(terminalSource).toContain('validateParkedSaleResume');
-        expect(terminalSource).toContain('setCurrentViewMode(\'checkout\');');
+        expect(workflowSource).toContain('validateParkedSaleResume');
+        expect(workflowSource).toContain('setCurrentViewMode(\'checkout\');');
         expect(terminalHydration).toBeGreaterThan(-1);
     });
 
@@ -76,7 +85,7 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('Cancel this parked sale?');
         expect(dialogSource).not.toContain('Cancellation reason');
         expect(dialogSource).not.toContain('pos-parked-sale-cancel-reason');
-        expect(terminalSource).toContain("operation: 'parked_sale'");
-        expect(terminalSource).toContain('data-testid="pos-pending-sync-banner"');
+        expect(workflowSource).toContain("operation: 'parked_sale'");
+        expect(terminalRenderSource).toContain('data-testid="pos-pending-sync-banner"');
     });
 });

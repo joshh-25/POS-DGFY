@@ -96,4 +96,101 @@ describe('buildFnbPromoSectionModel', () => {
       validityText: 'Valid until July 31'
     }));
   });
+
+  // #713: storefront_vouchers (publicly-listed vouchers from the discovery snapshot) become
+  // ordinary promo candidates, adapted to the raw promo entry shape -- code -> promo_code,
+  // percent_off_bps (basis points) -> discount_percent (0-100).
+  describe('#713 storefront_vouchers', () => {
+    it('adapts a percent_off voucher into a promo-shaped candidate', () => {
+      const promos = buildFnbPromoSectionModel({
+        selectedStore: {
+          storefront_vouchers: [
+            {
+              id: 1,
+              code: 'GRACEOFFER',
+              title: 'Grace Offer',
+              subtitle: '10% off your order',
+              badge: 'Popular',
+              validity_text: 'While supplies last',
+              benefit_class: 'percent_off',
+              percent_off_bps: 1000,
+              active: true
+            }
+          ]
+        }
+      });
+
+      expect(promos).toHaveLength(1);
+      expect(promos[0]).toEqual(expect.objectContaining({
+        promoCode: 'GRACEOFFER',
+        title: 'Grace Offer',
+        subtitle: '10% off your order',
+        discountPercent: 10,
+        discountLabel: '10% OFF',
+        validityText: 'While supplies last'
+      }));
+    });
+
+    it('surfaces a non-percent_off voucher on its badge/title, with no fabricated discount label', () => {
+      const promos = buildFnbPromoSectionModel({
+        selectedStore: {
+          storefront_vouchers: [
+            {
+              id: 2,
+              code: 'PHARMA50',
+              title: 'Pharmacy Fixed Price',
+              subtitle: 'Wholesale pricing',
+              badge: 'B2B',
+              validity_text: '',
+              benefit_class: 'fixed_price',
+              percent_off_bps: null,
+              active: true
+            }
+          ]
+        }
+      });
+
+      expect(promos).toHaveLength(1);
+      expect(promos[0]).toEqual(expect.objectContaining({
+        promoCode: 'PHARMA50',
+        title: 'Pharmacy Fixed Price',
+        badge: 'B2B',
+        discountPercent: null
+      }));
+    });
+
+    it('dedupes a voucher and a promo sharing the same code, and combines both sources otherwise', () => {
+      const promos = buildFnbPromoSectionModel({
+        selectedStore: {
+          storefront_promos: [
+            { active: true, promo_code: 'SAVE10', title: 'Save 10', discount_percent: 10 }
+          ],
+          storefront_vouchers: [
+            // Same code as the promo above -- the promo (collected first) wins, matching
+            // getPromoCandidates' existing storefront_promos-before-legacy precedence order.
+            { code: 'SAVE10', title: 'Duplicate code voucher', percent_off_bps: 1500, active: true },
+            { code: 'GRACEOFFER', title: 'Grace Offer', percent_off_bps: 1000, active: true }
+          ]
+        },
+        maxItems: 5
+      });
+
+      expect(promos).toHaveLength(2);
+      const save10 = promos.find((entry) => entry.promoCode === 'SAVE10');
+      expect(save10.title).toBe('Save 10');
+      expect(promos.some((entry) => entry.promoCode === 'GRACEOFFER')).toBe(true);
+    });
+
+    it('drops an inactive voucher, matching how an inactive promo is already dropped', () => {
+      const promos = buildFnbPromoSectionModel({
+        selectedStore: {
+          storefront_vouchers: [
+            { code: 'PAUSED1', title: 'Paused voucher', percent_off_bps: 1000, active: false }
+          ]
+        }
+      });
+
+      expect(promos).toHaveLength(0);
+    });
+  });
 });

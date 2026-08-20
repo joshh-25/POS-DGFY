@@ -1,3 +1,7 @@
+// Chrome 80-84 iMin WebView runtime polyfill -- must be the first import so it
+// runs before any other module code (including bundled deps like
+// maplibre-gl). See ADR 0067 / #666.
+import '../../../src/compat/chrome80Runtime.js';
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
@@ -10,6 +14,7 @@ import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
+import BusinessRegistrationSubmissionPage from './business/pages/BusinessRegistrationSubmissionPage.jsx';
 import { initBrowserSentry, setSentryRoute } from '../../../src/observability/sentryClient.js';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import {
@@ -128,6 +133,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontBusinessGrowPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/business-registration-submission"
+          element={(
+            <>
+              <BusinessRegistrationSubmissionPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

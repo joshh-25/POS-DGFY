@@ -161,6 +161,12 @@ const makeJsonResponse = (data, ok = true) => ({
   json: async () => ({ data: injectWorkflowMode(data) })
 });
 
+const isStoreCatalogRequest = (url) => {
+  const normalized = String(url || '');
+  return normalized.includes('/api/v1/store/catalog?')
+    || normalized.includes('/api/v1/store/services/catalog?');
+};
+
 const dgfyLegalTerms = {
   flows: {
     account_registration: {
@@ -303,7 +309,7 @@ describe('storefront discovery integration flow', () => {
       if (normalized.includes('/api/v1/store/locations')) {
         return makeJsonResponse({ locations: [], primary_location_id: null });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       if (normalized.includes('/api/v1/storefront/discovery/')) {
@@ -373,7 +379,7 @@ describe('storefront discovery integration flow', () => {
           ]
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -600,7 +606,7 @@ describe('storefront discovery integration flow', () => {
     expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
   });
 
-  it('does not request geolocation or location-scope normal submitted searches', async () => {
+  it('requests all matching branches once without geolocation for normal submitted searches', async () => {
     const user = userEvent.setup();
     const getCurrentPosition = vi.fn();
     Object.defineProperty(window.navigator, 'geolocation', {
@@ -622,14 +628,30 @@ describe('storefront discovery integration flow', () => {
       expect(params.get('search')).toBe('milk');
       expect(params.get('latitude')).toBeNull();
       expect(params.get('longitude')).toBeNull();
-      expect(params.get('pin_scope')).toBe('tenant_primary');
+      expect(params.get('pin_scope')).toBe('all_matching_branches');
     });
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
     expect(getCurrentPosition).not.toHaveBeenCalled();
 
     const searchValues = getDiscoveryQueryUrls(fetchMock)
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
     expect(searchValues).toContain('milk');
+  });
+
+  it('requests all matching branches once for a submitted discovery category', async () => {
+    const user = userEvent.setup();
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1));
+
+    await user.click(screen.getAllByRole('button', { name: /^Food$/i })[0]);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('search')).toBe('Food');
+      expect(params.get('pin_scope')).toBe('all_matching_branches');
+    });
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(2);
   });
 
   it('keeps mobile discovery search results rendered after submit', async () => {
@@ -774,7 +796,7 @@ describe('storefront discovery integration flow', () => {
       if (normalized.includes('/api/v1/store/locations')) {
         return makeJsonResponse({ locations: [], primary_location_id: null, store_has_no_location: true, map_publication_disabled: true });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -899,7 +921,7 @@ describe('storefront discovery integration flow', () => {
           ]
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -923,7 +945,7 @@ describe('storefront discovery integration flow', () => {
     expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
     const params = getLastDiscoveryParams(fetchMock);
     expect(params.get('search')).toBe('aircon');
-    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('pin_scope')).toBe('all_matching_branches');
     expect(params.get('latitude')).toBeNull();
     expect(params.get('longitude')).toBeNull();
   });
@@ -997,7 +1019,7 @@ describe('storefront discovery integration flow', () => {
           ]
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -1095,7 +1117,7 @@ describe('storefront discovery integration flow', () => {
           storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -1129,7 +1151,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
-        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+        .filter(isStoreCatalogRequest);
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
     });
   });
@@ -1216,7 +1238,7 @@ describe('storefront discovery integration flow', () => {
           storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -1310,7 +1332,7 @@ describe('storefront discovery integration flow', () => {
           storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       return makeJsonResponse({});
@@ -1333,7 +1355,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
-        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+        .filter(isStoreCatalogRequest);
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=11'))).toBe(true);
     });
   });
@@ -2112,10 +2134,8 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getByText(/Customer checkout will be available once at least one storefront item is enabled/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Check Again' })).toBeTruthy();
 
-    await user.type(screen.getByPlaceholderText('Search items in this store catalog...'), 'milk');
-    await waitFor(() => {
-      expect(screen.getByText('No items are available to search yet')).toBeTruthy();
-    });
+    await user.type(screen.getByPlaceholderText('Search services...'), 'milk');
+    expect(screen.getByPlaceholderText('Search services...').value).toBe('milk');
   });
 
   it('loads root tenant URLs with the selected location_id catalog scope', async () => {
@@ -2142,7 +2162,7 @@ describe('storefront discovery integration flow', () => {
           ]
         });
       }
-      if (normalized.includes('/api/v1/store/catalog')) {
+      if (isStoreCatalogRequest(normalized)) {
         return makeJsonResponse({ items: [] });
       }
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -2157,7 +2177,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
-        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+        .filter(isStoreCatalogRequest);
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
     });
     expect(window.location.pathname).toBe('/tenant-store/alpha');

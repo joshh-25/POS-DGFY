@@ -6,8 +6,8 @@ describe('modePresentationRegistry', () => {
     const adapter = getStorefrontModeAdapter({ workflow_mode: 'services' });
 
     expect(adapter.isServicesMode).toBe(true);
-    expect(adapter.catalogHeading).toBe('Book Services');
-    expect(adapter.primaryActionLabel).toBe('Book a Service');
+    expect(adapter.catalogHeading).toBe('Choose the care you need');
+    expect(adapter.primaryActionLabel).toBe('Browse Services');
     expect(adapter.pin.label).toBe('Services');
     expect(adapter.sharedSections).toEqual({
       navigation: true,

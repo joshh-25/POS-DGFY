@@ -7,7 +7,7 @@ const SIMPLE_BRAND_SOFT = '#FFF8E7';
  * MSME (Simple) guest-checkout email OTP verification block. Mirrors
  * modes/fnb/checkout/components/FnbGuestEmailVerification.jsx exactly, kept as its own file
  * per the "independent trees" pattern — the underlying OTP state/handlers are shared
- * (useFnbGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
+ * (useGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
  * rendering (teal accent) is MSME's own.
  */
 export function SimpleCheckoutGuestEmailVerification({

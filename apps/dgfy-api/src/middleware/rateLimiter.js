@@ -29,6 +29,12 @@ const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING
 const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
 const storeLocationsWindowMs = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_WINDOW_MS) || 60 * 1000; // 1 minute
 const storeLocationsMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+// #678 (voucher catalog display seam): a voucher_code query param on the public catalog/QR
+// routes is both a valid/invalid voucher-code oracle and a lever that forces those responses to
+// no-store, bypassing the shared CDN cache. Scoped tightly -- this only gates requests that
+// actually carry voucher_code, never the plain catalog browse path.
+const storeVoucherLookupWindowMs = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_WINDOW_MS) || 60 * 1000; // 1 minute
+const storeVoucherLookupMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -87,6 +93,7 @@ const rateLimitCounters = {
   store_tracking: 0,
   store_tracking_read: 0,
   store_locations: 0,
+  store_voucher_lookup: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
@@ -782,6 +789,42 @@ export const storeLocationsLimiter = rateLimit({
       'ip_store_slug'
     );
     logRateLimitEvent(req, 'store_locations', response.retryAfterSeconds, 'ip_store_slug');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// #678: throttles the voucher_code-bearing path of the public catalog/QR routes specifically
+// (see routes/store.js's limitVoucherCodeLookups) -- a voucher code is both an enumerable
+// oracle and, via the no-store cache bypass it also triggers, a way to force every request to
+// skip the shared CDN cache. IP + store-slug keyed, same shape as storeLocationsLimiter above.
+export const storeVoucherLookupLimiter = rateLimit({
+  windowMs: storeVoucherLookupWindowMs,
+  max: storeVoucherLookupMaxRequests,
+  message: createRateLimitError('Too many voucher lookups. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_voucher_lookup'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const storeSlug = normalizeStoreLimiterSlug(req.headers?.['x-store-slug']) || 'unknown-store';
+    return `store_voucher_lookup:${ip}:${storeSlug}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many voucher lookups. Please wait before trying again.',
+      'store_voucher_lookup',
+      'ip_store_slug'
+    );
+    logRateLimitEvent(req, 'store_voucher_lookup', response.retryAfterSeconds, 'ip_store_slug');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

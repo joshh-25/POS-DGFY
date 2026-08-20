@@ -7,7 +7,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe('POS Always Available contract', () => {
   it('does not show or enforce out-of-stock state for a POS-only Always Available item', () => {
-    const checkout = fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx'), 'utf8');
+    const checkout = [
+      '../components/POSCheckoutTerminal.jsx',
+      '../components/POSCheckoutTerminalView.jsx',
+    ].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
     const skupervisorCheckout = fs.readFileSync(path.resolve(__dirname, '../components/SkupervisorPOSCheckoutTerminal.jsx'), 'utf8');
     expect(checkout).toContain("item?.pos_always_available === true");
     expect(checkout).toContain('const CatalogItemBadges');
@@ -16,7 +19,11 @@ describe('POS Always Available contract', () => {
   });
 
   it('renders Best Seller from the server-owned catalog contract instead of browser storage', () => {
-    const checkout = fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx'), 'utf8');
+    const checkout = [
+      '../components/POSCheckoutTerminal.jsx',
+      '../components/POSCheckoutTerminalView.jsx',
+    ].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
+    const catalogWorkflow = fs.readFileSync(path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js'), 'utf8');
     const workspace = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
     expect(checkout).toContain('item?.is_best_seller === true');
     expect(checkout).toContain('isBestSeller={isBestSeller}');
@@ -28,7 +35,7 @@ describe('POS Always Available contract', () => {
     expect(workspace).toContain('pos-items-edit-best-seller-mode');
     expect(workspace).toContain('pos_best_seller_mode: editForm.pos_best_seller_mode');
     expect(workspace).toContain('notifyPosCatalogUpdated()');
-    expect(checkout).toContain('subscribeToPosCatalogUpdates');
+    expect(catalogWorkflow).toContain('subscribeToPosCatalogUpdates');
     expect(workspace).not.toContain('pos_best_seller_item_ids');
   });
 });

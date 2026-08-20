@@ -7,15 +7,31 @@ export function CheckoutHeroHeader({
   accentColor = '#0f766e',
   accentSoft = '#ecfeff',
   accentBorder = '#99f6e4',
-  titleFontWeight = 900,
-  displayFont = "'Avenir Next', 'Segoe UI', sans-serif"
+  displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
+  variant = 'default',
+  titleFontWeight = 900
 }) {
+  const isServicesReference = variant === 'services-reference';
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{eyebrow}</div>
-      <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: titleFontWeight, color: '#0f172a', lineHeight: 1.1, fontFamily: displayFont }}>{title}</div>
-      <div style={{ fontSize: 14, color: '#64748b' }}>{description}</div>
-      {badges.length > 0 ? (
+    <section style={{
+      border: isServicesReference ? 'none' : '1px solid #e2e8f0',
+      borderRadius: isServicesReference ? 0 : 16,
+      background: '#fff',
+      padding: isServicesReference ? 0 : (isMobileViewport ? 14 : 18),
+      display: 'grid',
+      gap: isServicesReference ? 0 : 10,
+      alignItems: isServicesReference ? 'start' : undefined,
+      justifyItems: isServicesReference ? 'start' : undefined,
+    }}>
+      <div style={{ fontSize: isServicesReference ? 12.48 : 12, lineHeight: isServicesReference ? 1.6 : undefined, fontWeight: 800, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: isServicesReference ? 10 : 0 }}>{eyebrow}</div>
+      <h1 style={{ margin: 0, fontSize: isServicesReference ? (isMobileViewport ? 30 : 40) : (isMobileViewport ? 24 : 28), fontWeight: isServicesReference ? 700 : titleFontWeight, color: isServicesReference ? '#101010' : '#0f172a', lineHeight: isServicesReference ? 1.25 : 1.1, fontFamily: displayFont, marginBottom: isServicesReference ? 16 : 0 }}>{title}</h1>
+      <div style={{ fontSize: isServicesReference ? 16 : 14, lineHeight: isServicesReference ? 1.6 : undefined, color: isServicesReference ? '#58717a' : '#64748b', marginTop: isServicesReference ? 8 : 0 }}>{description}</div>
+      {isServicesReference && badges.length > 0 ? (
+        <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
+          {badges.map((badge) => <span key={badge.label}>{badge.label}</span>)}
+        </div>
+      ) : null}
+      {!isServicesReference && badges.length > 0 ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {badges.map((badge) => (
             badge.tone === 'pill' ? (

@@ -25,7 +25,18 @@ const CHUNK_ERROR_MESSAGE_PATTERN = new RegExp(
     // of an HTML error page, but this predicate only ever gates a one-shot
     // reload of the SPA shell, so a false positive costs one reload, not a
     // masked bug.
-    "unexpected token '<'"
+    "unexpected token '<'",
+    // #632 backstop: nginx's `try_files ... /index.html` can resolve a
+    // deleted chunk's dynamic import instead of rejecting it. React.lazy
+    // stores the resolved value in its own `_result` slot and later reads
+    // `_result.default` while rendering -- past `importWithChunkRetry`'s
+    // own try/catch, since nothing rejected. `importWithChunkRetry` now
+    // validates the resolved module itself (below), so this should no
+    // longer originate from a `lazyWithChunkRetry` call site, but this
+    // stays as a backstop so the ErrorBoundary still recognizes the raw
+    // browser TypeError if it reaches it by any other path.
+    '_result\\.default', // Safari/JSC: "undefined is not an object (evaluating 'e._result.default')"
+    "reading 'default'" // Chrome/V8: "Cannot read properties of undefined (reading 'default')"
   ].join('|'),
   'i'
 );
@@ -101,6 +112,22 @@ export const clearAppRuntimeCaches = async () => {
   }
 };
 
+// #632: nginx's `try_files $uri $uri/ /index.html` can resolve a deleted
+// chunk's dynamic import to the SPA shell instead of rejecting it -- some
+// clients get back `undefined` (or an empty object) rather than a thrown
+// error. React.lazy would store that as a resolved module and crash later,
+// deep in the reconciler (`_result.default`), past both this function's
+// own retry loop and the ErrorBoundary's chunk-error routing. A module is
+// "usable" if it has a non-null `default` (the shape React.lazy actually
+// reads) or is otherwise non-empty -- a named-exports-only module is still
+// a real module, just not one React.lazy can render directly.
+const isUsableModule = (module) => {
+  if (module == null) return false;
+  if (typeof module !== 'object' && typeof module !== 'function') return false;
+  if (module.default != null) return true;
+  return Object.keys(module).length > 0;
+};
+
 // loadModule is a THUNK (`() => import('./X.jsx')`), not a promise -- a
 // browser evicts a failed module from its module map, so calling the same
 // arrow again genuinely re-fetches rather than replaying the same
@@ -113,7 +140,19 @@ export const importWithChunkRetry = async (loadModule, { attempts = 2, delayMs =
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      return await loadModule();
+      const module = await loadModule();
+      if (!isUsableModule(module)) {
+        // Nothing rejected -- the import "succeeded" with an unusable
+        // value. Treat it exactly like a chunk-load rejection so it flows
+        // through the same retry/reload path instead of surfacing later as
+        // an unrecognizable TypeError.
+        const unusableModuleError = new Error(
+          'Chunk load resolved to an unusable module (dynamically imported module)'
+        );
+        unusableModuleError.name = 'ChunkLoadError';
+        throw unusableModuleError;
+      }
+      return module;
     } catch (error) {
       lastError = error;
       if (!isChunkLoadError(error)) throw error; // a real eval error must not be retried

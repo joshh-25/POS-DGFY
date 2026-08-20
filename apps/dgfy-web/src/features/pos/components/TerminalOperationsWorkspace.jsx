@@ -51,6 +51,7 @@ import {
   UserRound,
   Users,
   Tags,
+  Ticket,
   Trash2,
   TrendingUp,
   Truck,
@@ -150,6 +151,8 @@ import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
+import VoucherManagementPanel from './VoucherManagementPanel.jsx';
+import PricelistManagementPanel from './PricelistManagementPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -210,6 +213,17 @@ const MODE_META = {
     icon: Percent,
     title: 'Affiliates',
     subtitle: 'Enroll affiliates, set commission rates, generate share codes, and review earnings.'
+  },
+  // #732: promoted out of the Settings tab strip, top-level nav now, mirroring settings_affiliates.
+  settings_vouchers: {
+    icon: Ticket,
+    title: 'Vouchers',
+    subtitle: 'Create and manage vouchers, codes, and redemption rules.'
+  },
+  settings_pricelists: {
+    icon: Tags,
+    title: 'Pricelists',
+    subtitle: 'Set per-item fixed prices for wholesale/B2B-via-B2C vouchers.'
   },
   items: {
     icon: ClipboardList,
@@ -5388,6 +5402,9 @@ function SettingsWorkspace({
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
   onStorefrontSetupSaved = async () => {}
+  // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
+  // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
+  // here.
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -5412,6 +5429,8 @@ function SettingsWorkspace({
   const [companyInfo, setCompanyInfo] = useState(null);
   const [cashierUsers, setCashierUsers] = useState([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
+  const [cashiersLoaded, setCashiersLoaded] = useState(false);
+  const [cashierVoidAccessSavingUserId, setCashierVoidAccessSavingUserId] = useState(null);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
   const [discountApprovers, setDiscountApprovers] = useState([]);
   const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
@@ -5448,6 +5467,7 @@ function SettingsWorkspace({
     terminalRegistry: [],
     terminalRegistryMode: 'warn',
     terminalLocationBindingEnforced: false,
+    voucherPosRedemptionEnabled: false,
     settingsAccessPinEnabled: false,
     settingsAccessPin: '',
     clearSettingsAccessPin: false,
@@ -5625,6 +5645,8 @@ function SettingsWorkspace({
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
       : [])
+    // #732: Vouchers and Pricelists moved out of this tab strip to their own top-level nav modes
+    // (settings_vouchers / settings_pricelists) -- see the outer renderWorkspace switch.
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -5682,6 +5704,7 @@ function SettingsWorkspace({
   const loadCashierAccounts = useCallback(async ({ silent = false } = {}) => {
     if (!canManageCashiers) {
       setCashierUsers([]);
+      setCashiersLoaded(true);
       return;
     }
     if (!silent) setCashiersLoading(true);
@@ -5694,6 +5717,67 @@ function SettingsWorkspace({
       }
     } finally {
       setCashiersLoading(false);
+      setCashiersLoaded(true);
+    }
+  }, [canManageCashiers]);
+
+  const updateCashierVoidAccess = useCallback(async (user, enabled) => {
+    const userId = Number(user?.user_id);
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (!canManageCashiers || !Number.isInteger(userId) || userId <= 0 || role !== 'cashier' || user?.is_master_admin === true) {
+      return;
+    }
+
+    const permissions = resolveUserPermissionList(user);
+    const nextPermissions = enabled
+      ? Array.from(new Set([...permissions, 'pos:void']))
+      : permissions.filter((permission) => permission !== 'pos:void');
+
+    setCashierVoidAccessSavingUserId(userId);
+    try {
+      const updated = await updateUserPermissions(userId, nextPermissions);
+      setCashierUsers((current) => current.map((entry) => (
+        Number(entry?.user_id) === userId
+          ? { ...entry, permissions: updated?.permissions || nextPermissions }
+          : entry
+      )));
+      toast.success(enabled
+        ? 'POS void access enabled for this cashier.'
+        : 'POS void access disabled for this cashier.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update cashier POS void access.');
+    } finally {
+      setCashierVoidAccessSavingUserId(null);
+    }
+  }, [canManageCashiers]);
+
+  const updateCashierDrawerAccess = useCallback(async (user, enabled) => {
+    const userId = Number(user?.user_id);
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (!canManageCashiers || !Number.isInteger(userId) || userId <= 0 || role !== 'cashier' || user?.is_master_admin === true) {
+      return;
+    }
+
+    const permissions = resolveUserPermissionList(user);
+    const nextPermissions = enabled
+      ? Array.from(new Set([...permissions, 'pos:cash_drawer_adjust']))
+      : permissions.filter((permission) => permission !== 'pos:cash_drawer_adjust');
+
+    setCashierVoidAccessSavingUserId(userId);
+    try {
+      const updated = await updateUserPermissions(userId, nextPermissions);
+      setCashierUsers((current) => current.map((entry) => (
+        Number(entry?.user_id) === userId
+          ? { ...entry, permissions: updated?.permissions || nextPermissions }
+          : entry
+      )));
+      toast.success(enabled
+        ? 'Cash refund and drawer adjustment access enabled for this cashier.'
+        : 'Cash refund and drawer adjustment access disabled for this cashier.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update cashier cash refund access.');
+    } finally {
+      setCashierVoidAccessSavingUserId(null);
     }
   }, [canManageCashiers]);
 
@@ -5923,6 +6007,7 @@ function SettingsWorkspace({
           ? String(settingsPayload?.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
           : 'warn',
         terminalLocationBindingEnforced: settingsPayload?.pos_terminal_location_binding_enforced?.value === true,
+        voucherPosRedemptionEnabled: settingsPayload?.voucher_pos_redemption_enabled?.value === true,
         settingsAccessPinEnabled: settingsPayload?.pos_settings_access_pin_enabled?.value === true,
         settingsAccessPin: '',
         clearSettingsAccessPin: false,
@@ -6380,6 +6465,7 @@ function SettingsWorkspace({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+        voucher_pos_redemption_enabled: posForm.voucherPosRedemptionEnabled === true,
         pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
         clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true,
         pos_petty_cash_symbol: String(posForm.pettyCashSymbol || 'PHP').trim() || 'PHP',
@@ -7495,6 +7581,26 @@ function SettingsWorkspace({
               />
             </div>
 
+            {/* Voucher Redemption at POS (#604) -- tenant-wide master switch, default off. Currently
+                gates nothing at runtime: POS voucher redemption itself is not built yet, so this
+                ships the setting and its server-side guard pre-gated, ahead of that feature. */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <Percent className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
+                checked={posForm.voucherPosRedemptionEnabled === true}
+                onChange={(event) => setPosForm((current) => ({ ...current, voucherPosRedemptionEnabled: event.target.checked }))}
+                disabled={locked || loading}
+              />
+            </div>
+
             {/* Location Binding Readiness */}
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3 mb-3">
@@ -7732,6 +7838,94 @@ function SettingsWorkspace({
                       <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active cashier accounts are available. Add or activate a cashier first.</p>
                     ) : null}
                   </div>
+                </div>
+              </div>
+            ) : null}
+            {canManageCashiers ? (
+              <div
+                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                data-testid="pos-cashier-void-authorization"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-black text-[#0F172A]">Cashier Void and Cash Authorization</p>
+                    <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
+                      Manage void and physical cash authority separately. Cashiers need their own open shift for either action; admin voids keep the existing no-shift bypass, but cash refunds never bypass shift accountability.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
+                    onClick={() => loadCashierAccounts()}
+                    disabled={locked || loading || cashiersLoading}
+                  >
+                    {cashiersLoading ? 'Refreshing...' : 'Refresh'}
+                  </Button>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {activeCashierUsers.map((cashier) => {
+                    const cashierPermissions = resolveUserPermissionList(cashier);
+                    const hasVoidAccess = cashierPermissions.includes('pos:void');
+                    const hasDrawerAccess = cashierPermissions.includes('pos:cash_drawer_adjust');
+                    const isSavingVoidAccess = Number(cashierVoidAccessSavingUserId) === Number(cashier?.user_id);
+                    const cashierLabel = cashier.username || cashier.email || `cashier ${cashier.user_id}`;
+                    return (
+                      <div
+                        key={`cashier-void-access-${cashier.user_id}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{cashierLabel}</p>
+                          <p className="truncate text-[11px] text-[#64748B]">
+                            {cashier.email || 'No account email'} · Void {hasVoidAccess ? 'on' : 'off'} · Cash {hasDrawerAccess ? 'on' : 'off'}
+                          </p>
+                        </div>
+                        <div className="grid gap-2 text-[11px] font-extrabold text-[#334155]">
+                          <div className="flex items-center justify-end gap-2">
+                            <span>Can void POS transactions</span>
+                            <button
+                              type="button"
+                              role="switch"
+                              data-testid={`pos-cashier-void-toggle-${cashier.user_id}`}
+                              aria-label={`Can void POS transactions for ${cashierLabel}`}
+                              aria-checked={hasVoidAccess}
+                              onClick={() => updateCashierVoidAccess(cashier, !hasVoidAccess)}
+                              disabled={locked || loading || isSavingVoidAccess}
+                              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasVoidAccess ? 'border-rose-600 bg-rose-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
+                            >
+                              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasVoidAccess ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <span>Can refund cash / adjust drawer</span>
+                            <button
+                              type="button"
+                              role="switch"
+                              data-testid={`pos-cashier-drawer-toggle-${cashier.user_id}`}
+                              aria-label={`Can refund cash and adjust drawer for ${cashierLabel}`}
+                              aria-checked={hasDrawerAccess}
+                              onClick={() => updateCashierDrawerAccess(cashier, !hasDrawerAccess)}
+                              disabled={locked || loading || isSavingVoidAccess}
+                              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDrawerAccess ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
+                            >
+                              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDrawerAccess ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!cashiersLoaded ? (
+                    <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">
+                      Loading active cashier accounts...
+                    </p>
+                  ) : null}
+                  {cashiersLoaded && !cashiersLoading && activeCashierUsers.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">
+                      No active cashier accounts are available. Invite or activate a cashier first.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -8461,10 +8655,19 @@ function SettingsWorkspace({
           <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <Label>Promo Codes</Label>
-                <p className="text-[12px] text-slate-500">Commercial storefront promo codes. Senior/PWD discounts stay separate in POS discount rules.</p>
+                <Label>Promo Codes (Legacy)</Label>
+                <p className="text-[12px] text-slate-500">
+                  Promo codes now run on Vouchers -- create new discount codes there instead. Any
+                  existing promo below stays editable, but creating a new one is disabled so nothing
+                  new falls outside the voucher system (#776/#695).
+                </p>
               </div>
-              <Button type="button" variant="outline" onClick={addStorefrontPromo} disabled={storefrontPromoCards.length >= 50}>
+              {/* #776/#695: frozen, not removed -- matches deferring the legacy promo engine's
+                  actual removal until the voucher-based system is prod-proven. Every real promo
+                  this codebase had was already converted to a voucher by the #695 migration, so
+                  this button being disabled blocks zero real merchant workflow today; it exists to
+                  stop a NEW promo being created outside the voucher system going forward. */}
+              <Button type="button" variant="outline" onClick={addStorefrontPromo} disabled title="Promo codes have moved to Vouchers. Create new discount codes there instead.">
                 <Plus className="mr-1 h-4 w-4" />Add Promo
               </Button>
             </div>
@@ -9254,6 +9457,8 @@ export default function TerminalOperationsWorkspace({
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
+  canManageVouchers = false,
+  onSelectViewMode = () => {},
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -9502,6 +9707,29 @@ export default function TerminalOperationsWorkspace({
           sectionId={sectionIds.affiliates}
         />
       );
+    // #732: promoted out of the Settings tab strip. Reaching either of these top-level modes at
+    // all already implies view access (canViewVouchers gates the sidebar NavButton and the
+    // view-mode allowlist in TerminalPage.jsx, mirroring routes/pricelists.js's own
+    // VOUCHERS.VIEW/VOUCHERS.MANAGE/SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS dual-gate) --
+    // canManageVouchers (settings:edit / vouchers:manage) only gates create/edit/lifecycle
+    // actions inside each panel itself, same as before the promotion.
+    case 'settings_vouchers':
+      return (
+        <VoucherManagementPanel
+          disabled={locked}
+          canManage={canManageVouchers}
+          sectionId={sectionIds.vouchers}
+          onNavigateToPricelists={() => onSelectViewMode('settings_pricelists')}
+        />
+      );
+    case 'settings_pricelists':
+      return (
+        <PricelistManagementPanel
+          disabled={locked}
+          canManage={canManageVouchers}
+          sectionId={sectionIds.pricelists}
+        />
+      );
     case 'items':
       return (
         <ItemsCatalogWorkspace
@@ -9558,6 +9786,8 @@ export default function TerminalOperationsWorkspace({
     canDeleteItems,
     canEditItems,
     canManageCategories,
+    canManageVouchers,
+    onSelectViewMode,
     canManageServiceCatalog,
     canManageFnbModifiers,
     canViewFnbModifiers,
@@ -9628,10 +9858,12 @@ export default function TerminalOperationsWorkspace({
     sectionIds.incomingOrders,
     sectionIds.items,
     sectionIds.locationScope,
+    sectionIds.pricelists,
     sectionIds.reports,
     sectionIds.salesToday,
     sectionIds.services,
     sectionIds.terminalSetup,
+    sectionIds.vouchers,
     activeTerminalId,
     refreshTerminalMeta,
     refreshTerminalUser,

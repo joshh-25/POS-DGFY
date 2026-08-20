@@ -622,6 +622,7 @@ export const storeRepository = {
                 'tracking_mode',
                 'tracking_toggle_available',
                 'product_folder',
+                'folder_id',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -739,6 +740,7 @@ export const storeRepository = {
                 'tracking_mode',
                 'tracking_toggle_available',
                 'product_folder',
+                'folder_id',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -770,6 +772,7 @@ export const storeRepository = {
                 tracking_mode: row.tracking_mode,
                 tracking_toggle_available: row.tracking_toggle_available,
                 folder_name: row.product_folder || row?.folder?.name || null,
+                folder_id: row.folder_id ?? null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
@@ -940,7 +943,10 @@ export const storeRepository = {
                     'unit_of_measure',
                     'current_stock',
                     'default_sale_price',
-                    'vat_type'
+                    'vat_type',
+                    'folder_id',
+                    // #697: below-cost guard input for QR-resolved voucher display pricing.
+                    'cost_per_unit'
                 ],
                 include: [
                     ...buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride),
@@ -987,6 +993,9 @@ export const storeRepository = {
                         current_stock: isStockExemptServiceItem(item) ? 0 : item.current_stock,
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
+                        folder_id: item.folder_id ?? null,
+                        // #697: below-cost guard input for QR-resolved voucher display pricing.
+                        cost_per_unit: item.cost_per_unit,
                         image_url: mapStorefrontCatalogImageUrl(item),
                         image_variants: deriveImageAssetVariantUrls({
                             storedUrl: mapStorefrontCatalogImageUrl(item)
@@ -1506,8 +1515,13 @@ export const storeRepository = {
             const createdDiscount = await PosTransactionDiscount.create({
                 transaction_id: created.pos_transaction_id,
                 discount_rule_id: null,
-                discount_type: 'promo',
-                discount_method: 'percentage',
+                // #667 Phase 110: caller-supplied, defaulting to the promo path's original literals
+                // so a promo-only order's persisted row is byte-for-byte unchanged. A voucher-applied
+                // order supplies 'voucher' / the benefit-class-derived method instead (ADR 0033's
+                // 2026-08-17 amendment / ADR 0066 Decision 10 -- a voucher redemption persists this
+                // same audit row a promo already did).
+                discount_type: discount.discount_type || 'promo',
+                discount_method: discount.discount_method || 'percentage',
                 discount_rate: discount.discount_rate,
                 discount_amount: discount.discount_amount,
                 vat_removed: 0,

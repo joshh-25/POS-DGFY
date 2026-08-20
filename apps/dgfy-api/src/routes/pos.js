@@ -64,6 +64,10 @@ import {
     validatePosDrawerAuthorization,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
+    validateCashRefundPosTransaction,
+    validateExternalRefundPosTransaction,
+    validateProviderRefundPosTransaction,
+    validateSplitAllocationReversal,
     validateGenerateESalesReport,
     validateUpdateESalesReportStatus,
     validateFiscalTerminalRegistration,
@@ -190,6 +194,13 @@ router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUS
 router.post('/device/authorize-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, posDrawerAuthorizationLimiter, validatePosDrawerAuthorization, posController.authorizeDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
+router.post('/transactions/:id/cash-refund', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCashRefundPosTransaction, posController.cashRefundTransaction);
+router.post('/transactions/:id/external-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateExternalRefundPosTransaction, posController.externalRefundTransaction);
+router.post('/transactions/:id/provider-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateProviderRefundPosTransaction, posController.providerRefundTransaction);
+router.post('/transactions/:id/split-allocations/:allocation_id/reversal', checkAnyPermission([
+    PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
+    PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER
+]), posController.requirePairedTerminal, validateSplitPaymentAllocationIdParam, validateSplitAllocationReversal, posController.splitAllocationReversal);
 router.get('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listFiscalTerminalRegistrations);
 router.put('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS), validateFiscalTerminalRegistration, posController.upsertFiscalTerminalRegistration);
 router.get('/esales-reports', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listESalesReports);

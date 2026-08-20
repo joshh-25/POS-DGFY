@@ -1,33 +1,23 @@
 import { useState } from 'react';
-import { CalendarClock, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { SERVICE_ADD_ON_OPTIONS } from '../model/serviceBookingSummary.js';
+import { CalendarClock, ChevronDown, ChevronUp } from 'lucide-react';
 
-/**
- * New "Step 2: Add-ons" — card-based listing of the customer's selected service(s), replacing
- * the old row-based recap. No new data source: renders `serviceLines` (already-computed from
- * `reviewServiceLines`/`serviceCartLines` in useServiceBookingDerivations.js / the shell), same
- * data the old row-based Step 2 used, just displayed as cards per the reference design instead
- * of label/value rows. The per-card add-ons accordion toggles are real (lifted to
- * `serviceLineAddOns`/`setServiceLineAddOns` in StorefrontApp.jsx so the booking summary can
- * group cart lines by their exact add-on combination) — only the add-on catalog itself
- * (`SERVICE_ADD_ON_OPTIONS`) is a fixed placeholder, since no per-service add-on data model
- * exists in the backend yet.
- */
 export function ServiceBookingAddOnsStep({
   STYLES,
   GhostButton,
   PrimaryButton,
+  primaryButtonProps,
   isMobileViewport,
+  money,
   servicesPrimary,
   servicesPrimarySoft,
   servicesPrimaryBorder,
+  servicesDisplayFont,
   serviceLines,
   onEditLine,
-  serviceLineAddOns,
-  setServiceLineAddOns,
   specialInstructions,
   setSpecialInstructions,
   setServiceBookingStep,
+  referenceStyle = false,
 }) {
   const [expandedKeys, setExpandedKeys] = useState(() => new Set());
   const toggleExpanded = (key) => {
@@ -38,26 +28,20 @@ export function ServiceBookingAddOnsStep({
       return next;
     });
   };
-  const toggleAddOn = (lineKey, addOnKey) => {
-    setServiceLineAddOns((previous) => {
-      const current = previous[lineKey] || {};
-      return { ...previous, [lineKey]: { ...current, [addOnKey]: !current[addOnKey] } };
-    });
-  };
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
-      <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-        <div style={{ fontSize: 18, fontWeight: 800, color: servicesPrimary }}>Step 2: Add-ons</div>
-        <div style={{ marginTop: -4, fontSize: 12, color: STYLES.colors.muted }}>
-          Choose and select additional services based on the selected packages.
+      <section style={{ border: '1px solid #e2e8f0', borderRadius: referenceStyle ? 18 : 16, background: '#fff', padding: referenceStyle ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 14 : 18), display: 'grid', gap: referenceStyle ? 24 : 14 }}>
+        <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: referenceStyle ? servicesDisplayFont : undefined }}>Add-ons</div>
+        <div style={{ marginTop: referenceStyle ? -12 : -4, fontSize: referenceStyle ? 14.4 : 12, lineHeight: referenceStyle ? 1.6 : undefined, color: referenceStyle ? '#58717a' : STYLES.colors.muted }}>
+          Review the service options selected from the catalog. Only options configured in Admin are shown.
         </div>
 
         <div style={{ display: 'grid', gap: 14 }}>
           {serviceLines.map((line) => {
             const isExpanded = expandedKeys.has(line.key);
-            const lineAddOns = serviceLineAddOns[line.key] || {};
-            const hasSelectedAddOns = SERVICE_ADD_ON_OPTIONS.some((addOn) => lineAddOns[addOn.key]);
+            const selectedOptions = Array.isArray(line.selectedOptions) ? line.selectedOptions : [];
+            const selectedAddOns = selectedOptions.filter((option) => option.group_type === 'addon');
             return (
               <div
                 key={line.key}
@@ -71,7 +55,7 @@ export function ServiceBookingAddOnsStep({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                    gridTemplateColumns: isMobileViewport ? 'auto minmax(0, 1fr)' : 'auto minmax(0, 1fr) auto',
                     gap: 14,
                     alignItems: 'center',
                     padding: isMobileViewport ? 14 : 16,
@@ -84,8 +68,8 @@ export function ServiceBookingAddOnsStep({
                   >
                     <div
                       style={{
-                        width: isMobileViewport ? 48 : 56,
-                        height: isMobileViewport ? 48 : 56,
+                        width: referenceStyle ? 40 : (isMobileViewport ? 48 : 56),
+                        height: referenceStyle ? 40 : (isMobileViewport ? 48 : 56),
                         borderRadius: 14,
                         background: servicesPrimarySoft,
                         border: `1px solid ${servicesPrimaryBorder}`,
@@ -95,54 +79,36 @@ export function ServiceBookingAddOnsStep({
                         flexShrink: 0,
                       }}
                     >
-                      <CalendarClock size={isMobileViewport ? 22 : 26} />
+                      <CalendarClock size={referenceStyle ? 18 : (isMobileViewport ? 22 : 26)} />
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.25 }}>
+                      <div style={{ fontSize: referenceStyle ? 16 : (isMobileViewport ? 16 : 18), fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.25 }}>
                         {line.title}
                       </div>
                     </div>
                   </button>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                    {hasSelectedAddOns ? (
-                      <span
-                        style={{
-                          width: 'fit-content',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: '#fff',
-                          background: '#ea580c',
-                          border: '1px solid #ea580c',
-                          borderRadius: 999,
-                          padding: '4px 10px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        With Add-ons
-                      </span>
-                    ) : (
-                      <span
-                        style={{
-                          width: 'fit-content',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: '#64748b',
-                          background: '#f8fafc',
-                          border: '1px solid #dbe5ee',
-                          borderRadius: 999,
-                          padding: '4px 10px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Without Add-ons
-                      </span>
-                    )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, gridColumn: isMobileViewport ? '2' : undefined, justifySelf: isMobileViewport ? 'end' : undefined }}>
+                    <span
+                      style={{
+                        width: 'fit-content',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: selectedAddOns.length > 0 ? '#fff' : '#64748b',
+                        background: selectedAddOns.length > 0 ? servicesPrimary : '#f8fafc',
+                        border: `1px solid ${selectedAddOns.length > 0 ? servicesPrimary : '#dbe5ee'}`,
+                        borderRadius: 999,
+                        padding: '4px 10px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {selectedAddOns.length > 0 ? 'With Add-ons' : 'Without Add-ons'}
+                    </span>
                     <button
                       type="button"
                       onClick={() => toggleExpanded(line.key)}
-                      aria-label={isExpanded ? 'Collapse add-ons' : 'Expand add-ons'}
+                      aria-label={isExpanded ? 'Collapse service options' : 'Expand service options'}
                       style={{ border: 'none', background: 'none', padding: 4, cursor: 'pointer', display: 'grid', placeItems: 'center', color: '#64748b' }}
                     >
                       {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -150,45 +116,30 @@ export function ServiceBookingAddOnsStep({
                   </div>
                 </div>
 
-                {isExpanded && (
+                {isExpanded ? (
                   <div style={{ borderTop: '1px solid #e2e8f0', background: '#fcfdff', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Optional add-ons</div>
-                    {SERVICE_ADD_ON_OPTIONS.map((addOn) => {
-                      const checked = Boolean(lineAddOns[addOn.key]);
-                      return (
-                        <button
-                          key={addOn.key}
-                          type="button"
-                          onClick={() => toggleAddOn(line.key, addOn.key)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            border: `1px solid ${checked ? servicesPrimaryBorder : '#e2e8f0'}`,
-                            background: checked ? servicesPrimarySoft : '#fff',
-                            borderRadius: 12,
-                            padding: '10px 14px',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            width: '100%',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 18, height: 18, borderRadius: 5, background: checked ? servicesPrimary : '#fff', border: `1px solid ${checked ? servicesPrimary : '#cbd5e1'}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                              {checked ? <Check size={13} color="#fff" strokeWidth={3} /> : null}
-                            </div>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{addOn.label}</span>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Selected service options</div>
+                    {selectedOptions.length > 0 ? selectedOptions.map((option) => (
+                      <div key={option.option_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: `1px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, borderRadius: 12, padding: '10px 14px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            {option.group_name || (option.group_type === 'variation' ? 'Service option' : 'Add-on')}
                           </div>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{addOn.amount}</span>
-                        </button>
-                      );
-                    })}
-                    <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
-                      Selected add-ons are included in the sample total.
-                    </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{option.name}</div>
+                        </div>
+                        {Number(option.price_adjustment_centavos || 0) !== 0 ? (
+                          <span style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', whiteSpace: 'nowrap' }}>
+                            {Number(option.price_adjustment_centavos) > 0 ? '+' : '-'}{money(Math.abs(Number(option.price_adjustment_centavos)) / 100)}
+                          </span>
+                        ) : null}
+                      </div>
+                    )) : (
+                      <div style={{ border: '1px dashed #cbd5e1', borderRadius: 12, padding: '12px 14px', color: STYLES.colors.muted, fontSize: 12 }}>
+                        This service has no configured option selected.
+                      </div>
+                    )}
                   </div>
-                )}
+                ) : null}
               </div>
             );
           })}
@@ -209,12 +160,12 @@ export function ServiceBookingAddOnsStep({
           </span>
         </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
-          <PrimaryButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>
+        {!referenceStyle || !isMobileViewport ? <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+          <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>Back</GhostButton>
+          <PrimaryButton {...primaryButtonProps} onClick={() => setServiceBookingStep(3)} style={{ minHeight: referenceStyle ? 51 : (isMobileViewport ? 38 : 44), fontSize: referenceStyle ? 16 : (isMobileViewport ? 14 : 15), borderRadius: referenceStyle ? 12 : undefined }}>
             Continue
           </PrimaryButton>
-        </div>
+        </div> : null}
       </section>
     </div>
   );

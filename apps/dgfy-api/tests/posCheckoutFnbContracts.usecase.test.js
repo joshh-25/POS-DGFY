@@ -70,6 +70,7 @@ jest.unstable_mockModule('../src/services/locationInventoryService.js', () => ({
 let buildCheckoutPosUseCase;
 let buildRecordFiscalPrintEventUseCase;
 let buildVoidPosTransactionUseCase;
+let buildGetPosTransactionByIdUseCase;
 let buildGenerateESalesReportUseCase;
 let buildListESalesReportsUseCase;
 let buildVerifyFiscalEventLedgerUseCase;
@@ -81,6 +82,7 @@ beforeAll(async () => {
         buildCheckoutPosUseCase,
         buildRecordFiscalPrintEventUseCase,
         buildVoidPosTransactionUseCase,
+        buildGetPosTransactionByIdUseCase,
         buildGenerateESalesReportUseCase,
         buildListESalesReportsUseCase,
         buildVerifyFiscalEventLedgerUseCase,
@@ -1582,6 +1584,11 @@ describe('POS checkout F&B contracts', () => {
             }]),
             createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'void-event-hash' }),
             createAuditLog: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                adjustment_reference: payload.adjustment_reference
+            })),
             updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...fiscalTransaction, ...payload }))
         };
         const inventoryCommandService = {
@@ -1621,10 +1628,393 @@ describe('POS checkout F&B contracts', () => {
             event_type: 'void',
             invoice_number: 'INV-000001'
         }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(posRepository.createPosTransactionAdjustment).toHaveBeenCalledWith(expect.objectContaining({
+            adjustment_reference: 'POS-VOID-177',
+            adjustment_type: 'void',
+            original_shift_id: null,
+            actor_shift_id: 901,
+            status: 'succeeded',
+            reason: 'Customer returned all items'
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
         expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(901, expect.objectContaining({
             transaction: expect.any(Object),
             lock: true
         }));
+    });
+
+    it('allows an administrator to void without a shift while preserving the original cashier shift attribution', async () => {
+        const transactionRow = {
+            pos_transaction_id: 178,
+            invoice_number: 'INV-000002',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const createAuditLog = jest.fn().mockResolvedValue(null);
+        const getTerminalShiftById = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById,
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            createAuditLog,
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                adjustment_reference: payload.adjustment_reference
+            })),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload }))
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 178,
+            payload: {
+                reason: 'Admin correction after cashier close',
+                terminal_id: 'TERM-01'
+            },
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.authorization_mode).toBe('admin_shift_bypass');
+        expect(result.data.transaction_shift_id).toBe(901);
+        expect(getTerminalShiftById).not.toHaveBeenCalled();
+        expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            user_id: 99,
+            shift_id: 901,
+            changes: expect.objectContaining({
+                transaction_shift_id: 901,
+                actor_shift_id: null,
+                original_cashier_id: 12,
+                authorization_mode: 'admin_shift_bypass',
+                adjustment_reference: 'POS-VOID-178'
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(posRepository.createPosTransactionAdjustment).toHaveBeenCalledWith(expect.objectContaining({
+            adjustment_reference: 'POS-VOID-178',
+            original_cashier_id: 12,
+            original_shift_id: 901,
+            actor_user_id: 99,
+            actor_shift_id: null,
+            actor_terminal_id: 'TERM-01',
+            actor_location_id: null,
+            adjustment_type: 'void',
+            status: 'succeeded',
+            metadata: expect.objectContaining({
+                evidence_scope: 'internal_void_only',
+                payment_status_before_void: 'paid'
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('rejects an administrator void when the transaction is outside the registered terminal location', async () => {
+        const updateTransactionLifecycle = jest.fn();
+        const transactionRow = {
+            pos_transaction_id: 179,
+            invoice_number: 'INV-000003',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            updateTransactionLifecycle,
+            createAuditLog: jest.fn(),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([])
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 179,
+            payload: {
+                reason: 'Admin correction from another location',
+                terminal_id: 'TERM-01',
+                terminal_location_id: 9
+            },
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_TRANSACTION_LOCATION_MISMATCH',
+            transaction_location_id: 3,
+            terminal_location_id: 9
+        }));
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('rejects conflicting existing void evidence before changing the transaction', async () => {
+        const updateTransactionLifecycle = jest.fn();
+        const createPosTransactionAdjustment = jest.fn();
+        const transactionRow = {
+            pos_transaction_id: 180,
+            invoice_number: 'INV-000004',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue({
+                adjustment_reference: 'POS-VOID-180',
+                request_hash: 'different-request',
+                status: 'succeeded'
+            }),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            updateTransactionLifecycle,
+            createPosTransactionAdjustment,
+            createAuditLog: jest.fn()
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 180,
+            payload: {
+                reason: 'Admin correction',
+                terminal_id: 'TERM-01'
+            },
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.message).toBe('POS void evidence already exists for a different request');
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+        expect(createPosTransactionAdjustment).not.toHaveBeenCalled();
+    });
+
+    it('rolls back the internal void when adjustment evidence cannot be persisted', async () => {
+        const updateTransactionLifecycle = jest.fn(async (id, payload) => ({
+            pos_transaction_id: id,
+            status: payload.status
+        }));
+        const createAuditLog = jest.fn();
+        const transactionRow = {
+            pos_transaction_id: 181,
+            invoice_number: 'INV-000005',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'unpaid'
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            updateTransactionLifecycle,
+            createPosTransactionAdjustment: jest.fn().mockRejectedValue(new Error('adjustment insert failed')),
+            createAuditLog
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+        let tenantTransaction;
+
+        const result = await runInTenantContext((context) => {
+            tenantTransaction = context.transaction;
+            return useCase({
+                posTransactionId: 181,
+                payload: {
+                    reason: 'Evidence persistence failure',
+                    shift_id: 901,
+                    terminal_id: 'TERM-01'
+                },
+                user: { user_id: 12, role: 'cashier' }
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(tenantTransaction.rollback).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.commit).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('still requires an open shift when a non-administrator voids a transaction', async () => {
+        const useCase = buildVoidPosTransactionUseCase({ posRepository: {} });
+
+        const result = await useCase({
+            posTransactionId: 178,
+            payload: { reason: 'Cashier correction' },
+            user: { user_id: 12, role: 'cashier' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.message).toBe('An active shift is required to void a POS transaction');
+    });
+
+    it('projects sanitized void adjustment evidence and the latest financial outcome on transaction reads', async () => {
+        const financialOutcome = {
+            internal_void: 'succeeded',
+            refund_required: true,
+            refund_strategy: 'cash_refund',
+            next_action: 'cash_drawer_refund',
+            reason_code: 'PAID_CASH_REQUIRES_REFUND'
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue({
+                pos_transaction_id: 182,
+                status: 'voided',
+                cashier_id: 12,
+                shift_id: 901
+            }),
+            listPosTransactionAdjustmentsForTransaction: jest.fn().mockResolvedValue([{
+                pos_transaction_adjustment_id: 1,
+                adjustment_reference: 'POS-VOID-182',
+                pos_transaction_id: 182,
+                original_cashier_id: 12,
+                originalCashier: { username: 'Cashier One' },
+                original_shift_id: 901,
+                actor_user_id: 99,
+                actorUser: { username: 'Admin One' },
+                actor_shift_id: null,
+                adjustment_type: 'void',
+                tender_type: 'cash',
+                amount: '125.0000',
+                currency: 'PHP',
+                status: 'succeeded',
+                reason: 'Admin correction',
+                request_hash: 'SECRET-MUST-NOT-RETURN',
+                metadata: {
+                    financial_outcome: financialOutcome,
+                    internal_only_value: 'SECRET-MUST-NOT-RETURN'
+                }
+            }]),
+            findPosPaymentSessionByCompletedTransactionId: jest.fn().mockResolvedValue({
+                pos_payment_session_id: 51,
+                session_reference: 'PPS-51',
+                status: 'completed',
+                total_amount: '125.0000',
+                paid_amount: '125.0000',
+                idempotency_key: 'INTERNAL-MUST-NOT-RETURN'
+            }),
+            listPosPaymentAllocationsForSession: jest.fn().mockResolvedValue([{
+                pos_payment_allocation_id: 61,
+                allocation_reference: 'PPA-61',
+                status: 'successful',
+                payment_method: 'cash',
+                payment_handoff_mode: 'external',
+                applied_amount: '75.0000',
+                reversed_amount: '0.0000',
+                reversal_status: 'none',
+                request_hash: 'INTERNAL-MUST-NOT-RETURN'
+            }]),
+            getReceiptPrintStatuses: jest.fn().mockResolvedValue({})
+        };
+        const useCase = buildGetPosTransactionByIdUseCase({ posRepository });
+
+        const result = await useCase({ posTransactionId: 182 });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.listPosTransactionAdjustmentsForTransaction).toHaveBeenCalledWith(182);
+        expect(result.data.adjustments).toEqual([expect.objectContaining({
+            adjustment_reference: 'POS-VOID-182',
+            original_cashier_id: 12,
+            original_cashier_name: 'Cashier One',
+            original_shift_id: 901,
+            actor_user_id: 99,
+            actor_name: 'Admin One',
+            actor_shift_id: null,
+            adjustment_type: 'void',
+            amount: '125.0000',
+            financial_outcome: financialOutcome
+        })]);
+        expect(result.data.financial_outcome).toEqual(financialOutcome);
+        expect(result.data.payment_session).toEqual({
+            pos_payment_session_id: 51,
+            session_reference: 'PPS-51',
+            status: 'completed',
+            total_amount: '125.0000',
+            paid_amount: '125.0000'
+        });
+        expect(result.data.payment_allocations).toEqual([expect.objectContaining({
+            pos_payment_allocation_id: 61,
+            allocation_reference: 'PPA-61',
+            payment_method: 'cash',
+            reversal_status: 'none'
+        })]);
+        expect(result.data.payment_allocations[0].request_hash).toBeUndefined();
+        expect(result.data.adjustments[0].request_hash).toBeUndefined();
+        expect(result.data.adjustments[0].internal_only_value).toBeUndefined();
+        expect(result.data.adjustments[0].metadata).toBeUndefined();
+    });
+
+    it('projects financial outcome when the tenant database returns adjustment metadata as JSON text', async () => {
+        const financialOutcome = {
+            internal_void: 'succeeded',
+            refund_required: true,
+            refund_state: 'manual_review_required',
+            refund_method: 'cash',
+            next_action: 'record_cash_refund_with_cash_drawer_event',
+            reason_code: 'CASH_REFUND_REQUIRED',
+            refund_amount: 150,
+            currency: 'PHP'
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue({
+                pos_transaction_id: 183,
+                status: 'voided',
+                cashier_id: 12,
+                shift_id: 901
+            }),
+            listPosTransactionAdjustmentsForTransaction: jest.fn().mockResolvedValue([{
+                pos_transaction_adjustment_id: 2,
+                adjustment_reference: 'POS-VOID-183',
+                pos_transaction_id: 183,
+                adjustment_type: 'void',
+                tender_type: 'cash',
+                amount: '150.0000',
+                currency: 'PHP',
+                status: 'succeeded',
+                reason: 'Admin correction',
+                metadata: JSON.stringify({
+                    evidence_scope: 'internal_void_only',
+                    financial_outcome: financialOutcome,
+                    internal_only_value: 'SECRET-MUST-NOT-RETURN'
+                })
+            }]),
+            getReceiptPrintStatuses: jest.fn().mockResolvedValue({})
+        };
+        const useCase = buildGetPosTransactionByIdUseCase({ posRepository });
+
+        const result = await useCase({ posTransactionId: 183 });
+
+        expect(result.success).toBe(true);
+        expect(result.data.financial_outcome).toEqual(financialOutcome);
+        expect(result.data.adjustments[0].financial_outcome).toEqual(financialOutcome);
+        expect(result.data.adjustments[0].internal_only_value).toBeUndefined();
+        expect(result.data.adjustments[0].metadata).toBeUndefined();
     });
 
     it('generates an eSales report package with hash and fiscal ledger event', async () => {

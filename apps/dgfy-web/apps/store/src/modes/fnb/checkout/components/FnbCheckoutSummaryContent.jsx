@@ -19,7 +19,7 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
   checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
-  paymentStep = false, promoDiscountSummaryRow, promoPanel, scheduleLabel, totals,
+  paymentStep = false, promoDiscountSummaryRow, voucherDiscountSummaryRow, promoPanel, scheduleLabel, totals,
   variant = 'detailed'
 }) {
   const statusRows = [
@@ -43,6 +43,7 @@ export function FnbCheckoutSummaryContent({
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
+    ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     { label: 'Fees & Taxes', value: money(totals.service_fee_amount + totals.vat_amount) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }

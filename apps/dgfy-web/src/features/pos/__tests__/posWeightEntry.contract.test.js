@@ -16,14 +16,18 @@ const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativeP
 // allowsDecimalQuantity(unit_of_measure), which only weight/volume UOMs pass.
 describe('POS weight entry (decimal quantity) contract', () => {
     it('DGFY terminal: the typed manual-quantity input and its commit path are decimal-aware', () => {
-        const source = read('../components/POSCheckoutTerminal.jsx');
+        const source = [
+            read('../components/POSCheckoutTerminal.jsx'),
+            read('../components/POSCheckoutTerminalView.jsx'),
+        ].join('\n');
+        const cartWorkflow = read('../hooks/usePosCartWorkflow.js');
 
         expect(source).toContain("import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';");
         expect(source).toContain("inputMode={allowsDecimalQuantity(item.unit_of_measure) ? 'decimal' : 'numeric'}");
         expect(source).toContain("pattern={allowsDecimalQuantity(item.unit_of_measure) ? '[0-9]*\\\\.?[0-9]*' : '[0-9]*'}");
         expect(source).toContain('sanitizeQuantityInput(event.target.value, allowsDecimalQuantity(item.unit_of_measure))');
         expect(source).toContain('allowsDecimalQuantity(item.unit_of_measure)');
-        expect(source).toContain('Math.max(0, round4(Number(quantityInputValue)) || 0)');
+        expect(cartWorkflow).toContain('Math.max(0, round4(Number(quantityInputValue)) || 0)');
         // The -1/+1 steppers and the long-press meter stay integer-only -
         // manual typed entry is the only decimal-capable path (Open Decision
         // #5: manual entry first, scale hardware later) - see

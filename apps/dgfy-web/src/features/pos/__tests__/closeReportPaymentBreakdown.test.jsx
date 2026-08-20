@@ -23,7 +23,9 @@ const businessSettings = {
 const salesSummary = {
     payment_breakdown: paymentBreakdown,
     void_transaction_count: 2,
-    void_amount: 125
+    void_amount: 125,
+    post_close_void_transaction_count: 1,
+    post_close_void_amount: 125
 };
 
 describe('close-report payment breakdown rendering', () => {
@@ -50,6 +52,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(shiftMarkup).toContain('Total sales (excluding opening cash)');
         expect(shiftMarkup).toContain('Opening/petty cash');
         expect(shiftMarkup).toContain('Expected cash in drawer');
+        expect(shiftMarkup).toContain('Post-close voids (1)');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -61,6 +64,7 @@ describe('close-report payment breakdown rendering', () => {
             zReading: { z_reading: { summary: salesSummary } },
             businessSettings
         });
+        expect(shiftText).toContain('Post-close voids (1)');
 
         [shiftText, zReadingText].forEach((text) => {
             expect(text).toContain('Acme Corporation');

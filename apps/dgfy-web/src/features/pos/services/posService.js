@@ -182,6 +182,34 @@ export const voidPosTransaction = async (id, payload = {}) => {
     return response.data?.data;
 };
 
+export const refundCashPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/cash-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const recordExternalPosTransactionRefund = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/external-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const refundProviderPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/provider-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const reversePosSplitAllocation = async (transactionId, allocationId, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${transactionId}/split-allocations/${allocationId}/reversal`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const createPosSetupCashier = async (payload = {}) => {
     const response = await api.post('/pos/setup/cashiers', payload);
     return response.data?.data;

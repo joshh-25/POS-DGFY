@@ -1,7 +1,7 @@
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
 // guest/DGFY-account identity + guest email OTP infrastructure (useGuestCustomerIdentity.js,
-// useFnbGuestCheckoutOtp.js), and the shared saved-address/map-pin infrastructure
+// useGuestCheckoutOtp.js), and the shared saved-address/map-pin infrastructure
 // (useSignedInCheckoutAddresses.js, useDeliveryPinResolution.js) — all instantiated once in
 // StorefrontApp.jsx and already consumed by F&B/MSME. Schedule mode/time and special
 // instructions remain intentionally local state owned by RetailOrderPage itself, since neither
@@ -40,6 +40,7 @@ export function useRetailOrderPageProps({
   money,
   orderMethod,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   pinLocationError,
   pinLocationLoading,
   renderAccountOwnedIdentitySummary,
@@ -99,6 +100,7 @@ export function useRetailOrderPageProps({
     onSelectAddress: applySavedDeliveryLocation,
     orderMethod,
     promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
