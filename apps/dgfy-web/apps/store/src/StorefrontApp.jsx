@@ -716,11 +716,9 @@ export default function StorefrontApp() {
     }
   }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
-  // #672: like checkoutPromoCode, plain component state -- not persisted across reload, matching
-  // the existing promo-code precedent rather than introducing a new persistence layer (the
-  // zustand store's cartSlice.js explicitly documents that persist middleware isn't wired yet).
-  // Initial value only: captures a shareable `?voucher=` link on first load; typed/applied codes
-  // after that are session-only, same as promo.
+  // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
+  // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
+  // the same snapshot. Retail/F&B/services only; see that hook's `enabled` condition.
   const [checkoutVoucherCode, setCheckoutVoucherCode] = useState(() => readStoreVoucherCode());
 
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
@@ -974,6 +972,8 @@ export default function StorefrontApp() {
   }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
+    // #768 scope: retail / F&B / services only -- simple mode has no cart persistence layer, so
+    // an applied voucher/promo code is still session-only there (PR #769 RF-3).
     enabled: isFnbMode || isServicesMode || isRetailMode,
     mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : '')),
     // #768: rides along in the same snapshot as the cart lines -- see that hook's own note.

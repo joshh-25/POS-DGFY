@@ -27,9 +27,9 @@ const RETAIL_LINE = {
   price: 399
 };
 
-function usePersistenceHarness({ mode, storeSlug }) {
+function usePersistenceHarness({ mode, storeSlug, initialVoucherCode = '' }) {
   const [cart, setCart] = useState([LAUNDRY_LINE]);
-  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherCode, setVoucherCode] = useState(initialVoucherCode);
   const [promoCode, setPromoCode] = useState('');
   useStorefrontCartPersistence({
     cart,
@@ -199,6 +199,20 @@ describe('useStorefrontCartPersistence', () => {
       );
 
       await waitFor(() => expect(refreshedRender.result.current.promoCode).toBe('SAVE10'));
+    });
+
+    // PR #769 RF-1 regression guard: `?voucher=LINKCODE` seeds React state (StorefrontApp.jsx)
+    // BEFORE this hook's hydration effect ever runs. That effect must not blow the deep-linked
+    // code away with an empty (or absent) snapshot on the component's first hydration.
+    it('lets a URL-seeded voucher code survive first hydration when no snapshot exists', async () => {
+      const { result } = renderHook(
+        (props) => usePersistenceHarness(props),
+        { initialProps: { mode: 'retail', storeSlug: 'northline-retail', initialVoucherCode: 'LINKCODE' } }
+      );
+
+      await waitFor(() => expect(result.current.cart).toEqual([]));
+      expect(result.current.voucherCode).toBe('LINKCODE');
+      expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })).toBeNull();
     });
 
     it('does not carry a voucher code over to a different store', async () => {

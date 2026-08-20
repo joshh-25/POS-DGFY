@@ -35,6 +35,7 @@ export function useStorefrontCartPersistence({
     if (!enabled || !persistenceKey || typeof setCart !== 'function') return;
     if (hydratedKeyRef.current === persistenceKey) return;
 
+    const previousHydratedKey = hydratedKeyRef.current;
     hydratedKeyRef.current = persistenceKey;
     skipNextWriteKeyRef.current = persistenceKey;
 
@@ -48,8 +49,24 @@ export function useStorefrontCartPersistence({
     // A voucher/promo code is scoped to this same store+mode snapshot -- an absent snapshot means
     // no code either, matching the cart's own "absent means empty" handling above rather than
     // leaving a prior store's code attached to a freshly-hydrated cart.
-    if (typeof setVoucherCode === 'function') setVoucherCode(snapshot?.voucherCode || '');
-    if (typeof setPromoCode === 'function') setPromoCode(snapshot?.promoCode || '');
+    //
+    // Exception, PR #769 RF-1: on the component's FIRST hydration only, a code already seeded from
+    // a shareable `?voucher=`/`?promo=` link (StorefrontApp.jsx, read before this effect ever runs)
+    // must win over an empty/different snapshot value, or a voucher deep link is silently destroyed
+    // the instant this hook mounts. A later hydration (an actual store/mode switch, previousHydratedKey
+    // non-empty) still lets the snapshot -- including an empty one -- fully replace the code, which is
+    // what keeps the existing cross-store isolation behaviour intact.
+    const isFirstHydration = previousHydratedKey === '';
+    if (typeof setVoucherCode === 'function') {
+      setVoucherCode((current) => (
+        isFirstHydration && String(current || '').trim() ? current : (snapshot?.voucherCode || '')
+      ));
+    }
+    if (typeof setPromoCode === 'function') {
+      setPromoCode((current) => (
+        isFirstHydration && String(current || '').trim() ? current : (snapshot?.promoCode || '')
+      ));
+    }
   }, [enabled, normalizedMode, normalizedStoreSlug, persistenceKey, setCart, setPromoCode, setVoucherCode]);
 
   useEffect(() => {
