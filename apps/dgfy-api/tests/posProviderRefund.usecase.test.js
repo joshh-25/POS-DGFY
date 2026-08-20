@@ -387,7 +387,7 @@ describe('POS provider-owned refund use case', () => {
         expect(createCommerceRefund).not.toHaveBeenCalled();
     });
 
-    it('allows an administrator to use the no-shift path while requiring an owned open shift for cashiers', async () => {
+    it('requires an owned open shift for administrators and cashiers', async () => {
         const adminFixture = buildFixture();
         const adminCreateCommerceRefund = buildCommerceRefundUseCase('succeeded');
         const adminUseCase = buildProviderRefundPosTransactionUseCase({
@@ -401,6 +401,11 @@ describe('POS provider-owned refund use case', () => {
             user: { user_id: 1, role: 'admin' }
         }));
 
+        const adminWithShiftResult = await runInTenantContext(adminFixture.sequelize, () => adminUseCase({
+            ...buildRequest({ idempotency_key: 'provider-refund-admin-shift' }),
+            user: { user_id: 99, role: 'admin' }
+        }));
+
         const cashierFixture = buildFixture();
         const cashierUseCase = buildProviderRefundPosTransactionUseCase({
             posRepository: cashierFixture.posRepository,
@@ -410,8 +415,12 @@ describe('POS provider-owned refund use case', () => {
         });
         const cashierResult = await runInTenantContext(cashierFixture.sequelize, () => cashierUseCase(buildRequest({ shift_id: null })));
 
-        expect(adminResult.success).toBe(true);
-        expect(adminResult.data.adjustment.actor_shift_id).toBeNull();
+        expect(adminResult.success).toBe(false);
+        expect(adminResult.error.code).toBe('VALIDATION_FAILED');
+        expect(adminWithShiftResult.success).toBe(true);
+        expect(adminWithShiftResult.data.adjustment.actor_shift_id).toBe(108);
+        expect(adminFixture.paymongoService.getPayment).toHaveBeenCalledTimes(1);
+        expect(adminFixture.state.adjustments).toHaveLength(1);
         expect(cashierResult.success).toBe(false);
         expect(cashierResult.error.code).toBe('VALIDATION_FAILED');
         expect(cashierFixture.paymongoService.getPayment).not.toHaveBeenCalled();

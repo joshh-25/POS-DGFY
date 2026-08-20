@@ -241,7 +241,7 @@ describe('POS merchant-owned external reversal use case', () => {
         expect(mockAssertComplianceOperationAllowed).not.toHaveBeenCalled();
     });
 
-    it('allows an administrator to record evidence without an administrator shift', async () => {
+    it('requires an active shift when an administrator records external evidence', async () => {
         const fixture = buildFixture();
         const useCase = buildExternalRefundPosTransactionUseCase({ posRepository: fixture.posRepository });
 
@@ -250,8 +250,17 @@ describe('POS merchant-owned external reversal use case', () => {
             user: { user_id: 1, role: 'admin' }
         }));
 
-        expect(result.success).toBe(true);
-        expect(result.data.adjustment.actor_shift_id).toBeNull();
-        expect(result.data.transaction.payment_status).toBe('refund_pending');
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(fixture.state.adjustments).toHaveLength(0);
+
+        const withShift = await runInTenantContext(fixture.sequelize, () => useCase({
+            ...buildRequest({ idempotency_key: 'external-refund-admin-shift' }),
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(withShift.success).toBe(true);
+        expect(withShift.data.adjustment.actor_shift_id).toBe(108);
+        expect(withShift.data.transaction.payment_status).toBe('refund_pending');
     });
 });

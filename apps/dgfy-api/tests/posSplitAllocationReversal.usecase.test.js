@@ -169,12 +169,15 @@ const adminRequest = (overrides = {}) => ({
     posTransactionId: 220,
     allocationId: 2,
     payload: {
+        shift_id: 107,
+        terminal_id: 'COUNTER-01',
+        terminal_location_id: 7,
         reason: 'Customer reversal recorded at store QR',
         external_reference: 'STORE-GCASH-REV-220',
         idempotency_key: 'split-ext-220-a',
         ...overrides
     },
-    user: { user_id: 1, role: 'admin' }
+    user: { user_id: 99, role: 'admin' }
 });
 
 describe('POS split allocation reversal use case', () => {
@@ -258,8 +261,14 @@ describe('POS split allocation reversal use case', () => {
         const provider = await runInTenantContext(fixture.sequelize, () => useCase({
             posTransactionId: 220,
             allocationId: 3,
-            payload: { reason: 'Provider refund confirmed', idempotency_key: 'split-all-provider' },
-            user: { user_id: 1, role: 'admin' }
+            payload: {
+                shift_id: 107,
+                terminal_id: 'COUNTER-01',
+                terminal_location_id: 7,
+                reason: 'Provider refund confirmed',
+                idempotency_key: 'split-all-provider'
+            },
+            user: { user_id: 99, role: 'admin' }
         }));
 
         expect(cash.success).toBe(true);
@@ -309,8 +318,14 @@ describe('POS split allocation reversal use case', () => {
         const result = await runInTenantContext(fixture.sequelize, () => useCase({
             posTransactionId: 220,
             allocationId: 3,
-            payload: { reason: 'Provider partial refund review', idempotency_key: 'split-provider-partial' },
-            user: { user_id: 1, role: 'admin' }
+            payload: {
+                shift_id: 107,
+                terminal_id: 'COUNTER-01',
+                terminal_location_id: 7,
+                reason: 'Provider partial refund review',
+                idempotency_key: 'split-provider-partial'
+            },
+            user: { user_id: 99, role: 'admin' }
         }));
 
         expect(result.success).toBe(false);
@@ -332,6 +347,24 @@ describe('POS split allocation reversal use case', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
         expect(fixture.state.events).toHaveLength(0);
+        expect(fixture.state.adjustments).toHaveLength(0);
+    });
+
+    it('requires an owned open shift for non-cash allocation reversals even for an administrator', async () => {
+        const fixture = buildFixture();
+        const useCase = buildSplitAllocationReversalUseCase({ posRepository: fixture.posRepository });
+        const result = await runInTenantContext(fixture.sequelize, () => useCase(adminRequest({
+            shift_id: null,
+            terminal_id: 'COUNTER-01',
+            terminal_location_id: 7,
+            idempotency_key: 'split-ext-admin-no-shift'
+        })));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_SHIFT_REQUIRED'
+        }));
         expect(fixture.state.adjustments).toHaveLength(0);
     });
 });
