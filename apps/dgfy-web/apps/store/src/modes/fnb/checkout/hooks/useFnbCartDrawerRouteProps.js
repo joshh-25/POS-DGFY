@@ -31,7 +31,7 @@ export function useFnbCartDrawerRouteProps({
   updateQty,
   promoDiscountAmount = 0,
   promoDiscountLabel = '',
-  quoteNeedsRefresh = false,
+  isQuoteStale = false,
   voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
@@ -59,7 +59,7 @@ export function useFnbCartDrawerRouteProps({
     updateQty,
     promoDiscountAmount,
     promoDiscountLabel,
-    quoteNeedsRefresh,
+    isQuoteStale,
     voucherDiscountAmount,
     withAssetOrigin
   }), [
@@ -89,7 +89,7 @@ export function useFnbCartDrawerRouteProps({
     updateQty,
     promoDiscountAmount,
     promoDiscountLabel,
-    quoteNeedsRefresh,
+    isQuoteStale,
     voucherDiscountAmount,
     withAssetOrigin
   ]);

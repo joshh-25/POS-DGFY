@@ -29,6 +29,7 @@ const isDeferredCustomerValidation = (error) => {
 export function useFnbCheckoutQuote({
   accessCapabilities,
   cart,
+  cartSignature,
   checkoutPermitted,
   checkoutPromoCode,
   checkoutVoucherCode,
@@ -49,6 +50,7 @@ export function useFnbCheckoutQuote({
   selectedStore,
   setCheckoutPromoCode,
   setCheckoutVoucherCode,
+  setQuotedCartSignature,
   setQuoteError,
   setQuoteNeedsRefresh,
   setQuoteResult,
@@ -107,6 +109,11 @@ export function useFnbCheckoutQuote({
   } = {}) => {
     if (!selectedStore) return null;
 
+    // #746: snapshot the cart fingerprint the request is built from, BEFORE awaiting. Recording it
+    // after the response would attribute the quote to whatever the cart looks like when the network
+    // finally returns -- which is exactly the cart edit that should have invalidated it.
+    const signatureAtRequest = cartSignature;
+
     const data = await requestJson('/api/v1/store/cart/quote', {
       method: 'POST',
       storeSlug: selectedStore.slug,
@@ -114,6 +121,7 @@ export function useFnbCheckoutQuote({
       body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
     setQuoteResult(data);
+    setQuotedCartSignature(signatureAtRequest);
     setQuoteNeedsRefresh(false);
     if (!silent) {
       toast.success(data?.promo_feedback?.message || successMessage || 'Totals updated.');
@@ -121,11 +129,13 @@ export function useFnbCheckoutQuote({
     return data;
   }, [
     buildPayload,
+    cartSignature,
     checkoutPromoCode,
     checkoutVoucherCode,
     readStoreAuthToken,
     requestJson,
     selectedStore,
+    setQuotedCartSignature,
     setQuoteNeedsRefresh,
     setQuoteResult,
     toast,
@@ -220,7 +230,8 @@ export function useFnbCheckoutQuote({
       return;
     }
     if (!selectedStore) {
-      toast.success(`Voucher code ${normalizedVoucherCode} added.`);
+      // #746: not a success -- nothing validated the code, so don't dress it up as applied.
+      toast.info(`Voucher code ${normalizedVoucherCode} added. It will validate once a store is selected.`);
       return;
     }
     if (storefrontClosedByHours) {

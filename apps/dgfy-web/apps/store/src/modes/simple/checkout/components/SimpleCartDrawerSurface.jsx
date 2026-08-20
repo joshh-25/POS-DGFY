@@ -1,5 +1,6 @@
 import { ChevronRight, Plus } from 'lucide-react';
 import { SimpleCartLineItem } from './SimpleCartLineItem.jsx';
+import { resolveCartDiscountDisplay } from '../../../../shared/model/cartDiscountDisplay.js';
 
 /**
  * Layout matches F&B's FnbCartDrawerContent.jsx (header, empty state, "Add more items" prompt,
@@ -30,17 +31,28 @@ export function SimpleCartDrawerSurface({
   servicesPrimaryShadowStrong,
   promoDiscountAmount = 0,
   promoDiscountLabel = '',
-  quoteNeedsRefresh = false,
+  isQuoteStale = false,
   voucherDiscountAmount = 0
 }) {
   const primaryTint = '#FFF8E7';
   const primarySoftBorder = '#E4C98E';
-  // #746: see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning, ported here.
-  // RF-2 (PR #753 review): gated on !quoteNeedsRefresh too -- see that file's own note.
-  const hasVoucherDiscount = !quoteNeedsRefresh && voucherDiscountAmount > 0;
-  // RF-3 (PR #753 review): see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning.
-  const hasPromoDiscount = !quoteNeedsRefresh && promoDiscountAmount > 0;
-  const displayTotal = Math.max(0, cartTotal - (hasVoucherDiscount ? voucherDiscountAmount : 0) - (hasPromoDiscount ? promoDiscountAmount : 0));
+  // #746 (second occurrence): the discount decision now lives in one shared helper instead of three
+  // copies of this arithmetic. `isQuoteStale` compares the cart the quote was priced against to the
+  // live cart -- a real validity test, unlike the old `!quoteNeedsRefresh` gate, which was the F&B
+  // checkout-quote lifecycle flag and sat `true` in this drawer almost permanently, hiding the
+  // discount outright. A stale discount is now shown and marked, not hidden; only a discount that
+  // exceeds the cart is suppressed (RF-2's real concern -- never a confident PHP0 on a full cart).
+  const {
+    hasVoucherDiscount,
+    hasPromoDiscount,
+    displayTotal,
+    isStale: isDiscountStale
+  } = resolveCartDiscountDisplay({
+    cartTotal,
+    voucherDiscountAmount,
+    promoDiscountAmount,
+    isQuoteStale
+  });
 
   return (
     <div
@@ -187,6 +199,9 @@ export function SimpleCartDrawerSurface({
             <div style={{ display: 'grid', gap: 6 }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
+              {isDiscountStale && (
+                <div style={{ fontSize: 12, color: '#b45309' }}>Updating total&hellip;</div>
+              )}
             </div>
             <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>

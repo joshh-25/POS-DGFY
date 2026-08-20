@@ -1,5 +1,6 @@
 import { ChevronRight, Plus } from 'lucide-react';
 import { DefaultProductCartLineItem } from './DefaultProductCartLineItem.jsx';
+import { resolveCartDiscountDisplay } from '../../model/cartDiscountDisplay.js';
 
 const DEFAULT_BRAND = '#1a4e8d';
 const DEFAULT_BRAND_DARK = '#1a4586';
@@ -41,30 +42,27 @@ export function DefaultProductCartDrawer({
   servicesBodyFont,
   promoDiscountAmount = 0,
   promoDiscountLabel = '',
-  quoteNeedsRefresh = false,
+  isQuoteStale = false,
   voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
-  // #746: this drawer used to render `cartTotal` unconditionally, which has zero voucher
-  // awareness -- applying a voucher here never moved the number on screen. `cartTotal` stays the
-  // fallback (so an untouched cart is byte-identical to before this fix); when a voucher discount
-  // is active, subtract it directly rather than switching to `totalsForDisplay.total_amount`,
-  // which also folds in the service fee and would change the displayed total for every cart, not
-  // just voucher ones.
-  // RF-2 (PR #753 review): voucherDiscountAmount is the LAST quote's value, but cartTotal is
-  // live -- StorefrontApp.jsx sets quoteNeedsRefresh on every cart change without clearing
-  // quoteResult, and nothing re-quotes from the drawer itself. Without this gate, changing a
-  // quantity after applying a voucher subtracts a stale discount from a fresh subtotal --
-  // shrinking the cart enough could render a confident PHP0 total on a non-empty cart. Falls
-  // back to plain cartTotal (byte-identical to before this fix) exactly when the number can't
-  // be trusted.
-  const hasVoucherDiscount = !quoteNeedsRefresh && voucherDiscountAmount > 0;
-  // RF-3 (PR #753 review): this drawer's own `renderPromoCodePanel` renders BOTH PromoCodePanel
-  // and VoucherCodePanel stacked (useFnbCheckoutPromoRenderers.jsx) -- only fixing the voucher
-  // half left the promo half reproducing #746 verbatim, and a merchant using both would see a
-  // Voucher Discount row with no promo counterpart. Same staleness gate as the voucher discount.
-  const hasPromoDiscount = !quoteNeedsRefresh && promoDiscountAmount > 0;
-  const displayTotal = Math.max(0, cartTotal - (hasVoucherDiscount ? voucherDiscountAmount : 0) - (hasPromoDiscount ? promoDiscountAmount : 0));
+  // #746 (second occurrence): the discount decision now lives in one shared helper instead of three
+  // copies of this arithmetic. `isQuoteStale` compares the cart the quote was priced against to the
+  // live cart -- a real validity test, unlike the old `!quoteNeedsRefresh` gate, which was the F&B
+  // checkout-quote lifecycle flag and sat `true` in this drawer almost permanently, hiding the
+  // discount outright. A stale discount is now shown and marked, not hidden; only a discount that
+  // exceeds the cart is suppressed (RF-2's real concern -- never a confident PHP0 on a full cart).
+  const {
+    hasVoucherDiscount,
+    hasPromoDiscount,
+    displayTotal,
+    isStale: isDiscountStale
+  } = resolveCartDiscountDisplay({
+    cartTotal,
+    voucherDiscountAmount,
+    promoDiscountAmount,
+    isQuoteStale
+  });
   return (
     <div
       style={{
@@ -211,6 +209,9 @@ export function DefaultProductCartDrawer({
             <div style={{ display: 'grid', gap: 6 }}>
               <div style={{ fontSize: 18, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
+              {isDiscountStale && (
+                <div style={{ fontSize: 12, color: '#b45309' }}>Updating total&hellip;</div>
+              )}
             </div>
             <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>

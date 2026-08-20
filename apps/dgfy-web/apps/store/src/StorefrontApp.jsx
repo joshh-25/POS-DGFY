@@ -77,6 +77,7 @@ import {
 } from './shared/model/storefrontCatalogModel.js';
 import { DGFY_BRAND_NAME } from './shared/model/storefrontConstants.js';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
+import { buildCartSignature } from './shared/model/cartSignature.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
   canUseCheckout,
@@ -365,6 +366,10 @@ export const __storefrontTrackingTestUtils = {
   mapAccountActivityToTrackedOrderEntry
 };
 
+// #746: how long the storefront waits after the last cart/code change before re-quoting. Long
+// enough to collapse a burst of quantity taps into one request, short enough that the total settles
+// while the shopper is still looking at the drawer.
+const AUTO_QUOTE_DEBOUNCE_MS = 350;
 const dgfyHeaderLogo = '/dgfy-logo.png';
 const dgfySymbolLogo = '/dgfy-symbologo.png';
 const dgfyBusinessOwnerPhoto = '/man.webp';
@@ -793,6 +798,14 @@ export default function StorefrontApp() {
   const [quoteResult, setQuoteResult] = useState(null);
   const [quoteNeedsRefresh, setQuoteNeedsRefresh] = useState(true);
   const [quoteError, setQuoteError] = useState('');
+  // #746: the cart the last successful quote was computed against. Compared with the live cart to
+  // decide whether that quote's discounts still describe what the shopper sees -- see
+  // shared/model/cartSignature.js for why this replaces the old `!quoteNeedsRefresh` gate.
+  const [quotedCartSignature, setQuotedCartSignature] = useState(null);
+  const cartSignature = useMemo(() => buildCartSignature(cart), [cart]);
+  // True when the last quote no longer describes the current cart -- the display-validity signal for
+  // every voucher/promo discount surface.
+  const isQuoteStale = quotedCartSignature === null || quotedCartSignature !== cartSignature;
   const fnbAutoQuoteSyncKeyRef = useRef('');
   const [checkoutResult, setCheckoutResult] = useState(null);
 
@@ -2308,6 +2321,7 @@ export default function StorefrontApp() {
   } = useFnbCheckoutQuote({
     accessCapabilities,
     cart,
+    cartSignature,
     checkoutPermitted,
     checkoutPromoCode,
     checkoutVoucherCode,
@@ -2329,6 +2343,7 @@ export default function StorefrontApp() {
     setCheckoutPromoCode,
     setCheckoutVoucherCode,
     setQuoteError,
+    setQuotedCartSignature,
     setQuoteNeedsRefresh,
     setQuoteResult,
     storefrontClosedByHours,
@@ -2866,7 +2881,7 @@ export default function StorefrontApp() {
     cartSubtotal,
     cartTotal,
     voucherDiscountAmount: totalsForDisplay.voucher_discount_amount,
-    quoteNeedsRefresh,
+    isQuoteStale,
     promoDiscountAmount: totalsForDisplay.discount_amount,
     promoDiscountLabel: totalsForDisplay.discount_label,
     checkoutTab,
@@ -2897,7 +2912,7 @@ export default function StorefrontApp() {
     cartSubtotal,
     cartTotal,
     voucherDiscountAmount: totalsForDisplay.voucher_discount_amount,
-    quoteNeedsRefresh,
+    isQuoteStale,
     promoDiscountAmount: totalsForDisplay.discount_amount,
     promoDiscountLabel: totalsForDisplay.discount_label,
     goStoreCatalogPage,
@@ -2925,7 +2940,7 @@ export default function StorefrontApp() {
     cartSubtotal,
     cartTotal,
     voucherDiscountAmount: totalsForDisplay.voucher_discount_amount,
-    quoteNeedsRefresh,
+    isQuoteStale,
     promoDiscountAmount: totalsForDisplay.discount_amount,
     promoDiscountLabel: totalsForDisplay.discount_label,
     goStoreCatalogPage,
@@ -3135,17 +3150,6 @@ export default function StorefrontApp() {
     totalsForDisplay,
     withAssetOrigin
   });
-  const fnbAutoQuoteCartSignature = useMemo(() => (
-    cart.map((line) => [
-      line?.cart_line_id || '',
-      line?.item_id || '',
-      Number(line?.quantity || 0),
-      Number(line?.price || 0),
-      Array.isArray(line?.line_modifiers)
-        ? line.line_modifiers.map((entry) => `${entry?.modifier_group_id || ''}:${entry?.modifier_option_id || ''}:${entry?.quantity || 1}`).join(',')
-        : ''
-    ].join(':')).join('|')
-  ), [cart]);
   useEffect(() => {
     const normalizedPromoCode = String(checkoutPromoCode || '').trim().toUpperCase();
     const normalizedVoucherCode = String(checkoutVoucherCode || '').trim().toUpperCase();
@@ -3165,7 +3169,29 @@ export default function StorefrontApp() {
       && fnbFulfillmentStepComplete
     );
 
-    if (!shouldAutoSyncFnbQuote) {
+    // #746 (second occurrence): the F&B arm above is gated on `fnbOrderStep === 4` and the two
+    // step-complete flags, so it NEVER fires from the cart drawer -- and simple/retail/services had
+    // no auto-quote at all. That is why an applied voucher's discount, once invalidated by any cart
+    // edit, could never come back: nothing re-quoted from the drawer, in any mode.
+    //
+    // This arm is mode-agnostic and deliberately requires none of the checkout-step conditions. It
+    // fires only when a discount code is actually applied, so a shopper with no code sees exactly
+    // the request pattern they did before this change. It also repairs the "apply a code on an empty
+    // cart from the catalog toolbar, then add items" path, which previously never quoted at all.
+    const hasAppliedDiscountCode = Boolean(normalizedPromoCode || normalizedVoucherCode);
+    const shouldAutoSyncDiscountQuote = (
+      isStorePage
+      && !hasServiceCart
+      && hasAppliedDiscountCode
+      && Boolean(selectedStore)
+      && cart.length > 0
+      && checkoutPermitted
+      && accessCapabilities.quote !== false
+      && !storefrontClosedByHours
+      && !hasStockViolation
+    );
+
+    if (!shouldAutoSyncFnbQuote && !shouldAutoSyncDiscountQuote) {
       fnbAutoQuoteSyncKeyRef.current = '';
       return undefined;
     }
@@ -3178,27 +3204,38 @@ export default function StorefrontApp() {
       fnbScheduledFor || '',
       normalizedPromoCode,
       normalizedVoucherCode,
-      fnbAutoQuoteCartSignature,
+      cartSignature,
       activePinnedDeliveryAddress || ''
     ].join('::');
     if (fnbAutoQuoteSyncKeyRef.current === syncKey) return undefined;
 
     fnbAutoQuoteSyncKeyRef.current = syncKey;
     let cancelled = false;
+    let fired = false;
     setQuoteError('');
-    requestQuote({ promoCodeOverride: normalizedPromoCode, voucherCodeOverride: normalizedVoucherCode, silent: true }).catch((error) => {
-      if (cancelled) return;
-      fnbAutoQuoteSyncKeyRef.current = '';
-      const violation = extractStockViolation(error);
-      if (violation) {
-        setQuoteError(buildStockExceededMessage(violation));
-        return;
-      }
-      setQuoteError(normalizeStorefrontErrorMessage(error, 'Unable to update order totals.'));
-    });
+    // #746: debounce. Quantity +/- lives inside the cart drawer, so a shopper adjusting an item
+    // three times would otherwise send three quotes. The sync-key guard alone can't collapse these
+    // -- each tap is a genuinely different cart signature.
+    const timer = setTimeout(() => {
+      fired = true;
+      requestQuote({ promoCodeOverride: normalizedPromoCode, voucherCodeOverride: normalizedVoucherCode, silent: true }).catch((error) => {
+        if (cancelled) return;
+        fnbAutoQuoteSyncKeyRef.current = '';
+        const violation = extractStockViolation(error);
+        if (violation) {
+          setQuoteError(buildStockExceededMessage(violation));
+          return;
+        }
+        setQuoteError(normalizeStorefrontErrorMessage(error, 'Unable to update order totals.'));
+      });
+    }, AUTO_QUOTE_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      // Superseded before the request went out -- release the key so the next cart state is allowed
+      // to quote. Leaving it set would silently suppress the quote for a cart that never got one.
+      if (!fired) fnbAutoQuoteSyncKeyRef.current = '';
     };
   }, [
     accessCapabilities.quote,
@@ -3209,7 +3246,7 @@ export default function StorefrontApp() {
     checkoutPromoCode,
     checkoutVoucherCode,
     extractStockViolation,
-    fnbAutoQuoteCartSignature,
+    cartSignature,
     fnbCustomerStepComplete,
     fnbFulfillmentStepComplete,
     fnbOrderStep,
