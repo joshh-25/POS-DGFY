@@ -22,6 +22,9 @@ export function SimpleCheckoutRoutePage({
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -267,14 +270,14 @@ export function SimpleCheckoutRoutePage({
             paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
             onlinePaymentPanel={isOnlinePayment ? (
               <StorefrontOnlinePaymentPanel
+                billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                 onConfirmTestPayment={import.meta.env.DEV
                   && fnbPaymentType === 'qrph'
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                   ? onConfirmQrphTestPayment
                   : null}
-                onUseCash={() => {
+                onChooseAnotherPaymentMethod={() => {
                   resetQrphPaymentSession?.();
-                  onPaymentTypeChange('cash');
                 }}
                 paymentSession={qrphPaymentSession}
                 paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}

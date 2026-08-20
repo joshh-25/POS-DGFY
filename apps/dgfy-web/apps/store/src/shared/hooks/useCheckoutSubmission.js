@@ -2,25 +2,12 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observabi
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
-
-// RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
-// -- this object's own `totals.total_amount` is what the order-confirmation screens
-// (SimpleCheckoutSuccessStep.jsx, FnbCheckoutRouteContainer.jsx) and the downloadable receipt
-// image actually read, and it was still being set from the client's pre-submission
-// `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
-// the authoritative `order.total_amount` from the checkout response, fall back to the client
-// value only if the server didn't send one.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -94,10 +81,6 @@ export function useCheckoutSubmission({
   serviceCartLines,
   serviceCartValidationIssues,
   serviceDraftQuantity,
-  serviceOrderMethod,
-  servicesLocalSimulationEnabled,
-  isServicesLocalSimulationMethod,
-  createServicesLocalSimulation,
   servicePaymentTiming,
   serviceIntakeResponses,
   setCart,
@@ -220,7 +203,7 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
+    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
@@ -250,44 +233,6 @@ export function useCheckoutSubmission({
       const message = 'Verify your email before placing this order.';
       setCheckoutError(message);
       toast.error(message);
-      return;
-    }
-    const shouldCreateLocalServicesSimulation = isServicesMode
-      && servicesLocalSimulationEnabled
-      && typeof isServicesLocalSimulationMethod === 'function'
-      && isServicesLocalSimulationMethod(serviceOrderMethod);
-    if (shouldCreateLocalServicesSimulation) {
-      const localSimulation = createServicesLocalSimulation({
-        customerAddress,
-        customerEmail,
-        customerName,
-        customerPhone,
-        fallbackAmount: totalsForDisplay?.total_amount,
-        routeSlug,
-        selectedStore,
-        serviceAppointmentAt,
-        serviceBookingLine,
-        serviceCartLines,
-        serviceOrderMethod
-      });
-      setCart([]);
-      setSelectedServiceCartLineId('');
-      setCheckoutResult(null);
-      setTrackingPinInput(localSimulation.tracking_pin);
-      setSelectedTrackingPin(localSimulation.tracking_pin);
-      writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, localSimulation.tracking_pin);
-      setServiceAppointmentAt('');
-      setServiceDraftQuantity(1);
-      setServiceDraftNotes('');
-      setServiceIntakeResponses({});
-      setServicePaymentPreviewMethod('qr');
-      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
-      setServicePaymentPreviewReceiptName('');
-      setShowOrderSuccessAnimation(false);
-      setCheckoutTab('track');
-      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: serviceOrderMethod });
-      clearCheckoutAuthResumeDraft();
-      toast.success('Local Services preview created. No backend booking was submitted.');
       return;
     }
     const cartSnapshot = cart.map((line) => ({ ...line }));
@@ -329,7 +274,6 @@ export function useCheckoutSubmission({
           bookingPageIntakeFields,
           customerAddress,
           bookingFieldPlan,
-          serviceAppointmentAt,
           createIdempotencyKey: createStorefrontIdempotencyKey
         });
         if (!servicesSubmitContract.compatible) {
@@ -348,7 +292,7 @@ export function useCheckoutSubmission({
       }
       if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -366,6 +310,11 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
@@ -396,7 +345,7 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
-          ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
+          ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,
           payment_type: fnbPaymentType
@@ -433,7 +382,7 @@ export function useCheckoutSubmission({
           setCheckoutResult({
             ...productData,
             cart_lines: productCartLines,
-            totals: resolveTrackedTotals(productData?.order, totalsForDisplay)
+            totals: totalsForDisplay
           });
           if (productData?.tracking_pin) {
             setTrackingPinInput(productData.tracking_pin);
@@ -445,11 +394,7 @@ export function useCheckoutSubmission({
               order_method: productData?.order?.order_method || orderMethod,
               order: productData?.order || null,
               order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
-              // #747: prefer the server-persisted total over the client's pre-submission snapshot
-              // -- the client value doesn't reflect a just-applied voucher discount, and
-              // retailTrackingPayload.js's own `??` chain would otherwise let this poisoned
-              // top-level field shadow the correct nested order.total_amount.
-              total_amount: productData?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
+              total_amount: totalsForDisplay?.total_amount ?? 0
             }, productData.tracking_pin);
           }
           setQuoteResult(null);
@@ -477,7 +422,7 @@ export function useCheckoutSubmission({
         cart_lines: hasServiceCart && !hasMixedCart
           ? serviceCartLines
           : cartSnapshot,
-        totals: resolveTrackedTotals(data?.order, totalsForDisplay)
+        totals: totalsForDisplay
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -501,26 +446,15 @@ export function useCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          // #747: see the partial-booking-failure branch above for why -- same fix, same reasoning.
-          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
+          total_amount: totalsForDisplay?.total_amount ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
         }
       }
-      const serviceBookingReferences = isServicesMode
-        ? [
-          data?.booking?.public_reference,
-          ...(Array.isArray(data?.bookings) ? data.bookings.map((booking) => booking?.public_reference) : [])
-        ]
-          .map((reference) => String(reference || '').trim().toUpperCase())
-          .filter(Boolean)
-        : [];
-      const submittedServiceTrackingPin = serviceBookingReferences[0] || '';
-      if (submittedServiceTrackingPin) {
-        setTrackingPinInput(submittedServiceTrackingPin);
-        setSelectedTrackingPin(submittedServiceTrackingPin);
-        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, submittedServiceTrackingPin);
+      if (data?.booking?.public_reference) {
+        setTrackingPinInput(data.booking.public_reference);
+        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
       }
       setCart([]);
       if (hasServiceCart) {
@@ -540,18 +474,14 @@ export function useCheckoutSubmission({
         void handleLoadAccountPanel();
       }
       const submittedTrackingPin = String(data?.tracking_pin || '').trim().toUpperCase();
-      const trackingPinToOpen = isServicesMode ? submittedServiceTrackingPin : submittedTrackingPin;
-      if ((isServicesMode && submittedServiceTrackingPin) || (submittedTrackingPin && !hasServiceCart)) {
+      if (submittedTrackingPin && !hasServiceCart) {
         setShowOrderSuccessAnimation(false);
         if (orderSuccessAnimationTimerRef.current) {
           window.clearTimeout(orderSuccessAnimationTimerRef.current);
           orderSuccessAnimationTimerRef.current = null;
         }
         setCheckoutResult(null);
-        goStoreTrackPage({
-          pin: trackingPinToOpen,
-          serviceHandoff: isServicesMode ? serviceOrderMethod : ''
-        });
+        goStoreTrackPage({ pin: submittedTrackingPin });
       } else {
         setFnbOrderStep(4);
         if (isSimpleMode) {

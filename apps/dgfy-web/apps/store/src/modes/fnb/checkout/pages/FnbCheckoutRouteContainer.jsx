@@ -71,6 +71,9 @@ export function FnbCheckoutRouteContainer({
   checkoutLoading,
   checkoutResult,
   checkoutTab,
+  customerEmail,
+  customerName,
+  customerPhone,
   customerPin,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
@@ -704,14 +707,14 @@ export function FnbCheckoutRouteContainer({
                 />
                 {isStorefrontOnlinePaymentType(fnbPaymentType) ? (
                   <FnbQrphPaymentPanel
+                    billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                     onConfirmTestPayment={import.meta.env.DEV
                       && fnbPaymentType === 'qrph'
                       && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                       ? handleConfirmQrphTestPayment
                       : null}
-                    onUseCash={() => {
+                    onChooseAnotherPaymentMethod={() => {
                       resetQrphPaymentSession();
-                      handlePaymentTypeChange('cash');
                     }}
                     paymentSession={qrphPaymentSession}
                     paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}

@@ -230,9 +230,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
     expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
-    expect(storefrontAppSource()).toContain("handleRefreshQrphPaymentSession({ silent: true })");
-    expect(storefrontAppSource()).toContain('pollPaymentStatus();');
-    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)");
+    expect(storefrontAppSource()).toContain("qrphPaymentRefreshRef.current?.({ silent: true })");
+    expect(storefrontAppSource()).toContain('createCompletionTrackingScheduler');
+    expect(storefrontAppSource()).toContain('resolveTrackingRetryDelayMs');
+    expect(storefrontAppSource()).toContain('qrphPaymentRefreshRef.current');
+    expect(storefrontAppSource()).not.toContain('window.setInterval(pollPaymentStatus');
+    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(paymentStatus)");
     expect(storefrontAppSource()).toContain('setFnbOrderStep(4)');
     expect(storefrontAppSource()).toContain('setSimpleOrderStep(3)');
     expect(storefrontAppSource()).toContain("setCheckoutTab('checkout')");
