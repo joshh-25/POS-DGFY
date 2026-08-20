@@ -120,6 +120,18 @@ describe('eligibility masks — null and zero are unrepresentable', () => {
         expect(value.voucher_kind).toBe('promo_code');
         expect(value.allow_below_cost).toBe(false);
         expect(value.stackable_with_statutory).toBe(false);
+        expect(value.is_publicly_listed).toBe(false);
+    });
+
+    // #713: independent of channels_mask -- controls storefront advertising, not code usability.
+    test('is_publicly_listed accepts an explicit true on create and update', () => {
+        const created = validate(createVoucherSchema, validCreatePayload({ is_publicly_listed: true }));
+        expect(created.error).toBeUndefined();
+        expect(created.value.is_publicly_listed).toBe(true);
+
+        const updated = validate(updateVoucherSchema, { is_publicly_listed: true, version: 0 });
+        expect(updated.error).toBeUndefined();
+        expect(updated.value.is_publicly_listed).toBe(true);
     });
 
     test('an out-of-range mask is rejected', () => {

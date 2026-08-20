@@ -53,6 +53,9 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
     'min_quantity',
     'allow_below_cost',
     'stackable_with_statutory',
+    // #713: a plain boolean, like the two flags above -- not in NUMERIC_VOUCHER_COLUMNS below,
+    // which is specifically for MySQL's BIGINT-returned-as-string normalization.
+    'is_publicly_listed',
     'valid_from',
     'valid_until',
     'valid_time_start',

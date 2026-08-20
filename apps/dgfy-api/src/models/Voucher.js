@@ -120,6 +120,15 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: false,
     defaultValue: 1
   },
+  // #713: independent of channels_mask above. channels_mask controls where a code is USABLE
+  // (storefront/POS); this controls whether the voucher is ADVERTISED on the public storefront
+  // discovery page. A B2B pricelist voucher (#696) wants POS-usable and unadvertised -- the reverse
+  // combination channels_mask alone can't express.
+  is_publicly_listed: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   fulfillment_methods_mask: {
     type: DataTypes.TINYINT.UNSIGNED,
     allowNull: false,

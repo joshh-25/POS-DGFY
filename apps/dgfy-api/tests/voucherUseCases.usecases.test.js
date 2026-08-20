@@ -34,6 +34,7 @@ const VOUCHER_DEFAULTS = {
     min_quantity: null,
     allow_below_cost: false,
     stackable_with_statutory: false,
+    is_publicly_listed: false,
     valid_from: null,
     valid_until: null,
     valid_time_start: null,
