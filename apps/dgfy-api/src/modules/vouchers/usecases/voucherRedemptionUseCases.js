@@ -1,5 +1,7 @@
-// Storefront voucher redemption (Phase 105, #455). POS redemption is explicitly out of scope here
-// (gated behind #604) -- `channel` is always `'storefront'` in this module.
+// Storefront voucher redemption (Phase 105, #455). POS redemption itself is still out of scope --
+// every live caller today passes `channel: 'storefront'` -- but `buildRedeemVoucherUseCase` now
+// (#604) fails closed on `channel === 'pos'` unless the tenant-wide POS master switch is on, so the
+// gate is ready ahead of a POS caller existing rather than retrofitted after one does.
 //
 // Two use cases, deliberately different shapes:
 //   - `buildPreviewVoucherEligibilityUseCase` -- read-only. No transaction required. Looks up the
@@ -21,6 +23,7 @@ import { evaluateVoucherEligibility } from '../domain/voucherEligibilityPolicy.j
 import { calculateVoucherBenefit, VoucherBenefitError } from '../domain/voucherBenefitPolicy.js';
 import { resolveVoucherScopeItemIds } from '../domain/voucherFolderScope.js';
 import { VoucherReasonCode, voucherError, voucherConflict } from '../domain/voucherErrors.js';
+import { resolveVoucherPosRedemptionEnabled } from './voucherPosRedemptionSettingCache.js';
 
 const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 const toCentavos = (pesoAmount) => Math.round((Number(pesoAmount) || 0) * 100);
@@ -81,30 +84,55 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         );
     }
 
-    const scopes = await repository.listScopes([voucher.voucher_id], options);
+    // #696: a pricelist-backed voucher uses the pricelist itself as the scope -- `voucher_scopes` is
+    // not consulted at all when one is attached, avoiding two sources of truth for "which items does
+    // this voucher cover". The price map's keys ARE the eligible item-id set.
     let eligibleItemIds = null;
-    if (scopes.length > 0) {
-        const folderScopeRefIds = scopes
-            .filter((scope) => scope.scope_type === 'item_folder')
-            .map((scope) => scope.scope_ref_id);
-        const cartItemIds = [...new Set((lines || []).map((line) => Number(line.item_id)))];
-        const [folders, itemFolderLinks] = await Promise.all([
-            folderScopeRefIds.length > 0 ? repository.listItemFolderAdjacency(options) : Promise.resolve([]),
-            repository.listItemFolderLinksForItems(cartItemIds, options)
-        ]);
-        const resolved = resolveVoucherScopeItemIds({ scopes, folders, items: itemFolderLinks });
-        eligibleItemIds = resolved.itemIds;
+    let fixedUnitPriceByItemId = null;
+    if (voucher.pricelist_id != null) {
+        // #717: `assertPricelistRef` (voucherUseCases.js) only checks status at ATTACH time. A
+        // pricelist archived after a voucher already attached it was previously never re-checked,
+        // so the voucher kept redeeming at the archived prices indefinitely. Fails closed here --
+        // checkout is the higher-stakes side of the fail-open/fail-closed split (ADR 0066 decision
+        // 3); voucherDisplayUseCases.js takes the opposite, fail-open branch for the same check.
+        const pricelistStatus = await repository.findPricelistStatus(voucher.pricelist_id, options);
+        if (!pricelistStatus || pricelistStatus.status !== 'active') {
+            voucherError(
+                'This voucher\'s pricelist is no longer active.',
+                VoucherReasonCode.VOUCHER_PRICELIST_NOT_ACTIVE,
+                { voucher_id: voucher.voucher_id, pricelist_id: voucher.pricelist_id, status: pricelistStatus?.status || null }
+            );
+        }
+        fixedUnitPriceByItemId = await repository.listPricelistItemPrices(voucher.pricelist_id, options);
+        eligibleItemIds = new Set(Object.keys(fixedUnitPriceByItemId).map(Number));
+    } else {
+        const scopes = await repository.listScopes([voucher.voucher_id], options);
+        if (scopes.length > 0) {
+            const folderScopeRefIds = scopes
+                .filter((scope) => scope.scope_type === 'item_folder')
+                .map((scope) => scope.scope_ref_id);
+            const cartItemIds = [...new Set((lines || []).map((line) => Number(line.item_id)))];
+            const [folders, itemFolderLinks] = await Promise.all([
+                folderScopeRefIds.length > 0 ? repository.listItemFolderAdjacency(options) : Promise.resolve([]),
+                repository.listItemFolderLinksForItems(cartItemIds, options)
+            ]);
+            const resolved = resolveVoucherScopeItemIds({ scopes, folders, items: itemFolderLinks });
+            eligibleItemIds = resolved.itemIds;
+        }
     }
 
     const benefitLines = (lines || []).map((line) => ({
         item_id: line.item_id,
         quantity: line.quantity,
         baseUnitPriceCentavos: toCentavos(line.sale_price),
+        // #697: optional -- `storeUseCases.js` supplies `cost_snapshot` (peso, nullable) on every
+        // prepared checkout line; converted here the same way `sale_price` already is.
+        costPerUnitCentavos: line.cost_snapshot == null ? null : toCentavos(line.cost_snapshot),
         eligible: eligibleItemIds == null || eligibleItemIds.has(Number(line.item_id))
     }));
 
     // ADR 0066 decision 3: an unresolvable scope (zero cart-eligible items) fails closed, it does
-    // not silently apply a zero discount.
+    // not silently apply a zero discount. Same rule for a pricelist that matches nothing in the cart.
     if (eligibleItemIds != null && !benefitLines.some((line) => line.eligible)) {
         voucherError(
             'Voucher scope does not match any items in this order.',
@@ -120,6 +148,7 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
             percentOffBps: voucher.percent_off_bps,
             amountOffCentavos: voucher.amount_off_centavos,
             fixedUnitPriceCentavos: voucher.fixed_unit_price_centavos,
+            fixedUnitPriceByItemId,
             maxDiscountCentavos: voucher.max_discount_centavos,
             lines: benefitLines
         });
@@ -130,6 +159,17 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         throw error;
     }
 
+    // #697: fails closed. `allow_below_cost` defaults to false, so this is a real behavior change
+    // for any already-live voucher (of any benefit class -- the check is class-agnostic) that
+    // happens to sell below cost; that tradeoff is the point of the flag, not a bug in enforcing it.
+    if (benefit.belowCostLines.length > 0 && voucher.allow_below_cost !== true) {
+        voucherError(
+            'This voucher would sell one or more items below their cost.',
+            VoucherReasonCode.VOUCHER_PRICE_BELOW_COST,
+            { voucher_id: voucher.voucher_id, below_cost_lines: benefit.belowCostLines }
+        );
+    }
+
     return { voucher, benefit };
 };
 
@@ -137,8 +177,9 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
  * Read-only quote path. No transaction, no reservation -- just eligibility + benefit calc, so a
  * cart preview can show "voucher applies, -₱X" without touching the ledger.
  *
- * @returns {{applied: boolean, voucherId: number|null, code: string|null, benefitClass:
- *   string|null, discountCentavos: number, lineAllocations: Array<Object>}}
+ * @returns {{applied: boolean, voucherId: number|null, code: string|null, title: string|null,
+ *   badge: string|null, benefitClass: string|null, percentOffBps: number|null,
+ *   discountCentavos: number, lineAllocations: Array<Object>}}
  */
 export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async ({
     code,
@@ -147,7 +188,10 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
 } = {}) => {
     const normalizedCode = normalizeCode(code);
     if (!normalizedCode) {
-        return { applied: false, voucherId: null, code: null, benefitClass: null, discountCentavos: 0, lineAllocations: [] };
+        return {
+            applied: false, voucherId: null, code: null, title: null, badge: null,
+            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+        };
     }
 
     const { voucher, benefit } = await resolveEligibleBenefit({ repository, code, context, lines });
@@ -156,7 +200,13 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
         applied: true,
         voucherId: voucher.voucher_id,
         code: voucher.code,
+        // #667 Phase 110: threaded through so a caller building a fiscal discount-label snapshot
+        // (mirroring commercialPromoPolicy.js's `badge || title || fallback`) doesn't need a second
+        // lookup -- the voucher row is already in scope here.
+        title: voucher.title,
+        badge: voucher.badge,
         benefitClass: voucher.benefit_class,
+        percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
         lineAllocations: benefit.lineAllocations
     };
@@ -176,7 +226,9 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
  *        (decision 11 -- a later folder move must not retroactively change what this meant).
  *
  * @returns {{applied: boolean, idempotentReplay: boolean, redemptionId: number|null,
- *   voucherId: number|null, discountCentavos: number, lineAllocations: Array<Object>}}
+ *   voucherId: number|null, code: string|null, title: string|null, badge: string|null,
+ *   benefitClass: string|null, percentOffBps: number|null, discountCentavos: number,
+ *   lineAllocations: Array<Object>}}
  */
 export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     code,
@@ -196,9 +248,39 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         );
     }
 
+    // #693: the empty-code short-circuit must run BEFORE the POS master-switch guard below, not
+    // after. This function's own contract (see the module docstring above) is "an EMPTY code is a
+    // silent no-op... an entered code that fails to resolve fails closed" -- an empty code was never
+    // supposed to reach any resolution logic, gate included. With the guard ordered first, a POS
+    // checkout carrying NO voucher code at all (channel: 'pos', code: '') threw 422
+    // VOUCHER_POS_REDEMPTION_DISABLED whenever the tenant-wide switch was off (its default), instead
+    // of the benign no-op every other empty-code caller gets. Latent today -- no live caller passes
+    // channel: 'pos' yet -- but would have broken the first POS checkout the moment one did.
     const normalizedCode = normalizeCode(code);
     if (!normalizedCode) {
-        return { applied: false, idempotentReplay: false, redemptionId: null, voucherId: null, discountCentavos: 0, lineAllocations: [] };
+        return {
+            applied: false, idempotentReplay: false, redemptionId: null, voucherId: null,
+            code: null, title: null, badge: null, benefitClass: null, percentOffBps: null,
+            discountCentavos: 0, lineAllocations: []
+        };
+    }
+
+    // #604: tenant-wide POS voucher redemption master switch, default off. Deliberately checked
+    // here rather than in a POS-side checkout use case, since this is the one function every future
+    // POS redemption caller will have to go through -- a tenant-wide, channel-aware, un-bypassable
+    // gate. Orthogonal to a voucher's own `channels` mask (checked separately, inside
+    // resolveEligibleBenefit's evaluateVoucherEligibility call, below) -- this can disable POS
+    // redemption tenant-wide even for a voucher whose own channels already include `pos`. No live
+    // caller passes `channel: 'pos'` yet (POS redemption itself is not built); this fails closed the
+    // moment one does, rather than defaulting open by omission.
+    if (channel === 'pos') {
+        const posRedemptionEnabled = await resolveVoucherPosRedemptionEnabled();
+        if (!posRedemptionEnabled) {
+            voucherError(
+                'Voucher redemption at POS is disabled for this store.',
+                VoucherReasonCode.VOUCHER_POS_REDEMPTION_DISABLED
+            );
+        }
     }
 
     const normalizedIdempotencyKey = String(idempotencyKey || '').trim();
@@ -217,13 +299,25 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
 
     const existing = await repository.findRedemptionByIdempotencyKey(ledgerIdempotencyKey, options);
     if (existing) {
+        const existingDiscountCentavos = Number(existing.discount_centavos);
         return {
             applied: true,
             idempotentReplay: true,
             redemptionId: existing.voucher_redemption_id,
             voucherId: voucher.voucher_id,
-            discountCentavos: Number(existing.discount_centavos),
-            lineAllocations: []
+            code: voucher.code,
+            title: voucher.title,
+            badge: voucher.badge,
+            benefitClass: voucher.benefit_class,
+            percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
+            discountCentavos: existingDiscountCentavos,
+            // #667 Phase 110: only trust this replay's freshly-recomputed allocations if they'd sum
+            // to the same discount the existing ledger row already recorded -- a re-run whose
+            // recomputed benefit disagrees with what was actually reserved (voucher edited between
+            // the original attempt and this replay) must not hand the caller allocations that don't
+            // match the ledger truth. Empty is safe here: the caller's own defensive guard (checkout
+            // use case) only requires non-empty allocations on a FRESH (non-replay) redemption.
+            lineAllocations: existingDiscountCentavos === benefit.discountCentavos ? benefit.lineAllocations : []
         };
     }
 
@@ -294,6 +388,8 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         idempotency_key: ledgerIdempotencyKey
     }, { transaction });
 
+    // Ledger rows only ever record lines this voucher actually discounted -- an ineligible or
+    // zero-discount line has nothing to reverse and would just be dead weight in the ledger.
     const redemptionLines = benefit.lineAllocations
         .filter((line) => line.quantity > 0 && line.discountCentavos > 0)
         .map((line) => ({
@@ -314,7 +410,18 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         idempotentReplay: false,
         redemptionId: ledgerEntry.voucher_redemption_id,
         voucherId: voucher.voucher_id,
+        code: voucher.code,
+        title: voucher.title,
+        badge: voucher.badge,
+        benefitClass: voucher.benefit_class,
+        percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
-        lineAllocations: redemptionLines
+        // #667 Phase 110: the UNFILTERED allocation set (same length/order as the input `lines`),
+        // not `redemptionLines` above -- a caller building a fiscal audit-row allocation needs to
+        // map positionally against its own transaction lines (`storeRepository.js`'s
+        // `createOnlineTransactionWithLines`, the same shape the promo path already uses), and a
+        // filtered, ledger-row-shaped array can't be indexed that way. `redemptionLines` stays the
+        // ledger's own record; this is a separate, caller-facing shape.
+        lineAllocations: benefit.lineAllocations
     };
 };

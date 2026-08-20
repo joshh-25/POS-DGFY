@@ -12,6 +12,8 @@ import {
   Percent,
   Settings2,
   ShoppingCart,
+  Tags,
+  Ticket,
   Truck,
   UserRound
 } from 'lucide-react';
@@ -72,6 +74,7 @@ export default function TerminalWorkspaceSidebar({
   currentViewMode = 'checkout',
   canViewPos = false,
   canViewAudit = false,
+  canViewVouchers = false,
   canManageCategories = false,
   showServiceOperations = false,
   showIncomingQueue = true,
@@ -343,6 +346,47 @@ export default function TerminalWorkspaceSidebar({
             testId="pos-nav-settings"
             collapsed={isCollapsed}
           />
+          {/* RF-4 (PR #762 review): #732's own decision record places Vouchers/Pricelists
+              between Settings and Affiliates -- shipped order had them after Affiliates instead.
+              Gated on canViewVouchers (mirrors routes/pricelists.js's own server-side dual-gate:
+              vouchers:view/vouchers:manage OR the legacy settings:view/settings:edit pair), AND
+              (RF-8) !isCashierRole -- CASHIER_ALLOWED_VIEW_MODES excludes both new modes, so a
+              cashier carrying a custom settings:view grant would otherwise see a button that's
+              guaranteed to reject on click. */}
+          {canViewVouchers && !isCashierRole && (
+            <NavButton
+              label="Vouchers"
+              icon={Ticket}
+              active={currentViewMode === 'settings_vouchers'}
+              onClick={() => onSelectViewMode('settings_vouchers')}
+              onPrefetch={() => onPrefetchViewMode('settings_vouchers')}
+              disabled={locked || !isOnline}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (!isOnline ? 'Available online only' : 'Create and manage vouchers, codes, and redemption rules')
+              }
+              testId="pos-nav-vouchers"
+              collapsed={isCollapsed}
+            />
+          )}
+          {canViewVouchers && !isCashierRole && (
+            <NavButton
+              label="Pricelists"
+              icon={Tags}
+              active={currentViewMode === 'settings_pricelists'}
+              onClick={() => onSelectViewMode('settings_pricelists')}
+              onPrefetch={() => onPrefetchViewMode('settings_pricelists')}
+              disabled={locked || !isOnline}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (!isOnline ? 'Available online only' : 'Set per-item fixed prices for wholesale/B2B-via-B2C vouchers')
+              }
+              testId="pos-nav-pricelists"
+              collapsed={isCollapsed}
+            />
+          )}
           {!isCashierRole && (
             <NavButton
               label="Affiliates"

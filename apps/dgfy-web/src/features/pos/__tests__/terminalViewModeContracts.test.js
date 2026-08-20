@@ -107,6 +107,26 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_affiliates':");
   });
 
+  // #732: Vouchers/Pricelists promoted out of the Settings tab strip to their own top-level nav
+  // modes, mirroring settings_affiliates's own earlier promotion exactly.
+  it('promotes Vouchers and Pricelists to top-level nav modes, out of the Settings tab strip', () => {
+    expect(terminalPageContent).toContain("'settings_vouchers'");
+    expect(terminalPageContent).toContain("'settings_pricelists'");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_vouchers':");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_pricelists':");
+    expect(terminalPageContent).toContain('const canViewVouchers');
+    expect(terminalWorkspaceSidebarContent).toContain('canViewVouchers');
+    expect(terminalWorkspaceSidebarContent).toContain("onSelectViewMode('settings_vouchers')");
+    expect(terminalWorkspaceSidebarContent).toContain("onSelectViewMode('settings_pricelists')");
+    // The tab strip's own entries are gone -- these were previously reached via
+    // `{ id: 'vouchers', ... }` / `{ id: 'pricelists', ... }` inside SETTINGS_TABS. Narrowed
+    // (RF-7, PR #762 review) to the exact tab-entry construct rather than a whole-file negative
+    // substring match, which would fail for a reason unrelated to #732 the moment any other
+    // unrelated `id: 'vouchers'` (a form field, a section anchor, a test hook) is ever added.
+    expect(terminalOperationsWorkspaceContent).not.toMatch(/\{\s*id:\s*'vouchers',\s*label:/);
+    expect(terminalOperationsWorkspaceContent).not.toMatch(/\{\s*id:\s*'pricelists',\s*label:/);
+  });
+
   it('keeps always-available items sellable across both POS checkout surfaces', () => {
     expect(terminalOperationsWorkspaceContent).toContain('pos_always_available');
     expect(terminalOperationsWorkspaceContent).toContain('Always Available');

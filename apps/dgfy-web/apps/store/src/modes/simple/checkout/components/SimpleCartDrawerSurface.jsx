@@ -27,10 +27,20 @@ export function SimpleCartDrawerSurface({
   servicesBodyFont,
   servicesPrimary,
   servicesPrimaryDark,
-  servicesPrimaryShadowStrong
+  servicesPrimaryShadowStrong,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
+  voucherDiscountAmount = 0
 }) {
   const primaryTint = '#FFF8E7';
   const primarySoftBorder = '#E4C98E';
+  // #746: see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning, ported here.
+  // RF-2 (PR #753 review): gated on !quoteNeedsRefresh too -- see that file's own note.
+  const hasVoucherDiscount = !quoteNeedsRefresh && voucherDiscountAmount > 0;
+  // RF-3 (PR #753 review): see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning.
+  const hasPromoDiscount = !quoteNeedsRefresh && promoDiscountAmount > 0;
+  const displayTotal = Math.max(0, cartTotal - (hasVoucherDiscount ? voucherDiscountAmount : 0) - (hasPromoDiscount ? promoDiscountAmount : 0));
 
   return (
     <div
@@ -159,6 +169,18 @@ export function SimpleCartDrawerSurface({
               <span>Subtotal</span>
               <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartSubtotal)}</span>
             </div>
+            {hasPromoDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>{promoDiscountLabel || 'Promo Discount'}</span>
+                <span style={{ fontWeight: 700 }}>- {money(promoDiscountAmount)}</span>
+              </div>
+            )}
+            {hasVoucherDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>Voucher Discount</span>
+                <span style={{ fontWeight: 700 }}>- {money(voucherDiscountAmount)}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -166,7 +188,7 @@ export function SimpleCartDrawerSurface({
               <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
             </div>
-            <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>
 
           <button

@@ -29,6 +29,10 @@ export function useDefaultProductCartDrawerProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
   const closeDrawer = useCallback(() => {
@@ -78,6 +82,10 @@ export function useDefaultProductCartDrawerProps({
       onUpdateQuantity: updateQty,
       renderPromoCodePanel,
       servicesBodyFont,
+      promoDiscountAmount,
+      promoDiscountLabel,
+      quoteNeedsRefresh,
+      voucherDiscountAmount,
       withAssetOrigin
     }
   }), [
@@ -101,6 +109,10 @@ export function useDefaultProductCartDrawerProps({
     servicesBodyFont,
     toggleDrawer,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    quoteNeedsRefresh,
+    voucherDiscountAmount,
     withAssetOrigin
   ]);
 }

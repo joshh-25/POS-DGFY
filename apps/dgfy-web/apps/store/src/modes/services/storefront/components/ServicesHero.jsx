@@ -1,12 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ChevronRight,
   MapPin,
   MessageSquare,
   MousePointer2,
   Phone,
-  Star,
-  Store
+  Star
 } from 'lucide-react';
 import { buildPublicStorefrontUrl } from '../../../../app/runtime/storefrontRuntime.js';
 import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
@@ -18,6 +16,7 @@ import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../sh
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { ServiceImage } from '../../ServiceImage.jsx';
 import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
@@ -39,13 +38,10 @@ const ServicesHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   goStore,
   hasServiceCart,
   goStoreBookingPage,
-  cartCount,
   modeAdapter,
   isBrandingImageBlocked,
   markBrandingImageError,
@@ -109,7 +105,6 @@ const ServicesHero = ({
     hasAboutOrGallerySection,
     hasAboutSection,
     hasAboutToggle,
-    hasAddress,
     hasContactRows,
     hasGallerySection,
     hasMapData,
@@ -190,7 +185,7 @@ const ServicesHero = ({
               selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
             />
           ) : (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont, minWidth: 0, maxWidth: 236, flex: '0 1 236px' }}>
               <MapPin size={16} />
               {!hasSelectedBranchFromMenu && <span>Branch:</span>}
               <StorefrontDropdown
@@ -206,11 +201,11 @@ const ServicesHero = ({
                   background: 'transparent',
                   boxShadow: 'none',
                   padding: '4px 34px 4px 2px',
-                  fontFamily: '"Inter", sans-serif'
+                  fontFamily: servicesBodyFont
                 }}
                 containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
                 menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
-                optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
+                optionStyle={{ padding: '12px 18px', fontFamily: servicesBodyFont }}
                 selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
               />
             </label>
@@ -280,7 +275,7 @@ const ServicesHero = ({
           }}>
             <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: servicesResponsiveLayout.isTabletViewport ? 24 : 35 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
+                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont }}>{serviceHeroModel.statusLabel}</Badge>
                 {serviceHeroModel.hours && (
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
                 )}
@@ -301,7 +296,7 @@ const ServicesHero = ({
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
                 )}
               </div>
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 400, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
                 <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
                 {followEnabled && (
@@ -338,7 +333,7 @@ const ServicesHero = ({
                     return;
                   }
                   document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }} style={{ minWidth: 150, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${servicesPrimaryShadow}`, border: 'none', fontWeight: 900, fontFamily: servicesBodyFont }}>
+                }} style={{ minWidth: 150, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${servicesPrimaryShadow}`, border: 'none', fontWeight: 800, fontFamily: servicesBodyFont }}>
                   <MousePointer2 size={18} />
                   {hasServiceCart ? 'Continue Booking' : 'Order Now'}
                 </PrimaryButton>
@@ -459,27 +454,27 @@ const ServicesHero = ({
         <div style={{
           display: servicesResponsiveLayout.isMobileViewport ? 'none' : 'grid',
           maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-          margin: servicesResponsiveLayout.isTabletViewport ? '56px 24px 36px' : '70px auto 40px',
-          padding: 26,
+          margin: servicesResponsiveLayout.isTabletViewport ? '56px 24px 36px' : '64px auto 36px',
+          padding: 24,
           background: '#ffffff',
           border: '1px solid #e8edf3',
           borderRadius: 24,
           boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
           gridTemplateColumns: desktopColumns,
-          gap: 26
+          gap: 24
         }}>
           {hasAboutOrGallerySection && (
-            <div style={{ display: 'grid', gap: 20, alignContent: 'start' }}>
+            <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
               {hasAboutSection && (
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>About Us</div>
                   <p style={{
-                    fontSize: 14,
+                    fontSize: 13,
                     lineHeight: 1.7,
                     color: '#475569',
                     margin: 0,
                     display: isAboutExpanded ? 'block' : '-webkit-box',
-                    WebkitLineClamp: isAboutExpanded ? 'unset' : 4,
+                    WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
                     fontFamily: servicesBodyFont
@@ -495,14 +490,12 @@ const ServicesHero = ({
               )}
 
               {hasGallerySection && (
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2 }}>
                     {previewImages.map((url, index) => (
                       <div key={`${url}-${index}`} style={{ width: '100%', height: 72, borderRadius: 10, overflow: 'hidden', background: '#e2e8f0' }}>
-                        {/* No image_variants payload exists for gallery entries (unlike
-                            cover/profile) -- plain lazy <img> until that's added. */}
-                        <img src={url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <ServiceImage imageSources={{ src: url }} alt="" sizes="120px" width={120} height={72} fallbackLabel="" />
                       </div>
                     ))}
                   </div>
@@ -516,30 +509,30 @@ const ServicesHero = ({
             </div>
           )}
 
-          <div style={{ paddingLeft: hasAboutOrGallerySection ? 26 : 0, borderLeft: hasAboutOrGallerySection ? '1px solid #eef2f6' : 'none' }}>
-            <ServicesHeroDesktopContactLocation
-              deliveryPlatformLinks={deliveryPlatformLinks}
-              hasContactRows={hasContactRows}
-              hasMapData={hasMapData}
-              modeAdapter={modeAdapter}
-              openStorefrontActionLink={openStorefrontActionLink}
-              serviceHeroModel={serviceHeroModel}
-              servicesBodyFont={servicesBodyFont}
-              servicesPrimary={servicesPrimary}
-              servicesPrimaryDark={servicesPrimaryDark}
-              setIsExpandedMapOpen={setIsExpandedMapOpen}
-              STOREFRONT_CONTACT_INFO_COLUMNS={STOREFRONT_CONTACT_INFO_COLUMNS}
-              STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
-              STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
-              StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
-              visibleContactRows={visibleContactRows}
-            />
-          </div>
+          <ServicesHeroDesktopContactLocation
+            deliveryPlatformLinks={deliveryPlatformLinks}
+            hasAboutOrGallerySection={hasAboutOrGallerySection}
+            hasContactRows={hasContactRows}
+            hasMapData={hasMapData}
+            modeAdapter={modeAdapter}
+            openStorefrontActionLink={openStorefrontActionLink}
+            serviceHeroModel={serviceHeroModel}
+            servicesBodyFont={servicesBodyFont}
+            servicesPrimary={servicesPrimary}
+            servicesPrimaryDark={servicesPrimaryDark}
+            setIsExpandedMapOpen={setIsExpandedMapOpen}
+            STOREFRONT_CONTACT_INFO_COLUMNS={STOREFRONT_CONTACT_INFO_COLUMNS}
+            STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
+            STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
+            StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
+            visibleContactRows={visibleContactRows}
+          />
 
           {hasWhyChooseUs && (
             <ServicesHeroDesktopWhyChooseUs
               servicesBodyFont={servicesBodyFont}
               servicesPrimary={servicesPrimary}
+              servicesPrimarySoft={servicesPrimarySoft}
               visibleWhyChooseUs={visibleWhyChooseUs}
             />
           )}

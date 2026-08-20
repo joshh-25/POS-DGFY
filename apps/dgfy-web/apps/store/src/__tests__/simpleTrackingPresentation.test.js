@@ -54,7 +54,7 @@ describe('Simple tracking route boundary', () => {
     expect(classicCatalog).not.toContain('RetailTrackingRouteContainer');
     expect(appRoute).toContain('RetailStorefrontRouteContainer');
     expect(retailRoute).toContain('RetailTrackingRouteContainer');
-    expect(shell).toContain('!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer');
+    expect(shell).toContain('!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer');
     expect(shell).toContain('isRetailMode && <RetailTrackingRouteContainer');
   });
 });

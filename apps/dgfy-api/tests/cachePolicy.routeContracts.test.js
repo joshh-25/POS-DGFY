@@ -75,6 +75,26 @@ describe('cache policy route contracts', () => {
         });
     });
 
+    it('bypasses the shared catalog/QR cache for both a voucher code and affiliate attribution (#671)', () => {
+        // Both are per-buyer pricing overrides baked into the response body -- a shared cache must
+        // not serve one buyer's priced response to another. Contract-level (source-text) check,
+        // matching this file's existing style, since these routes need a live DB-backed app to
+        // exercise as a real request.
+        expectRouteContract({
+            source: storeRoutes,
+            method: 'get',
+            routePath: '/catalog',
+            requiredFragments: ['bypassCacheForPerBuyerPricing']
+        });
+        expectRouteContract({
+            source: storeRoutes,
+            method: 'get',
+            routePath: '/qr/resolve',
+            requiredFragments: ['bypassCacheForPerBuyerPricing']
+        });
+        expect(storeRoutes).toMatch(/bypassCacheForPerBuyerPricing[\s\S]{0,400}getCookie\(req, SESSION_COOKIE_NAMES\.affiliateAttribution\)/);
+    });
+
     it('keeps mutation/auth endpoints non-cacheable with no-store middleware', () => {
         expectRouteContract({
             source: storeRoutes,

@@ -134,6 +134,7 @@ export function FnbCheckoutRouteContainer({
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
   quoteError,
@@ -574,6 +575,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={false}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
               scheduleLabel={fnbScheduleSummaryLabel}
               totals={totalsForDisplay}
@@ -651,6 +653,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={false}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
               scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
               totals={totalsForDisplay}
@@ -743,6 +746,7 @@ export function FnbCheckoutRouteContainer({
               }}
               paymentStep={true}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={null}
               scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
               totals={totalsForDisplay}
@@ -784,6 +788,7 @@ export function FnbCheckoutRouteContainer({
           onToggleSummary={() => setShowFnbMobileOrderSummary((previous) => !previous)}
           orderStep={fnbOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          voucherDiscountSummaryRow={voucherDiscountSummaryRow}
           promoPanel={fnbOrderStep === 4 ? null : renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={fnbScheduleSummaryLabel}
           setSummaryOpen={setShowFnbMobileOrderSummary}

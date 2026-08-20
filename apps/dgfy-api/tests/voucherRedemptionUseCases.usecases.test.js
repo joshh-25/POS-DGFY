@@ -55,12 +55,19 @@ const CONTEXT = {
 
 const LINES = [{ item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 }];
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = [] } = {}) => {
+const makeFakeRepository = ({
+    vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {}
+} = {}) => {
     const state = {
         vouchers: vouchers.map((v) => ({ ...v })),
         scopes: scopes.map((s) => ({ ...s })),
         folders: folders.map((f) => ({ ...f })),
         items: items.map((i) => ({ ...i })),
+        pricelistItemsByPricelistId,
+        // #717: defaults to 'active' for any pricelist referenced by pricelistItemsByPricelistId --
+        // an explicit override (e.g. `{ [id]: 'archived' }`) is only needed by tests exercising the
+        // new use-time re-check.
+        pricelistStatusById,
         redemptions: [],
         lines: [],
         nextRedemptionId: 1,
@@ -101,6 +108,20 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [], items = 
             state.calls.push('listItemFolderLinksForItems');
             const ids = new Set((itemIds || []).map(Number));
             return state.items.filter((i) => ids.has(Number(i.item_id))).map((i) => ({ ...i }));
+        },
+
+        async listPricelistItemPrices(pricelistId) {
+            state.calls.push('listPricelistItemPrices');
+            return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
+        },
+
+        async findPricelistStatus(pricelistId) {
+            state.calls.push('findPricelistStatus');
+            const id = Number(pricelistId);
+            const status = Object.prototype.hasOwnProperty.call(state.pricelistStatusById, id)
+                ? state.pricelistStatusById[id]
+                : 'active';
+            return { pricelist_id: id, status };
         },
 
         async findRedemptionByIdempotencyKey(key) {
@@ -166,7 +187,10 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
         const repository = makeFakeRepository();
         const preview = buildPreviewVoucherEligibilityUseCase({ repository });
         const result = await preview({ code: '', context: CONTEXT, lines: LINES });
-        expect(result).toEqual({ applied: false, voucherId: null, code: null, benefitClass: null, discountCentavos: 0, lineAllocations: [] });
+        expect(result).toEqual({
+            applied: false, voucherId: null, code: null, title: null, badge: null,
+            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+        });
     });
 
     it('fails closed with VOUCHER_NOT_FOUND for an entered-but-unknown code', async () => {
@@ -188,6 +212,37 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
         expect(repository.__state.calls).not.toContain('reserveRedemption');
         expect(repository.__state.redemptions).toHaveLength(0);
     });
+
+    // #697: the preview path shares `resolveEligibleBenefit` with redeem, so it fails closed on the
+    // same below-cost condition -- a cart quote must never promise a discount checkout will refuse.
+    it('fails closed on a below-cost line, same as redemption', async () => {
+        const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 100 });
+        const repository = makeFakeRepository({ vouchers: [voucher] });
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+        // sale_price 50 pesos / cost_snapshot 30 pesos -> pinned price 1 peso undercuts the 30-peso cost.
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+        await expectVoucherError(
+            preview({ code: 'save10', context: CONTEXT, lines: belowCostLines }),
+            VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+        );
+    });
+
+    // RF-3 (PR #699 review): the preview path shares `resolveEligibleBenefit` with redeem, so an
+    // `allow_below_cost: true` voucher must quote successfully here too, not just at redemption --
+    // otherwise a cart preview would refuse a discount checkout would actually honor.
+    it('succeeds on a below-cost line when allow_below_cost is true, same as redemption', async () => {
+        const voucher = makeVoucher({
+            benefit_class: 'fixed_price',
+            percent_off_bps: null,
+            fixed_unit_price_centavos: 100,
+            allow_below_cost: true
+        });
+        const repository = makeFakeRepository({ vouchers: [voucher] });
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+        const result = await preview({ code: 'save10', context: CONTEXT, lines: belowCostLines });
+        expect(result.applied).toBe(true);
+    });
 });
 
 describe('buildRedeemVoucherUseCase', () => {
@@ -203,6 +258,24 @@ describe('buildRedeemVoucherUseCase', () => {
         const redeem = buildRedeemVoucherUseCase({ repository });
         const result = await redeem({
             code: '', context: CONTEXT, lines: LINES, idempotencyKey: 'abc12345', transaction: FAKE_TRANSACTION
+        });
+        expect(result.applied).toBe(false);
+        expect(repository.__state.calls).toHaveLength(0);
+    });
+
+    // #693: the POS master-switch guard used to run BEFORE this empty-code short-circuit, so a POS
+    // checkout carrying no voucher code at all reached `resolveVoucherPosRedemptionEnabled()` --
+    // which reads a real SystemSetting model with no test double here -- and threw
+    // VOUCHER_POS_REDEMPTION_DISABLED (or, with no live DB, an unrelated connection error) instead
+    // of the same benign no-op every other empty-code caller gets. This deliberately does NOT mock
+    // resolveVoucherPosRedemptionEnabled: if the ordering ever regresses, this test fails loudly
+    // (reject/timeout against a real, unconnected Sequelize model) rather than passing by accident.
+    it('is a no-op for an empty code on the POS channel, even with the master switch off (#693)', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: '', context: CONTEXT, lines: LINES, idempotencyKey: 'abc12345',
+            channel: 'pos', transaction: FAKE_TRANSACTION
         });
         expect(result.applied).toBe(false);
         expect(repository.__state.calls).toHaveLength(0);
@@ -331,6 +404,166 @@ describe('buildRedeemVoucherUseCase', () => {
         });
         expect(result.applied).toBe(true);
         expect(result.discountCentavos).toBe(1000);
+    });
+
+    describe('#696 pricelist-backed voucher', () => {
+        const pricelistVoucher = makeVoucher({
+            benefit_class: 'fixed_price',
+            percent_off_bps: null,
+            fixed_unit_price_centavos: null,
+            pricelist_id: 7
+        });
+        // Cart item 1 costs 50 pesos (LINES); pricelist pins it to 4000 centavos (₱40).
+        const twoItemLines = [
+            { item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 },
+            { item_id: 2, quantity: 1, sale_price: 100, line_subtotal: 100 }
+        ];
+
+        it('uses the pricelist as the scope -- voucher_scopes is never consulted', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                // A scope row exists but must be ignored entirely once a pricelist is attached.
+                scopes: [{ voucher_id: 1, scope_type: 'item', scope_ref_id: 999 }],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-1', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+            expect(result.discountCentavos).toBe(2000); // 2 x (5000 - 4000) centavos
+            expect(repository.__state.calls).toContain('listPricelistItemPrices');
+            expect(repository.__state.calls).not.toContain('listScopes');
+        });
+
+        it('prices only the items on the pricelist -- an unpriced cart line gets no discount', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } } // item 2 is not on this pricelist
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: twoItemLines, idempotencyKey: 'k-pricelist-2', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+            expect(result.discountCentavos).toBe(2000); // only item 1's line discounts
+            // #667 Phase 110: `result.lineAllocations` is now the UNFILTERED per-input-line array
+            // (needed by a fiscal-audit-row caller to map positionally against its own transaction
+            // lines), so it legitimately includes item 2 with `eligible: false, discountCentavos: 0`
+            // -- that is not what this test is actually checking. What "an unpriced cart line gets
+            // no discount" really asserts is that the LEDGER never persists a row for it, which is
+            // `repository.__state.lines` (the fake's record of `createRedemptionLines` calls), not
+            // the returned allocations.
+            const item2Allocation = result.lineAllocations.find((line) => line.item_id === 2);
+            expect(item2Allocation.eligible).toBe(false);
+            expect(item2Allocation.discountCentavos).toBe(0);
+            expect(repository.__state.lines.find((line) => line.item_id === 2)).toBeUndefined();
+        });
+
+        it('fails closed when the pricelist matches nothing in the cart', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 999: 100 } } // no cart item is item 999
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-3', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_SCOPE_NO_ELIGIBLE_ITEMS
+            );
+        });
+
+        // #717: attach-time status checking (voucherUseCases.js's assertPricelistRef) does not
+        // protect against a pricelist archived AFTER a voucher already attached it -- this is the
+        // use-time re-check that closes that gap. Checkout fails closed (contrast the display
+        // use case's fail-open behavior, covered in voucherDisplayUseCases.usecases.test.js).
+        it('fails closed with VOUCHER_PRICELIST_NOT_ACTIVE when the attached pricelist has been archived', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } },
+                pricelistStatusById: { 7: 'archived' }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-4', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICELIST_NOT_ACTIVE
+            );
+            // Fails BEFORE the price lookup and before anything reserves -- an archived pricelist
+            // must not burn a redemption either.
+            expect(repository.__state.calls).not.toContain('listPricelistItemPrices');
+            expect(repository.__state.calls).not.toContain('reserveRedemption');
+        });
+
+        it('succeeds when the attached pricelist is still active (explicit status, not just the default)', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [pricelistVoucher],
+                pricelistItemsByPricelistId: { 7: { 1: 4000 } },
+                pricelistStatusById: { 7: 'active' }
+            });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: LINES, idempotencyKey: 'k-pricelist-5', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+        });
+    });
+
+    describe('#697 below-cost guard', () => {
+        const belowCostLines = [{ item_id: 1, quantity: 2, sale_price: 50, cost_snapshot: 30, line_subtotal: 100 }];
+
+        it('fails closed with VOUCHER_PRICE_BELOW_COST when allow_below_cost is false (the default)', async () => {
+            const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 100 });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-below-cost', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+            );
+            expect(repository.__state.calls).not.toContain('reserveRedemption');
+        });
+
+        it('succeeds when allow_below_cost is true', async () => {
+            const voucher = makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: 100,
+                allow_below_cost: true
+            });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-allowed', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+        });
+
+        it('is class-agnostic: a deep percent_off below cost also fails closed', async () => {
+            const voucher = makeVoucher({ percent_off_bps: 9000 }); // 90% off
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            await expectVoucherError(
+                redeem({
+                    code: 'SAVE10', context: CONTEXT, lines: belowCostLines, idempotencyKey: 'k-percent-below-cost', transaction: FAKE_TRANSACTION
+                }),
+                VoucherReasonCode.VOUCHER_PRICE_BELOW_COST
+            );
+        });
+
+        it('does not block a line with no recorded cost', async () => {
+            const voucher = makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 0 });
+            const repository = makeFakeRepository({ vouchers: [voucher] });
+            const redeem = buildRedeemVoucherUseCase({ repository });
+            const noCostLines = [{ item_id: 1, quantity: 1, sale_price: 50, cost_snapshot: null, line_subtotal: 50 }];
+            const result = await redeem({
+                code: 'SAVE10', context: CONTEXT, lines: noCostLines, idempotencyKey: 'k-no-cost', transaction: FAKE_TRANSACTION
+            });
+            expect(result.applied).toBe(true);
+        });
     });
 
     describe('the three exhaustion guards', () => {

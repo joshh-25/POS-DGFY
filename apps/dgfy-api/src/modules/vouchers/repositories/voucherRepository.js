@@ -491,6 +491,63 @@ export const voucherRepository = {
             raw: true
         });
         return rows;
+    },
+
+    // ---------------------------------------------------------------------------------------
+    // #696 addition -- the one pricelist read the voucher domain itself needs. Pricelist CRUD/
+    // lifecycle lives in its own pricelistRepository.js (a distinct aggregate), but resolving a
+    // pricelist-backed voucher's benefit is a voucher-domain concern, so this lookup stays here
+    // rather than threading a second repository dependency into voucherRedemptionUseCases.js /
+    // voucherDisplayUseCases.js.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Existence + status only, for `voucherUseCases.js`'s attach-time validation (mirrors
+     * `assertScopeRefsExist`'s own existence-only, attach-time-only contract).
+     */
+    async findPricelistStatus(pricelistId, options = {}) {
+        const id = Number(pricelistId);
+        if (!Number.isInteger(id) || id <= 0) return null;
+
+        const Pricelist = dbStore.get('Pricelist');
+        const row = await Pricelist.findByPk(id, {
+            attributes: ['pricelist_id', 'status'],
+            transaction: options.transaction,
+            // #717: `raw: true` + `lock` don't combine cleanly in every Sequelize/dialect pairing,
+            // but `options.lock` was previously dropped here entirely (contrast pricelistRepository.js,
+            // which honors it) -- no FOR UPDATE was ever taken on this read despite the redemption
+            // path passing `lock: true` in good faith. Locking only matters with a transaction present.
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            raw: true
+        });
+        return row || null;
+    },
+
+    /**
+     * `{ [item_id]: unitPriceCentavos }` for every row on a pricelist. The map's keys ARE the
+     * eligible item-id set for a pricelist-backed voucher -- when attached, the pricelist is the
+     * scope and `voucher_scopes` is not consulted (#696).
+     */
+    async listPricelistItemPrices(pricelistId, options = {}) {
+        const id = Number(pricelistId);
+        if (!Number.isInteger(id) || id <= 0) return {};
+
+        const PricelistItem = dbStore.get('PricelistItem');
+        const rows = await PricelistItem.findAll({
+            where: { pricelist_id: id },
+            attributes: ['item_id', 'unit_price_centavos'],
+            transaction: options.transaction,
+            // #717: same lock-drop as findPricelistStatus above -- the redemption path already
+            // builds `{ transaction, lock: true }` (voucherRedemptionUseCases.js) specifically so a
+            // concurrent publish (publishDraftIntoParent's delete-and-reinsert) can't shift prices
+            // mid-redemption; this method silently discarded that intent.
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            raw: true
+        });
+        return rows.reduce((map, row) => {
+            map[Number(row.item_id)] = Number(row.unit_price_centavos);
+            return map;
+        }, {});
     }
 };
 

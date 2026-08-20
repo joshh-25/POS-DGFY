@@ -527,6 +527,10 @@ export const updateSettingsSchema = Joi.object({
   }),
   pos_hardware_profile: posHardwareProfileSchema.optional(),
   pos_terminal_location_binding_enforced: Joi.boolean().optional(),
+  // #604: tenant-wide POS voucher redemption master switch, default false. Orthogonal to a
+  // voucher's own `channels` mask (VOUCHER_CHANNEL_BITS.pos) -- this can disable POS redemption
+  // tenant-wide even for a voucher whose channels already include `pos`.
+  voucher_pos_redemption_enabled: Joi.boolean().optional(),
   pos_settings_access_pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).allow('').optional().messages({
     'string.pattern.base': 'POS Settings access PIN must be 4 to 12 digits'
   }),
@@ -699,6 +703,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     }),
     pos_hardware_profile: posHardwareProfileSchema,
     pos_terminal_location_binding_enforced: Joi.boolean(),
+    voucher_pos_redemption_enabled: Joi.boolean(),
     pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),

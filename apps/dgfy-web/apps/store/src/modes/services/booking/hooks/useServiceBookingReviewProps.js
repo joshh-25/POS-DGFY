@@ -20,6 +20,8 @@ export function useServiceBookingReviewProps({
   serviceIntakeResponses,
   servicePaymentOptions,
   servicePaymentTiming,
+  servicesPrimary,
+  servicesPrimaryDark,
   setCartImageErrors,
   setCheckoutTab,
   withAssetOrigin
@@ -38,6 +40,8 @@ export function useServiceBookingReviewProps({
     serviceIntakeResponses,
     servicePaymentOptions,
     servicePaymentTiming,
+    servicesPrimary,
+    servicesPrimaryDark,
     setCartImageErrors,
     setCheckoutTab,
     withAssetOrigin

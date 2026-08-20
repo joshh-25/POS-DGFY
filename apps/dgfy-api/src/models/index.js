@@ -58,6 +58,8 @@ import Voucher from './Voucher.js';
 import VoucherScope from './VoucherScope.js';
 import VoucherRedemption from './VoucherRedemption.js';
 import VoucherRedemptionLine from './VoucherRedemptionLine.js';
+import Pricelist from './Pricelist.js';
+import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
@@ -716,6 +718,17 @@ VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redempti
 VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
 VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+
+// Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
+// may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
+// self-reference (a draft revision points at the published row it will replace on publish).
+Pricelist.hasMany(PricelistItem, { foreignKey: 'pricelist_id', as: 'items' });
+PricelistItem.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+PricelistItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Pricelist.belongsTo(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'publishedPricelist' });
+Pricelist.hasOne(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'draftRevision' });
+Voucher.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+Pricelist.hasMany(Voucher, { foreignKey: 'pricelist_id', as: 'vouchers' });
 PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
@@ -1014,6 +1027,8 @@ const db = {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -1216,6 +1231,8 @@ export {
   VoucherScope,
   VoucherRedemption,
   VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,

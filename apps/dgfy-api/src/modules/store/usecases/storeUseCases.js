@@ -20,7 +20,8 @@ import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliateP
 import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
-    resolveVoucherDisplayPricesUseCase
+    resolveVoucherDisplayPricesUseCase,
+    VoucherReasonCode
 } from '../../vouchers/index.js';
 import {
     generateStoreCancelProof,
@@ -1402,6 +1403,34 @@ const resolveAffiliateSellingPriceRuleForDisplay = async ({ tenantId, enrollment
         : null;
 };
 
+// #667 Phase 110 (ADR 0033's 2026-08-17 amendment / ADR 0066 Decision 10): a voucher redemption
+// must persist the same `pos_transaction_discounts` audit row a promo redemption already does.
+// Builds that payload from a voucher's own (centavos-denominated) `lineAllocations`, converting to
+// pesos here -- the single conversion boundary per channel ADR 0066 Decision 2 calls for, not
+// scattered into the repository. Shape matches exactly what `createOnlineTransactionWithLines`
+// already expects from the promo path (`eligible_quantity` / `gross_eligible_amount` /
+// `discount_amount` / `final_line_amount`), so the repository needs no branching per source.
+const buildVoucherDiscountRecord = (voucherApplication) => ({
+    discount_type: 'voucher',
+    // percent_off is the only benefit class expressed as a rate; amount_off and fixed_price are
+    // absolute pesos. Reuses the same two-value vocabulary `pos_discount_rules.method` already
+    // uses ('percentage' | 'fixed') rather than inventing a value per benefit class.
+    discount_method: voucherApplication.benefitClass === 'percent_off' ? 'percentage' : 'fixed',
+    discount_rate: voucherApplication.discountRate,
+    discount_amount: voucherApplication.discountAmount,
+    promo_code: voucherApplication.enteredVoucherCode,
+    lines: voucherApplication.lineAllocations.map((allocation) => {
+        const lineSubtotal = centavosToPeso(allocation.lineSubtotalCentavos);
+        const lineDiscount = centavosToPeso(allocation.discountCentavos);
+        return {
+            eligible_quantity: allocation.eligible ? round4(allocation.quantity) : 0,
+            gross_eligible_amount: allocation.eligible ? lineSubtotal : 0,
+            discount_amount: lineDiscount,
+            final_line_amount: round4(lineSubtotal - lineDiscount)
+        };
+    })
+});
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
@@ -1571,10 +1600,32 @@ const resolveCheckoutContext = async ({
     //     here before buildStoreCheckoutUseCase's own idempotency-key short-circuit below -- because
     //     redeemVoucherUseCase's own idempotency-key pre-check (step 7-8 of the redemption
     //     sequence) finds the already-inserted ledger row on replay and moves nothing a second
-    //     time. Open design call, stated explicitly rather than silently picked: voucher and promo
-    //     ARE allowed to stack today (both discounts are summed into totalAmount below) -- nothing
-    //     in this storefront checkout enforces a single discount slot the way ADR 0066 decision 8
-    //     does for POS. See this phase's PR description for the tradeoff.
+    //     time.
+    //
+    // #667 / ADR 0066 decision 8 (2026-08-19 amendment): voucher and promo used to stack
+    // unconditionally here, with no cap and no mutual-exclusivity check -- nothing in this storefront
+    // checkout enforced a single discount slot the way decision 8 already does for POS. Fixed by
+    // mirroring that same invariant rather than inventing a separate capped-stacking policy for the
+    // same class of problem: a voucher code submitted alongside a promo code that already resolved
+    // to an applied discount is rejected outright, the same way an incoming POS voucher yields to an
+    // already-occupied discount slot. Checked here, before either quote/preview or the real
+    // reservation runs, so a customer sees the same rejection at preview time that checkout would
+    // enforce, and so an ineligible voucher attempt never burns a redemption slot for a request that
+    // was always going to be rejected.
+    if (promoApplication.applied && normalized.voucher_code) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A voucher code cannot be combined with an already-applied promo code on this order.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: VoucherReasonCode.VOUCHER_DISCOUNT_SLOT_OCCUPIED,
+                    promo_code: normalized.promo_code || null
+                }
+            }
+        );
+    }
+
     const voucherContext = {
         channel: 'storefront',
         fulfillmentMethod: orderMethod,
@@ -1587,12 +1638,19 @@ const resolveCheckoutContext = async ({
         item_id: line.item_id,
         quantity: line.quantity,
         sale_price: line.sale_price,
-        line_subtotal: line.line_subtotal
+        line_subtotal: line.line_subtotal,
+        // #697: below-cost guard input. Already computed above (line 950) for the affiliate guard --
+        // no new query, just re-projected onto the voucher-facing line shape.
+        cost_snapshot: line.cost_snapshot
     }));
 
     let voucherApplication = {
         applied: false,
         discountAmount: 0,
+        discountLabel: null,
+        discountRate: null,
+        enteredVoucherCode: null,
+        benefitClass: null,
         lineAllocations: [],
         redemptionId: null,
         idempotentReplay: false
@@ -1612,6 +1670,22 @@ const resolveCheckoutContext = async ({
             voucherApplication = {
                 applied: redemption.applied,
                 discountAmount: centavosToPeso(redemption.discountCentavos),
+                // #667 Phase 110: mirrors commercialPromoPolicy.js's own `badge || title || fallback`
+                // label exactly. Uses the CANONICAL stored code (`redemption.code`), not the
+                // user-entered `normalized.voucher_code` -- the former reflects the voucher's actual
+                // stored casing, the same distinction `enteredPromoCode` makes on the promo side.
+                discountLabel: redemption.applied
+                    ? (redemption.badge || redemption.title || `Voucher (${redemption.code})`)
+                    : null,
+                // A rate snapshot is only meaningful for a percent-of-subtotal benefit -- amount_off
+                // and fixed_price are absolute pesos, not a rate, so they snapshot null (same
+                // reasoning `discount_rate_snapshot` already applies fleet-wide: nullable, readers
+                // already null-guard it).
+                discountRate: redemption.applied && redemption.benefitClass === 'percent_off'
+                    ? round4(redemption.percentOffBps / 100)
+                    : null,
+                enteredVoucherCode: redemption.applied ? redemption.code : null,
+                benefitClass: redemption.applied ? redemption.benefitClass : null,
                 lineAllocations: redemption.lineAllocations,
                 redemptionId: redemption.redemptionId,
                 idempotentReplay: Boolean(redemption.idempotentReplay)
@@ -1625,6 +1699,14 @@ const resolveCheckoutContext = async ({
             voucherApplication = {
                 applied: preview.applied,
                 discountAmount: centavosToPeso(preview.discountCentavos),
+                discountLabel: preview.applied
+                    ? (preview.badge || preview.title || `Voucher (${preview.code})`)
+                    : null,
+                discountRate: preview.applied && preview.benefitClass === 'percent_off'
+                    ? round4(preview.percentOffBps / 100)
+                    : null,
+                enteredVoucherCode: preview.applied ? preview.code : null,
+                benefitClass: preview.applied ? preview.benefitClass : null,
                 lineAllocations: preview.lineAllocations,
                 redemptionId: null,
                 idempotentReplay: false
@@ -1926,7 +2008,9 @@ export const buildListStoreCatalogUseCase = ({
                     items: (Array.isArray(items) ? items : []).map((item) => ({
                         item_id: item.item_id,
                         folder_id: item.folder_id,
-                        default_sale_price: item.default_sale_price
+                        default_sale_price: item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: item.cost_per_unit
                     })),
                     channel: 'storefront',
                     affiliatePricingActive: affiliateSellingPriceRule != null
@@ -2093,7 +2177,9 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                     items: [{
                         item_id: result.item.item_id,
                         folder_id: result.item.folder_id,
-                        default_sale_price: result.item.default_sale_price
+                        default_sale_price: result.item.default_sale_price,
+                        // #697: below-cost guard input, fail-open per item at display time.
+                        cost_per_unit: result.item.cost_per_unit
                     }],
                     channel: 'storefront',
                     affiliatePricingActive: affiliateSellingPriceRule != null
@@ -2788,9 +2874,21 @@ export const buildStoreCheckoutUseCase = ({
                     vat_amount: resolved.prepared.vatAmount,
                     vat_exempt_sales: resolved.prepared.vatExemptSales,
                     zero_rated_sales: resolved.prepared.zeroRatedSales,
-                    discount_amount: resolved.promoApplication.discountAmount,
-                    discount_label_snapshot: resolved.promoApplication.discountLabel,
-                    discount_rate_snapshot: resolved.promoApplication.discountRate,
+                    // #667 Phase 110: the header's discount fields must reflect whichever source
+                    // actually applied -- promo and voucher can never BOTH be applied on the same
+                    // order (the slot guard above throws before voucherApplication is even resolved
+                    // when a promo already applied), so this is a clean either/or, never a sum.
+                    // ADR 0033's 2026-08-17 amendment / ADR 0066 Decision 10: a voucher redemption
+                    // must persist the same fiscal audit trail a promo already does.
+                    discount_amount: resolved.voucherApplication.applied
+                        ? resolved.voucherApplication.discountAmount
+                        : resolved.promoApplication.discountAmount,
+                    discount_label_snapshot: resolved.voucherApplication.applied
+                        ? resolved.voucherApplication.discountLabel
+                        : resolved.promoApplication.discountLabel,
+                    discount_rate_snapshot: resolved.voucherApplication.applied
+                        ? resolved.voucherApplication.discountRate
+                        : resolved.promoApplication.discountRate,
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label_snapshot: resolved.serviceFeeLabel,
                     service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
@@ -2814,12 +2912,20 @@ export const buildStoreCheckoutUseCase = ({
                     accepted_at: null
                 },
                 lines: resolved.prepared.preparedLines,
-                discount: resolved.promoApplication.applied ? {
-                    promo_code: resolved.promoApplication.enteredPromoCode,
-                    discount_rate: resolved.promoApplication.discountRate,
-                    discount_amount: resolved.promoApplication.discountAmount,
-                    lines: resolved.promoApplication.lineAllocations
-                } : null
+                // #667 Phase 110: exactly one of these can be non-null -- the slot guard above
+                // already rejects a request that would have both applied. `buildVoucherDiscountRecord`
+                // handles the centavos->peso conversion and the benefit-class -> discount_method
+                // mapping; kept as a helper so this call site stays a plain either/or.
+                discount: resolved.promoApplication.applied
+                    ? {
+                        promo_code: resolved.promoApplication.enteredPromoCode,
+                        discount_rate: resolved.promoApplication.discountRate,
+                        discount_amount: resolved.promoApplication.discountAmount,
+                        lines: resolved.promoApplication.lineAllocations
+                    }
+                    : (resolved.voucherApplication.applied
+                        ? buildVoucherDiscountRecord(resolved.voucherApplication)
+                        : null)
             }, { transaction });
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {
@@ -2852,6 +2958,27 @@ export const buildStoreCheckoutUseCase = ({
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Voucher redemption could not be recorded for this order.',
+                    { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
+            }
+            // #667 Phase 110: a FRESH (non-replay), positively-discounted redemption must have at
+            // least one line that actually carried the discount -- `lineAllocations` is now the
+            // UNFILTERED per-input-line array (see voucherRedemptionUseCases.js), so a bare
+            // length check would be vacuous (it always equals the cart's own line count). This
+            // checks the thing that actually matters: the fiscal audit row just written above
+            // claims a non-zero discount_amount, so at least one PosTransactionDiscountLine row
+            // must carry a non-zero amount behind it. A replay is exempt for the same reason the
+            // redemptionId check above is: its allocations are deliberately withheld when the
+            // recomputed benefit disagrees with the ledger's own recorded amount.
+            if (
+                resolved.voucherApplication.applied
+                && !resolved.voucherApplication.idempotentReplay
+                && resolved.voucherApplication.discountAmount > 0
+                && !resolved.voucherApplication.lineAllocations.some((line) => line.discountCentavos > 0)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Voucher redemption produced no discounted line allocations for this order.',
                     { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
                 );
             }

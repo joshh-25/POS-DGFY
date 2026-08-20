@@ -26,6 +26,7 @@ export function SimpleCheckoutMobileSummaryPanel({
   onStepChange,
   orderStep,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   promoPanel,
   scheduleLabel = 'NOW',
   setSummaryOpen,
@@ -106,6 +107,7 @@ export function SimpleCheckoutMobileSummaryPanel({
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
+                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
                 <SummaryRow label="Fees & Taxes" value={money(totalFeeAndTaxes)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>

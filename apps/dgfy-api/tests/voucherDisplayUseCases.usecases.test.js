@@ -37,8 +37,18 @@ const VOUCHER_DEFAULTS = {
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
 
-const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [] } = {}) => {
-    const state = { vouchers: vouchers.map((v) => ({ ...v })), scopes: scopes.map((s) => ({ ...s })), folders: folders.map((f) => ({ ...f })), calls: [] };
+const makeFakeRepository = ({
+    vouchers = [], scopes = [], folders = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {}
+} = {}) => {
+    const state = {
+        vouchers: vouchers.map((v) => ({ ...v })),
+        scopes: scopes.map((s) => ({ ...s })),
+        folders: folders.map((f) => ({ ...f })),
+        pricelistItemsByPricelistId,
+        // #717: defaults to 'active' unless a test explicitly overrides a pricelist's status.
+        pricelistStatusById,
+        calls: []
+    };
     return {
         __state: state,
         async findByCode(code) {
@@ -55,6 +65,18 @@ const makeFakeRepository = ({ vouchers = [], scopes = [], folders = [] } = {}) =
         async listItemFolderAdjacency() {
             state.calls.push('listItemFolderAdjacency');
             return state.folders.map((f) => ({ ...f }));
+        },
+        async listPricelistItemPrices(pricelistId) {
+            state.calls.push('listPricelistItemPrices');
+            return { ...(state.pricelistItemsByPricelistId[Number(pricelistId)] || {}) };
+        },
+        async findPricelistStatus(pricelistId) {
+            state.calls.push('findPricelistStatus');
+            const id = Number(pricelistId);
+            const status = Object.prototype.hasOwnProperty.call(state.pricelistStatusById, id)
+                ? state.pricelistStatusById[id]
+                : 'active';
+            return { pricelist_id: id, status };
         }
     };
 };
@@ -170,6 +192,54 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.reasonCode).toBe('VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT');
     });
 
+    // #696: a pricelist-backed voucher uses the price map as its scope -- voucher_scopes is never
+    // consulted when one is attached.
+    it('resolves per-item pricelist prices and ignores voucher_scopes entirely', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: null,
+                pricelist_id: 7
+            })],
+            scopes: [{ voucher_id: 1, scope_type: 'item', scope_ref_id: 999 }],
+            pricelistItemsByPricelistId: { 7: { 1: 7000, 2: 4000 } }
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 70 });
+        // item 2's pin (4000 centavos = ₱40) undercuts its ₱50 catalog price too, so it also prices.
+        expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 40 });
+        expect(repository.__state.calls).toContain('listPricelistItemPrices');
+        expect(repository.__state.calls).not.toContain('listScopes');
+    });
+
+    // #717: attach-time status checking (voucherUseCases.js's assertPricelistRef) does not protect
+    // against a pricelist archived AFTER a voucher already attached it -- this is the use-time
+    // re-check that closes that gap. Display fails OPEN (contrast the redemption use case's
+    // fail-closed behavior, covered in voucherRedemptionUseCases.usecases.test.js) -- falls back to
+    // the plain catalog price rather than blocking the whole catalog response.
+    it('fails open (shows catalog prices) when the attached pricelist has been archived', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: null,
+                pricelist_id: 7
+            })],
+            pricelistItemsByPricelistId: { 7: { 1: 7000, 2: 4000 } },
+            pricelistStatusById: { 7: 'archived' }
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(false);
+        expect(result.pricesByItemId).toEqual({});
+        expect(repository.__state.calls).not.toContain('listPricelistItemPrices');
+    });
+
     it('excludes an item outside the voucher\'s folder scope', async () => {
         const repository = makeFakeRepository({
             vouchers: [makeVoucher()],
@@ -189,6 +259,66 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.applied).toBe(true);
         expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 90 });
         expect(result.pricesByItemId[2]).toBeUndefined();
+    });
+
+    // #697: fail open, per item, on a below-cost resolution -- the rest of the batch is unaffected.
+    it('fails open per item on a below-cost voucher price, leaving other items priced', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 500 })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [
+                // 100 pesos -> pinned 5 pesos undercuts an 8-peso cost.
+                { item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: 8 },
+                // 50 pesos -> pinned 5 pesos is still above a 1-peso cost, stays priced.
+                { item_id: 2, folder_id: null, default_sale_price: 50, cost_per_unit: 1 }
+            ]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toBeUndefined();
+        expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 5 });
+    });
+
+    // #697/RF-2 (PR #699 review): a voucher explicitly configured to allow below-cost pricing
+    // must show that price on the storefront too -- checkout (voucherRedemptionUseCases.js) would
+    // honor it, so hiding it here would contradict what the customer actually pays.
+    it('shows the voucher price when allow_below_cost is true, even though it undercuts cost', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({
+                benefit_class: 'fixed_price',
+                percent_off_bps: null,
+                fixed_unit_price_centavos: 500,
+                allow_below_cost: true
+            })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [
+                // 100 pesos -> pinned 5 pesos undercuts an 8-peso cost, but allow_below_cost is true.
+                { item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: 8 }
+            ]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 5 });
+    });
+
+    it('does not block a below-cost line when cost_per_unit is unknown', async () => {
+        const repository = makeFakeRepository({
+            vouchers: [makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 500 })]
+        });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({
+            code: 'SAVE10',
+            items: [{ item_id: 1, folder_id: null, default_sale_price: 100, cost_per_unit: null }]
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 5 });
     });
 
     it('fails open when the repository throws resolving the voucher code', async () => {

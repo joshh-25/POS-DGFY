@@ -944,7 +944,9 @@ export const storeRepository = {
                     'current_stock',
                     'default_sale_price',
                     'vat_type',
-                    'folder_id'
+                    'folder_id',
+                    // #697: below-cost guard input for QR-resolved voucher display pricing.
+                    'cost_per_unit'
                 ],
                 include: [
                     ...buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride),
@@ -992,6 +994,8 @@ export const storeRepository = {
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         folder_id: item.folder_id ?? null,
+                        // #697: below-cost guard input for QR-resolved voucher display pricing.
+                        cost_per_unit: item.cost_per_unit,
                         image_url: mapStorefrontCatalogImageUrl(item),
                         image_variants: deriveImageAssetVariantUrls({
                             storedUrl: mapStorefrontCatalogImageUrl(item)
@@ -1511,8 +1515,13 @@ export const storeRepository = {
             const createdDiscount = await PosTransactionDiscount.create({
                 transaction_id: created.pos_transaction_id,
                 discount_rule_id: null,
-                discount_type: 'promo',
-                discount_method: 'percentage',
+                // #667 Phase 110: caller-supplied, defaulting to the promo path's original literals
+                // so a promo-only order's persisted row is byte-for-byte unchanged. A voucher-applied
+                // order supplies 'voucher' / the benefit-class-derived method instead (ADR 0033's
+                // 2026-08-17 amendment / ADR 0066 Decision 10 -- a voucher redemption persists this
+                // same audit row a promo already did).
+                discount_type: discount.discount_type || 'promo',
+                discount_method: discount.discount_method || 'percentage',
                 discount_rate: discount.discount_rate,
                 discount_amount: discount.discount_amount,
                 vat_removed: 0,

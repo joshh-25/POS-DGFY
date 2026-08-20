@@ -23,27 +23,27 @@ export function ServiceBookingJourneyHeader({
   serviceOrderMethod
 }) {
   const steps = [
-    { realStep: 1, displayStep: 1, label: 'Account', allow: true },
+    { realStep: 1, displayStep: 1, label: 'Customer', allow: true },
     { realStep: 2, displayStep: 2, label: 'Add-ons', allow: accountStepComplete },
     { realStep: 3, displayStep: 3, label: 'Fulfillment', allow: accountStepComplete },
-    { realStep: 4, displayStep: 4, label: 'Review and Payment', allow: accountStepComplete && fulfillmentStepComplete }
+    { realStep: 4, displayStep: 4, label: 'Payment and Review', allow: accountStepComplete && fulfillmentStepComplete }
   ];
 
   return (
     <>
       <CheckoutHeroHeader
-        eyebrow="Order Journey"
-        title="Complete Your Service Order"
-        description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
+        title="Complete your service booking"
+        description="Provide customer details, review add-ons, choose fulfillment and payment, then confirm your booking."
         badges={[
-          { label: `${bookingSummaryQuantity} item${bookingSummaryQuantity === 1 ? '' : 's'}`, tone: 'pill' },
-          { label: serviceOrderMethod === 'pickup' ? 'Pickup Order Flow' : 'Delivery Order Flow' }
+          { label: `${bookingSummaryQuantity} service${bookingSummaryQuantity === 1 ? '' : 's'}`, tone: 'pill' },
+          { label: serviceOrderMethod === 'pickup' ? 'Pickup booking' : 'Delivery booking' }
         ]}
         isMobileViewport={isMobileViewport}
         accentColor={accentColor}
         accentSoft={accentSoft}
         accentBorder={accentBorder}
         displayFont={displayFont}
+        variant="services-reference"
       />
       <CheckoutStepProgressHeader
         steps={steps}
@@ -59,6 +59,7 @@ export function ServiceBookingJourneyHeader({
         accentBorder={accentBorder}
         completeColor={completeColor}
         activeText={accentColor}
+        referenceStyle
       />
     </>
   );

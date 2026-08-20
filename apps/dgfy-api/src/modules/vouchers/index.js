@@ -1,4 +1,6 @@
 import { voucherRepository } from './repositories/voucherRepository.js';
+import { pricelistRepository } from './repositories/pricelistRepository.js';
+import { VoucherReasonCode } from './domain/voucherErrors.js';
 import {
     buildActivateVoucherUseCase,
     buildArchiveVoucherUseCase,
@@ -14,6 +16,15 @@ import {
 } from './usecases/voucherRedemptionUseCases.js';
 import { buildReverseVoucherRedemptionUseCase } from './usecases/voucherReversalUseCases.js';
 import { buildResolveVoucherDisplayPricesUseCase } from './usecases/voucherDisplayUseCases.js';
+import {
+    buildArchivePricelistUseCase,
+    buildCreatePricelistUseCase,
+    buildGetPricelistUseCase,
+    buildListPricelistsUseCase,
+    buildPublishPricelistUseCase,
+    buildReplacePricelistItemsUseCase,
+    buildUpdatePricelistUseCase
+} from './usecases/pricelistUseCases.js';
 
 export const listVouchersUseCase = buildListVouchersUseCase({ repository: voucherRepository });
 export const getVoucherUseCase = buildGetVoucherUseCase({ repository: voucherRepository });
@@ -31,3 +42,19 @@ export const reverseVoucherRedemptionUseCase = buildReverseVoucherRedemptionUseC
 
 // #603 -- storefront catalog display seam. Read-only, best-effort (fail-open), no transaction.
 export const resolveVoucherDisplayPricesUseCase = buildResolveVoucherDisplayPricesUseCase({ repository: voucherRepository });
+
+// #696 -- pricelist entity (per-item fixed prices), a separate repository/aggregate from vouchers
+// itself. See pricelistRepository.js's own header for why it is a distinct file.
+export const listPricelistsUseCase = buildListPricelistsUseCase({ repository: pricelistRepository });
+export const getPricelistUseCase = buildGetPricelistUseCase({ repository: pricelistRepository });
+export const createPricelistUseCase = buildCreatePricelistUseCase({ repository: pricelistRepository });
+export const updatePricelistUseCase = buildUpdatePricelistUseCase({ repository: pricelistRepository });
+export const replacePricelistItemsUseCase = buildReplacePricelistItemsUseCase({ repository: pricelistRepository });
+export const publishPricelistUseCase = buildPublishPricelistUseCase({ repository: pricelistRepository });
+export const archivePricelistUseCase = buildArchivePricelistUseCase({ repository: pricelistRepository });
+
+// #667 -- the voucher domain's single reason-code registry, re-exported so a caller outside this
+// module (storeUseCases.js's storefront/promo stacking check) can reference a voucher reason code
+// by name instead of a free-floating string literal, matching the registry's own stated purpose
+// ("re-exported... so the registry cannot drift" -- voucherErrors.js's header comment).
+export { VoucherReasonCode };

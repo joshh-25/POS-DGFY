@@ -312,6 +312,136 @@
       }
     },
     {
+      "id": "below-cost-fixed-price-flags-line",
+      "description": "#697: a fixed_price pin under the line's cost is flagged, benefit math is unaffected",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 500,
+        "lines": [{ "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 1000, "costPerUnitCentavos": 700, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 2000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 1000,
+        "discountCentavos": 1000,
+        "capApplied": false,
+        "lineDiscounts": [1000],
+        "voucherUnitPrices": [500],
+        "belowCostLines": [{ "item_id": 1, "voucherUnitPriceCentavos": 500, "costPerUnitCentavos": 700 }]
+      }
+    },
+    {
+      "id": "below-cost-percent-off-also-flags",
+      "description": "#697: the below-cost check is benefit-class-agnostic -- a deep percent_off flags exactly like fixed_price",
+      "input": {
+        "benefitClass": "percent_off",
+        "percentOffBps": 9000,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "costPerUnitCentavos": 700, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 1000,
+        "eligibleQuantity": 1,
+        "rawDiscountCentavos": 900,
+        "discountCentavos": 900,
+        "capApplied": false,
+        "lineDiscounts": [900],
+        "voucherUnitPrices": [100],
+        "belowCostLines": [{ "item_id": 1, "voucherUnitPriceCentavos": 100, "costPerUnitCentavos": 700 }]
+      }
+    },
+    {
+      "id": "below-cost-null-cost-is-skipped",
+      "description": "#697: a line with no recorded cost is never flagged, even at a giveaway price",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 0,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "costPerUnitCentavos": null, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 1000,
+        "eligibleQuantity": 1,
+        "rawDiscountCentavos": 1000,
+        "discountCentavos": 1000,
+        "capApplied": false,
+        "lineDiscounts": [1000],
+        "voucherUnitPrices": [0],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "below-cost-at-cost-is-not-flagged",
+      "description": "#697: exactly at cost is not below cost -- the comparison is strict less-than",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceCentavos": 700,
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "costPerUnitCentavos": 700, "eligible": true }]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 1000,
+        "eligibleQuantity": 1,
+        "rawDiscountCentavos": 300,
+        "discountCentavos": 300,
+        "capApplied": false,
+        "lineDiscounts": [300],
+        "voucherUnitPrices": [700],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "pricelist-per-item-prices",
+      "description": "#696: fixedUnitPriceByItemId pins a different price per line, unlike the single-scalar case",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500, "2": 900 },
+        "lines": [
+          { "item_id": 1, "quantity": 2, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 3000,
+        "eligibleQuantity": 3,
+        "rawDiscountCentavos": 1100,
+        "discountCentavos": 1100,
+        "capApplied": false,
+        "lineDiscounts": [1000, 100],
+        "voucherUnitPrices": [500, 900],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "pricelist-item-not-in-map-gets-no-discount",
+      "description": "#696: an eligible line with no entry in the pricelist map contributes zero, not an error",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500 },
+        "lines": [
+          { "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true },
+          { "item_id": 2, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }
+        ]
+      },
+      "expected": {
+        "eligibleSubtotalCentavos": 2000,
+        "eligibleQuantity": 2,
+        "rawDiscountCentavos": 500,
+        "discountCentavos": 500,
+        "capApplied": false,
+        "lineDiscounts": [500, 0],
+        "voucherUnitPrices": [500, 1000],
+        "belowCostLines": []
+      }
+    },
+    {
+      "id": "pricelist-negative-price-anywhere-throws",
+      "description": "#696: one negative price in the map fails the whole resolution, matching the scalar case",
+      "input": {
+        "benefitClass": "fixed_price",
+        "fixedUnitPriceByItemId": { "1": 500, "2": -1 },
+        "lines": [{ "item_id": 1, "quantity": 1, "baseUnitPriceCentavos": 1000, "eligible": true }]
+      },
+      "expectedError": "INVALID_FIXED_UNIT_PRICE_CENTAVOS"
+    },
+    {
       "id": "unknown-benefit-class",
       "description": "An unrecognized benefit class throws rather than silently resolving to zero",
       "input": {
