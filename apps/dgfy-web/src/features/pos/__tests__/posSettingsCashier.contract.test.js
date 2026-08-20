@@ -91,7 +91,8 @@ describe('regular POS Setup cashier management contract', () => {
 
   it('lets cashier protected tools reach the POS access PIN gate without an open shift', () => {
     expect(terminalPageSource).toContain("const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);");
-    expect(terminalPageSource).toContain("const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);");
+    expect(terminalPageSource).toContain('const PIN_PROTECTED_VIEW_MODES = new Set(');
+    expect(terminalPageSource).toContain("[...SETTINGS_VIEW_MODES, 'items'].filter((mode) => mode !== 'settings_vouchers' && mode !== 'settings_pricelists')");
     expect(terminalPageSource).toContain('if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {');
     expect(terminalPageSource).toContain('await verifyPosSettingsAccessPin(normalizedPin);');
     expect(terminalPageSource).toContain('const hydrateTerminalMeta = useCallback');

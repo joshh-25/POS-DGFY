@@ -11,6 +11,11 @@ const userManagementContent = fs.readFileSync(userManagementPath, 'utf8');
 const userServiceContent = fs.readFileSync(userServicePath, 'utf8');
 const terminalWorkspaceContent = fs.readFileSync(terminalWorkspacePath, 'utf8');
 const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
+const checkoutViewContent = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+  'utf8'
+);
+const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}`;
 const terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
 
 describe('POS discount approver management contract', () => {
@@ -40,12 +45,12 @@ describe('POS discount approver management contract', () => {
 
   it('keeps authorized employees visible while marking missing PIN setup', () => {
     expect(terminalWorkspaceContent).toContain('pos_approval_pin_configured');
-    expect(checkoutContent).toContain('PIN not configured');
-    expect(checkoutContent).toContain('disabled={approver.pos_approval_pin_configured !== true}');
-    expect(checkoutContent).toContain('autoComplete="one-time-code"');
-    expect(checkoutContent).toContain('type="text"');
-    expect(checkoutContent).toContain('WebkitTextSecurity');
-    expect(checkoutContent).toContain('name="pos_discount_approval_pin"');
+    expect(checkoutRenderContent).toContain('PIN not configured');
+    expect(checkoutRenderContent).toContain('disabled={approver.pos_approval_pin_configured !== true}');
+    expect(checkoutRenderContent).toContain('autoComplete="one-time-code"');
+    expect(checkoutRenderContent).toContain('type="text"');
+    expect(checkoutRenderContent).toContain('WebkitTextSecurity');
+    expect(checkoutRenderContent).toContain('name="pos_discount_approval_pin"');
   });
 
   it('passes the active shift cashier into checkout for the default authorizer', () => {

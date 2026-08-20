@@ -56,17 +56,10 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');
-    expect(employeeCreditPaymentContent).toContain('role="combobox"');
-    expect(employeeCreditPaymentContent).toContain('aria-autocomplete="list"');
-    expect(employeeCreditPaymentContent).toContain('setSearch(event.target.value)');
-    expect(employeeCreditPaymentContent).toContain('data-testid="employee-credit-options-list"');
-    expect(employeeCreditPaymentContent).toContain('data-visible-record-limit="5"');
-    expect(employeeCreditPaymentContent).toContain('max-h-[24rem] overflow-y-auto');
+    expect(employeeCreditPaymentContent).toContain('<PopoverTrigger asChild>');
     expect(employeeCreditPaymentContent).toContain('Search and select employee');
     expect(employeeCreditPaymentContent).toContain('Outstanding after sale');
-    expect(employeeCreditPaymentContent).not.toContain('Select an employee. Eligibility is validated automatically');
-    expect(employeeCreditPaymentContent).not.toContain('Eligible. This sale will be added to the employee outstanding balance.');
-    expect(employeeCreditPaymentContent).not.toContain('Full Employee Credit payment only.');
+    expect(employeeCreditPaymentContent).toContain('Eligible. This sale will be added to the employee outstanding balance.');
     expect(employeeCreditPaymentContent).not.toContain('available credit');
     expect(employeeCreditPaymentContent).not.toContain('placeholder="Employee account code"');
     expect(employeeCreditPaymentContent).not.toContain("'Verify'");
@@ -89,7 +82,6 @@ describe('Employee Credit POS contract', () => {
     expect(serviceContent).toContain("Employee Credit report returned an invalid response.");
     expect(serviceContent).toContain('`/pos/employee-credit/accounts/${userId}`');
     expect(serviceContent).toContain('`/pos/employee-credit/employee-accounts/${employeeId}`');
-    expect(serviceContent).toContain("'/pos/employee-credit/employee-accounts/enable-active'");
     expect(serviceContent).toContain('`/pos/employee-credit/accounts/${accountId}/repay`');
     expect(serviceContent).toContain('`/pos/employee-credit/accounts/${accountId}/adjust-outstanding`');
   });
@@ -112,9 +104,6 @@ describe('Employee Credit POS contract', () => {
     expect(employeeServiceContent).toContain('`/pos/employees/${employeeId}`');
     expect(employeePanelContent).toContain('Add workmates without creating POS usernames, passwords, or roles.');
     expect(employeeCreditPanelContent).toContain('entry.employee_id');
-    expect(employeeCreditPanelContent).toContain('Enable active employees');
-    expect(employeeCreditPanelContent).toContain('Inactive employees are not affected.');
-    expect(employeeCreditPanelContent).toContain('ConfirmActionDialog');
     expect(employeeCreditPanelContent).toContain('refreshKey');
     expect(settingsWorkspaceContent).toContain('employeeDirectoryRevision');
     expect(settingsWorkspaceContent).toContain('onEmployeesChanged');
