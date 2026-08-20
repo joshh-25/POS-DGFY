@@ -345,20 +345,25 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   // that row silently produces no discount otherwise. Narrowed to `===` (#749) so this and
   // rowAboveSrpWarning below never both fire on the same row -- the two are different problems
   // (no discount vs. an overcharge) and deserve different copy, not one "at or above" catch-all.
-  const rowNoDiscountWarning = (row) => pesoNumber(row.unit_price_pesos) === row.srp_pesos;
+  // RF-2 (PR #752 review): compare in CENTAVOS, the unit the server actually stores -- SRP/cost are
+  // DECIMAL(10,4) but round-trip through centavos (pesosToCentavos/centavosToPesoNumber), so a peso
+  // comparison like `19.997 vs 20.00` can disagree with what the server sees as an exact match,
+  // firing a false warning on a row nobody touched.
+  const rowNoDiscountWarning = (row) => pesosToCentavos(row.unit_price_pesos) === pesosToCentavos(row.srp_pesos);
   // #749: a typed price strictly above SRP had no warning at all before this -- only the
   // zero-discount case above did, and its copy didn't frame an overcharge as one.
-  const rowAboveSrpWarning = (row) => pesoNumber(row.unit_price_pesos) > row.srp_pesos;
+  const rowAboveSrpWarning = (row) => pesosToCentavos(row.unit_price_pesos) > pesosToCentavos(row.srp_pesos);
   // Warn only, never block -- allow_below_cost lives on the VOUCHER, and a pricelist is authored
   // before it is attached to one (#697's guard is what actually enforces it, at redemption).
-  const rowBelowCostWarning = (row) => row.cost_per_unit != null && pesoNumber(row.unit_price_pesos) < row.cost_per_unit;
+  const rowBelowCostWarning = (row) => row.cost_per_unit != null && pesosToCentavos(row.unit_price_pesos) < pesosToCentavos(row.cost_per_unit);
 
   // SRP-drift: rows never manually touched whose stored price (what the SERVER has, not the local
   // in-progress edit) no longer matches current SRP. Item.default_sale_price auto-updates from
   // Dispatch Order dispatches, so an untouched row can silently start granting an unintended
-  // discount once SRP rises past what was true at authoring time.
+  // discount once SRP rises past what was true at authoring time. Centavos comparison (RF-2, PR
+  // #752 review) so this never disagrees with the warnings above on the same row.
   const driftedRowCount = useMemo(
-    () => rows.filter((row) => !row.is_manual_override && pesoNumber(row.unit_price_pesos) !== row.srp_pesos).length,
+    () => rows.filter((row) => !row.is_manual_override && pesosToCentavos(row.unit_price_pesos) !== pesosToCentavos(row.srp_pesos)).length,
     [rows]
   );
   const refreshDriftedRowsToCurrentSrp = () => {
@@ -437,8 +442,13 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
 
   const handlePublish = async () => {
     setPublishing(true);
+    // RF-5 (PR #752 review): a failure AFTER persistRows() succeeded previously reported the same
+    // generic "Failed to publish" message as a failure before it -- the merchant had no way to
+    // tell their edits were actually saved, the exact ambiguity #748 exists to remove.
+    let persisted = false;
     try {
       const { editingPricelistId } = await persistRows();
+      persisted = true;
       const result = await publishPricelist(editingPricelistId);
       toast?.success?.('Pricelist published.');
       setEditingSourceId(result.pricelist.pricelist_id);
@@ -452,7 +462,9 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
       backToList();
     } catch (error) {
       if (!(await handleVersionConflict(error))) {
-        toast?.error?.(describeError(error, 'Failed to publish this pricelist.'));
+        toast?.error?.(describeError(error, persisted
+          ? 'Your changes were saved, but publishing failed. Try Publish again.'
+          : 'Failed to publish this pricelist.'));
       }
     } finally {
       setPublishing(false);
@@ -483,11 +495,15 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
               value={search}
               onChange={(e) => { setSearch(e.target.value); setMobileIndex(0); setDesktopPage(0); }}
             />
-            <Button type="button" size="sm" variant="outline" disabled={saving || disabled || !canManage} onClick={handleSave} className="h-8 text-xs">
+            {/* RF-3 (PR #752 review): both funnel through persistRows() now -- cross-gate on
+                saving||publishing so a Save-then-Publish double-click can't send two
+                PUT /items at the same editorVersion (the second would hit
+                PRICELIST_VERSION_CONFLICT and silently no-op). */}
+            <Button type="button" size="sm" variant="outline" disabled={saving || publishing || disabled || !canManage} onClick={handleSave} className="h-8 text-xs">
               <Save className="mr-1 h-3.5 w-3.5" /> {saving ? 'Saving...' : 'Save'}
             </Button>
             {(isDraftRevision || pricelist?.status === 'draft') && (
-              <Button type="button" size="sm" disabled={publishing || disabled || !canManage} onClick={handlePublish} className="h-8 text-xs">
+              <Button type="button" size="sm" disabled={saving || publishing || disabled || !canManage} onClick={handlePublish} className="h-8 text-xs">
                 <Upload className="mr-1 h-3.5 w-3.5" /> {publishing ? 'Publishing...' : 'Publish'}
               </Button>
             )}
