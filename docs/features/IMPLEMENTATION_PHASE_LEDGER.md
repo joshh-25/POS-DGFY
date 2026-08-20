@@ -6055,7 +6055,9 @@ parked-sale replay and shift-close resolution.
 - Objective/scope: merge current `develop`, resolve conflicts, apply landlord/tenant migrations, validate, document, push, and update the open PR without merging or deploying it.
 - Status: `completed`; dependencies: Phases 111-131 and `develop` commit `498d20f45`.
 - Acceptance/evidence: merge completed; landlord migration is current; tenant schemas passed 14/14; backend 190 tests, frontend 515 tests, POS build, authenticated E2E, architecture, and compliance gates passed.
-- Completion: 2026-08-20. Links: PR #681, issues #679 and #754, commits `f84acb9c3`, `313a9351d`, `54976dbab`, `96f8eeb54`, `f3cfb5844`, and `f62be4275`.
+- Completion: 2026-08-20. Links: PR #681, issues #679 and #754,
+  `docs/compliance/impact-declarations/2026-08-20-pos-accountable-void-refund-lifecycle.md`,
+  and commits `f84acb9c3`, `313a9351d`, `54976dbab`, `96f8eeb54`, `f3cfb5844`, and `f62be4275`.
 
 ### POS initiative numbering reconciliation
 
