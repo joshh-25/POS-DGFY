@@ -83,7 +83,7 @@ describe('TerminalPage session contract', () => {
 
   it('clears source-company terminal lock state before loading a switched company session', () => {
     expect(terminalPageSource).toContain(
-      "setStoredTerminalLock(false);\n        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);\n        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });\n        window.location.assign('/terminal');"
+      "setStoredTerminalLock(false);\n        safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);\n        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });\n        window.location.assign('/terminal');"
     );
   });
 
@@ -91,7 +91,7 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('const dgfyTenantHandoff = consumePosDgfyTenantHandoff();');
     expect(terminalPageSource).toContain('const companySwitchHandoff = getFreshPosCompanySwitchHandoff();');
     expect(terminalPageSource).toContain("String(dgfyTenantHandoff?.tenantId || companySwitchHandoff?.tenantId || '').trim()");
-    expect(terminalPageSource).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
+    expect(terminalPageSource).toContain("safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageSource).toContain("setActiveTerminalId('');");
     expect(terminalPageSource).toContain('setOperatingLocationId(null);');
     expect(terminalPageSource).toContain("setFormData((prev) => ({ ...prev, terminalId: '' }));");

@@ -8,6 +8,7 @@ import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
 import IminTerminalFeedback from './IminTerminalFeedback.jsx';
+import PosTextSizeControl from './PosTextSizeControl.jsx';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -144,6 +145,8 @@ export default function TerminalPageLayout({
     onPosSetupSaved = async () => {},
     onStorefrontSetupSaved = async () => {},
     setOnlineOrderSoundEnabled = () => {},
+    posTextSize = 'normal',
+    onPosTextSizeChange = () => {},
     queuedTerminalOperationCount,
     queuedTerminalBlockedCount = 0,
     queuedTerminalOperations = [],
@@ -627,6 +630,11 @@ export default function TerminalPageLayout({
               data-testid="pos-header-park-slot"
               className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10"
             />
+            <PosTextSizeControl
+              id="pos-text-size-header"
+              value={posTextSize}
+              onChange={onPosTextSizeChange}
+            />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
             {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
@@ -940,6 +948,8 @@ export default function TerminalPageLayout({
           onIdentityChange={handleIdentityChange}
           onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
+          posTextSize={posTextSize}
+          onPosTextSizeChange={onPosTextSizeChange}
         />
       </Suspense>
       </main>

@@ -249,14 +249,6 @@ export default function TerminalSidebarPanel({
             <span className="text-[#334155]">Active Discounts</span>
             <span className="font-extrabold text-[#0F172A]">{terminalMeta.activeDiscountCount}</span>
           </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[#334155]">DGFY Global Fee Policy</span>
-                <span className="font-extrabold text-[#0F172A]">
-                  {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
-                    ? 'Active'
-                    : 'Inactive'}
-                </span>
-              </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-[#334155]">Compliance Policy</span>
             <span className="font-extrabold text-emerald-700">Dual-mode</span>

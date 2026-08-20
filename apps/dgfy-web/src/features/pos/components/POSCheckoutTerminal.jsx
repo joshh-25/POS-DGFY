@@ -250,11 +250,16 @@ export default function POSCheckoutTerminal({
         terminalUser?.user_id
     ]);
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
+    const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
+    useEffect(() => {
+        if (!checkoutConfirmModalOpen || !customerPaymentAmountAutoFilled) return;
+        setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+    }, [cartTotal, checkoutConfirmModalOpen, customerPaymentAmountAutoFilled]);
     const offlineSnapshotScope = useMemo(() => ({
         tenantId: providedOfflineSnapshotScope?.tenantId,
         terminalId: providedOfflineSnapshotScope?.terminalId || normalizedTerminalId,
@@ -746,6 +751,7 @@ export default function POSCheckoutTerminal({
         setShowDiscountPin,
         setAffiliateCodeInput,
         setCustomerPaymentAmountInput,
+        setCustomerPaymentAmountAutoFilled,
         setCheckoutConfirmModalOpen,
         setMobileCheckoutPanelOpen,
         setItemOptionsLineKey,
@@ -1325,6 +1331,7 @@ export default function POSCheckoutTerminal({
         currentSalePaneHeightClassName,
         currentViewMode,
         customerPaymentAmountInput,
+        customerPaymentAmountAutoFilled,
         customerPaymentChange,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
@@ -1491,6 +1498,7 @@ export default function POSCheckoutTerminal({
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
         setCustomerPaymentAmountInput,
+        setCustomerPaymentAmountAutoFilled,
         setDiscountDraft,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,

@@ -116,6 +116,16 @@ import {
   restoreTerminalViewportAfterUnlock
 } from '../utils/terminalViewportRecovery.js';
 import { isPosOnlineOrderQueueEnabled } from '../utils/posOperationalVisibility.js';
+import {
+  DEFAULT_POS_TEXT_SIZE,
+  readPosTextSizePreference,
+  writePosTextSizePreference
+} from '../utils/posTextSizePreference.js';
+import {
+  safeLocalStorageGet,
+  safeLocalStorageRemove,
+  safeLocalStorageSet
+} from '../utils/posTerminalStorage.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -248,27 +258,27 @@ const createTerminalErrorRef = () => {
 
 const readStoredTerminalId = () => {
   if (typeof window === 'undefined') return '';
-  return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
+  return sanitizeTerminalId(safeLocalStorageGet(TERMINAL_ID_STORAGE_KEY) || '');
 };
 
 const readStoredTerminalLock = () => {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(TERMINAL_LOCK_STORAGE_KEY) === '1';
+  return safeLocalStorageGet(TERMINAL_LOCK_STORAGE_KEY) === '1';
 };
 
 const readStoredTerminalLockReason = () => {
   if (typeof window === 'undefined') return '';
-  return String(window.localStorage.getItem(TERMINAL_LOCK_REASON_STORAGE_KEY) || '').trim();
+  return String(safeLocalStorageGet(TERMINAL_LOCK_REASON_STORAGE_KEY) || '').trim();
 };
 
 const setStoredTerminalLock = (locked) => {
   if (typeof window === 'undefined') return;
   if (locked) {
-    window.localStorage.setItem(TERMINAL_LOCK_STORAGE_KEY, '1');
+    safeLocalStorageSet(TERMINAL_LOCK_STORAGE_KEY, '1');
   } else {
-    window.localStorage.removeItem(TERMINAL_LOCK_STORAGE_KEY);
-    window.localStorage.removeItem(TERMINAL_LOCK_REASON_STORAGE_KEY);
-    window.localStorage.removeItem(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY);
+    safeLocalStorageRemove(TERMINAL_LOCK_STORAGE_KEY);
+    safeLocalStorageRemove(TERMINAL_LOCK_REASON_STORAGE_KEY);
+    safeLocalStorageRemove(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY);
   }
 };
 
@@ -276,16 +286,16 @@ const setStoredTerminalLockReason = (reason) => {
   if (typeof window === 'undefined') return;
   const normalizedReason = String(reason || '').trim();
   if (normalizedReason) {
-    window.localStorage.setItem(TERMINAL_LOCK_REASON_STORAGE_KEY, normalizedReason);
+    safeLocalStorageSet(TERMINAL_LOCK_REASON_STORAGE_KEY, normalizedReason);
     return;
   }
-  window.localStorage.removeItem(TERMINAL_LOCK_REASON_STORAGE_KEY);
+  safeLocalStorageRemove(TERMINAL_LOCK_REASON_STORAGE_KEY);
 };
 
 const readStoredAdminLockContext = () => {
   if (typeof window === 'undefined') return null;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY) || '{}');
+    const parsed = JSON.parse(safeLocalStorageGet(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY) || '{}');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     return {
       identifier: String(parsed.identifier || '').trim(),
@@ -300,10 +310,10 @@ const readStoredAdminLockContext = () => {
 const setStoredAdminLockContext = (context = null) => {
   if (typeof window === 'undefined') return;
   if (!context) {
-    window.localStorage.removeItem(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY);
+    safeLocalStorageRemove(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY);
     return;
   }
-  window.localStorage.setItem(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY, JSON.stringify({
+  safeLocalStorageSet(TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY, JSON.stringify({
     identifier: String(context.identifier || '').trim(),
     companyToken: String(context.companyToken || '').trim(),
     terminalId: sanitizeTerminalId(context.terminalId || '')
@@ -325,12 +335,12 @@ const buildPosLastViewStorageKey = ({ userId, companyToken, terminalId } = {}) =
 
 const readStoredPosView = (storageKey) => {
   if (typeof window === 'undefined' || !storageKey) return '';
-  return String(window.localStorage.getItem(storageKey) || '').trim();
+  return String(safeLocalStorageGet(storageKey) || '').trim();
 };
 
 const writeStoredPosView = (storageKey, viewMode) => {
   if (typeof window === 'undefined' || !storageKey) return;
-  window.localStorage.setItem(storageKey, String(viewMode || '').trim());
+  safeLocalStorageSet(storageKey, String(viewMode || '').trim());
 };
 
 const readRequestedPosView = () => {
@@ -394,14 +404,31 @@ export default function TerminalPage() {
   const location = useLocation();
   const { workflowMode, profile, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const stored = localStorage.getItem('posTerminalSidebarCollapsed');
+    const stored = safeLocalStorageGet('posTerminalSidebarCollapsed');
     return stored === '1';
   });
   const [onlineOrderSoundEnabled, setOnlineOrderSoundEnabled] = useState(() => {
-    const stored = String(localStorage.getItem(ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
+    const stored = String(safeLocalStorageGet(ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
     if (!stored) return true;
     return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
+  const [posTextSize, setPosTextSize] = useState(() => readPosTextSizePreference());
+  const handlePosTextSizeChange = useCallback((value) => {
+    setPosTextSize(writePosTextSizePreference(value));
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const previousValue = document.body.getAttribute('data-pos-text-size');
+    document.body.setAttribute('data-pos-text-size', posTextSize || DEFAULT_POS_TEXT_SIZE);
+
+    return () => {
+      if (previousValue === null) document.body.removeAttribute('data-pos-text-size');
+      else document.body.setAttribute('data-pos-text-size', previousValue);
+    };
+  }, [posTextSize]);
+
   // Never render protected POS workspaces from a merely persisted token. The
   // session must be validated by hydrateUser before bootstrap requests run.
   const [locked, setLocked] = useState(true);
@@ -1145,7 +1172,7 @@ export default function TerminalPage() {
         ? discountProfiles.filter((profile) => profile && profile.active !== false && String(profile.name || '').trim()).length
         : 0;
 
-      const enabledFeeMethods = ['dgfy_global_1pct'];
+      const enabledFeeMethods = [];
 
       setTerminalRegistry(normalizedRegistry);
       setTerminalRegistryMode(normalizedRegistryMode);
@@ -1163,8 +1190,8 @@ export default function TerminalPage() {
             : { ...prev, terminalId: preferredTerminalId }
         ));
         if (typeof window !== 'undefined') {
-          if (window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) !== preferredTerminalId) {
-            window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+          if (safeLocalStorageGet(TERMINAL_ID_STORAGE_KEY) !== preferredTerminalId) {
+            safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
           }
         }
       } else if (setupFlowActive) {
@@ -1172,7 +1199,7 @@ export default function TerminalPage() {
         setFormData((prev) => ({ ...prev, terminalId: '' }));
         setTerminalUnlockForm((prev) => ({ ...prev, terminalId: '' }));
         if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+          safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
         }
       }
 
@@ -1208,14 +1235,14 @@ export default function TerminalPage() {
             : { ...prev, terminalId: preferredTerminalId }
         ));
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+          safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
         }
       } else if (setupFlowActive) {
         setActiveTerminalId('');
         setFormData((prev) => ({ ...prev, terminalId: '' }));
         setTerminalUnlockForm((prev) => ({ ...prev, terminalId: '' }));
         if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+          safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
         }
       }
       setTerminalMeta((prev) => ({ ...prev, loading: false, settingsAccessPinEnabled: false }));
@@ -2070,7 +2097,7 @@ export default function TerminalPage() {
       // new company. The session itself is still verified below before unlock.
       setStoredTerminalLock(false);
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+        safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
       }
       // React state was initialized before the handoff marker was consumed.
       // Clear that stale terminal too: otherwise a previous company's ID can
@@ -2677,11 +2704,11 @@ export default function TerminalPage() {
   }, [locked, resetSettingsAccessPinState]);
 
   useEffect(() => {
-    localStorage.setItem('posTerminalSidebarCollapsed', sidebarCollapsed ? '1' : '0');
+    safeLocalStorageSet('posTerminalSidebarCollapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem(
+    safeLocalStorageSet(
       ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY,
       onlineOrderSoundEnabled ? '1' : '0'
     );
@@ -2791,7 +2818,7 @@ export default function TerminalPage() {
         : { ...prev, terminalId: preferredTerminalId }
     ));
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+      safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
     }
   }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
@@ -2829,7 +2856,7 @@ export default function TerminalPage() {
       if (typeof window !== 'undefined') {
         // Terminal and shift-lock state are tenant-owned and must not cross company boundaries.
         setStoredTerminalLock(false);
-        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+        safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
         preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });
         window.location.assign('/terminal');
       }
@@ -2998,9 +3025,9 @@ export default function TerminalPage() {
     blurActiveTerminalEditor();
     if (typeof window !== 'undefined') {
       if (selectedTerminalId) {
-        window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+        safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
       } else {
-        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+        safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
       }
     }
     setStoredTerminalLock(false);
@@ -3274,7 +3301,7 @@ export default function TerminalPage() {
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
         if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+          safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
         }
         setActiveTerminalId('');
         setTerminalRegistry([]);
@@ -3352,7 +3379,7 @@ export default function TerminalPage() {
           throw new Error('This terminal has no assigned store location. Set the location in POS Setup first.');
         }
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+          safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
         }
         setActiveTerminalId(selectedTerminalId);
         setOperatingLocationId(selectedLocationId);
@@ -5723,6 +5750,8 @@ function PosRestorationLoadingScreen() {
           onPosSetupSaved={handlePosSetupSaved}
           onStorefrontSetupSaved={handleStorefrontSetupSaved}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          posTextSize={posTextSize}
+          onPosTextSizeChange={handlePosTextSizeChange}
           setPosViewMode={setPosViewMode}
           modeChangeNotice={modeChangeNotice}
           dismissModeChangeNotice={dismissModeChangeNotice}

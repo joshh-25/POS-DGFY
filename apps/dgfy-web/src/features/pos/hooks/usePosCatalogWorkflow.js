@@ -7,6 +7,7 @@ import {
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
+import { getPosTextSizeScale } from '../utils/posTextSizePreference.js';
 import {
     buildCatalogRequestKey,
     buildCatalogRequestParams,
@@ -492,12 +493,16 @@ export const usePosCatalogWorkflow = ({
             if (width <= 0 || height <= 0) return;
 
             const isMobileViewport = window.matchMedia?.('(max-width: 639px)')?.matches === true;
+            const textSizeScale = getPosTextSizeScale(
+                document.body?.getAttribute('data-pos-text-size')
+            );
             const nextLayout = getCatalogGridMeasurement({
                 width,
                 height,
                 isMobileViewport,
                 isTabletViewport,
-                isDgfyPosSurface
+                isDgfyPosSurface,
+                textSizeScale
             });
 
             setCatalogGridLayout((previous) => {
@@ -521,12 +526,20 @@ export const usePosCatalogWorkflow = ({
         const resizeObserver = typeof window.ResizeObserver === 'function'
             ? new window.ResizeObserver(scheduleCapacityMeasurement)
             : null;
+        const textSizeObserver = typeof window.MutationObserver === 'function'
+            ? new window.MutationObserver(scheduleCapacityMeasurement)
+            : null;
         resizeObserver?.observe(viewport);
+        textSizeObserver?.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-pos-text-size']
+        });
         window.addEventListener('resize', scheduleCapacityMeasurement);
         scheduleCapacityMeasurement();
 
         return () => {
             resizeObserver?.disconnect();
+            textSizeObserver?.disconnect();
             window.removeEventListener('resize', scheduleCapacityMeasurement);
             if (animationFrameId !== null) {
                 window.cancelAnimationFrame(animationFrameId);

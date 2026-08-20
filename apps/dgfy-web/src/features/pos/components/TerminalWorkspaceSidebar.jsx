@@ -53,8 +53,8 @@ const NavButton = ({
   >
     <Icon className={`${collapsed ? 'h-5 w-5' : 'mt-0.5 h-[18px] w-[18px]'} shrink-0 ${active ? 'text-white' : 'text-[#1A4E8D]'}`} />
     {!collapsed && <div className="min-w-0">
-      <span className="block truncate text-[12px] font-extrabold leading-4">{label}</span>
-      {caption ? <p className={`mt-1 line-clamp-2 text-[10.5px] leading-[14px] ${active ? 'text-white/80' : 'text-[#64748B]'}`}>{caption}</p> : null}
+      <span className="block break-words whitespace-normal text-[12px] font-extrabold leading-4">{label}</span>
+      {caption ? <p className={`mt-1 break-words whitespace-normal line-clamp-2 text-[10.5px] leading-[14px] ${active ? 'text-white/80' : 'text-[#64748B]'}`}>{caption}</p> : null}
     </div>}
   </button>
 );
