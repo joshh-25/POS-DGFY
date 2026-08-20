@@ -73,7 +73,9 @@ export function toSimpleTrackingViewState(trackingPayload) {
     discountAmount: numberOrNull(normalized.discountAmount ?? root?.discount_amount ?? raw?.discount_amount ?? order?.discount_amount),
     discountLabel: String(normalized.discountLabel || order?.discount_label_snapshot || root?.discount_label || raw?.discount_label || order?.discount_label || 'Promo / Discount').trim(),
     serviceFeeAmount: numberOrNull(normalized.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
-    totalAmount: numberOrNull(normalized.totalAmount ?? root?.total_amount ?? raw?.total_amount ?? order?.total_amount ?? raw?.order_total),
+    // RF-4 (PR #753 review): order.total_amount (server-persisted) now outranks root/raw's --
+    // see retailTrackingPayload.js's own copy of this note for the full reasoning.
+    totalAmount: numberOrNull(normalized.totalAmount ?? order?.total_amount ?? root?.total_amount ?? raw?.total_amount ?? raw?.order_total),
     branchName: String(normalized.branchName || location?.name || payloadDisplay?.branch_name || orderDisplay?.branch_name || root?.branch_name || raw?.branch_name || '').trim(),
     branchAddress: String(normalized.branchAddress || location?.full_address || location?.address_line || payloadDisplay?.branch_address || orderDisplay?.branch_address || root?.branch_address || raw?.branch_address || '').trim(),
     deliveryAddress: String(normalized.deliveryAddress || order?.delivery_address || payloadDisplay?.delivery_address || orderDisplay?.delivery_address || root?.delivery_address || raw?.delivery_address || payloadDisplay?.customer_address || orderDisplay?.customer_address || root?.customer_address || raw?.customer_address || '').trim(),

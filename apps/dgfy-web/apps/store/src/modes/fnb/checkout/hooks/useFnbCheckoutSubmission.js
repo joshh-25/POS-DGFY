@@ -8,6 +8,16 @@ import {
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
+// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
+// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
+// and it was still being set from the client's pre-submission totalsForDisplay, not the
+// server-persisted order.
+const resolveTrackedTotals = (order, fallbackTotals) => {
+  const serverTotal = Number(order?.total_amount);
+  return Number.isFinite(serverTotal)
+    ? { ...fallbackTotals, total_amount: serverTotal }
+    : fallbackTotals;
+};
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -149,7 +159,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
