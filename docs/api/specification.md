@@ -2849,6 +2849,13 @@ terminal, and location. Mutations require `pos:transact`; the read requires
 | `POST` | `/pos/payment-sessions/:id/cancel` | Cancel an unpaid session with an auditable reason. Successful money must be cancelled/reversed first. |
 | `POST` | `/pos/payment-sessions/:id/complete` | Complete a fully paid session atomically through normal POS checkout and return the canonical transaction/receipt contract. |
 
+Completed split-tender transactions use
+`POST /pos/transactions/:id/split-allocations/:allocation_id/reversal` after
+the internal void. The body requires `reason` and `idempotency_key`; cash also
+requires the actual refunding `shift_id`, while merchant-owned digital tender
+requires an external reference and explicit later confirmation. The server
+resolves the allocation, provider ownership, and reversible amount.
+
 Every create/allocation/completion mutation requires an idempotency key. The
 provider-confirmation mutation uses the provider event identity as its replay
 key. Reusing a key with a different request hash returns a conflict; retries
@@ -2882,6 +2889,12 @@ List POS transactions with cashier metadata and pagination.
 
 **Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
+
+The response includes additive `adjustments` and `financial_outcome` fields.
+Adjustment rows preserve the original cashier/shift and the authenticated
+actor/actor shift separately. Request hashes and raw metadata are not exposed,
+and reading history or a receipt never creates a refund, drawer event, provider
+request, or Z-reading change.
 
 **Query Parameters**
 | Name | Type | Description |
@@ -4143,7 +4156,11 @@ Authenticated premium POS routes:
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/pos/transactions/:id/print-events` | `pos:reprint` | Records operator-confirmed fiscal original print or reprint evidence after the browser print dialog is opened; reprints require a reason. |
-| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal void evidence for fiscal invoices, and creates POS stock-return movements for original POS stock issues. |
+| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal/inventory/internal-adjustment evidence, and returns the server-classified financial follow-up. It does not itself refund customer money. |
+| `POST` | `/api/v1/pos/transactions/:id/cash-refund` | `pos:cash_drawer_adjust` | Records a paid-cash refund for an already-voided transaction and atomically creates the linked `cash_out` drawer event on the acting cashier's owned open shift. |
+| `POST` | `/api/v1/pos/transactions/:id/external-refund` | `pos:void` | Records merchant-owned digital reversal evidence. Initial evidence remains manual review; explicit confirmation with the same reference and a new idempotency key completes it. |
+| `POST` | `/api/v1/pos/transactions/:id/provider-refund` | `pos:void` | Submits a server-verified PayMongo refund for a supported provider-owned online transaction. Provider identity, payment ID, amount, currency, and session ownership are server-derived. |
+| `POST` | `/api/v1/pos/transactions/:id/split-allocations/:allocation_id/reversal` | `pos:void` or `pos:cash_drawer_adjust` | Reverses one server-resolved split allocation using the tender-specific cash, merchant-owned, or provider-evidence workflow. |
 | `GET` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:view` | Lists fiscal terminal registration records. |
 | `PUT` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:fiscal_terminals:manage` | Creates or updates a terminal fiscal registration. Verified status requires MIN, machine serial, software serial, and PTU. |
 | `GET` | `/api/v1/pos/esales-reports` | `pos:view` | Lists generated eSales packages, payload hashes, lifecycle status, and submission evidence references. |
