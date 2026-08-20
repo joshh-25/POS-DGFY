@@ -28,11 +28,17 @@ export function FnbCartDrawerContent({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
   voucherDiscountAmount = 0,
 }) {
   // #746: see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning, ported here.
-  const hasVoucherDiscount = voucherDiscountAmount > 0;
-  const displayTotal = hasVoucherDiscount ? Math.max(0, cartTotal - voucherDiscountAmount) : cartTotal;
+  // RF-2 (PR #753 review): gated on !quoteNeedsRefresh too -- see that file's own note.
+  const hasVoucherDiscount = !quoteNeedsRefresh && voucherDiscountAmount > 0;
+  // RF-3 (PR #753 review): see DefaultProductCartDrawer.jsx's own note -- same fix, same reasoning.
+  const hasPromoDiscount = !quoteNeedsRefresh && promoDiscountAmount > 0;
+  const displayTotal = Math.max(0, cartTotal - (hasVoucherDiscount ? voucherDiscountAmount : 0) - (hasPromoDiscount ? promoDiscountAmount : 0));
   return (              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
                   {cart.length === 0 ? (
@@ -220,6 +226,12 @@ export function FnbCartDrawerContent({
                         <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartAddOnsTotal)}</span>
                       </div>
                     ) : null}
+                    {hasPromoDiscount && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                        <span>{promoDiscountLabel || 'Promo Discount'}</span>
+                        <span style={{ fontWeight: 700 }}>- {money(promoDiscountAmount)}</span>
+                      </div>
+                    )}
                     {hasVoucherDiscount && (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
                         <span>Voucher Discount</span>

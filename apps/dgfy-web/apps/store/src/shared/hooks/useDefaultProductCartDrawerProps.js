@@ -29,6 +29,9 @@ export function useDefaultProductCartDrawerProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
   voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
@@ -79,6 +82,9 @@ export function useDefaultProductCartDrawerProps({
       onUpdateQuantity: updateQty,
       renderPromoCodePanel,
       servicesBodyFont,
+      promoDiscountAmount,
+      promoDiscountLabel,
+      quoteNeedsRefresh,
       voucherDiscountAmount,
       withAssetOrigin
     }
@@ -103,6 +109,9 @@ export function useDefaultProductCartDrawerProps({
     servicesBodyFont,
     toggleDrawer,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    quoteNeedsRefresh,
     voucherDiscountAmount,
     withAssetOrigin
   ]);

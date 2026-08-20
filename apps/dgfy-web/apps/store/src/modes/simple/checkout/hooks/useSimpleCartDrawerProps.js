@@ -22,6 +22,9 @@ export function useSimpleCartDrawerProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
   voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
@@ -73,6 +76,9 @@ export function useSimpleCartDrawerProps({
       servicesPrimary,
       servicesPrimaryDark,
       servicesPrimaryShadowStrong,
+      promoDiscountAmount,
+      promoDiscountLabel,
+      quoteNeedsRefresh,
       voucherDiscountAmount,
       withAssetOrigin
     }
@@ -99,6 +105,9 @@ export function useSimpleCartDrawerProps({
     servicesPrimaryShadowStrong,
     toggleDrawer,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    quoteNeedsRefresh,
     voucherDiscountAmount,
     withAssetOrigin
   ]);

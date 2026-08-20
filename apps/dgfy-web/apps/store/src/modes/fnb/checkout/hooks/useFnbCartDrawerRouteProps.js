@@ -29,6 +29,9 @@ export function useFnbCartDrawerRouteProps({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
   voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
@@ -54,6 +57,9 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    quoteNeedsRefresh,
     voucherDiscountAmount,
     withAssetOrigin
   }), [
@@ -81,6 +87,9 @@ export function useFnbCartDrawerRouteProps({
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
+    promoDiscountAmount,
+    promoDiscountLabel,
+    quoteNeedsRefresh,
     voucherDiscountAmount,
     withAssetOrigin
   ]);
