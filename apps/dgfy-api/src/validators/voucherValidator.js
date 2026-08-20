@@ -83,6 +83,10 @@ const baseVoucherFields = {
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
     stackable_with_statutory: Joi.boolean(),
+    // #713: independent of channels_mask -- controls public storefront advertising, not code
+    // usability. No "eligible everywhere by omission" hazard like the four masks above, so a plain
+    // boolean default (rather than a NOT-NULL-no-default invariant) is appropriate here.
+    is_publicly_listed: Joi.boolean(),
     // #696: fixed_price-only, mutually exclusive with fixed_unit_price_centavos. The XOR itself is
     // enforced in voucherUseCases.js's applyBenefitConfig (which sees the merged/stored row, not
     // just this payload); the conditionals below and collectCrossFieldErrors only catch what a
@@ -113,6 +117,7 @@ const createVoucherSchema = Joi.object({
     voucher_kind: baseVoucherFields.voucher_kind.default('promo_code'),
     allow_below_cost: baseVoucherFields.allow_below_cost.default(false),
     stackable_with_statutory: baseVoucherFields.stackable_with_statutory.default(false),
+    is_publicly_listed: baseVoucherFields.is_publicly_listed.default(false),
     weekday_mask: baseVoucherFields.weekday_mask.default(127),
     channels_mask: baseVoucherFields.channels_mask.default(1),
     fulfillment_methods_mask: baseVoucherFields.fulfillment_methods_mask.default(3),

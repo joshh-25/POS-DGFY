@@ -323,9 +323,17 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     // table-repair pass that creates `pricelists` (below) always runs before this column-repair pass
     // -- confirmed against this script's own driver, which applies missing tables first, then
     // missing columns, in that fixed order.
+    // #713: same repair-only mechanism #696's `pricelist_id` entry above already established --
+    // REQUIRED_TENANT_SCHEMA_TABLES' `vouchers` CREATE TABLE string is a verbatim landlord-DB
+    // snapshot from before this column existed, and is deliberately not edited to add it. Every
+    // tenant (new or pre-existing) gets it from this repair pass instead, since table-creation
+    // always runs before column-repair, unconditionally.
     vouchers: Object.freeze({
         pricelist_id: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `pricelist_id` INT NULL, ADD CONSTRAINT `fk_vouchers_pricelist` FOREIGN KEY (`pricelist_id`) REFERENCES `pricelists` (`pricelist_id`)"
+        }),
+        is_publicly_listed: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
         })
     })
 });

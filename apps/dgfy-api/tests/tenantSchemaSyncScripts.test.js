@@ -391,6 +391,15 @@ describe('tenant schema sync script contracts', () => {
     expect(repair.sql).toContain('REFERENCES `pricelists` (`pricelist_id`)');
   });
 
+  // #713: same repair-only mechanism as pricelist_id above -- REQUIRED_TENANT_SCHEMA_TABLES'
+  // vouchers CREATE TABLE string is a pre-existing landlord-DB snapshot and is deliberately not
+  // edited; every tenant gets this column from the repair pass instead.
+  it('registers the vouchers.is_publicly_listed column-repair entry, defaulting to false', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.vouchers).toHaveProperty('is_publicly_listed');
+    const [repair] = buildTenantSchemaRepairSql([{ table: 'vouchers', column: 'is_publicly_listed' }]);
+    expect(repair.sql).toContain('ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0');
+  });
+
   // Mirrors the voucher parity test above, same three-code-path rationale: the landlord migration,
   // sequelize.sync() (new-tenant provisioning), and this registry (existing-tenant repair) must all
   // agree, and nothing else in this suite would catch a divergence between them.

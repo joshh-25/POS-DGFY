@@ -187,6 +187,9 @@ export const blankForm = () => ({
   minQuantity: '',
   allowBelowCost: false,
   stackableWithStatutory: false,
+  // #713: independent of channelFlags below -- controls public storefront advertising, not code
+  // usability. Default false, matching the backend column default.
+  isPubliclyListed: false,
   validFrom: '',
   validUntil: '',
   validTimeStart: '',
@@ -225,6 +228,7 @@ const voucherToForm = (voucher, scopes = []) => ({
   minQuantity: voucher.min_quantity != null ? String(voucher.min_quantity) : '',
   allowBelowCost: voucher.allow_below_cost === true,
   stackableWithStatutory: voucher.stackable_with_statutory === true,
+  isPubliclyListed: voucher.is_publicly_listed === true,
   validFrom: voucher.valid_from || '',
   validUntil: voucher.valid_until || '',
   validTimeStart: voucher.valid_time_start || '',
@@ -263,6 +267,7 @@ export const buildVoucherPayload = (form) => {
     min_quantity: form.minQuantity === '' ? null : Math.max(1, parseInt(form.minQuantity, 10) || 1),
     allow_below_cost: form.allowBelowCost === true,
     stackable_with_statutory: form.stackableWithStatutory === true,
+    is_publicly_listed: form.isPubliclyListed === true,
     valid_from: form.validFrom || null,
     valid_until: form.validUntil || null,
     valid_time_start: form.validTimeStart || null,
@@ -1133,6 +1138,10 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         not here. Form state/mapper/submit payload below are left untouched so the
                         API contract and an existing voucher's stored value round-trip unchanged
                         (always sends stackable_with_statutory: false for a new voucher). */}
+                    <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+                      <Checkbox checked={form.isPubliclyListed} onCheckedChange={(checked) => setForm((current) => ({ ...current, isPubliclyListed: checked === true }))} />
+                      List on public storefront
+                    </label>
                   </div>
                 </div>
               </div>

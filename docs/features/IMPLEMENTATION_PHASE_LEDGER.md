@@ -6218,3 +6218,99 @@ after this update: **135**.
   `POSCheckoutTerminalView.jsx`, `apps/dgfy-web/src/features/pos/utils/posCheckoutTerminalUtils.js`,
   `posCheckoutErrorMessages.js`
 - `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-20 amendment)
+
+## Phase 135 - Voucher Public Listing Flag and Storefront Discovery
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453). Issue #713, filed after a backlog audit
+  found the voucher entity has no public marketing/discovery surface -- the legacy promo engine
+  advertises active promos as "Current Promos" storefront cards; a voucher, once redeemable, had no
+  equivalent way for a customer to discover it exists without already knowing a code.
+- Release: single `develop`-targeted PR (`feature/713-voucher-public-listing`).
+
+### Objective and Scope
+
+- New `vouchers.is_publicly_listed BOOLEAN NOT NULL DEFAULT false` column, deliberately independent
+  of the pre-existing `channels_mask` -- `channels_mask` controls where a code is USABLE
+  (storefront/POS), this controls whether it's ADVERTISED on the public storefront. A B2B pricelist
+  voucher (#696) can be POS-usable and unadvertised, the combination `channels_mask` alone cannot
+  express. Default `false` because no existing "usable but unadvertised" concept exists for this
+  column to preserve -- every active promo is unconditionally advertised today.
+- Backend: `storefrontDiscoveryIndexService.js`'s snapshot builder gains
+  `buildPublicStorefrontVouchers`, querying `active`, `is_publicly_listed` vouchers per tenant and
+  filtering each through `evaluateVoucherEligibility`'s existing channel/weekday/time-window checks
+  (via `voucherDisplayUseCases.js`'s `DISPLAY_RELEVANT_REASON_CODES`, exported and reused rather than
+  re-derived -- the exact same "unknowable before a cart exists" filter that module's own
+  code-in/price-out display path already applies). Fails open on a query error, mirroring that
+  module's own convention -- a bad voucher lookup must never blank the whole discovery snapshot.
+- Frontend: no new component. `fnbPromoModel.js`'s `getPromoCandidates` gains
+  `storefront_vouchers` as a second candidate source, adapted into the exact raw shape a
+  `storefront_promos` entry already has (`code` -> `promo_code`, `percent_off_bps` basis points ->
+  `discount_percent` 0-100) before the existing normalize/dedupe/cap pipeline ever sees it --
+  vouchers become ordinary promo candidates the moment they leave the adapter, so
+  `StorefrontPromoSection.jsx` and all five of its mode-specific consumers render a voucher card
+  identically to a promo card with zero changes to any of them. A promo and a voucher sharing the
+  same code dedupe to whichever was collected first (`storefront_promos` before
+  `storefront_vouchers`), matching the existing storefront_promos-before-legacy-storefront_promo
+  precedence order.
+- A non-`percent_off` voucher (amount_off/fixed_price) surfaces on its title/badge with no
+  fabricated discount label, matching the catalog-display seam's (#603) own convention of giving
+  amount_off a badge only, never an invented percentage or price.
+- Cache-key concern from #713's own body, resolved (not deferred): unlike the affiliate-attribution
+  class of bug (#671), voucher listing eligibility depends only on `now`/`timezone` -- the same
+  page-level, periodically-refreshed values `storefront_open`/business-hours status already use in
+  this same snapshot -- never on anything visitor-specific (no affiliate code, no session, no
+  customer id). No new per-visitor cache variance is introduced.
+- Disclosed, not silently accepted: because this projection is time/weekday-aware and the discovery
+  index snapshot is built periodically (not per-request), a voucher can appear or disappear from the
+  storefront listing between syncs as its validity window opens or closes -- the legacy promo
+  projection (`parsePublicCommercialPromos`) does no such time-of-day/weekday filtering at all, so
+  this is more precise than the promo engine's own equivalent, not less, but the staleness window
+  itself is inherited from the existing sync cadence, not newly introduced.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 102-106 (voucher entity, benefit/eligibility domain, catalog display seam). No
+  code dependency on Phase 134 (POS voucher redemption) -- the two PRs are independent; Phase 134
+  merged first purely by scheduling/priority order (#712 was Pat's stated priority), not because
+  #713 requires it.
+- Classification: `major`, `surfaces: pos,terminal` --
+  `docs/compliance/impact-declarations/2026-08-20-voucher-public-listing.md`.
+- No ADR amendment required -- `is_publicly_listed` adds a new, independent eligibility axis; it
+  does not narrow, reverse, or contradict any existing ADR 0066 decision or consequence.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` -- new column-repair registration test.
+- `apps/dgfy-api/tests/voucherValidator.test.js`, `voucherUseCases.usecases.test.js` -- create/update
+  schema defaults and writable-column coverage for `is_publicly_listed`.
+- `apps/dgfy-api/tests/storefrontDiscoveryIndexService.catalogVisibility.test.js` -- two new tests:
+  only active + publicly-listed + storefront-channel-eligible vouchers are listed (a POS-only
+  publicly-listed voucher is confirmed excluded), and the projection fails open (empty list, not a
+  thrown error) when the `Voucher` model is unavailable on a tenant connection.
+  `voucherDisplayUseCases.usecases.test.js` -- confirms the exported `DISPLAY_RELEVANT_REASON_CODES`
+  reuse didn't change that module's own 16 existing tests.
+- `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.test.js` -- four new tests: a
+  percent_off voucher adapts correctly (bps -> percent conversion verified), a non-percent_off
+  voucher surfaces without a fabricated discount label, a voucher sharing a promo's code dedupes
+  correctly, and an inactive voucher is dropped.
+- `apps/dgfy-web/src/features/pos/__tests__/voucherManagementPayload.test.js` -- two new tests:
+  `is_publicly_listed` defaults to `false` and is independent of `channelFlags`/`channels_mask`.
+- `npm run build:pos` and `npm run build:skupervisor` both pass.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260820000001-add-voucher-public-listing.cjs`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/models/Voucher.js`
+- `apps/dgfy-api/src/validators/voucherValidator.js`
+- `apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+  `voucherDisplayUseCases.js`
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`
+- `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.js`

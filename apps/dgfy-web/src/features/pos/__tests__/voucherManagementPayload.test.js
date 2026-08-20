@@ -81,3 +81,33 @@ describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
         }
     });
 });
+
+// #713: is_publicly_listed controls storefront advertising, independent of channels_mask
+// (channelFlags). A B2B pricelist voucher can be POS-usable and unadvertised at once -- neither
+// implies the other.
+describe('#713 buildVoucherPayload — is_publicly_listed independent of channelFlags', () => {
+    test('defaults to false on a blank form, matching the backend column default', () => {
+        const payload = buildVoucherPayload({ ...blankForm(), code: 'X', title: 'X', benefitClass: 'percent_off', percentOffPercent: '10' });
+        expect(payload.is_publicly_listed).toBe(false);
+    });
+
+    test('sends true when checked, independent of the channel selection', () => {
+        const form = {
+            ...blankForm(),
+            code: 'WHOLESALE1',
+            title: 'Wholesale',
+            benefitClass: 'percent_off',
+            percentOffPercent: '10',
+            isPubliclyListed: false,
+            channelFlags: { storefront: true, pos: true }
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload.is_publicly_listed).toBe(false);
+        expect(payload.channels_mask).toBe(3);
+
+        const listedForm = { ...form, isPubliclyListed: true, channelFlags: { storefront: false, pos: true } };
+        const listedPayload = buildVoucherPayload(listedForm);
+        expect(listedPayload.is_publicly_listed).toBe(true);
+        expect(listedPayload.channels_mask).toBe(2);
+    });
+});
