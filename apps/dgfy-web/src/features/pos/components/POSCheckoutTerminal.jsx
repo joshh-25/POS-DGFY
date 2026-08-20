@@ -1137,13 +1137,20 @@ export default function POSCheckoutTerminal({
             toast.error('Promo code is required.');
             return;
         }
+        if (type === 'voucher' && (!discountDraft.voucher_code || !discountDraft.voucher_code.trim())) {
+            toast.error('Voucher code is required.');
+            return;
+        }
         const rate = Number(discountDraft.rate || 0);
         const amount = Number(discountDraft.amount || 0);
-        if (!statutory && type !== 'promo' && discountDraft.method === 'percentage' && (!(rate > 0) || rate > 100)) {
+        // #712: a voucher's discount amount is never client-resolvable -- unlike Promo, there is no
+        // enumerating endpoint for a store's vouchers, so no rate/amount check applies here either.
+        // The server decides on submit.
+        if (!statutory && !['promo', 'voucher'].includes(type) && discountDraft.method === 'percentage' && (!(rate > 0) || rate > 100)) {
             toast.error('Enter a discount rate from 0.01 to 100.');
             return;
         }
-        if (!statutory && type !== 'promo' && discountDraft.method === 'fixed' && !(amount > 0)) {
+        if (!statutory && !['promo', 'voucher'].includes(type) && discountDraft.method === 'fixed' && !(amount > 0)) {
             toast.error('Enter a fixed discount amount.');
             return;
         }
@@ -1161,7 +1168,7 @@ export default function POSCheckoutTerminal({
                 manager_pin: discountDraft.manager_pin,
                 employee_user_id: employeeUserId
             });
-            const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Other Discount' };
+            const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', voucher: 'Voucher Discount', manual: 'Other Discount' };
             const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
             const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0
                 ? resolvedApproverUserId
@@ -1193,10 +1200,16 @@ export default function POSCheckoutTerminal({
                 ...discountDraft,
                 manager_pin: undefined,
                 label: labels[type],
-                method: type === 'promo' ? 'percentage' : discountDraft.method,
-                rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : rate),
-                amount: type !== 'promo' && discountDraft.method === 'fixed' ? amount : null,
+                // #712: a voucher's method/rate are never client-known -- unlike Promo, there is no
+                // client-side config to resolve them from, so they stay null until the server
+                // responds at checkout. calculateGovernedDiscount (client-side cart-summary preview
+                // only, never authoritative) safely treats a null rate as 0, matching the "Discount
+                // amount is confirmed at checkout" copy shown in the modal.
+                method: type === 'promo' ? 'percentage' : (type === 'voucher' ? null : discountDraft.method),
+                rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : (type === 'voucher' ? null : rate)),
+                amount: !['promo', 'voucher'].includes(type) && discountDraft.method === 'fixed' ? amount : null,
                 promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
+                voucher_code: type === 'voucher' ? String(discountDraft.voucher_code || '').trim().toUpperCase() : discountDraft.voucher_code,
                 approver_user_id: governedDiscountApproverUserId,
                 approver_name: verifiedApprover?.username || null,
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,

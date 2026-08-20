@@ -21,7 +21,10 @@ const modalEnd = checkoutRenderContent.indexOf('<Dialog open={checkoutConfirmMod
 const discountModalContent = checkoutRenderContent.slice(modalStart, modalEnd);
 
 describe('Apply Discount type-card navigation contract', () => {
-  it('uses five visible type cards and no Discount Type select', () => {
+  // #712: a sixth card (Voucher) was added between Promo and Other -- the ordering assertion below
+  // only pins employee-before-senior (unaffected), and the count is proven by the six distinct
+  // `.toContain` checks, not a hardcoded number.
+  it('uses six visible type cards and no Discount Type select', () => {
     expect(checkoutRenderContent.indexOf("{ value: 'employee', label: 'Employee'")).toBeLessThan(
       checkoutRenderContent.indexOf("{ value: 'senior', label: 'Senior Citizen'")
     );
@@ -29,11 +32,24 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).toContain("{ value: 'pwd', label: 'PWD'");
     expect(checkoutRenderContent).toContain("{ value: 'employee', label: 'Employee'");
     expect(checkoutRenderContent).toContain("{ value: 'promo', label: 'Promo'");
+    expect(checkoutRenderContent).toContain("{ value: 'voucher', label: 'Voucher'");
     expect(checkoutRenderContent).toContain("{ value: 'manual', label: 'Other'");
     expect(discountModalContent).toContain('role="tablist"');
     expect(discountModalContent).toContain('role="tab"');
     expect(discountModalContent).toContain('aria-selected={active}');
     expect(discountModalContent).not.toContain('<label className="block text-sm font-semibold">Discount Type');
+  });
+
+  it('adds the voucher code field, matching the promo code field\'s no-client-validation pattern', () => {
+    expect(discountModalContent).toContain("discountDraft.type === 'voucher'");
+    expect(discountModalContent).toContain('Voucher Code');
+    expect(discountModalContent).toContain('discountDraft.voucher_code');
+    // Sale-level only (#712) -- no per-line voucher entry, unlike statutory item selection.
+    expect(discountModalContent).not.toContain('item_discount.discount_type === \'voucher\'');
+    // Unlike Promo, a voucher's amount is never resolved client-side -- confirm no fake local
+    // validity/rate lookup was added for it (the promo path's own client-side pre-checks stay
+    // promo-only).
+    expect(checkoutRenderContent).not.toContain("type === 'voucher' && (\n            matchedPromoConfig");
   });
 
   it('switches the existing draft type and preserves dynamic panels', () => {
