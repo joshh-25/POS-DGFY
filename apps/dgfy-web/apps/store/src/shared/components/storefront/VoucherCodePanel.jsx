@@ -70,6 +70,7 @@ export function VoucherCodePanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
+          minWidth: 0,
           minHeight: compact ? 40 : 44,
           padding: compact ? '0 12px' : '0 14px',
           borderRadius: 12,
@@ -79,9 +80,12 @@ export function VoucherCodePanel({
           fontFamily: bodyFont
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* #750: minWidth: 0 on this row + the label span lets the label shrink and ellipsize
+            instead of wrapping the whole trigger into two lines when the container is a fixed
+            width narrower than the label (both catalog toolbars pin this to 260px). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <Ticket size={18} color={accentColor} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: accentColor }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: accentColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {hasCode ? normalizedCode : triggerLabel}
           </span>
         </div>

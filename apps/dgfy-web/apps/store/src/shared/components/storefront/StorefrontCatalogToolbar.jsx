@@ -77,6 +77,10 @@ const StorefrontCatalogToolbar = ({
   // #694: a second, more prominent entry point into #672's already-wired apply pipeline --
   // applying a code here re-fetches the catalog in place (useStoreCatalogLoader.js already keys
   // its fetch on voucherCode), so no new data flow is needed, just this render.
+  // #750 (RF-5, PR #753 review): moved out of the JSX attribute list below -- deliberately no
+  // `triggerLabel` prop is passed here. The longer copy ("...Apply it here") wrapped the trigger
+  // to two lines inside this toolbar's fixed 260px container; falling back to VoucherCodePanel's
+  // own shorter default fixes it.
   const voucherEntry = handleVoucherCardApply ? (
     <VoucherCodePanel
       code={checkoutVoucherCode}
@@ -88,7 +92,6 @@ const StorefrontCatalogToolbar = ({
       bodyFont={toolbarBodyFont}
       isMobile={isMobileViewport}
       helperText="Prices update in place below -- no need to open checkout."
-      triggerLabel="Have a voucher code? Apply it here"
     />
   ) : null;
 
@@ -253,7 +256,7 @@ const StorefrontCatalogToolbar = ({
             <span style={{ width: isCompactToolbar ? 7 : 8, height: isCompactToolbar ? 7 : 8, borderRadius: 999, background: toolbarAccent }} />
             {totalItems} {totalItems === 1 ? itemNounSingular : itemNounPlural} available
           </div>
-          {voucherEntry && <div style={{ width: 260 }}>{voucherEntry}</div>}
+          {voucherEntry && <div style={{ width: 260, minWidth: 0 }}>{voucherEntry}</div>}
         </div>
       </div>
 

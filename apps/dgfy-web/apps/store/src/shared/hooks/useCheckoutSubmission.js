@@ -6,6 +6,20 @@ import {
   isStorefrontOnlinePaymentType
 } from '../services/storefrontOnlinePaymentSession.js';
 
+// RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
+// -- this object's own `totals.total_amount` is what the order-confirmation screens
+// (SimpleCheckoutSuccessStep.jsx, FnbCheckoutRouteContainer.jsx) and the downloadable receipt
+// image actually read, and it was still being set from the client's pre-submission
+// `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
+// the authoritative `order.total_amount` from the checkout response, fall back to the client
+// value only if the server didn't send one.
+const resolveTrackedTotals = (order, fallbackTotals) => {
+  const serverTotal = Number(order?.total_amount);
+  return Number.isFinite(serverTotal)
+    ? { ...fallbackTotals, total_amount: serverTotal }
+    : fallbackTotals;
+};
+
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
  * (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`).
@@ -401,7 +415,7 @@ export function useCheckoutSubmission({
           setCheckoutResult({
             ...productData,
             cart_lines: productCartLines,
-            totals: totalsForDisplay
+            totals: resolveTrackedTotals(productData?.order, totalsForDisplay)
           });
           if (productData?.tracking_pin) {
             setTrackingPinInput(productData.tracking_pin);
@@ -413,7 +427,11 @@ export function useCheckoutSubmission({
               order_method: productData?.order?.order_method || orderMethod,
               order: productData?.order || null,
               order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
-              total_amount: totalsForDisplay?.total_amount ?? 0
+              // #747: prefer the server-persisted total over the client's pre-submission snapshot
+              // -- the client value doesn't reflect a just-applied voucher discount, and
+              // retailTrackingPayload.js's own `??` chain would otherwise let this poisoned
+              // top-level field shadow the correct nested order.total_amount.
+              total_amount: productData?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
             }, productData.tracking_pin);
           }
           setQuoteResult(null);
@@ -441,7 +459,7 @@ export function useCheckoutSubmission({
         cart_lines: hasServiceCart && !hasMixedCart
           ? serviceCartLines
           : cartSnapshot,
-        totals: totalsForDisplay
+        totals: resolveTrackedTotals(data?.order, totalsForDisplay)
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -465,7 +483,8 @@ export function useCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // #747: see the partial-booking-failure branch above for why -- same fix, same reasoning.
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');

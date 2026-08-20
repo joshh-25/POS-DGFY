@@ -39,8 +39,32 @@ export function DefaultProductCartDrawer({
   onUpdateQuantity,
   renderPromoCodePanel,
   servicesBodyFont,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  quoteNeedsRefresh = false,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
+  // #746: this drawer used to render `cartTotal` unconditionally, which has zero voucher
+  // awareness -- applying a voucher here never moved the number on screen. `cartTotal` stays the
+  // fallback (so an untouched cart is byte-identical to before this fix); when a voucher discount
+  // is active, subtract it directly rather than switching to `totalsForDisplay.total_amount`,
+  // which also folds in the service fee and would change the displayed total for every cart, not
+  // just voucher ones.
+  // RF-2 (PR #753 review): voucherDiscountAmount is the LAST quote's value, but cartTotal is
+  // live -- StorefrontApp.jsx sets quoteNeedsRefresh on every cart change without clearing
+  // quoteResult, and nothing re-quotes from the drawer itself. Without this gate, changing a
+  // quantity after applying a voucher subtracts a stale discount from a fresh subtotal --
+  // shrinking the cart enough could render a confident PHP0 total on a non-empty cart. Falls
+  // back to plain cartTotal (byte-identical to before this fix) exactly when the number can't
+  // be trusted.
+  const hasVoucherDiscount = !quoteNeedsRefresh && voucherDiscountAmount > 0;
+  // RF-3 (PR #753 review): this drawer's own `renderPromoCodePanel` renders BOTH PromoCodePanel
+  // and VoucherCodePanel stacked (useFnbCheckoutPromoRenderers.jsx) -- only fixing the voucher
+  // half left the promo half reproducing #746 verbatim, and a merchant using both would see a
+  // Voucher Discount row with no promo counterpart. Same staleness gate as the voucher discount.
+  const hasPromoDiscount = !quoteNeedsRefresh && promoDiscountAmount > 0;
+  const displayTotal = Math.max(0, cartTotal - (hasVoucherDiscount ? voucherDiscountAmount : 0) - (hasPromoDiscount ? promoDiscountAmount : 0));
   return (
     <div
       style={{
@@ -169,6 +193,18 @@ export function DefaultProductCartDrawer({
               <span>Subtotal</span>
               <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartSubtotal)}</span>
             </div>
+            {hasPromoDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>{promoDiscountLabel || 'Promo Discount'}</span>
+                <span style={{ fontWeight: 700 }}>- {money(promoDiscountAmount)}</span>
+              </div>
+            )}
+            {hasVoucherDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>Voucher Discount</span>
+                <span style={{ fontWeight: 700 }}>- {money(voucherDiscountAmount)}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -176,7 +212,7 @@ export function DefaultProductCartDrawer({
               <div style={{ fontSize: 18, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
             </div>
-            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>
 
           <button
