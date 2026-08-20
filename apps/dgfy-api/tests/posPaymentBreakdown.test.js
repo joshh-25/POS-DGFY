@@ -70,9 +70,12 @@ describe('POS close-report payment breakdown', () => {
                 total_amount: 1050,
                 void_transaction_count: 2,
                 void_amount: 125,
+                post_close_void_transaction_count: 1,
+                post_close_void_amount: 125,
                 payment_breakdown: paymentBreakdown
             }
         });
+        expect(shiftLines).toContainEqual(expect.stringContaining('Post-close voids (1)'));
         const zReadingLines = buildZReadingLines({
             z_reading: {
                 summary: {

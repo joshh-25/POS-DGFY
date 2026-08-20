@@ -5,6 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8');
+const readCheckoutRenderSource = () => [
+    read('../components/POSCheckoutTerminal.jsx'),
+    read('../components/POSCheckoutTerminalView.jsx'),
+    read('../components/POSCheckoutTerminalReceiptDialogs.jsx'),
+].join('\n');
 
 // Source-contract style, matching posWeightEntry.contract.test.js and its
 // neighbors -- POSCheckoutTerminal is large enough that a full render setup
@@ -12,7 +17,7 @@ const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativeP
 // preview) is heavier than the codebase's existing convention for this file.
 describe('POS printer availability and post-checkout receipt view', () => {
     it('gates every Print control on posHardware.isPrinterAvailable, not just posActionsBlocked', () => {
-        const source = read('../components/POSCheckoutTerminal.jsx');
+        const source = readCheckoutRenderSource();
         const currentSaleActionsSource = read('../components/PosCurrentSaleActions.jsx');
         expect(source).toContain('const isPrinterAvailable = posHardware.isPrinterAvailable;');
         // Current-sale Print Order, checkout confirmation Print Order, and the
@@ -24,7 +29,7 @@ describe('POS printer availability and post-checkout receipt view', () => {
     });
 
     it('offers a Recheck printer action when no printer is available, wired to posHardware.refresh()', () => {
-        const source = read('../components/POSCheckoutTerminal.jsx');
+        const source = readCheckoutRenderSource();
 
         expect(source).toContain('No printer detected on this device.');
         expect(source).toContain('onClick={() => posHardware.refresh()}');
@@ -32,11 +37,28 @@ describe('POS printer availability and post-checkout receipt view', () => {
     });
 
     it('lets the cashier toggle between Order Preview and the receipt render after checkout', () => {
-        const source = read('../components/POSCheckoutTerminal.jsx');
+        const source = readCheckoutRenderSource();
+        const workflowSource = read('../hooks/usePosReceiptHardwareWorkflow.js');
 
         expect(source).toContain("receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'");
         expect(source).toContain("{receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}");
         // Resets on close so the next checkout opens on Order Preview again.
-        expect(source).toContain("setReceiptPreviewSource('receipt_preview');");
+        expect(workflowSource).toContain("setReceiptPreviewSource('receipt_preview');");
+    });
+
+    it('keeps receipt and drawer orchestration behind the reusable hardware workflow boundary', () => {
+        const source = readCheckoutRenderSource();
+        const workflowSource = read('../hooks/usePosReceiptHardwareWorkflow.js');
+
+        expect(source).toContain('usePosReceiptHardwareWorkflow');
+        expect(source).toContain('} = usePosReceiptHardwareWorkflow({');
+        expect(source).not.toContain('const handlePrintReceipt =');
+        expect(source).not.toContain('const handleBillRequest =');
+        expect(source).not.toContain('const handlePrintOrder =');
+        expect(source).not.toContain('const submitDrawerAuthorization =');
+        expect(workflowSource).toContain('authorizePosDrawerOpen({');
+        expect(workflowSource).toContain('openDrawerAfterPrint: shouldOpenDrawer');
+        expect(workflowSource).toContain('billRequest: true');
+        expect(workflowSource).toContain('idempotencyKey');
     });
 });

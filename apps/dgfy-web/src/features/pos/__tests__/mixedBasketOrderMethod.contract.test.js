@@ -19,7 +19,9 @@ describe('mixed-basket order_method default no longer clobbers an in-progress ba
             '../components/POSCheckoutTerminal.jsx',
             '../components/SkupervisorPOSCheckoutTerminal.jsx'
         ].forEach((relativePath) => {
-            const source = read(relativePath);
+            const source = relativePath === '../components/POSCheckoutTerminal.jsx'
+                ? read('../hooks/usePosCartWorkflow.js')
+                : read(relativePath);
             expect(source).toContain("isServiceCatalogItem(item) && cart.length === 0");
             expect(source).toContain("setOrderMethod('appointment')");
         });

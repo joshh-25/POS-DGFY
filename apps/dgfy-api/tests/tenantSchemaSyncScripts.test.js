@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
   assertTenantSchemaMutationModeAllowed,
@@ -13,7 +13,9 @@ import {
   REQUIRED_TENANT_SCHEMA_TABLES,
   buildTenantSchemaEnumRepairSql,
   repairItemFolderCategoryLifecycleSchema,
-  repairPosParkedSaleOriginOwnership
+  repairPosParkedSaleOriginOwnership,
+  normalizeTenantSchemaTableRepairSql,
+  resolveTenantSchemaRepairCollation
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
@@ -120,15 +122,17 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_catalog_overrides', column: 'pos_best_seller_mode' },
       { table: 'pos_transaction_lines', column: 'stock_effect_type' },
       { table: 'pos_transaction_lines', column: 'stock_exempt_reason' },
+      { table: 'pos_transaction_adjustments', column: 'pos_payment_allocation_id' },
       { table: 'service_item_details', column: 'addons_enabled' }
     ]);
 
-    expect(repairs).toHaveLength(5);
+    expect(repairs).toHaveLength(6);
     expect(repairs[0].sql).toContain('ADD COLUMN `pos_always_available`');
     expect(repairs[1].sql).toContain('ADD COLUMN `pos_best_seller_mode`');
     expect(repairs[2].sql).toContain("ENUM('inventory_issue','stock_exempt')");
     expect(repairs[3].sql).toContain('ADD COLUMN `stock_exempt_reason`');
-    expect(repairs[4].sql).toContain('ADD COLUMN `addons_enabled`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `pos_payment_allocation_id`');
+    expect(repairs[5].sql).toContain('ADD COLUMN `addons_enabled`');
   });
 
   it('registers storefront_catalog_overrides as a whole-table backfill target', () => {
@@ -254,6 +258,27 @@ describe('tenant schema sync script contracts', () => {
 
     // #455 says "locations"; no such table exists. Every location FK targets tenant_locations.
     expect(repairs[2].sql).toContain('REFERENCES `tenant_locations` (`location_id`)');
+  });
+
+  it('normalizes MySQL 8-only table collations for compatible local repair targets', () => {
+    const [repair] = buildTenantSchemaTableRepairSql(['pos_transaction_adjustments']);
+    const normalized = normalizeTenantSchemaTableRepairSql(repair.sql, 'utf8mb4_general_ci');
+
+    expect(repair.sql).toContain('COLLATE=utf8mb4_0900_ai_ci');
+    expect(normalized).toContain('COLLATE=utf8mb4_general_ci');
+    expect(normalized).not.toContain('utf8mb4_0900_ai_ci');
+  });
+
+  it('falls back to the target schema collation when MySQL 8 collation is unavailable', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([[{ DEFAULT_COLLATION_NAME: 'utf8mb4_general_ci' }]])
+        .mockResolvedValueOnce([[{ Collation: 'utf8mb4_general_ci' }]])
+    };
+
+    await expect(resolveTenantSchemaRepairCollation(connection, 'sku_tenant_test'))
+      .resolves.toBe('utf8mb4_general_ci');
   });
 
   // Three separate code paths can create the voucher tables, and they must agree:
