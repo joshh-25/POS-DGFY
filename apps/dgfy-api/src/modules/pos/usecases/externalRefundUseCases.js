@@ -31,13 +31,6 @@ const stableStringify = (value) => {
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
-const isPosAdminOperator = (user = {}) => (
-    user?.is_master_admin === true
-    || user?.is_master_admin === 1
-    || user?.is_master_admin === '1'
-    || String(user?.role || '').trim().toLowerCase() === 'admin'
-);
-
 const buildExternalRefundOutcome = ({ amount, confirmed }) => ({
     internal_void: 'succeeded',
     refund_required: !confirmed,
@@ -144,8 +137,6 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
         const externalReference = String(payload?.external_reference || '').trim();
         const idempotencyKey = String(payload?.idempotency_key || '').trim();
         const completionConfirmed = payload?.completion_confirmed === true;
-        const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
-
         if (!normalizedTransactionId || !actorUserId || reason.length < 3 || externalReference.length < 3 || idempotencyKey.length < 8) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -153,7 +144,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
                 { statusCode: 422 }
             ));
         }
-        if (!activeShiftId && !adminShiftBypass) {
+        if (!activeShiftId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'An active cashier shift is required to record external reversal evidence',

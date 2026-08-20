@@ -219,6 +219,7 @@ const validatePaymentConfig = (env, errors, warnings) => {
   const paymongoLiveMode = String(env.PAYMONGO_MODE || '').trim().toLowerCase() === 'live';
   const directGcashEnabled = isTruthy(env.STOREFRONT_DIRECT_GCASH_ENABLED);
   const directMayaEnabled = isTruthy(env.STOREFRONT_DIRECT_MAYA_ENABLED);
+  const directCardEnabled = isTruthy(env.STOREFRONT_DIRECT_CARD_ENABLED);
 
   if (!paymentsEnabled && !commercePaymentsEnabled && !tenantRevenueSharingEnabled && !paymongoLiveMode) return;
 
@@ -227,6 +228,9 @@ const validatePaymentConfig = (env, errors, warnings) => {
   }
   if (directMayaEnabled && paymongoLiveMode && !isTruthy(env.STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED)) {
     errors.push('STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true is required when direct Maya is enabled in live mode');
+  }
+  if (directCardEnabled && paymongoLiveMode && !isTruthy(env.STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED)) {
+    errors.push('STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED=true is required when direct card is enabled in live mode');
   }
 
   const provider = detectPaymentProvider(env);

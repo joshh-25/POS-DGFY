@@ -13,6 +13,9 @@ import {
     storefrontDirectGcashRequested,
     storefrontDirectMayaEnabled,
     storefrontDirectMayaRequested,
+    storefrontDirectCardEnabled,
+    storefrontDirectCardRequested,
+    storefrontDirectPaymentRequired,
     getPayMongoMode,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig
@@ -82,6 +85,9 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     directGcashRequested: storefrontDirectGcashRequested,
     directMayaEnabled: storefrontDirectMayaEnabled,
     directMayaRequested: storefrontDirectMayaRequested,
+    directCardEnabled: storefrontDirectCardEnabled,
+    directCardRequested: storefrontDirectCardRequested,
+    directPaymentRequired: storefrontDirectPaymentRequired,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig,
     downpaymentSettingsRepository

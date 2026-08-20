@@ -160,6 +160,7 @@ router.get(
 router.post('/employees', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeCreate, employeeController.createEmployee);
 router.patch('/employees/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeParam, validateEmployeeUpdate, employeeController.updateEmployee);
 router.get('/employee-credit/accounts', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), employeeCreditController.listEmployeeCreditAccounts);
+router.post('/employee-credit/employee-accounts/enable-active', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), employeeCreditController.enableEmployeeCreditForActiveEmployees);
 router.patch('/employee-credit/accounts/:userId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditUserParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditAccount);
 router.patch('/employee-credit/employee-accounts/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditEmployeeAccount);
 router.post('/employee-credit/accounts/:accountId/repay', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditAccountParam, validateEmployeeCreditRepayment, employeeCreditController.recordEmployeeCreditRepayment);

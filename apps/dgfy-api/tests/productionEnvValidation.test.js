@@ -207,6 +207,33 @@ describe('production environment validation', () => {
     expect(mayaConfigured.ok).toBe(true);
   });
 
+  it('requires explicit live confirmation for production direct card', () => {
+    const directLiveEnv = {
+      ...baseEnv,
+      COMMERCE_PAYMENTS_ENABLED: 'true',
+      PAYMONGO_MODE: 'live',
+      PAYMONGO_LIVE_PUBLIC_KEY: 'pk_live_fixture',
+      PAYMONGO_LIVE_SECRET_KEY: 'sk_live_fixture',
+      PAYMONGO_LIVE_WEBHOOK_SECRET: 'whsec_live_fixture',
+      PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture',
+      STOREFRONT_DIRECT_CARD_ENABLED: 'true'
+    };
+
+    const missingConfirmation = validateProductionEnv({ env: directLiveEnv });
+    expect(missingConfirmation.ok).toBe(false);
+    expect(missingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED=true is required when direct card is enabled in live mode'
+    );
+
+    const configured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(configured.ok).toBe(true);
+  });
+
   it('requires PayMongo and DGFY merchant config when commerce payments are enabled', () => {
     const missing = validateProductionEnv({
       env: {
