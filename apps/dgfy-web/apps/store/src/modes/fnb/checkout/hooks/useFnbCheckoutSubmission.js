@@ -4,8 +4,10 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
-  isStorefrontOnlinePaymentType
+  isStorefrontOnlinePaymentType,
+  startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 // RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
@@ -134,10 +136,26 @@ export function useFnbCheckoutSubmission({
           requestJson,
           storeSlug: selectedStore.slug
         });
-        setQrphPaymentSession(paymentSession);
-        if (isStorefrontHostedPaymentType(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
-          window.location.assign(paymentSession.checkout_url);
+        if (isStorefrontDirectPaymentSession(paymentSession)) {
+          const directPayment = await startStorefrontDirectPayment({
+            billing: {
+              name: customerName,
+              email: customerEmail,
+              phone: customerPhone
+            },
+            paymentSession
+          });
+          setQrphPaymentSession(paymentSession);
+          if (typeof window !== 'undefined') window.location.assign(directPayment.redirectUrl);
         } else {
+          setQrphPaymentSession(paymentSession);
+        }
+        if (!isStorefrontDirectPaymentSession(paymentSession)
+          && isStorefrontHostedPaymentType(fnbPaymentType)
+          && paymentSession.checkout_url
+          && typeof window !== 'undefined') {
+          window.location.assign(paymentSession.checkout_url);
+        } else if (!isStorefrontDirectPaymentSession(paymentSession)) {
           toast.success(fnbPaymentType === 'qrph'
             ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
             : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);

@@ -5330,7 +5330,7 @@ parked-sale replay and shift-close resolution.
 ### Initiative and Release
 
 - Initiative: Storefront payment-method capability expansion.
-- Release: Storefront Hosted Checkout active e-wallet/card method selection.
+- Release: Storefront PayMongo active e-wallet/card method selection and direct GCash authorization.
 
 ### Objective and Scope
 
@@ -5338,6 +5338,10 @@ parked-sale replay and shift-close resolution.
   choices in Storefront checkout.
 - Route the selected method as the single PayMongo Hosted Checkout method; a
   GCash selection must create a session restricted to `gcash`.
+- Permit direct GCash and independently opted-in Maya Payment Intent
+  authorization behind explicit live configuration; keep Hosted Checkout for
+  cards and other methods and as the wallet fallback when direct mode is
+  disabled.
 - Preserve the existing signed webhook finalization, idempotency, settlement,
   refund, and walk-in POS physical-QR boundaries.
 - Defer BPI, UBP, BDO, Landbank, and other direct-online-banking choices until
@@ -5364,8 +5368,15 @@ parked-sale replay and shift-close resolution.
   shown; inactive methods remain hidden.
 - [ ] GCash selection sends `payment_type=gcash` and creates
   `payment_method_types=["gcash"]`.
+- [ ] Explicitly enabled live GCash and Maya create wallet-specific PayMongo
+  Payment Intents and redirect to provider authorization without opening Hosted
+  Checkout.
+- [ ] Live provider `livemode`, amount, and currency are validated before
+  finalization.
 - [ ] Maya, GrabPay, ShopeePay, Card, and QR Ph selections preserve their exact
   method identifiers through the same payment-session endpoint.
+- [ ] Direct Maya uses `paymaya` only when its independent opt-in flags are
+  enabled; cards remain on Hosted Checkout.
 - [ ] No direct order finalizes before a verified PayMongo webhook.
 - [ ] Existing Cash, QR Ph, return recovery, and POS physical-QR behavior remain
   unchanged.
@@ -5381,6 +5392,8 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-migration-runner/migrations/20260817000001-expand-storefront-paymongo-payment-methods.cjs`
 - `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js`
 - `apps/dgfy-web/apps/store/src/shared/services/storefrontOnlinePaymentSession.js`
+- `apps/dgfy-api/src/modules/commercePayments/usecases/processVerifiedPaidCommerceSession.js`
+- Issue #679
 
 ### Completion Record
 
@@ -5867,3 +5880,190 @@ parked-sale replay and shift-close resolution.
 
 - Phase 110 completed 2026-08-18 via PRs #708 (`61b1809c`), #709 (`9648685a`), #710 (`4ecd5f2a`),
   #711 (`d2b0380c`), merged in that order onto `develop`. Next eligible phase: 111.
+
+## Phase 111 - POS Checkout Terminal Decomposition
+
+- Initiative/release: POS maintainability; behavior-preserving R0-R9 refactor.
+- Objective/scope: replace the checkout monolith with a compatibility shell, focused hooks, views, and pure utilities; POS only.
+- Status: `completed`; dependencies: ADR 0031 and the existing POS UI/API contracts.
+- Acceptance/evidence: shell/view contracts, full POS/F&B regression, production build, and authenticated browser certification passed in aggregate under Phase 132.
+- Completion: 2026-08-20. Links: `docs/features/POS_CHECKOUT_TERMINAL_REFACTOR.md`, `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`.
+
+## Phase 112 - Administrator No-Shift Void Certification
+
+- Initiative/release: accountable POS void lifecycle.
+- Objective/scope: allow an authorized administrator to void without opening/reassigning a shift while preserving cashier shift enforcement.
+- Status: `completed`; dependencies: Phase 111 and ADR 0031's administrator exception.
+- Acceptance/evidence: route/use-case tests and authenticated closed-shift admin-void E2E passed.
+- Completion: 2026-08-20. Links: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-web/tests/e2e/pos/admin-void.spec.js`.
+
+## Phase 113 - Receipt and Dialog Presentation Extraction
+
+- Initiative/release: POS terminal refactor.
+- Objective/scope: move receipt preview, dialogs, and presentation markup out of the compatibility shell without UI/API change.
+- Status: `completed`; dependencies: Phase 111.
+- Acceptance/evidence: receipt, terminal view-mode, and shell contract tests passed.
+- Completion: 2026-08-20. Links: `POSCheckoutTerminalView.jsx`, `POSCheckoutTerminalReceiptDialogs.jsx`.
+
+## Phase 114 - POS-Native Cashier Void Permission Control
+
+- Initiative/release: cashier accountability.
+- Objective/scope: independently manage `pos:void` and `pos:cash_drawer_adjust` inside POS Settings while preserving unrelated permissions.
+- Status: `completed`; dependencies: existing user permission APIs.
+- Acceptance/evidence: POS Settings contract and backend authorization tests passed.
+- Completion: 2026-08-20. Links: `TerminalOperationsWorkspace.jsx`, `posSettingsCashier.contract.test.js`.
+
+## Phase 115 - Voided Transaction Visibility
+
+- Initiative/release: POS history/audit UX.
+- Objective/scope: retain voided sales in History with status, reason, actor, timestamp, receipt audit, and original cashier/shift attribution.
+- Status: `completed`; dependencies: Phase 112.
+- Acceptance/evidence: history/search/receipt contracts and live E2E passed.
+- Completion: 2026-08-20. Links: `POSTransactionHistoryPanel.jsx`, `usePosHistoryVoidWorkflow.js`.
+
+## Phase 116 - Paid-Void Lifecycle Contract
+
+- Initiative/release: refund governance discovery.
+- Objective/scope: define distinct unpaid, cash, merchant-owned digital, provider-owned, Employee Credit, split-tender, and post-close outcomes.
+- Status: `completed`; dependencies: Phases 112 and 115.
+- Acceptance/evidence: approved contract is documented in the POS flow, API specification, ADR 0031, and split-payment contract.
+- Completion: 2026-08-20. Links: `docs/features/POS_CASHIER_TERMINAL_FLOW.md`, `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+
+## Phase 117 - Transaction Adjustment Evidence Foundation
+
+- Initiative/release: additive POS financial evidence.
+- Objective/scope: create tenant-local append-only adjustment persistence with original and actor context, idempotency, provider/external, retry, and drawer links.
+- Status: `completed`; dependencies: Phase 116 and tenant schema registry.
+- Acceptance/evidence: migration/model/repository/runtime-schema tests passed; landlord and 14/14 tenant schemas are current.
+- Completion: 2026-08-20. Links: migration `20260819000001-create-pos-transaction-adjustments.cjs`, `PosTransactionAdjustment.js`.
+
+## Phase 118 - Internal Void Evidence Wiring
+
+- Initiative/release: accountable internal void.
+- Objective/scope: write one deterministic succeeded `void` adjustment in the same transaction as the internal void.
+- Status: `completed`; dependencies: Phase 117.
+- Acceptance/evidence: idempotency, attribution, rollback, and duplicate-void tests passed.
+- Completion: 2026-08-20. Links: `posUseCases.js`, `posRepository.js`.
+
+## Phase 119 - Financial Outcome Classification
+
+- Initiative/release: fail-closed refund routing.
+- Objective/scope: derive refund-required state and next action from persisted transaction/tender evidence without performing a refund.
+- Status: `completed`; dependencies: Phase 118.
+- Acceptance/evidence: outcome-domain and void-response matrix tests passed.
+- Completion: 2026-08-20. Links: `posVoidFinancialOutcome.js`.
+
+## Phase 120 - Adjustment Read Projection
+
+- Initiative/release: auditable transaction detail.
+- Objective/scope: expose sanitized adjustments and latest financial outcome without read-side mutations or raw request metadata.
+- Status: `completed`; dependencies: Phases 117-119.
+- Acceptance/evidence: repository/detail/history read tests passed.
+- Completion: 2026-08-20. Links: `posRepository.js`, `posHandlers.js`.
+
+## Phase 121 - Financial Follow-Up Presentation
+
+- Initiative/release: truthful POS refund status UX.
+- Objective/scope: show whether cash, external, provider, or split follow-up is required without presenting an internal void as a completed refund.
+- Status: `completed`; dependencies: Phase 120.
+- Acceptance/evidence: receipt/history presentation contracts passed.
+- Completion: 2026-08-20. Links: `POSCheckoutTerminalReceiptDialogs.jsx`, `POSTransactionHistoryPanel.jsx`.
+
+## Phase 122 - Reusable Administrator-Void E2E
+
+- Initiative/release: state-changing browser certification.
+- Objective/scope: provide credential-safe, diagnostic E2E coverage with opt-in cleanup limited to the configured disposable cashier's stale shift.
+- Status: `completed`; dependencies: Phases 112 and 121 plus disposable sandbox credentials.
+- Acceptance/evidence: Google Chrome E2E passed 1/1 with admin no-shift void, cashier refund, drawer, history, and report assertions.
+- Completion: 2026-08-20. Links: `tests/e2e/pos/admin-void.spec.js`, `tests/e2e/fixtures/posVoid.js`.
+
+## Phase 123 - Runtime and Tenant Schema Readiness
+
+- Initiative/release: deploy-safe schema convergence.
+- Objective/scope: register adjustment and split-reversal tables/columns/indexes in runtime audit and additive tenant repair.
+- Status: `completed`; dependencies: Phase 117 migrations.
+- Acceptance/evidence: landlord migrations are current; tenant repair/report succeeded 14/14 at capability `2026-08-20.1`.
+- Completion: 2026-08-20. Links: `scripts/sync-tenant-schemas.js`, `runtimeSchemaAuditService.js`.
+
+## Phase 124 - Paid-Refund Lifecycle Gates
+
+- Initiative/release: server-authoritative refund eligibility.
+- Objective/scope: require prior void, supported paid tender, terminal scope, actor permission/shift rules, and idempotency before financial follow-up.
+- Status: `completed`; dependencies: Phases 116-123.
+- Acceptance/evidence: negative authorization, validation, ownership, and replay matrix passed.
+- Completion: 2026-08-20. Links: `posValidator.js`, POS refund use cases.
+
+## Phase 125 - Paid-Cash Refund and Drawer Event
+
+- Initiative/release: physical cash accountability.
+- Objective/scope: atomically record cash refund evidence and one linked `cash_out` event on the acting cashier's owned open shift.
+- Status: `completed`; dependencies: Phase 124 and `pos:cash_drawer_adjust`.
+- Acceptance/evidence: cash refund use-case/route tests and authenticated E2E passed.
+- Completion: 2026-08-20. Links: `cashRefundUseCases.js`.
+
+## Phase 126 - Merchant-Owned Digital Reversal Evidence
+
+- Initiative/release: walk-in digital reversal accountability.
+- Objective/scope: record external reference under manual review, then require explicit same-reference confirmation; never call PayMongo.
+- Status: `completed`; dependencies: Phase 124.
+- Acceptance/evidence: evidence, confirmation, duplicate-reference, actor-shift, and no-provider-call tests passed.
+- Completion: 2026-08-20. Links: `externalRefundUseCases.js`.
+
+## Phase 127 - Provider-Owned Refund Adapter
+
+- Initiative/release: verified online provider refund.
+- Objective/scope: verify server-owned PayMongo payment/session identity and exact amount/method/currency before refund submission; preserve retry state.
+- Status: `completed`; dependencies: Phase 124 and commerce payment ownership records.
+- Acceptance/evidence: provider success, pending, failure, replay, mismatch, and unsupported-tender tests passed.
+- Completion: 2026-08-20. Links: `providerRefundUseCases.js`, `commercePaymentAdminUseCases.js`.
+
+## Phase 128 - Split-Tender Allocation Reversal
+
+- Initiative/release: allocation-level refund lifecycle.
+- Objective/scope: reverse each successful cash, merchant-owned, or provider-owned allocation with server-maintained amount/status summaries.
+- Status: `completed`; dependencies: Phases 125-127 and migration `20260819000002`.
+- Acceptance/evidence: partial/full, over-refund, idempotency, ownership, and provider-evidence tests passed.
+- Completion: 2026-08-20. Links: `splitAllocationReversalUseCases.js`, `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+
+## Phase 129 - Post-Close and Post-Z Accounting
+
+- Initiative/release: immutable close reporting.
+- Objective/scope: report later adjustments by their event timestamp without rewriting a prior shift summary/Z-reading or double-subtracting the void.
+- Status: `completed`; dependencies: Phases 117-128.
+- Acceptance/evidence: close-boundary, same-second, cashier-history, daily-report, and zero-value breakdown regressions passed.
+- Completion: 2026-08-20. Links: `posRepository.js`, `PosReportsAnalyticsWorkspace.jsx`, `ShiftCloseSummaryPrintView.jsx`.
+
+## Phase 130 - POS Refund Workflow and Permission UX
+
+- Initiative/release: operator-facing refund completion.
+- Objective/scope: route History's Refund/Continue Refund action to the server-classified cash, external, provider, or split workflow and show acting authority requirements.
+- Status: `completed`; dependencies: Phases 114 and 124-129.
+- Acceptance/evidence: workflow dialog, permission, history, receipt, and terminal contracts passed.
+- Completion: 2026-08-20. Links: `POSRefundWorkflowDialog.jsx`, `usePosHistoryVoidWorkflow.js`.
+
+## Phase 131 - Refund Lifecycle Failure Matrix
+
+- Initiative/release: deterministic release certification.
+- Objective/scope: cover authorization, validation, idempotency, ownership, provider mismatch/retry, report attribution, and browser runtime failures.
+- Status: `completed`; dependencies: Phases 124-130.
+- Acceptance/evidence: backend 22 suites/190 tests, frontend 104 files/515 tests, and authenticated E2E 1/1 passed.
+- Completion: 2026-08-20. Links: POS backend suites and `tests/e2e/pos/admin-void.spec.js`.
+
+## Phase 132 - Paid-Refund Release Closure
+
+- Initiative/release: PR #681 combined Storefront payment and POS accountability closure.
+- Objective/scope: merge current `develop`, resolve conflicts, apply landlord/tenant migrations, validate, document, push, and update the open PR without merging or deploying it.
+- Status: `completed`; dependencies: Phases 111-131 and `develop` commit `498d20f45`.
+- Acceptance/evidence: merge completed; landlord migration is current; tenant schemas passed 14/14; backend 190 tests, frontend 515 tests, POS build, authenticated E2E, architecture, and compliance gates passed.
+- Completion: 2026-08-20. Links: PR #681, issues #679 and #754,
+  `docs/compliance/impact-declarations/2026-08-20-pos-accountable-void-refund-lifecycle.md`,
+  and commits `f84acb9c3`, `313a9351d`, `54976dbab`, `96f8eeb54`, `f3cfb5844`, and `f62be4275`.
+
+### POS initiative numbering reconciliation
+
+The POS work was discussed under temporary working labels before the Phase 110
+voucher ledger landed on `develop`. To preserve the authoritative continuous
+sequence, working Phase 107 maps to canonical Phase 111; working Phases 113-133
+map in order to canonical Phases 112-132. Historical approvals are preserved by
+this mapping and were not renumbered in-place in any merged ledger entry. Next
+eligible repository phase: 133.

@@ -24,6 +24,30 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:manage')");
   });
 
+  it('keeps cashier POS void authorization inside POS Settings and preserves other permissions', () => {
+    expect(workspaceSource).toContain('Cashier Void and Cash Authorization');
+    expect(workspaceSource).toContain('data-testid="pos-cashier-void-authorization"');
+    expect(workspaceSource).toContain('data-testid={`pos-cashier-void-toggle-${cashier.user_id}`}');
+    expect(workspaceSource).toContain("cashierPermissions.includes('pos:void')");
+    expect(workspaceSource).toContain("Array.from(new Set([...permissions, 'pos:void']))");
+    expect(workspaceSource).toContain("permissions.filter((permission) => permission !== 'pos:void')");
+    expect(workspaceSource).toContain('const updated = await updateUserPermissions(userId, nextPermissions);');
+    expect(workspaceSource).toContain('activeCashierUsers.map((cashier) =>');
+    expect(workspaceSource).toContain('const [cashiersLoaded, setCashiersLoaded] = useState(false);');
+    expect(workspaceSource).toContain('Loading active cashier accounts...');
+    expect(workspaceSource).toContain("role !== 'cashier'");
+    expect(workspaceSource).not.toContain('Skupervisor');
+  });
+
+  it('keeps physical cash authority separate and configurable inside POS Settings', () => {
+    expect(workspaceSource).toContain('Can refund cash / adjust drawer');
+    expect(workspaceSource).toContain('data-testid={`pos-cashier-drawer-toggle-${cashier.user_id}`}');
+    expect(workspaceSource).toContain("cashierPermissions.includes('pos:cash_drawer_adjust')");
+    expect(workspaceSource).toContain("Array.from(new Set([...permissions, 'pos:cash_drawer_adjust']))");
+    expect(workspaceSource).toContain("permissions.filter((permission) => permission !== 'pos:cash_drawer_adjust')");
+    expect(workspaceSource).toContain('updateCashierDrawerAccess(cashier, !hasDrawerAccess)');
+  });
+
   it('keeps POS onboarding primary location control aligned with IMS settings', () => {
     expect(tenantSetupModalSource).toContain("import { Switch } from '@/components/ui/switch';");
     expect(tenantSetupModalSource).toContain('Primary Business Location');
@@ -67,7 +91,8 @@ describe('regular POS Setup cashier management contract', () => {
 
   it('lets cashier protected tools reach the POS access PIN gate without an open shift', () => {
     expect(terminalPageSource).toContain("const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);");
-    expect(terminalPageSource).toContain("const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);");
+    expect(terminalPageSource).toContain('const PIN_PROTECTED_VIEW_MODES = new Set(');
+    expect(terminalPageSource).toContain("[...SETTINGS_VIEW_MODES, 'items'].filter((mode) => mode !== 'settings_vouchers' && mode !== 'settings_pricelists')");
     expect(terminalPageSource).toContain('if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {');
     expect(terminalPageSource).toContain('await verifyPosSettingsAccessPin(normalizedPin);');
     expect(terminalPageSource).toContain('const hydrateTerminalMeta = useCallback');

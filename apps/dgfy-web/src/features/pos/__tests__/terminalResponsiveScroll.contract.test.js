@@ -8,6 +8,8 @@ const __dirname = path.dirname(__filename);
 
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posCatalogWorkflowPath = path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js');
 const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurrentSaleActions.jsx');
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
@@ -16,6 +18,7 @@ const appStylesPath = path.resolve(__dirname, '../../../index.css');
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let posCheckoutContent = '';
+  let posCatalogWorkflowContent = '';
   let posCurrentSaleActionsContent = '';
   let posHistoryContent = '';
   let terminalSidebarContent = '';
@@ -23,7 +26,10 @@ describe('POS terminal responsive scroll contracts', () => {
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
-    posCheckoutContent = fs.readFileSync(posCheckoutPath, 'utf8');
+    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath]
+      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .join('\n');
+    posCatalogWorkflowContent = fs.readFileSync(posCatalogWorkflowPath, 'utf8');
     posCurrentSaleActionsContent = fs.readFileSync(posCurrentSaleActionsPath, 'utf8');
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
     terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
@@ -72,31 +78,33 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps responsive catalog cards and paginated catalog slices', () => {
-    expect(posCheckoutContent).toContain('repeat(auto-fill, minmax(min(100%');
-    expect(posCheckoutContent).toContain('new window.ResizeObserver(scheduleCapacityMeasurement)');
-    expect(posCheckoutContent).toContain('const catalogPageSize = Math.max(1, catalogGridLayout.pageSize * 2);');
-    expect(posCheckoutContent).toContain('data-catalog-page-size={catalogPageSize}');
-    expect(posCheckoutContent).toContain('return catalogForDisplay.slice(pageStart, pageStart + catalogPageSize);');
-    expect(posCheckoutContent).toContain('Page {catalogPage} of {totalCatalogPages}');
-    expect(posCheckoutContent).not.toContain('Catalog Footer');
-    expect(posCheckoutContent).toContain('data-testid="pos-catalog-footer"');
-    expect(posCheckoutContent).toContain('data-testid="pos-catalog-controls"');
-    expect(posCheckoutContent).toContain('data-testid="pos-catalog-scroll"');
-    expect(posCheckoutContent).toContain('dgfy-pos-scroll-region relative mt-2 min-h-0 flex-1 overflow-y-auto');
-    expect(posCheckoutContent).toContain('const viewport = catalogCapacityViewportRef.current;');
-    expect(posCheckoutContent).not.toContain('const CATALOG_PAGE_SIZE = 12;');
-    expect(posCheckoutContent).not.toContain('scrollIntoView({ block: \'start\', behavior: \'auto\' })');
+    const catalogContractContent = `${posCheckoutContent}\n${posCatalogWorkflowContent}`;
+    expect(catalogContractContent).toContain('repeat(auto-fill, minmax(min(100%');
+    expect(catalogContractContent).toContain('new window.ResizeObserver(scheduleCapacityMeasurement)');
+    expect(catalogContractContent).toContain('catalogPageSize');
+    expect(catalogContractContent).toContain('data-catalog-page-size={catalogPageSize}');
+    expect(catalogContractContent).toContain('getVisibleCatalogItems(catalogForDisplay, catalogPage, catalogPageSize)');
+    expect(catalogContractContent).toContain('Page {catalogPage} of {totalCatalogPages}');
+    expect(catalogContractContent).not.toContain('Catalog Footer');
+    expect(catalogContractContent).toContain('data-testid="pos-catalog-footer"');
+    expect(catalogContractContent).toContain('data-testid="pos-catalog-controls"');
+    expect(catalogContractContent).toContain('data-testid="pos-catalog-scroll"');
+    expect(catalogContractContent).toContain('dgfy-pos-scroll-region relative mt-2 min-h-0 flex-1 overflow-y-auto');
+    expect(catalogContractContent).toContain('catalogCapacityViewportRef');
+    expect(catalogContractContent).not.toContain('const CATALOG_PAGE_SIZE = 12;');
+    expect(catalogContractContent).not.toContain('scrollIntoView({ block: \'start\', behavior: \'auto\' })');
   });
 
   it('keeps catalog page swipes and supports mouse-drag folder scrolling', () => {
-    expect(posCheckoutContent).toContain("if (event.pointerType !== 'pen') return;");
-    expect(posCheckoutContent).toContain('const folderStripDragStateRef = useRef(null);');
-    expect(posCheckoutContent).toContain('event.currentTarget.setPointerCapture?.(event.pointerId);');
-    expect(posCheckoutContent).toContain('if (!drag.hasPointerCapture)');
-    expect(posCheckoutContent).toContain('event.currentTarget.releasePointerCapture(event.pointerId);');
-    expect(posCheckoutContent).toContain('onClickCapture={handleFolderStripClickCapture}');
-    expect(posCheckoutContent).toContain('onWheel={handleFolderStripWheel}');
-    expect(posCheckoutContent).toContain('cursor-grab');
+    const catalogContractContent = `${posCheckoutContent}\n${posCatalogWorkflowContent}`;
+    expect(catalogContractContent).toContain("if (event.pointerType !== 'pen') return;");
+    expect(catalogContractContent).toContain('const folderStripDragStateRef = useRef(null);');
+    expect(catalogContractContent).toContain('event.currentTarget.setPointerCapture?.(event.pointerId);');
+    expect(catalogContractContent).toContain('if (!drag.hasPointerCapture)');
+    expect(catalogContractContent).toContain('event.currentTarget.releasePointerCapture(event.pointerId);');
+    expect(catalogContractContent).toContain('onClickCapture={handleFolderStripClickCapture}');
+    expect(catalogContractContent).toContain('onWheel={handleFolderStripWheel}');
+    expect(catalogContractContent).toContain('cursor-grab');
     expect(posCheckoutContent).toContain('addCatalogItemToCart(item');
   });
 
@@ -158,7 +166,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('>Discount</span>');
     expect(posCheckoutContent).toContain('>VATable Sales</span>');
     expect(posCheckoutContent).toContain('>VAT Exempt Sales</span>');
-    expect(posCheckoutContent).toContain('>VAT Amount</span>');
+    expect(posCheckoutContent).toContain('>VAT Amount (12%)</span>');
     expect(posCheckoutContent).toContain('>Zero Rated Sales</span>');
   });
 

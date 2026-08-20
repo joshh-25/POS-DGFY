@@ -8,7 +8,10 @@ import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessSt
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
-import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+import {
+  getStorefrontOnlinePaymentLabel,
+  isStorefrontOnlinePaymentType
+} from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -109,7 +112,7 @@ export function SimpleCheckoutRoutePage({
   const paymentSubmitLabel = fnbPaymentType === 'qrph'
     ? 'Generate QR Ph'
     : isOnlinePayment
-      ? 'Continue to payment'
+      ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
       : 'Place Order';
 
   return (

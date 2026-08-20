@@ -24,18 +24,18 @@ describe('buildPosHistoryQuery', () => {
     it('preserves supported history filters alongside the sales contract', () => {
         expect(buildPosHistoryQuery({
             historyStatus: 'all',
-            paymentType: 'cash',
+            paymentType: 'employee_credit',
             orderMethod: 'dine_in',
             orderSource: 'in_store',
-            cashierId: '15',
+            cashierName: 'Hernando',
             dateFrom: '2026-08-01',
             dateTo: '2026-08-12',
             locationId: 3
         })).toMatchObject({
-            payment_type: 'cash',
+            payment_type: 'employee_credit',
             order_method: 'dine_in',
             order_source: 'in_store',
-            cashier_id: '15',
+            cashier_name: 'Hernando',
             date_from: '2026-08-01',
             date_to: '2026-08-12',
             location_id: 3,

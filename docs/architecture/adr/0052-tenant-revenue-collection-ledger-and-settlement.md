@@ -128,3 +128,34 @@ methods remain deferred because BPI/UBP and Brankas banks require bank-specific
 `bank_code` handling that is outside this amendment. Verified provider webhooks,
 landlord-owned payment sessions, fee snapshots, settlement hold, and refund
 rules remain unchanged.
+
+### 2026-08-18: Explicit direct GCash authorization for production
+
+Storefront GCash may use a direct PayMongo Payment Intent authorization flow
+instead of Hosted Checkout only when both `STOREFRONT_DIRECT_GCASH_ENABLED=true`
+and, in live mode, `STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true` are present.
+The backend creates the landlord-owned Payment Intent with `gcash` as the only
+allowed method; the browser uses only the PayMongo public key and Payment Intent
+client key to create and attach the GCash Payment Method, then follows the
+provider authorization URL. The browser return is never a payment confirmation.
+
+All other Storefront payment methods continue using Hosted Checkout, and GCash
+falls back to Hosted Checkout when direct mode is disabled. The signed provider
+webhook remains authoritative and must match configured livemode, locked
+centavo amount, currency, and idempotent session state before finalization.
+
+### 2026-08-18: Explicit direct Maya authorization for local and production opt-in
+
+Storefront Maya may use the same direct PayMongo Payment Intent authorization
+pattern under the independently controlled `STOREFRONT_DIRECT_MAYA_ENABLED`
+flag. The backend creates the landlord-owned Payment Intent with `paymaya` as
+the only allowed method; the browser uses only the PayMongo public key and
+Payment Intent client key to create and attach the Maya Payment Method, then
+follows the provider authorization URL. In live mode,
+`STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true` is additionally required. The
+browser return is never a payment confirmation.
+
+Cards and all other Storefront methods continue using Hosted Checkout. Maya
+falls back to Hosted Checkout when direct mode is disabled. The signed provider
+webhook remains authoritative and the existing amount, currency, livemode,
+idempotency, settlement, and refund rules are unchanged.

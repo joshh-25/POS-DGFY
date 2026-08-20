@@ -16,7 +16,7 @@ export const buildPosHistoryQuery = ({
     paymentType,
     orderMethod,
     orderSource,
-    cashierId,
+    cashierName,
     dateFrom,
     dateTo,
     locationId
@@ -30,7 +30,7 @@ export const buildPosHistoryQuery = ({
         payment_type: paymentType,
         order_method: orderMethod,
         order_source: orderSource,
-        cashier_id: cashierId,
+        cashier_name: cashierName,
         date_from: dateFrom,
         date_to: dateTo,
         location_id: locationId

@@ -636,4 +636,72 @@ describe('PayMongo paid webhook replay', () => {
     );
     expect(storeCheckoutUseCase).not.toHaveBeenCalled();
   });
+
+  it('holds a live paid event when the provider livemode does not match the backend mode', async () => {
+    const previousPayMongoMode = process.env.PAYMONGO_MODE;
+    process.env.PAYMONGO_MODE = 'live';
+    try {
+      const session = {
+        session_id: 14,
+        public_reference: 'CPS-LIVEMODE123',
+        status: 'awaiting_payment',
+        total_amount_centavos: 200,
+        currency: 'PHP'
+      };
+      const heldSession = {
+        ...session,
+        status: 'paid_manual_resolution_required'
+      };
+      const commercePaymentRepository = {
+        findSessionByPublicReference: jest.fn().mockResolvedValue(session),
+        updateSessionById: jest.fn().mockResolvedValue(heldSession),
+        createAuditLog: jest.fn().mockResolvedValue({})
+      };
+      const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+        commercePaymentRepository,
+        paymongoService: {
+          verifyWebhookSignature: jest.fn().mockReturnValue(true)
+        },
+        logger: {
+          warn: jest.fn()
+        }
+      });
+
+      const result = await useCase({
+        headers: { 'paymongo-signature': 'verified-live-signature' },
+        rawBody: '{"data":{}}',
+        body: {
+          data: {
+            id: 'evt_wrong_livemode',
+            attributes: {
+              type: 'payment.paid',
+              data: {
+                id: 'pay_wrong_livemode',
+                attributes: {
+                  amount: 200,
+                  currency: 'PHP',
+                  livemode: false,
+                  status: 'paid',
+                  metadata: { commerce_payment_session: session.public_reference }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          status: 'paid_manual_resolution_required',
+          manual_resolution_required: true,
+          failure_code: 'PAYMENT_LIVEMODE_MISMATCH'
+        })
+      }));
+      expect(storeCheckoutUseCase).not.toHaveBeenCalled();
+    } finally {
+      if (previousPayMongoMode === undefined) delete process.env.PAYMONGO_MODE;
+      else process.env.PAYMONGO_MODE = previousPayMongoMode;
+    }
+  });
 });

@@ -406,8 +406,8 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     receiptRows.push(line(), pair('TOTAL SALES', money(transaction?.subtotal_amount)));
     if (isFiscal) {
         receiptRows.push(
-            pair('Vatable Sales', money(transaction?.vatable_sales)),
-            pair('VAT 12%', money(transaction?.vat_amount)),
+            pair('VATable Sales', money(transaction?.vatable_sales)),
+            pair('VAT Amount (12%)', money(transaction?.vat_amount)),
             pair('VAT Exempt Sales', money(transaction?.vat_exempt_sales)),
             pair('Zero Rated Sales', money(transaction?.zero_rated_sales))
         );
@@ -427,12 +427,6 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     if (governedDiscount?.discount_type) {
         receiptRows.push(`Discount Type: ${displayDiscountType(governedDiscount.discount_type)}`);
     }
-
-    const serviceFeeLabel = [
-        transaction?.service_fee_label_snapshot || 'DGFY convenience fee',
-        transaction?.service_fee_method_snapshot ? `(${transaction.service_fee_method_snapshot})` : ''
-    ].filter(Boolean).join(' ');
-    receiptRows.push(pair(serviceFeeLabel, money(transaction?.service_fee_amount)));
 
     if (restaurantServiceChargeAmount > 0) {
         const restaurantChargeLabel = [
@@ -569,6 +563,9 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
         pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
         pair(`POS voids (${sales.void_transaction_count || 0})`, formatShiftSummaryValue(sales.void_amount)),
+        ...(Number(sales.post_close_void_transaction_count || 0) > 0
+            ? [pair(`Post-close voids (${sales.post_close_void_transaction_count})`, formatShiftSummaryValue(sales.post_close_void_amount))]
+            : []),
         line(),
         center('PAYMENT BREAKDOWN')
     ];

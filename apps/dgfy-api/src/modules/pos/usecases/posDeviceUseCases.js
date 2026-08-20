@@ -279,6 +279,36 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
             ...resolveShiftSalesWindow(shift)
         }, { transaction })
         : null;
+    const postCloseVoids = salesSummary
+        && typeof posRepository?.getPostCloseVoidSummaryForShift === 'function'
+        && shift?.closed_at
+        && String(shift?.status || '').trim().toLowerCase() === 'closed'
+        ? await posRepository.getPostCloseVoidSummaryForShift({
+            shiftId: shift.pos_terminal_shift_id,
+            closedAt: shift.closed_at,
+            terminalId: shift.terminal_id || null,
+            locationId: shift.location_id || null
+        }, { transaction })
+        : null;
+    const postCloseVoidTransactionCount = Number.parseInt(
+        postCloseVoids?.post_close_void_transaction_count || 0,
+        10
+    );
+    const postCloseVoidAmount = round4(postCloseVoids?.post_close_void_amount);
+    const postCloseVoidedItemCount = round4(postCloseVoids?.post_close_voided_item_count);
+    const normalizedSalesSummary = salesSummary
+        ? {
+            ...salesSummary,
+            void_transaction_count: Number.parseInt(salesSummary.void_transaction_count || 0, 10)
+                + postCloseVoidTransactionCount,
+            void_amount: round4(Number(salesSummary.void_amount || 0) + postCloseVoidAmount),
+            voided_item_count: round4(Number(salesSummary.voided_item_count || 0) + postCloseVoidedItemCount),
+            post_close_void_transaction_count: postCloseVoidTransactionCount,
+            post_close_void_amount: postCloseVoidAmount,
+            post_close_voided_item_count: postCloseVoidedItemCount,
+            payment_breakdown: normalizePosPaymentBreakdown(salesSummary.payment_breakdown)
+        }
+        : null;
     const cashSalesAmount = cashSalesFromSalesSummary(salesSummary);
     const expectedCashAmount = shift?.expected_cash_amount == null
         ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
@@ -303,12 +333,7 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
             cash_sales_amount: cashSalesAmount,
             ...eventSummary
         },
-        sales_summary: salesSummary
-            ? {
-                ...salesSummary,
-                payment_breakdown: normalizePosPaymentBreakdown(salesSummary.payment_breakdown)
-            }
-            : null
+        sales_summary: normalizedSalesSummary
     };
 };
 

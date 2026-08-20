@@ -39,6 +39,7 @@ import {
   buildStorefrontCheckoutPaymentOptions
 } from '../model/fnbCheckoutPaymentOptions.js';
 import {
+  getStorefrontOnlinePaymentLabel,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
@@ -722,7 +723,7 @@ export function FnbCheckoutRouteContainer({
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
-            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? 'Continue to payment' : 'Place Order'}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}` : 'Place Order'}
             withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>

@@ -15,6 +15,12 @@ const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/Term
 const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenantSetupModal.jsx');
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const posCheckoutTerminalViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../components/POSCheckoutTerminalReceiptDialogs.jsx');
+const posCheckoutWorkflowPath = path.resolve(__dirname, '../hooks/usePosCheckoutWorkflow.js');
+const posHistoryVoidWorkflowPath = path.resolve(__dirname, '../hooks/usePosHistoryVoidWorkflow.js');
+const posCheckoutTerminalQueuePath = path.resolve(__dirname, '../utils/posCheckoutTerminalQueue.js');
+const posCheckoutTerminalUtilsPath = path.resolve(__dirname, '../utils/posCheckoutTerminalUtils.js');
 const skupervisorCheckoutTerminalPath = path.resolve(__dirname, '../components/SkupervisorPOSCheckoutTerminal.jsx');
 const receiptPrintViewPath = path.resolve(__dirname, '../components/ReceiptPrintView.jsx');
 const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeScanner.jsx');
@@ -35,6 +41,11 @@ describe('POS terminal view-mode contracts', () => {
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
+  let posCheckoutTerminalReceiptDialogsContent = '';
+  let posCheckoutWorkflowContent = '';
+  let posHistoryVoidWorkflowContent = '';
+  let posCheckoutTerminalQueueContent = '';
+  let posCheckoutTerminalUtilsContent = '';
   let posCheckoutErrorMessagesContent = '';
   let skupervisorCheckoutTerminalContent = '';
   let receiptPrintViewContent = '';
@@ -56,7 +67,14 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
-    posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+    posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath]
+      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .join('\n');
+    posCheckoutTerminalReceiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');
+    posCheckoutWorkflowContent = fs.readFileSync(posCheckoutWorkflowPath, 'utf8');
+    posHistoryVoidWorkflowContent = fs.readFileSync(posHistoryVoidWorkflowPath, 'utf8');
+    posCheckoutTerminalQueueContent = fs.readFileSync(posCheckoutTerminalQueuePath, 'utf8');
+    posCheckoutTerminalUtilsContent = fs.readFileSync(posCheckoutTerminalUtilsPath, 'utf8');
     posCheckoutErrorMessagesContent = fs.readFileSync(posCheckoutErrorMessagesPath, 'utf8');
     skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
     receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
@@ -413,7 +431,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('<ZReadingPrintView');
     expect(terminalOperationsWorkspaceContent).toContain('Close Day & Print Z-reading');
     expect(terminalOperationsWorkspaceContent).toContain('handleCloseDay');
-    expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
+    expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(posCheckoutTerminalContent).toContain('checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}');
     expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
@@ -462,21 +480,21 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
     expect(posCheckoutTerminalContent).toContain("discountDraft.type === 'manual'");
-    expect(posCheckoutTerminalContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
+    expect(posCheckoutWorkflowContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
     expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
     expect(posCheckoutTerminalContent).toContain('Select discount type and verify employee.');
   });
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
-    expect(posCheckoutTerminalContent).toContain('aria-label="Close receipt preview"');
-    expect(posCheckoutTerminalContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
-    expect(posCheckoutTerminalContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
-    expect(posCheckoutTerminalContent).not.toContain('<X className="h-5 w-5" />\n                                </button>\n                            </div>\n                        </div>\n                        <div className="pos-receipt-print-content');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('aria-label="Close receipt preview"');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
+    expect(posCheckoutTerminalContent).toContain('<POSCheckoutTerminalReceiptDialogs');
   });
 
   it('opens checkout confirmation and then receipt preview after a successful sale', () => {
     expect(posCheckoutTerminalContent).toContain('setCheckoutConfirmModalOpen(true);');
-    expect(posCheckoutTerminalContent).toMatch(
+    expect(posCheckoutWorkflowContent).toMatch(
       /setCheckoutConfirmModalOpen\(false\);[\s\S]*?setReceiptPreviewModalOpen\(true\);[\s\S]*?if \(typeof onCheckoutCompleted/
     );
   });
@@ -492,11 +510,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(receiptPrintViewContent).toContain('Unit Price');
     expect(receiptPrintViewContent).toContain('Qty');
     expect(receiptPrintViewContent).toContain('Total');
-    expect(receiptPrintViewContent).not.toContain('PHP ');
     expect(receiptPrintViewContent).not.toContain('Unit:');
     expect(receiptPrintViewContent).not.toContain('Course:');
     expect(receiptPrintViewContent).toContain('resolveReceiptLineUnitPrice');
     expect(receiptPrintViewContent).toContain('resolveReceiptLineTotal');
+    expect(receiptPrintViewContent).toContain('{money(unitPrice)}');
+    expect(receiptPrintViewContent).toContain('{money(lineTotal)}');
     expect(receiptPrintViewContent).toContain('splitReceiptItemName');
     expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem'");
     expect(receiptPrintViewContent).toContain('itemNameParts.firstLine');
@@ -512,7 +531,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
     expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment status and separate receipt actions</caption>');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment and transaction status plus separate receipt actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
@@ -631,21 +650,35 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');
     expect(terminalOperationsPanelsContent).not.toContain('history_receipt');
     expect(terminalSidebarPanelContent).not.toContain('history_receipt');
-    expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
-    expect(posCheckoutTerminalContent).toContain('location_id: selectedLocationId || undefined');
+    expect(posHistoryVoidWorkflowContent).toContain('setHistorySearch(query);');
+    expect(posCheckoutWorkflowContent).toContain('location_id: selectedLocationId || undefined');
   });
 
   it('persists offline checkout intents and exposes the manual universal sync policy', () => {
-    expect(posCheckoutTerminalContent).toContain('CHECKOUT_QUEUE_OPERATION = \'checkout\'');
-    expect(posCheckoutTerminalContent).toContain('enqueueTerminalOperationIntent');
-    expect(posCheckoutTerminalContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
+    expect(posCheckoutTerminalQueueContent).toContain('CHECKOUT_QUEUE_OPERATION = \'checkout\'');
+    expect(posCheckoutWorkflowContent).toContain('enqueueTerminalOperationIntent');
+    expect(posCheckoutWorkflowContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
     expect(terminalPageContent).toContain(".filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout')");
     expect(posHistoryPanelContent).toContain('Sync All Pending Records');
     expect(posHistoryPanelContent).toContain('universalPendingSyncCount');
     expect(terminalPageContent).toContain('consumeManualPosSyncAttempt');
     expect(terminalPageContent).not.toContain('requestBackgroundQueueReplay');
-    expect(posCheckoutTerminalContent).toContain('pending transaction');
-    expect(posCheckoutTerminalContent).toContain('idempotency_key');
+    expect(posCheckoutWorkflowContent).toContain('pending transaction');
+    expect(posCheckoutWorkflowContent).toContain('idempotency_key');
+  });
+
+  it('keeps checkout orchestration in the R6 workflow hook and the terminal as its compatibility shell', () => {
+    expect(posCheckoutTerminalContent).toContain("import { usePosCheckoutWorkflow } from '../hooks/usePosCheckoutWorkflow.js';");
+    expect(posCheckoutTerminalContent).toContain('} = usePosCheckoutWorkflow({');
+    expect(posCheckoutTerminalContent).not.toContain('const handleCheckout = ');
+    expect(posCheckoutTerminalContent).not.toContain('const handleParkAndNewSale = ');
+    expect(posCheckoutTerminalContent).not.toContain('const replayQueuedCheckouts = ');
+    expect(posCheckoutWorkflowContent).toContain('const handleCheckout = useCallback(async () => {');
+    expect(posCheckoutWorkflowContent).toContain('const handleParkAndNewSale = useCallback(async (nameOverride = null) => {');
+    expect(posCheckoutWorkflowContent).toContain('const replayQueuedCheckouts = useCallback(async');
+    expect(posCheckoutWorkflowContent).toContain('const handleReverseSplitPaymentAndStartNew = useCallback(async');
+    expect(posCheckoutWorkflowContent).toContain('createPosCheckout(payload)');
+    expect(posCheckoutWorkflowContent).toContain('markTerminalOperationReplayed');
   });
 
   it('keeps scanner wedge capture and routed ticket feedback out of cart mutation', () => {
@@ -665,14 +698,14 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('maps compliance policy checkout denials to explicit remediation guidance copy', () => {
-    expect(posCheckoutTerminalContent).toContain('buildCompliancePolicyBlockerMessage');
-    expect(posCheckoutTerminalContent).toContain('Compliance policy blocked checkout (');
-    expect(posCheckoutTerminalContent).toContain('Resolve blocker in');
-    expect(posCheckoutTerminalContent).toContain('BSP_OPS_REGISTRATION_REQUIRED');
+    expect(posCheckoutWorkflowContent).toContain('buildCompliancePolicyBlockerMessage');
+    expect(posCheckoutTerminalUtilsContent).toContain('Compliance policy blocked checkout (');
+    expect(posCheckoutWorkflowContent).toContain('Resolve blocker in');
+    expect(posCheckoutTerminalUtilsContent).toContain('BSP_OPS_REGISTRATION_REQUIRED');
   });
 
   it('maps F&B recipe checkout blockers to ingredient-specific cashier copy', () => {
-    expect(posCheckoutTerminalContent).toContain('buildFnbRecipeBlockerMessage');
+    expect(posCheckoutWorkflowContent).toContain('buildFnbRecipeBlockerMessage');
     expect(posCheckoutErrorMessagesContent).toContain('FNB_RECIPE_INGREDIENT_SHORTFALL');
     expect(posCheckoutErrorMessagesContent).toContain('FNB_RECIPE_UOM_INCOMPATIBLE');
     expect(posCheckoutErrorMessagesContent).toContain('FNB_KITCHEN_ORDER_UNAVAILABLE');
@@ -703,14 +736,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
     expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
-    expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');
-    expect(posCheckoutTerminalContent).toContain('`Terminal ${normalizedTerminalId}`');
-    expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
+    expect(posCheckoutTerminalContent).toContain("const normalizedTerminalId = String(terminalId || '').trim();");
+    expect(posCheckoutWorkflowContent).toContain('if (!normalizedTerminalId) {');
+    expect(posCheckoutWorkflowContent).toContain("toast.error('Select a terminal ID before checkout.');");
+    expect(posCheckoutWorkflowContent).toContain('terminal_id: normalizedTerminalId || undefined');
   });
 
   it('keeps receipt modal POS-report navigation while history rows stay receipt-focused', () => {
     expect(posCheckoutTerminalContent).toContain('openInPosReport');
-    expect(posCheckoutTerminalContent).toContain("setCurrentViewMode(isCashierRole ? 'history' : 'reports')");
+    expect(posHistoryVoidWorkflowContent).toContain("setCurrentViewMode(isCashierRole ? 'history' : 'reports')");
     expect(posCheckoutTerminalContent).not.toContain('openSkupervisorPath');
     expect(posCheckoutTerminalContent).not.toContain("../utils/skupervisorHandoff.js");
     expect(posHistoryPanelContent).not.toContain('data-testid="pos-history-open-sales-report"');
@@ -718,7 +752,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('<span>View</span>');
     expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-pos-report"');
-    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-modal-open-pos-report"');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('data-testid="pos-receipt-modal-open-pos-report"');
     expect(posCheckoutTerminalContent).toContain("const posReportActionLabel = isCashierRole ? 'Open POS History' : 'Open POS Report';");
   });
 

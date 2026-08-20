@@ -158,6 +158,55 @@ describe('production environment validation', () => {
     expect(result.errors).toContain('PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS must not be true in production, live mode, or payment-enabled deployments');
   });
 
+  it('requires explicit live confirmation for production direct GCash and Maya', () => {
+    const directLiveEnv = {
+      ...baseEnv,
+      COMMERCE_PAYMENTS_ENABLED: 'true',
+      PAYMONGO_MODE: 'live',
+      PAYMONGO_LIVE_PUBLIC_KEY: 'pk_live_fixture',
+      PAYMONGO_LIVE_SECRET_KEY: 'sk_live_fixture',
+      PAYMONGO_LIVE_WEBHOOK_SECRET: 'whsec_live_fixture',
+      PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture',
+      STOREFRONT_DIRECT_GCASH_ENABLED: 'true'
+    };
+
+    const missingConfirmation = validateProductionEnv({ env: directLiveEnv });
+    expect(missingConfirmation.ok).toBe(false);
+    expect(missingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true is required when direct GCash is enabled in live mode'
+    );
+
+    const configured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(configured.ok).toBe(true);
+
+    const mayaMissingConfirmation = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true'
+      }
+    });
+    expect(mayaMissingConfirmation.ok).toBe(false);
+    expect(mayaMissingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true is required when direct Maya is enabled in live mode'
+    );
+
+    const mayaConfigured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true',
+        STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(mayaConfigured.ok).toBe(true);
+  });
+
   it('requires PayMongo and DGFY merchant config when commerce payments are enabled', () => {
     const missing = validateProductionEnv({
       env: {
