@@ -119,9 +119,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain("onSelectViewMode('settings_vouchers')");
     expect(terminalWorkspaceSidebarContent).toContain("onSelectViewMode('settings_pricelists')");
     // The tab strip's own entries are gone -- these were previously reached via
-    // `{ id: 'vouchers', ... }` / `{ id: 'pricelists', ... }` inside SETTINGS_TABS.
-    expect(terminalOperationsWorkspaceContent).not.toContain("id: 'vouchers'");
-    expect(terminalOperationsWorkspaceContent).not.toContain("id: 'pricelists'");
+    // `{ id: 'vouchers', ... }` / `{ id: 'pricelists', ... }` inside SETTINGS_TABS. Narrowed
+    // (RF-7, PR #762 review) to the exact tab-entry construct rather than a whole-file negative
+    // substring match, which would fail for a reason unrelated to #732 the moment any other
+    // unrelated `id: 'vouchers'` (a form field, a section anchor, a test hook) is ever added.
+    expect(terminalOperationsWorkspaceContent).not.toMatch(/\{\s*id:\s*'vouchers',\s*label:/);
+    expect(terminalOperationsWorkspaceContent).not.toMatch(/\{\s*id:\s*'pricelists',\s*label:/);
   });
 
   it('keeps always-available items sellable across both POS checkout surfaces', () => {

@@ -346,28 +346,14 @@ export default function TerminalWorkspaceSidebar({
             testId="pos-nav-settings"
             collapsed={isCollapsed}
           />
-          {!isCashierRole && (
-            <NavButton
-              label="Affiliates"
-              icon={Percent}
-              active={currentViewMode === 'settings_affiliates'}
-              onClick={() => onSelectViewMode('settings_affiliates')}
-              disabled={locked || !isOnline}
-              caption={
-                locked
-                  ? 'Unlock terminal to continue'
-                  : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
-              }
-              testId="pos-nav-affiliates"
-              collapsed={isCollapsed}
-            />
-          )}
-          {/* #732: promoted out of Settings. Gated on canViewVouchers (mirrors
-              routes/pricelists.js's own server-side dual-gate: vouchers:view/vouchers:manage OR
-              the legacy settings:view/settings:edit pair) rather than !isCashierRole -- a cashier
-              role check would be wrong here since visibility should follow the same permission the
-              backend actually enforces, not a role heuristic. */}
-          {canViewVouchers && (
+          {/* RF-4 (PR #762 review): #732's own decision record places Vouchers/Pricelists
+              between Settings and Affiliates -- shipped order had them after Affiliates instead.
+              Gated on canViewVouchers (mirrors routes/pricelists.js's own server-side dual-gate:
+              vouchers:view/vouchers:manage OR the legacy settings:view/settings:edit pair), AND
+              (RF-8) !isCashierRole -- CASHIER_ALLOWED_VIEW_MODES excludes both new modes, so a
+              cashier carrying a custom settings:view grant would otherwise see a button that's
+              guaranteed to reject on click. */}
+          {canViewVouchers && !isCashierRole && (
             <NavButton
               label="Vouchers"
               icon={Ticket}
@@ -384,7 +370,7 @@ export default function TerminalWorkspaceSidebar({
               collapsed={isCollapsed}
             />
           )}
-          {canViewVouchers && (
+          {canViewVouchers && !isCashierRole && (
             <NavButton
               label="Pricelists"
               icon={Tags}
@@ -398,6 +384,22 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Set per-item fixed prices for wholesale/B2B-via-B2C vouchers')
               }
               testId="pos-nav-pricelists"
+              collapsed={isCollapsed}
+            />
+          )}
+          {!isCashierRole && (
+            <NavButton
+              label="Affiliates"
+              icon={Percent}
+              active={currentViewMode === 'settings_affiliates'}
+              onClick={() => onSelectViewMode('settings_affiliates')}
+              disabled={locked || !isOnline}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
+              }
+              testId="pos-nav-affiliates"
               collapsed={isCollapsed}
             />
           )}

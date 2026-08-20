@@ -189,7 +189,16 @@ const OPERATIONS_VIEW_MODES = [
 const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
-const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
+// RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
+// canViewVouchers permission check (the sidebar NavButton visibility and the
+// activeOperationsViewModes filter both already use it), not the settings:view PIN wall every
+// other SETTINGS_VIEW_MODES member sits behind. Without this exclusion, a vouchers:view-only user
+// (no settings:view) saw the nav button, clicked it, and hit a PIN prompt -- a hard dead end if no
+// POS access PIN is configured -- directly contradicting #732's own stated goal that the button
+// wouldn't appear for a user who'd get rejected on click.
+const PIN_PROTECTED_VIEW_MODES = new Set(
+  [...SETTINGS_VIEW_MODES, 'items'].filter((mode) => mode !== 'settings_vouchers' && mode !== 'settings_pricelists')
+);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
   'incoming_queue',
@@ -211,6 +220,10 @@ const TERMINAL_SECTION_IDS = {
   items: 'pos-section-items',
   services: 'pos-section-services',
   affiliates: 'pos-section-affiliates',
+  // RF-3 (PR #762 review): were missing entirely -- both new panels rendered with no id attribute
+  // while every other top-level mode gets one.
+  vouchers: 'pos-section-vouchers',
+  pricelists: 'pos-section-pricelists',
   audit: 'pos-section-audit'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
