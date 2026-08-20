@@ -73,10 +73,19 @@ export function useCheckoutTotalsAndGating({
   const promoStatusTone = checkoutError || quoteError
     ? 'error'
     : (activePromoFeedback?.applied ? 'success' : 'idle');
-  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
+  // #746: these four derived display values feed VoucherCodePanel/PromoCodePanel and the checkout
+  // summary, while the cart drawer's total is decided by resolveCartDiscountDisplay. When the two
+  // disagree the shopper sees "Discount applied: PHPX off" sitting above a total that ignores it --
+  // which is exactly what "the code is accepted but the discount never appears" looked like. Apply
+  // the same exceeds-cart suppression the drawer uses so the panel can never claim a discount the
+  // total refuses to honour.
+  const combinedDiscountAmount = Math.max(0, Number(totalsForDisplay.discount_amount) || 0)
+    + Math.max(0, Number(totalsForDisplay.voucher_discount_amount) || 0);
+  const discountsExceedCart = combinedDiscountAmount > (Number(cartTotal) || 0);
+  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0 && !discountsExceedCart
     ? `${money(totalsForDisplay.discount_amount)} off`
     : '';
-  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0
+  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0 && !discountsExceedCart
     ? { label: totalsForDisplay.discount_label || 'Promo Discount', value: `- ${money(totalsForDisplay.discount_amount)}` }
     : null;
   // #672: symmetric to the promo trio above. voucher_feedback carries no `.message` field
@@ -86,10 +95,10 @@ export function useCheckoutTotalsAndGating({
   const voucherStatusTone = checkoutError || quoteError
     ? 'error'
     : (activeVoucherFeedback?.applied ? 'success' : 'idle');
-  const appliedVoucherDiscountText = totalsForDisplay.voucher_discount_amount > 0
+  const appliedVoucherDiscountText = totalsForDisplay.voucher_discount_amount > 0 && !discountsExceedCart
     ? `${money(totalsForDisplay.voucher_discount_amount)} off`
     : '';
-  const voucherDiscountSummaryRow = totalsForDisplay.voucher_discount_amount > 0
+  const voucherDiscountSummaryRow = totalsForDisplay.voucher_discount_amount > 0 && !discountsExceedCart
     ? { label: 'Voucher Discount', value: `- ${money(totalsForDisplay.voucher_discount_amount)}` }
     : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
