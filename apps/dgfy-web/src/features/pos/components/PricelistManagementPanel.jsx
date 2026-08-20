@@ -341,19 +341,29 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
     }
   };
 
-  // #698: warn when a typed price is at or above SRP -- voucherBenefitPolicy.js clamps at zero, so
-  // that row silently produces no discount otherwise.
-  const rowNoDiscountWarning = (row) => pesoNumber(row.unit_price_pesos) >= row.srp_pesos;
+  // #698: warn when a typed price exactly matches SRP -- voucherBenefitPolicy.js clamps at zero, so
+  // that row silently produces no discount otherwise. Narrowed to `===` (#749) so this and
+  // rowAboveSrpWarning below never both fire on the same row -- the two are different problems
+  // (no discount vs. an overcharge) and deserve different copy, not one "at or above" catch-all.
+  // RF-2 (PR #752 review): compare in CENTAVOS, the unit the server actually stores -- SRP/cost are
+  // DECIMAL(10,4) but round-trip through centavos (pesosToCentavos/centavosToPesoNumber), so a peso
+  // comparison like `19.997 vs 20.00` can disagree with what the server sees as an exact match,
+  // firing a false warning on a row nobody touched.
+  const rowNoDiscountWarning = (row) => pesosToCentavos(row.unit_price_pesos) === pesosToCentavos(row.srp_pesos);
+  // #749: a typed price strictly above SRP had no warning at all before this -- only the
+  // zero-discount case above did, and its copy didn't frame an overcharge as one.
+  const rowAboveSrpWarning = (row) => pesosToCentavos(row.unit_price_pesos) > pesosToCentavos(row.srp_pesos);
   // Warn only, never block -- allow_below_cost lives on the VOUCHER, and a pricelist is authored
   // before it is attached to one (#697's guard is what actually enforces it, at redemption).
-  const rowBelowCostWarning = (row) => row.cost_per_unit != null && pesoNumber(row.unit_price_pesos) < row.cost_per_unit;
+  const rowBelowCostWarning = (row) => row.cost_per_unit != null && pesosToCentavos(row.unit_price_pesos) < pesosToCentavos(row.cost_per_unit);
 
   // SRP-drift: rows never manually touched whose stored price (what the SERVER has, not the local
   // in-progress edit) no longer matches current SRP. Item.default_sale_price auto-updates from
   // Dispatch Order dispatches, so an untouched row can silently start granting an unintended
-  // discount once SRP rises past what was true at authoring time.
+  // discount once SRP rises past what was true at authoring time. Centavos comparison (RF-2, PR
+  // #752 review) so this never disagrees with the warnings above on the same row.
   const driftedRowCount = useMemo(
-    () => rows.filter((row) => !row.is_manual_override && pesoNumber(row.unit_price_pesos) !== row.srp_pesos).length,
+    () => rows.filter((row) => !row.is_manual_override && pesosToCentavos(row.unit_price_pesos) !== pesosToCentavos(row.srp_pesos)).length,
     [rows]
   );
   const refreshDriftedRowsToCurrentSrp = () => {
@@ -374,36 +384,55 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
       }))
   });
 
+  // #748: the single place that actually writes edited rows to the server. Both handleSave and
+  // handlePublish must funnel through this -- handlePublish used to skip it entirely and publish
+  // whatever `pricelist_items` rows already existed server-side (zero, for a never-Saved new
+  // pricelist), silently discarding every edited price. Returns the id the server actually wrote
+  // to (a save can land on a new draft-revision id, not necessarily `editingTargetId`) plus
+  // `isDraft`, since `editingTargetId`/`isDraftRevision` state isn't readable synchronously by the
+  // caller after this resolves.
+  const persistRows = async () => {
+    const result = await replacePricelistItems(editingTargetId, buildSavePayload());
+    setEditingTargetId(result.editing_pricelist_id);
+    setEditorVersion(Number(result.pricelist.version));
+    setIsDraftRevision(result.is_draft === true);
+    skipNextAutosaveRef.current = true;
+    applyServerRows(result.items, rows.map((row) => ({
+      item_id: row.item_id,
+      name: row.name,
+      category: row.category,
+      default_sale_price: row.srp_pesos,
+      cost_per_unit: row.cost_per_unit
+    })));
+    clearPricelistDraft(editingSourceId);
+    return { editingPricelistId: result.editing_pricelist_id, isDraft: result.is_draft === true };
+  };
+
+  // Shared between handleSave and handlePublish -- publish can now hit this too, since it goes
+  // through persistRows() first. Returns whether the error was actually a version conflict, so
+  // each caller's own catch can fall back to its own generic error toast otherwise.
+  const handleVersionConflict = async (error) => {
+    const reasonCode = getReasonCode(error?.response?.data);
+    if (reasonCode !== 'PRICELIST_VERSION_CONFLICT') return false;
+    toast?.error?.('This pricelist changed elsewhere. Reloading the latest version.');
+    const detail = await getPricelist(editingTargetId).catch(() => null);
+    if (detail) {
+      setPricelist(detail.pricelist);
+      setEditorVersion(Number(detail.pricelist.version));
+    }
+    return true;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setEditorError('');
     try {
-      const result = await replacePricelistItems(editingTargetId, buildSavePayload());
-      setEditingTargetId(result.editing_pricelist_id);
-      setEditorVersion(Number(result.pricelist.version));
-      setIsDraftRevision(result.is_draft === true);
-      skipNextAutosaveRef.current = true;
-      applyServerRows(result.items, rows.map((row) => ({
-        item_id: row.item_id,
-        name: row.name,
-        category: row.category,
-        default_sale_price: row.srp_pesos,
-        cost_per_unit: row.cost_per_unit
-      })));
-      clearPricelistDraft(editingSourceId);
-      toast?.success?.(result.is_draft
+      const { isDraft } = await persistRows();
+      toast?.success?.(isDraft
         ? 'Saved as a draft revision. Publish when ready to go live.'
         : 'Pricelist saved.');
     } catch (error) {
-      const reasonCode = getReasonCode(error?.response?.data);
-      if (reasonCode === 'PRICELIST_VERSION_CONFLICT') {
-        toast?.error?.('This pricelist changed elsewhere. Reloading the latest version.');
-        const detail = await getPricelist(editingTargetId).catch(() => null);
-        if (detail) {
-          setPricelist(detail.pricelist);
-          setEditorVersion(Number(detail.pricelist.version));
-        }
-      } else {
+      if (!(await handleVersionConflict(error))) {
         toast?.error?.(describeError(error, 'Failed to save this pricelist.'));
       }
     } finally {
@@ -413,8 +442,14 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
 
   const handlePublish = async () => {
     setPublishing(true);
+    // RF-5 (PR #752 review): a failure AFTER persistRows() succeeded previously reported the same
+    // generic "Failed to publish" message as a failure before it -- the merchant had no way to
+    // tell their edits were actually saved, the exact ambiguity #748 exists to remove.
+    let persisted = false;
     try {
-      const result = await publishPricelist(editingTargetId);
+      const { editingPricelistId } = await persistRows();
+      persisted = true;
+      const result = await publishPricelist(editingPricelistId);
       toast?.success?.('Pricelist published.');
       setEditingSourceId(result.pricelist.pricelist_id);
       setEditingTargetId(result.pricelist.pricelist_id);
@@ -422,8 +457,15 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
       setEditorVersion(Number(result.pricelist.version));
       setIsDraftRevision(false);
       clearPricelistDraft(editingSourceId);
+      // #748: publish never returned to the list -- the editor just stayed open on the
+      // now-published pricelist, unlike handleCreate, which does navigate on success.
+      backToList();
     } catch (error) {
-      toast?.error?.(describeError(error, 'Failed to publish this pricelist.'));
+      if (!(await handleVersionConflict(error))) {
+        toast?.error?.(describeError(error, persisted
+          ? 'Your changes were saved, but publishing failed. Try Publish again.'
+          : 'Failed to publish this pricelist.'));
+      }
     } finally {
       setPublishing(false);
     }
@@ -453,11 +495,15 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
               value={search}
               onChange={(e) => { setSearch(e.target.value); setMobileIndex(0); setDesktopPage(0); }}
             />
-            <Button type="button" size="sm" variant="outline" disabled={saving || disabled || !canManage} onClick={handleSave} className="h-8 text-xs">
+            {/* RF-3 (PR #752 review): both funnel through persistRows() now -- cross-gate on
+                saving||publishing so a Save-then-Publish double-click can't send two
+                PUT /items at the same editorVersion (the second would hit
+                PRICELIST_VERSION_CONFLICT and silently no-op). */}
+            <Button type="button" size="sm" variant="outline" disabled={saving || publishing || disabled || !canManage} onClick={handleSave} className="h-8 text-xs">
               <Save className="mr-1 h-3.5 w-3.5" /> {saving ? 'Saving...' : 'Save'}
             </Button>
             {(isDraftRevision || pricelist?.status === 'draft') && (
-              <Button type="button" size="sm" disabled={publishing || disabled || !canManage} onClick={handlePublish} className="h-8 text-xs">
+              <Button type="button" size="sm" disabled={saving || publishing || disabled || !canManage} onClick={handlePublish} className="h-8 text-xs">
                 <Upload className="mr-1 h-3.5 w-3.5" /> {publishing ? 'Publishing...' : 'Publish'}
               </Button>
             )}
@@ -508,7 +554,11 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                 <div>
                   <p className="text-sm font-black text-[#0F172A]">{currentMobileRow.name}</p>
                   <p className="text-[11px] text-slate-500">{currentMobileRow.category}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">SRP: {money(currentMobileRow.srp_pesos)}</p>
+                  {/* #735: Cost alongside SRP -- data already exists on the row (buildRows),
+                      previously only consumed by rowBelowCostWarning, never displayed. */}
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Cost: {currentMobileRow.cost_per_unit != null ? money(currentMobileRow.cost_per_unit) : '—'} · SRP: {money(currentMobileRow.srp_pesos)}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs font-semibold text-[#0F172A]">Voucher price (PHP)</Label>
@@ -518,7 +568,8 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                     value={currentMobileRow.unit_price_pesos}
                     onChange={(e) => handlePriceChange(currentMobileRow.item_id, e.target.value)}
                   />
-                  {rowNoDiscountWarning(currentMobileRow) && <p className="text-[11px] font-semibold text-amber-700">At or above SRP -- this row grants no discount.</p>}
+                  {rowNoDiscountWarning(currentMobileRow) && <p className="text-[11px] font-semibold text-amber-700">At SRP -- this row grants no discount.</p>}
+                  {rowAboveSrpWarning(currentMobileRow) && <p className="text-[11px] font-semibold text-rose-600">Above SRP ({money(currentMobileRow.srp_pesos)}) -- this row charges more than the normal price.</p>}
                   {rowBelowCostWarning(currentMobileRow) && <p className="text-[11px] font-semibold text-rose-600">Below item cost ({money(currentMobileRow.cost_per_unit)}).</p>}
                 </div>
                 <Button type="button" variant="outline" size="sm" className="h-9 text-xs" disabled={mobileIndex >= filteredRows.length - 1} onClick={() => setMobileIndex((i) => Math.min(filteredRows.length - 1, i + 1))}>
@@ -530,11 +581,12 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
         ) : (
           <div className="min-w-0 max-w-full rounded-lg border">
             <div className="overflow-x-auto overflow-y-auto max-h-[32rem]">
-              <table className="w-full min-w-[44rem] text-sm">
+              <table className="w-full min-w-[50rem] text-sm">
                 <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   <th className="p-3 text-left font-medium text-slate-600">Item</th>
                   <th className="p-3 text-left font-medium text-slate-600">Category</th>
+                  <th className="p-3 text-left font-medium text-slate-600">Cost</th>
                   <th className="p-3 text-left font-medium text-slate-600">SRP</th>
                   <th className="p-3 text-left font-medium text-slate-600">Voucher price (PHP)</th>
                   <th className="p-3 text-left font-medium text-slate-600">Warnings</th>
@@ -543,11 +595,13 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
               <tbody className="divide-y divide-slate-100">
                 {pagedRows.map((row) => {
                   const noDiscount = rowNoDiscountWarning(row);
+                  const aboveSrp = rowAboveSrpWarning(row);
                   const belowCost = rowBelowCostWarning(row);
                   return (
-                    <tr key={row.item_id} className={(noDiscount || belowCost) ? 'bg-amber-50/50' : undefined}>
+                    <tr key={row.item_id} className={(noDiscount || aboveSrp || belowCost) ? 'bg-amber-50/50' : undefined}>
                       <td className="p-3 font-semibold text-slate-800">{row.name}</td>
                       <td className="p-3 text-slate-500">{row.category}</td>
+                      <td className="p-3 text-slate-500">{row.cost_per_unit != null ? money(row.cost_per_unit) : '—'}</td>
                       <td className="p-3 text-slate-500">{money(row.srp_pesos)}</td>
                       <td className="p-3">
                         <Input
@@ -561,6 +615,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                       </td>
                       <td className="p-3 text-[11px] font-semibold">
                         {noDiscount && <p className="text-amber-700">No discount at this price.</p>}
+                        {aboveSrp && <p className="text-rose-600">Above SRP ({money(row.srp_pesos)}).</p>}
                         {belowCost && <p className="text-rose-600">Below cost ({money(row.cost_per_unit)}).</p>}
                       </td>
                     </tr>
