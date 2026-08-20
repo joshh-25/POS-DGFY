@@ -55,6 +55,13 @@ Evidence semantics:
 
 PayMongo webhook integrity evidence is mandatory when subscription/payment workflows or payment-provider configuration change.
 
+The complete provider-backed verification process for direct Storefront GCash,
+Maya, and credit-card authorization is maintained in
+[direct-paymongo-payment-verification.md](direct-paymongo-payment-verification.md).
+It covers local preflight, method-specific UI checks, Payment Intent/API
+contracts, signed webhook finalization, duplicate protection, 3-D Secure, live
+configuration, canary evidence, and rollback.
+
 Required command:
 1. `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js`
 
