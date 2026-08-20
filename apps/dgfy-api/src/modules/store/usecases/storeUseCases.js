@@ -1438,6 +1438,18 @@ const resolveCheckoutContext = async ({
     options = {},
     validateRecipeAvailability = true,
     revenueSharingEnabled = tenantRevenueSharingEnabled,
+    // #746: a cart-quote preview isn't placing an order -- it's answering "what would my total (and
+    // voucher/promo discount) be right now." Neither the discount math (resolveStorefrontPromoApplication
+    // / voucher resolution below, cart-content-only) nor deliveryFee (resolveStoreDeliveryFee, a flat
+    // settings-based lookup keyed on orderMethod, never on the address string itself) actually reads
+    // customer_name/phone/email/delivery_address. The ONLY thing that ever needed them here was this
+    // gate. Requiring them anyway meant no shopper could see a voucher discount in the cart drawer
+    // before reaching checkout and typing/selecting all four -- silently, since a 422 with no visible
+    // error is indistinguishable from "the discount doesn't apply." buildStoreCartQuoteUseCase passes
+    // `false`; every order-placing caller (buildStoreCheckoutUseCase, the QRPh payment-session path)
+    // keeps the default `true` -- an order that will actually ship still needs a real contact and, for
+    // delivery, a real address, unchanged from before this amendment.
+    requireCheckoutContact = true,
     // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup only. Optional and
     // falls back to the ambient dbStore context (currentTenantAccessContext()) when omitted, to
     // preserve today's behavior for the two callers (cart quote, QRPh payment session) that don't
@@ -1450,13 +1462,15 @@ const resolveCheckoutContext = async ({
     const orderMethod = normalized.order_method || 'delivery';
     const paymentType = normalized.payment_type || 'cash';
     validateOrderMethodAndPayment({ orderMethod, paymentType });
-    ensureRequiredCheckoutContact({
-        customerName: normalized.customer_name,
-        customerPhone: normalized.customer_phone,
-        customerEmail: normalized.customer_email,
-        orderMethod,
-        deliveryAddress: normalized.delivery_address
-    });
+    if (requireCheckoutContact) {
+        ensureRequiredCheckoutContact({
+            customerName: normalized.customer_name,
+            customerPhone: normalized.customer_phone,
+            customerEmail: normalized.customer_email,
+            orderMethod,
+            deliveryAddress: normalized.delivery_address
+        });
+    }
     const scheduledFor = validateScheduledFor(normalized.scheduled_for);
 
     const itemIds = [...new Set(normalized.lines.map((line) => line.item_id).filter((id) => Number.isInteger(id) && id > 0))];
@@ -2596,7 +2610,9 @@ export const buildStoreCartQuoteUseCase = ({
                 storeRepository,
                 payload,
                 storeCustomer,
-                revenueSharingEnabled
+                revenueSharingEnabled,
+                // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
+                requireCheckoutContact: false
             });
             return ok({
                 subtotal_amount: resolved.prepared.subtotalAmount,
