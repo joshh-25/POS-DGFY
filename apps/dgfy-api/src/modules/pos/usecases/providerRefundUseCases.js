@@ -39,13 +39,6 @@ const stableStringify = (value) => {
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
-const isPosAdminOperator = (user = {}) => (
-    user?.is_master_admin === true
-    || user?.is_master_admin === 1
-    || user?.is_master_admin === '1'
-    || String(user?.role || '').trim().toLowerCase() === 'admin'
-);
-
 const normalizePaymentBreakdown = (value) => {
     let parsed = value;
     if (typeof parsed === 'string') {
@@ -439,8 +432,6 @@ export const buildProviderRefundPosTransactionUseCase = ({
         const reason = String(payload?.reason || '').trim();
         const idempotencyKey = String(payload?.idempotency_key || '').trim();
         const providerReason = buildProviderRefundReason(payload?.provider_reason);
-        const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
-
         if (!normalizedTransactionId || !actorUserId || reason.length < 3 || idempotencyKey.length < 8) {
             return fail(providerRefundError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -448,7 +439,7 @@ export const buildProviderRefundPosTransactionUseCase = ({
                 422
             ));
         }
-        if (!activeShiftId && !adminShiftBypass) {
+        if (!activeShiftId) {
             return fail(providerRefundError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'An active cashier shift is required to record a provider refund',
