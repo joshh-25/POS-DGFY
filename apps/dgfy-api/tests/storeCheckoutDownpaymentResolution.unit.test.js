@@ -1,10 +1,17 @@
 // Unit tests for Phase 140 (#821, ADR 0069/0070) -- server-authoritative downpayment resolution at
 // quote/checkout. Covers the three resolveCheckoutContext callers:
 //   - buildStoreCartQuoteUseCase: the split is computed and exposed (read-only preview, allowed).
-//   - buildStoreCheckoutUseCase: a downpayment_required order is rejected 422
-//     DOWNPAYMENT_CAPTURE_NOT_AVAILABLE (capture isn't wired until Phase 141, #822).
-//   - buildStoreCheckoutPaymentSessionUseCase: same rejection, checked before the full order total
-//     would otherwise be authorized online (ADR 0069 clause 1b [binding]).
+//   - buildStoreCheckoutUseCase called with NO capturedPayment (the direct HTTP path -- a customer
+//     picking plain 'cash' at a downpayment_required store, collecting nothing): still rejected 422
+//     DOWNPAYMENT_CAPTURE_NOT_AVAILABLE. Phase 141 (#822) made this guard CONDITIONAL rather than
+//     removing it -- see tests/downpaymentWebhookFinalization.unit.test.js for the surviving
+//     capturedPayment-present path (the webhook finalizer), which this file does not cover.
+//   - buildStoreCheckoutPaymentSessionUseCase: as of Phase 141 (#822) this path no longer rejects a
+//     downpayment_required tenant -- it captures the downpayment amount instead of the order total,
+//     with its own fee guard and a new DOWNPAYMENT_POLICY_UNRESOLVED fail-closed case. Kept in this
+//     file (not split into a separate storeDownpaymentCapture.unit.test.js as the Phase 141 plan
+//     first sketched) -- the plan's file split would have duplicated this same setup and describe
+//     block rather than adding real coverage, so it's consolidated here instead.
 //
 // No database is used anywhere in this file. storeRepository/downpaymentSettingsRepository are
 // hand-built fakes -- downpaymentSettingsRepository is dependency-injected (no default), the same
@@ -13,7 +20,13 @@
 // tests/storeCheckoutVoucherPromoStacking.unit.test.js (quote) and
 // tests/storeCheckoutAffiliatePricing.unit.test.js (checkout).
 
-import { jest } from '@jest/globals';
+import { afterAll, jest } from '@jest/globals';
+
+// Phase 141 (#822): buildStoreCheckoutPaymentSessionUseCase's success path needs a configured
+// return URL to build a PayMongo QRPh intent -- read live at call time (process.env.
+// STOREFRONT_PAYMENT_RETURN_URL), so setting it here (rather than before the dynamic import below)
+// is sufficient. Matches the pattern in tests/storeDirectGcash.usecase.test.js.
+process.env.STOREFRONT_PAYMENT_RETURN_URL = 'https://dgfy.ph/payment-return';
 
 const {
     buildStoreCartQuoteUseCase,
@@ -253,8 +266,14 @@ const withGuestProof = (payload) => ({
     })
 });
 
-describe('buildStoreCheckoutUseCase — Phase 140 fail-closed guard (ADR 0070 clause 7)', () => {
-    test('rejects 422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE for a downpayment_required tenant, no order created', async () => {
+describe('buildStoreCheckoutUseCase — Phase 141 (#822) fail-closed guard, offline path (ADR 0070 clause 7)', () => {
+    test('rejects 422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE for a downpayment_required tenant with no capturedPayment (nothing collected), no order created', async () => {
+        // Phase 141 (#822): this guard is now CONDITIONAL on capturedPayment, not unconditional --
+        // see tests/downpaymentWebhookFinalization.unit.test.js for the surviving capturedPayment-
+        // present path (the webhook finalizer, after real money was captured). This test call omits
+        // capturedPayment entirely, simulating the direct HTTP path (storeHandlers.js) -- a customer
+        // picking plain 'cash' at a downpayment_required store, where nothing was ever collected.
+        // That path must still fail closed (ADR 0070 clause 7 [binding]).
         const storeRepository = buildFakeCheckoutStoreRepository();
         const useCase = buildStoreCheckoutUseCase({
             storeRepository,
@@ -308,8 +327,14 @@ describe('buildStoreCheckoutUseCase — Phase 140 fail-closed guard (ADR 0070 cl
 
 // --- Payment-session fixture (mirrors storeDirectGcash.usecase.test.js) ---
 
-describe('buildStoreCheckoutPaymentSessionUseCase — Phase 140 fail-closed guard (ADR 0069 clause 1b)', () => {
-    test('rejects 422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE before authorizing the full total online', async () => {
+describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures the downpayment, not the total (ADR 0069 clause 1b)', () => {
+    // Phase 140's guard here is fully replaced by Phase 141 -- this path no longer rejects a
+    // downpayment_required tenant, it captures the downpayment amount instead of the order total.
+    // See tests/storeDownpaymentCapture.unit.test.js for the fuller capture-computation test suite
+    // (fee guard on the captured amount, DOWNPAYMENT_POLICY_UNRESOLVED, session column persistence);
+    // this test is kept here, in place of the old rejection test, as the direct successor covering
+    // the exact same call shape the old test used.
+    test('authorizes only the downpayment amount online, not the order total', async () => {
         const commercePaymentRepository = {
             findSessionByIdempotency: jest.fn().mockResolvedValue(null),
             findTenantPaymentAccount: jest.fn().mockResolvedValue({
@@ -321,13 +346,19 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 140 fail-closed guar
                 wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
                 provider_merchant_id: 'acct_live_fixture'
             }),
-            createSession: jest.fn(),
-            updateSessionById: jest.fn()
+            createSession: jest.fn((attrs) => Promise.resolve({ session_id: 501, ...attrs })),
+            updateSessionById: jest.fn((sessionId, attrs) => Promise.resolve({ session_id: sessionId, ...attrs }))
         };
         const paymongoService = {
             createHostedCheckoutSession: jest.fn(),
             createDirectGcashPaymentIntent: jest.fn(),
-            createDirectMayaPaymentIntent: jest.fn()
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn().mockResolvedValue({
+                payment_intent_id: 'pi_fixture',
+                checkout_url: 'https://paymongo.example/checkout/pi_fixture',
+                qr_code_image_url: null,
+                expires_at: new Date('2026-08-22T00:00:00Z')
+            })
         };
         const storeRepository = {
             findDefaultActiveLocation: jest.fn().mockResolvedValue({
@@ -369,14 +400,197 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 140 fail-closed guar
                 customer_email: 'buyer@example.com',
                 customer_phone: '0917',
                 order_method: 'pickup',
-                lines: [{ item_id: 1, quantity: 1 }]
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-1'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(commercePaymentRepository.createSession).toHaveBeenCalledTimes(1);
+        const sessionAttrs = commercePaymentRepository.createSession.mock.calls[0][0];
+        // 500 subtotal + 1% (5) service fee = 505 order total; 20% downpayment = 101 pesos = 10100 centavos.
+        expect(sessionAttrs.capture_kind).toBe('downpayment');
+        expect(sessionAttrs.order_total_centavos).toBe(50500);
+        expect(sessionAttrs.total_amount_centavos).toBe(10100);
+        expect(sessionAttrs.total_amount_centavos).toBeLessThan(sessionAttrs.order_total_centavos);
+        expect(sessionAttrs.capture_payment_method).toBe('qrph');
+        expect(sessionAttrs.downpayment_refundable).toBe(true);
+        // The PayMongo intent itself must be created for the captured amount, never the order total.
+        expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalledTimes(1);
+        expect(paymongoService.createQrphPaymentIntent.mock.calls[0][0].amount).toBe(10100);
+    });
+
+    test('rejects 422 DOWNPAYMENT_POLICY_UNRESOLVED when the tenant requires a downpayment but the stored settings row is malformed', async () => {
+        // Phase 141 (#822): downpaymentPolicy.js itself fails closed to full_payment on a malformed
+        // row (no downpayment_type set) -- correct for Phase 140's "nothing can capture yet" world,
+        // backwards for this phase's COD-with-downpayment model, where falling through to
+        // full_payment would authorize the FULL order online with no downpayment gate at all. This
+        // seam catches that by comparing the raw stored setting against the resolved result.
+        const commercePaymentRepository = {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn(),
+            updateSessionById: jest.fn()
+        };
+        const paymongoService = {
+            createHostedCheckoutSession: jest.fn(),
+            createDirectGcashPaymentIntent: jest.fn(),
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn()
+        };
+        const storeRepository = {
+            findDefaultActiveLocation: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_open: true,
+                allow_out_of_stock_sales: true
+            }),
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                ...registeredTransactionSettings(),
+                { setting_key: 'store_delivery_fee', setting_value: '0' },
+                { setting_key: 'pos_open_status', setting_value: 'true' }
+            ]),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Test Item',
+                default_sale_price: 500,
+                sale_price: 500,
+                is_available: true,
+                availability_status: 'in_stock'
+            }])
+        };
+
+        const malformedSettings = downpaymentRequiredSettings({ downpayment_type: null, downpayment_rate_bps: null });
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository,
+            commercePaymentRepository,
+            paymongoService,
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(malformedSettings)
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-2',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-2'
+                })
             }
         }));
 
         expect(result.success).toBe(false);
         expect(result.error?.statusCode).toBe(422);
-        expect(result.error?.details?.reason_code).toBe('DOWNPAYMENT_CAPTURE_NOT_AVAILABLE');
+        expect(result.error?.details?.reason_code).toBe('DOWNPAYMENT_POLICY_UNRESOLVED');
         expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
-        expect(paymongoService.createHostedCheckoutSession).not.toHaveBeenCalled();
+        expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
     });
+
+    test('a full_payment tenant is unaffected -- captures the full order total exactly as before', async () => {
+        const commercePaymentRepository = {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn((attrs) => Promise.resolve({ session_id: 502, ...attrs })),
+            updateSessionById: jest.fn((sessionId, attrs) => Promise.resolve({ session_id: sessionId, ...attrs }))
+        };
+        const paymongoService = {
+            createHostedCheckoutSession: jest.fn(),
+            createDirectGcashPaymentIntent: jest.fn(),
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn().mockResolvedValue({
+                payment_intent_id: 'pi_fixture_full',
+                checkout_url: 'https://paymongo.example/checkout/pi_fixture_full',
+                qr_code_image_url: null,
+                expires_at: new Date('2026-08-22T00:00:00Z')
+            })
+        };
+        const storeRepository = {
+            findDefaultActiveLocation: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_open: true,
+                allow_out_of_stock_sales: true
+            }),
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                ...registeredTransactionSettings(),
+                { setting_key: 'store_delivery_fee', setting_value: '0' },
+                { setting_key: 'pos_open_status', setting_value: 'true' }
+            ]),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Test Item',
+                default_sale_price: 500,
+                sale_price: 500,
+                is_available: true,
+                availability_status: 'in_stock'
+            }])
+        };
+
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository,
+            commercePaymentRepository,
+            paymongoService,
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(fullPaymentSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-3',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-3'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const sessionAttrs = commercePaymentRepository.createSession.mock.calls[0][0];
+        expect(sessionAttrs.capture_kind).toBe('full');
+        expect(sessionAttrs.order_total_centavos).toBe(50500);
+        expect(sessionAttrs.total_amount_centavos).toBe(50500);
+        expect(sessionAttrs.downpayment_refundable).toBeNull();
+    });
+});
+
+afterAll(() => {
+    delete process.env.STOREFRONT_PAYMENT_RETURN_URL;
 });
