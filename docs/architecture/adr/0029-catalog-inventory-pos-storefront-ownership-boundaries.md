@@ -168,3 +168,34 @@ for the mirrored exclusion-list update.
 
 `status: accepted` is preserved; this is an amendment, not a revision of the
 original decision history.
+
+## Amendment (2026-08-21): Online Order Inventory Reservations
+
+Online Storefront checkout now uses an additive Inventory-owned reservation
+ledger before an online order is accepted:
+
+1. A reservation is scoped to one `online_order`, one tenant location, and one
+   persisted `pos_transaction`. It stores only inventory effects, never a
+   payment credential or customer secret.
+2. Reservation lines cover every stock-bearing effect that fulfillment will
+   issue: a direct item, an F&B recipe ingredient, or an F&B modifier SKU.
+   Stock-exempt lines do not reserve quantity.
+3. Reservation creation runs inside the same transaction as online order
+   creation. Inventory locks the location stock rows in deterministic item
+   order and subtracts active, non-expired holds before accepting the new
+   reservation. A shortfall fails closed with no order row committed.
+4. Holds expire after the configured online reservation TTL (30 minutes by
+   default, capped at 24 hours). Expiry is materialized lazily before a new
+   reservation attempt, so no background scheduler is required for safety.
+5. POS completion converts the active hold to `converted` in the same
+   transaction that creates the Inventory goods-issue movements. POS
+   cancellation or rejection releases the active hold without changing stock.
+   Legacy orders without a reservation retain the existing completion path.
+6. Reservation records are append-only evidence: status transitions are
+   guarded and no reservation quantity is edited after creation. Availability
+   remains location-scoped and the existing `allow_out_of_stock_sales` policy
+   only bypasses direct finished-item holds; recipe and modifier effects stay
+   protected.
+
+This amendment defines the reservation state, expiry, commit, release, and
+available-to-sell semantics required by the original compatibility decision.
