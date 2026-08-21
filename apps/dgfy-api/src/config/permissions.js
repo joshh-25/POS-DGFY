@@ -91,6 +91,15 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- DOWNPAYMENT (Phase 138, #820) ---
+    DOWNPAYMENT: {
+        label: "Downpayment & Partial Payment",
+        actions: {
+            VIEW_DOWNPAYMENT_SETTINGS: "downpayment:view",       // View per-store payment mode / downpayment policy
+            MANAGE_DOWNPAYMENT_SETTINGS: "downpayment:settings", // Change payment mode, downpayment amount/type, refundability
+        }
+    },
+
     // --- VOUCHERS (#655) ---
     // Split out of SYSTEM.VIEW_SETTINGS/EDIT_SETTINGS, which Phase 103 (#614) deliberately reused as
     // a scoping shortcut -- see routes/vouchers.js's own comment. Dual-gated for one release
@@ -245,6 +254,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.DELETE_USERS,
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
         PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
+        PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
         PERMISSIONS.VOUCHERS.actions.VIEW,
         PERMISSIONS.VOUCHERS.actions.MANAGE
     ],
