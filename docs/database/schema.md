@@ -1858,6 +1858,47 @@ registered in runtime schema auditing and additive tenant repair
 (`REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments`). No route, use case, or
 UI reads or writes this table yet — that starts at Phase 139/140.
 
+### tenant_downpayment_settings (Phase 138)
+
+**Landlord** table (not tenant-DB), one row per tenant — ADR 0069 clause 5
+(`[default]`, config-surface steer: "a typed per-tenant/per-store settings
+table... modeled on `TenantAffiliateSettings.js`"). Migration
+`20260821000005-create-tenant-downpayment-settings.cjs`. Money-shaped columns
+are **INTEGER centavos**, matching `tenant_affiliate_settings`'s own
+convention (`min_cashout_centavos` etc.) — a different landlord-DB convention
+than `pos_transactions`' tenant-DB peso `DECIMAL(14,4)` columns above.
+
+```sql
+CREATE TABLE tenant_downpayment_settings (
+    tenant_id CHAR(36) PRIMARY KEY,
+    payment_mode ENUM('full_payment', 'downpayment_required', 'customer_choice') NOT NULL DEFAULT 'full_payment',
+    downpayment_type ENUM('percentage', 'fixed') NULL,
+    downpayment_rate_bps INT NULL,
+    downpayment_fixed_centavos INT NULL,
+    min_downpayment_centavos INT NOT NULL DEFAULT 0,
+    downpayment_refundable BOOLEAN NOT NULL DEFAULT TRUE,
+    allowed_capture_methods JSON NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+`payment_mode` includes `customer_choice` in the schema now so a future phase
+that actually builds it needs no further migration, but the admin API
+(`apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`)
+rejects any attempt to set it (`422`, `PAYMENT_MODE_NOT_SUPPORTED`) — v1 is
+binary: `full_payment` or `downpayment_required`. `allowed_capture_methods`
+`NULL` means "inherit the business-wide capture-method allow-list from #816"
+(not yet built). ADR 0069 clause 7 (`[binding]`) is enforced at
+settings-**write**-time: a `payment_mode = 'downpayment_required'` update is
+rejected (`422`, `WORKFLOW_MODE_NOT_RETAIL`) unless the tenant's
+`ops_workflow_mode` resolves to Retail —
+`resolveStorefrontPaymentCapabilities` has no `workflow_mode` concept and does
+not enforce this on its own. No checkout/quote code path reads this table
+yet — that starts at Phase 139. Admin API: `GET`/`PUT
+/api/v1/downpayment/settings`, gated by
+`PERMISSIONS.DOWNPAYMENT.actions.{VIEW,MANAGE}_DOWNPAYMENT_SETTINGS`.
+
 ---
 
 ## Key Indexes & Performance Optimization

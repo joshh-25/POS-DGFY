@@ -6383,3 +6383,192 @@ after this update: **135**.
 - `docs/architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md` (new)
 - `docs/architecture/adr/0068-retail-downpayment-payment-capture-authorization.md` (status flip)
 - `docs/architecture/adr/INDEX.md`
+
+## Phase 137 - Data Model + Migration: Partial-Payment Vocabulary (retroactive entry)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #819, Phase 137 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 136.
+- Release: `develop`-targeted PR #829, plus follow-up PR #830 addressing `pr-reviewer`'s findings
+  from #829's review.
+- **This entry is added retroactively, in the Phase 138 (#820) session** — the #819 session closed
+  out PR #829/#830 without ever adding a ledger entry, a gap AGENTS.md's Continuous Phase Numbering
+  rules make this ledger authoritative against. Not caught by either PR's review.
+
+### Objective and Scope
+
+- Added the partial-payment data-model vocabulary `PosTransaction` and checkout lacked, per ADR
+  0069 clause 4 (carried over verbatim from ADR 0068 clause 4, unchanged by the Phase 136
+  supersession): `amount_paid`/`balance_due` peso `DECIMAL(14,4)` columns on `pos_transactions`
+  (clause 4a), a `partially_paid` `payment_status` ENUM value, and a new tenant-local
+  `pos_order_payments` per-order ledger table (clause 4b) — one row per
+  downpayment/balance/refund/forfeiture event, structurally modeled on `pos_payment_allocations`,
+  not `platform_invoice_payments`. No `payment_timing` value added (clause 4c). No behavior change
+  — nothing outside the migration's own backfill reads or writes these columns/table yet.
+- Three migrations: `20260821000002-add-pos-transaction-partial-payment-columns.cjs` (nullable-add
+  → backfill → NOT NULL, same shape as `20260807000002-add-pos-payment-timing.cjs`),
+  `20260821000003-expand-pos-transaction-payment-status-partially-paid.cjs` (tenant-fan-out ENUM
+  widening, same shape as `20260817000001-expand-storefront-paymongo-payment-methods.cjs`), and
+  `20260821000004-create-pos-order-payments.cjs` (new tenant-local table).
+- `PosTransaction.js` extended; new `PosOrderPayment.js` model added and registered in
+  `models/index.js`. `sync-tenant-schemas.js` registrations added for all three surfaces
+  (`REQUIRED_TENANT_SCHEMA_COLUMNS`, `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS`,
+  `REQUIRED_TENANT_SCHEMA_TABLES`); `TENANT_SCHEMA_CAPABILITY_VERSION` bumped to `2026-08-21.1`.
+- **This is a checkpoint phase** (migrations under `apps/dgfy-migration-runner/migrations/`) — the
+  full design was presented to Pat before any file was committed, per Pat's "just go straight to
+  PR" go-ahead.
+- No compliance impact declaration required — none of the changed paths (`src/models/`,
+  `apps/dgfy-migration-runner/migrations/`, `scripts/sync-tenant-schemas.js`, `tests/`) match any
+  `COMPLIANCE_SENSITIVE_RULES` pattern.
+- `pr-reviewer`'s review of PR #829 (verdict `COMMENT`, no blockers) raised three should-fix
+  findings, all addressed in follow-up PR #830: RF-1 (the backfill conflated
+  refunded/partial-refunded/refund-pending with unpaid — corrected so those three statuses backfill
+  `balance_due = 0`, since they're resolved, not outstanding), RF-2 (a stale "before merge" comment
+  on the `REQUIRED_TENANT_SCHEMA_TABLES` DDL, corrected to record that the DDL was independently
+  verified by the review rather than still pending), RF-3 (`docs/database/schema.md` was never
+  updated — added).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 136 (ADR 0069) being in force — cites clause 4 throughout.
+- Gates the phases that build on this vocabulary: Phase 139 (quote/checkout resolution), Phase 140
+  (capture), Phase 142 (refund/forfeiture), Phase 143 (balance settlement).
+- Board: #819 was set `Done` automatically by the project's own workflow when PR #829 merged with
+  `Closes #819`. Flagged back to `For QA` in the Phase 138 (#820) session (Housekeeping, this
+  session) since no deployed-environment verification (Verifier/QA role) has actually run yet —
+  `Done` was a merge-time artifact, not a completed verification.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed file — clean.
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` — 26/26 passing (3 new cases: column
+  repair, enum repair, whole-table repair, mirroring existing precedent).
+- `npm run check:compliance` — clean, both before and after the RF-1/2/3 follow-up.
+- **Open gap, carried forward honestly, not silently closed**: the migrations' `up()`/`down()` were
+  never run against a live/scratch MySQL database in either session (#819 or the #830 follow-up) —
+  no local DB was available. RF-1's corrected backfill CASE logic is therefore still unverified
+  against real data. Flag this before Phase 139+ relies on `amount_paid`/`balance_due` being
+  correctly backfilled in a real deployed environment.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000002-add-pos-transaction-partial-payment-columns.cjs`
+- `apps/dgfy-migration-runner/migrations/20260821000003-expand-pos-transaction-payment-status-partially-paid.cjs`
+- `apps/dgfy-migration-runner/migrations/20260821000004-create-pos-order-payments.cjs`
+- `apps/dgfy-api/src/models/PosTransaction.js`, `apps/dgfy-api/src/models/PosOrderPayment.js`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js`
+- `docs/database/schema.md` (`### pos_transactions: partial-payment columns (Phase 137)`,
+  `### pos_order_payments (Phase 137)`)
+- PR #829, PR #830
+
+## Phase 138 - Config Surface: Per-Store Payment Mode + Downpayment Policy (Backend)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #820, Phase 138 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 137.
+- Release: single `develop`-targeted PR (`feat/820-downpayment-config-surface`).
+
+### Objective and Scope
+
+- Per-tenant config surface ADR 0069 clause 5 (`[default]`, config-surface steer) and clause 7
+  (`[binding]`, non-Retail rejection) authorize: `payment_mode`
+  (`full_payment`/`downpayment_required`/`customer_choice`), downpayment amount/type
+  (`percentage`/`fixed`, basis-points/centavos), refundability, and an `allowed_capture_methods`
+  override.
+- New **landlord** table `tenant_downpayment_settings` (one row per tenant), modeled on
+  `TenantAffiliateSettings.js` per clause 5's explicit steer — migration
+  `20260821000005-create-tenant-downpayment-settings.cjs`. New model
+  `apps/dgfy-api/src/models/Landlord/TenantDownpaymentSettings.js`, registered in `models/index.js`.
+- New module `apps/dgfy-api/src/modules/downpayment/` (repository, use cases, controllers) — a
+  genuinely new bounded domain this epic's later phases (capture, refund/forfeiture, balance
+  settlement) will keep extending, not folded into `modules/dgfy/` (the affiliate settings'
+  precedent) or `modules/store/`.
+- **Deliberately registered as a compliance-sensitive surface**: `scripts/check-compliance-impact.js`'s
+  `COMPLIANCE_SENSITIVE_RULES` gained a `^apps/dgfy-api/src/modules/downpayment/` entry
+  (`major`, `surfaces: payments`), mirrored into `docs/compliance/compliance-classification-matrix.md`
+  — this is substantively a payment/checkout config surface regardless of which module folder it
+  lands in (ADR 0069's own Hardening Contract names "payment, checkout" as a trigger domain), so
+  leaving it outside the existing pattern list would have silently dodged the guardrail rather than
+  correctly tripping it. This is the first phase in the epic to actually trigger a compliance
+  declaration — Phase 136/137 both confirmed clean of any match.
+- Joi validators (`apps/dgfy-api/src/validators/downpaymentSettingsValidator.js`) own shape/bounds;
+  the use-case layer (`downpaymentSettingsUseCases.js`) owns the two DB-dependent business rules Joi
+  can't express: **ADR clause 7's non-Retail rejection** (a `payment_mode = downpayment_required`
+  update is rejected, `422 WORKFLOW_MODE_NOT_RETAIL`, unless the tenant's `ops_workflow_mode`
+  resolves to Retail — `resolveStorefrontPaymentCapabilities` has no `workflow_mode` concept and
+  doesn't catch this on its own) and **`customer_choice` rejection** (`422
+  PAYMENT_MODE_NOT_SUPPORTED` — schema-authorized so no future migration is needed when it ships,
+  but not actually settable in v1). Every write re-validates the full *effective* (merged)
+  settings row, not just the fields the request touches, so a partial update can never leave the
+  row internally inconsistent.
+- New `PERMISSIONS.DOWNPAYMENT` block (`VIEW_DOWNPAYMENT_SETTINGS`/`MANAGE_DOWNPAYMENT_SETTINGS`);
+  `GET`/`PUT /api/v1/downpayment/settings`, mounted in `server.js` mirroring `affiliateAdminRoutes`'s
+  convention exactly (same prefix shape, room for this epic's later admin endpoints as siblings).
+- New `packages/shared-constants/src/downpaymentDefaults.js` per-vertical-defaults registry,
+  mirroring `posDefaultsAndTerminology.js`'s pattern (per #820's own explicit ask) — every entry's
+  value is intentionally identical today (nothing in ADR 0069 or #820 specifies real per-vertical
+  divergence, and clause 6 scopes actual usage to Retail only regardless); future-ready plumbing,
+  not invented business logic. Not wired into the repository's own `DEFAULT_SETTINGS` fallback,
+  which stays flat/non-vertical-aware (no tenant-DB `workflow_mode` visibility from the landlord
+  repository without extra plumbing this phase doesn't need).
+- Compliance impact declaration:
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md` (`major`,
+  `surfaces: payments`) — states plainly that the live `POST /api/v1/compliance/preflight` endpoint
+  was **not** executed against a live environment this session (none available), following the
+  established honest-caveat shape from `2026-07-29-pos-batch-menu-import.md`.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 136 (ADR 0069, clauses 5 and 7) and Phase 137 (the `payment_status`/`amount_paid`
+  vocabulary this config surface's later consumers will read).
+- Gates Phase 139 (server-authoritative downpayment resolution at quote/checkout) — that phase is
+  the first actual *reader* of `tenant_downpayment_settings`; this phase is config-surface only.
+- This phase has **two** checkpoints (`.agents/skills/implement/SKILL.md`'s checkpoint table): the
+  migration under `apps/dgfy-migration-runner/migrations/`, and the compliance declaration this
+  phase's own `modules/downpayment/` registration triggers. Both resolved at one combined stop
+  point before commit, per Pat's confirmation.
+- Board: #818 and #819 (Phases 136/137) were also flipped `Done` → `For QA` in this session
+  (Housekeeping), independent of #820's own code — see Phase 137's entry above.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed `.js`/`.cjs` file — clean.
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` (14 cases, including the issue's
+  named-required non-Retail-rejection case and the `customer_choice` rejection case),
+  `downpaymentSettingsRepository.unit.test.js` (3 cases), `downpaymentSettingsValidator.unit.test.js`
+  (6 cases) — 23/23 passing.
+- `npm run check:compliance` — confirmed it correctly *requires* a declaration once
+  `modules/downpayment/` existed without one, then accepts it once the declaration file was added.
+- `npm run check:architecture` — `[ArchitectureGuardrails] OK.` / `[ControllerBoundary] OK.` — new
+  module passes module-structure and controller-boundary checks.
+- **Open gap, carried forward honestly, not silently closed**: the migration's `up()`/`down()` was
+  never run against a live/scratch MySQL database (none available this session — same gap as Phase
+  137), and the live `POST /api/v1/compliance/preflight` call was not executed (see the compliance
+  declaration's own Verification Evidence section for what a reviewer with a live environment must
+  do before merge).
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000005-create-tenant-downpayment-settings.cjs`
+- `apps/dgfy-api/src/models/Landlord/TenantDownpaymentSettings.js`
+- `apps/dgfy-api/src/modules/downpayment/` (`index.js`, `README.md`, `repositories/`, `usecases/`,
+  `controllers/`)
+- `apps/dgfy-api/src/validators/downpaymentSettingsValidator.js`
+- `apps/dgfy-api/src/config/permissions.js` (`DOWNPAYMENT` block)
+- `apps/dgfy-api/src/routes/downpaymentSettings.js`, `apps/dgfy-api/src/server.js` (mount)
+- `packages/shared-constants/src/downpaymentDefaults.js`,
+  `apps/dgfy-api/src/modules/shared/constants/downpaymentDefaults.js`
+- `scripts/check-compliance-impact.js`, `docs/compliance/compliance-classification-matrix.md`
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md`
+- `docs/database/schema.md` (`### tenant_downpayment_settings (Phase 138)`)
