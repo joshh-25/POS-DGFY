@@ -7,7 +7,9 @@ import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHead
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   getStorefrontOnlinePaymentLabel,
   isStorefrontOnlinePaymentType
@@ -109,11 +111,15 @@ export function SimpleCheckoutRoutePage({
     : 'NOW';
   const isOnlinePayment = isStorefrontOnlinePaymentType(fnbPaymentType);
   const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
-  const paymentSubmitLabel = fnbPaymentType === 'qrph'
-    ? 'Generate QR Ph'
-    : isOnlinePayment
-      ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
-      : 'Place Order';
+  // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  const paymentSubmitLabel = downpaymentDisplay.active
+    ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})`
+    : fnbPaymentType === 'qrph'
+      ? 'Generate QR Ph'
+      : isOnlinePayment
+        ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
+        : 'Place Order';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
@@ -264,7 +270,17 @@ export function SimpleCheckoutRoutePage({
             money={money}
             onImageError={onImageError}
             paymentType={fnbPaymentType}
-            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })}
+            isDownpaymentActive={downpaymentDisplay.active}
+            downpaymentCallout={(
+              <DownpaymentPaymentCallout
+                accentColor="#176B3A"
+                bodyFont={servicesBodyFont}
+                display={downpaymentDisplay}
+                money={money}
+                orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
+              />
+            )}
             onlinePaymentPanel={isOnlinePayment ? (
               <StorefrontOnlinePaymentPanel
                 onConfirmTestPayment={import.meta.env.DEV

@@ -84,6 +84,7 @@ import {
   getInventoryDisplayLabel,
   getStorefrontAccessBlockMessage
 } from './shared/model/customerAccess.js';
+import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
@@ -706,15 +707,37 @@ export default function StorefrontApp() {
     setQrphIdempotencyKey(globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`);
   }, [setQrphIdempotencyKey, setQrphPaymentSession]);
 
+  // Phase 142 (#823): the first enabled online rail, for a downpayment-required store where
+  // plain 'cash' is not a valid selection (the backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on
+  // it -- see storeCheckoutPaymentOptions.js's hideCash option, which removes it from the list
+  // this reads). Falls back to 'qrph' if the store's payment_capabilities haven't loaded yet.
+  const resolveDefaultDownpaymentRail = useCallback(() => (
+    buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: true })[0]?.value || 'qrph'
+  ), [selectedStore?.payment_capabilities]);
+
   const handlePaymentTypeChange = useCallback((val) => {
+    const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required';
     if (val === 'online') {
       uiOpenOnlinePaymentModal();
-      setFnbPaymentType('cash');
+      // Phase 142 (#823): this legacy value opens the "online payment unavailable" modal and
+      // used to always reset to 'cash' -- wrong at a downpayment store, where 'cash' isn't a
+      // choice at all. Reset to a valid rail instead so the selector never lands on cash there.
+      setFnbPaymentType(isDownpaymentStore ? resolveDefaultDownpaymentRail() : 'cash');
     } else {
       if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
-  }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+  }, [resolveDefaultDownpaymentRail, resetQrphPaymentSession, selectedStore?.payment_mode, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+
+  // Phase 142 (#823): every mode's paymentType state defaults to 'cash' (useFnbCheckoutRouteState.js
+  // / RetailOrderPage.jsx's own local state) -- not a valid choice once a store resolves to
+  // downpayment_required. Self-heals a stale 'cash' selection (a restored guest draft, a store that
+  // just flipped modes, or simply the unchanged default) to the first enabled rail. No-op for a
+  // full_payment store.
+  useEffect(() => {
+    if (selectedStore?.payment_mode !== 'downpayment_required' || fnbPaymentType !== 'cash') return;
+    setFnbPaymentType(resolveDefaultDownpaymentRail());
+  }, [selectedStore?.payment_mode, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
   // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
   // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
