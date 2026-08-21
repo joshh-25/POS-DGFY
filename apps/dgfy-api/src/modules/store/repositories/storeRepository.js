@@ -1580,6 +1580,7 @@ export const storeRepository = {
         paymentMethod,
         paymentProvider = null,
         providerEventId = null,
+        paymentReference = null,
         idempotencyKey,
         recordedBy = null
     }, options = {}) {
@@ -1592,6 +1593,7 @@ export const storeRepository = {
             payment_method: paymentMethod,
             payment_provider: paymentProvider,
             provider_event_id: providerEventId,
+            payment_reference: paymentReference,
             idempotency_key: idempotencyKey,
             recorded_by: recordedBy,
             confirmed_at: new Date()

@@ -3067,6 +3067,7 @@ export const buildStoreCheckoutUseCase = ({
                     paymentMethod: capturedPayment.method,
                     paymentProvider: 'paymongo',
                     providerEventId: capturedPayment.provider_event_id || null,
+                    paymentReference: capturedPayment.provider_payment_id || null,
                     idempotencyKey: capturedPayment.session_reference,
                     recordedBy: null
                 }, { transaction });
@@ -3629,9 +3630,15 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             // with no downpayment gate at all -- the exact bogus-order case the feature exists to
             // prevent. So this seam compares the raw stored setting against the resolved result
             // instead of trusting the resolved shape alone.
+            // `resolved.totalAmount > 0` excludes the OTHER case resolveDownpaymentForTotal falls
+            // back to full_payment for: a legitimate zero-total order (e.g. a 100%-off voucher on a
+            // downpayment_required tenant) -- that's "nothing to capture," not a malformed settings
+            // row, and it already 422s a few lines below on its own, more accurate reason
+            // (`totalAmountCentavos <= 0`). Reviewer finding RF-2, PR #840.
             if (
                 resolved.downpaymentSettings?.payment_mode === 'downpayment_required'
                 && resolved.downpayment.payment_mode !== 'downpayment_required'
+                && resolved.totalAmount > 0
             ) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
