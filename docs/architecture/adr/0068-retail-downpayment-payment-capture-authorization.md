@@ -59,7 +59,7 @@ applies to #273's eventual implementation as a payment/checkout change.
 2. **Balance settlement stays staff-recorded, never a second automatic online charge.** `[binding]`
    The remaining balance is collected out-of-band (cash or manually-recorded GCash) by staff at
    delivery. No automatic second PayMongo charge may be initiated against the customer for the
-   balance without a further superseding or amending decision. The balance-settlement recording
+   balance without a further superseding ADR. The balance-settlement recording
    action must carry its own single-use/idempotent confirmation guard, following ADR 0063 clause
    6's explicit-confirmation pattern — a distinct concern from the PayMongo webhook-event dedupe
    that #476 (fixed, PR #784) already guards: that fix prevents webhook-replay double-processing;
