@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node';
 import { mapDomainErrorToHttp } from '../contracts/domainErrorMapper.js';
+import { isExpectedDomainFailure } from '../contracts/domainErrors.js';
 import { isSentryInitialized } from '../../../config/sentry.js';
 
 export const resolveDomainFailure = (
@@ -31,6 +32,13 @@ const captureUseCaseFailure = (statusCode, result) => {
     if (statusCode < 500 || !isSentryInitialized()) return;
 
     const domainError = result?.error;
+    // An expected precondition failure (optional integration not configured/enabled) is known
+    // client/environment state, not a fault -- see domainErrors.js's isExpectedDomainFailure and
+    // #508. This is the actual live capture path for every sendUseCaseResult-based controller
+    // (see the module comment above), so the same check as shouldReportErrorToSentry is needed
+    // here independently -- that function only gates Sentry's Express error-handler middleware,
+    // which this response path never reaches.
+    if (isExpectedDomainFailure(domainError)) return;
     const original = domainError?.cause || domainError;
     if (!original) return;
 

@@ -58,3 +58,23 @@ export const isDomainError = (value) => (
         && typeof value.message === 'string'
     )
 );
+
+// Precondition failures that are modeled as SERVICE_UNAVAILABLE (503) for the HTTP contract --
+// "this optional integration isn't configured/enabled" -- but that are expected client/environment
+// state, not a fault. Reported via `details.reason_code` at the throw site (the domain-layer code
+// that actually knows whether a given 503 is a real outage or a known missing-config state) rather
+// than inferred from message text. Kept narrow and explicit on purpose: only SERVICE_UNAVAILABLE
+// errors with a reason_code on this list are treated as non-reportable, so an unrecognized future
+// 503 (or a genuine INTERNAL_ERROR/STORE_CATALOG_RUNTIME_ERROR) still reports normally. See #508.
+const EXPECTED_UNAVAILABLE_REASON_CODES = new Set([
+    'NO_PRINTER_CONFIGURED',           // clientManagedDeviceDriver.js -- no printer/cash drawer configured
+    'POS_HARDWARE_DISABLED',           // disabledDeviceDriver.js -- hardware administratively disabled
+    'POS_PRINTING_DISABLED',           // disabledDeviceDriver.js -- printing administratively disabled
+    'ROUTE_CALCULATOR_NOT_CONFIGURED'  // routeCalculatorUseCases.js -- ROUTE_CALCULATOR_ENDPOINT unset
+]);
+
+export const isExpectedDomainFailure = (error) => {
+    if (!error || error.code !== DomainErrorCode.SERVICE_UNAVAILABLE) return false;
+    const reasonCode = error.details?.reason_code;
+    return Boolean(reasonCode) && EXPECTED_UNAVAILABLE_REASON_CODES.has(reasonCode);
+};

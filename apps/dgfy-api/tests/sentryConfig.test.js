@@ -11,6 +11,7 @@ import {
   shouldReportErrorToSentry
 } from '../src/config/sentry.js';
 import { extractSentryTraceId, requestContext } from '../src/middleware/requestContext.js';
+import { DomainError, DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 describe('backend Sentry config', () => {
   test('is inactive by default even when a DSN is present', () => {
@@ -264,6 +265,45 @@ describe('shouldReportErrorToSentry', () => {
   test('does not report an error with an explicit 4xx statusCode', () => {
     expect(shouldReportErrorToSentry({ statusCode: 404 })).toBe(false);
     expect(shouldReportErrorToSentry({ status: 400 })).toBe(false);
+  });
+
+  // #508 -- a DomainError shaped as 503 for a known missing/disabled optional
+  // integration (no printer configured, hardware disabled, route calculator
+  // unconfigured) is expected client/environment state, not a fault, and
+  // shouldn't recur as Sentry noise on every attempt.
+  test('does not report a DomainError with a known expected-precondition reason_code', () => {
+    const noDrawer = new DomainError(
+      DomainErrorCode.SERVICE_UNAVAILABLE,
+      'No cash drawer is configured for this terminal.',
+      { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
+    );
+    const routeNotConfigured = new DomainError(
+      DomainErrorCode.SERVICE_UNAVAILABLE,
+      'Route calculator is not configured for this environment.',
+      { statusCode: 503, details: { reason_code: 'ROUTE_CALCULATOR_NOT_CONFIGURED' } }
+    );
+
+    expect(shouldReportErrorToSentry(noDrawer)).toBe(false);
+    expect(shouldReportErrorToSentry(routeNotConfigured)).toBe(false);
+  });
+
+  // Regression guard: the allowlist must not become a blanket "any 503 is fine" --
+  // an unrecognized reason_code (or none at all) on a SERVICE_UNAVAILABLE error, or
+  // a genuinely transient failure like ROUTE_TIMEOUT, must still report.
+  test('still reports a SERVICE_UNAVAILABLE DomainError with an unrecognized or missing reason_code', () => {
+    const unrecognized = new DomainError(
+      DomainErrorCode.SERVICE_UNAVAILABLE,
+      'Route calculation failed.',
+      { statusCode: 503, details: { reason_code: 'ROUTE_TIMEOUT' } }
+    );
+    const noReasonCode = new DomainError(
+      DomainErrorCode.SERVICE_UNAVAILABLE,
+      'Something is unavailable.',
+      { statusCode: 503 }
+    );
+
+    expect(shouldReportErrorToSentry(unrecognized)).toBe(true);
+    expect(shouldReportErrorToSentry(noReasonCode)).toBe(true);
   });
 });
 
