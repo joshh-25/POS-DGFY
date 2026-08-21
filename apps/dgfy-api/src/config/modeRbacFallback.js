@@ -1,7 +1,8 @@
 const DISABLED_VALUES = new Set(['0', 'false', 'no', 'off']);
 
 export const isModeRbacGenericFallbackEnabled = () => {
-  const raw = String(process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED ?? 'true')
+  const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  const raw = String(process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED ?? (isProduction ? 'false' : 'true'))
     .trim()
     .toLowerCase();
 

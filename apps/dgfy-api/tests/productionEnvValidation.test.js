@@ -27,7 +27,9 @@ const baseEnv = {
   REDIS_URL: 'redis://127.0.0.1:6379',
   RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
   RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
-  PAYMENTS_ENABLED: 'false'
+  PAYMENTS_ENABLED: 'false',
+  ADMIN_USERNAME: 'platform-admin',
+  ADMIN_PASSWORD_HASH: `$2b$12$${'a'.repeat(53)}`
 };
 
 describe('production environment validation', () => {
@@ -84,6 +86,44 @@ describe('production environment validation', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('SESSION_COOKIE_SECURE must be true in production');
+  });
+
+  it('requires explicit non-default admin credentials in production', () => {
+    const missing = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        ADMIN_USERNAME: '',
+        ADMIN_PASSWORD_HASH: ''
+      }
+    });
+    expect(missing.errors).toEqual(expect.arrayContaining([
+      'Missing required environment value: ADMIN_USERNAME',
+      'Missing required environment value: ADMIN_PASSWORD_HASH'
+    ]));
+
+    const defaultHash = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        ADMIN_USERNAME: 'skupervisor',
+        ADMIN_PASSWORD_HASH: '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK'
+      }
+    });
+    expect(defaultHash.errors).toContain(
+      'ADMIN_PASSWORD_HASH must not use the documented default password hash in production'
+    );
+  });
+
+  it('disables generic mode RBAC fallback by default in production', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        MODE_RBAC_GENERIC_FALLBACK_ENABLED: 'true'
+      }
+    });
+    expect(result.errors).toContain('MODE_RBAC_GENERIC_FALLBACK_ENABLED must be false in production');
+
+    const defaulted = validateProductionEnv({ env: baseEnv });
+    expect(defaulted.errors).not.toContain('MODE_RBAC_GENERIC_FALLBACK_ENABLED must be false in production');
   });
 
   it('fails production when DB auto sync is enabled', () => {
