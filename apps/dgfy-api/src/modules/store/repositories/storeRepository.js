@@ -1566,6 +1566,39 @@ export const storeRepository = {
         return created.pos_transaction_id;
     },
 
+    // Phase 141 (#822, ADR 0069 clause 4b [default], carried forward by ADR 0070): writes ledger
+    // row 1 (kind: 'downpayment') to pos_order_payments for a webhook-finalized downpayment order.
+    // Caller passes the same transaction createOnlineTransactionWithLines just used, so the order
+    // and its first payment event commit atomically -- there is no window where one exists without
+    // the other. getTenantModels re-binds PosOrderPayment onto the tenant connection automatically
+    // (models/index.js), no factory change needed.
+    async createOrderPaymentEntry({
+        posTransactionId,
+        kind,
+        status = 'successful',
+        amount,
+        paymentMethod,
+        paymentProvider = null,
+        providerEventId = null,
+        idempotencyKey,
+        recordedBy = null
+    }, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const created = await PosOrderPayment.create({
+            pos_transaction_id: posTransactionId,
+            kind,
+            status,
+            amount,
+            payment_method: paymentMethod,
+            payment_provider: paymentProvider,
+            provider_event_id: providerEventId,
+            idempotency_key: idempotencyKey,
+            recorded_by: recordedBy,
+            confirmed_at: new Date()
+        }, { transaction: options.transaction });
+        return created.pos_order_payment_id;
+    },
+
     async getOrderByTrackingPin(trackingPin, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const row = await PosTransaction.findOne({
