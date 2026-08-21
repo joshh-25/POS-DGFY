@@ -1795,6 +1795,69 @@ rows to split allocations and adds server-maintained allocation
 `reversed_amount` and `reversal_status` fields. Both migrations are registered
 in runtime schema auditing and additive tenant repair.
 
+### pos_transactions: partial-payment columns (Phase 137)
+
+ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4, unchanged by
+the Phase 136 supersession) adds two peso `DECIMAL(14,4)` columns —
+`amount_paid` and `balance_due`, both `NOT NULL DEFAULT 0` — and a
+`partially_paid` value on the existing `payment_status` ENUM
+(`'unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed',
+'refund_pending', 'partial_refunded', 'refunded'`). No `payment_timing` value
+was added — downpayment is a payment-structure split, represented on
+`payment_mode`/`payment_status`, not a timing value (ADR clause 4c).
+Migration `20260821000002-add-pos-transaction-partial-payment-columns.cjs`
+adds and backfills the two columns; `20260821000003-expand-pos-transaction-
+payment-status-partially-paid.cjs` widens the enum.
+
+### pos_order_payments (Phase 137)
+
+Tenant-local, per-order ledger: one row per downpayment/balance/refund/
+forfeiture payment event (ADR 0069 clause 4b, carried over verbatim from ADR
+0068 clause 4b). Structurally modeled on `pos_payment_allocations` above, not
+`platform_invoice_payments` — amounts stay peso `DECIMAL(14,4)`, matching that
+same structural reference, rather than the centavos option clause 4b permits
+but doesn't require. Refund and forfeiture are their own rows
+(`kind = 'refund'`/`'forfeiture'`), linked back to the original event via
+`related_pos_order_payment_id`, rather than a status flag on the original row
+— this is what makes ADR 0069 clause 8's forfeited-vs-applied distinction
+representable.
+
+```sql
+CREATE TABLE pos_order_payments (
+    pos_order_payment_id INT PRIMARY KEY AUTO_INCREMENT,
+    pos_transaction_id INT NOT NULL,
+    kind ENUM('downpayment', 'balance', 'refund', 'forfeiture') NOT NULL,
+    status ENUM('pending', 'successful', 'failed', 'cancelled', 'reversed') NOT NULL DEFAULT 'pending',
+    amount DECIMAL(14, 4) NOT NULL,
+    payment_method ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay') NOT NULL,
+    idempotency_key VARCHAR(120) NOT NULL,
+    payment_reference VARCHAR(120) NULL,
+    payment_provider VARCHAR(40) NULL,
+    provider_event_id VARCHAR(120) NULL,
+    related_pos_order_payment_id INT NULL,
+    recorded_by INT NULL,
+    confirmed_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (pos_transaction_id) REFERENCES pos_transactions(pos_transaction_id) ON DELETE RESTRICT,
+    FOREIGN KEY (related_pos_order_payment_id) REFERENCES pos_order_payments(pos_order_payment_id) ON DELETE SET NULL,
+    FOREIGN KEY (recorded_by) REFERENCES users(user_id) ON DELETE SET NULL,
+    UNIQUE KEY uq_pos_order_payments_transaction_idempotency (pos_transaction_id, idempotency_key),
+    UNIQUE KEY uq_pos_order_payments_provider_event_id (provider_event_id),
+    INDEX idx_pos_order_payments_transaction_status (pos_transaction_id, status),
+    INDEX idx_pos_order_payments_transaction_kind (pos_transaction_id, kind),
+    INDEX idx_pos_order_payments_created_at (created_at)
+);
+```
+
+`recorded_by` is set only for a staff-recorded `balance` event (ADR clause 2);
+it stays `NULL` for an online-captured `downpayment` row. Migration
+`20260821000004-create-pos-order-payments.cjs` creates the table and is
+registered in runtime schema auditing and additive tenant repair
+(`REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments`). No route, use case, or
+UI reads or writes this table yet — that starts at Phase 139/140.
+
 ---
 
 ## Key Indexes & Performance Optimization
