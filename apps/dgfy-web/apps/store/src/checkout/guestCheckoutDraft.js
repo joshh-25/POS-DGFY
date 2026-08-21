@@ -1,6 +1,10 @@
 export const STOREFRONT_GUEST_CHECKOUT_DRAFT_KEY = 'dgfy_store_guest_checkout_draft_v1';
 
-export const VALID_STORE_PAYMENT_TYPES = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
+// grab_pay/shopeepay were missing here even though the storefront's own online-payment rail
+// list has included them for a while (storefrontCheckoutPaymentOptions.js) -- a restored guest
+// draft that had one of those two selected would silently coerce to 'cash' below (#613), which
+// for a downpayment-required store re-surfaces a payment type the storefront is about to hide.
+export const VALID_STORE_PAYMENT_TYPES = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay']);
 
 const normalizeSlug = (value = '') => String(value || '').trim().toLowerCase();
 
