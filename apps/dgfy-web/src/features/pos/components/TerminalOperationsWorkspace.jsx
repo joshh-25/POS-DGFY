@@ -9518,7 +9518,7 @@ export default function TerminalOperationsWorkspace({
   handleResolveQueuedOperation = () => {},
   sectionIds = {}
 }) {
-  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
+  const restrictedMsmeModes = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
     ? 'shift_controls'
     : viewMode;

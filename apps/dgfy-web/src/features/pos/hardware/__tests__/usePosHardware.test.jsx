@@ -40,7 +40,7 @@ describe('usePosHardware authentication boundary', () => {
         rerender({ enabled: true });
 
         await waitFor(() => expect(resolvePosHardwareDriver).toHaveBeenCalledTimes(1));
-        expect(result.current.driver?.id).toBe('none');
+        await waitFor(() => expect(result.current.driver?.id).toBe('none'));
     });
 
     it('does not refresh hardware while authentication is disabled', async () => {

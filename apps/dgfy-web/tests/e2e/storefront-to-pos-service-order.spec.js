@@ -59,6 +59,7 @@ const isExpectedAbortedRequest = (entry) => {
     || (/^\/openfreemap\/planet\/.+\.pbf$/i.test(path))
     || path === '/openfreemap/planet'
     || path === '/openfreemap/styles/positron'
+    || (/^\/openfreemap\/fonts\/.+\.pbf$/i.test(path))
     || (/^\/openfreemap\/sprites\/.+\.(png|json)$/i.test(path));
 };
 
@@ -135,6 +136,9 @@ const registerDiagnostics = (page, surface) => {
           || entry.message.startsWith('[TrackingRouteMap] MapLibre error'))) {
         return diagnostics.some((candidate) => isExpectedTrackingNetworkChange(candidate));
       }
+      // The optional storefront location map can emit this exact local OpenFreeMap
+      // tile/render diagnostic while the checkout and order APIs remain healthy.
+      if (entry.message === '[MapLibre error] vt') return false;
       if (!/^Failed to load resource: the server responded with a status of (401|404) /.test(entry.message)) {
         return true;
       }
@@ -356,11 +360,21 @@ test.describe('Storefront to POS non-delivery service order', () => {
         const loginBody = await readJson(loginResponse);
         expect(loginResponse.status(), `Storefront login failed: ${JSON.stringify(responseSummary(loginResponse, loginBody))}`).toBe(200);
 
+        const storefrontSessionResponsePromise = page.waitForResponse(
+          (response) => getPath(response.url()) === '/api/v1/dgfy/auth/me'
+            && response.request().method() === 'GET',
+          { timeout: 20_000 }
+        );
         await page.goto(`${storefrontURL}${storePath}`, { waitUntil: 'domcontentloaded' });
+        const storefrontSessionResponse = await storefrontSessionResponsePromise;
+        const storefrontSessionBody = await readJson(storefrontSessionResponse);
+        expect(
+          storefrontSessionResponse.status(),
+          `storefront customer session failed: ${JSON.stringify(responseSummary(storefrontSessionResponse, storefrontSessionBody))}`
+        ).toBe(200);
+        expect(storefrontSessionBody?.account?.id || storefrontSessionBody?.data?.account?.id).toBeTruthy();
         await expect(page.locator('body')).not.toBeEmpty();
-        const productCards = page.locator('article').filter({
-          has: page.getByRole('button', { name: 'View Details', exact: true })
-        });
+        const productCards = page.locator('article[data-cart-fly-origin="true"]');
         await expect(productCards.first()).toBeVisible({ timeout: 30_000 });
         let addedItem = false;
         for (let index = 0; index < await productCards.count(); index += 1) {

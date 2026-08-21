@@ -10,16 +10,34 @@ export const options = {
   },
 };
 
+// This probe intentionally exercises the not-found contract. Tell k6 that
+// HTTP 404 is the expected transport result; the check below still validates
+// the exact response body and prevents arbitrary 404s from passing.
+http.setResponseCallback(http.expectedStatuses(404));
+
 export default function () {
-  const url = __ENV.VITE_TEST_BASE_URL || 'http://localhost:5173';
-  
-  // Test lookup endpoint or landing page
-  const res = http.post(`${url}/api/auth/lookup`, JSON.stringify({ email: 'admin@tenant-a.com' }), {
+  const apiBaseUrl = (__ENV.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const lookupEmail = __ENV.TEST_LOOKUP_EMAIL
+    || `system-load-probe-${__VU}-${__ITER}-${Date.now()}@example.invalid`;
+
+  const res = http.post(`${apiBaseUrl}/api/v1/auth/lookup`, JSON.stringify({
+    email: lookupEmail
+  }), {
     headers: { 'Content-Type': 'application/json' },
   });
   
   check(res, {
-    'status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+    'lookup endpoint returns expected not-found contract': (r) => {
+      if (r.status !== 404) return false;
+      try {
+        const body = r.json();
+        return body?.success === false
+          && body?.data === null
+          && body?.message === 'Email not registered in any company';
+      } catch {
+        return false;
+      }
+    },
   });
   
   sleep(1);

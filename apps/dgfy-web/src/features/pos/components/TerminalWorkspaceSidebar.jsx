@@ -66,7 +66,6 @@ export default function TerminalWorkspaceSidebar({
   showIdentityInSidebar = false,
   locked = false,
   isOnline = true,
-  isMsmeMode = false,
   terminalUser = null,
   accessibleCompanies = [],
   companyName: propCompanyName = '',
@@ -101,7 +100,7 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;
+  const shouldShowIncomingQueue = showIncomingQueue;
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;

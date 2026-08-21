@@ -133,7 +133,7 @@ export default function TerminalSidebarPanel({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
+  const hiddenSectionsInMsme = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;

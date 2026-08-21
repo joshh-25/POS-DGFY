@@ -34,6 +34,9 @@ describe('Storefront guest checkout OTP contract', () => {
     const simpleCustomerStepSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx');
     const serviceValidatorSource = readRepoSource('apps/dgfy-api/src/validators/serviceValidator.js');
     const serviceUseCaseSource = readRepoSource('apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js');
+    const submissionCallStart = appSource.indexOf('} = useCheckoutSubmission({');
+    const submissionCallEnd = appSource.indexOf('\n  });', submissionCallStart);
+    const submissionCallSource = appSource.slice(submissionCallStart, submissionCallEnd);
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
     expect(hookSource).toContain('idempotency_key');
@@ -51,7 +54,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(fnbComponentSource).toContain('badgeLabel="Recommended"');
     expect(fnbComponentSource).toContain('resendLabel="Send code again"');
     expect(retailComponentSource).toContain('Verify your email');
-    expect(simpleComponentSource).toContain('Verify your email');
+    expect(simpleComponentSource).toContain('Verify this guest checkout email');
     expect(serviceComponentSource).toContain('badgeLabel="Required"');
     expect(serviceComponentSource).toContain('resendLabel="Send verification code"');
     expect(appSource).not.toContain('shared/components/checkout/GuestEmailVerification.jsx');
@@ -61,10 +64,14 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(submissionSource).toContain('guestCheckoutIntentId');
     expect(appSource).toContain("import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';");
     expect(appSource).toContain('} = useGuestCheckoutOtp({');
+    expect(submissionCallSource).toContain('guestCheckoutIntentId');
+    expect(submissionCallSource).toContain('guestCheckoutOtpVerified');
+    expect(submissionCallSource).toContain('guestCheckoutProof');
     expect(appSource).not.toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');
-    expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');
+    expect(sharedSubmissionSource).toContain('GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE');
+    expect(modelSource).toContain('Guest checkout needs a separate 6-digit email code.');
     expect(simpleCustomerStepSource).toContain('SimpleCheckoutGuestEmailVerification');
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');

@@ -10,6 +10,7 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
 
 /**
@@ -89,7 +90,7 @@ export function useFnbCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
-      const message = 'Verify the email code before placing this guest order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;

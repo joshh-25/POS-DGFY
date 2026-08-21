@@ -93,6 +93,7 @@ export function SimpleCheckoutRoutePage({
   onSelectAddress,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
+  onSignInToCheckout,
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
@@ -262,8 +263,10 @@ export function SimpleCheckoutRoutePage({
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
             isMobileViewport={isMobileViewport}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             money={money}
             onImageError={onImageError}
             paymentType={fnbPaymentType}
@@ -291,6 +294,7 @@ export function SimpleCheckoutRoutePage({
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
+            onSignInToCheckout={onSignInToCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
           />
           {!isMobileViewport && (

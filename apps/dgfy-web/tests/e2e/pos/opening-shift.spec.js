@@ -96,7 +96,8 @@ test.describe('POS opening-shift flow', () => {
       const currentShift = currentBody?.data?.shift || null;
 
       if (currentShift) {
-        await expect(page.getByText('Close Shift', { exact: true }).last()).toBeVisible();
+        await page.getByRole('button', { name: /^Shift/ }).click();
+        await expect(page.getByRole('button', { name: 'Close Shift', exact: true })).toBeVisible();
         return;
       }
 

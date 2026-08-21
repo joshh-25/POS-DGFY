@@ -41,7 +41,7 @@ export function useGuestCheckoutOtp({
     }
 
     const verifiedEmail = normalizeGuestCheckoutEmail(guestCheckoutProof?.email);
-    if (guestCheckoutProof && verifiedEmail !== normalizedEmail) {
+    if (guestCheckoutProof && normalizedEmail && verifiedEmail !== normalizedEmail) {
       setGuestCheckoutProof(null);
       setGuestCheckoutOtpCode('');
       setGuestCheckoutOtpError('');

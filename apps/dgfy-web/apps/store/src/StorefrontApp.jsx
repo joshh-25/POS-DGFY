@@ -128,6 +128,7 @@ import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbC
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
 import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from './shared/checkout/model/guestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
@@ -2306,7 +2307,7 @@ export default function StorefrontApp() {
     guestCheckoutProof,
     handleGuestCheckoutOtpCodeChange,
     handleRequestGuestCheckoutOtp,
-    handleVerifyGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp: verifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
   } = useGuestCheckoutOtp({
     customerEmail,
@@ -2315,6 +2316,13 @@ export default function StorefrontApp() {
     selectedStore,
     toast,
   });
+  const handleVerifyGuestCheckoutOtp = useCallback(async () => {
+    const verified = await verifyGuestCheckoutOtp();
+    if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
+      setCheckoutError('');
+    }
+    return verified;
+  }, [checkoutError, setCheckoutError, verifyGuestCheckoutOtp]);
   const handleApplyGuestDetailsAndRequestOtp = useCallback(() => {
     handleApplyGuestDetails();
     // The session identity is ready to review before OTP verification.
@@ -3371,6 +3379,10 @@ export default function StorefrontApp() {
     handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
     handleSetDefaultDeliveryAddress,
+    onSignInToCheckout: () => openCheckoutAuthFlow('sign-in', {
+      checkoutTab: 'checkout',
+      simpleOrderStep: 1
+    }),
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,

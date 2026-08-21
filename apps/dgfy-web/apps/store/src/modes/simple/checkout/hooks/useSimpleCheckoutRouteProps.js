@@ -39,6 +39,7 @@ export function useSimpleCheckoutRouteProps({
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
   handleVerifyGuestCheckoutOtp,
+  onSignInToCheckout,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
@@ -195,6 +196,7 @@ export function useSimpleCheckoutRouteProps({
     onPinMyLocation: handlePinMyLocation,
     onRemoveDeliveryAddress: handleRemoveDeliveryAddress,
     onRequestGuestCheckoutOtp: handleRequestGuestCheckoutOtp,
+    onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
       if (nextMode === 'asap') setFnbScheduledFor('');

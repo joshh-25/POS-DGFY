@@ -8,6 +8,7 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -230,7 +231,7 @@ export function useCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
-      const message = 'Verify your email before placing this order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;

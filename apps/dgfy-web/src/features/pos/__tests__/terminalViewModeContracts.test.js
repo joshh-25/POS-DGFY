@@ -97,7 +97,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'reports'");
   });
 
-  it('keeps the retail/F&B online queue out of Services navigation, restoration, notifications, and polling', () => {
+  it('keeps the online queue out of Services while retaining it for MSME/counter POS', () => {
     expect(terminalPageContent).toContain('isPosOnlineOrderQueueEnabled');
     expect(terminalPageContent).toContain('workflowMode,\n    posDefaults: modePosDefaults');
     expect(terminalPageContent).toContain("workflowScopedModes.filter((mode) => mode !== 'incoming_queue')");
@@ -106,8 +106,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('showIncomingQueue={onlineOrderQueueEnabled}');
     expect(terminalPageLayoutContent).toContain('showIncomingQueue={showIncomingQueue}');
     expect(terminalPageLayoutContent).toContain('showIncomingQueue && Array.isArray(incomingOrdersState?.orders)');
-    expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
+    expect(terminalPageContent).toContain("const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue'");
+    expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue;');
+    expect(terminalWorkspaceSidebarContent).not.toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
     expect(terminalWorkspaceSidebarContent).toContain('{shouldShowIncomingQueue && (');
+    expect(terminalSidebarPanelContent).not.toContain("new Set(['incoming_queue'");
+    expect(terminalOperationsWorkspaceContent).not.toContain("new Set(['incoming_queue'");
   });
 
   it('keeps MSME configuration views accessible instead of redirecting them to Shift', () => {
