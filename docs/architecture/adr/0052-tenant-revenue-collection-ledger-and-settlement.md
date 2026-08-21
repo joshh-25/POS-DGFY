@@ -172,11 +172,22 @@ to the invariant itself:
 1. `processVerifiedPaidCommerceSession` now re-reads the session with
    `SELECT ... FOR UPDATE` inside a transaction and performs the state check and
    the `status: 'paid'` claim write there, so a second concurrent delivery
-   blocked on the row lock sees the already-claimed state once it unblocks.
+   blocked on the row lock sees a consistent, committed state once it unblocks
+   instead of racing the same read-then-write. A session already `finalized` or
+   `paid_manual_resolution_required` (or carrying a `pos_transaction_id`/
+   `tracking_pin`) short-circuits as an idempotent replay; a session merely
+   `paid` does not -- that status is reachable both mid-flight and after a
+   crashed/failed prior attempt, and treating it as terminal would silently
+   swallow a legitimate retry before revenue posting or finalization ever ran.
    `postPaidTenantRevenueTransactionUseCase` and `finalizePaidCommerceSession`
    remain outside that transaction, unchanged -- this ADR's "post-commit,
    cross-database workflow" boundary (Architecture Boundaries, above) is not
    altered; the claim transaction only spans the landlord-side status write.
+   Both downstream calls already carry their own idempotency (a locked
+   `findRevenueTransactionBySession` check before insert, and finalization's
+   existing `pos_transaction_id`/`tracking_pin`/`finalized` short-circuit plus
+   `storeCheckoutUseCase`'s `idempotency_key` dedup), so re-entering a merely-
+   `paid` session on retry is safe rather than risky.
 2. `commerce_payment_sessions.provider_event_id` gained a unique index
    (`uq_commerce_payment_sessions_provider_event`), and a locked
    `findSessionByProviderEventId` pre-check rejects a provider event already

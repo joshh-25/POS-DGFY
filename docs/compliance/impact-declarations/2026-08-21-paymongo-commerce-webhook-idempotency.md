@@ -61,20 +61,31 @@ behavior, fee policy, or settlement rule changes; no new user-facing surface.
 3. The unique index is additive only (`allowNull: true`, MySQL/InnoDB treats each
    `NULL` as distinct) — no backfill, no destructive migration, no change to any
    existing row.
-4. The webhook's HTTP response contract for an unknown-session event is unchanged,
+4. The new migration targets `commerce_payment_sessions`, a **landlord**-database
+   table (`apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js`), not a
+   per-tenant schema. `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`
+   governs `sync-tenant-schemas.js`'s per-tenant table/column repair and its
+   crash-loop risk on a tenant preflight restart — it does not apply here; this
+   migration has no deploy-order dependency on that tracker.
+5. The webhook's HTTP response contract for an unknown-session event is unchanged,
    preserving PayMongo's retry semantics and the documented sandbox probe behavior
    in `docs/features/PAYMONGO_QRPH_COMMERCE_PAYMENTS.md`.
-5. This declaration covers implementation and validation only; it does not
+6. This declaration covers implementation and validation only; it does not
    authorize production credentials, deployment, or promotion to `main`.
 
 ## Verification Evidence
 
-1. New unit coverage in `tests/processVerifiedPaidCommerceSession.usecase.test.js`:
-   first-delivery claim and finalization, a same-session/same-event replay
-   short-circuiting without double revenue-posting/finalization, a cross-session
-   `provider_event_id` collision rejected with `PAYMENT_PROVIDER_EVENT_REPLAY`
-   (409), no false-positive when the "conflict" is the session's own prior event,
-   and the existing validation-mismatch hold path unchanged.
+1. New unit coverage in `tests/processVerifiedPaidCommerceSession.usecase.test.js`
+   (7 tests): first-delivery claim and finalization; an already-`finalized`
+   session short-circuits without re-invoking downstream work; a retry landing
+   while the session is merely `paid` (RF-1 review finding) resumes and
+   completes processing rather than being swallowed as a stale idempotent
+   replay; two deliveries both reaching that `paid` window each re-attempt
+   downstream work but the revenue-posting mock's own `already_posted` guard
+   proves no duplicate insert; a cross-session `provider_event_id` collision is
+   rejected with `PAYMENT_PROVIDER_EVENT_REPLAY` (409); no false-positive when
+   the "conflict" is the session's own prior event; the existing
+   validation-mismatch hold path is unchanged.
 2. New coverage in `tests/finalizePaidCommerceSession.usecase.test.js`'s "PayMongo
    webhook unknown session escalation" block: the operational alert fires for an
    unknown-session `payment.paid`, and does not fire for other unknown-session
