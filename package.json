@@ -27,7 +27,7 @@
     "test": "npm run test:frontend && npm run test:backend",
     "test:frontend": "cd apps/dgfy-web && npm test",
     "test:frontend:contracts": "cd apps/dgfy-web && npx vitest run contract.test integration.test",
-    "test:backend": "cd apps/dgfy-api && npm test",
+    "test:backend": "npm run test:backend:matrix",
     "test:backend:matrix": "node scripts/run-backend-test-matrix.js",
     "audit:dependencies": "node scripts/audit-dependencies.js",
     "audit:dependencies:prod": "node scripts/audit-dependencies.js --omit-dev",
