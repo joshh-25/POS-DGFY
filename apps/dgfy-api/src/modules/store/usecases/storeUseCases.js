@@ -17,6 +17,15 @@ import {
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
 import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
+// Phase 140 (#821, ADR 0069/0070): server-authoritative downpayment resolution at quote/checkout.
+// Unlike dgfyAffiliateRepository above, downpaymentSettingsRepository is NOT hard-imported here --
+// every order needs this lookup (there is no per-request opt-out signal the way
+// attribution_enrollment_id gates the affiliate lookup), so a hard import would make it an
+// unconditional, unmockable live landlord-DB call on every existing store unit test. Instead it's
+// threaded through as an optional constructor dependency, same pattern as tenantRevenueRepository
+// (store/index.js wires the real one; a caller that omits it -- every existing unit test -- gets
+// `undefined`, which the `?.` guards below treat as "no settings, full_payment").
+import { resolveDownpaymentForTotal } from '../../shared/utils/downpaymentPolicy.js';
 import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
@@ -1450,13 +1459,20 @@ const resolveCheckoutContext = async ({
     // keeps the default `true` -- an order that will actually ship still needs a real contact and, for
     // delivery, a real address, unchanged from before this amendment.
     requireCheckoutContact = true,
-    // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup only. Optional and
-    // falls back to the ambient dbStore context (currentTenantAccessContext()) when omitted, to
-    // preserve today's behavior for the two callers (cart quote, QRPh payment session) that don't
-    // have an explicit tenantId in scope. buildStoreCheckoutUseCase - the money-writing path - does
-    // have one and passes it explicitly, so affiliate pricing there never depends on ambient context
-    // being populated the same way the rest of that function already trusts its own tenantId param.
-    tenantId = null
+    // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup, and (Phase 140,
+    // #821) the downpayment settings lookup below -- both share this one param rather than each
+    // growing their own. Optional and falls back to the ambient dbStore context
+    // (currentTenantAccessContext()) when omitted, to preserve today's behavior for the two callers
+    // (cart quote, QRPh payment session) that don't have an explicit tenantId in scope.
+    // buildStoreCheckoutUseCase - the money-writing path - does have one and passes it explicitly,
+    // so neither lookup there ever depends on ambient context being populated the same way the rest
+    // of that function already trusts its own tenantId param.
+    tenantId = null,
+    // Phase 140 (#821): injected, no default -- see the import-site comment above for why this is
+    // not a hard-imported module-level singleton the way dgfyAffiliateRepository is. `undefined`
+    // (every existing caller that doesn't pass this) means "don't read, assume full_payment", via
+    // the `?.` guard at the call site below.
+    downpaymentSettingsRepository = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1736,6 +1752,21 @@ const resolveCheckoutContext = async ({
     const totalAmount = round4(
         prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
     );
+
+    // Phase 140 (#821, ADR 0069/0070): resolve the downpayment split server-side, after the
+    // promo/voucher fold above -- the downpayment is a share of the *discounted* total, never the
+    // pre-discount subtotal. Computed for every caller of resolveCheckoutContext (quote and real
+    // checkout alike), the same way promoApplication/voucherApplication are, so a shopper sees the
+    // same split in the cart drawer that checkout will actually enforce. No ambient tenantId (the
+    // ~30 existing store unit tests that build these use cases with a hand-rolled fake and no
+    // dbStore.run context) resolves to `null` settings, which resolveDownpaymentForTotal treats as
+    // full_payment -- so this addition needs no edits to any of those tests.
+    const resolvedTenantIdForDownpayment = tenantId || currentTenantAccessContext().tenantId;
+    const downpaymentSettings = resolvedTenantIdForDownpayment
+        ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
+        : null;
+    const downpayment = resolveDownpaymentForTotal({ settings: downpaymentSettings || null, totalAmount });
+
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
         orderMethod,
         location,
@@ -1757,6 +1788,7 @@ const resolveCheckoutContext = async ({
         serviceFeeAmount,
         serviceFeeLabel,
         totalAmount,
+        downpayment,
         outsideRadiusFlag,
         scheduledFor,
         affiliatePricing
@@ -2594,7 +2626,10 @@ export const buildDeleteStoreCustomerAddressUseCase = ({ storeRepository }) => {
 
 export const buildStoreCartQuoteUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
+    // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
+    // wires the real repository; every existing test that omits this gets `undefined`.
+    downpaymentSettingsRepository
 }) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -2611,6 +2646,7 @@ export const buildStoreCartQuoteUseCase = ({
                 payload,
                 storeCustomer,
                 revenueSharingEnabled,
+                downpaymentSettingsRepository,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false
             });
@@ -2624,6 +2660,14 @@ export const buildStoreCartQuoteUseCase = ({
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
                 total_amount: resolved.totalAmount,
+                // Phase 140 (#821, ADR 0069/0070): server-authoritative downpayment split.
+                // downpayment_amount/balance_due_amount/downpayment_refundable are null when
+                // payment_mode is 'full_payment' -- never 0 or the total -- so a frontend cannot
+                // mistake "no downpayment" for "downpayment of zero".
+                payment_mode: resolved.downpayment.payment_mode,
+                downpayment_amount: resolved.downpayment.downpayment_amount,
+                balance_due_amount: resolved.downpayment.balance_due_amount,
+                downpayment_refundable: resolved.downpayment.downpayment_refundable,
                 vatable_sales: resolved.prepared.vatableSales,
                 vat_amount: resolved.prepared.vatAmount,
                 vat_exempt_sales: resolved.prepared.vatExemptSales,
@@ -2726,7 +2770,10 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
 
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
+    // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
+    // wires the real repository; every existing test that omits this gets `undefined`.
+    downpaymentSettingsRepository
 }) => {
     return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false }) => {
         if (!isPlainObject(payload)) {
@@ -2779,7 +2826,8 @@ export const buildStoreCheckoutUseCase = ({
                 options: { transaction, lock: true },
                 validateRecipeAvailability: !existing,
                 tenantId: normalizedTenantId,
-                revenueSharingEnabled
+                revenueSharingEnabled,
+                downpaymentSettingsRepository
             });
             const { normalized } = resolved;
 
@@ -2846,6 +2894,20 @@ export const buildStoreCheckoutUseCase = ({
                     DomainErrorCode.VALIDATION_FAILED,
                     'Online checkout must be finalized by the payment webhook.',
                     { statusCode: 422 }
+                );
+            }
+
+            // Phase 140 (#821, ADR 0070 clause 7 [binding]): this order-placing path is not yet
+            // wired to compute and capture a downpayment (that's Phase 141, #822) -- an order
+            // claiming "downpayment required" that this path let through would record nothing about
+            // what was or wasn't collected (amount_paid/balance_due are ADR 0069 clause 4 schema
+            // that doesn't exist until Phase 141/143), the exact bogus-order case this feature exists
+            // to prevent. Fail closed until capture lands; removed by Phase 141.
+            if (resolved.downpayment.payment_mode === 'downpayment_required') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Downpayment capture is not available on this checkout path yet.',
+                    { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
                 );
             }
 
@@ -3165,7 +3227,16 @@ export const buildStoreCheckoutUseCase = ({
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label: resolved.serviceFeeLabel,
                     delivery_fee: resolved.deliveryFee,
-                    total_amount: resolved.totalAmount
+                    total_amount: resolved.totalAmount,
+                    // Phase 140 (#821, ADR 0069/0070). See the matching comment on the quote
+                    // response above -- same shape, same null-vs-full_payment convention. In
+                    // practice payment_mode here is always 'full_payment' today: the guard below
+                    // rejects a downpayment_required order before this point is reached (Phase 141
+                    // wires capture and removes that guard, at which point this becomes live).
+                    payment_mode: resolved.downpayment.payment_mode,
+                    downpayment_amount: resolved.downpayment.downpayment_amount,
+                    balance_due_amount: resolved.downpayment.balance_due_amount,
+                    downpayment_refundable: resolved.downpayment.downpayment_refundable
                 },
                 promo_feedback: resolved.promoApplication.applied
                     ? {
@@ -3336,7 +3407,10 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     directMayaEnabled = false,
     directMayaRequested = false,
     requireCommerceQrphConfig = () => [],
-    requireCommercePaymentConfig = requireCommerceQrphConfig
+    requireCommercePaymentConfig = requireCommerceQrphConfig,
+    // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
+    // wires the real repository; every existing test that omits this gets `undefined`.
+    downpaymentSettingsRepository
 }) => {
     return async ({ payload, storeCustomer = null, trustedReturnUrl = null }) => {
         try {
@@ -3475,8 +3549,22 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const resolved = await resolveCheckoutContext({
                 storeRepository,
                 payload: normalizedPayload,
-                storeCustomer
+                storeCustomer,
+                downpaymentSettingsRepository
             });
+
+            // Phase 140 (#821, ADR 0069 clause 1b [binding] / ADR 0070 clause 7 [binding]): this
+            // path authorizes resolved.totalAmount in full below -- for a downpayment_required
+            // tenant that would authorize the whole order total online, never the downpayment
+            // amount only, a direct violation the moment the setting is switched on. Capture isn't
+            // wired to the downpayment amount until Phase 141 (#822); fail closed until then.
+            if (resolved.downpayment.payment_mode === 'downpayment_required') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Downpayment capture is not available on this checkout path yet.',
+                    { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
+                );
+            }
 
             assertGuestCheckoutProof({
                 tenantId,
