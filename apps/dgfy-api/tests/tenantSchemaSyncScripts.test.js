@@ -214,6 +214,23 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers online inventory reservation tables in dependency order', () => {
+    const reservationTables = ['inventory_reservations', 'inventory_reservation_lines'];
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    const positions = reservationTables.map((table) => declared.indexOf(table));
+
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const table of reservationTables) {
+      expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty(table);
+    }
+
+    const repairs = buildTenantSchemaTableRepairSql(reservationTables);
+    expect(repairs[0].sql).toContain('CREATE TABLE `inventory_reservations`');
+    expect(repairs[0].sql).toContain('UNIQUE KEY `uq_inventory_reservations_source`');
+    expect(repairs[1].sql).toContain('CREATE TABLE `inventory_reservation_lines`');
+    expect(repairs[1].sql).toContain('FOREIGN KEY (`inventory_reservation_id`)');
+  });
+
   it('registers the four voucher tables in foreign-key dependency order', () => {
     const voucherTables = [
       'vouchers',

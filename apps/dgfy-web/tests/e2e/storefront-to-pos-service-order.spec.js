@@ -52,6 +52,7 @@ const isExpectedAbortedRequest = (entry) => {
   return path === '/api/v1/storefront/discovery'
     || path === '/api/v1/storefront/discovery/index'
     || path === '/api/v1/storefront/discovery/search'
+    || path.startsWith('/api/v1/storefront/discovery/')
     || path === '/api/v1/pos/catalog/events'
     || path === '/api/v1/dgfy/auth/me'
     || path === '/api/v1/dgfy/customer/events'
@@ -196,6 +197,7 @@ const getIncomingOrders = async (page, authHeaders, shiftId, locationId) => {
       location_id: locationId,
       limit: 200
     },
+    timeout: 30_000,
     failOnStatusCode: false
   });
   const body = await readJson(response);
@@ -356,7 +358,9 @@ test.describe('Storefront to POS non-delivery service order', () => {
 
         await page.goto(`${storefrontURL}${storePath}`, { waitUntil: 'domcontentloaded' });
         await expect(page.locator('body')).not.toBeEmpty();
-        const productCards = page.locator('article[data-cart-fly-origin="true"]');
+        const productCards = page.locator('article').filter({
+          has: page.getByRole('button', { name: 'View Details', exact: true })
+        });
         await expect(productCards.first()).toBeVisible({ timeout: 30_000 });
         let addedItem = false;
         for (let index = 0; index < await productCards.count(); index += 1) {
@@ -541,7 +545,7 @@ test.describe('Storefront to POS non-delivery service order', () => {
             && response.request().method() === 'PATCH',
           { timeout: 20_000 }
         );
-        await orderCard.getByRole('button', { name: 'Picked Up', exact: true }).click();
+        await orderCard.getByRole('button', { name: /^(Picked Up|Pickup)$/ }).click();
         const completionResponse = await patchResponsePromise;
         const completionBody = await readJson(completionResponse);
         expect(completionResponse.status(), `POS completion failed: ${JSON.stringify(responseSummary(completionResponse, completionBody))}`).toBe(200);

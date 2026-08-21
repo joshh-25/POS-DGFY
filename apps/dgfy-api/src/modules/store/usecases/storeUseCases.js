@@ -2802,7 +2802,8 @@ export const buildStoreCheckoutUseCase = ({
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    inventoryReservationService = null
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3071,6 +3072,26 @@ export const buildStoreCheckoutUseCase = ({
                     idempotencyKey: capturedPayment.session_reference,
                     recordedBy: null
                 }, { transaction });
+            }
+
+            if (inventoryReservationService?.reserveOnlineOrderInventory) {
+                // Rebuild immutable effect references after the transaction identity exists so
+                // reservation evidence points to the exact online order, not the quote-time
+                // PENDING placeholder used by read-only checkout resolution.
+                const reservationEffects = buildOnlineInventoryEffects({
+                    lines: resolved.prepared.preparedLines,
+                    recipePlan: resolved.recipePlan,
+                    locationId: normalized.location_id,
+                    orderId,
+                    invoiceNumber,
+                    trackingPin
+                });
+                await inventoryReservationService.reserveOnlineOrderInventory({
+                    sourceId: orderId,
+                    locationId: normalized.location_id,
+                    effects: reservationEffects,
+                    transaction
+                });
             }
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {

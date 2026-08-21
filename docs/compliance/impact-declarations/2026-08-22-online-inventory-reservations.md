@@ -62,3 +62,5 @@ receipt rules.
    acceptance, preparation, cash collection, completion, reservation conversion, and cleanup.
 5. Architecture guardrails, controller-boundary checks, source lint, syntax checks, and
    `git diff --check` pass for the scoped implementation.
+6. The implementation and migration changes are committed separately from unrelated
+   worktree changes so the declaration remains bound to the Phase 153 scope.
