@@ -63,10 +63,18 @@ behavior, fee policy, or settlement rule changes; no new user-facing surface.
    existing row.
 4. The new migration targets `commerce_payment_sessions`, a **landlord**-database
    table (`apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js`), not a
-   per-tenant schema. `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`
-   governs `sync-tenant-schemas.js`'s per-tenant table/column repair and its
-   crash-loop risk on a tenant preflight restart — it does not apply here; this
-   migration has no deploy-order dependency on that tracker.
+   per-tenant schema — but `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`'s
+   "Before applying to dev/staging/prod" precondition is not scoped by which
+   database a migration touches; it applies to *any* migration whose deploy
+   would restart `dgfy-api` there, because the crash-loop risk it guards
+   against is triggered by the restart's tenant preflight, not by this
+   migration's own content. Corrected 2026-08-21 (PR #784 review, RF-3) after
+   an earlier, incorrect version of this line claimed a landlord/tenant
+   exemption that the tracker does not grant. Per that precondition: run
+   `node apps/dgfy-api/scripts/sync-tenant-schemas.js --mode report`
+   (read-only) against each target environment before this migration deploys
+   there, and resolve any reported drift before the restart — this PR does not
+   itself state that report has been run against any environment.
 5. The webhook's HTTP response contract for an unknown-session event is unchanged,
    preserving PayMongo's retry semantics and the documented sandbox probe behavior
    in `docs/features/PAYMONGO_QRPH_COMMERCE_PAYMENTS.md`.
