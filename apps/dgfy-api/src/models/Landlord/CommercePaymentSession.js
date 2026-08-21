@@ -94,6 +94,32 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     allowNull: false,
     defaultValue: 0
   },
+  // Phase 141 (#822) -- ADR 0069 clause 1b [binding] (carried forward by ADR 0070). Splits "the
+  // order total" from "the amount actually authorized/captured" -- total_amount_centavos above
+  // keeps meaning the latter (unchanged), these four columns record the former plus what the split
+  // was. DEFAULT 'full' makes every pre-existing row correct by construction.
+  capture_kind: {
+    type: DataTypes.ENUM('full', 'downpayment'),
+    allowNull: false,
+    defaultValue: 'full'
+  },
+  order_total_centavos: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  capture_payment_method: {
+    // The online rail that paid the captured amount (e.g. 'gcash', 'qrph') -- so the webhook
+    // finalization ledger write needs no checkout_payload re-parse.
+    type: DataTypes.STRING(40),
+    allowNull: true
+  },
+  downpayment_refundable: {
+    // Policy snapshot at capture time (tenant_downpayment_settings.downpayment_refundable), for
+    // Phase 143's (#824) refund-vs-forfeiture decision.
+    type: DataTypes.BOOLEAN,
+    allowNull: true
+  },
   fee_policy: {
     type: DataTypes.JSON,
     allowNull: true
