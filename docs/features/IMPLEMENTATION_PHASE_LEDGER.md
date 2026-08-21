@@ -6705,13 +6705,15 @@ after this update: **135**.
   `storeQuoteSchema`/`storeCheckoutSchema` (request-body validators with `stripUnknown: true`) — a
   correction from #821's original scope text, which wrongly named those validators as the target;
   response fields belong in the use-case response objects instead.
-- Two new fail-closed `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` guards, temporary by design (removed by
-  Phase 141/#822 when capture is wired): `buildStoreCheckoutUseCase` (ADR 0070 clause 7 `[binding]`
-  — no `amount_paid`/`balance_due` schema exists yet, an order claiming "downpayment required" that
-  collected nothing is the exact bogus-order case this feature exists to prevent) and
-  `buildStoreCheckoutPaymentSessionUseCase` (ADR 0069 clause 1b `[binding]` — that path authorizes
-  `resolved.totalAmount` in full; letting a `downpayment_required` order through would authorize the
-  whole order total online, never the downpayment amount only).
+- Two new fail-closed `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` guards, temporary by design (updated by
+  Phase 141/#822 once capture is wired — see that phase's entry): `buildStoreCheckoutUseCase` (ADR
+  0070 clause 7 `[binding]` — capture isn't wired yet on this path, so an order claiming "downpayment
+  required" that collected nothing is the exact bogus-order case this feature exists to prevent;
+  `amount_paid`/`balance_due` themselves already exist as of Phase 137/#819, this guard is about
+  nothing being collected, not about missing schema) and `buildStoreCheckoutPaymentSessionUseCase`
+  (ADR 0069 clause 1b `[binding]` — that path authorizes `resolved.totalAmount` in full; letting a
+  `downpayment_required` order through would authorize the whole order total online, never the
+  downpayment amount only).
 
 ### Status
 
@@ -6766,3 +6768,168 @@ after this update: **135**.
 - `docs/database/schema.md` (`tenant_downpayment_settings` reader note corrected)
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md` (new)
 - Issue #821 (this phase)
+
+## Phase 141 - Capture: Downpayment Payment Session + Webhook Finalization
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #822, Phase 141 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 140.
+- Release: single `develop`-targeted PR
+  (`feat/822-downpayment-capture-webhook-finalization`).
+
+### Objective and Scope
+
+- **Model correction, made during planning (2026-08-21, Pat's call), before any code was
+  written.** #822's own text assumed a downpayment order is "an online order that charges less."
+  That is wrong: at a `downpayment_required` store the order is **cash-on-delivery, gated by a
+  mandatory online downpayment** — ADR 0069 clause 2 `[binding]` (carried forward by ADR 0070)
+  requires the balance to always be collected out-of-band with no second automatic PayMongo charge,
+  so every such order is inherently COD-for-the-balance. "Pay the full order online" is the
+  separate, deliberately unbuilt `customer_choice` mode. The customer's only online choice is which
+  rail pays the downpayment leg. This reframing is what drove the design below; #822's own issue
+  text needs a PM correction (handed off, not done in this phase — see Dependencies).
+- `buildStoreCheckoutPaymentSessionUseCase` (`storeUseCases.js`): the Phase 140 fail-closed guard is
+  replaced with the real capture computation. For a `downpayment_required` tenant, the amount
+  authorized/captured online — `total_amount_centavos`, the PayMongo `amount`,
+  `platform_fee_centavos` — becomes the downpayment amount, never the order total (ADR 0069 clause
+  1b `[binding]`). A new `422 DOWNPAYMENT_POLICY_UNRESOLVED` guard fails closed when the tenant's
+  stored setting says `downpayment_required` but the resolved policy doesn't — corrects a Phase 140
+  direction error where `downpaymentPolicy.js`'s own fail-closed-to-`full_payment` design (correct
+  when nothing could capture) would otherwise let a malformed settings row silently authorize the
+  *full* order online with no downpayment gate at all.
+- New landlord migration `20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs`:
+  four additive columns on `commerce_payment_sessions` — `capture_kind`
+  (`ENUM('full','downpayment') DEFAULT 'full'`, so every pre-existing row is correct by
+  construction), `order_total_centavos` (backfilled from `total_amount_centavos` for pre-existing
+  rows), `capture_payment_method`, `downpayment_refundable`. `total_amount_centavos` itself is
+  unchanged and now means "the captured amount" — this single reinterpretation is what makes the
+  platform-fee guard, the webhook's exact-amount-equality check, and the reject-refund path (#822's
+  own "should fall out correctly" list) all work with zero further code change.
+- `finalizePaidCommerceSession.js`: derives the order's own `payment_type` to `'cash'` for a
+  downpayment capture (COD for the balance is what the order *is*) and builds a new
+  `capturedPayment` server-internal sibling argument (never a payload field — `storeCheckoutUseCase`'s
+  other caller, `storeHandlers.js`, never passes it) into `storeCheckoutUseCase`.
+- `resolveStorefrontPaymentSnapshot` (`storeUseCases.js`) gains a `capturedPayment` branch:
+  `payment_status: 'partially_paid'` (or `paid`, if the captured amount happens to equal the order
+  total) with `amount_paid`/`balance_due` — the one centavos-to-peso conversion boundary for this
+  feature (ADR 0069 clause 4b).
+- `buildStoreCheckoutUseCase`'s Phase 140 guard is made **conditional**, not deleted: with
+  `capturedPayment` present (the webhook finalizer, after real money was captured) it proceeds and
+  writes ledger row 1 (`kind: 'downpayment'`, via the new `storeRepository.createOrderPaymentEntry`,
+  inside the same transaction that creates the order); without it (the direct HTTP path — a
+  customer picking plain `cash`, collecting nothing) it still fails closed with `422
+  DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` (ADR 0070 clause 7 `[binding]`) — deleting this guard outright
+  was identified as the failure mode to avoid.
+- No change to `processVerifiedPaidCommerceSession.js`'s exact-amount-equality check, #476's
+  idempotency claim/row-lock, or the provider-event-replay guard — all inherited unchanged and
+  pinned with new tests rather than re-derived.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 140 (#821, the resolution this phase captures against) and, transitively, Phase
+  137's (#819) tenant schema (`pos_transactions.amount_paid`/`balance_due`, the `partially_paid`
+  enum value, `pos_order_payments`) — all first written by this phase.
+- Gates Phase 142 (#823, storefront UI), Phase 143 (#824, accept/reject/refund — the reject-refund
+  path this phase makes refund the correct, downpayment-only amount), and Phase 144 (#825, balance
+  settlement, the second ledger-row writer).
+- **Governance wrinkle identified, not resolved here:** ADR 0070 carries ADR 0069's clauses 1-5/8-10
+  forward *by reference* rather than restating them, so those live, load-bearing clauses physically
+  sit in a document marked `status: superseded`/`authority_level: historical` — which `AGENTS.md`
+  forbids citing for new decisions. Works today; breaks the moment one of those clauses needs a
+  dated amendment (#817 explicitly anticipates one on clause 10). Handed to PM to file, not fixed in
+  this phase.
+- Two items handed to PM during this phase, both filed:
+  - **#838** — courier cash remittance/reconciliation for COD deliveries (Retail downpayment + F&B):
+    once a courier collects the balance in cash, nothing models that money's path back into the
+    business's own records. Raised, not solved, during design discussion.
+  - **#839** — `sync-tenant-schemas.js` backfills `amount_paid`/`balance_due` incorrectly (flat
+    `DEFAULT 0`, no `CASE WHEN payment_status='paid'` logic the Sequelize migration itself uses),
+    discovered and reproduced against a restored production snapshot while verifying Phase 137's
+    backfill per this phase's own plan requirement — see Acceptance and Validation Evidence.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table beyond the migration
+  itself, which is why its `up`/`down`/`up` cycle was run against a real database this session (see
+  below) rather than deferred — proceeded through commit/push/PR per the standing preference
+  recorded in the Worker skip-checkpoint-confirmation memory.
+- Board: #822 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- 20 new/changed unit tests across three files, all passing, no database required for the unit
+  layer (fakes throughout): `storeCheckoutDownpaymentResolution.unit.test.js` (11, rewritten from
+  Phase 140's 8 — 1 kept, recontextualized as the surviving offline-path guard; the
+  payment-session describe block fully rewritten into 4 tests covering the real capture, the fee
+  guard on the captured amount, `DOWNPAYMENT_POLICY_UNRESOLVED`, and — added post-review, RF-2 —
+  a legitimate zero-total order not being misclassified as a malformed settings row);
+  `downpaymentWebhookFinalization.unit.test.js`
+  (5, new — the amount-equality check passing for a downpayment session despite `order_total_centavos`
+  differing, the same check still catching a genuine mismatch, the order landing `partially_paid`
+  with correct `amount_paid`/`balance_due`, the ledger row written inside the order-creation
+  transaction, a replayed webhook delivery being a no-op); `storePaymentTruth.unit.test.js` (2, new
+  — `resolveStorefrontPaymentSnapshot`'s `capturedPayment` branch in isolation). Pre-existing
+  `processVerifiedPaidCommerceSession.usecase.test.js` (7) and `finalizePaidCommerceSession.usecase.test.js`
+  (18) suites pass unmodified, confirming no regression to #476's idempotency fix.
+- Full `apps/dgfy-api` store-prefixed test suite: 388 passed, the same 2 pre-existing
+  DB-dependent integration failures Phase 140 already identified
+  (`storefrontPrimaryLocation.discovery.integration.test.js`, `storeRouteTenantContext.integration.test.js`).
+- **Reviewer feedback (PR #840, `pr-reviewer`, verdict COMMENT, no blockers) addressed**: RF-1 —
+  `createOrderPaymentEntry` now records `payment_reference` (the actual PayMongo charge ID), not
+  just `provider_event_id` (the webhook delivery ID); needed by Phase 143/#824's refund-vs-forfeiture
+  logic to trace a ledger row back to its charge. RF-2 — the `DOWNPAYMENT_POLICY_UNRESOLVED` guard
+  now excludes a legitimate zero-total order (gated on `resolved.totalAmount > 0`), which previously
+  misclassified that case instead of falling through to the pre-existing, more accurate
+  `totalAmountCentavos <= 0` guard. RF-3/RF-4 (nits) — deleted a stale test-file cross-reference to a
+  file that was never created; reconciled the test-count discrepancy across the PR body, the
+  compliance declaration, and this entry (388, not 452/387 — the PR body's 452 was simply wrong;
+  387 was correct pre-fix, both are now 388 after RF-2's added test). Both should-fix items and both
+  nits are fixed, not deferred.
+- `npm run check:architecture` — `ArchitectureGuardrails OK` (505 files), `ControllerBoundary OK`.
+- `npm run check:compliance` — confirmed to **fail** first (missing declaration), then pass once
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` was
+  added (`major`/`payments`).
+- `npm run lint:docs` — OK, 27 governed docs + 77 ADRs validated.
+- `node --check` on every new/changed `.js` file — clean.
+- **Migration run against a real database — the gap Phases 137/138/140 each carried forward is
+  closed for this phase's own migration, and Phase 137's backfill was independently re-verified in
+  the process.** Using `do-not-commit/local-test/` on docker context `ch` (restored production
+  landlord + tenant MySQL 8.0 snapshots): the new landlord migration ran `up → down → up` cleanly —
+  all four columns present with correct types/defaults after `up`, all four cleanly absent after
+  `down`, correctly restored after the second `up`. Separately, rebuilding the stack's `dgfy-api`
+  image (previously 27 hours stale, predating Phase 137) and running
+  `npm run check:tenant-schema`/the tenant additive-repair path surfaced that Phase 137's
+  `amount_paid`/`balance_due` backfill does **not** land correctly through the real tenant-provisioning
+  mechanism (`sync-tenant-schemas.js`, distinct from the Sequelize migration file) — reproduced
+  concretely against tenant `sku_tenant_bullduckresto_15a50c4f`'s `pos_transaction_id=1`
+  (`payment_status='paid'`, `amount_paid` landed at `0` instead of the order's `total_amount`).
+  Root-caused (the tenant-repair DDL registry uses a flat `DEFAULT 0`, not the migration's
+  `CASE WHEN payment_status='paid'` logic) and filed as #839 rather than fixed here — out of this
+  phase's own scope (a different subsystem than anything Phase 141 touches).
+- **Not verifiable this session, disclosed rather than glossed:** no live PayMongo sandbox capture
+  end to end; `POST /api/v1/compliance/preflight` not executed against a live environment (same
+  disclosure shape as the Phase 138/140 declarations).
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs` (new)
+- `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js` (four new columns)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (capture computation, policy-unresolved
+  guard, `resolveStorefrontPaymentSnapshot`'s `capturedPayment` branch, conditional checkout guard,
+  ledger write)
+- `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/contracts/storeRepository.contract.js` (new
+  `createOrderPaymentEntry`)
+- `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (derives
+  `payment_type: 'cash'`, builds `capturedPayment`)
+- `apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js` (rewritten),
+  `apps/dgfy-api/tests/downpaymentWebhookFinalization.unit.test.js` (new),
+  `apps/dgfy-api/tests/storePaymentTruth.unit.test.js` (extended)
+- `docs/api/specification.md` (`/store/cart/quote`, `/store/checkout`,
+  `/store/checkout/payment-sessions`)
+- `docs/database/schema.md` (`commerce_payment_sessions`, `pos_order_payments`,
+  `tenant_downpayment_settings` reader notes corrected/extended)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` (new)
+- Issue #822 (this phase); #838, #839 (handed to PM during this phase)

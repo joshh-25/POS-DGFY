@@ -456,7 +456,30 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
 
 const resolveStorefrontPromoApplication = (args) => resolveCommercialPromoApplication(args);
 
-export const resolveStorefrontPaymentSnapshot = ({ paymentType, payload = {} }) => {
+export const resolveStorefrontPaymentSnapshot = ({ paymentType, payload = {}, capturedPayment = null }) => {
+    // Phase 141 (#822): capturedPayment is populated ONLY by finalizePaidCommerceSession.js, after
+    // PayMongo has actually reported the downpayment as paid -- it is a server-internal sibling
+    // argument to storeCheckoutUseCase, never a payload field, so no HTTP client can set it (the
+    // other caller, storeHandlers.js, never passes it). When present the order is a downpayment
+    // capture: partially_paid (or paid, if the captured amount happens to equal the order total),
+    // with amount_paid/balance_due derived from the session's own captured/order-total split. This
+    // is the one conversion boundary named by ADR 0069 clause 4b (carried forward by ADR 0070) --
+    // integer centavos in, peso DECIMAL(14,4) out, matching every other pos_transaction_* column.
+    if (capturedPayment) {
+        const amountPaid = centavosToPeso(capturedPayment.captured_centavos);
+        const orderTotal = centavosToPeso(capturedPayment.order_total_centavos);
+        const balanceDue = Math.max(0, round4(orderTotal - amountPaid));
+        return {
+            payment_status: balanceDue > 0 ? 'partially_paid' : 'paid',
+            payment_reference: capturedPayment.provider_payment_id || null,
+            payment_checkout_url: payload.payment_checkout_url || null,
+            payment_provider: 'paymongo',
+            payment_session_reference: capturedPayment.session_reference || null,
+            amount_paid: amountPaid,
+            balance_due: balanceDue
+        };
+    }
+
     const isVerifiedOnlinePayment = ONLINE_PAYMENT_TYPES.has(String(paymentType || '').trim().toLowerCase())
         && payload.payment_webhook_confirmed === true;
     return {
@@ -1789,6 +1812,12 @@ const resolveCheckoutContext = async ({
         serviceFeeLabel,
         totalAmount,
         downpayment,
+        // Phase 141 (#822): raw settings alongside the resolved split, so a caller can detect the
+        // "tenant configured downpayment_required but the row itself is malformed" case -- the
+        // resolved `downpayment.payment_mode` alone can't distinguish that from "tenant genuinely
+        // configured full_payment", since resolveDownpaymentForTotal fails closed to the same
+        // full_payment shape for both. See the payment-session use case's DOWNPAYMENT_POLICY_UNRESOLVED guard.
+        downpaymentSettings: downpaymentSettings || null,
         outsideRadiusFlag,
         scheduledFor,
         affiliatePricing
@@ -2775,7 +2804,11 @@ export const buildStoreCheckoutUseCase = ({
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository
 }) => {
-    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false }) => {
+    // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
+    // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
+    // money was captured. storeHandlers.js (the direct HTTP path) never passes it, so it is
+    // unreachable from any client request, which is what keeps this guard server-authoritative.
+    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2897,16 +2930,19 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
-            // Phase 140 (#821, ADR 0070 clause 7 [binding]): this order-placing path is not yet
-            // wired to compute and capture a downpayment (that's Phase 141, #822) -- an order
-            // claiming "downpayment required" that this path let through would record nothing about
-            // what was or wasn't collected (amount_paid/balance_due are ADR 0069 clause 4 schema
-            // that doesn't exist until Phase 141/143), the exact bogus-order case this feature exists
-            // to prevent. Fail closed until capture lands; removed by Phase 141.
-            if (resolved.downpayment.payment_mode === 'downpayment_required') {
+            // Phase 141 (#822, ADR 0070 clause 7 [binding]): this order-placing path is reached
+            // two ways -- the webhook finalizer (finalizePaidCommerceSession.js, AFTER real money
+            // was captured, which passes capturedPayment) and the direct HTTP handler
+            // (storeHandlers.js, which never does -- the customer picking plain "cash" with no
+            // downpayment paid at all). capturedPayment present -> proceed, the downpayment leg is
+            // wired and done. Absent -> this flow collects nothing, so it must not honor the
+            // downpayment config; fail closed. Kept CONDITIONAL, not deleted -- deleting it outright
+            // is the failure mode this guard exists to prevent (an order claiming "downpayment
+            // required" that collected nothing).
+            if (resolved.downpayment.payment_mode === 'downpayment_required' && !capturedPayment) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Downpayment capture is not available on this checkout path yet.',
+                    'This store requires a downpayment. Pay the downpayment online to place this order -- the remaining balance is due on delivery.',
                     { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
                 );
             }
@@ -2917,8 +2953,15 @@ export const buildStoreCheckoutUseCase = ({
                 idempotencyKey,
                 proof: payload.guest_checkout_proof,
                 storeCustomer: normalizedStoreCustomer,
+                // Phase 141 (#822): a downpayment capture forces normalized.payment_type to
+                // 'cash' (COD for the balance -- see finalizePaidCommerceSession.js), so
+                // ONLINE_PAYMENT_TYPES.has(normalized.payment_type) alone no longer identifies a
+                // webhook-confirmed online payment for this case. capturedPayment is truthy on
+                // exactly the same calls that used to satisfy that check for a downpayment order
+                // (it's set by the very same finalizer, from the very same webhook), so it takes
+                // over that half of the condition without weakening it for the non-downpayment case.
                 allowExpired: allowExpiredGuestCheckoutProof === true
-                    && ONLINE_PAYMENT_TYPES.has(normalized.payment_type)
+                    && (ONLINE_PAYMENT_TYPES.has(normalized.payment_type) || Boolean(capturedPayment))
                     && payload.payment_webhook_confirmed === true
                     && Boolean(String(payload.payment_session_reference || '').trim())
             });
@@ -2930,7 +2973,8 @@ export const buildStoreCheckoutUseCase = ({
             const invoiceNumber = await storeRepository.nextInvoiceNumber(INVOICE_COUNTER_KEY, { transaction });
             const paymentSnapshot = resolveStorefrontPaymentSnapshot({
                 paymentType: normalized.payment_type,
-                payload
+                payload,
+                capturedPayment
             });
 
             const orderId = await storeRepository.createOnlineTransactionWithLines({
@@ -3005,6 +3049,29 @@ export const buildStoreCheckoutUseCase = ({
                         ? buildVoucherDiscountRecord(resolved.voucherApplication)
                         : null)
             }, { transaction });
+
+            // Phase 141 (#822, ADR 0069 clause 4b [default], carried forward by ADR 0070): ledger
+            // row 1 for a webhook-finalized downpayment order, written inside the SAME transaction
+            // that just created the order -- there is no window where one exists without the other.
+            // idempotency_key is the commerce payment session's own public_reference, which is
+            // stable across a webhook retry, so a replay hits pos_order_payments' own
+            // (pos_transaction_id, idempotency_key) unique index rather than double-inserting; the
+            // order-level idempotency_key dedup above already short-circuits the whole use case
+            // before reaching this point on replay, so this is a backstop, not the primary guard.
+            if (capturedPayment) {
+                await storeRepository.createOrderPaymentEntry({
+                    posTransactionId: orderId,
+                    kind: 'downpayment',
+                    status: 'successful',
+                    amount: centavosToPeso(capturedPayment.captured_centavos),
+                    paymentMethod: capturedPayment.method,
+                    paymentProvider: 'paymongo',
+                    providerEventId: capturedPayment.provider_event_id || null,
+                    paymentReference: capturedPayment.provider_payment_id || null,
+                    idempotencyKey: capturedPayment.session_reference,
+                    recordedBy: null
+                }, { transaction });
+            }
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {
                 const promoUsageUpdate = buildCommercialPromoUsageUpdate({
@@ -3553,16 +3620,30 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 downpaymentSettingsRepository
             });
 
-            // Phase 140 (#821, ADR 0069 clause 1b [binding] / ADR 0070 clause 7 [binding]): this
-            // path authorizes resolved.totalAmount in full below -- for a downpayment_required
-            // tenant that would authorize the whole order total online, never the downpayment
-            // amount only, a direct violation the moment the setting is switched on. Capture isn't
-            // wired to the downpayment amount until Phase 141 (#822); fail closed until then.
-            if (resolved.downpayment.payment_mode === 'downpayment_required') {
+            // Phase 141 (#822, ADR 0069 clause 1b [binding] / ADR 0070 clause 7 [binding]): fail
+            // closed if the tenant's stored payment_mode says downpayment_required but the settings
+            // row itself is malformed (no downpayment_type, missing rate, etc.). resolveCheckoutContext
+            // resolves that case to the same full_payment null-shape as a genuine full_payment tenant
+            // -- downpaymentPolicy.js's own fail-closed design, correct in Phase 140's "nothing can
+            // capture yet" world. Under this phase's COD-with-downpayment model that direction is
+            // backwards: falling through to full_payment here would authorize the FULL order online
+            // with no downpayment gate at all -- the exact bogus-order case the feature exists to
+            // prevent. So this seam compares the raw stored setting against the resolved result
+            // instead of trusting the resolved shape alone.
+            // `resolved.totalAmount > 0` excludes the OTHER case resolveDownpaymentForTotal falls
+            // back to full_payment for: a legitimate zero-total order (e.g. a 100%-off voucher on a
+            // downpayment_required tenant) -- that's "nothing to capture," not a malformed settings
+            // row, and it already 422s a few lines below on its own, more accurate reason
+            // (`totalAmountCentavos <= 0`). Reviewer finding RF-2, PR #840.
+            if (
+                resolved.downpaymentSettings?.payment_mode === 'downpayment_required'
+                && resolved.downpayment.payment_mode !== 'downpayment_required'
+                && resolved.totalAmount > 0
+            ) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Downpayment capture is not available on this checkout path yet.',
-                    { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
+                    'This store requires a downpayment, but its downpayment configuration could not be resolved.',
+                    { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_POLICY_UNRESOLVED' } }
                 );
             }
 
@@ -3574,7 +3655,20 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 storeCustomer
             });
 
-            const totalAmountCentavos = toCentavos(resolved.totalAmount);
+            // Phase 141 (#822, ADR 0069 clause 1b [binding]): capture the downpayment amount, not
+            // the order total, for a downpayment_required tenant. orderTotalCentavos keeps the full
+            // order's value (the session's own order_total_centavos column; the balance is the
+            // difference, collected in person per ADR 0069 clause 2 [binding]). totalAmountCentavos
+            // becomes the CAPTURED amount -- everything downstream of this point already keys off
+            // it (platform_fee_centavos, the PayMongo amount, the webhook's exact-amount-equality
+            // check, and the reject-refund path), so this one substitution is what makes all four
+            // fall out correctly with no further code change (see the Phase 141 plan).
+            const isDownpaymentCapture = resolved.downpayment.payment_mode === 'downpayment_required';
+            const orderTotalCentavos = toCentavos(resolved.totalAmount);
+            const capturedAmountPeso = isDownpaymentCapture ? resolved.downpayment.downpayment_amount : resolved.totalAmount;
+            const totalAmountCentavos = isDownpaymentCapture
+                ? toCentavos(resolved.downpayment.downpayment_amount)
+                : orderTotalCentavos;
             const platformFeeCentavos = tenantRevenueSharingEnabled
                 ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
                 : toCentavos(resolved.serviceFeeAmount);
@@ -3586,9 +3680,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             ) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                        tenantRevenueSharingEnabled
-                        ? 'Online checkout amount is invalid for tenant revenue settlement.'
-                        : 'Online checkout amount is too low for fixed DGFY split settlement.',
+                    isDownpaymentCapture
+                        ? 'This downpayment amount is too low to cover the platform fee.'
+                        : (tenantRevenueSharingEnabled
+                            ? 'Online checkout amount is invalid for tenant revenue settlement.'
+                            : 'Online checkout amount is too low for fixed DGFY split settlement.'),
                     { statusCode: 422 }
                 );
             }
@@ -3648,10 +3744,17 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 subtotal_amount: resolved.prepared.subtotalAmount,
                 delivery_fee: resolved.deliveryFee,
                 service_fee_amount: resolved.serviceFeeAmount,
-                total_amount: resolved.totalAmount,
+                total_amount: capturedAmountPeso,
                 currency: 'PHP',
                 total_amount_centavos: totalAmountCentavos,
                 platform_fee_centavos: platformFeeCentavos,
+                // Phase 141 (#822): total_amount/total_amount_centavos above are the CAPTURED
+                // amount (unchanged meaning); order_total_centavos is the full order value so the
+                // balance the customer still owes is always recoverable from this row alone.
+                capture_kind: isDownpaymentCapture ? 'downpayment' : 'full',
+                order_total_centavos: orderTotalCentavos,
+                capture_payment_method: requestedPaymentType,
+                downpayment_refundable: isDownpaymentCapture ? resolved.downpayment.downpayment_refundable : null,
                 fee_policy: feePolicy,
                 tenant_transfer_merchant_id: tenantRevenueSharingEnabled || requestedPaymentType !== 'qrph'
                     ? null

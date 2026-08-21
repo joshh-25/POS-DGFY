@@ -1424,7 +1424,7 @@ and ADR 0062.
 Landlord-level payment routing tables support PayMongo QR Ph Storefront payments without coupling provider webhooks to tenant-local lookups:
 
 - `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, fee-contract metadata, and last sync time.
-- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
+- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields. **Phase 141 (#822)** adds four columns splitting "the order total" from "the amount actually authorized/captured" — `total_amount_centavos` itself keeps meaning the latter (unchanged): `capture_kind` (`ENUM('full','downpayment')`, `DEFAULT 'full'` so every pre-existing row is correct by construction), `order_total_centavos` (the full order value, backfilled from `total_amount_centavos` for pre-existing rows), `capture_payment_method` (the online rail that paid the captured amount), and `downpayment_refundable` (a policy snapshot at capture time, for Phase 143/#824's refund-vs-forfeiture decision). Migration `20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs`.
 - `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 - ADR 0040 adds the landlord-owned tenant financial ledger: `tenant_revenue_fee_policies`, `tenant_revenue_transactions`, `tenant_revenue_ledger_entries`, `tenant_settlement_batches`, `tenant_settlement_batch_items`, `tenant_settlement_batch_ledger_items`, `tenant_payouts`, `tenant_revenue_adjustments`, and `tenant_revenue_reconciliation_records`. Amounts are integer centavos. Fee versions and ledger entries are append-only; later paid-transaction corrections are allocated once to a future settlement through `tenant_settlement_batch_ledger_items`.
@@ -1855,8 +1855,15 @@ CREATE TABLE pos_order_payments (
 it stays `NULL` for an online-captured `downpayment` row. Migration
 `20260821000004-create-pos-order-payments.cjs` creates the table and is
 registered in runtime schema auditing and additive tenant repair
-(`REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments`). No route, use case, or
-UI reads or writes this table yet — that starts at Phase 139/140.
+(`REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments`). Phase 141 (#822) is the
+first writer: `buildStoreCheckoutUseCase`
+(`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`) writes ledger
+row 1 (`kind: 'downpayment'`) via `storeRepository.createOrderPaymentEntry`,
+inside the same transaction that creates the order, when called with the
+`capturedPayment` sibling argument the PayMongo webhook finalizer
+(`finalizePaidCommerceSession.js`) supplies after a downpayment is confirmed
+paid. `kind: 'balance'`/`'refund'`/`'forfeiture'` rows remain unwritten until
+Phase 143/144 (#824/#825).
 
 ### tenant_downpayment_settings (Phase 138)
 
@@ -1898,9 +1905,16 @@ together). Phase 140 (#821) is the first reader: `resolveCheckoutContext`
 `/cart/quote`, `/store/checkout`, and the QRPh payment-session path) reads this row via an injected
 `downpaymentSettingsRepository` dependency and computes the split
 (`downpaymentPolicy.js:resolveDownpaymentForTotal`) after the promo/voucher fold. `/cart/quote`
-exposes the full split; `/store/checkout` and the payment-session endpoint both reject a
-`downpayment_required` order with `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` until Phase 141 (#822)
-wires real capture (ADR 0069 clause 1b / ADR 0070 clause 7, both `[binding]`). Admin API: `GET`/`PUT
+exposes the full split. **Phase 141 (#822)** wires real capture: the payment-session endpoint
+authorizes only the downpayment amount online (never the order total — ADR 0069 clause 1b
+`[binding]`), and `/store/checkout` accepts a `downpayment_required` order only when reached via the
+PayMongo webhook finalizer (which has already captured the downpayment) — the direct HTTP path (a
+customer picking plain `cash`, collecting nothing) still rejects with `422
+DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` (ADR 0070 clause 7 `[binding]`). A downpayment order is
+cash-on-delivery for its balance by construction (ADR 0069 clause 2 `[binding]`: the balance is
+always staff-collected out-of-band, never a second automatic online charge) — the order's own
+`payment_type` is derived to `'cash'`, `payment_status` lands `partially_paid`, and ledger row 1
+(`kind: 'downpayment'`) is written to `pos_order_payments` above. Admin API: `GET`/`PUT
 /api/v1/downpayment/settings`, gated by
 `PERMISSIONS.DOWNPAYMENT.actions.{VIEW,MANAGE}_DOWNPAYMENT_SETTINGS`.
 

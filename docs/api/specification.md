@@ -3869,6 +3869,11 @@ Route mapping note:
     is worth; `balance_due_amount` is never negative).
 - Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
   restriction.
+- **(Phase 141, #822)** A `downpayment_required` order is, by construction, cash-on-delivery for the
+  balance -- `payment_mode` never means "pay everything online" (that's the separate, unbuilt
+  `customer_choice` mode). The customer's only online payment choice is which method pays the
+  downpayment leg (`POST /store/checkout/payment-sessions`, below); the balance is always collected
+  in person (ADR 0069 clause 2 `[binding]`).
 
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
@@ -3886,10 +3891,13 @@ Route mapping note:
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
-- **(Phase 140, #821)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
-  endpoint returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no order.
-  This checkout path is not yet wired to compute and capture a downpayment (ADR 0070 clause 7) --
-  capture lands in Phase 141 (#822), at which point this rejection is removed.
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, a direct
+  request to this endpoint (a customer picking plain `cash`, with no online payment at any point)
+  returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no order -- this
+  path collects nothing, so it must not honor the downpayment configuration (ADR 0070 clause 7
+  `[binding]`). A `downpayment_required` order is instead created only by the PayMongo webhook
+  finalizer, after the downpayment payment session (below) has been confirmed paid; that internal
+  call is not reachable from any HTTP client request.
 
 **Persistence Contract**
 - Checkout persists service-fee snapshots from the same fixed policy as quote:
@@ -3899,8 +3907,13 @@ Route mapping note:
   - `service_fee_overridden=false`
 - `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
   `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
-  Downpayment Contract above. In practice `payment_mode` here is always `full_payment` today, since
-  the guard immediately above rejects a `downpayment_required` order before this point.
+  Downpayment Contract above.
+- **(Phase 141, #822)** A downpayment order finalized via the webhook is created cash-on-delivery
+  for the balance -- `payment_type` is `cash`, `payment_timing` follows the normal
+  delivery/pickup-cash rule (`on_delivery`/`on_pickup`), and `payment_status` lands `partially_paid`
+  with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
+  ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
+  order.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
@@ -3924,11 +3937,15 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   `payment_flow=direct_maya`. The Storefront creates the wallet-specific
   Payment Method with the public key and attaches it with the client key; the
   returned authorization URL is a provider redirect, not an order result.
-- **(Phase 140, #821)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
-  endpoint returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no payment
-  session -- this path today authorizes the full order total (ADR 0069 clause 1b forbids authorizing
-  anything but the downpayment amount for such a tenant), and capture isn't wired to the downpayment
-  amount until Phase 141 (#822).
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
+  endpoint authorizes only the downpayment amount online, never the order total (ADR 0069 clause 1b
+  `[binding]`) -- the PayMongo `amount`, the session's `total_amount`/`total_amount_centavos`, and
+  `platform_fee_centavos` are all computed against the downpayment, not the full order. The session
+  additionally records `capture_kind=downpayment`, `order_total_centavos` (the full order value),
+  `capture_payment_method` (the online rail used), and `downpayment_refundable` (a policy snapshot
+  for Phase 143/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
+  tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
+  the request must never silently fall through to authorizing the full total.
 
 **Response (201)**
 ```json
