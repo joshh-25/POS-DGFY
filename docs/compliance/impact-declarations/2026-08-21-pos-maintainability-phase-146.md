@@ -46,6 +46,6 @@ database schemas, or transaction persistence.
 - POS tests — PASS (148 files, 721 tests).
 - Changed-file POS lint — PASS with zero errors.
 - `npm run build:pos` — PASS.
-- `npm run check:frontend-budgets` — known existing failure: the POS checkout
-  route chunk remains above the 190 KB budget and requires the remaining
-  structural extraction work in Phase 146.
+- `npm run check:frontend-budgets` — PASS after lazy-loading the terminal
+  presentation boundary; the POS route chunk is 133.43 KB against the 190 KB
+  limit.

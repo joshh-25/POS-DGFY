@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     fetchPosDiscountApprovers,
@@ -16,7 +16,7 @@ import { usePosFinancialWorkflow } from '../hooks/usePosFinancialWorkflow.js';
 import { usePosHistoryVoidWorkflow } from '../hooks/usePosHistoryVoidWorkflow.js';
 import { usePosCheckoutWorkflow } from '../hooks/usePosCheckoutWorkflow.js';
 import { usePosReceiptHardwareWorkflow } from '../hooks/usePosReceiptHardwareWorkflow.js';
-import POSCheckoutTerminalView from './POSCheckoutTerminalView.jsx';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
@@ -40,6 +40,7 @@ import {
 } from '../utils/posCheckoutTerminalUtils.js';
 import { resolveModifierDelta } from '../utils/posCheckoutTerminalModifiers.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 // Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
 // delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
 // removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
@@ -1609,5 +1610,9 @@ export default function POSCheckoutTerminal({
         voidingTransactionId
     };
 
-    return <POSCheckoutTerminalView viewModel={terminalViewModel} />;
+    return (
+        <Suspense fallback={<div className="flex h-full min-h-0 items-center justify-center text-sm text-slate-500">Loading POS terminal…</div>}>
+            <POSCheckoutTerminalView viewModel={terminalViewModel} />
+        </Suspense>
+    );
 }
