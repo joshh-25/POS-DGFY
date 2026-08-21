@@ -6314,3 +6314,72 @@ after this update: **135**.
 - `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
 - `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`
 - `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.js`
+
+## Phase 136 - Governance: ADR 0069 Supersedes ADR 0068 for Retail Downpayment Capture
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #818, Phase 136 of the
+  epic's phase sequence, continuing this ledger's numbering from its prior highest entry, 135.
+- Release: single `develop`-targeted PR (`docs/818-adr-0069-downpayment-capture-methods`).
+
+### Objective and Scope
+
+- Docs-only. ADR 0068 (accepted 2026-08-21, the same day) capped Retail downpayment capture to
+  PayMongo QRPh only, `[binding]`. The product owner reversed that constraint hours later during
+  the #273 planning session: capture should support any online method the store enables,
+  configurable per store and optionally narrowed for downpayment specifically (#816), with card
+  once constructible (#477). Changing a `[binding]` clause has exactly one lawful path under ADR
+  0039 — a new superseding ADR plus tech-lead approval; amendment was already ruled out for this
+  ADR specifically (a prior fix to clause 2 removed "or amending decision" language for the same
+  reason), and the `review_by`-decay exception does not apply (2027-02-21, six months out).
+- ADR 0069 authored, fully restating ADR 0068's clauses 2-9 with three changes: clause 1 rewritten
+  and split (1a widens the capture-method authorization, 1b carries over the capped-amount rule
+  unchanged, still `[binding]`); clause 8 changed from a fixed `[snapshot]` forfeiture policy to a
+  per-store refundable/non-refundable `[default]` toggle; new clause 10 (`[default]`) recording the
+  platform-fee basis for a partial capture as the captured amount, pending revisit (#817). Clause 6
+  (Retail-only scope) is unchanged -- this ADR does not widen authorization to Services (#812
+  remains its own authorizing decision).
+- ADR 0068 flipped to `status: superseded`, `authority_level: historical`,
+  `superseded_by: 0069-...md`; its `## Status` section rewritten to point at ADR 0069. Both ADRs
+  share the same `date: 2026-08-21` deliberately -- the reversal happened same-day, and superseding
+  (rather than editing 0068 in place, which the governance system has no path for on an `accepted`
+  ADR) preserves that record instead of erasing it.
+- `docs/architecture/adr/INDEX.md` regenerated (`npm run generate:adr-index`); diff is exactly the
+  0068 row (`accepted` -> `superseded`) and a new 0069 row.
+- No compliance impact declaration required or added -- every rule in
+  `scripts/check-compliance-impact.js` is anchored to `apps/dgfy-api/` or `apps/dgfy-web/`; a
+  docs-only change under `docs/` matches none of them and the script exits 0.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Gates every subsequent phase of epic #815 (#819-#827) -- none may proceed until this ADR is in
+  force, since they all cite ADR 0068/0069 clause numbers as their authorization.
+- Classification: this is the `[binding]`-clause supersession path per
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s Mandatory Process step 3 and ADR 0039's tier
+  table -- it therefore requires tech-lead approval as a separate obligation from authoring the ADR
+  itself. Drafting and opening the implementing PR does not constitute that approval; merging the
+  PR is what enacts the decision, and that approval gate is held by Pat, not by the Worker role.
+- Depends on ADR 0068 (commit `8f69e4d0c`, PR #787, closing #703) having landed first, same day.
+
+### Acceptance and Validation Evidence
+
+- `npm run check:adr` -- `[adr-lint] OK. Validated 76 ADRs.`
+- `npm run test:adr` -- `check-adr.js` regression suite, unchanged pass.
+- `npm run lint:docs` -- chains `lint-docs.js` + `check:adr`.
+- `npm run check:compliance` -- `No compliance-sensitive changes detected.`
+- Manual cross-check: every in-body "ADR 00NN" reference in both 0068 and 0069 resolves to the
+  correct number -- two of the three prior supersession precedents in this repo (0027->0052,
+  0061->0065) shipped with the wrong ADR number in their Status prose; this one was checked
+  specifically to not repeat that.
+- No live-database or runtime test applies -- no code changed.
+
+### Implementation Links
+
+- `docs/architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md` (new)
+- `docs/architecture/adr/0068-retail-downpayment-payment-capture-authorization.md` (status flip)
+- `docs/architecture/adr/INDEX.md`
