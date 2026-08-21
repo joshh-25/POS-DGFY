@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { calculatePosItemDiscounts } from '../utils/posItemDiscount.js';
 import {
     calculateGovernedDiscount,
@@ -158,15 +158,14 @@ export const usePosFinancialWorkflow = ({
     })();
 
     const cartTotal = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
-    useEffect(() => {
-        if (!checkoutConfirmModalOpen || !customerPaymentAmountAutoFilled) return;
-        setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
-    }, [cartTotal, checkoutConfirmModalOpen, customerPaymentAmountAutoFilled]);
+    const effectiveCustomerPaymentAmountInput = checkoutConfirmModalOpen && customerPaymentAmountAutoFilled
+        ? round4(cartTotal).toFixed(2)
+        : customerPaymentAmountInputValue;
     const cartTotalQuantity = safeCart.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
     const isCashPayment = paymentType === 'cash';
     const isEmployeeCreditPayment = paymentType === 'employee_credit';
     const customerPaymentAmount = (() => {
-        const parsed = Number(customerPaymentAmountInputValue);
+        const parsed = Number(effectiveCustomerPaymentAmountInput);
         if (!Number.isFinite(parsed) || parsed < 0) return 0;
         return round4(parsed);
     })();
@@ -223,7 +222,7 @@ export const usePosFinancialWorkflow = ({
         isEmployeeCreditPayment,
         customerPaymentAmount,
         customerPaymentAmountState: {
-            customerPaymentAmountInput: customerPaymentAmountInputValue,
+            customerPaymentAmountInput: effectiveCustomerPaymentAmountInput,
             setCustomerPaymentAmountInput,
             customerPaymentAmountAutoFilled,
             setCustomerPaymentAmountAutoFilled

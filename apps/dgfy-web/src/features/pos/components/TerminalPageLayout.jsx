@@ -191,9 +191,6 @@ export default function TerminalPageLayout({
     onPosTextSizeChange = () => {},
     queuedTerminalOperationCount,
     queuedTerminalBlockedCount = 0,
-    queuedTerminalOperations = [],
-    queueStatusFilter = 'all',
-    setQueueStatusFilter = () => {},
     queueSummary = {},
     replayingQueuedTerminalOperations,
     handleReplayQueuedTerminalOperations,
@@ -234,8 +231,6 @@ export default function TerminalPageLayout({
   const lastOrderAlertAtRef = useRef(0);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
-  const actionableQueueCount = queueCount + blockedQueueCount;
-  const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
   const incomingOrders = useMemo(() => (
     showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
@@ -954,8 +949,6 @@ export default function TerminalPageLayout({
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
                 refreshIncomingOrders={refreshIncomingOrders}
                 refreshOrderHistory={refreshOrderHistory}
-                queueStatusFilter={queueStatusFilter}
-                setQueueStatusFilter={setQueueStatusFilter}
                 queueSummary={queueSummary}
                 replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
                 handleReplayQueuedTerminalOperations={handleReplayQueuedTerminalOperations}

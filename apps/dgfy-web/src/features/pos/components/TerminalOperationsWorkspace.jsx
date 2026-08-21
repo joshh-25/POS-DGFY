@@ -7590,7 +7590,7 @@ function SettingsWorkspace({
               </div>
               <div className="min-w-0 flex-1">
                 <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
-                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you&apos;re ready to accept voucher codes at the counter.</span>
               </div>
               <input
                 type="checkbox"
@@ -9511,9 +9511,6 @@ export default function TerminalOperationsWorkspace({
   refreshOrderHistory = () => {},
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
-  queuedTerminalOperations = [],
-  queueStatusFilter = 'all',
-  setQueueStatusFilter = () => {},
   queueSummary = {},
   replayingQueuedTerminalOperations = false,
   handleReplayQueuedTerminalOperations = () => {},
@@ -9825,8 +9822,6 @@ export default function TerminalOperationsWorkspace({
     isOnline,
     locationsState,
     locked,
-    queuedTerminalOperations,
-    queueStatusFilter,
     queueSummary,
     replayingQueuedTerminalOperations,
     handleReplayQueuedTerminalOperations,
@@ -9837,7 +9832,6 @@ export default function TerminalOperationsWorkspace({
     onSelectAdminTerminal,
     onStorefrontSetupSaved,
     onlineOrderSoundEnabled,
-    setQueueStatusFilter,
     operatingLocationId,
     openShiftForm,
     queueLocationScopeId,

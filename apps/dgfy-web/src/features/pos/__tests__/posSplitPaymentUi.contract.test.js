@@ -69,7 +69,8 @@ describe('POS split-payment UI contract', () => {
 
     it('prefills exact payment, clears it only on first focus, and preserves explicit selections', () => {
         expect(financialWorkflowSource).toContain('const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);');
-        expect(financialWorkflowSource).toContain('setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));');
+        expect(financialWorkflowSource).toContain('const effectiveCustomerPaymentAmountInput = checkoutConfirmModalOpen && customerPaymentAmountAutoFilled');
+        expect(financialWorkflowSource).toContain("? round4(cartTotal).toFixed(2)");
         expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(true);');
         expect(checkoutSource).toContain('if (customerPaymentAmountAutoFilled) {');
         expect(checkoutSource).toContain('data-testid="pos-cash-payment-exact"');

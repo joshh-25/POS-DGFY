@@ -643,9 +643,7 @@ export default function TerminalPage() {
     const params = new URLSearchParams(window.location.search);
     return String(params.get('catalog_search') || '').trim();
   });
-  const [queuedTerminalOperations, setQueuedTerminalOperations] = useState([]);
   const [manualSyncPolicy, setManualSyncPolicy] = useState(() => getManualPosSyncPolicy());
-  const [queueStatusFilter, setQueueStatusFilter] = useState('all');
   const [queueSummary, setQueueSummary] = useState({
     total: 0,
     pending: 0,
@@ -1080,18 +1078,9 @@ export default function TerminalPage() {
     }
   }, [locked, terminalUser?.is_master_admin]);
 
-  const refreshTerminalOperationQueue = useCallback(async ({ keepResolved = true } = {}) => {
-    const {
-      getTerminalOperationQueueSummary,
-      listTerminalOperationQueueEntries
-    } = await loadTerminalOperationQueueStore();
-    const entries = await listTerminalOperationQueueEntries({
-      includeResolved: keepResolved,
-      scope: offlinePosScope,
-      limit: QUEUE_HISTORY_LIMIT
-    });
+  const refreshTerminalOperationQueue = useCallback(async () => {
+    const { getTerminalOperationQueueSummary } = await loadTerminalOperationQueueStore();
     const summary = await getTerminalOperationQueueSummary({ scope: offlinePosScope });
-    setQueuedTerminalOperations(entries);
     setQueueSummary(summary);
   }, [offlinePosScope]);
 
@@ -2054,11 +2043,6 @@ export default function TerminalPage() {
     refreshTerminalOperationQueue,
     printClosedShiftSummary,
   ]);
-
-  const filteredQueueEntries = useMemo(() => {
-    if (queueStatusFilter === 'all') return queuedTerminalOperations;
-    return queuedTerminalOperations.filter((entry) => String(entry?.status || '') === queueStatusFilter);
-  }, [queueStatusFilter, queuedTerminalOperations]);
 
   const handleRetryQueuedOperation = useCallback(async (intentId) => {
     const normalizedIntentId = String(intentId || '').trim();
@@ -5401,10 +5385,10 @@ export default function TerminalPage() {
       toast.message('No open shift is active. Enter opening cash to start a new shift.');
     }
   }, [shiftOpeningModalOpen]);
-  const handleShiftOpeningModalSubmit = useCallback((event) => {
+  const handleShiftOpeningModalSubmit = (event) => {
     event.preventDefault();
     handleOpenShift();
-  }, [handleOpenShift]);
+  };
   const handleSkipShiftOpeningForAdmin = useCallback(async () => {
     await refreshOperationalContext({ suppressGlobalErrors: true });
     setAdminShiftPromptSkipped(true);
@@ -5772,9 +5756,6 @@ function PosRestorationLoadingScreen() {
           refreshTerminalMeta={hydrateTerminalMeta}
           queuedTerminalOperationCount={queueSummary.pending}
           queuedTerminalBlockedCount={queueSummary.blocked}
-          queuedTerminalOperations={filteredQueueEntries}
-          queueStatusFilter={queueStatusFilter}
-          setQueueStatusFilter={setQueueStatusFilter}
           queueSummary={queueSummary}
           replayingQueuedTerminalOperations={replayingQueuedTerminalOperations}
           handleReplayQueuedTerminalOperations={replayQueuedTerminalOperations}
