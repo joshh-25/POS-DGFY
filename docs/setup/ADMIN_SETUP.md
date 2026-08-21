@@ -109,6 +109,27 @@ Current role preset families:
 
 Services routes prefer `services:*` permissions and F&B routes prefer `fnb:*` permissions. Generic-permission fallback remains enabled by default outside production for local compatibility, but production defaults to fail-closed. Keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` explicit in production configuration and complete tenant-user remapping before release. Any temporary production exception must be explicit, time-bound, and audited.
 
+### Production security closure checklist
+
+Phase 145 provides a safe operator workflow, but it must be run against the deployed environment by an authorized operator. The local repository cannot rotate production secrets or claim live evidence.
+
+1. Rotate `ADMIN_USERNAME` plus `ADMIN_PASSWORD_HASH` (or the `ADMIN_ACCOUNTS_JSON` roster) in the production secret manager. Never copy the local bootstrap credentials into a deployed environment.
+2. Set `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` explicitly in the production environment and restart through the normal deployment process.
+3. Run the production startup/preflight validation and retain the terminal output showing that the environment is accepted.
+4. Run a dry-run legacy-user report first:
+
+   ```bash
+   npm run audit:mode-rbac-users -- --json-output /tmp/mode-rbac-users.json
+   ```
+
+5. Review every `needs_manual_mapping` and `skipped_master_admin` entry. Only after the mapping is approved, apply the safe entries with an explicit confirmation:
+
+   ```bash
+   npm run audit:mode-rbac-users -- --apply --yes --json-output /tmp/mode-rbac-users-applied.json
+   ```
+
+6. Verify the report, `mode_rbac_legacy_user_remapped` audit rows, and any `mode_rbac_generic_fallback_used` events. Configure the deployment's alert route for the structured fallback warning before closing the audit finding.
+
 Every future mode must answer these access questions before it is called production-ready:
 
 1. Which roles are shown for this tenant mode.
