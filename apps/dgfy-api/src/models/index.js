@@ -188,6 +188,7 @@ import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
+import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
@@ -262,6 +263,7 @@ const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
+const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
@@ -423,6 +425,8 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantDownpaymentSettings, { foreignKey: 'tenant_id', as: 'downpaymentSettings' });
+TenantDownpaymentSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 // dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
@@ -1184,6 +1188,7 @@ const db = {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings
+  ,TenantDownpaymentSettings
   ,PlatformAdminUser
   ,PlatformAdminPermission
   ,PlatformAdminSession
@@ -1390,6 +1395,7 @@ export {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings,
+  TenantDownpaymentSettings,
   PlatformAdminUser,
   PlatformAdminPermission,
   PlatformAdminSession,
