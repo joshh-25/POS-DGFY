@@ -54,7 +54,8 @@ export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
     paymongoService,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig,
-    paymongoMode: getPayMongoMode()
+    paymongoMode: getPayMongoMode(),
+    downpaymentSettingsRepository
 });
 export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
 export const listStoreLocationsUseCase = buildListStoreLocationsUseCase({ storeRepository });

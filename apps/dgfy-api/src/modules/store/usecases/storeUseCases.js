@@ -374,6 +374,11 @@ const serializeOrderBase = (order) => ({
     payment_type: order?.payment_type,
     payment_timing: order?.payment_timing,
     payment_status: order?.payment_status,
+    // Phase 142 (#823): persisted since Phase 141 (resolveStorefrontPaymentSnapshot) but never
+    // serialized -- null for every order that isn't 'partially_paid' (full_payment orders keep
+    // returning null/null here, same additive-only guarantee as the session fields above).
+    amount_paid: order?.amount_paid ?? null,
+    balance_due: order?.balance_due ?? null,
     payment_reference: order?.payment_reference,
     payment_checkout_url: order?.payment_checkout_url,
     payment_provider: order?.payment_provider,
@@ -1989,6 +1994,33 @@ const resolveStorefrontPaymentCapabilities = async ({
 
 };
 
+// Phase 142 (#823): the storefront needs to know a store's downpayment payment_mode BEFORE it
+// ever quotes (Simple mode in particular never quotes without a discount code), so the storefront
+// can hide the cash option and force a quote up front instead of discovering the requirement only
+// at session-create time. Fails closed to 'full_payment' -- a settings-read error must never 500
+// the public catalog, and the storefront's existing behavior for every store that doesn't set
+// this must not change (same additive-only discipline as Phase 140's downpayment split on the
+// quote response). This intentionally does NOT reuse resolveDownpaymentForTotal (that also
+// downgrades a *malformed* downpayment_required row to full_payment) -- here we report the
+// tenant's stored intent verbatim, so the UI hides cash and forces a quote even against a
+// malformed row; the malformed case still 422s at session-create time
+// (DOWNPAYMENT_POLICY_UNRESOLVED), never silently falls through to an un-gated cash order.
+const resolveStorefrontPaymentMode = async ({ downpaymentSettingsRepository, tenantId }) => {
+    if (!tenantId || typeof downpaymentSettingsRepository?.getSettings !== 'function') {
+        return 'full_payment';
+    }
+    try {
+        const settings = await downpaymentSettingsRepository.getSettings(tenantId);
+        return settings?.payment_mode === 'downpayment_required' ? 'downpayment_required' : 'full_payment';
+    } catch (error) {
+        logger?.warn?.('Failed to resolve storefront payment_mode for catalog; defaulting to full_payment', {
+            tenantId,
+            error: error?.message || String(error)
+        });
+        return 'full_payment';
+    }
+};
+
 export const buildListStoreCatalogUseCase = ({
     storeRepository,
     commercePaymentRepository = null,
@@ -2000,7 +2032,8 @@ export const buildListStoreCatalogUseCase = ({
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     paymongoMode = 'test',
     revenueSharingEnabled = tenantRevenueSharingEnabled,
-    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault,
+    downpaymentSettingsRepository = null
 }) => {
     // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
     // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
@@ -2027,7 +2060,7 @@ export const buildListStoreCatalogUseCase = ({
                 );
             }
 
-            const [accessPolicy, paymentCapabilities] = await Promise.all([
+            const [accessPolicy, paymentCapabilities, paymentMode] = await Promise.all([
                 resolveStorefrontAccessPolicy({ storeRepository }),
                 resolveStorefrontPaymentCapabilities({
                     commercePaymentRepository,
@@ -2039,6 +2072,10 @@ export const buildListStoreCatalogUseCase = ({
                     requireCommercePaymentConfig,
                     paymongoMode,
                     revenueSharingEnabled
+                }),
+                resolveStorefrontPaymentMode({
+                    downpaymentSettingsRepository,
+                    tenantId: tenantId || currentTenantAccessContext().tenantId
                 })
             ]);
             // Live (15s-cached) workflow mode + composed-capability overlay, so a
@@ -2059,7 +2096,8 @@ export const buildListStoreCatalogUseCase = ({
                     access_policy: accessPolicy,
                     workflow_mode: workflowMode,
                     enabled_capabilities: enabledCapabilities,
-                    payment_capabilities: paymentCapabilities
+                    payment_capabilities: paymentCapabilities,
+                    payment_mode: paymentMode
                 });
             }
 
@@ -2108,7 +2146,8 @@ export const buildListStoreCatalogUseCase = ({
                 access_policy: accessPolicy,
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
-                payment_capabilities: paymentCapabilities
+                payment_capabilities: paymentCapabilities,
+                payment_mode: paymentMode
             });
         } catch (error) {
             if (error instanceof DomainError) {
@@ -3435,6 +3474,35 @@ const getDirectWalletSessionDetails = (session = {}) => {
     };
 };
 
+// Phase 142 (#823): capture_kind/order_total_amount/balance_due_amount/downpayment_refundable
+// were persisted on the session row since Phase 141 (#822) but never reached the client -- the
+// pending-payment panel and the confirmation screen have no way to say "this is your downpayment
+// of X, Y is due on delivery" without them. Present-and-null for a 'full' capture, same
+// convention as the quote response's own downpayment fields (never 0, never the total, so a
+// frontend can't mistake "no downpayment" for "downpayment of zero").
+const serializeDownpaymentSessionFields = (session = {}) => {
+    const captureKind = session.capture_kind || 'full';
+    if (captureKind !== 'downpayment') {
+        return {
+            capture_kind: captureKind,
+            order_total_amount: null,
+            balance_due_amount: null,
+            downpayment_refundable: null
+        };
+    }
+    const orderTotalCentavos = session.order_total_centavos;
+    const capturedCentavos = session.total_amount_centavos;
+    const balanceDueAmount = (orderTotalCentavos != null && capturedCentavos != null)
+        ? centavosToPeso(Math.max(0, Number(orderTotalCentavos) - Number(capturedCentavos)))
+        : null;
+    return {
+        capture_kind: captureKind,
+        order_total_amount: orderTotalCentavos != null ? centavosToPeso(orderTotalCentavos) : null,
+        balance_due_amount: balanceDueAmount,
+        downpayment_refundable: session.downpayment_refundable ?? null
+    };
+};
+
 const serializePaymentSession = (session = {}) => ({
     ...getDirectWalletSessionDetails(session),
     payment_session_id: session.public_reference,
@@ -3458,7 +3526,8 @@ const serializePaymentSession = (session = {}) => ({
     tracking_pin: session.tracking_pin || null,
     pos_transaction_id: session.pos_transaction_id || null,
     failure_code: session.failure_code || null,
-    failure_reason: session.failure_reason || null
+    failure_reason: session.failure_reason || null,
+    ...serializeDownpaymentSessionFields(session)
 });
 
 export const buildStoreCheckoutPaymentSessionUseCase = ({
