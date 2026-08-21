@@ -208,14 +208,14 @@ export function useCheckoutSubmission({
       toast.error(storefrontClosedToastMessage);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
-      const message = 'Please click Quote first before checkout.';
-      setCheckoutError(message);
-      toast.error(message);
-      return;
-    }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'stale_quote') {
-      const message = 'Your cart changed. Please refresh Quote before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && (checkoutBlockReason === 'missing_quote' || checkoutBlockReason === 'stale_quote')) {
+      // Phase 142 (#823): this shared hook (unlike useFnbCheckoutSubmission.js's own copy of these
+      // two reason codes) now also serves Simple/Retail, neither of which has an explicit "Quote"
+      // button -- their totals quote automatically in the background on cart change. The block
+      // itself is correct (a downpayment store's split is server-only and must be known before
+      // Place Order), just rare and self-resolving; the message says so instead of directing the
+      // shopper to a button that doesn't exist on those two modes.
+      const message = 'Updating your order total -- please wait a moment and try again.';
       setCheckoutError(message);
       toast.error(message);
       return;

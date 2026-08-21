@@ -3201,7 +3201,27 @@ export default function StorefrontApp() {
       && !hasStockViolation
     );
 
-    if (!shouldAutoSyncFnbQuote && !shouldAutoSyncDiscountQuote) {
+    // Phase 142 (#823): a downpayment-required store's checkout needs the server-resolved split
+    // (payment_mode/downpayment_amount/balance_due_amount) before the customer ever reaches the
+    // payment step -- and Simple/Retail never quote at all without a discount code (the gap the
+    // discount arm's own comment above documents). Mode-agnostic and structured exactly like that
+    // arm, deliberately WITHOUT the F&B arm's quoteNeedsRefresh/step-complete gates -- like the
+    // discount arm, re-fire prevention for an unchanged cart comes from the syncKey below, not
+    // from quoteNeedsRefresh. Gated purely on the store's catalog-resolved payment_mode, so a
+    // full_payment store's request pattern is completely unchanged by this addition.
+    const shouldAutoSyncDownpaymentQuote = (
+      isStorePage
+      && !hasServiceCart
+      && selectedStore?.payment_mode === 'downpayment_required'
+      && Boolean(selectedStore)
+      && cart.length > 0
+      && checkoutPermitted
+      && accessCapabilities.quote !== false
+      && !storefrontClosedByHours
+      && !hasStockViolation
+    );
+
+    if (!shouldAutoSyncFnbQuote && !shouldAutoSyncDiscountQuote && !shouldAutoSyncDownpaymentQuote) {
       fnbAutoQuoteSyncKeyRef.current = '';
       return undefined;
     }
