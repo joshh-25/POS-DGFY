@@ -75,6 +75,9 @@ export function useFnbCheckoutSubmission({
       access_mode: 'This storefront is not accepting online checkout right now.',
       missing_quote: 'Please click Quote first before checkout.',
       stale_quote: 'Your cart changed. Please refresh Quote before checkout.',
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
+      // fully discounts a downpayment-required order to zero -- see that file's comment.
+      downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody

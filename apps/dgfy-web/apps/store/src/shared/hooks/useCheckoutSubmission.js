@@ -208,6 +208,13 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'downpayment_zero_total') {
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code -- see that file's comment.
+      const message = 'This order total is fully covered by your discount -- contact the store to place it.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
