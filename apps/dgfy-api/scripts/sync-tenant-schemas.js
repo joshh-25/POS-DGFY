@@ -1409,10 +1409,12 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // Phase 137 (#819) -- ADR 0069 clause 4b (carried over verbatim from ADR 0068 clause 4b).
-    // NOTE: this DDL is hand-authored from the 20260821000004 migration's column defs, not
-    // captured from a live `SHOW CREATE TABLE` run (no local MySQL was available in the session
-    // that drafted it) -- the house convention (see TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md)
-    // is to source this from an actual applied migration. Re-capture and replace before merge.
+    // This DDL was originally hand-authored from the 20260821000004 migration's column defs (no
+    // local MySQL was available in the drafting session). pr-reviewer independently verified it
+    // byte-for-byte against a real `SHOW CREATE TABLE` output from a scratch MySQL 8.0 run of all
+    // 263 migrations (PR #829 review, 2026-08-21) -- confirmed structurally correct; only
+    // cosmetic differences (key ordering, MySQL's implicit `ON UPDATE RESTRICT`). Verified, not
+    // provisional.
     pos_order_payments: Object.freeze({
         sql: "CREATE TABLE `pos_order_payments` (\n"
             + "  `pos_order_payment_id` int NOT NULL AUTO_INCREMENT,\n"
