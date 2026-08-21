@@ -333,6 +333,9 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
       paymentMethod: 'gcash',
       paymentProvider: 'paymongo',
       providerEventId: 'evt_dp_webhook_1',
+      // RF-1 (PR #840 review): the ledger row must trace back to the specific PayMongo charge it
+      // represents, not just the webhook delivery ID (provider_event_id, a different value).
+      paymentReference: 'pay_dp_webhook',
       idempotencyKey: 'CPS-DPWEBHOOK1',
       recordedBy: null
     }));

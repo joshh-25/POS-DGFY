@@ -330,10 +330,10 @@ describe('buildStoreCheckoutUseCase — Phase 141 (#822) fail-closed guard, offl
 describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures the downpayment, not the total (ADR 0069 clause 1b)', () => {
     // Phase 140's guard here is fully replaced by Phase 141 -- this path no longer rejects a
     // downpayment_required tenant, it captures the downpayment amount instead of the order total.
-    // See tests/storeDownpaymentCapture.unit.test.js for the fuller capture-computation test suite
-    // (fee guard on the captured amount, DOWNPAYMENT_POLICY_UNRESOLVED, session column persistence);
-    // this test is kept here, in place of the old rejection test, as the direct successor covering
-    // the exact same call shape the old test used.
+    // The fuller capture-computation suite (fee guard on the captured amount,
+    // DOWNPAYMENT_POLICY_UNRESOLVED, full_payment unaffected) is the next two tests below, in this
+    // same file; this test is kept here, in place of the old rejection test, as the direct
+    // successor covering the exact same call shape the old test used.
     test('authorizes only the downpayment amount online, not the order total', async () => {
         const commercePaymentRepository = {
             findSessionByIdempotency: jest.fn().mockResolvedValue(null),
@@ -503,6 +503,105 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(result.success).toBe(false);
         expect(result.error?.statusCode).toBe(422);
         expect(result.error?.details?.reason_code).toBe('DOWNPAYMENT_POLICY_UNRESOLVED');
+        expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
+        expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
+    });
+
+    test('a zero-total order (nothing to capture) 422s on the pre-existing totalAmountCentavos guard, not the misleading DOWNPAYMENT_POLICY_UNRESOLVED (RF-2, PR #840)', async () => {
+        // resolveDownpaymentForTotal (downpaymentPolicy.js) falls back to the same full_payment
+        // null-shape for TWO distinct cases: a malformed settings row (tested above) and a
+        // legitimate zero-total order -- nothing to capture, e.g. a 100%-off voucher on a
+        // downpayment_required tenant. Only the first is actually "the downpayment configuration
+        // could not be resolved"; this test pins that the second one does NOT get misclassified as
+        // DOWNPAYMENT_POLICY_UNRESOLVED and instead falls through to the existing, more accurate
+        // guard a few lines below. Settings here are well-formed, unlike the test above.
+        const commercePaymentRepository = {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn(),
+            updateSessionById: jest.fn()
+        };
+        const paymongoService = {
+            createHostedCheckoutSession: jest.fn(),
+            createDirectGcashPaymentIntent: jest.fn(),
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn()
+        };
+        const storeRepository = {
+            findDefaultActiveLocation: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_open: true,
+                allow_out_of_stock_sales: true
+            }),
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                ...registeredTransactionSettings(),
+                { setting_key: 'store_delivery_fee', setting_value: '0' },
+                { setting_key: 'pos_open_status', setting_value: 'true' },
+                // A 100%-off promo, not a $0 item -- an explicit zero default_sale_price is itself
+                // rejected earlier as MISSING_PRICE (itemFinancialPolicy.js's toPositiveMoney
+                // requires > 0), so a fully-discounted priced item is the only realistic way an
+                // order reaches this guard with a genuinely zero total.
+                {
+                    setting_key: 'storefront_promos',
+                    setting_value: JSON.stringify([{
+                        id: 'promo-1',
+                        active: true,
+                        title: 'Free',
+                        promo_code: 'FREE100',
+                        discount_percent: 100
+                    }])
+                }
+            ]),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Test Item',
+                default_sale_price: 500,
+                sale_price: 500,
+                is_available: true,
+                availability_status: 'in_stock'
+            }])
+        };
+
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository,
+            commercePaymentRepository,
+            paymongoService,
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-zero-total',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                promo_code: 'FREE100',
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-zero-total'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error?.statusCode).toBe(422);
+        expect(result.error?.details?.reason_code).not.toBe('DOWNPAYMENT_POLICY_UNRESOLVED');
         expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
         expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
     });
