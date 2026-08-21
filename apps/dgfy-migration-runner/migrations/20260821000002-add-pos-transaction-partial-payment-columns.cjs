@@ -32,11 +32,20 @@ module.exports = {
       });
     }
 
+    // 'paid' -> fully collected, no balance owing. 'refunded'/'partial_refunded'/'refund_pending'
+    // -> also resolved, not an outstanding customer obligation (the business owes money back, if
+    // anything -- the customer doesn't owe it); balance_due = 0 for these too, so a future "orders
+    // still owing money" query doesn't wrongly surface an already-refunded order. amount_paid is
+    // left at 0 for those three statuses rather than reconstructed (the actual refunded amount
+    // isn't tracked on this table) -- pr-reviewer RF-1 (PR #829).
     await queryInterface.sequelize.query(`
       UPDATE pos_transactions
       SET
         amount_paid = CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END,
-        balance_due = CASE WHEN payment_status = 'paid' THEN 0 ELSE total_amount END
+        balance_due = CASE
+          WHEN payment_status IN ('paid', 'refunded', 'partial_refunded', 'refund_pending') THEN 0
+          ELSE total_amount
+        END
       WHERE amount_paid IS NULL OR balance_due IS NULL
     `);
 
