@@ -72,20 +72,24 @@ export const buildProcessVerifiedPaidCommerceSessionUseCase = ({ commercePayment
     });
     if (!plainSession) return { outcome: 'missing' };
 
-    // #476: `status === 'paid'` alone (not yet 'finalized', pos_transaction_id/tracking_pin
-    // still null) is a reachable, real state -- it's exactly what the first delivery's claim
-    // write below produces, and finalization happens outside this transaction so it can still
-    // be in flight. The original check here only treated 'finalized'/pos_transaction_id/
-    // tracking_pin/'paid_manual_resolution_required' as already-claimed, leaving a window where
-    // a second concurrent delivery landing between the claim and finalization completing would
-    // still fall through and re-run revenue posting + finalization. Treat every status this
-    // code path itself can produce as already-claimed; states set by *other* event types
-    // (expired, failed, cancelled) are deliberately left alone -- a late `payment.paid` for a
-    // locally-expired session is a different, pre-existing question outside #476's scope.
+    // #476 review (RF-1): status === 'paid' alone is deliberately NOT treated as a terminal
+    // idempotent replay here. It's the state a webhook delivery is in immediately after this
+    // function's own claim write, below, and before postPaidTenantRevenueTransactionUseCase /
+    // finalizePaidCommerceSession run (or after they were attempted and failed/crashed without
+    // reaching 'finalized' or 'paid_manual_resolution_required'). Treating bare 'paid' as
+    // already-handled -- an earlier version of this fix did exactly that -- silently swallows
+    // every PayMongo retry that lands in that window: the webhook returns a successful
+    // idempotent-replay response without the missing revenue transaction or order ever being
+    // created, which is the exact "money with no order" failure #476 exists to close, just
+    // moved one step later. Instead, a session merely 'paid' is re-entered and the downstream
+    // calls are re-attempted below; both are independently idempotent already --
+    // postPaidTenantRevenueTransactionUseCase takes its own locked findRevenueTransactionBySession
+    // read before insert (tenantRevenueUseCases.js), and finalizePaidCommerceSession short-circuits
+    // on pos_transaction_id/tracking_pin/status==='finalized' and otherwise relies on
+    // storeCheckoutUseCase's own idempotency_key dedup -- so resuming is safe, whereas silently
+    // replying 200 to a delivery whose work never actually completed is not.
     if (
-      plainSession.status === 'paid'
-      || plainSession.status === 'finalized'
-      || plainSession.status === 'split_failed_manual_settlement_required'
+      plainSession.status === 'finalized'
       || plainSession.status === 'paid_manual_resolution_required'
       || plainSession.pos_transaction_id
       || plainSession.tracking_pin
