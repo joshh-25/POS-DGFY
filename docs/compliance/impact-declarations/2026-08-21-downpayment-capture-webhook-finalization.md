@@ -8,7 +8,7 @@ classification: major
 surfaces: payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.21
-verification_evidence: apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js (10 passed),apps/dgfy-api/tests/downpaymentWebhookFinalization.unit.test.js (5 passed),apps/dgfy-api/tests/storePaymentTruth.unit.test.js (4 passed),apps/dgfy-api/tests/processVerifiedPaidCommerceSession.usecase.test.js (7 passed, unmodified),apps/dgfy-api/tests/finalizePaidCommerceSession.usecase.test.js (18 passed, unmodified),npm run check:architecture (ArchitectureGuardrails OK / ControllerBoundary OK),full apps/dgfy-api store test suite (387 passed, 2 pre-existing DB-dependent integration failures unrelated to this change -- same two Phase 140 already identified),node --check on every new/changed file
+verification_evidence: apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js (11 passed),apps/dgfy-api/tests/downpaymentWebhookFinalization.unit.test.js (5 passed),apps/dgfy-api/tests/storePaymentTruth.unit.test.js (4 passed),apps/dgfy-api/tests/processVerifiedPaidCommerceSession.usecase.test.js (7 passed, unmodified),apps/dgfy-api/tests/finalizePaidCommerceSession.usecase.test.js (18 passed, unmodified),npm run check:architecture (ArchitectureGuardrails OK / ControllerBoundary OK),full apps/dgfy-api store test suite (388 passed, 2 pre-existing DB-dependent integration failures unrelated to this change -- same two Phase 140 already identified),node --check on every new/changed file
 rollback_note: Revert this PR's diff. The landlord migration (20260821000006) is purely additive (four nullable/defaulted columns on commerce_payment_sessions, DEFAULT 'full' on capture_kind) with a matching down() -- both directions safe to run. No production tenant has payment_mode=downpayment_required set today (the config surface shipped Phase 138/#820, and nothing read it until Phase 140/#821 -- also unread by anything money-moving until this phase), so the two capture code paths this PR changes have zero live traffic to disrupt. Reverting the code changes restores the Phase 140 fail-closed guards; reverting the migration removes the four columns (down() is exercised in Testing Evidence below).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -108,7 +108,11 @@ phase," in #822's own words.
    rejected `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE`. Unit-tested.
 4. **A malformed downpayment settings row cannot silently disable the
    gate.** New `422 DOWNPAYMENT_POLICY_UNRESOLVED` guard -- see Affected
-   Surfaces #3. Unit-tested.
+   Surfaces #3. Gated on `totalAmount > 0` (post-review fix, RF-2) so a
+   legitimate zero-total order (e.g. a 100%-off voucher on a
+   downpayment_required tenant) isn't misclassified as a malformed
+   settings row -- it still 422s, on the pre-existing, more accurate
+   `totalAmountCentavos <= 0` guard instead. Unit-tested.
 5. **Idempotency (#476, fixed PR #784) is not regressed.** No change to
    `processVerifiedPaidCommerceSession.js`'s row-lock claim, its provider-
    event-replay guard, or its "bare `paid` is not terminal" re-entry logic.
@@ -124,16 +128,17 @@ phase," in #822's own words.
 
 ## Verification Evidence
 
-19 new/changed unit tests across three files (10 in
+20 new/changed unit tests across three files (11 in
 `storeCheckoutDownpaymentResolution.unit.test.js`, rewritten from Phase 140's
-8; 5 new in `downpaymentWebhookFinalization.unit.test.js`; 2 new in
+8, plus one added post-review for RF-2 below; 5 new in
+`downpaymentWebhookFinalization.unit.test.js`; 2 new in
 `storePaymentTruth.unit.test.js`), all passing, no database required (fakes
 throughout, matching the established pattern). The pre-existing
 `processVerifiedPaidCommerceSession.usecase.test.js` (7 tests) and
 `finalizePaidCommerceSession.usecase.test.js` (18 tests) suites pass
 unmodified -- confirming no regression to #476's idempotency fix or the
 existing finalization failure-code taxonomy. Full `apps/dgfy-api` store test
-suite: 387 passed, 2 pre-existing DB-dependent integration failures
+suite: 388 passed, 2 pre-existing DB-dependent integration failures
 (`storefrontPrimaryLocation.discovery.integration.test.js`,
 `storeRouteTenantContext.integration.test.js`) -- the same two Phase 140
 already identified as unrelated to this feature, confirmed to fail

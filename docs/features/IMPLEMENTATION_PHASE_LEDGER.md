@@ -6859,11 +6859,13 @@ after this update: **135**.
 
 ### Acceptance and Validation Evidence
 
-- 19 new/changed unit tests across three files, all passing, no database required for the unit
-  layer (fakes throughout): `storeCheckoutDownpaymentResolution.unit.test.js` (10, rewritten from
+- 20 new/changed unit tests across three files, all passing, no database required for the unit
+  layer (fakes throughout): `storeCheckoutDownpaymentResolution.unit.test.js` (11, rewritten from
   Phase 140's 8 — 1 kept, recontextualized as the surviving offline-path guard; the
-  payment-session describe block fully rewritten into 3 tests covering the real capture, the fee
-  guard on the captured amount, and `DOWNPAYMENT_POLICY_UNRESOLVED`); `downpaymentWebhookFinalization.unit.test.js`
+  payment-session describe block fully rewritten into 4 tests covering the real capture, the fee
+  guard on the captured amount, `DOWNPAYMENT_POLICY_UNRESOLVED`, and — added post-review, RF-2 —
+  a legitimate zero-total order not being misclassified as a malformed settings row);
+  `downpaymentWebhookFinalization.unit.test.js`
   (5, new — the amount-equality check passing for a downpayment session despite `order_total_centavos`
   differing, the same check still catching a genuine mismatch, the order landing `partially_paid`
   with correct `amount_paid`/`balance_due`, the ledger row written inside the order-creation
@@ -6871,9 +6873,20 @@ after this update: **135**.
   — `resolveStorefrontPaymentSnapshot`'s `capturedPayment` branch in isolation). Pre-existing
   `processVerifiedPaidCommerceSession.usecase.test.js` (7) and `finalizePaidCommerceSession.usecase.test.js`
   (18) suites pass unmodified, confirming no regression to #476's idempotency fix.
-- Full `apps/dgfy-api` store-prefixed test suite: 387 passed, the same 2 pre-existing
+- Full `apps/dgfy-api` store-prefixed test suite: 388 passed, the same 2 pre-existing
   DB-dependent integration failures Phase 140 already identified
   (`storefrontPrimaryLocation.discovery.integration.test.js`, `storeRouteTenantContext.integration.test.js`).
+- **Reviewer feedback (PR #840, `pr-reviewer`, verdict COMMENT, no blockers) addressed**: RF-1 —
+  `createOrderPaymentEntry` now records `payment_reference` (the actual PayMongo charge ID), not
+  just `provider_event_id` (the webhook delivery ID); needed by Phase 143/#824's refund-vs-forfeiture
+  logic to trace a ledger row back to its charge. RF-2 — the `DOWNPAYMENT_POLICY_UNRESOLVED` guard
+  now excludes a legitimate zero-total order (gated on `resolved.totalAmount > 0`), which previously
+  misclassified that case instead of falling through to the pre-existing, more accurate
+  `totalAmountCentavos <= 0` guard. RF-3/RF-4 (nits) — deleted a stale test-file cross-reference to a
+  file that was never created; reconciled the test-count discrepancy across the PR body, the
+  compliance declaration, and this entry (388, not 452/387 — the PR body's 452 was simply wrong;
+  387 was correct pre-fix, both are now 388 after RF-2's added test). Both should-fix items and both
+  nits are fixed, not deferred.
 - `npm run check:architecture` — `ArchitectureGuardrails OK` (505 files), `ControllerBoundary OK`.
 - `npm run check:compliance` — confirmed to **fail** first (missing declaration), then pass once
   `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` was
