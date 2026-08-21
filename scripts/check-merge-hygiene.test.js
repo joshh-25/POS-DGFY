@@ -100,6 +100,27 @@ test('passes for a simple low-risk additive change without requiring a full mani
   }
 });
 
+test('reads batched git blobs when a changed path contains spaces', () => {
+  const projectRoot = makeTempProject();
+  try {
+    initBase(projectRoot);
+    git(projectRoot, ['switch', '-c', 'feature']);
+    writeFile(projectRoot, 'Standalone POS/README.md', 'POS notes\n');
+    commitAll(projectRoot, 'add path with spaces');
+
+    const report = checkMergeHygiene({
+      projectRoot,
+      base: 'main',
+      head: 'feature',
+    }, silentLogger);
+
+    assert.equal(report.status, 'pass');
+    assert.deepEqual(report.added_files.map((entry) => entry.path), ['Standalone POS/README.md']);
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('passes when no target drift exists', () => {
   const projectRoot = makeTempProject();
   try {
