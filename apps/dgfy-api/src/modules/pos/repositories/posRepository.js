@@ -19,7 +19,10 @@ import {
     isBarcodeScopeAllowedForSurface,
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
-import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
+import {
+    loadItemLocationStockMap,
+    applyItemLocationStockMap
+} from '../../shared/repositories/itemLocationStockOverlay.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
@@ -251,25 +254,6 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
     return code === 'ER_NO_SUCH_TABLE' || message.includes('storefront_catalog_overrides');
-};
-
-const isMissingItemLocationStockSchemaError = (error) => {
-    if (!error) return false;
-    const code = error.original?.code || error.parent?.code || error.code;
-    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    const normalizedMessage = message.toLowerCase();
-    if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
-        return true;
-    }
-    if (code === 'ER_BAD_FIELD_ERROR' && (
-        normalizedMessage.includes('item_location_stocks')
-        || normalizedMessage.includes('quantity_on_hand')
-        || normalizedMessage.includes('location_id')
-        || normalizedMessage.includes('item_id')
-    )) {
-        return true;
-    }
-    return false;
 };
 
 const withLegacyVatFallback = (rows) => rows.map((row) => {
@@ -661,69 +645,6 @@ const applyCatalogOverrides = async (items, options = {}) => {
         })
         .filter((item) => item.pos_visible !== false);
 };
-
-const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
-    const normalizedLocationId = Number.parseInt(locationId, 10);
-    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: false
-        };
-    }
-    if (!Array.isArray(itemIds) || itemIds.length === 0) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: true
-        };
-    }
-
-    const ItemLocationStock = dbStore.get('ItemLocationStock');
-    if (!ItemLocationStock) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: false
-        };
-    }
-    try {
-        const rows = await ItemLocationStock.findAll({
-            where: {
-                location_id: normalizedLocationId,
-                item_id: { [Op.in]: itemIds }
-            },
-            attributes: ['item_id', 'quantity_on_hand'],
-            transaction: options.transaction
-        });
-
-        return {
-            stockMap: new Map(rows.map((row) => {
-                const payload = toPlain(row);
-                return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
-            })),
-            locationScopeResolved: true
-        };
-    } catch (error) {
-        if (isMissingItemLocationStockSchemaError(error)) {
-            return {
-                stockMap: new Map(),
-                locationScopeResolved: false
-            };
-        }
-        throw error;
-    }
-};
-
-const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
-    (Array.isArray(items) ? items : []).map((item) => {
-        const payload = toPlain(item);
-        const isServiceItem = isStockExemptServiceItem(payload);
-        const mappedStock = locationStockMap.get(Number(payload.item_id));
-        const stockValue = Number.isFinite(mappedStock) ? Math.max(0, mappedStock) : 0;
-        return {
-            ...payload,
-            current_stock: isServiceItem ? 0 : stockValue
-        };
-    })
-);
 
 const computeTransactionTotalCost = (lines = []) => round4(
     (Array.isArray(lines) ? lines : []).reduce((sum, line) => (
@@ -2481,13 +2402,13 @@ export const posRepository = {
 
         try {
             const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), options);
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 normalizedLocationId,
                 options
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
@@ -2498,13 +2419,13 @@ export const posRepository = {
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })), options);
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 normalizedLocationId,
                 options
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         }
     },
@@ -2909,7 +2830,7 @@ export const posRepository = {
         const ingredientIds = [...new Set(payload
             .map((row) => Number.parseInt(row?.ingredient_id, 10))
             .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
-        const locationStock = await loadLocationStockMap(ingredientIds, normalizedLocationId, options);
+        const locationStock = await loadItemLocationStockMap(ingredientIds, normalizedLocationId, options);
         if (!(
             Number.isInteger(normalizedLocationId)
             && normalizedLocationId > 0
@@ -4155,9 +4076,9 @@ export const posRepository = {
 
         const overrideMap = await loadCatalogOverridesMap([itemPayload.item_id]);
         const override = overrideMap.get(itemPayload.item_id);
-        const stockMap = await loadLocationStockMap([itemPayload.item_id], location_id);
+        const stockMap = await loadItemLocationStockMap([itemPayload.item_id], location_id);
         const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
-            ? applyLocationStockMap([itemPayload], stockMap.stockMap)
+            ? applyItemLocationStockMap([itemPayload], stockMap.stockMap)
             : [itemPayload];
         const posVisible = resolveCatalogVisibility({ item: itemWithLocationStock, override, surface: 'pos' });
         const readiness = buildPosReadiness({ item: itemWithLocationStock, override });
@@ -4228,13 +4149,13 @@ export const posRepository = {
 
         try {
             const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true });
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
@@ -4245,13 +4166,13 @@ export const posRepository = {
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })), { includePrimaryBarcode: true });
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         }
     },

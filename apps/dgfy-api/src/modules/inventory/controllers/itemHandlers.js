@@ -115,7 +115,7 @@ const runInventoryUseCase = async (runner, fallbackMessage) => {
 export const getItems = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
-      () => getItemsUseCase({ query: req.query }),
+      () => getItemsUseCase({ query: req.query, user: req.user }),
       'Failed to retrieve items'
     );
     await trackProductUsageFromResult({
@@ -127,7 +127,8 @@ export const getItems = async (req, res, next) => {
       result,
       successMetadataResolver: (data) => ({
         result_count: Array.isArray(data?.items) ? data.items.length : 0,
-        has_search: Boolean(req?.query?.search)
+        has_search: Boolean(req?.query?.search),
+        location_id: req?.query?.location_id || null
       })
     });
 
