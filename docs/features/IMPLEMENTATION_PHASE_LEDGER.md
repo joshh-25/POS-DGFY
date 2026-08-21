@@ -6667,3 +6667,102 @@ after this update: **135**.
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md` (precondition #2
   amended)
 - Issues #833 (this phase), #834 (Hospitality-framing audit, Iteration 3, out of this ADR's scope)
+
+## Phase 140 - Server-Authoritative Downpayment Resolution at Quote/Checkout
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #821, Phase 140 of the
+  epic's phase sequence (retitled from a pre-Phase-139-renumbering "139" per Phase 139's own
+  correction), continuing this ledger's numbering from Phase 139.
+- Release: single `develop`-targeted PR
+  (`feat/821-downpayment-quote-checkout-resolution`).
+
+### Objective and Scope
+
+- First reader of `tenant_downpayment_settings` (Phase 138, #820) — nothing computed or exposed a
+  downpayment split before this phase. Compute the split server-side, after the promo/voucher fold,
+  and never trust a client-sent figure.
+- New pure module `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js`
+  (`resolveDownpaymentForTotal`): percentage/fixed math, `min_downpayment_centavos` floor, clamp to
+  the order total (never negative balance, never more than the order is worth), fails closed to
+  `full_payment` on a `null`/malformed settings row. Same bps-rounding convention as
+  `affiliateCommissionAccrual.js`/`affiliatePricingPolicy.js`
+  (`Math.round(baseCentavos * bps / 10000)`).
+- `resolveCheckoutContext` (`storeUseCases.js`, the shared resolver behind `/cart/quote`,
+  `/store/checkout`, and the QRPh payment-session path) gains an **injected, non-defaulted**
+  `downpaymentSettingsRepository` dependency — deliberately not a hard module-level import like the
+  existing `dgfyAffiliateRepository` precedent in the same file, because every order needs this
+  lookup (unlike the affiliate lookup, gated behind an optional `attribution_enrollment_id`); a hard
+  import would have made it an unconditional, unmockable live landlord-DB call on every existing
+  store unit test — confirmed by an initial hard-import attempt that broke `buildStoreCheckoutUseCase`
+  callers (which pass an explicit `tenantId`, unlike quote/payment-session) before being corrected to
+  the `tenantRevenueRepository`-style injected pattern. `undefined` (every pre-Phase-140 caller)
+  resolves via `?.` guards to "no settings, full_payment" — zero test edits needed for ~30 existing
+  call sites across 6 test files.
+- Exposes `payment_mode`/`downpayment_amount`/`balance_due_amount`/`downpayment_refundable` on both
+  `/cart/quote`'s response and `/store/checkout`'s `totals`. Deliberately not added to
+  `storeQuoteSchema`/`storeCheckoutSchema` (request-body validators with `stripUnknown: true`) — a
+  correction from #821's original scope text, which wrongly named those validators as the target;
+  response fields belong in the use-case response objects instead.
+- Two new fail-closed `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` guards, temporary by design (removed by
+  Phase 141/#822 when capture is wired): `buildStoreCheckoutUseCase` (ADR 0070 clause 7 `[binding]`
+  — no `amount_paid`/`balance_due` schema exists yet, an order claiming "downpayment required" that
+  collected nothing is the exact bogus-order case this feature exists to prevent) and
+  `buildStoreCheckoutPaymentSessionUseCase` (ADR 0069 clause 1b `[binding]` — that path authorizes
+  `resolved.totalAmount` in full; letting a `downpayment_required` order through would authorize the
+  whole order total online, never the downpayment amount only).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the config surface this phase reads) and Phase 139 (#833, ADR 0070 —
+  authorization spans every workflow mode, so this phase's read path performs no vertical check at
+  all).
+- Gates Phase 141 (#822, capture + webhook finalization) — that phase removes both fail-closed
+  guards added here once real PayMongo capture is wired to the downpayment amount specifically.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table (no migration, no `main`
+  base, no deploy dispatch) — proceeded through commit/push/PR per the standing preference recorded
+  in the Worker skip-checkpoint-confirmation memory.
+- Board: #821 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- 22 new unit tests, all passing, no database required: `downpaymentPolicy.unit.test.js` (14 —
+  percentage/fixed math, rounding, floor, clamp-to-total, zero/negative total, malformed-row
+  fail-closed, refundable flag) and `storeCheckoutDownpaymentResolution.unit.test.js` (8 — quote
+  exposure for both `downpayment_required` and `full_payment`, no-injected-repository regression, no
+  ambient-tenant regression, both `422` guards firing with no order/session created, a full_payment
+  checkout still succeeding with the null downpayment shape).
+- Full `apps/dgfy-api` store-prefixed test suite re-run after every code change: 419 passed, 2
+  pre-existing failures confirmed via `git stash` to fail identically on unmodified `develop`
+  (`storefrontPrimaryLocation.discovery.integration.test.js`,
+  `storeRouteTenantContext.integration.test.js`, both requiring a live database, unrelated to this
+  change). Zero edits to any pre-existing test file.
+- `npm run check:architecture` — `ArchitectureGuardrails OK` (505 files), `ControllerBoundary OK`.
+- `npm run check:compliance` — confirmed to **fail** first (missing declaration, proving the
+  guardrail actually fires on this diff), then pass once
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md` was
+  added (`major`/`payments`).
+- `node --check` on every new/changed `.js` file — clean.
+- Named gaps, not glossed over: no live DB or deployed environment this session, so neither the
+  landlord read nor the `422` guards are exercised end-to-end (unit coverage only); `POST
+  /api/v1/compliance/preflight` not executed against a live environment (same disclosure shape as
+  Phase 138's declaration).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js` (new)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (`resolveCheckoutContext` +
+  the three builders + two fail-closed guards)
+- `apps/dgfy-api/src/modules/store/index.js` (wires the real `downpaymentSettingsRepository`)
+- `apps/dgfy-api/tests/downpaymentPolicy.unit.test.js` (new),
+  `apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js` (new)
+- `docs/api/specification.md` (`/store/cart/quote`, `/store/checkout`,
+  `/store/checkout/payment-sessions`)
+- `docs/database/schema.md` (`tenant_downpayment_settings` reader note corrected)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md` (new)
+- Issue #821 (this phase)
