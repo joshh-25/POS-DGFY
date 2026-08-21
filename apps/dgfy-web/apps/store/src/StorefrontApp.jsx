@@ -1481,7 +1481,12 @@ export default function StorefrontApp() {
   }, [currentPathSubpage, isFnbOrderSubpage, isServicesTrackingPage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, selectedTrackingPin, setSelectedTrackingPin, setTrackingPinInput, trackingPinInput]);
 
   useEffect(() => {
-    const supportsProductPaymentReturn = isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage);
+    // Phase 142 (#823): Retail joins Simple here -- a downpayment-required Retail order can only
+    // be placed by paying online, so it needs the same PayMongo-return rehydration path Simple
+    // already has. Retail's own step state is local to RetailOrderPage.jsx (not hoisted here like
+    // simpleOrderStep), so it self-resumes to its payment step by watching qrphPaymentSession
+    // (see RetailOrderPage.jsx) rather than needing a setRetailOrderStep call here.
+    const supportsProductPaymentReturn = isFnbOrderSubpage || ((isSimpleMode || isRetailMode) && isResolvedOrderSubpage);
     if (!supportsProductPaymentReturn || typeof window === 'undefined' || qrphPaymentSession) return;
     const params = new URLSearchParams(window.location.search);
     const paymentSessionId = String(params.get('payment_session') || '').trim().toUpperCase();
@@ -1500,7 +1505,7 @@ export default function StorefrontApp() {
       payment_method: paymentMethod,
       status: returnedStatus === 'cancelled' ? 'cancelled' : 'awaiting_payment'
     });
-  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
+  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isRetailMode, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -2715,6 +2720,7 @@ export default function StorefrontApp() {
     hasServiceCart,
     isDgfyCustomerSignedIn,
     isFnbMode,
+    isRetailMode,
     isServicesMode,
     isSimpleMode,
     missingCustomerInformation,
@@ -3061,7 +3067,13 @@ export default function StorefrontApp() {
     withAssetOrigin,
     handleCheckout,
     checkoutLoading,
-    checkoutError
+    checkoutError,
+    fnbPaymentType,
+    handlePaymentTypeChange,
+    handleConfirmQrphTestPayment,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    resetQrphPaymentSession
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;

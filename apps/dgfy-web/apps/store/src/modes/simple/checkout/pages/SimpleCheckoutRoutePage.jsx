@@ -283,6 +283,12 @@ export function SimpleCheckoutRoutePage({
             )}
             onlinePaymentPanel={isOnlinePayment ? (
               <StorefrontOnlinePaymentPanel
+                amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
+                amountDueLabel="Downpayment due"
+                balanceNote={downpaymentDisplay.active
+                  ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                  : null}
+                cashFallbackAllowed={!downpaymentDisplay.active}
                 onConfirmTestPayment={import.meta.env.DEV
                   && fnbPaymentType === 'qrph'
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
@@ -290,11 +296,12 @@ export function SimpleCheckoutRoutePage({
                   : null}
                 onUseCash={() => {
                   resetQrphPaymentSession?.();
-                  onPaymentTypeChange('cash');
+                  if (!downpaymentDisplay.active) onPaymentTypeChange('cash');
                 }}
                 paymentSession={qrphPaymentSession}
                 paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
                 paymentType={fnbPaymentType}
+                qrAmountNote={downpaymentDisplay.active ? 'This QR contains your downpayment amount.' : null}
                 refreshing={qrphPaymentStatusLoading}
               />
             ) : null}

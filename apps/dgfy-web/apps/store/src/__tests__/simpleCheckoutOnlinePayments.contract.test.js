@@ -213,7 +213,9 @@ describe('Simple Storefront online payment contract', () => {
     expect(route).toContain('StorefrontOnlinePaymentPanel');
     expect(route).toContain("fnbPaymentType === 'qrph'");
     expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
-    expect(submission).toContain('isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)');
+    // Phase 142 (#823): Retail joined this branch -- see the new Retail contract test file for
+    // its own dedicated coverage.
+    expect(submission).toContain('(isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
     expect(submission).toContain('startStorefrontDirectPayment');
     expect(submission).toContain('isStorefrontDirectPaymentSession');

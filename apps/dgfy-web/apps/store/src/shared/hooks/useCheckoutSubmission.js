@@ -68,6 +68,7 @@ export function useCheckoutSubmission({
   hasServiceCart,
   isDgfyCustomerSignedIn,
   isFnbMode,
+  isRetailMode,
   isServicesMode,
   isSimpleMode,
   missingCustomerInformation,
@@ -346,7 +347,10 @@ export function useCheckoutSubmission({
           }
         };
       }
-      if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
+      // Phase 142 (#823): Retail now shares this online-session branch -- previously Simple-only,
+      // Retail's payment step was a cash-only placeholder with no path to create a payment
+      // session at all.
+      if (!wantsServicesSubmission && (isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
           const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
           setCheckoutError(message);

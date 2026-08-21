@@ -19,10 +19,24 @@ const formatStatus = (value) => String(value || 'awaiting_payment')
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
 export function StorefrontOnlinePaymentPanel({
+  // Phase 142 (#823): pre-formatted strings (built by the caller via its own `money()`), not raw
+  // numbers -- this shared panel takes no money-formatting dependency of its own. amountDue null
+  // (the default, and what a full_payment checkout always passes) renders nothing new here; the
+  // synthetic session built by StorefrontApp.jsx's return-URL handler carries no session amounts
+  // until the first poll lands, so this must render fine with amountDue still null on that pass.
+  amountDue = null,
+  amountDueLabel = 'Downpayment due',
+  balanceNote = null,
+  // False only for a downpayment checkout -- 'cash' isn't a valid selection there at all (the
+  // backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on it), so offering "Use cash instead" would
+  // send the customer into a dead end. onUseCash is still called either way; the caller decides
+  // what it actually does (switch to cash vs. just clear the session for another rail).
+  cashFallbackAllowed = true,
   onConfirmTestPayment,
   onUseCash,
   paymentEnvironment = null,
   paymentSession,
+  qrAmountNote = null,
   refreshing = false,
   paymentType = paymentSession?.payment_method || 'qrph'
 }) {
@@ -62,8 +76,17 @@ export function StorefrontOnlinePaymentPanel({
           ? `Continue in the ${paymentLabel} app or browser authorization screen. Payment confirmation updates automatically when you return.`
           : hosted
             ? `Continue to PayMongo to complete your ${paymentLabel} payment. Payment confirmation updates automatically.`
-          : `This QR contains the exact order total. Complete it through ${isTestEnvironment ? 'the PayMongo test flow' : 'your banking or wallet app'}; payment confirmation updates automatically.`}
+          : `${qrAmountNote || 'This QR contains the exact order total.'} Complete it through ${isTestEnvironment ? 'the PayMongo test flow' : 'your banking or wallet app'}; payment confirmation updates automatically.`}
       </p>
+      {amountDue ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+          <span>{amountDueLabel}</span>
+          <strong>{amountDue}</strong>
+        </div>
+      ) : null}
+      {balanceNote ? (
+        <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>{balanceNote}</p>
+      ) : null}
       {paymentSession.qr_code_image_url ? (
         <img
           src={paymentSession.qr_code_image_url}
@@ -158,7 +181,7 @@ export function StorefrontOnlinePaymentPanel({
             {hosted ? `Open PayMongo ${paymentLabel} payment` : `Open PayMongo${isTestEnvironment ? ' test' : ''} payment`}
           </a>
         ) : null}
-        {!terminal || failed ? (
+        {(!terminal || failed) && typeof onUseCash === 'function' ? (
           <button
             type="button"
             onClick={onUseCash}
@@ -173,7 +196,7 @@ export function StorefrontOnlinePaymentPanel({
               cursor: 'pointer'
             }}
           >
-            Use cash instead
+            {cashFallbackAllowed ? 'Use cash instead' : 'Try a different payment method'}
           </button>
         ) : null}
       </div>
