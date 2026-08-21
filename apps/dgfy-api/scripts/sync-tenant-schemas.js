@@ -164,6 +164,16 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         payment_timing: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery') NOT NULL DEFAULT 'upfront' AFTER `payment_type`"
         }),
+        // Phase 137 (#819) -- ADR 0069 clause 4a. Flat DEFAULT, no CASE backfill, matching the
+        // payment_timing repair entry above -- a repaired tenant's historical rows land on the
+        // default rather than a computed backfill; this is existing registry convention, not a
+        // gap introduced here.
+        amount_paid: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `amount_paid` DECIMAL(14,4) NOT NULL DEFAULT 0 AFTER `total_amount`"
+        }),
+        balance_due: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `balance_due` DECIMAL(14,4) NOT NULL DEFAULT 0 AFTER `amount_paid`"
+        }),
         payment_collected_at: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_at` DATETIME NULL AFTER `payment_status`"
         }),
@@ -1397,6 +1407,41 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_transaction_adjustments_ibfk_9` FOREIGN KEY (`approved_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `pos_transaction_adjustments_ibfk_10` FOREIGN KEY (`cash_drawer_event_id`) REFERENCES `pos_cash_drawer_events` (`pos_cash_drawer_event_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 137 (#819) -- ADR 0069 clause 4b (carried over verbatim from ADR 0068 clause 4b).
+    // NOTE: this DDL is hand-authored from the 20260821000004 migration's column defs, not
+    // captured from a live `SHOW CREATE TABLE` run (no local MySQL was available in the session
+    // that drafted it) -- the house convention (see TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md)
+    // is to source this from an actual applied migration. Re-capture and replace before merge.
+    pos_order_payments: Object.freeze({
+        sql: "CREATE TABLE `pos_order_payments` (\n"
+            + "  `pos_order_payment_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `kind` enum('downpayment','balance','refund','forfeiture') NOT NULL,\n"
+            + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) NOT NULL,\n"
+            + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
+            + "  `payment_provider` varchar(40) DEFAULT NULL,\n"
+            + "  `provider_event_id` varchar(120) DEFAULT NULL,\n"
+            + "  `related_pos_order_payment_id` int DEFAULT NULL,\n"
+            + "  `recorded_by` int DEFAULT NULL,\n"
+            + "  `confirmed_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_order_payment_id`),\n"
+            + "  UNIQUE KEY `uq_pos_order_payments_transaction_idempotency` (`pos_transaction_id`,`idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_pos_order_payments_provider_event_id` (`provider_event_id`),\n"
+            + "  KEY `idx_pos_order_payments_transaction_status` (`pos_transaction_id`,`status`),\n"
+            + "  KEY `idx_pos_order_payments_transaction_kind` (`pos_transaction_id`,`kind`),\n"
+            + "  KEY `idx_pos_order_payments_created_at` (`created_at`),\n"
+            + "  KEY `related_pos_order_payment_id` (`related_pos_order_payment_id`),\n"
+            + "  KEY `recorded_by` (`recorded_by`),\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_2` FOREIGN KEY (`related_pos_order_payment_id`) REFERENCES `pos_order_payments` (`pos_order_payment_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     })
 });
 
@@ -1711,6 +1756,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL DEFAULT 'cash'"
         }),
+        // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).
+        // Backstop for tenants outside the migration's own fan-out (20260821000003).
+        payment_status: Object.freeze({
+            enumValues: Object.freeze(['unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_status` ENUM('unpaid','payment_pending','paid','partially_paid','failed','refund_pending','partial_refunded','refunded') NOT NULL DEFAULT 'paid'"
+        }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `order_method` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NOT NULL DEFAULT 'dine_in'"
@@ -1743,7 +1794,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-20.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-21.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

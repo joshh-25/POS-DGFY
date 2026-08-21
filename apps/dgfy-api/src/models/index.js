@@ -37,6 +37,7 @@ import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
+import PosOrderPayment from './PosOrderPayment.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -603,6 +604,12 @@ TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_locatio
 TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
 PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
 PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
+// Phase 137 (#819) -- ADR 0069 clause 4 downpayment/balance/refund/forfeiture ledger.
+PosTransaction.hasMany(PosOrderPayment, { foreignKey: 'pos_transaction_id', as: 'orderPayments' });
+PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
+PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
+User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -1027,6 +1034,7 @@ const db = {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
+  PosOrderPayment,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1234,6 +1242,7 @@ export {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
+  PosOrderPayment,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
