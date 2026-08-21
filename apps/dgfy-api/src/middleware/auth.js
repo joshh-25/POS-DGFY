@@ -11,6 +11,7 @@ import {
   getAdminAccounts
 } from '../config/adminAuthConfig.js';
 import { isAdminLikeRole } from '../config/userRoles.js';
+import logger from '../config/logger.js';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -429,6 +430,58 @@ const filterCapabilityDisabledPermissions = async (req, permissions = []) => {
   return permissions.filter((permission) => !isPosPermission(permission));
 };
 
+const persistModeRbacFallbackAudit = async (req, { primaryPermission, fallbackPermission }) => {
+  const userId = Number.parseInt(req.user?.user_id, 10) || null;
+  const tenantId = req.user?.tenant_id || req.tenant?.id || null;
+  const requestPath = String(req.originalUrl || req.url || '').split('?')[0] || null;
+
+  try {
+    logger.warn('[Auth] Mode RBAC generic fallback used', {
+      tenant_id: tenantId,
+      user_id: userId,
+      primary_permission: primaryPermission,
+      fallback_permission: fallbackPermission,
+      method: req.method || null,
+      path: requestPath
+    });
+
+    const AuditLog = dbStore.get('AuditLog');
+    if (!AuditLog?.create) {
+      throw new Error('AuditLog model is unavailable');
+    }
+
+    await AuditLog.create({
+      user_id: userId,
+      entity_type: 'authorization_fallback',
+      entity_id: userId,
+      action: 'VIEW',
+      event_type: 'mode_rbac_generic_fallback_used',
+      actor_username: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null,
+      location_id: Number.parseInt(req.user?.location_id || req.location?.id, 10) || null,
+      request_id: req.requestId || null,
+      ip_address: req.ip || req.socket?.remoteAddress || null,
+      user_agent: req.get?.('user-agent') || req.headers?.['user-agent'] || null,
+      changes: {
+        event: 'mode_rbac_generic_fallback_used',
+        tenant_id: tenantId,
+        primary_permission: primaryPermission,
+        fallback_permission: fallbackPermission,
+        method: req.method || null,
+        path: requestPath
+      }
+    });
+  } catch (error) {
+    logger.warn('[Auth] Failed to persist mode RBAC fallback audit', {
+      error: error.message,
+      tenant_id: tenantId,
+      user_id: userId,
+      primary_permission: primaryPermission,
+      fallback_permission: fallbackPermission,
+      path: requestPath
+    });
+  }
+};
+
 export const checkAnyPermission = (requiredPermissions) => {
   const permissions = Array.isArray(requiredPermissions)
     ? requiredPermissions.filter(Boolean)
@@ -449,7 +502,14 @@ export const checkAnyPermission = (requiredPermissions) => {
     try {
       const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
       const effectivePermissions = await filterCapabilityDisabledPermissions(req, permissions);
-      if (effectivePermissions.some((permission) => userPermissions.includes(permission))) {
+      const matchedPermissionIndex = effectivePermissions.findIndex((permission) => userPermissions.includes(permission));
+      if (matchedPermissionIndex >= 0) {
+        if (matchedPermissionIndex > 0) {
+          await persistModeRbacFallbackAudit(req, {
+            primaryPermission: effectivePermissions[0],
+            fallbackPermission: effectivePermissions[matchedPermissionIndex]
+          });
+        }
         return next();
       }
 
