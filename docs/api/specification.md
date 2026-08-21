@@ -3855,6 +3855,21 @@ Route mapping note:
   - `service_fee_amount = round4(subtotal_amount * 0.01)`
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
+**Downpayment Contract** (Phase 140, #821, ADR 0069/0070)
+- Response also includes, computed server-side from the tenant's `tenant_downpayment_settings` row
+  (Phase 138, #820) -- never accepted from the request body:
+  - `payment_mode` (`full_payment` or `downpayment_required`)
+  - `downpayment_amount`, `balance_due_amount`, `downpayment_refundable` -- all `null` when
+    `payment_mode` is `full_payment` (never `0` or the total, so a `null` cannot be mistaken for "no
+    downpayment configured")
+- Downpayment formula, applied to the already promo/voucher-discounted `total_amount`:
+  - `percentage` type: `downpayment_amount = round(total_amount_centavos * downpayment_rate_bps / 10000)`
+  - `fixed` type: `downpayment_amount = downpayment_fixed_centavos`
+  - Floored to `min_downpayment_centavos`, then clamped to `total_amount` (never more than the order
+    is worth; `balance_due_amount` is never negative).
+- Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
+  restriction.
+
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
 
@@ -3871,6 +3886,10 @@ Route mapping note:
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
+- **(Phase 140, #821)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
+  endpoint returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no order.
+  This checkout path is not yet wired to compute and capture a downpayment (ADR 0070 clause 7) --
+  capture lands in Phase 141 (#822), at which point this rejection is removed.
 
 **Persistence Contract**
 - Checkout persists service-fee snapshots from the same fixed policy as quote:
@@ -3878,6 +3897,10 @@ Route mapping note:
   - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
   - `service_fee_method_snapshot` (order method for traceability)
   - `service_fee_overridden=false`
+- `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
+  `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
+  Downpayment Contract above. In practice `payment_mode` here is always `full_payment` today, since
+  the guard immediately above rejects a `downpayment_required` order before this point.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
@@ -3901,6 +3924,11 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   `payment_flow=direct_maya`. The Storefront creates the wallet-specific
   Payment Method with the public key and attaches it with the client key; the
   returned authorization URL is a provider redirect, not an order result.
+- **(Phase 140, #821)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
+  endpoint returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no payment
+  session -- this path today authorizes the full order total (ADR 0069 clause 1b forbids authorizing
+  anything but the downpayment amount for such a tenant), and capture isn't wired to the downpayment
+  amount until Phase 141 (#822).
 
 **Response (201)**
 ```json

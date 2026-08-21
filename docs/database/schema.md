@@ -1893,8 +1893,14 @@ binary: `full_payment` or `downpayment_required`. `allowed_capture_methods`
 2026-08-21, supersedes ADR 0069's earlier Retail-only gate) — the settings
 write path no longer performs any vertical check; it only re-validates the
 effective (merged) row for internal consistency (type/rate/min required
-together). No checkout/quote code path reads this table yet — that starts at
-Phase 140. Admin API: `GET`/`PUT
+together). Phase 140 (#821) is the first reader: `resolveCheckoutContext`
+(`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`, the shared resolver behind
+`/cart/quote`, `/store/checkout`, and the QRPh payment-session path) reads this row via an injected
+`downpaymentSettingsRepository` dependency and computes the split
+(`downpaymentPolicy.js:resolveDownpaymentForTotal`) after the promo/voucher fold. `/cart/quote`
+exposes the full split; `/store/checkout` and the payment-session endpoint both reject a
+`downpayment_required` order with `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` until Phase 141 (#822)
+wires real capture (ADR 0069 clause 1b / ADR 0070 clause 7, both `[binding]`). Admin API: `GET`/`PUT
 /api/v1/downpayment/settings`, gated by
 `PERMISSIONS.DOWNPAYMENT.actions.{VIEW,MANAGE}_DOWNPAYMENT_SETTINGS`.
 

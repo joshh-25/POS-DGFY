@@ -1,6 +1,7 @@
 import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
+import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -65,7 +66,7 @@ export const createStoreCustomerAddressUseCase = buildCreateStoreCustomerAddress
 export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddressUseCase({ storeRepository });
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
-export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository });
+export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository, downpaymentSettingsRepository });
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
@@ -82,7 +83,8 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     directMayaEnabled: storefrontDirectMayaEnabled,
     directMayaRequested: storefrontDirectMayaRequested,
     requireCommerceQrphConfig,
-    requireCommercePaymentConfig
+    requireCommercePaymentConfig,
+    downpaymentSettingsRepository
 });
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
@@ -91,7 +93,7 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
     commercePaymentRepository,
     paymongoService
 });
-export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository });
+export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository, downpaymentSettingsRepository });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
