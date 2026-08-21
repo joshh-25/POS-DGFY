@@ -29,6 +29,14 @@ const { buildHandlePayMongoCommerceWebhookUseCase } = await import(
   '../src/modules/commercePayments/usecases/handlePayMongoCommerceWebhookUseCase.js'
 );
 
+// #476: processVerifiedPaidCommerceSession now claims the session inside
+// commercePaymentRepository.runInTransaction (a locked re-fetch + the state check), so any
+// test exercising the real (non-overridden) use case needs a runInTransaction/
+// findSessionBySessionId/findSessionByProviderEventId-shaped repository, same pattern already
+// used in tests/tenantRevenue.usecases.test.js.
+const transactionContext = { LOCK: { UPDATE: 'UPDATE' } };
+const runInTransaction = (callback) => callback(transactionContext);
+
 describe('finalizePaidCommerceSession', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -438,6 +446,8 @@ describe('PayMongo paid webhook replay', () => {
     };
     const commercePaymentRepository = {
       findSessionByPublicReference: jest.fn().mockResolvedValue(session),
+      findSessionBySessionId: jest.fn().mockResolvedValue(session),
+      runInTransaction: jest.fn(runInTransaction),
       updateSessionById: jest.fn()
     };
     const useCase = buildHandlePayMongoCommerceWebhookUseCase({
@@ -572,6 +582,9 @@ describe('PayMongo paid webhook replay', () => {
     };
     const commercePaymentRepository = {
       findSessionByPublicReference: jest.fn().mockResolvedValue(session),
+      findSessionBySessionId: jest.fn().mockResolvedValue(session),
+      findSessionByProviderEventId: jest.fn().mockResolvedValue(null),
+      runInTransaction: jest.fn(runInTransaction),
       updateSessionById: jest.fn().mockResolvedValue(heldSession),
       createAuditLog: jest.fn().mockResolvedValue({})
     };
@@ -624,7 +637,8 @@ describe('PayMongo paid webhook replay', () => {
       expect.objectContaining({
         status: 'paid_manual_resolution_required',
         failure_code: 'PAYMENT_AMOUNT_MISMATCH'
-      })
+      }),
+      { transaction: transactionContext }
     );
     expect(commercePaymentRepository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -632,7 +646,8 @@ describe('PayMongo paid webhook replay', () => {
           expected_amount_centavos: 17500,
           provider_amount_centavos: 17400
         })
-      })
+      }),
+      { transaction: transactionContext }
     );
     expect(storeCheckoutUseCase).not.toHaveBeenCalled();
   });
@@ -654,6 +669,9 @@ describe('PayMongo paid webhook replay', () => {
       };
       const commercePaymentRepository = {
         findSessionByPublicReference: jest.fn().mockResolvedValue(session),
+        findSessionBySessionId: jest.fn().mockResolvedValue(session),
+        findSessionByProviderEventId: jest.fn().mockResolvedValue(null),
+        runInTransaction: jest.fn(runInTransaction),
         updateSessionById: jest.fn().mockResolvedValue(heldSession),
         createAuditLog: jest.fn().mockResolvedValue({})
       };
@@ -703,5 +721,95 @@ describe('PayMongo paid webhook replay', () => {
       if (previousPayMongoMode === undefined) delete process.env.PAYMONGO_MODE;
       else process.env.PAYMONGO_MODE = previousPayMongoMode;
     }
+  });
+});
+
+describe('PayMongo webhook unknown session escalation (#476)', () => {
+  const buildUnknownSessionRepository = () => ({
+    findSessionByPublicReference: jest.fn().mockResolvedValue(null),
+    findSessionByProviderPaymentIntent: jest.fn().mockResolvedValue(null),
+    findSessionByProviderPayment: jest.fn().mockResolvedValue(null),
+    createAuditLog: jest.fn().mockResolvedValue({})
+  });
+
+  it('raises an operational alert when a paid event has no matching session', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn() },
+      raiseOperationalAlert
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_paid',
+          attributes: {
+            type: 'payment.paid',
+            data: {
+              id: 'pay_orphan',
+              attributes: {
+                status: 'paid',
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: { handled: false, reason: 'session_not_found' }
+    }));
+    expect(raiseOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'paymongo.commerce_webhook_unknown_session_paid',
+      level: 'error',
+      context: expect.objectContaining({
+        event_type: 'payment.paid',
+        provider_event_id: 'evt_orphan_paid'
+      })
+    }));
+  });
+
+  it('does not alert for a non-payment.paid event with no matching session', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn() },
+      raiseOperationalAlert
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_failed',
+          attributes: {
+            type: 'payment.failed',
+            data: {
+              id: 'pay_orphan_failed',
+              attributes: {
+                status: 'failed',
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: { handled: false, reason: 'session_not_found' }
+    }));
+    expect(raiseOperationalAlert).not.toHaveBeenCalled();
   });
 });
