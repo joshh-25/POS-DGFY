@@ -659,6 +659,11 @@ Get all items with pagination and filtering
 &status=active
 &fields=dropdown     # Lightweight projection: returns only item_id, sku_code, name, unit_of_measure, category, current_stock. Skips all JOINs. Use for dropdowns.
 &valuation_location_id=3   # Optional: adds location-scoped weighted metrics in cost_metrics.scoped
+&location_id=3       # Optional (#682): overlays current_stock with this branch's item_location_stocks
+                      # quantity_on_hand instead of the tenant-wide aggregate. Grant-checked the same
+                      # way as POS's /pos/catalog?location_id= (404 unknown/inactive location, 403 no
+                      # grant, 422 malformed id). Omitted -> current_stock is unchanged, the tenant-wide
+                      # aggregate, exactly as before this param existed. Not applied when fields=dropdown.
 ```
 
 **Response (200)**
@@ -704,6 +709,10 @@ Get all items with pagination and filtering
       "limit": 20,
       "total": 150,
       "pages": 8
+    },
+    "location_scope": {
+      "location_id": null,
+      "resolved": true
     }
   }
 }
@@ -715,6 +724,7 @@ Get all items with pagination and filtering
 - `cost_metrics.global` is always returned. `cost_metrics.scoped` is returned only when `valuation_location_id` is provided.
 - `cost_metrics.*.source` indicates valuation origin (`fifo_batches` or `item_cost_fallback`).
 - `cost_per_unit` is internal inventory/COGS data. `default_sale_price` is the explicit customer price used only when the row is sellable through POS, Storefront, or Dispatch Orders.
+- `location_scope` (#682): `location_id: null, resolved: true` when `location_id` was omitted (every `current_stock` in the response is the tenant-wide aggregate, as before this field existed). When `location_id` was provided: `resolved: true` means every stock-bearing item's `current_stock` was overlaid from `item_location_stocks` for that branch (including legitimate zeros); `resolved: false` means the tenant's schema doesn't support per-location stock yet and `current_stock` silently fell back to the tenant-wide aggregate -- callers must not treat a `resolved: false` response's `current_stock` as branch-accurate.
 
 > **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint still uses a lightweight row projection (no join-heavy composition/folder payload), but now includes additive `cost_metrics` valuation data for procurement and planning surfaces. Prefer this mode for dropdowns and quick selectors; avoid it when you need full `ProductComposition`, `ItemFolder`, or deep detail payloads.
 
