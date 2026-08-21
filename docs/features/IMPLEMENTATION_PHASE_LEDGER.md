@@ -6572,3 +6572,98 @@ after this update: **135**.
 - `scripts/check-compliance-impact.js`, `docs/compliance/compliance-classification-matrix.md`
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md`
 - `docs/database/schema.md` (`### tenant_downpayment_settings (Phase 138)`)
+
+## Phase 139 - Governance Correction: Downpayment Authorization Across All Workflow Modes
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #833, Phase 139 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 138.
+- Release: single `develop`-targeted PR (`fix/821-downpayment-authorization-all-verticals`).
+
+### Objective and Scope
+
+- Corrects a scope error introduced in ADR 0068 (superseded), restated unexamined in ADR 0069, and
+  shipped as live code in Phase 138 (#820, PR #832): downpayment authorization was gated to Retail
+  only (`422 WORKFLOW_MODE_NOT_RETAIL` in `downpaymentSettingsUseCases.js`). Pat's actual planning
+  intent, confirmed directly 2026-08-21: Retail/Surebiz is the priority and reference
+  implementation, not the authorization boundary — "it DOES NOT MEAN that it's only for retail, and
+  other industries don't support it now... I personally rather allow downpayments to any industry
+  as soon as now."
+- New ADR 0070 supersedes ADR 0069. Carries clauses 1-5 and 8-10 forward verbatim (unchanged
+  mechanics: capture cap, balance settlement, DB surface, config-surface steer, refund/forfeiture
+  toggle, fiscal deferral, fee basis). Replaces clause 6 (Retail-scoped authorization) with
+  `[default]` authorization for every workflow mode, and reframes clause 7's enforcement from
+  *vertical-scope* to *reachability*: a downpayment configuration must never be honored by a
+  checkout flow not wired to compute/capture it (today: the shared storefront checkout only —
+  Services bookings and Hospitality reservations remain unwired, tracked separately at #812, not
+  authorization-blocked).
+- Confirmed cheap to correct: `storefront` is a universal capability module
+  (`packages/shared-constants/src/capabilityModules.js`), not per-vertical — every workflow mode
+  selling through the online store already shares the identical `resolveCheckoutContext`
+  (`storeUseCases.js`). Widening cost exactly one deleted vertical check, its now-unused
+  workflow-mode-resolution plumbing (`resolveTenantWorkflowMode`, the `resolveWorkflowMode`
+  injectable dependency, three now-unused imports), and its test.
+- Confirmed the fence's own history before rewriting it: ADR 0068's Context justified excluding
+  Services (ADR 0057 clause 3, `[binding]`) and Hospitality (ADR 0041) specifically — both real,
+  unrelated gates on those verticals' own checkout/booking surfaces. F&B carried no such gate (ADR
+  0019 has no payment-collection deferral at all) and was included by generalization, not by its
+  own cited reason.
+- Scanned the epic's remaining phase bodies (#822/#824/#826/#827, soon retitled 141/142/144/145)
+  for inherited Retail-only assumptions before deciding whether a full epic replan was needed — none
+  found; their mechanics were already vertical-neutral, only the authorization gate above them was
+  wrong. #823 (checkout UI wiring, retitled 143) legitimately stays Retail-specific: it wires the
+  *existing* Retail storefront frontend components, not an authorization boundary — other
+  verticals' UI is separate, not-yet-requested follow-up work, not a mistranslation.
+- Filed #834 (separate, Iteration 3) to audit Hospitality's broader framing as a DGFY-native peer
+  niche across ADRs/docs, given the platform's own `WORKFLOW_MODE_ENGINE` classification already
+  marks it `'transitional'` (planned sister-app engine, "Sync Core"). Explicitly out of this ADR's
+  scope — ADR 0070 treats Hospitality only as "not yet wired," the same treatment already applied to
+  Services, without taking a position on its longer-term platform placement.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on and corrects Phase 136 (ADR 0069/formerly 0068) and Phase 138 (#820, the code that
+  shipped the gate this phase removes).
+- Gates Phase 140 (formerly #821, server-authoritative downpayment resolution at quote/checkout,
+  retitled per this phase) — that phase's implementation is simpler under ADR 0070: no vertical
+  family check needs to be written at all.
+- **Checkpoint**: ADR 0069 clause 6 was `[binding]`; per ADR 0039 and `ARCHITECTURE_GOVERNANCE.md`
+  step 3, the only lawful path to change it is a new superseding ADR plus tech-lead approval — an
+  `## Amendments` block was not available. Pat's plan approval in this session is that tech-lead
+  approval, named and dated in ADR 0070's own Context.
+- Board: #820 was still `For Review` despite PR #832 having merged (`Refs #820`) — flipped to
+  `For QA` in this session, matching #818/#819. #833 (this phase's own issue) set `In progress` at
+  branch time. #821-#827 retitled Phases 140-146; #815's Definition of done and #821's `## Verify`
+  section amended to match ADR 0070.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed `.js` file — clean.
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` — rewritten: the non-Retail-
+  rejection test replaced by its inverse ("accepts downpayment_required for a non-Retail tenant
+  (ADR 0070)"); every other case (customer_choice rejection, type/rate/min-required validation, the
+  effective-merged-state test, allowed_capture_methods handling) unchanged and still passing.
+  22/22 passing across all three Phase 138 suites (`downpaymentSettingsUseCases`,
+  `downpaymentSettingsRepository`, `downpaymentSettingsValidator`).
+- `grep -rn "WORKFLOW_MODE_NOT_RETAIL" apps/ docs/` — zero hits outside ADR 0069's own superseded
+  historical text and ADR 0070's Context narrative.
+- `npm run lint:docs` / `npm run check:adr` / `npm run check:compliance` / `npm run
+  check:architecture` — see this phase's PR for full output; the compliance declaration's precondition
+  #2 was amended (dated note, not rewritten history) rather than left asserting a guarantee the code
+  no longer makes.
+
+### Implementation Links
+
+- `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (new)
+- `docs/architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md`
+  (flipped to `status: superseded` / `authority_level: historical`)
+- `apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js` (gate removed)
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` (rewritten)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md` (precondition #2
+  amended)
+- Issues #833 (this phase), #834 (Hospitality-framing audit, Iteration 3, out of this ADR's scope)
