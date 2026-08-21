@@ -36,6 +36,7 @@ Define deterministic minimum classification floors enforced by `scripts/check-co
 |---|---|---|
 | `backend/src/modules/pos/**` | `pos`, `terminal` | `major` |
 | `backend/src/modules/payments/**` | `payments` | `major` |
+| `backend/src/modules/downpayment/**` | `payments` | `major` |
 | `backend/src/modules/settings/**` | `settings` | `major` |
 | `backend/src/modules/compliance/**` | `compliance` | `regulatory` |
 | `backend/src/middleware/compliancePolicy.js` | `compliance`, `settings`, `payments`, `pos` | `regulatory` |
