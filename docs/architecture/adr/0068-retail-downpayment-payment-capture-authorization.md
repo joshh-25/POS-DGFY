@@ -1,19 +1,21 @@
 ---
-status: accepted
-authority_level: authoritative
+status: superseded
+authority_level: historical
 owner: architecture
 date: 2026-08-21
 last_reviewed: 2026-08-21
 review_by: 2027-02-21
 applies_to: retail_storefront, payments, checkout
 topic: retail_downpayment_payment_capture_authorization
+superseded_by: 0069-retail-downpayment-multi-method-capture-and-refund-policy.md
 ---
 
 # ADR 0068: Retail Downpayment / Payment-Capture Authorization
 
 ## Status
 
-Accepted (2026-08-21).
+Superseded on 2026-08-21 by ADR 0069. Use ADR 0069 for current Retail downpayment
+capture-method, refund-policy, and platform-fee decisions.
 
 ## Context
 
