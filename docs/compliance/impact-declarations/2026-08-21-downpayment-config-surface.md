@@ -54,14 +54,14 @@ has no reader anywhere in the codebase yet; the first reader is Phase 139
    `README.md`, `repositories/downpaymentSettingsRepository.js`,
    `usecases/downpaymentSettingsUseCases.js`,
    `controllers/downpaymentSettingsHandlers.js`) — **the compliance-sensitive
-   surface itself**. `downpaymentSettingsUseCases.js`'s update use case is
-   where ADR 0069 clause 7 (`[binding]`) is actually enforced: a
-   `payment_mode = 'downpayment_required'` write is rejected (`422
-   WORKFLOW_MODE_NOT_RETAIL`) unless the calling tenant's `ops_workflow_mode`
-   resolves to Retail, and a `payment_mode = 'customer_choice'` write is
-   rejected outright (`422 PAYMENT_MODE_NOT_SUPPORTED`) since it isn't built
-   yet. Every write re-validates the full *effective* (merged) settings row,
-   not just the fields the request touches.
+   surface itself**. `downpaymentSettingsUseCases.js`'s update use case
+   rejects a `payment_mode = 'customer_choice'` write outright (`422
+   PAYMENT_MODE_NOT_SUPPORTED`) since it isn't built yet. Every write
+   re-validates the full *effective* (merged) settings row, not just the
+   fields the request touches. **Updated 2026-08-21 (#833, ADR 0070)**: this
+   use case originally also rejected `payment_mode = 'downpayment_required'`
+   for any non-Retail tenant (ADR 0069 clause 7). That rejection was a scope
+   error, corrected the same day — see Compliance Preconditions #2 below.
 4. `apps/dgfy-api/src/validators/downpaymentSettingsValidator.js` (new) — Joi
    shape/bounds validation (enum literals, bps/centavos ranges). Deliberately
    does not attempt cross-field "required given the effective type"
@@ -91,10 +91,15 @@ has no reader anywhere in the codebase yet; the first reader is Phase 139
    `DEFAULT_ROLE_PERMISSIONS.admin = getAllPermissions()`) and `manager`
    (view-only, via the new `VIEW_DOWNPAYMENT_SETTINGS` grant). `staff` gets
    neither permission and cannot reach either endpoint.
-2. `payment_mode = 'downpayment_required'` cannot be set on a non-Retail
-   tenant — enforced server-side (not just documented), unit-tested
-   (`downpaymentSettingsUseCases.unit.test.js`, "rejects downpayment_required
-   for a non-Retail workflow_mode").
+2. **Amended 2026-08-21 (#833, ADR 0070).** This precondition originally asserted that
+   `payment_mode = 'downpayment_required'` could not be set on a non-Retail tenant. That
+   restriction was a scope error, corrected the same day by ADR 0070 (superseding ADR 0069's
+   clauses 6-7): downpayment is authorized for every workflow mode, not Retail-only. The rejection
+   this precondition described has been removed from `downpaymentSettingsUseCases.js`; the
+   corrected behavior is unit-tested (`downpaymentSettingsUseCases.unit.test.js`, "accepts
+   downpayment_required for a non-Retail tenant (ADR 0070)"). This declaration's `major`/`payments`
+   classification is unaffected — the surface being classified (a new payment-config module) is
+   unchanged; only which tenants may use it changed.
 3. `payment_mode = 'customer_choice'` cannot actually be set — schema/Joi
    accept the literal (so no future migration is needed when it ships), but
    the use case rejects it unconditionally. Unit-tested.

@@ -1889,13 +1889,12 @@ that actually builds it needs no further migration, but the admin API
 rejects any attempt to set it (`422`, `PAYMENT_MODE_NOT_SUPPORTED`) — v1 is
 binary: `full_payment` or `downpayment_required`. `allowed_capture_methods`
 `NULL` means "inherit the business-wide capture-method allow-list from #816"
-(not yet built). ADR 0069 clause 7 (`[binding]`) is enforced at
-settings-**write**-time: a `payment_mode = 'downpayment_required'` update is
-rejected (`422`, `WORKFLOW_MODE_NOT_RETAIL`) unless the tenant's
-`ops_workflow_mode` resolves to Retail —
-`resolveStorefrontPaymentCapabilities` has no `workflow_mode` concept and does
-not enforce this on its own. No checkout/quote code path reads this table
-yet — that starts at Phase 139. Admin API: `GET`/`PUT
+(not yet built). Downpayment is authorized for every workflow mode (ADR 0070,
+2026-08-21, supersedes ADR 0069's earlier Retail-only gate) — the settings
+write path no longer performs any vertical check; it only re-validates the
+effective (merged) row for internal consistency (type/rate/min required
+together). No checkout/quote code path reads this table yet — that starts at
+Phase 140. Admin API: `GET`/`PUT
 /api/v1/downpayment/settings`, gated by
 `PERMISSIONS.DOWNPAYMENT.actions.{VIEW,MANAGE}_DOWNPAYMENT_SETTINGS`.
 

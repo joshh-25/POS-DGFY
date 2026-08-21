@@ -1,15 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { downpaymentSettingsRepository } from '../repositories/downpaymentSettingsRepository.js';
-import { getAllSettingsUseCase } from '../../settings/index.js';
-import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
-import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode, resolveWorkflowModeFamily } from '../../shared/constants/workflowModes.js';
-
-// Duplicated locally on purpose, rather than importing menuExtractionService.js's exported
-// resolveTenantWorkflowMode() -- that file's own comment documents this as the established
-// convention here (keep each feature's workflow-mode lookup footprint isolated), so this module
-// follows the same pattern instead of borrowing a menu-import-domain export.
-const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 const PAYMENT_MODE_VALUES = new Set(['full_payment', 'downpayment_required', 'customer_choice']);
 const DOWNPAYMENT_TYPE_VALUES = new Set(['percentage', 'fixed']);
@@ -40,14 +31,6 @@ const parseOptionalPositiveInt = (value, { field, min = 0, max = Number.MAX_SAFE
     return parsed;
 };
 
-const resolveTenantWorkflowMode = async () => {
-    const settings = unwrapApplicationResultOrThrow(
-        await getAllSettingsUseCase(),
-        'Failed to retrieve settings for workflow-mode validation'
-    );
-    return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
-};
-
 export const buildGetDownpaymentSettingsUseCase = ({ repository = downpaymentSettingsRepository } = {}) => (
     async ({ tenantId }) => {
         try {
@@ -60,8 +43,7 @@ export const buildGetDownpaymentSettingsUseCase = ({ repository = downpaymentSet
 );
 
 export const buildUpdateDownpaymentSettingsUseCase = ({
-    repository = downpaymentSettingsRepository,
-    resolveWorkflowMode = resolveTenantWorkflowMode
+    repository = downpaymentSettingsRepository
 } = {}) => (
     async ({ tenantId, body = {} }) => {
         try {
@@ -123,11 +105,11 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
                 });
             }
 
-            // ADR 0069 clause 7 ([binding]): a non-Retail workflow_mode store must have
-            // downpayment_required rejected, never silently honored. resolveStorefrontPaymentCapabilities
-            // has no workflow_mode concept and won't catch this on its own -- this write path is
-            // the enforcement point for Phase 138's own scope (checkout-read enforcement is
-            // Phase 139/140's job).
+            // ADR 0070 clause 7 ([binding]): downpayment is authorized for every workflow mode
+            // (ADR 0070 supersedes ADR 0069's Retail-only gate that used to live here -- see ADR
+            // 0070's Context for why that scope was a mistranslation of actual product intent).
+            // Enforcement here is no longer about *which vertical* -- it's about internal
+            // consistency of the effective row, so it stays in this write path regardless.
             // Every write re-validates the *full effective* row when payment_mode is (or becomes)
             // downpayment_required -- not just the fields this particular request touches -- so a
             // partial update can never leave the row internally inconsistent (e.g. a lone
@@ -135,15 +117,6 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
             // Deliberate fail-closed choice, not an oversight: see the "effective state" test in
             // downpaymentSettingsUseCases.unit.test.js.
             if (effectivePaymentMode === 'downpayment_required') {
-                const workflowMode = await resolveWorkflowMode();
-                if (resolveWorkflowModeFamily(workflowMode) !== 'retail') {
-                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Downpayment is only available for Retail workflow-mode businesses.', {
-                        statusCode: 422,
-                        details: [{ field: 'payment_mode', message: `This store's workflow mode (${workflowMode}) does not support downpayment_required.` }],
-                        observabilityReasonCode: 'WORKFLOW_MODE_NOT_RETAIL'
-                    });
-                }
-
                 const effectiveType = updates.downpayment_type !== undefined ? updates.downpayment_type : current.downpayment_type;
                 if (!effectiveType) {
                     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'downpayment_type is required when payment_mode is downpayment_required.', { statusCode: 422 });
@@ -159,7 +132,7 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
                     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'downpayment_fixed_centavos is required when downpayment_type is fixed.', { statusCode: 422 });
                 }
 
-                // #820's own scope: min_downpayment_centavos "required -- feeds Phase 140's fee
+                // #820's own scope: min_downpayment_centavos "required -- feeds Phase 141's fee
                 // guard". DB NOT NULL DEFAULT 0 alone can't express "must be positive while
                 // downpayment is actually active" -- that conditional lives here.
                 const effectiveMinDownpaymentCentavos = updates.min_downpayment_centavos !== undefined ? updates.min_downpayment_centavos : current.min_downpayment_centavos;

@@ -1,12 +1,13 @@
 ---
-status: accepted
-authority_level: authoritative
+status: superseded
+authority_level: historical
 owner: architecture
 date: 2026-08-21
 last_reviewed: 2026-08-21
 review_by: 2027-02-21
 applies_to: retail_storefront, payments, checkout
 topic: retail_downpayment_payment_capture_authorization
+superseded_by: 0070-downpayment-authorization-across-workflow-modes.md
 supersedes: 0068-retail-downpayment-payment-capture-authorization.md
 ---
 
@@ -14,7 +15,9 @@ supersedes: 0068-retail-downpayment-payment-capture-authorization.md
 
 ## Status
 
-Accepted (2026-08-21). This ADR supersedes ADR 0068.
+Superseded on 2026-08-21 by ADR 0070. Use ADR 0070 for current downpayment authorization-scope
+decisions (clauses 6-7); every other clause of this ADR (1-5, 8-10) remains the current, unchanged
+decision — ADR 0070 carries them forward verbatim rather than restating them.
 
 ## Context
 
