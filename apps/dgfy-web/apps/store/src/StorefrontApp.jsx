@@ -2468,7 +2468,13 @@ export default function StorefrontApp() {
           order_method: orderMethod,
           order: null,
           order_name: cart[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // Phase 142 (#823): prefer the finalized session's own order_total_amount (the full
+          // order value, widened onto serializePaymentSession alongside this poll's data) over
+          // the client's pre-payment quote snapshot -- more authoritative, and never the
+          // captured (downpayment) amount for a downpayment session, where paymentSession.total_amount
+          // means something else entirely (see storefrontDownpaymentPresentation.js). Null for a
+          // full_payment session, so the quote-based fallback still applies there unchanged.
+          total_amount: paymentSession.order_total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, trackingPin);
         setCart([]);
         setQuoteResult(null);

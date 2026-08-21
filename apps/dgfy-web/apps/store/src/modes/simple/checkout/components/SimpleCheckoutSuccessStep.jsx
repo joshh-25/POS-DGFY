@@ -1,3 +1,5 @@
+import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+
 export function SimpleCheckoutSuccessStep({
   checkoutResult,
   displayFont,
@@ -13,6 +15,14 @@ export function SimpleCheckoutSuccessStep({
   const confirmedLines = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : [];
   const receiptTotal = checkoutResult?.totals?.total_amount ?? totalAmount;
   const trackingPin = checkoutResult?.tracking_pin || 'Pending';
+  // Phase 142 (#823): order-sourced (the most authoritative source once an order exists). In
+  // ordinary flow a downpayment order is created only by the webhook finalizer -- the online/QR
+  // path never reaches this success step (it goes straight to tracking on 'finalized') -- but
+  // this stays correct defensively for any path that does land here with a partially_paid order.
+  const downpaymentDisplay = resolveDownpaymentDisplay({ order: checkoutResult?.order });
+  const paymentRowLabel = downpaymentDisplay.active
+    ? `${String(paymentType || 'cash').replace(/_/g, ' ').toUpperCase()} DOWNPAYMENT`
+    : String(paymentType || 'cash').replace(/_/g, ' ').toUpperCase();
   const fulfillmentCopy = fulfillmentLabel === 'Delivery'
     ? 'Your delivery order is confirmed and is now in the storefront queue.'
     : 'Your pickup order is confirmed and is now in the storefront queue.';
@@ -68,8 +78,14 @@ export function SimpleCheckoutSuccessStep({
         <div style={{ fontSize: isMobileViewport ? 30 : 38, fontWeight: 800, color: '#0f172a', lineHeight: 1.1, overflowWrap: 'anywhere' }}>{money(receiptTotal)}</div>
         <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Tracking PIN</span><strong style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{trackingPin}</strong></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Payment</span><strong style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{String(paymentType || 'cash').replace(/_/g, ' ').toUpperCase()}</strong></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Payment</span><strong style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{paymentRowLabel}</strong></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Fulfillment</span><strong style={{ textAlign: 'right' }}>{fulfillmentLabel}</strong></div>
+          {downpaymentDisplay.active && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Paid now</span><strong style={{ textAlign: 'right' }}>{money(downpaymentDisplay.downpaymentAmount)}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>{fulfillmentLabel === 'Delivery' ? 'Balance due on delivery' : 'Balance due at pickup'}</span><strong style={{ textAlign: 'right' }}>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
+            </>
+          )}
         </div>
       </aside>
     </div>
