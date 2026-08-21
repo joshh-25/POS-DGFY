@@ -272,15 +272,19 @@ describe('shouldReportErrorToSentry', () => {
   // unconfigured) is expected client/environment state, not a fault, and
   // shouldn't recur as Sentry noise on every attempt.
   test('does not report a DomainError with a known expected-precondition reason_code', () => {
+    // Mirrors clientManagedDeviceDriver.js's real shape -- a pre-existing `details.reason_code`
+    // (not introduced by #508), read as the fallback source.
     const noDrawer = new DomainError(
       DomainErrorCode.SERVICE_UNAVAILABLE,
       'No cash drawer is configured for this terminal.',
       { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
     );
+    // Mirrors routeCalculatorUseCases.js's real shape -- `observabilityReasonCode`, never
+    // `details`, so this classification never leaks into the HTTP response (PR #791 RF-1).
     const routeNotConfigured = new DomainError(
       DomainErrorCode.SERVICE_UNAVAILABLE,
       'Route calculator is not configured for this environment.',
-      { statusCode: 503, details: { reason_code: 'ROUTE_CALCULATOR_NOT_CONFIGURED' } }
+      { statusCode: 503, observabilityReasonCode: 'ROUTE_CALCULATOR_NOT_CONFIGURED' }
     );
 
     expect(shouldReportErrorToSentry(noDrawer)).toBe(false);
