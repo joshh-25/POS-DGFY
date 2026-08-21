@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-21
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -159,3 +159,34 @@ Cards and all other Storefront methods continue using Hosted Checkout. Maya
 falls back to Hosted Checkout when direct mode is disabled. The signed provider
 webhook remains authoritative and the existing amount, currency, livemode,
 idempotency, settlement, and refund rules are unchanged.
+
+### 2026-08-21: Commerce webhook event-level idempotency hardening (#476)
+
+The "idempotent session state before finalization" invariant this ADR already
+states (2026-08-18 amendments, above) was enforced only by a read-then-act
+session-status check with no database lock -- two concurrent or retried
+`payment.paid` deliveries for the same session could both pass the check before
+either write committed. This is a hardening fix closing that gap, not a change
+to the invariant itself:
+
+1. `processVerifiedPaidCommerceSession` now re-reads the session with
+   `SELECT ... FOR UPDATE` inside a transaction and performs the state check and
+   the `status: 'paid'` claim write there, so a second concurrent delivery
+   blocked on the row lock sees the already-claimed state once it unblocks.
+   `postPaidTenantRevenueTransactionUseCase` and `finalizePaidCommerceSession`
+   remain outside that transaction, unchanged -- this ADR's "post-commit,
+   cross-database workflow" boundary (Architecture Boundaries, above) is not
+   altered; the claim transaction only spans the landlord-side status write.
+2. `commerce_payment_sessions.provider_event_id` gained a unique index
+   (`uq_commerce_payment_sessions_provider_event`), and a locked
+   `findSessionByProviderEventId` pre-check rejects a provider event already
+   recorded against a *different* session (`PAYMENT_PROVIDER_EVENT_REPLAY`,
+   HTTP 409) -- the same pattern POS split payments already uses
+   (`pos_payment_allocations.provider_event_id`).
+3. An unknown-session `payment.paid`/`checkout_session.payment.paid` (money
+   collected with no local session to attach it to) now raises an operational
+   alert in addition to the existing warning log. The `200
+   {handled:false, reason:'session_not_found'}` response contract is unchanged.
+
+No fee policy, settlement, or payment-acceptance decision changes. Full context:
+issue #476, `docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md`.
