@@ -3789,7 +3789,7 @@ Hospitality admin routes live under `/api/v1/hospitality`, require authenticatio
 
 ## Services Admin Endpoints
 
-Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
@@ -4229,7 +4229,7 @@ Fiscal activation also requires at least one verified fiscal terminal registrati
 
 ## Food & Beverage Endpoints
 
-Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |

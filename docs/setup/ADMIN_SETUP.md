@@ -107,7 +107,7 @@ Current role preset families:
 | Services | `services_admin`, `services_manager`, `services_provider`, `services_scheduler`, `services_front_desk_cashier`, `services_inventory_clerk`, `services_viewer` |
 | Food & Beverage | `fnb_admin`, `fnb_restaurant_manager`, `fnb_server`, `fnb_cashier`, `fnb_kitchen_staff`, `fnb_host_reservations`, `fnb_inventory_controller`, `fnb_viewer` |
 
-Services routes prefer `services:*` permissions and F&B routes prefer `fnb:*` permissions. Temporary fallback to current generic permissions remains enabled by default so existing users do not lose access during remapping. Set `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` only after tenant users have been remapped to mode-native presets and targeted route tests confirm access.
+Services routes prefer `services:*` permissions and F&B routes prefer `fnb:*` permissions. Generic-permission fallback remains enabled by default outside production for local compatibility, but production defaults to fail-closed. Keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` explicit in production configuration and complete tenant-user remapping before release. Any temporary production exception must be explicit, time-bound, and audited.
 
 Every future mode must answer these access questions before it is called production-ready:
 

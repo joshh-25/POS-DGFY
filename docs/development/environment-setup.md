@@ -98,9 +98,11 @@ TENANT_DB_POOL_MAX=5
 # Set to true only when subscription workflows are intentionally re-enabled.
 PAYMENTS_ENABLED=false
 # Admin portal auth hardening (credentials are env-backed + bcrypt hash)
-# Default username remains "skupervisor"; default hash matches password "252378"
-# ADMIN_USERNAME=skupervisor
-# ADMIN_PASSWORD_HASH=$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK
+# Local development only: if omitted, the legacy bootstrap account is used.
+# Production requires ADMIN_USERNAME + ADMIN_PASSWORD_HASH or ADMIN_ACCOUNTS_JSON.
+# Never use the documented local bootstrap credentials in production.
+# ADMIN_USERNAME=local-admin
+# ADMIN_PASSWORD_HASH=<bcrypt hash>
 # Admin lockout policy (Redis-backed when REDIS_URL is configured; in-memory fallback otherwise)
 # ADMIN_LOGIN_LOCKOUT_MAX_ATTEMPTS=5
 # ADMIN_LOGIN_LOCKOUT_WINDOW_MS=900000
