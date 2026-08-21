@@ -60,7 +60,11 @@ export default function ItemCard({
   isSelected,
   onSelect,
   isMsmeMode = false,
-  workflowMode
+  workflowMode,
+  // #682: set by ItemsPage only when the current view is genuinely branch-scoped (not the
+  // schema-fallback case) -- rendered under the stock line when this item's stock is truly 0 at
+  // that branch, so a zero doesn't just look like a blank/broken number.
+  branchZeroStockHint = null
 }) {
   const { canEdit, canDelete } = usePermission();
   const category = getCategoryConfig(item);
@@ -351,6 +355,9 @@ export default function ItemCard({
             <span>Min: {formatQty(item.min_threshold)}</span>
             <span>{percentage}%</span>
           </div>
+          {branchZeroStockHint && Number(item?.current_stock || 0) === 0 && (
+            <div className="mt-1 text-xs text-amber-700">{branchZeroStockHint}</div>
+          )}
         </div>
         )}
 
