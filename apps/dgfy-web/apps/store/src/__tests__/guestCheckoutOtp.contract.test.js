@@ -69,4 +69,21 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
   });
+
+  // #613: guestCheckoutIntentId/guestCheckoutOtpVerified/guestCheckoutProof are referenced
+  // elsewhere in StorefrontApp.jsx (e.g. the useGuestCheckoutOtp destructure, the
+  // useFnbCheckoutSubmission call), so a blanket `appSource.toContain(...)` check would have
+  // passed even while the shared `useCheckoutSubmission` call site -- the one Retail and Simple
+  // MSME checkout actually submit through -- was silently missing all three, which is exactly
+  // how #613 shipped undetected. Assert on the call-site block itself, not just the file.
+  it('passes the verified guest checkout proof into the shared useCheckoutSubmission call (#613)', () => {
+    const appSource = readAppSource('StorefrontApp.jsx');
+    const callSiteMatch = appSource.match(/=\s*useCheckoutSubmission\(\{[\s\S]*?\}\);/);
+
+    expect(callSiteMatch).not.toBeNull();
+    const callSite = callSiteMatch[0];
+    expect(callSite).toContain('guestCheckoutIntentId');
+    expect(callSite).toContain('guestCheckoutOtpVerified');
+    expect(callSite).toContain('guestCheckoutProof');
+  });
 });
