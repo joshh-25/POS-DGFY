@@ -396,6 +396,96 @@ describe('inventory itemRepository', () => {
     expect(result.items[0].productCompositions).toBeUndefined();
   });
 
+  it('does not query ItemLocationStock when location_id is omitted (#682 backward-compat guard)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = { findAll: jest.fn() };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 42 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20' });
+
+    expect(ItemLocationStock.findAll).not.toHaveBeenCalled();
+    expect(result.items[0].current_stock).toBe(42);
+    expect(result.location_scope).toEqual({ location_id: null, resolved: true });
+  });
+
+  it('overlays branch-scoped current_stock from item_location_stocks when location_id is given (#682)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = {
+      findAll: jest.fn().mockResolvedValue([
+        { toJSON: () => ({ item_id: 5, quantity_on_hand: '3.000000000000' }) }
+      ])
+    };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 999 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', location_id: '2' });
+
+    expect(ItemLocationStock.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ location_id: 2 })
+    }));
+    expect(result.items[0].current_stock).toBe(3);
+    expect(result.location_scope).toEqual({ location_id: 2, resolved: true });
+  });
+
+  it('falls back to the tenant-wide aggregate and reports resolved:false when item_location_stocks schema is missing (#682)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = {
+      findAll: jest.fn().mockRejectedValue({
+        original: { code: 'ER_NO_SUCH_TABLE', sqlMessage: "Table 'tenant_db.item_location_stocks' doesn't exist" }
+      })
+    };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 42 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', location_id: '2' });
+
+    // Honest fallback, not a hard error: the tenant-wide aggregate is kept, but the caller is
+    // told the branch-scoped overlay did NOT happen, so the frontend can render the distinct
+    // fallback-warning copy instead of a legitimate branch-scoped zero.
+    expect(result.items[0].current_stock).toBe(42);
+    expect(result.location_scope).toEqual({ location_id: 2, resolved: false });
+  });
+
   it('maps item detail payload to wizard contract in getItemById', async () => {
     const ItemNutrition = {};
     const ItemAllergen = {};

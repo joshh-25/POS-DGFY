@@ -60,7 +60,10 @@ import { buildLookupDelegatedInventoryLevelUseCase } from './usecases/lookupDele
 import { manualDelegatedInventoryProvider } from './integrations/manualDelegatedInventoryProvider.js';
 
 
-export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
+export const getItemsUseCase = buildGetItemsUseCase({
+  itemRepository,
+  resolveLocationScope: resolveMovementLocation
+});
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
 export const createItemUseCase = buildCreateItemUseCase({
   itemRepository,
