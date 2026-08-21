@@ -112,6 +112,19 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'posTransactionAdjustments',
+        label: 'POS transaction adjustments',
+        modelName: 'PosTransactionAdjustment',
+        association: 'PosTransactionAdjustment.originalLocation,PosTransactionAdjustment.actorLocation',
+        foreignKeys: ['original_location_id', 'actor_location_id'],
+        where: (locationId) => ({
+            [Op.or]: [
+                { original_location_id: locationId },
+                { actor_location_id: locationId }
+            ]
+        })
+    },
+    {
         key: 'posMerchantTenderReconciliations',
         label: 'POS merchant tender reconciliations',
         modelName: 'PosMerchantTenderReconciliation',
