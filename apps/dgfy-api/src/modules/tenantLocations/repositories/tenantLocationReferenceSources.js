@@ -26,6 +26,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'inventoryReservations',
+        label: 'inventory reservations',
+        modelName: 'InventoryReservation',
+        association: 'InventoryReservation.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'fnbModifierGroupLocationAvailability',
         label: 'F&B modifier group location availability rows',
         modelName: 'FnbModifierGroupLocationAvailability',

@@ -64,3 +64,5 @@ receipt rules.
    `git diff --check` pass for the scoped implementation.
 6. The implementation and migration changes are committed separately from unrelated
    worktree changes so the declaration remains bound to the Phase 153 scope.
+7. Tenant-location reference coverage includes `InventoryReservation.location`, preventing
+   reservation rows from bypassing location deletion guards.
