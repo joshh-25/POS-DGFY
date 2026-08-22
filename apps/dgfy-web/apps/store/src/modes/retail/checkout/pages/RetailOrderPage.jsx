@@ -158,9 +158,13 @@ export function RetailOrderPage({
   const totals = totalsForDisplay;
   // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- the ADR
+  // amendment states "pay the full order total online", and customer_choice "does not add a
+  // third customer-facing option". Cash stays hidden regardless of election at this store, not
+  // only once a downpayment is actually active.
   const retailPaymentOptions = buildStorefrontCheckoutPaymentOptions(
     selectedStore?.payment_capabilities,
-    { hideCash: downpaymentDisplay.active }
+    { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) }
   );
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()

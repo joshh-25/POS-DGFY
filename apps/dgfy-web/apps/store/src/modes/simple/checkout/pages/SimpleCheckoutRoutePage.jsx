@@ -281,7 +281,7 @@ export function SimpleCheckoutRoutePage({
             onPaymentElectionChange={onPaymentElectionChange}
             paymentElection={paymentElection}
             paymentType={fnbPaymentType}
-            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
             isDownpaymentActive={downpaymentDisplay.active}
             downpaymentCallout={(
               <DownpaymentPaymentCallout

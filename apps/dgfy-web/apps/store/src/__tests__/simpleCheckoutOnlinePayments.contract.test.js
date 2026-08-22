@@ -322,7 +322,9 @@ describe('Simple Storefront online payment contract', () => {
 
     // Phase 142 (#823): gained a second hideCash argument -- see storefrontDownpaymentPresentation.test.js
     // and simpleCheckoutOnlinePayments.contract.test.js's own downpayment-specific assertions below.
-    expect(route).toContain('buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })');
+    // Phase 150 (#866) RF-3: widened to also hide cash at a customer_choice store regardless of
+    // election -- see the "hides cash for a customer_choice store" test below.
+    expect(route).toContain('buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })');
     expect(route).toContain('StorefrontOnlinePaymentPanel');
     expect(route).toContain('getStorefrontOnlinePaymentLabel');
     expect(route).toContain('Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}');
@@ -375,5 +377,15 @@ describe('Simple Storefront online payment contract', () => {
     expect(route).toContain("Pay downpayment (");
     expect(step).toContain("isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'");
     expect(step).toContain('!isDownpaymentActive && paymentType');
+  });
+
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its
+  // options capture online (full total online, or downpayment online + balance COD), matching
+  // ADR 0070's amendment. Cash must stay hidden even when election='full' (downpaymentDisplay.active
+  // is false in that branch, since no split is in play).
+  it('hides cash for a customer_choice store regardless of the current election', () => {
+    const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+
+    expect(route).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
   });
 });

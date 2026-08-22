@@ -709,7 +709,7 @@ export function FnbCheckoutRouteContainer({
                   label={downpaymentDisplay.active ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
-                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })}
+                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
                   DropdownComponent={StorefrontDropdown}
                   triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}

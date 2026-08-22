@@ -3330,10 +3330,16 @@ export default function StorefrontApp() {
     // discount arm, re-fire prevention for an unchanged cart comes from the syncKey below, not
     // from quoteNeedsRefresh. Gated purely on the store's catalog-resolved payment_mode, so a
     // full_payment store's request pattern is completely unchanged by this addition.
+    // Phase 150 (#866) RF-1: was gated on payment_mode === 'downpayment_required', which never
+    // fires for a customer_choice store -- so electing "pay a downpayment" in Simple/Retail mode
+    // (neither of which has the F&B arm's step-complete gates) left quoteResult permanently null.
+    // expectsDownpaymentCapture (defined above) is election-scoped, not mode-scoped, so an election
+    // of 'full' at a customer_choice store keeps a plain full_payment store's request pattern
+    // completely unchanged.
     const shouldAutoSyncDownpaymentQuote = (
       isStorePage
       && !hasServiceCart
-      && selectedStore?.payment_mode === 'downpayment_required'
+      && expectsDownpaymentCapture
       && Boolean(selectedStore)
       && cart.length > 0
       && checkoutPermitted
@@ -3347,10 +3353,15 @@ export default function StorefrontApp() {
       return undefined;
     }
 
+    // Phase 150 (#866) RF-2: paymentElection changes the server-resolved split (like orderMethod
+    // already does), so it must be in the sync key -- otherwise an arm that stays true across an
+    // election change (e.g. shouldAutoSyncDiscountQuote with a code applied) never re-fires, and
+    // quoteNeedsRefresh (set true on election change, see the effect below) never gets cleared.
     const syncKey = [
       selectedStore?.slug || '',
       selectedLocationId || '',
       orderMethod || '',
+      paymentElection || 'full',
       fnbScheduleMode || '',
       fnbScheduledFor || '',
       normalizedPromoCode,
@@ -3409,6 +3420,7 @@ export default function StorefrontApp() {
     isStorePage,
     normalizeStorefrontErrorMessage,
     orderMethod,
+    paymentElection,
     quoteNeedsRefresh,
     requestQuote,
     selectedLocationId,
