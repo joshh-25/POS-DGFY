@@ -70,17 +70,33 @@ Backend release stamping is still broken **after** its fix merged and shipped. F
 |---|---|---|---|---|
 | `DGFY-STORE-10`…`-16` (7) | DEV | 7 | fixed-unconfirmed (#646) | **resolved in Sentry** |
 | `DGFY-POS-T/V/W/P/Q/X` (6) | DEV+PROD | 8 | fixed-unconfirmed (#646) | **resolved in Sentry** |
-| `DGFY-POS-S` — chunk-load white screen | PROD | 1 | fixed-confirmed (#632 / PR #665) | **resolved in Sentry** |
+| `DGFY-POS-S` — chunk-load white screen | PROD | 1 | fixed-confirmed (#632 / PR #764) | **resolved in Sentry** |
 | `DGFY-BACKEND-3` — cash-drawer DomainError | — | 3 | fixed-confirmed (#508) | **resolved in Sentry** |
 | `DGFY-POS-Z` — 502 on post-#646 release | PROD | 1 | positive control | none — evidence, not a defect |
 | `DGFY-BACKEND-6` — PayMongo paid webhook, unknown session | DEV | 2 | genuine defect, **below floor** | not filed — see below |
 | `DGFY-POS-10` — terminal already in use | PROD | 1 | instrumentation gap, **below floor** | commented on #508 |
 | `DGFY-POS-C` — Network Error | DEV+PROD | 13 | residual, #474 closed | commented on #474 |
 | `DGFY-STORE-T` / `-Y` | DEV+PROD | 30+4 | structural noise (08-15 reclass) | none — #509 |
-| `DGFY-BACKEND-5` / `DGFY-STORE-Z` — route calculator | DEV+PROD | 4+2 | config gap | none — #634 open |
+| `DGFY-BACKEND-5` / `DGFY-STORE-Z` — route calculator | DEV+PROD | 4+2 | config gap, #634 closed (unconfirmed) | none — see below |
 | `DGFY-POS-D` / `DGFY-POS-3` / `DGFY-POS-R` | DEV | 6/6/2 | DEV-only, stale release | none — left unresolved pending a fresh DEV deploy |
 
 **Filed this run: 0** (cap: 3). **Resolved in Sentry: 15.** **Reopened: #633.**
+
+### `DGFY-BACKEND-5` / `DGFY-STORE-Z` — #634 closed, provisioning unconfirmed
+
+`pr-reviewer`'s review of this PR caught that #634 (`provision ROUTE_CALCULATOR_ENDPOINT in DEV and
+PROD`) was already `CLOSED` (Pat, `2026-08-22T11:14:02Z`, `stateReason: COMPLETED`) when this doc
+first said "open." Corrected above — but **not** promoted to a resolved/fixed-confirmed bucket,
+because closing the issue is not the same evidence as the endpoint actually being live: #634's own
+last comment (2026-08-17) states the value was confirmed by Pat but explicitly "not yet applied" —
+server env changes go through a human checkpoint, not something this triage pass can verify by
+itself. `DGFY-BACKEND-5`'s last Sentry event is still 2026-08-16, six days before the close, so
+recent silence isn't independent evidence either way (the feature already degrades to 0 user impact
+regardless). Left as an open verification item, not asserted either fixed or still-broken.
+
+**Re-verification for the next run:** if `DGFY-BACKEND-5`/`DGFY-STORE-Z` stay silent for a full 7d
+window *and* the DEV/PROD `.env` is confirmed to carry `ROUTE_CALCULATOR_ENDPOINT`, mark fixed-
+confirmed. Any new event on either issue after 2026-08-22 means the close was premature.
 
 ## Why nothing was filed
 
