@@ -4,10 +4,10 @@ owner: engineering
 last_reviewed: 2026-08-22
 declaration_id: 2026-08-22-pos-release-batch
 classification: major
-surfaces: pos,terminal,payments,settings
+surfaces: pos,terminal,payments
 reason_codes_impacted: POS_PAYMENT_INVENTORY_RELEASE_HARDENING
 policy_version: 2026.08.22
-verification_evidence: backend-matrix-560-of-560,frontend-contracts,architecture-and-docs-lint,local-pwa-smoke
+verification_evidence: backend-blocker-contracts-42-of-42,frontend-contracts,architecture-and-docs-lint,local-pwa-smoke
 rollback_note: Revert the aggregate batch by domain, preserving additive inventory migrations until active reservations are released or converted. Do not remove tenant reservation tables from schemas that contain active holds.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -21,7 +21,9 @@ preflight_request_ref: #843
 
 Major. This batch changes POS checkout, payment boundary, terminal/PWA update, authorization,
 Storefront order, and location-scoped inventory reservation behavior. It does not change payment
-credentials, tax calculation, fiscal receipt rules, or production deployment configuration.
+credentials handled by the DGFY backend, tax calculation, fiscal receipt rules, or production
+deployment configuration. Browser-entered card credentials are sent directly to PayMongo and are
+not stored by DGFY; the self-hosted form therefore requires the applicable SAQ A-EP controls.
 
 ## Affected Surfaces
 
@@ -45,11 +47,12 @@ credentials, tax calculation, fiscal receipt rules, or production deployment con
 
 ## Verification Evidence
 
-- Backend matrix: 560/560 active tests passed across 9 groups and 144 chunks.
+- Blocker-focused backend verification: 10 suites and 42/42 assertions passed, including
+  cross-tenant/concurrent voids, voucher/promo persistence contracts, strict inventory effects,
+  reservation lifecycle and migration retry safety, and mode-RBAC fallback audit boundaries.
 - Tenant schema/migration evidence: all 14 active tenant schemas repaired and reservation tables
   reported by the runtime schema doctor.
 - Local PWA checks: Chrome 2/2 Playwright tests and Edge-compatible smoke pass; installed-browser,
   offline-fixture, hardware, staging, and canary gates remain explicitly open.
 - Architecture guardrails, controller boundaries, documentation/ADR lint, merge hygiene, and
   development-to-production script-contract tests pass locally.
-
