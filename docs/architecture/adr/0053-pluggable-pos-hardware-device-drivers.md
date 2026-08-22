@@ -187,7 +187,7 @@ whichever runtime actually assembles the raw bytes handed to that transport —
 never in browser/WebView JS. Concretely:
 
 - **iMin/Android WebView bridge** (`window.iMinBridge`): the web POS
-  (`apps/dgfy-web/src/features/pos/utils/iminHardwareBridge.js`) resolves and
+  (`packages/web-core/src/features/pos/utils/iminHardwareBridge.js`) resolves and
   forwards only the logo *source* as a string. Fetching, scaling,
   thresholding, and packing it into an ESC/POS `GS v 0` raster happens
   natively, in `ReceiptLogoProvider.kt`

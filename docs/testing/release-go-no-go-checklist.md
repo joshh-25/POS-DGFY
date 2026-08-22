@@ -74,7 +74,7 @@ the JSON artifact is written either way.
 | 10 | `backend.test_matrix` | `npm run test:backend:matrix` | The full chunked Jest matrix (`scripts/run-backend-test-matrix.js`) — needs real MySQL + Redis. The expensive gate; see cost below. |
 | 11 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | ESLint on `apps/dgfy-ims`. |
 | 12 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. |
-| 13 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0065); there is no single frontend lint gate anymore. |
+| 13 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. |
 | 14 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. |
 | 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
 | 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
@@ -88,7 +88,7 @@ Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `t
 
 > **Read as a dated measurement, not as current gate shape.** This run predates two changes:
 > `scripts/audit-dependencies.js` replaced the `&&`-chained audit (#381), so the short-circuit
-> described below no longer happens; and the frontend split (ADR 0065) replaced the single
+> described below no longer happens; and the frontend split (ADR 0071) replaced the single
 > `apps/dgfy-web` workspace with `apps/dgfy-ims` / `apps/dgfy-pos` / `apps/dgfy-storefront` +
 > `packages/web-core`, taking the gate from 16 checks to 18. Gate numbers and workspace names in
 > this section are preserved as recorded on the day of the run; use the table above for the

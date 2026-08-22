@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-08-18
+last_reviewed: 2026-08-22
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -165,6 +165,38 @@ therefore cannot run against the merged tree on every PR — only a build-time m
 - `docs/compliance/impact-declarations/2026-08-05-pos-webview-replaceall-crash.md`
 - `docs/compliance/impact-declarations/2026-08-18-pos-webview-array-at-crash.md`
 - `docs/compliance/impact-declarations/2026-08-18-pos-es-compat-guardrail.md`
-- `apps/dgfy-web/src/compat/chrome80Runtime.js`
-- `apps/dgfy-web/build/esCompatGuardPlugin.js`
-- `apps/dgfy-web/.eslintrc.json`
+- `packages/web-core/src/compat/chrome80Runtime.js`
+- `packages/web-core/vite/esCompatGuardPlugin.js`
+- `apps/dgfy-ims/.eslintrc.json`
+
+## Amendments (2026-08-22)
+
+### Frontend split (issue #322, ADR 0071) repoints every layer's file path
+
+This ADR's decision body above (Layers 1-4) and its narrative evidence describe the codebase as it
+stood on 2026-08-18, under the single `apps/dgfy-web` package — left as originally written per this
+repo's "historical docs record what was true at the time" convention, same as every other
+pre-split ADR. The split moved every file this ADR names to a new location; that move is tracked
+here rather than by silently rewriting the decision's own prose:
+
+- **Layer 1** (`apps/dgfy-web/src/compat/chrome80Runtime.js`) → `packages/web-core/src/compat/chrome80Runtime.js`.
+  Import wiring moved from a same-directory `./compat/chrome80Runtime.js` in each app's `main.jsx`
+  to a cross-package `../../../packages/web-core/src/compat/chrome80Runtime.js`, still the first
+  statement in all three apps' entrypoints (`apps/dgfy-ims/src/main.jsx`, `apps/dgfy-pos/src/main.jsx`,
+  `apps/dgfy-storefront/src/main.jsx`).
+- **Layer 2** (`apps/dgfy-web/build/esCompatGuardPlugin.js`) → `packages/web-core/vite/esCompatGuardPlugin.js`,
+  following the same precedent as `packages/web-core/vite/sentryViteConfig.js`. Still registered in
+  all three apps' `vite.config.js`, immediately after `react()`.
+- **Layer 3** (`apps/dgfy-web/.eslintrc.json`) → `apps/dgfy-ims/.eslintrc.json` **only** — the branch's
+  sole surviving `.eslintrc.json`. POS, storefront, and `packages/web-core` itself currently have no
+  ESLint config of their own, so this layer's `no-restricted-syntax` rule enforces on IMS alone; it
+  does not reach POS/storefront source or the shared `packages/web-core` code all three apps actually
+  ship, which is exactly where a real find already landed (see below). Tracked as an open gap, not
+  fixed by this amendment.
+- **Layer 2's own first live catch against the fully absorbed codebase** (2026-08-22 develop-absorb
+  cycle, 442 commits): `Array.prototype.toSorted`, reachable via `@radix-ui/react-collection`
+  (transitively bundled through `@radix-ui/react-accordion`/`@radix-ui/react-scroll-area`, reachable
+  from IMS's Items page). Promoted into Layer 1's shim list per this ADR's own "intended lifecycle
+  for a denylist hit" (the same path `structuredClone` took originally) and removed from Layer 2's
+  deny list accordingly — see `packages/web-core/src/compat/chrome80Runtime.js` and
+  `packages/web-core/vite/esCompatGuardPlugin.js`'s own header comments for the full account.
