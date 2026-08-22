@@ -99,7 +99,9 @@ export const PERMISSION_GROUPS = {
     // #848 (Phase 143). Mirrors apps/dgfy-api/src/config/permissions.js's DOWNPAYMENT group verbatim
     // -- was missing from this fallback since Phase 138 (#820) added the group backend-side, which
     // is exactly the drift #673's parity test above exists to catch (confirmed red on `develop`
-    // before this fix: "frontend is missing group DOWNPAYMENT").
+    // before this fix: "frontend is missing group DOWNPAYMENT"). Landed independently on `develop`
+    // via #853's release batch before this branch merged it -- same fix, same content, this
+    // branch's own copy is a no-op kept only for the comment.
     DOWNPAYMENT: {
         label: "Downpayment & Partial Payment",
         permissions: {

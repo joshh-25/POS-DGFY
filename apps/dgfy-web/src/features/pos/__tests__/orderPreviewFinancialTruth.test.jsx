@@ -7,7 +7,7 @@ import OrderPreviewView from '../components/OrderPreviewView.jsx';
 afterEach(cleanup);
 
 describe('POS order preview financial truth', () => {
-  it('shows persisted promo and fee components without adding VAT to the total', () => {
+  it('shows persisted promo and delivery components without adding VAT or DGFY fee to the total', () => {
     render(<OrderPreviewView transaction={{
       invoice_number: 'INV-ONLINE-1',
       status: 'completed',
@@ -24,7 +24,7 @@ describe('POS order preview financial truth', () => {
     }} />);
 
     expect(screen.getByText('Promo (SAVE20)')).toBeTruthy();
-    expect(screen.getByText('DGFY convenience fee')).toBeTruthy();
+    expect(screen.queryByText('DGFY convenience fee')).toBeNull();
     expect(screen.getByText('Delivery Fee')).toBeTruthy();
     expect(screen.getByText('111.00')).toBeTruthy();
     expect(screen.queryByText('Tax')).toBeNull();

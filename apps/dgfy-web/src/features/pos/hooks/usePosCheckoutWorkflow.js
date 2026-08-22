@@ -125,6 +125,7 @@ export const usePosCheckoutWorkflow = ({
     setShowDiscountPin = () => {},
     setAffiliateCodeInput = () => {},
     setCustomerPaymentAmountInput = () => {},
+    setCustomerPaymentAmountAutoFilled = () => {},
     setCheckoutConfirmModalOpen = () => {},
     setMobileCheckoutPanelOpen = () => {},
     setItemOptionsLineKey = () => {},
@@ -330,6 +331,7 @@ export const usePosCheckoutWorkflow = ({
         setShowDiscountPin(false);
         setAffiliateCodeInput('');
         setCustomerPaymentAmountInput('');
+        setCustomerPaymentAmountAutoFilled(false);
         setCheckoutConfirmModalOpen(false);
         setParkedSalePayContext(null);
         setItemOptionsLineKey(null);
@@ -343,6 +345,7 @@ export const usePosCheckoutWorkflow = ({
         setAppliedDiscount,
         setCart,
         setCheckoutConfirmModalOpen,
+        setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
         setDiscountDraft,
         setDiscountModalOpen,
@@ -431,6 +434,8 @@ export const usePosCheckoutWorkflow = ({
             toast.error(orderMethod === 'appointment'
                 ? 'Enter the client name and appointment time before checkout.'
                 : 'Enter the client name before checkout.');
+            setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+            setCustomerPaymentAmountAutoFilled(true);
             setCheckoutConfirmModalOpen(true);
             return;
         }
@@ -442,10 +447,11 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Employee Credit requires an online connection.');
             return;
         }
-        setCustomerPaymentAmountInput('0');
+        setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+        setCustomerPaymentAmountAutoFilled(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [checkoutBlockedReason, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const openSplitPaymentModal = useCallback(async () => {
         if (checkoutBlockedReason) {
@@ -570,6 +576,7 @@ export const usePosCheckoutWorkflow = ({
         setPaymentType('cash');
         resetEmployeeCredit();
         setCustomerPaymentAmountInput('');
+        setCustomerPaymentAmountAutoFilled(false);
         setCheckoutConfirmModalOpen(false);
         setMobileCheckoutPanelOpen(false);
         setItemOptionsLineKey(null);
@@ -630,7 +637,8 @@ export const usePosCheckoutWorkflow = ({
         }
         if (normalizedAction === 'pay') {
             setCurrentViewMode('checkout');
-            setCustomerPaymentAmountInput('0');
+            setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+            setCustomerPaymentAmountAutoFilled(true);
             setCheckoutConfirmModalOpen(true);
             setMobileCheckoutPanelOpen(false);
             toast.success(`Ready to pay ${formatParkedSaleDisplayName(claimedSale)}. Review the cart before checkout.${approvalResetMessage}`);
@@ -638,6 +646,7 @@ export const usePosCheckoutWorkflow = ({
             toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Add items as needed, then checkout.`);
         }
     }, [
+        cartTotal,
         discountApprovalRef,
         itemDiscountApprovalRef,
         posWorkflow,
@@ -648,6 +657,7 @@ export const usePosCheckoutWorkflow = ({
         setAppliedDiscount,
         setCart,
         setCheckoutConfirmModalOpen,
+        setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
         setDiscountDraft,
         setItemOptionsLineKey,
@@ -1034,6 +1044,7 @@ export const usePosCheckoutWorkflow = ({
             if (discountApprovalRef) discountApprovalRef.current = null;
             setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
+            setCustomerPaymentAmountAutoFilled(false);
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
@@ -1047,7 +1058,7 @@ export const usePosCheckoutWorkflow = ({
         } finally {
             setCheckoutLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
+    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
 
     const splitPaymentCheckoutContext = useMemo(() => ({
         orderMethod,
@@ -1299,6 +1310,7 @@ export const usePosCheckoutWorkflow = ({
             setAffiliateCodeInput('');
             resetEmployeeCredit();
             setCustomerPaymentAmountInput('');
+            setCustomerPaymentAmountAutoFilled(false);
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
@@ -1336,6 +1348,7 @@ export const usePosCheckoutWorkflow = ({
             if (discountApprovalRef) discountApprovalRef.current = null;
             setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
+            setCustomerPaymentAmountAutoFilled(false);
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
@@ -1465,6 +1478,7 @@ export const usePosCheckoutWorkflow = ({
         setCart,
         setCheckoutConfirmModalOpen,
         setCheckoutLoading,
+        setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
         setLastReceipt,
         setLastReceiptContract,

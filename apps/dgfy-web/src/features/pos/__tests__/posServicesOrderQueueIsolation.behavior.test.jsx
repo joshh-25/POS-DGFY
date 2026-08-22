@@ -9,10 +9,11 @@ afterEach(() => {
   cleanup();
 });
 
-const renderSidebar = ({ showIncomingQueue, showServiceOperations = false } = {}) => render(
+const renderSidebar = ({ showIncomingQueue, showServiceOperations = false, isMsmeMode = false } = {}) => render(
   <TerminalWorkspaceSidebar
     locked={false}
     isOnline
+    isMsmeMode={isMsmeMode}
     terminalUser={{ role: 'cashier' }}
     currentViewMode="checkout"
     canViewPos
@@ -51,10 +52,16 @@ describe('Services online Orders queue isolation', () => {
     expect(screen.queryByText('Orders (1)')).toBeNull();
   });
 
-  it('preserves Orders for an eligible F&B or Counter cashier', () => {
+  it('preserves Orders for an eligible F&B, Counter, or MSME cashier', () => {
     renderSidebar({ showIncomingQueue: true });
 
     expect(screen.getByText('Orders (1)')).toBeDefined();
     expect(screen.queryByTestId('pos-nav-services')).toBeNull();
+  });
+
+  it('renders Orders for an MSME cashier when the queue capability is enabled', () => {
+    renderSidebar({ showIncomingQueue: true, isMsmeMode: true });
+
+    expect(screen.getByText('Orders (1)')).toBeDefined();
   });
 });

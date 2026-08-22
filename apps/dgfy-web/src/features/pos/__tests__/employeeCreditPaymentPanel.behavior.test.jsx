@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EmployeeCreditPaymentPanel from '../components/EmployeeCreditPaymentPanel.jsx';
 import { fetchEmployeeCreditCheckoutOptions } from '../services/employeeCreditService.js';
 
@@ -31,6 +31,10 @@ const eligibleEmployee = {
 };
 
 describe('EmployeeCreditPaymentPanel', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     fetchEmployeeCreditCheckoutOptions.mockResolvedValue([eligibleEmployee]);
@@ -81,8 +85,47 @@ describe('EmployeeCreditPaymentPanel', () => {
     );
 
     expect(screen.getByText('EMP-044')).toBeTruthy();
-    expect(screen.getByText('Eligible. This sale will be added to the employee outstanding balance.')).toBeTruthy();
+    expect(screen.getByText('Employee ID')).toBeTruthy();
     expect(screen.getByText('PHP 80.00')).toBeTruthy();
     expect(screen.getByText('PHP 205.00')).toBeTruthy();
+  });
+
+  it('searches from the employee field and keeps the result list scrollable', async () => {
+    const user = userEvent.setup();
+    const initialOptions = Array.from({ length: 6 }, (_, index) => ({
+      ...eligibleEmployee,
+      option_key: `employee:${index + 1}`,
+      employee_id: index + 1,
+      employee_code: `EMP-00${index + 1}`,
+      employee_name: `Branch Employee ${index + 1}`
+    }));
+    fetchEmployeeCreditCheckoutOptions.mockImplementation(({ search }) => (
+      Promise.resolve(search ? [eligibleEmployee] : initialOptions)
+    ));
+
+    render(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={null}
+        onSelectEmployee={() => {}}
+        lookupLoading={false}
+        account={null}
+        totalDue={125}
+        locationId={3}
+      />
+    );
+
+    const employeeInput = await screen.findByRole('combobox', { name: 'Select Employee' });
+    await user.click(employeeInput);
+    expect(screen.getByTestId('employee-credit-options-list')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Search employees' })).toBeNull();
+
+    await user.type(employeeInput, 'Branch Employee 6');
+    await waitFor(() => {
+      expect(fetchEmployeeCreditCheckoutOptions).toHaveBeenLastCalledWith({
+        search: 'Branch Employee 6',
+        locationId: 3,
+        limit: 50
+      });
+    });
   });
 });

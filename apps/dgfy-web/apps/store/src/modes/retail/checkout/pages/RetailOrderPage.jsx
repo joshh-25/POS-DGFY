@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
@@ -113,6 +113,12 @@ export function RetailOrderPage({
   const retailCustomerStepComplete = hasCustomerName(customerName)
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
     && guestCheckoutOtpVerified;
+  useEffect(() => {
+    if (step > 1 && !retailCustomerStepComplete) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Return to the required identity step when guest verification becomes invalid.
+      setStep(1);
+    }
+  }, [retailCustomerStepComplete, step]);
   const totals = totalsForDisplay;
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()
@@ -159,7 +165,13 @@ export function RetailOrderPage({
           isDeliveryOrder={isDeliveryOrder}
           isMobileViewport={isMobileViewport}
           displayFont={servicesDisplayFont}
-          onStepChange={setStep}
+          onStepChange={(nextStep) => {
+            if (nextStep > 1 && !retailCustomerStepComplete) {
+              setStep(1);
+              return;
+            }
+            setStep(nextStep);
+          }}
         />
 
         {step === 1 && (
@@ -281,9 +293,12 @@ export function RetailOrderPage({
               cartImageErrors={cartImageErrors}
               checkoutError={checkoutError}
               checkoutLoading={checkoutLoading}
+              guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
               money={money}
               onBack={() => setStep(2)}
+              onBackToAccount={() => setStep(1)}
               onCheckout={onCheckout}
               onImageError={onImageError}
               onPaymentTypeChange={setPaymentType}
@@ -320,6 +335,8 @@ export function RetailOrderPage({
             cartCount={cartCount}
             cartImageErrors={cartImageErrors}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             isDeliveryOrder={isDeliveryOrder}
             money={money}
             onBackToCatalog={onBackToCatalog}

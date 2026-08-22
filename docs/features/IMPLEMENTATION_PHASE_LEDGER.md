@@ -6437,10 +6437,11 @@ after this update: **135**.
 
 - Depends on Phase 136 (ADR 0069) being in force — cites clause 4 throughout.
 - Gates the phases that build on this vocabulary: Phase 140 (quote/checkout resolution), Phase 141
-  (capture), Phase 144 (refund/forfeiture), Phase 145 (balance settlement). (Corrected 2026-08-22,
+  (capture), Phase 144 (refund/forfeiture), Phase 148 (balance settlement). (Corrected 2026-08-22,
   #848: this line's own phase numbers had already drifted from what those phases actually became
   before the renumbering below — Phase 139 turned out to be the ADR 0070 governance correction, not
-  quote/checkout resolution.)
+  quote/checkout resolution. Re-corrected 2026-08-22 for the #853/#578-precedent renumber: #825
+  moved from Phase 145 to Phase 148 — see the dated note at the end of this file.)
 - Board: #819 was set `Done` automatically by the project's own workflow when PR #829 merged with
   `Closes #819`. Flagged back to `For QA` in the Phase 138 (#820) session (Housekeeping, this
   session) since no deployed-environment verification (Verifier/QA role) has actually run yet —
@@ -6838,9 +6839,10 @@ after this update: **135**.
   137's (#819) tenant schema (`pos_transactions.amount_paid`/`balance_due`, the `partially_paid`
   enum value, `pos_order_payments`) — all first written by this phase.
 - Gates Phase 142 (#823, storefront UI), Phase 144 (#824, accept/reject/refund — the reject-refund
-  path this phase makes refund the correct, downpayment-only amount), and Phase 145 (#825, balance
-  settlement, the second ledger-row writer). (#824/#825 renumbered 2026-08-22, #848 — see that
-  phase's own entry.)
+  path this phase makes refund the correct, downpayment-only amount), and Phase 148 (#825, balance
+  settlement, the second ledger-row writer). (#824/#825 renumbered 2026-08-22, #848; #825 moved
+  again 145→148 on 2026-08-22 for the #853/#578-precedent renumber — see the dated note at the end
+  of this file.)
 - **Governance wrinkle identified, not resolved here:** ADR 0070 carries ADR 0069's clauses 1-5/8-10
   forward *by reference* rather than restating them, so those live, load-bearing clauses physically
   sit in a document marked `status: superseded`/`authority_level: historical` — which `AGENTS.md`
@@ -6997,7 +6999,10 @@ after this update: **135**.
   never mirrored the `DOWNPAYMENT` permission group Phase 138 (#820) added backend-side.
   `permissionsFrontendParity.test.js` has been red on `develop` since (confirmed: "frontend is
   missing group DOWNPAYMENT", 2 failed / 15 passed before this PR). Fixed by adding the group,
-  verbatim-mirrored from `apps/dgfy-api/src/config/permissions.js` — test now 17/17.
+  verbatim-mirrored from `apps/dgfy-api/src/config/permissions.js` — test now 17/17. (The same fix
+  landed independently on `develop` via PR #853's release batch before this PR's own merge into
+  `develop`; this PR's copy of the fix is a byte-identical no-op, kept only for its comment,
+  resolved during the post-#853 conflict merge.)
 - Three-line addition inside `SettingsWorkspace` (`TerminalOperationsWorkspace.jsx`): an import, a
   `canViewDownpayment` permission derivation feeding a conditional `SETTINGS_TABS` entry, and a
   `renderPane` branch. No existing tab, permission derivation, or save path changed —
@@ -7063,3 +7068,208 @@ after this update: **135**.
   `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsPanel.behavior.test.jsx` (new)
 - `docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md` (new)
 - Issue #848 (this phase)
+
+## Phase 145 - MSME POS Online Order Queue Visibility
+
+### Initiative and Release
+
+- Initiative: MSME online-order operations visibility.
+- Release: POS workflow presentation and Store Profile correction.
+
+### Objective and Scope
+
+- Allow MSME POS tenants with effective `pos` and `storefront` capabilities to
+  see and load the shared Incoming Online Queue.
+- Repair stale persisted Store Profiles that still contain the historical
+  `show_online_queue: false` default.
+- Preserve Services isolation and all existing POS permission, active-shift,
+  location-scope, connectivity, API, order, payment, and inventory behavior.
+
+### Status
+
+- `completed`
+- User approval received on 2026-08-22.
+- Completed on 2026-08-22.
+
+### Dependencies and Governance Note
+
+- [ADR 0008](../architecture/adr/0008-tenant-workflow-mode-msme-simplification.md),
+  amended 2026-08-22.
+- [ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md)
+  for the customer-facing Online Ordering Mode boundary.
+- [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md)
+  for Storefront/POS ownership boundaries.
+- [ADR 0070](../architecture/adr/0070-downpayment-authorization-across-workflow-modes.md)
+  for the shared Storefront checkout path serving MSME.
+- Phase 79 Services navigation and online-queue isolation.
+- Phase 143 is the downpayment admin configuration UI (#848) and Phase 144 is
+  downpayment accept/reject/refund (#824) — both part of the downpayment epic (#815),
+  not the PWA canary roadmap this note originally (and incorrectly) named. This
+  initiative uses Phase 145 because it was the next number free of any prior
+  reservation at the time it was authored; the downpayment epic's own Phase
+  145 slot (balance settlement, #825) was moved to Phase 148 on 2026-08-22 to
+  avoid colliding with this already-completed phase — see the dated note at
+  the end of this file. The PWA canary roadmap (`docs/features/PWA-Phases.md`)
+  remains unregistered in this ledger entirely; tracked separately, not by a
+  phase-number reservation here.
+- Classification: `within-existing-boundary` with an amendment to ADR 0008's
+  untagged/default MSME presentation rule. No new ADR, migration, API route,
+  permission, or exception allowlist is required.
+
+### Acceptance and Validation Evidence
+
+- [x] MSME profile defaults `show_online_queue` to `true`.
+- [x] Stale persisted MSME profiles rebuild to the current profile before POS
+  navigation and polling consume the profile.
+- [x] MSME queue visibility and Services isolation regression tests pass.
+- [x] Local authenticated Playwright verification passes: `Tindahan Ko`
+  (`workflow_mode=msme`) renders `Orders (0)`, while `Laundry`
+  (`workflow_mode=services`) does not render Orders; both sessions had no page
+  errors, console errors, or HTTP 5xx responses.
+- [x] Store Profile equivalence and MSME golden snapshot tests pass.
+- [x] Architecture checks pass before final validation.
+- [x] No tenant data, order, payment, inventory, shift, or database record was
+  created, modified, migrated, or deleted.
+
+### Implementation Links
+
+- `packages/shared-constants/src/posDefaultsAndTerminology.js`
+- `apps/dgfy-web/src/features/settings/WorkflowModeContext.jsx`
+- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posOperationalVisibility.test.js`
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js`
+- `apps/dgfy-api/tests/__snapshots__/storeProfile.equivalence.contract.test.js.snap`
+- `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
+
+## Phase 146 - POS Maintainability Closure
+
+### Initiative and Release
+
+- Initiative: POS terminal presentation maintainability cleanup, bundled into PR #853's release
+  batch (originating PR #845, superseded — see Phase 147 below).
+- Release: `develop`, via PR #853 (merged `d02dc70a6`, 2026-08-22).
+
+### Objective and Scope
+
+- Remove dead terminal queue presentation state (`queuedTerminalOperations`, `queueStatusFilter`,
+  `setQueueStatusFilter`) from `TerminalOperationsWorkspace.jsx` — queue replay/summary services are
+  the actual source of truth, per the declaration's precondition 3.
+- Replace a synchronous UI-only payment auto-fill update with a derived value.
+- Split the terminal presentation chunk out of the POS route bundle to stay under the
+  frontend-budgets chunk-size limit.
+- No change to authorization rules, payment methods, fiscal calculations, database schemas, or
+  transaction persistence (declaration's own classification: `major` on the `pos,terminal` surface
+  floor, not on content — this is presentation-layer only).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Backfilled into this ledger 2026-08-22 (#848 session) — the compliance impact declaration below
+  shipped via PR #853 with no corresponding ledger entry, a rule-7 gap ("every ledger entry must
+  include...") discovered while resolving the #853/#578-precedent phase-number collision. Not
+  authored by this session's own work; recorded here for the first time from existing evidence.
+- This phase number (146) was one of the two #853 grabbed without checking the downpayment epic's
+  prior reservation (#815/#848); unlike #853's own Phase 142/145 claims (moved to Phase 147/148
+  below), Phase 146 for *this* content is kept as-is because #827 (the downpayment epic's original
+  Phase 146 claimant, "Hardening + documentation closure") had not shipped anything under that
+  number yet — #827 moves to Phase 149 instead. See the dated note at the end of this file.
+
+### Acceptance and Validation Evidence
+
+- `npm run lint:docs` — PASS.
+- `npm run check:architecture` — PASS.
+- POS tests — PASS (148 files, 721 tests).
+- Changed-file POS lint — PASS with zero errors.
+- `npm run build:pos` — PASS.
+- `npm run check:frontend-budgets` — PASS after lazy-loading the terminal presentation boundary;
+  POS route chunk 133.43 KB against the 190 KB limit.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/posCheckoutTerminalShell.contract.test.js`
+- `docs/compliance/impact-declarations/2026-08-21-pos-maintainability-phase-146.md`
+- Commits `835440c0e`/`c99961d0c` ("remove dead terminal queue state"),
+  `15bee98da`/`1d7238635` ("split terminal presentation chunk")
+
+## Phase 147 - PR #853 POS Release Batch Rebuild (supersedes #845)
+
+### Initiative and Release
+
+- Initiative: POS release-batch reconciliation and release-readiness closure.
+- Release: `develop`, via PR #853 (merged `d02dc70a6`, 2026-08-22) — the clean replacement for the
+  earlier draft PR #845, which is superseded and stays unmerged.
+
+### Objective and Scope
+
+- Rebuild from the current `develop` head, then reapply only the intended POS, storefront,
+  inventory-reservation, payment, PWA, and audit changes from the prior PR branch.
+- Preserve newer `develop` checkout, voucher, payment, schema-registry, and phase-ledger contracts
+  when cherry-pick conflicts occur.
+- Keep React Router security work and compliance-script enforcement in separate follow-up PRs
+  (tracked as draft PRs #854/#855).
+
+### Status
+
+- `completed`
+- Renumbered from Phase 142 to Phase 147 on 2026-08-22 (#848 session) — Phase 142 was already the
+  downpayment epic's reservation for #823 (storefront checkout UI, PR #844) per #849's 2026-08-22
+  renumber, which predates this phase's own PR by hours; #853's branch did not contain that renumber
+  when authored. See the dated note at the end of this file for the full resolution and the #578
+  precedent applied.
+
+### Dependencies and Governance Note
+
+- Depended on the `develop` head at authoring time and the PR conventions in `docs/ai/PR.md`.
+- Required fresh-schema and upgrade migration checks, architecture/compliance/docs gates, and
+  targeted POS/storefront payment and inventory tests before completion — all passed per PR #853's
+  own Testing Evidence section.
+- Three findings from this phase's reconciliation were later confirmed as unintended reverts, not
+  intentional scope (`resolveTrackedTotals`/#747, services local-simulation dead-wiring, and a
+  mixed-cart `checkoutPayload` argument-shape regression) — tracked and restored separately under
+  #857, not part of this phase's own acceptance evidence below.
+
+### Acceptance and Validation Evidence
+
+- Reconciliation base: `0e2d329f483c8bf7b94a9941f80fb9c690eef379`.
+- Old PR state preserved in local branch `backup/pr-845-before-rebuild`.
+- Focused inventory/RBAC tests: 6 suites, 41 tests passing; tenant migration and registry contracts
+  pass; architecture/compliance/docs hooks passed on the final commits.
+- Merged as PR #853, `mergeStateStatus: CLEAN`, `d23a65c9`-lineage build checks green.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`
+- `apps/dgfy-api/src/modules/shared/utils/onlineInventoryEffects.js`
+- `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs`
+- Issue #843 and PR #853 (replacement for draft PR #845)
+
+---
+
+**Dated note, 2026-08-22 (#848 session) — Phase-number collision between PR #853 and the
+downpayment epic (#815), resolved per the #578 precedent ("the prior reservation wins; the side
+that grabbed a number without checking renumbers"):**
+
+PR #853's branch was cut before #849 (2026-08-22) renumbered the downpayment epic's Phase
+143/144→144/145 to keep #848 at 143, and #853's branch never merged that renumber before landing its
+own `## Phase 142` and `## Phase 145` ledger entries — confirmed: `62cd75c0b` (#849's merge) is not
+an ancestor of `f22fd51fb` (#853's own merge of `develop`). Resolution, decided by Pat 2026-08-22:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 142 | #823 storefront checkout UI (PR #844) | unchanged — prior reservation |
+| 143 | #848 POS settings UI (PR #859) | unchanged — prior reservation |
+| 144 | #824 accept/reject/refund | unchanged — prior reservation |
+| 145 | MSME POS Online Order Queue Visibility | unchanged — already `completed`, no prior reservation existed for 145 at authoring time (only 143/144 were reserved) |
+| 146 | POS Maintainability Closure | unchanged — backfilled above; #827's Phase 146 claim moves instead, since #827 has not shipped |
+| 147 | PR #853 POS release batch rebuild | **moved from 142** |
+| 148 | #825 balance settlement | **moved from 145** |
+| 149 | #827 hardening + documentation closure | **moved from 146** |
+
+No code changes accompany this renumber — PR #844 and PR #859 both keep their existing phase
+numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments needed edits.

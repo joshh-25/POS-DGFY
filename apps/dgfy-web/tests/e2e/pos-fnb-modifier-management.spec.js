@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 import { signIn } from './fixtures/login.js';
+import { skipPosAdminShiftPrompt } from './fixtures/posVoid.js';
 
 test('F&B modifier creation and item assignment are located in standalone POS @fnb @modifiers @smoke', async ({ page }, testInfo) => {
   test.skip(!hasTestCredentials, 'E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD are required.');
@@ -21,6 +22,7 @@ test('F&B modifier creation and item assignment are located in standalone POS @f
   });
 
   await signIn(page, testCredentials);
+  await skipPosAdminShiftPrompt(page);
   diagnostics.length = 0;
 
   await page.getByTestId('pos-nav-items').click();
@@ -32,7 +34,7 @@ test('F&B modifier creation and item assignment are located in standalone POS @f
 
   await expect(page.getByRole('heading', { name: 'Menu modifiers', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'F&B menu modifiers' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Assign add-ons to an item' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Override add-ons for an item' })).toBeVisible();
   await expect(page.getByLabel('Menu item')).toBeVisible();
   await expect(page.getByText(/Something went wrong|Unexpected error|Application error/i)).toHaveCount(0);
 
@@ -41,7 +43,7 @@ test('F&B modifier creation and item assignment are located in standalone POS @f
   await testInfo.attach('pos-fnb-menu-modifiers-desktop', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('heading', { name: 'Assign add-ons to an item' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Override add-ons for an item' })).toBeVisible();
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(mobileOverflow).toBe(false);
   await testInfo.attach('pos-fnb-menu-modifiers-mobile', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });

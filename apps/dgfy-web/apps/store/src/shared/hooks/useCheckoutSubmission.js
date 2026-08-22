@@ -2,11 +2,13 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observabi
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
 // RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
 // -- this object's own `totals.total_amount` is what the order-confirmation screens
@@ -15,6 +17,7 @@ import {
 // `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
 // the authoritative `order.total_amount` from the checkout response, fall back to the client
 // value only if the server didn't send one.
+// Restored 2026-08-22 (#857) -- reverted by #853's develop reconciliation without a stated reason.
 const resolveTrackedTotals = (order, fallbackTotals) => {
   const serverTotal = Number(order?.total_amount);
   return Number.isFinite(serverTotal)
@@ -247,11 +250,15 @@ export function useCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
-      const message = 'Verify your email before placing this order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
     }
+    // Restored 2026-08-22 (#857) -- Services local-simulation preview, reverted by #853's develop
+    // reconciliation while StorefrontApp.jsx kept passing this branch's own params unchanged
+    // (servicesLocalSimulationEnabled/isServicesLocalSimulationMethod/createServicesLocalSimulation),
+    // leaving them silently dead-wired.
     const shouldCreateLocalServicesSimulation = isServicesMode
       && servicesLocalSimulationEnabled
       && typeof isServicesLocalSimulationMethod === 'function'
@@ -348,7 +355,7 @@ export function useCheckoutSubmission({
       }
       if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -366,6 +373,11 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
@@ -396,6 +408,10 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
+          // Restored 2026-08-22 (#857) -- #853's develop reconciliation passed a second positional
+          // arg here, but buildPayload (useFnbCheckoutQuote.js) takes a single options object; the
+          // override was silently discarded and a mixed product+service cart submitted its service
+          // lines into the product order.
           ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,

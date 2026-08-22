@@ -75,7 +75,7 @@ export const POS_DEFAULTS_AND_TERMINOLOGY_REGISTRY = Object.freeze({
         { item_create_label: 'Create Campus SKU' }
     ),
     msme: buildEntry(
-        { preferred_order_method: 'takeout', show_online_queue: false },
+        { preferred_order_method: 'takeout', show_online_queue: true },
         { item_create_label: 'Create Item', product_create_label: 'Create Product' }
     )
 });
