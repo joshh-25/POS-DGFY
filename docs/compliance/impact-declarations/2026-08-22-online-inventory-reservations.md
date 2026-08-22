@@ -4,15 +4,15 @@ owner: engineering
 last_reviewed: 2026-08-22
 declaration_id: 2026-08-22-online-inventory-reservations
 classification: major
-surfaces: pos,terminal,payments
+surfaces: pos,terminal,storefront,inventory
 reason_codes_impacted: INVENTORY_RESERVATION_OVERSALE_PREVENTION
 policy_version: 2026.08.22
-verification_evidence: inventory-reservation-focused-tests,tenant-schema-doctor-14-of-14,storefront-to-pos-authenticated-e2e
+verification_evidence: inventory-reservation-focused-tests,tenant-schema-registry-contracts,storefront-to-pos-unit-lifecycle
 rollback_note: Revert the reservation models, service wiring, additive migration, tenant-schema registry entries, and reservation lifecycle tests together. The existing stock-issue path remains available for legacy online orders without a reservation row. Do not run a down migration against a database containing active reservations without first releasing or converting those holds.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-22T00:00:00+08:00
-preflight_request_ref: PHASE-153-ONLINE-INVENTORY
+preflight_request_ref: PHASE-142-ONLINE-INVENTORY
 ---
 
 # Online Inventory Reservation and Oversell Protection
@@ -54,12 +54,14 @@ receipt rules.
 ## Verification Evidence
 
 1. Focused reservation, migration, lifecycle, Storefront checkout, and tenant-schema contract
-   tests pass (5 suites, 31 tests in the final focused run).
-2. Local landlord migrations applied successfully, including both pending migration files.
-3. Tenant schema repair and report pass for all 14 active local tenants; capability version is
-   `2026-08-21.1` with zero missing reservation tables.
-4. Authenticated local Playwright flow passes: Storefront Pickup order, POS queue visibility,
-   acceptance, preparation, cash collection, completion, reservation conversion, and cleanup.
+   tests pass (6 suites, 41 tests in the final focused run).
+2. The idempotent reservation migration and the tenant-schema registry declare the same two
+   tables, foreign keys, indexes, and `DECIMAL(24,12)` quantity precision.
+3. Tenant schema capability version is `2026-08-22.1`; local tenant repair remains an explicit
+   operator-approved action and was not run against production in this session.
+4. Storefront checkout and POS cancellation lifecycle unit coverage verifies reservation creation,
+   release, conversion wiring, and rollback behavior; authenticated browser certification remains
+   a release gate rather than claimed evidence here.
 5. Architecture guardrails, controller-boundary checks, source lint, syntax checks, and
    `git diff --check` pass for the scoped implementation.
 6. The implementation and migration changes are committed separately from unrelated

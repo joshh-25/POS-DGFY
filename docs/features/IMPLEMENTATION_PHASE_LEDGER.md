@@ -6964,8 +6964,10 @@ after this update: **135**.
 
 - Reconciliation base: `0e2d329f483c8bf7b94a9941f80fb9c690eef379`.
 - Old PR state preserved in local branch `backup/pr-845-before-rebuild`.
-- Remaining evidence: migration certification, targeted tests, production builds, and final diff
-  audit are still in progress.
+- Focused inventory/RBAC tests: 6 suites, 41 tests passing; tenant migration and registry contracts
+  pass; architecture/compliance/docs hooks pass on the new commits.
+- Remaining evidence: full backend/frontend suites, production builds, and final diff audit are
+  still in progress.
 
 ### Implementation Links
 
