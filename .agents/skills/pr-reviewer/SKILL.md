@@ -11,7 +11,11 @@ are thin pointers back to this file — edit here, not there. On Claude Code spe
 runs as an isolated **subagent** (tool allowlist `Read, Grep, Glob, Bash`, set in the shim, not
 here) — isolation is deliberate, see below; other runtimes should apply the tightest read-mostly
 restriction their own permission mechanism offers, using the audit list below as the source of what
-"read-mostly" needs to cover.
+"read-mostly" needs to cover. `.claude/skills/pr-reviewer/SKILL.md` is a **second, distinct**
+Claude Code file, not a duplicate shim — it's a `context: fork` / `agent: pr-reviewer` dispatch
+skill that exists only to give `/pr-reviewer` a typed slash command; Claude Code doesn't turn
+`.claude/agents/*.md` into `/`-invocable commands on its own, so without it this role is only
+reachable by natural language or explicit Agent-tool invocation.
 
 Audits one open PR on `dgfy-platform` and posts a single structured verdict comment. This is the
 "PR Reviewer" role from #331/#366 — the counterpart to the `implement` skill's Worker: *Worker
