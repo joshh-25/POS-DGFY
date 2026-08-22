@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from './helpers/auth.js';
+import { TEST_COMPANY_TOKEN } from './helpers/urls.js';
 
 test.describe('E2E Performance Audits', () => {
   test('Login page loads and registers timing successfully', async ({ page }) => {
@@ -16,31 +18,9 @@ test.describe('E2E Performance Audits', () => {
   });
 
   test('Page navigation transition performance is fast', async ({ page }) => {
-    // Authenticate
-    const email = process.env.VITE_TEST_USER_EMAIL || 'admin@tenant-a.com';
-    const password = process.env.VITE_TEST_USER_PASSWORD || 'Admin123!';
-    
     await page.goto('/login');
-    
-    // Set up lookup request promise before triggering blur
-    const lookupPromise = page.waitForResponse(
-      res => res.url().includes('/auth/lookup'),
-      { timeout: 5000 }
-    ).catch(() => null);
-    
-    await page.locator('input[type="email"]').fill(email);
-    await page.locator('input[type="password"]').fill(password);
-    await page.locator('input[type="email"]').blur();
-    
-    await lookupPromise; // Wait for async API company token lookup
-    
-    const tokenInput = page.locator('input[id="companyToken"]');
-    if (await tokenInput.isVisible()) {
-      await tokenInput.fill('token-tenant-a');
-    }
-    
-    await page.getByRole('button', { name: /Sign In/i }).click();
-    await page.waitForURL('**/');
+    await loginToApp(page, TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_COMPANY_TOKEN);
+    await expect(page.getByRole('heading', { name: 'Terminal Login Required' })).toBeVisible();
 
     // Time transition to items page
     const startTime = Date.now();

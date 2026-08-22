@@ -15,7 +15,10 @@ export function useSimpleCheckoutGating({
   guestCheckoutOtpVerified = false,
   isDeliveryOrder = false
 }) {
-  const simpleCustomerStepComplete = isCustomerStepComplete({
+  const simpleIdentityStepComplete = hasCustomerName(customerName)
+    && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
+    && guestCheckoutOtpVerified;
+  const simpleCheckoutDetailsComplete = isCustomerStepComplete({
     customerName,
     customerPhone,
     customerEmail,
@@ -26,10 +29,10 @@ export function useSimpleCheckoutGating({
   const simpleHasCustomerIdentity = hasCustomerName(customerName);
   const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const simpleStepOneReady = cart.length > 0 && (fnbScheduleMode !== 'schedule' || Boolean(fnbScheduledFor));
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
+  const simpleCheckoutAllowed = checkoutAllowed && simpleCheckoutDetailsComplete;
 
   return {
-    simpleCustomerStepComplete,
+    simpleCustomerStepComplete: simpleIdentityStepComplete,
     simpleHasCustomerIdentity,
     simpleHasPrimaryIdentityContact,
     simpleStepOneReady,

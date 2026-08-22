@@ -237,18 +237,23 @@ describe('POS terminal location UX integration', () => {
     });
   });
 
-  it('keeps MSME mode on minimal shift-controls workspace with operating selector visible', () => {
+  it('renders the MSME incoming queue and still requires an active shift', () => {
     const props = buildBaseProps({
       isMsmeMode: true,
       viewMode: 'incoming_queue',
-      shiftState: { loading: false, shift: null, cashSummary: null }
+      shiftState: { loading: false, shift: null, cashSummary: null },
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'shift_required',
+        errorMessage: 'Open a shift to view orders for this branch.',
+        orders: []
+      }
     });
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Shift Controls')).toBeTruthy();
-    expect(screen.getByText('Shift Closed. Please open your shift before using the POS.')).toBeTruthy();
-    expect(screen.queryByText('Incoming Online Queue')).toBeNull();
+    expect(screen.getByRole('tab', { name: /Active Queue/ })).toBeTruthy();
+    expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
   });
 
   it('renders location-binding readiness summary in terminal setup context', () => {

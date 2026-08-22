@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 import { RetailOrderReviewItemsList } from './RetailOrderReviewItemsList.jsx';
 
 /**
@@ -20,10 +21,13 @@ export function RetailOrderPaymentStep({
   checkoutError = '',
   checkoutLoading = false,
   downpaymentDisplay = { active: false },
+  guestCheckoutOtpVerified = false,
   isDeliveryOrder = false,
+  isDgfyCustomerSignedIn = false,
   isMobileViewport = false,
   money,
   onBack,
+  onBackToAccount,
   onCheckout,
   onImageError,
   onlinePaymentPanel = null,
@@ -39,6 +43,12 @@ export function RetailOrderPaymentStep({
     ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})`
     : 'Place Order';
   const submitLoadingLabel = isDownpaymentActive ? 'Creating payment...' : 'Placing Order...';
+  const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
+  const displayedCheckoutError = guestCheckoutOtpVerified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE
+    ? ''
+    : checkoutError || (
+    guestCheckoutVerificationRequired ? GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE : ''
+    );
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
@@ -73,10 +83,19 @@ export function RetailOrderPaymentStep({
         onImageError={onImageError}
         withAssetOrigin={withAssetOrigin}
       />
-      {checkoutError && (
+      {displayedCheckoutError && (
         <div style={{ border: '1px solid #fecaca', borderRadius: 12, background: '#fef2f2', color: '#b91c1c', fontSize: 13, fontWeight: 600, padding: '10px 14px' }}>
-          {checkoutError}
+          {displayedCheckoutError}
         </div>
+      )}
+      {guestCheckoutVerificationRequired && typeof onBackToAccount === 'function' && (
+        <button
+          type="button"
+          onClick={onBackToAccount}
+          style={{ minHeight: 42, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer' }}
+        >
+          Back to Account &amp; Verify Email
+        </button>
       )}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -84,8 +103,8 @@ export function RetailOrderPaymentStep({
           <button
             type="button"
             onClick={onCheckout}
-            disabled={checkoutLoading}
-            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+            disabled={checkoutLoading || guestCheckoutVerificationRequired}
+            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : guestCheckoutVerificationRequired ? '#cbd5e1' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : guestCheckoutVerificationRequired ? 'not-allowed' : 'pointer' }}
           >
             {checkoutLoading ? submitLoadingLabel : submitLabel}
           </button>

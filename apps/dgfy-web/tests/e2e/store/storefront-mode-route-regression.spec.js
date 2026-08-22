@@ -11,7 +11,7 @@ const storefrontModes = [
   {
     envKey: 'RETAIL_STOREFRONT_TEST_SLUG',
     name: 'Retail',
-    slug: process.env.RETAIL_STOREFRONT_TEST_SLUG || 'tinda-han-d589e5'
+    slug: process.env.RETAIL_STOREFRONT_TEST_SLUG
   },
   {
     envKey: 'FNB_STOREFRONT_TEST_SLUG',

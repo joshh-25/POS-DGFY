@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-18
 declaration_id: 2026-08-16-storefront-hosted-wallet-payments
 classification: major
 surfaces: payments,storefront,checkout,pos,terminal,compliance
@@ -22,7 +22,10 @@ preflight_request_ref: PHASE-95
 Major because the change expands the governed storefront payment surface from
 QR Ph to provider-hosted card, GCash, and Maya sessions. Payment success is
 still accepted only from the verified PayMongo webhook; browser return values
-never mark an order paid.
+never mark an order paid. The implementation also contains explicitly opt-in
+direct GCash, Maya, and card Payment Intent paths. Card details are tokenized
+client-side through PayMongo and are not sent to DGFY; this declaration does
+not authorize production activation.
 
 ## Affected Surfaces
 
@@ -37,13 +40,18 @@ never mark an order paid.
    configuration, tenant settlement policy, and PayMongo capability probe all
    report the method as available.
 2. The browser creates a pending payment session and follows the provider URL;
-   it cannot submit a successful payment result directly.
+   for direct GCash, Maya, and card variants, it creates and attaches the
+   Payment Method with the public key and short-lived Payment Intent `client_key`;
+   card details go directly to PayMongo, and the browser cannot submit a
+   successful payment result directly.
 3. Only a verified provider webhook may finalize a hosted payment and mark its
    associated order paid.
 4. Cash checkout and the existing QR Ph policy remain available under their
    current authorization and settlement rules.
 5. This declaration covers implementation and validation only; it does not
    authorize production credentials, deployment, or promotion to `main`.
+6. Direct GCash, Maya, and card live confirmation flags are required whenever
+   their corresponding direct path is enabled in `PAYMONGO_MODE=live`.
 
 ## Verification Evidence
 

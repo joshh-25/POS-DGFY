@@ -73,6 +73,9 @@ export function FnbCheckoutRouteContainer({
   checkoutLoading,
   checkoutResult,
   checkoutTab,
+  customerEmail,
+  customerName,
+  customerPhone,
   customerPin,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
@@ -722,15 +725,14 @@ export function FnbCheckoutRouteContainer({
                     balanceNote={downpaymentDisplay.active
                       ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
                       : null}
-                    cashFallbackAllowed={!downpaymentDisplay.active}
+                    billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                     onConfirmTestPayment={import.meta.env.DEV
                       && fnbPaymentType === 'qrph'
                       && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                       ? handleConfirmQrphTestPayment
                       : null}
-                    onUseCash={() => {
+                    onChooseAnotherPaymentMethod={() => {
                       resetQrphPaymentSession();
-                      if (!downpaymentDisplay.active) handlePaymentTypeChange('cash');
                     }}
                     paymentSession={qrphPaymentSession}
                     paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}

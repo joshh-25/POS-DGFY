@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { PosHeader } from '../components/PosHeader';
+import { PosText as Text, PosTextInput as TextInput } from '../components/PosTextScale';
 
 interface ManagedAccountRecord {
     cashierId: number;

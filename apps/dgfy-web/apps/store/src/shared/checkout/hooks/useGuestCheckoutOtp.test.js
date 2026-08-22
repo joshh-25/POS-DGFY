@@ -78,4 +78,46 @@ describe('useGuestCheckoutOtp delivery handling', () => {
     expect(result.current.guestCheckoutOtpVerified).toBe(false);
     expect(result.current.guestCheckoutOtpError).toBe('Email verification could not be completed. Please try again.');
   });
+
+  it('marks the guest checkout as verified only after the server returns a proof', async () => {
+    const requestJson = vi.fn().mockResolvedValue({ guest_checkout_proof: 'signed-guest-proof-value' });
+    const props = buildProps(requestJson);
+    const { result } = renderHook(() => useGuestCheckoutOtp(props));
+
+    await act(async () => {
+      result.current.handleGuestCheckoutOtpCodeChange('528372');
+    });
+    await act(async () => {
+      await result.current.handleVerifyGuestCheckoutOtp();
+    });
+
+    expect(result.current.guestCheckoutOtpVerified).toBe(true);
+    expect(result.current.guestCheckoutProof).toEqual({
+      email: 'guest@example.com',
+      proof: 'signed-guest-proof-value'
+    });
+    expect(props.toast.success).toHaveBeenCalledWith('Email verified. You can now place your order.');
+  });
+
+  it('keeps a verified proof while the checkout email is temporarily empty during state hydration', async () => {
+    const requestJson = vi.fn().mockResolvedValue({ guest_checkout_proof: 'signed-guest-proof-value' });
+    const props = buildProps(requestJson);
+    const { result, rerender } = renderHook(() => useGuestCheckoutOtp(props));
+
+    await act(async () => {
+      result.current.handleGuestCheckoutOtpCodeChange('528372');
+    });
+    await act(async () => {
+      await result.current.handleVerifyGuestCheckoutOtp();
+    });
+
+    props.customerEmail = '';
+    rerender();
+
+    expect(result.current.guestCheckoutOtpVerified).toBe(true);
+    expect(result.current.guestCheckoutProof).toEqual({
+      email: 'guest@example.com',
+      proof: 'signed-guest-proof-value'
+    });
+  });
 });

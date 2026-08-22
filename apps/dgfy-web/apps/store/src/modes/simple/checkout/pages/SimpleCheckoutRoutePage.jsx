@@ -24,6 +24,9 @@ export function SimpleCheckoutRoutePage({
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -92,6 +95,7 @@ export function SimpleCheckoutRoutePage({
   onSelectAddress,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
+  onSignInToCheckout,
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
@@ -265,8 +269,10 @@ export function SimpleCheckoutRoutePage({
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
             isMobileViewport={isMobileViewport}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             money={money}
             onImageError={onImageError}
             paymentType={fnbPaymentType}
@@ -288,15 +294,14 @@ export function SimpleCheckoutRoutePage({
                 balanceNote={downpaymentDisplay.active
                   ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
                   : null}
-                cashFallbackAllowed={!downpaymentDisplay.active}
+                billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                 onConfirmTestPayment={import.meta.env.DEV
                   && fnbPaymentType === 'qrph'
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                   ? onConfirmQrphTestPayment
                   : null}
-                onUseCash={() => {
+                onChooseAnotherPaymentMethod={() => {
                   resetQrphPaymentSession?.();
-                  if (!downpaymentDisplay.active) onPaymentTypeChange('cash');
                 }}
                 paymentSession={qrphPaymentSession}
                 paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
@@ -311,6 +316,7 @@ export function SimpleCheckoutRoutePage({
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
+            onSignInToCheckout={onSignInToCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
           />
           {!isMobileViewport && (

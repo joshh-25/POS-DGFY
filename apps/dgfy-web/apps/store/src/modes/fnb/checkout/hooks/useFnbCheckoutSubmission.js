@@ -4,12 +4,16 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
+// see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
 import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -91,7 +95,7 @@ export function useFnbCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
-      const message = 'Verify the email code before placing this guest order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -112,7 +116,7 @@ export function useFnbCheckoutSubmission({
         : readStoreAuthToken();
       if (isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -130,6 +134,11 @@ export function useFnbCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,

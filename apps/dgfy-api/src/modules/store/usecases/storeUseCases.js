@@ -67,6 +67,7 @@ import {
     getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
@@ -2841,7 +2842,8 @@ export const buildStoreCheckoutUseCase = ({
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    inventoryReservationService = null
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3110,6 +3112,27 @@ export const buildStoreCheckoutUseCase = ({
                     idempotencyKey: capturedPayment.session_reference,
                     recordedBy: null
                 }, { transaction });
+            }
+
+            if (inventoryReservationService?.reserveOnlineOrderInventory) {
+                // Rebuild immutable effect references after the transaction identity exists so
+                // reservation evidence points to the exact online order, not the quote-time
+                // PENDING placeholder used by read-only checkout resolution.
+                const reservationEffects = buildOnlineInventoryEffects({
+                    lines: resolved.prepared.preparedLines,
+                    recipePlan: resolved.recipePlan,
+                    locationId: normalized.location_id,
+                    orderId,
+                    invoiceNumber,
+                    trackingPin,
+                    strict: true
+                });
+                await inventoryReservationService.reserveOnlineOrderInventory({
+                    sourceId: orderId,
+                    locationId: normalized.location_id,
+                    effects: reservationEffects,
+                    transaction
+                });
             }
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {
@@ -3458,7 +3481,9 @@ const getDirectWalletSessionDetails = (session = {}) => {
     const paymentIntent = providerPayload.paymentIntent || providerPayload.payment_intent || {};
     const paymentIntentAttributes = paymentIntent.attributes || {};
     const paymentFlow = providerPayload.paymentFlow || providerPayload.payment_flow || null;
-    const isDirectWallet = paymentFlow === 'direct_gcash' || paymentFlow === 'direct_maya';
+    const isDirectWallet = paymentFlow === 'direct_gcash'
+        || paymentFlow === 'direct_maya'
+        || paymentFlow === 'direct_card';
 
     return {
         payment_flow: isDirectWallet ? paymentFlow : (session.checkout_url ? 'hosted' : null),
@@ -3542,6 +3567,9 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     directGcashRequested = false,
     directMayaEnabled = false,
     directMayaRequested = false,
+    directCardEnabled = false,
+    directCardRequested = false,
+    directPaymentRequired = false,
     requireCommerceQrphConfig = () => [],
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
@@ -3572,11 +3600,25 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 
             const directGcashConfigRequired = requestedPaymentType === 'gcash' && directGcashRequested;
             const directMayaConfigRequired = requestedPaymentType === 'maya' && directMayaRequested;
+            const directCardConfigRequired = requestedPaymentType === 'card' && directCardRequested;
+            const directMethodUnavailable = directPaymentRequired && (
+                (requestedPaymentType === 'gcash' && !directGcashEnabled)
+                || (requestedPaymentType === 'maya' && !directMayaEnabled)
+                || (requestedPaymentType === 'card' && !directCardEnabled)
+            );
+            if (directMethodUnavailable) {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'The selected online payment method is not configured for direct PayMongo authorization.',
+                    { statusCode: 503, details: { code: 'DIRECT_PAYMENT_NOT_READY' } }
+                );
+            }
             const missingConfig = requestedPaymentType === 'qrph'
                 ? requireCommerceQrphConfig()
                 : requireCommercePaymentConfig({
                     requiresDirectGcash: directGcashConfigRequired,
-                    requiresDirectMaya: directMayaConfigRequired
+                    requiresDirectMaya: directMayaConfigRequired,
+                    requiresDirectCard: directCardConfigRequired
                 });
             if (missingConfig.length > 0) {
                 throw new DomainError(
@@ -3899,6 +3941,20 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         metadata,
                         returnUrl: directReturnUrl
                     });
+                } else if (requestedPaymentType === 'card' && directCardEnabled) {
+                    const directReturnUrl = buildStorefrontPaymentCallbackUrl({
+                        paymentMethod: requestedPaymentType,
+                        paymentSession: publicReference,
+                        paymentStatus: 'return',
+                        returnUrl: storefrontReturnUrl
+                    });
+                    providerResult = await paymongoService.createDirectCardPaymentIntent({
+                        amount: totalAmountCentavos,
+                        currency: 'PHP',
+                        description: `DGFY storefront checkout ${publicReference}`,
+                        metadata,
+                        returnUrl: directReturnUrl
+                    });
                 } else {
                     const successUrl = buildStorefrontPaymentCallbackUrl({
                         paymentMethod: requestedPaymentType,
@@ -3952,6 +4008,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     ? new Date(Date.now() + 30 * 60 * 1000)
                     : ((requestedPaymentType === 'gcash' && directGcashEnabled)
                         || (requestedPaymentType === 'maya' && directMayaEnabled)
+                        || (requestedPaymentType === 'card' && directCardEnabled)
                         ? new Date(Date.now() + 4 * 60 * 60 * 1000)
                         : null));
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
@@ -4222,7 +4279,7 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
+export const buildCancelStoreOrderUseCase = ({ storeRepository, inventoryReservationService = null }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
@@ -4300,6 +4357,14 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
                     'Order can only be cancelled before preparing.',
                     { statusCode: 409 }
                 );
+            }
+
+            if (inventoryReservationService?.releaseOnlineOrderInventory) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: existing.pos_transaction_id,
+                    transaction,
+                    reason: 'cancelled'
+                });
             }
 
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {

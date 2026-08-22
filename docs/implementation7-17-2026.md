@@ -220,3 +220,112 @@ Primary references:
 ## Required Order
 
 `0 -> 1 -> 2 -> 3 -> 4` is mandatory. Phases 5 through 7 can start once their dependencies pass. Phase 8 follows functional stabilization. Phase 9 runs continuously and blocks release.
+
+## Approved P1 — Automated System-Test Remediation (2026-08-21)
+
+**Status:** `implemented` and system-test validated in the local working tree. No commit, push,
+deployment, or production change was performed as part of this remediation.
+
+**Scope:** System tests and application contracts only. Manual UI judgment, real payment
+transactions, printer/cash-drawer actions, destructive repair commands, and production
+deployment activities are excluded.
+
+### Confirmed audit baseline (pre-remediation)
+
+- Storefront cart-quote preview fails without customer contact or delivery address.
+- Storefront voucher plus an already-applied promo returns HTTP 500 instead of the required
+  controlled HTTP 422 conflict response.
+- The full backend Jest run exhausts Node.js memory before producing final totals.
+- Two Playwright tests use a stale `input[type="email"]` selector; the POS identity field is
+  `#dgfy-pos-email` and accepts DGFY or cashier identity text.
+- The cross-app Playwright test uses relative URLs and does not prove synchronization between
+  the SKUpervisor and POS origins.
+- Security-header checks warn when required headers are absent instead of failing.
+- The k6 load surface is unavailable locally, and the current smoke script accepts HTTP 404 as
+  a successful result.
+- Lighthouse thresholds are warnings, the configuration uploads to temporary public storage,
+  and POS is not included in the configured audit surface.
+
+### Required implementation order
+
+1. Make contact validation policy-driven: quote preview must calculate without contact or
+   delivery-address fields; final checkout must continue to enforce the required checkout
+   contract.
+2. Enforce voucher/promo discount-slot exclusivity before voucher reservation or ledger writes.
+   Return HTTP 422 with `reason_code: VOUCHER_DISCOUNT_SLOT_OCCUPIED` and the applied promo code;
+   the invalid request must have no reservation or ledger side effect.
+3. Split the backend Jest matrix into independently terminating unit, contract, and database
+   integration processes. Diagnose heap growth by subset; do not treat a larger heap limit as
+   the permanent fix.
+4. Repair Playwright selectors and use explicit SKUpervisor/POS origins. Test the actual
+   cross-origin session mechanism; do not label same-origin relative navigation as cross-app
+   synchronization.
+5. Run security-header assertions against the production-like serving profile and make missing
+   CSP, `X-Content-Type-Options`, and `Referrer-Policy` headers fail the gate.
+6. Make load and Lighthouse checks meaningful: target the real API, require exact status and
+   response-shape checks, keep reports local, include all app surfaces, and fail on threshold
+   violations.
+
+### P1 automated acceptance gates
+
+- Targeted Storefront contract tests: 7 passed, 0 failed.
+- Full backend test matrix completes without an out-of-memory crash and reports terminal totals.
+- Frontend tests, architecture checks, compatibility seams, dependency audit, documentation
+  lint, builds, and frontend budgets pass.
+- Headless Playwright security, POS, Storefront, cross-app, and performance suites pass with
+  zero failed tests and zero undetected page crashes.
+- Runtime doctor, tenant-schema report, local index audit, and open-POS-shift audit pass.
+- Load and Lighthouse gates fail when the endpoint, security headers, or performance budgets
+  are intentionally violated.
+
+### Implemented remediation
+
+- Concurrent React assertions now wait for the committed UI state instead of assuming a
+  synchronous render; the full Vitest command is bounded to four workers to prevent Windows fork
+  starvation during the integration-heavy matrix.
+- The k6 smoke probe targets the real API lookup route, treats only the expected HTTP 404 as
+  transport-successful, validates the exact response schema, and generates a unique lookup email
+  per iteration unless explicitly overridden.
+- Lighthouse runs locally against SKUpervisor, POS, and Storefront with error-level performance,
+  accessibility, FCP, and interactive assertions. Storefront fonts are deferred after first
+  paint, and MapLibre is deferred until the production page reaches load/idle; test/development
+  map behavior remains synchronous.
+
+### Validation commands
+
+```powershell
+npm --prefix apps/dgfy-api test -- --runTestsByPath tests/storeCheckoutVoucherPromoStacking.unit.test.js tests/storeCartQuotePreviewNoContactRequired.unit.test.js --runInBand
+npm run test:frontend
+npm run test:backend
+npm run check:architecture
+npm run check:compat-seams
+npm run test:compat-seams
+npm run lint:docs
+npm run audit:dependencies
+npm run check:frontend-budgets
+npm run smoke:pos-terminal-ui
+npm run doctor:runtime
+npm --prefix apps/dgfy-api run check:tenant-schema
+npm --prefix apps/dgfy-api run audit:indexes:local
+npm --prefix apps/dgfy-api run audit:open-pos-shifts
+```
+
+### Rerun evidence (2026-08-21)
+
+- Targeted Storefront contracts: `7/7` passed.
+- Backend matrix: `556/556` tests passed with terminal totals emitted.
+- Frontend final rerun: `410/410` files and `2265/2265` tests passed with the four-worker cap;
+  the profile launcher and follow integration files passed independently with `4/4` and `5/5`.
+- Headless browser checks: security/cross-app/performance `16/16` passed; POS/Storefront `16`
+  passed with `5` prerequisite skips and no failures. Current tenant fixtures were explicit:
+  `Masu Cafe`, `Laundry`, and `masu-cafe-ed841f`.
+- Runtime, schema, index, open-shift, architecture, compatibility, dependency, docs/ADR,
+  production-build, and frontend-budget checks passed.
+- Lighthouse aggregate passed in a disposable Linux Chromium runner: SKUpervisor performance
+  `1.00`, POS `0.99`, Storefront `0.82`; reports remain local under `.tmp/lighthouse-linux`.
+- k6 aggregate passed against the real local API with `30/30` exact checks, `0.00%` request
+  failures, and `p(95)=39.22ms`; the deliberately unreachable-endpoint probe failed as expected.
+
+The P1 system-test remediation is complete in the local working tree. Manual UI certification,
+real payment transactions, hardware actions, deployment, and production release approval remain
+outside this P1 scope.

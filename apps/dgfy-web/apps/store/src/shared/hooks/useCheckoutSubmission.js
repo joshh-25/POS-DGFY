@@ -2,12 +2,19 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observabi
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): this is the widened extraction (carries amount_paid/balance_due through, not
+// just total_amount) into a shared model both this hook and useFnbCheckoutSubmission.js consume.
+// #857 separately restored a plain, un-widened inline copy of this same RF-1 fix directly on
+// `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
+// copy supersedes that inline one; no functional loss, since this is a strict superset.
 import { resolveTrackedTotals } from '../model/trackedTotals.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -242,11 +249,15 @@ export function useCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
-      const message = 'Verify your email before placing this order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
     }
+    // Restored 2026-08-22 (#857) -- Services local-simulation preview, reverted by #853's develop
+    // reconciliation while StorefrontApp.jsx kept passing this branch's own params unchanged
+    // (servicesLocalSimulationEnabled/isServicesLocalSimulationMethod/createServicesLocalSimulation),
+    // leaving them silently dead-wired.
     const shouldCreateLocalServicesSimulation = isServicesMode
       && servicesLocalSimulationEnabled
       && typeof isServicesLocalSimulationMethod === 'function'
@@ -346,7 +357,7 @@ export function useCheckoutSubmission({
       // session at all.
       if (!wantsServicesSubmission && (isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -364,6 +375,11 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
@@ -394,6 +410,10 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
+          // Restored 2026-08-22 (#857) -- #853's develop reconciliation passed a second positional
+          // arg here, but buildPayload (useFnbCheckoutQuote.js) takes a single options object; the
+          // override was silently discarded and a mixed product+service cart submitted its service
+          // lines into the product order.
           ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,

@@ -1,9 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 import { signIn } from './fixtures/login.js';
+import { skipPosAdminShiftPrompt } from './fixtures/posVoid.js';
+
+const serviceCompanyName = String(process.env.E2E_SERVICE_COMPANY_NAME || '').trim();
 
 test('Services business template is available inside standalone POS @services @smoke', async ({ page }, testInfo) => {
   test.skip(!hasTestCredentials, 'E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD are required.');
+  test.skip(!serviceCompanyName, 'E2E_SERVICE_COMPANY_NAME is required and must name a services-workflow tenant.');
 
   const diagnostics = [];
   page.on('pageerror', (error) => diagnostics.push(`pageerror: ${error.stack || error.message}`));
@@ -21,7 +25,7 @@ test('Services business template is available inside standalone POS @services @s
   });
 
   try {
-    await signIn(page, testCredentials);
+    await signIn(page, testCredentials, { companyName: serviceCompanyName });
   } catch (error) {
     const companySelect = page.getByLabel('Company');
     if (!await companySelect.isVisible()) throw error;
@@ -30,6 +34,7 @@ test('Services business template is available inside standalone POS @services @s
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible({ timeout: 20_000 });
   }
+  await skipPosAdminShiftPrompt(page);
   await expect(page.locator('#root')).not.toBeEmpty();
   await expect(page.getByText(/Something went wrong|Unexpected error|Application error/i)).toHaveCount(0);
   diagnostics.length = 0;

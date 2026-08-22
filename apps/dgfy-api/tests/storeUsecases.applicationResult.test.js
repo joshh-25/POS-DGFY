@@ -238,17 +238,62 @@ describe('store use-cases application result contract', () => {
         const result = await dbStore.run({ tenantId: 43 }, () => useCase({ query: {} }));
 
         expect(result.success).toBe(true);
-        expect(result.data.payment_capabilities).toEqual(expect.objectContaining({
-            card: { enabled: true, environment: 'live', reason_code: null },
-            gcash: { enabled: true, environment: 'live', reason_code: null },
-            maya: { enabled: true, environment: 'live', reason_code: null },
-            grab_pay: { enabled: true, environment: 'live', reason_code: null },
-            shopeepay: { enabled: true, environment: 'live', reason_code: null },
-            qrph: { enabled: true, environment: 'live', reason_code: null }
-        }));
+    expect(result.data.payment_capabilities).toEqual(expect.objectContaining({
+      card: { enabled: true, environment: 'live', reason_code: null },
+      gcash: { enabled: true, environment: 'live', reason_code: null },
+      maya: { enabled: true, environment: 'live', reason_code: null },
+      grab_pay: { enabled: true, environment: 'live', reason_code: null },
+      shopeepay: { enabled: true, environment: 'live', reason_code: null },
+      qrph: { enabled: true, environment: 'live', reason_code: null }
+    }));
+  });
+
+  it('hides direct methods instead of advertising Hosted Checkout when direct-only mode is required', async () => {
+    const paymongoService = {
+      getPaymentMethodCapabilities: jest.fn().mockResolvedValue([
+        'card',
+        'gcash',
+        'paymaya',
+        'grab_pay',
+        'shopeepay',
+        'qrph'
+      ])
+    };
+    const useCase = buildListStoreCatalogUseCase({
+      storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
+      paymongoService,
+      tenantRevenueRepository: {
+        findEffectiveFeePolicy: jest.fn().mockResolvedValue({
+          settlement_status: 'active',
+          payout_destination_masked: '****1234'
+        })
+      },
+      commercePaymentsEnabled: true,
+      commerceQrphEnabled: true,
+      requireCommerceQrphConfig: () => [],
+      paymongoMode: 'live',
+      revenueSharingEnabled: true,
+      directPaymentRequired: true,
+      directGcashEnabled: false,
+      directMayaEnabled: false,
+      directCardEnabled: false,
+      resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
     });
 
-    it('listStoreCatalog keeps browsing available when payment readiness lookup fails', async () => {
+    const result = await dbStore.run({ tenantId: 44 }, () => useCase({ query: {} }));
+
+    expect(result.success).toBe(true);
+    expect(result.data.payment_capabilities).toEqual(expect.objectContaining({
+      card: { enabled: false, environment: 'live', reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE' },
+      gcash: { enabled: false, environment: 'live', reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE' },
+      maya: { enabled: false, environment: 'live', reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE' },
+      grab_pay: { enabled: true, environment: 'live', reason_code: null },
+      shopeepay: { enabled: true, environment: 'live', reason_code: null },
+      qrph: { enabled: true, environment: 'live', reason_code: null }
+    }));
+  });
+
+  it('listStoreCatalog keeps browsing available when payment readiness lookup fails', async () => {
         const useCase = buildListStoreCatalogUseCase({
             storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
             commercePaymentRepository: {

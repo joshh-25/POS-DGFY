@@ -67,8 +67,16 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutWorkflowSource).toContain('splitPaymentReturnToCheckoutRef.current = false');
     });
 
-    it('clears an exact zero when a payment amount field receives focus', () => {
-        expect(checkoutSource).toContain("if (event.currentTarget.value === '0') setCustomerPaymentAmountInput('');");
+    it('prefills exact payment, clears it only on first focus, and preserves explicit selections', () => {
+        expect(financialWorkflowSource).toContain('const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);');
+        expect(financialWorkflowSource).toContain('const effectiveCustomerPaymentAmountInput = checkoutConfirmModalOpen && customerPaymentAmountAutoFilled');
+        expect(financialWorkflowSource).toContain("? round4(cartTotal).toFixed(2)");
+        expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(true);');
+        expect(checkoutSource).toContain('if (customerPaymentAmountAutoFilled) {');
+        expect(checkoutSource).toContain('data-testid="pos-cash-payment-exact"');
+        expect(checkoutSource).toContain('Exact Amount · PHP {money(cartTotal)}');
+        expect(checkoutSource).toContain('setCustomerPaymentAmountInput(String(amount));');
+        expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(false);');
         expect(splitDialogSource).toContain("if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });");
     });
 
@@ -115,7 +123,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];');
         expect(checkoutSource).toContain('data-testid="pos-cash-payment-suggestions"');
         expect(checkoutSource).toContain('isCashPayment && (');
-        expect(checkoutSource).toContain('onClick={() => setCustomerPaymentAmountInput(String(amount))}');
+        expect(checkoutSource).toContain('setCustomerPaymentAmountInput(String(amount));');
         expect(checkoutSource).toContain('data-testid={`pos-cash-payment-suggestion-${amount}`}');
         expect(checkoutSource).toContain('id="pos-customer-payment-amount"');
     });

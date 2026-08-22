@@ -142,6 +142,17 @@ export function RetailOrderPage({
   const retailCustomerStepComplete = hasCustomerName(customerName)
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
     && guestCheckoutOtpVerified;
+  useEffect(() => {
+    // guestCheckoutOtpVerified (folded into retailCustomerStepComplete) is in-memory React state
+    // (useGuestCheckoutOtp.js), not persisted -- a customer returning from a full-page PayMongo
+    // redirect remounts with it reset to false, which would otherwise bounce them straight back to
+    // step 1 immediately after the qrphPaymentSession effect above just moved them to step 3. Guard
+    // against undoing that rehydration: a live payment session pins the step regardless.
+    if (step > 1 && !retailCustomerStepComplete && !qrphPaymentSession?.payment_session_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Return to the required identity step when guest verification becomes invalid.
+      setStep(1);
+    }
+  }, [retailCustomerStepComplete, step, qrphPaymentSession?.payment_session_id]);
   const totals = totalsForDisplay;
   // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
@@ -194,7 +205,13 @@ export function RetailOrderPage({
           isDeliveryOrder={isDeliveryOrder}
           isMobileViewport={isMobileViewport}
           displayFont={servicesDisplayFont}
-          onStepChange={setStep}
+          onStepChange={(nextStep) => {
+            if (nextStep > 1 && !retailCustomerStepComplete) {
+              setStep(1);
+              return;
+            }
+            setStep(nextStep);
+          }}
         />
 
         {step === 1 && (
@@ -317,10 +334,13 @@ export function RetailOrderPage({
               checkoutError={checkoutError}
               checkoutLoading={checkoutLoading}
               downpaymentDisplay={downpaymentDisplay}
+              guestCheckoutOtpVerified={guestCheckoutOtpVerified}
               isDeliveryOrder={isDeliveryOrder}
+              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
               money={money}
               onBack={() => setStep(2)}
+              onBackToAccount={() => setStep(1)}
               onCheckout={onCheckout}
               onImageError={onImageError}
               onPaymentTypeChange={onPaymentTypeChange}
@@ -382,6 +402,8 @@ export function RetailOrderPage({
             cartCount={cartCount}
             cartImageErrors={cartImageErrors}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             isDeliveryOrder={isDeliveryOrder}
             money={money}
             onBackToCatalog={onBackToCatalog}

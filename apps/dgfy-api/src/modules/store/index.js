@@ -2,6 +2,7 @@ import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
 import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
+import { inventoryReservationService } from '../inventory/index.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -13,6 +14,9 @@ import {
     storefrontDirectGcashRequested,
     storefrontDirectMayaEnabled,
     storefrontDirectMayaRequested,
+    storefrontDirectCardEnabled,
+    storefrontDirectCardRequested,
+    storefrontDirectPaymentRequired,
     getPayMongoMode,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig
@@ -83,6 +87,9 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     directGcashRequested: storefrontDirectGcashRequested,
     directMayaEnabled: storefrontDirectMayaEnabled,
     directMayaRequested: storefrontDirectMayaRequested,
+    directCardEnabled: storefrontDirectCardEnabled,
+    directCardRequested: storefrontDirectCardRequested,
+    directPaymentRequired: storefrontDirectPaymentRequired,
     requireCommerceQrphConfig,
     requireCommercePaymentConfig,
     downpaymentSettingsRepository
@@ -94,10 +101,17 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
     commercePaymentRepository,
     paymongoService
 });
-export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository, downpaymentSettingsRepository });
+export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
+    storeRepository,
+    downpaymentSettingsRepository,
+    inventoryReservationService
+});
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
-export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
+export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
+    storeRepository,
+    inventoryReservationService
+});
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({
     storeRepository,

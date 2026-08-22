@@ -17,6 +17,8 @@ export function RetailOrderMobileSummaryPanel({
   cartCount = 0,
   cartImageErrors,
   checkoutLoading = false,
+  guestCheckoutOtpVerified = false,
+  isDgfyCustomerSignedIn = false,
   isDeliveryOrder = false,
   money,
   onBackToCatalog,
@@ -39,7 +41,7 @@ export function RetailOrderMobileSummaryPanel({
     money,
     orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
   });
-
+  const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
   const handleBack = () => {
     if (orderStep === 1) {
       onBackToCatalog();
@@ -138,8 +140,8 @@ export function RetailOrderMobileSummaryPanel({
               <button
                 type="button"
                 onClick={onCheckout}
-                disabled={checkoutLoading}
-                style={{ ...primaryButtonStyle, background: checkoutLoading ? '#93b4d6' : `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}`, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+                disabled={checkoutLoading || guestCheckoutVerificationRequired}
+                style={{ ...primaryButtonStyle, background: checkoutLoading ? '#93b4d6' : guestCheckoutVerificationRequired ? '#cbd5e1' : `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}`, cursor: checkoutLoading ? 'wait' : guestCheckoutVerificationRequired ? 'not-allowed' : 'pointer' }}
               >
                 {checkoutLoading
                   ? (downpaymentDisplay.active ? 'Creating payment...' : 'Placing...')
