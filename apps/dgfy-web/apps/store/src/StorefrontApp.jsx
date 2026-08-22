@@ -324,6 +324,11 @@ import {
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
 import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
+import {
+  PAYMENT_ELECTION_DOWNPAYMENT,
+  PAYMENT_ELECTION_FULL,
+  resolvePaymentElection
+} from './shared/model/storefrontPaymentElection.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import { buildSimpleTrackingRouteProps } from './modes/simple/tracking/model/buildSimpleTrackingRouteProps.js';
@@ -713,6 +718,23 @@ export default function StorefrontApp() {
     setQrphIdempotencyKey(globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`);
   }, [setQrphIdempotencyKey, setQrphPaymentSession]);
 
+  // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election at a
+  // payment_mode='customer_choice' store. `elected` is the raw local selection (defaults 'full',
+  // the safe/unambiguous choice); `paymentElection` is the resolved value the rest of the app
+  // reads -- resolvePaymentElection forces the answer for the two non-choice modes rather than
+  // trusting a stale `elected` left over from a previous store/session.
+  const [elected, setElected] = useState(PAYMENT_ELECTION_FULL);
+  const paymentElection = resolvePaymentElection(selectedStore, elected);
+  // Self-heals `elected` back to the default the instant the store stops being customer_choice --
+  // otherwise a customer who elected "downpayment" at one store, then navigates to a plain
+  // downpayment_required or full_payment store, would carry a meaningless local value forward
+  // (harmless today since resolvePaymentElection already forces the correct answer regardless, but
+  // this keeps `elected` itself from silently drifting from what's actually shown).
+  useEffect(() => {
+    if (selectedStore?.payment_mode === 'customer_choice') return;
+    if (elected !== PAYMENT_ELECTION_FULL) setElected(PAYMENT_ELECTION_FULL);
+  }, [selectedStore?.payment_mode, elected]);
+
   // Phase 142 (#823): the first enabled online rail, for a downpayment-required store where
   // plain 'cash' is not a valid selection (the backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on
   // it -- see storeCheckoutPaymentOptions.js's hideCash option, which removes it from the list
@@ -721,29 +743,34 @@ export default function StorefrontApp() {
     buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: true })[0]?.value || 'qrph'
   ), [selectedStore?.payment_capabilities]);
 
+  // Phase 150 (#866): widened to a customer_choice store whose election resolved to 'downpayment'
+  // -- cash isn't a choice there either, for the identical reason it isn't at downpayment_required.
+  const expectsDownpaymentCapture = selectedStore?.payment_mode === 'downpayment_required'
+    || paymentElection === PAYMENT_ELECTION_DOWNPAYMENT;
+
   const handlePaymentTypeChange = useCallback((val) => {
-    const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required';
     if (val === 'online') {
       uiOpenOnlinePaymentModal();
       // Phase 142 (#823): this legacy value opens the "online payment unavailable" modal and
       // used to always reset to 'cash' -- wrong at a downpayment store, where 'cash' isn't a
       // choice at all. Reset to a valid rail instead so the selector never lands on cash there.
-      setFnbPaymentType(isDownpaymentStore ? resolveDefaultDownpaymentRail() : 'cash');
+      setFnbPaymentType(expectsDownpaymentCapture ? resolveDefaultDownpaymentRail() : 'cash');
     } else {
       if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
-  }, [resolveDefaultDownpaymentRail, resetQrphPaymentSession, selectedStore?.payment_mode, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+  }, [expectsDownpaymentCapture, resolveDefaultDownpaymentRail, resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
 
   // Phase 142 (#823): every mode's paymentType state defaults to 'cash' (useFnbCheckoutRouteState.js
   // / RetailOrderPage.jsx's own local state) -- not a valid choice once a store resolves to
-  // downpayment_required. Self-heals a stale 'cash' selection (a restored guest draft, a store that
-  // just flipped modes, or simply the unchanged default) to the first enabled rail. No-op for a
-  // full_payment store.
+  // downpayment_required (Phase 150, #866: or a customer_choice store whose election resolved to
+  // 'downpayment'). Self-heals a stale 'cash' selection (a restored guest draft, a store that
+  // just flipped modes, or simply the unchanged default) to the first enabled rail. No-op
+  // otherwise.
   useEffect(() => {
-    if (selectedStore?.payment_mode !== 'downpayment_required' || fnbPaymentType !== 'cash') return;
+    if (!expectsDownpaymentCapture || fnbPaymentType !== 'cash') return;
     setFnbPaymentType(resolveDefaultDownpaymentRail());
-  }, [selectedStore?.payment_mode, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
+  }, [expectsDownpaymentCapture, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
   // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
   // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
@@ -1934,6 +1961,7 @@ export default function StorefrontApp() {
     isSimpleMode,
     money,
     orderMethod,
+    paymentElection,
     quoteError,
     quoteNeedsRefresh,
     quoteResult,
@@ -1967,7 +1995,10 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, isStorePage]);
+    // Phase 150 (#866): paymentElection changes the split the quote would compute at a
+    // customer_choice store -- an election change must invalidate the quote exactly like changing
+    // the order method already does, or the UI shows a stale split against the new election.
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, paymentElection, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -2383,6 +2414,7 @@ export default function StorefrontApp() {
     isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     orderMethod,
+    paymentElection,
     readDgfyAuthToken,
     readStoreAuthToken,
     requestJson,
@@ -3120,7 +3152,9 @@ export default function StorefrontApp() {
     handleConfirmQrphTestPayment,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
-    resetQrphPaymentSession
+    resetQrphPaymentSession,
+    paymentElection,
+    onPaymentElectionChange: setElected
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
@@ -3183,6 +3217,7 @@ export default function StorefrontApp() {
     handleCheckout,
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
+    onPaymentElectionChange: setElected,
     handlePaymentTypeChange,
     handleConfirmQrphTestPayment,
     handlePinMyLocation,
@@ -3200,6 +3235,7 @@ export default function StorefrontApp() {
     isMobileViewport,
     money,
     orderMethod,
+    paymentElection,
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
@@ -3433,6 +3469,7 @@ export default function StorefrontApp() {
     handleCheckout,
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
+    onPaymentElectionChange: setElected,
     handlePaymentTypeChange,
     handleConfirmQrphTestPayment,
     handlePinMyLocation,
@@ -3451,6 +3488,7 @@ export default function StorefrontApp() {
     isMobileViewport,
     money,
     orderMethod,
+    paymentElection,
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,

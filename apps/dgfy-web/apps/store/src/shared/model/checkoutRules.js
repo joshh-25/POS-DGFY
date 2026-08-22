@@ -7,7 +7,11 @@ export const getCheckoutBlockReason = ({
   accessCapabilities = null,
   quoteResult = null,
   quoteNeedsRefresh = true,
-  requireQuote = true
+  requireQuote = true,
+  // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, only meaningful at a
+  // payment_mode='customer_choice' store. Every existing caller (full_payment/downpayment_required)
+  // omits this and is unaffected -- see the guard below.
+  paymentElection = null
 } = {}) => {
   if (!selectedStore) return 'missing_store';
   if (Number(cartCount) <= 0) return 'empty_cart';
@@ -26,8 +30,15 @@ export const getCheckoutBlockReason = ({
   // Caught here rather than left as a dead end: block with a specific, actionable reason instead
   // of silently letting Place Order do nothing (or worse, appear enabled with no valid payment
   // option showing).
+  //
+  // Phase 150 (#866): widened to customer_choice + an actual 'downpayment' election -- the
+  // identical dead end exists there. A customer_choice store with election 'full' is NEVER this
+  // guard's business: quoteResult.payment_mode correctly reads full_payment for that election by
+  // design (see downpaymentPolicy.js's resolveDownpaymentForTotal), so it must not trip here.
+  const expectsDownpaymentCapture = selectedStore?.payment_mode === 'downpayment_required'
+    || (selectedStore?.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
   if (
-    selectedStore?.payment_mode === 'downpayment_required'
+    expectsDownpaymentCapture
     && quoteResult.payment_mode !== 'downpayment_required'
     && Number(quoteResult.total_amount) <= 0
   ) {

@@ -9,7 +9,7 @@ import { RetailOrderStoreHeader } from '../components/RetailOrderStoreHeader.jsx
 import { RetailOrderSummaryContent } from '../components/RetailOrderSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
@@ -86,8 +86,10 @@ export function RetailOrderPage({
   onImageError,
   onSelectAddress,
   onConfirmQrphTestPayment,
+  onPaymentElectionChange,
   onPaymentTypeChange,
   orderMethod = 'delivery',
+  paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
@@ -335,6 +337,7 @@ export function RetailOrderPage({
               checkoutLoading={checkoutLoading}
               downpaymentDisplay={downpaymentDisplay}
               guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+              isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
               isDeliveryOrder={isDeliveryOrder}
               isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
@@ -343,6 +346,8 @@ export function RetailOrderPage({
               onBackToAccount={() => setStep(1)}
               onCheckout={onCheckout}
               onImageError={onImageError}
+              onPaymentElectionChange={onPaymentElectionChange}
+              paymentElection={paymentElection}
               onPaymentTypeChange={onPaymentTypeChange}
               paymentOptions={retailPaymentOptions}
               paymentType={paymentType}

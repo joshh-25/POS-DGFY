@@ -73,4 +73,53 @@ describe('useCheckoutTotalsAndGating -- downpayment requireQuote (#823)', () => 
       downpayment_refundable: null
     });
   });
+
+  // Phase 150 (#866): a customer_choice store only needs a forced quote once the customer has
+  // actually elected "downpayment" -- an election of "full" behaves exactly like full_payment.
+  describe('customer_choice', () => {
+    const customerChoiceStore = { slug: 'demo', payment_mode: 'customer_choice' };
+
+    it('requires a quote when the election is "downpayment"', () => {
+      const { result } = renderHook(() => useCheckoutTotalsAndGating({
+        ...baseProps({ selectedStore: customerChoiceStore }),
+        paymentElection: 'downpayment'
+      }));
+      expect(result.current.requireQuoteForCheckout).toBe(true);
+    });
+
+    it('does not require a quote when the election is "full"', () => {
+      const { result } = renderHook(() => useCheckoutTotalsAndGating({
+        ...baseProps({ selectedStore: customerChoiceStore }),
+        paymentElection: 'full'
+      }));
+      expect(result.current.requireQuoteForCheckout).toBe(false);
+    });
+
+    it('does not require a quote when no election has been made yet (undefined)', () => {
+      const { result } = renderHook(() => useCheckoutTotalsAndGating(baseProps({ selectedStore: customerChoiceStore })));
+      expect(result.current.requireQuoteForCheckout).toBe(false);
+    });
+
+    it('blocks with downpayment_zero_total only when the election is "downpayment" and the quote zeroed out', () => {
+      const zeroedQuote = { total_amount: 0, payment_mode: 'full_payment' };
+      const { result: electedDownpayment } = renderHook(() => useCheckoutTotalsAndGating({
+        ...baseProps({ selectedStore: customerChoiceStore, quoteResult: zeroedQuote }),
+        cartCount: 1,
+        quoteNeedsRefresh: false,
+        paymentElection: 'downpayment'
+      }));
+      expect(electedDownpayment.current.checkoutBlockReason).toBe('downpayment_zero_total');
+
+      const { result: electedFull } = renderHook(() => useCheckoutTotalsAndGating({
+        ...baseProps({ selectedStore: customerChoiceStore, quoteResult: zeroedQuote }),
+        cartCount: 1,
+        quoteNeedsRefresh: false,
+        paymentElection: 'full'
+      }));
+      // election 'full' -> requireQuoteForCheckout is false for fnb/simple/retail, so the guard
+      // never even reaches the downpayment_zero_total check -- confirms it's a genuine non-block,
+      // not a coincidental different reason.
+      expect(electedFull.current.checkoutBlockReason).toBeNull();
+    });
+  });
 });

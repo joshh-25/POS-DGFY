@@ -13,14 +13,27 @@ export const isDownpaymentRequiredStore = (selectedStore) => (
   selectedStore?.payment_mode === 'downpayment_required'
 );
 
+// Phase 150 (#866): a store that lets the customer choose between paying in full and paying a
+// downpayment. Distinct from isDownpaymentRequiredStore -- customer_choice needs the election
+// control rendered; downpayment_required does not (there's nothing to choose).
+export const isCustomerChoiceStore = (selectedStore) => (
+  selectedStore?.payment_mode === 'customer_choice'
+);
+
 // Mirrors buildAccessPolicyStorePatch/buildWorkflowCapabilityStorePatch's own convention
 // (useStoreCatalogLoader.js) -- a pure patch builder the hook spreads onto selectedStore, kept
 // outside the hook so it's directly unit-testable without rendering the whole catalog-load
 // machinery. Unlike those two, this is unconditional: payment_mode is always present on the
 // catalog response (fail-closed default 'full_payment'), so the patch always applies -- a store
 // object that never receives it should not silently leave payment_mode undefined.
+//
+// Phase 150 (#866): 'customer_choice' now passes through verbatim too (previously flattened into
+// 'full_payment' along with everything else that wasn't 'downpayment_required'), matching
+// storeUseCases.js's resolveStorefrontPaymentMode widening on the backend.
 export const buildPaymentModeStorePatch = (catalogData = null) => ({
-  payment_mode: catalogData?.payment_mode === 'downpayment_required' ? 'downpayment_required' : 'full_payment'
+  payment_mode: catalogData?.payment_mode === 'downpayment_required' || catalogData?.payment_mode === 'customer_choice'
+    ? catalogData.payment_mode
+    : 'full_payment'
 });
 
 // Balance is always collected in person -- ADR 0069 clause 2 [binding], carried forward by ADR

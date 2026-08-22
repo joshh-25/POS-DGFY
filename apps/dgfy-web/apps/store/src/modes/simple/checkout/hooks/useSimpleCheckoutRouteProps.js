@@ -46,7 +46,9 @@ export function useSimpleCheckoutRouteProps({
   isGuestCheckoutOtpCooldownActive = false,
   isMobileViewport = false,
   money,
+  onPaymentElectionChange,
   orderMethod = 'delivery',
+  paymentElection = 'full',
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
@@ -131,6 +133,7 @@ export function useSimpleCheckoutRouteProps({
     isMobileViewport,
     money,
     orderMethod,
+    paymentElection,
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
@@ -185,6 +188,7 @@ export function useSimpleCheckoutRouteProps({
       setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
     },
     onOpenExpandedMap: () => setShowExpandedDeliveryMap(true),
+    onPaymentElectionChange,
     onPaymentTypeChange: handlePaymentTypeChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
     onPinChange: (nextPin) => {

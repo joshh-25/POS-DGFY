@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
+import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 import { RetailOrderReviewItemsList } from './RetailOrderReviewItemsList.jsx';
 
@@ -22,6 +23,7 @@ export function RetailOrderPaymentStep({
   checkoutLoading = false,
   downpaymentDisplay = { active: false },
   guestCheckoutOtpVerified = false,
+  isCustomerChoiceStore = false,
   isDeliveryOrder = false,
   isDgfyCustomerSignedIn = false,
   isMobileViewport = false,
@@ -31,7 +33,9 @@ export function RetailOrderPaymentStep({
   onCheckout,
   onImageError,
   onlinePaymentPanel = null,
+  onPaymentElectionChange,
   onPaymentTypeChange,
+  paymentElection = 'full',
   paymentOptions = [],
   paymentType = 'cash',
   servicesBodyFont,
@@ -54,6 +58,13 @@ export function RetailOrderPaymentStep({
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, then choose a payment method.</div>
+      <PaymentElectionSelector
+        accentColor="#1a4e8d"
+        active={isCustomerChoiceStore}
+        bodyFont={servicesBodyFont}
+        onChange={onPaymentElectionChange}
+        value={paymentElection}
+      />
       <PaymentMethodSelectorBlock
         label={isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'}
         value={paymentType}

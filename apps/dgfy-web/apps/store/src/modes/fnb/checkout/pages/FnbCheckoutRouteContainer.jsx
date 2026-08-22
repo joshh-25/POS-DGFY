@@ -14,7 +14,8 @@ import { StorefrontDropdown } from '../../../../features/shared-storefront/compo
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   MOBILE_DROPDOWN_MENU_STYLE,
   MOBILE_DROPDOWN_OPTION_STYLE,
@@ -119,6 +120,7 @@ export function FnbCheckoutRouteContainer({
   handleCheckout,
   handleDownloadCheckoutImage,
   handleGuestCheckoutOtpCodeChange,
+  onPaymentElectionChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
@@ -136,6 +138,7 @@ export function FnbCheckoutRouteContainer({
   isMobileViewport,
   money,
   orderMethod,
+  paymentElection = 'full',
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
@@ -695,6 +698,13 @@ export function FnbCheckoutRouteContainer({
             onSubmit={handleCheckout}
             paymentControl={(
               <div style={{ display: 'grid', gap: 12 }}>
+                <PaymentElectionSelector
+                  accentColor={fnbOrderBrand}
+                  active={isCustomerChoiceStore(selectedStore)}
+                  bodyFont={servicesBodyFont}
+                  onChange={onPaymentElectionChange}
+                  value={paymentElection}
+                />
                 <PaymentMethodSelectorBlock
                   label={downpaymentDisplay.active ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}

@@ -101,5 +101,38 @@ describe('store checkout rules', () => {
         quoteResult: { total_amount: 505, payment_mode: 'downpayment_required', downpayment_amount: 101 }
       })).toBeNull();
     });
+
+    // Phase 150 (#866): the same zero-total dead end, at a customer_choice store, only when the
+    // customer actually elected 'downpayment'.
+    describe('customer_choice', () => {
+      const customerChoiceStore = { slug: 'demo', payment_mode: 'customer_choice' };
+
+      it('blocks with the same specific reason when election is "downpayment" and the quote zeroed out', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'downpayment',
+          quoteResult: { total_amount: 0, payment_mode: 'full_payment' }
+        })).toBe('downpayment_zero_total');
+      });
+
+      it('never blocks when election is "full" -- the quote correctly reads full_payment by design, not malformed', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'full',
+          quoteResult: { total_amount: 0, payment_mode: 'full_payment' }
+        })).toBeNull();
+      });
+
+      it('allows checkout when election is "downpayment" and the quote genuinely resolves to a split', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'downpayment',
+          quoteResult: { total_amount: 505, payment_mode: 'downpayment_required', downpayment_amount: 101 }
+        })).toBeNull();
+      });
+    });
   });
 });
