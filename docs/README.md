@@ -46,8 +46,8 @@ Start here for all planning and implementation work:
 - `packages/web-core` (`@sieitzz/web-core`): the shared frontend trunk (`src/`, `Components/`, the DGFY-auth `Pages/`, and the shared Vite helpers) consumed by all three apps
 
 Each app is an independent Vite package with its own `package.json`, lockfile, dev port
-(5173 IMS / 5174 POS / 5175 Storefront), and container image. See ADR 0065
-(`docs/architecture/adr/0065-frontend-split-into-three-apps.md`).
+(5173 IMS / 5174 POS / 5175 Storefront), and container image. See ADR 0071
+(`docs/architecture/adr/0071-frontend-split-into-three-apps.md`).
 
 ## Default-On Runtime Contracts
 - Customer Access Modes and Inventory Display controls are default-on public Storefront contracts. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants while rollback is active. Current behavior, platform-admin ceiling controls, tenant-requested mode copy, rollback constraints, public API metadata, Settings runtime status, and validation evidence are tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.

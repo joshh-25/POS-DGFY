@@ -4152,7 +4152,7 @@ parked-sale replay and shift-close resolution.
 - Issue #538 - Services storefront route ownership (#535 follow-through, filed alongside this
   phase, not part of it)
 
-## Phase 89 - Frontend App Split (issue #322)
+## Phase 151 - Frontend App Split (issue #322)
 
 ### Initiative and Release
 
@@ -4180,7 +4180,7 @@ parked-sale replay and shift-close resolution.
   `deploy-local.sh`, PM2 (`ecosystem.config.cjs`), root `package.json`
   scripts, the `scripts/` path-check sweep, and
   `security/audit-allowlist.json`.
-- Document the decision (ADR 0065), sweep the docs and agent-surface files
+- Document the decision (ADR 0071), sweep the docs and agent-surface files
   that described the old layout, and open the closing PR against `develop`.
 
 ### Status
@@ -4190,7 +4190,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0065 Frontend Split into Three Apps (`docs/architecture/adr/0065-frontend-split-into-three-apps.md`),
+- ADR 0071 Frontend Split into Three Apps (`docs/architecture/adr/0071-frontend-split-into-three-apps.md`),
   `supersedes_in_part` ADR 0059 Frontend Relocation to `apps/dgfy-web`.
 - `docs/architecture/frontend-split-sync.md` — the develop-merge absorption
   workflow used throughout this initiative
@@ -4240,10 +4240,39 @@ parked-sale replay and shift-close resolution.
   `.github/workflows/deployment-orchestrator.yml`,
   `.github/workflows/deploy-main.yml`
 - `scripts/deploy.sh`, `scripts/deploy-local.sh`, `ecosystem.config.cjs`
-- `docs/architecture/adr/0065-frontend-split-into-three-apps.md`
+- `docs/architecture/adr/0071-frontend-split-into-three-apps.md`
 - [Issue #322 - Split apps/dgfy-web into independently deployable apps](https://github.com/Sieitzz/dgfy-platform/issues/322)
 
 ### Completion Record (2026-08-15)
 
-- Phase 89 is complete. Phase 90 is the next eligible repository phase and
+- Phase 151 is complete. Phase 152 is the next eligible repository phase and
   requires separate approval.
+
+---
+
+**Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
+the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
+renumbers"):**
+
+This branch's own Phase entry for the frontend split (issue #322) originally claimed **Phase 89**,
+assigned during the prior absorb cycle (`f8e56c71`, 2026-08-16) against `develop`'s state at that
+time. Since then `develop` independently landed its own, different **Phase 89** (*POS Items
+Gallery and IMS CSV Import Foundation*) and continued on through **Phase 150**. Neither side had
+the other's Phase 89 as an ancestor when each claimed the number, so this is a genuine collision,
+not a missed rebase — resolved by absorbing `develop` (the larger, already-merged body of work)
+verbatim and renumbering this branch's unmerged entry:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 89 | `develop`'s POS Items Gallery / IMS CSV Import Foundation | unchanged — prior reservation, already merged to `develop` |
+| 151 | This branch's Frontend App Split (issue #322) | **moved from 89** |
+
+No code changes accompany this renumber — the phase's own implementation was already complete and
+merge-independent; only the ledger heading, its own "Completion Record" trailer, and the ADR 0071
+cross-reference above needed edits. The three `// ... Phase 89` source comments in
+`apps/dgfy-api/**` (`fulfillmentProfiles.contract.test.js`, `ServiceBookingStatusEvent.js`,
+`serviceUseCases.js`) refer to `develop`'s Phase 89 and are correct as absorbed — left untouched.
+`docs/architecture/backend-absorption.md`'s 2026-08-16 dated log entry, which narrates this
+branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
+true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
+is not a live reference and is not updated by this note.

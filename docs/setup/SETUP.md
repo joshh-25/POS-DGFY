@@ -43,7 +43,7 @@ and reached through the bundled `nginx` service on `80`/`443`.
 > `apps/dgfy-pos`, `apps/dgfy-storefront`). See
 > [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md)
 > for the full path map, and
-> [ADR 0065](../architecture/adr/0065-frontend-split-into-three-apps.md) for the
+> [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md) for the
 > frontend split that replaced the single `apps/dgfy-web` package.
 > `npm run install:all` from the repo root installs all of them.
 

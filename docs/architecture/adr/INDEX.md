@@ -87,7 +87,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
-| 0065 | [Frontend Split into Three Apps](0065-frontend-split-into-three-apps.md) | `accepted` | frontend_split_into_three_apps | 2027-02-15 | 5 |
+| 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `accepted` | frontend_split_into_three_apps | 2027-02-15 | 5 |
 
 ## Renumbered (collision stubs)
 

@@ -35,7 +35,7 @@ SKU-Inventory-Manager/
 > for the full path map and before/after local-run commands. The single
 > `apps/dgfy-web` Vite package was later split into the three frontend apps above
 > plus the shared `packages/web-core` package — see
-> [ADR 0065](docs/architecture/adr/0065-frontend-split-into-three-apps.md).
+> [ADR 0071](docs/architecture/adr/0071-frontend-split-into-three-apps.md).
 
 ## Current App Surfaces
 

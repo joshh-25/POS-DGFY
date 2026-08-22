@@ -10,7 +10,7 @@ topic: frontend_split_into_three_apps
 supersedes_in_part: docs/architecture/adr/0059-frontend-relocation-to-apps-dgfy-web.md
 ---
 
-# ADR 0065: Frontend Split into Three Apps
+# ADR 0071: Frontend Split into Three Apps
 
 ## Status
 

@@ -3,7 +3,7 @@
 Tracks how `refactor/322-frontend-app-split` (issue [#322](https://github.com/Sieitzz/dgfy-platform/issues/322))
 absorbs ongoing `develop` work while it splits `apps/dgfy-web` into `apps/dgfy-ims`,
 `apps/dgfy-pos`, `apps/dgfy-storefront`, and `packages/web-core`. The design decision this
-branch implements is recorded in ADR 0065 (`docs/architecture/adr/0065-frontend-split-into-three-apps.md`,
+branch implements is recorded in ADR 0071 (`docs/architecture/adr/0071-frontend-split-into-three-apps.md`,
 added once the split is far enough along to document the final shape — see the phase checklist
 on issue #322 in the meantime). See [backend-absorption.md](backend-absorption.md) for the
 general pattern this follows (the prior `frontend/` -> `apps/dgfy-web` move used the same
