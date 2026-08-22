@@ -108,9 +108,23 @@ export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
 });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
+// Phase 144 (#824): resolved lazily, on call, rather than statically imported. There is a real
+// module cycle here -- `commercePayments/usecases/finalizePaidCommerceSession.js` statically
+// imports `store/index.js` for `storeCheckoutUseCase`, so a top-level
+// `import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js'` would make
+// one side of the cycle observe `undefined` at module-evaluation time. `pos/index.js` can import
+// it statically because POS is not part of that cycle; store is. Deferring to call time is the
+// same pattern already used for cross-module cycles elsewhere in this codebase (see
+// `settings/usecases/updateSettingByKeyUseCase.js`, `compliance/index.js`).
+const commerceOrderLifecycleUseCaseLazy = async (input) => {
+    const { handleCommerceOrderLifecycleUseCase } = await import('../commercePayments/index.js');
+    return handleCommerceOrderLifecycleUseCase(input);
+};
+
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
     storeRepository,
-    inventoryReservationService
+    inventoryReservationService,
+    commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy
 });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({

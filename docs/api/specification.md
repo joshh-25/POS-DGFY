@@ -2915,7 +2915,7 @@ request, or Z-reading change.
 | `status` | string | `completed` or `voided` |
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
-| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
+| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `partially_paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
 | `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
 | `order_source` | string | `in_store`, `online_store` |
 | `date_from` | ISO date | Inclusive start date filter |
@@ -3135,6 +3135,27 @@ Update online order fulfillment status from POS terminal operations.
    - `data.idempotency` (`key`, `request_fingerprint`, `outcome`, `idempotent_replay`)
 5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
 6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
+7. `reason` is **required** when `fulfillment_status` is `rejected` (3-255 characters); optional
+   otherwise.
+
+**Payment Side Effects** (Phase 144, #824 -- previously undocumented)
+
+Reaching `completed`, `rejected`, or `cancelled` on an order backed by a commerce payment session
+runs the payment lifecycle after the status change commits, and the result is returned as
+`data.payment_lifecycle`:
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session exists for the order (a plain cash/COD order). |
+| `settlement_pending` | `completed` -- the order is released to the settlement workflow, nothing is refunded. |
+| `refunded` / `refund_pending` / `refund_failed` | `rejected` or `cancelled` -- one idempotent refund of the **captured** amount is submitted to PayMongo. For a downpayment order that is the downpayment, never the order total (ADR 0069 clause 1b). |
+| `forfeited` | Only reachable from the customer self-service cancel endpoint below, never from this one -- see its own Refund and Forfeiture section. |
+
+A store-initiated terminal state — `rejected`, or `cancelled` set through **this** endpoint —
+**always refunds**, even at a tenant whose `downpayment_refundable` is `false`. The store's
+inability to fulfil is not the customer's forfeiture (ADR 0070, 2026-08-22 amendment). Payment
+lifecycle failures never fail the status update itself: the status is already committed and the
+failure surfaces as `payment_action: 'refund_failed'` for administrator review.
 
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
@@ -4188,6 +4209,48 @@ Track online-store order status for public users.
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
+
+### PATCH /store/orders/:tracking_pin/cancel
+Customer self-service cancellation of their own online-store order.
+
+**Auth**: Store customer session, **or** a signed `cancel_proof` for a guest order
+**Tenant Context**: Required (`x-store-slug`)
+**Rate Limit Contract**: Store tracking mutation limiter (stricter than the tracking read above)
+
+**Request Body**
+```json
+{
+  "cancel_proof": "<signed token, guest orders only>"
+}
+```
+
+**Eligibility**
+1. A logged-in customer must own the order (`store_customer_id` match), else `403`.
+2. A guest order requires a `cancel_proof` bound to tenant + order id + tracking PIN, else `401`/`403`.
+3. Only `placed` and `confirmed` orders may be cancelled — anything from `preparing` onward returns
+   `409` ("Order can only be cancelled before preparing.").
+
+**Refund and Forfeiture** (Phase 144, #824)
+
+Cancelling releases the inventory reservation, then — **after the cancellation commits** — runs the
+payment lifecycle and returns the outcome as `data.payment_lifecycle`. This is the **only** endpoint
+whose cancellations can forfeit; a POS-initiated cancel always refunds.
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session backs the order. |
+| `refunded` / `refund_pending` / `refund_failed` | The default. One idempotent refund of the captured amount. |
+| `forfeited` | The session captured a downpayment **and** its `downpayment_refundable` policy snapshot is explicitly `false`. No PayMongo call is made, no `commerce_payment_refunds` row is created, and the order's `payment_status`/`amount_paid`/`balance_due` are unchanged — nothing was reversed. Response also carries `forfeited_amount_centavos`. |
+
+The decision reads the **session snapshot** taken at capture time, never the tenant's live settings,
+so a merchant changing the toggle after payment cannot retroactively change the customer's terms. A
+null/unknown snapshot refunds. Both outcomes write a tenant-side `pos_order_payments` row (`kind`
+`'refund'` or `'forfeiture'`) linked to the original `'downpayment'` row; refund rows are written
+`pending` and promoted to `successful`/`failed` when the PayMongo refund webhook confirms. A payment
+lifecycle failure never fails the cancellation — it surfaces as `payment_action: 'refund_failed'`.
+
+Governance: ADR 0069 clause 8 `[default]` (carried by ADR 0070, 2026-08-22 amendment) and ADR 0052
+clause 14 (2026-08-22 amendment).
 
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`

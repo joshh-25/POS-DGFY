@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-08-21
+last_reviewed: 2026-08-22
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -201,3 +201,50 @@ to the invariant itself:
 
 No fee policy, settlement, or payment-acceptance decision changes. Full context:
 issue #476, `docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md`.
+
+### 2026-08-22: Downpayment forfeiture is a terminal outcome with no provider refund (#824)
+
+Clause 14 states that rejecting or cancelling a paid Storefront order "submits
+one idempotent full-refund request to PayMongo." That is unconditional, and for
+a partially-captured (downpayment) order it is now too narrow: ADR 0069 clause 8
+`[default]`, carried forward by ADR 0070, makes refund-vs-forfeiture a per-store
+toggle, and a forfeiture makes **no provider call at all**. Clause 14 is untagged
+(plain numbered list), so per ADR 0039 this is a dated amendment, not a
+supersession.
+
+Clause 14 is amended to read: rejecting or cancelling a paid Storefront order
+records the terminal fulfillment state first, then resolves one of two outcomes.
+
+1. **Refund** — the default, and the only outcome for a fully-captured order.
+   Unchanged from clause 14 as written: one idempotent refund request to
+   PayMongo, successful refund webhooks post immutable refund and proportional
+   DGFY-fee reversal entries, a failed refund never reopens settlement
+   eligibility and is surfaced for administrator reconciliation. For a
+   downpayment order the "full" refund is the full *captured* amount, which ADR
+   0069 clause 1b `[binding]` already fixes at the downpayment, never the order
+   total.
+2. **Forfeiture** — only when a **customer** self-service cancellation meets a
+   session whose `downpayment_refundable` snapshot is explicitly `false` (see
+   ADR 0070's companion amendment of the same date for the actor scoping). No
+   PayMongo call is made, no `commerce_payment_refunds` row is created, and the
+   session's own status is unchanged: the money was neither reversed nor put in
+   flight. The order's `payment_status`, `amount_paid`, and `balance_due` are
+   likewise left untouched, because nothing was reversed — this ADR's clause 4
+   requires corrections to be expressed as ledger entries, never as edits to the
+   original figures.
+
+Both outcomes now write a tenant-side `pos_order_payments` row (`kind` `'refund'`
+or `'forfeiture'`, linked to the original `'downpayment'` row via
+`related_pos_order_payment_id`), satisfying ADR 0069 clause 8's requirement that
+"the schema from clause 4 must represent a forfeited-vs-applied distinction on
+the ledger regardless of the toggle's setting." Refund rows carry the provider's
+own lifecycle in their `status` column (`pending` on submission, promoted to
+`successful`/`failed` when the refund webhook confirms), so a refund in flight is
+visible tenant-side rather than appearing only once terminal. That write is
+best-effort and never fails the money operation or the webhook acknowledgement,
+consistent with this ADR's Architecture Boundaries rule that a cross-database
+failure cannot roll back a decision already committed.
+
+No fee policy, settlement-hold, or payment-acceptance decision changes. Full
+context: issue #824,
+`docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md`.
