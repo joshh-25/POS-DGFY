@@ -4308,7 +4308,13 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildCancelStoreOrderUseCase = ({ storeRepository, inventoryReservationService = null }) => {
+export const buildCancelStoreOrderUseCase = ({
+    storeRepository,
+    inventoryReservationService = null,
+    // Phase 144 (#824): injected, optional, and defaulting to null so every existing test that
+    // builds this use case without it keeps its current behaviour verbatim.
+    commerceOrderLifecycleUseCase = null
+}) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
@@ -4411,10 +4417,53 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository, inventoryReserva
                 tracking_pin: normalizedTrackingPin
             }));
 
+            // Phase 144 (#824). Before this, a customer who paid a downpayment online could
+            // self-cancel here and the money was neither refunded, forfeited, nor recorded
+            // anywhere -- this path never touched payments at all. It is also the ONLY origin
+            // that may forfeit a non-refundable downpayment (see commerceOrderLifecycleUseCase's
+            // `initiatedBy`): a store-side cancel through POS always refunds.
+            //
+            // Post-commit, mirroring posUseCases.js's own online-order status path, and mandatory
+            // rather than stylistic: ADR 0052's Architecture Boundaries section states this is a
+            // cross-database workflow where a provider failure cannot roll back the tenant order
+            // decision. The cancel has already succeeded; a payment failure here is surfaced, not
+            // thrown.
+            let paymentLifecycle = { tracked: false, payment_action: 'not_applicable' };
+            if (commerceOrderLifecycleUseCase && parsePositiveInt(updated?.pos_transaction_id)) {
+                const lifecycleResult = await commerceOrderLifecycleUseCase({
+                    tenantId: normalizedTenantId,
+                    posTransactionId: parsePositiveInt(updated.pos_transaction_id),
+                    fulfillmentStatus: 'cancelled',
+                    actor: normalizedStoreCustomerId
+                        ? `store_customer:${normalizedStoreCustomerId}`
+                        : 'store_guest',
+                    initiatedBy: 'customer'
+                }).catch((error) => fail(new DomainError(
+                    DomainErrorCode.INTERNAL_ERROR,
+                    error?.message || 'Commerce order payment lifecycle failed.'
+                )));
+                paymentLifecycle = lifecycleResult.success
+                    ? lifecycleResult.data
+                    : {
+                        tracked: true,
+                        payment_action: 'refund_failed',
+                        failure_reason: lifecycleResult.error?.message
+                            || 'The payment lifecycle action requires administrator review.'
+                    };
+                if (!lifecycleResult.success) {
+                    logger.error('[StoreUseCases] Commerce payment lifecycle failed after customer cancellation', {
+                        tenant_id: normalizedTenantId,
+                        tracking_pin: normalizedTrackingPin,
+                        error: lifecycleResult.error?.message
+                    });
+                }
+            }
+
             return ok({
                 tracking_pin: normalizedTrackingPin,
                 status: 'cancelled',
-                order: serializeOrderForPublicTracking(updated)
+                order: serializeOrderForPublicTracking(updated),
+                payment_lifecycle: paymentLifecycle
             });
         } catch (error) {
             if (error?.code === DomainErrorCode.VALIDATION_FAILED || error?.code === DomainErrorCode.RESOURCE_NOT_FOUND || error?.code === DomainErrorCode.AUTHENTICATION_FAILED || error?.code === DomainErrorCode.AUTHORIZATION_FAILED) {
