@@ -76,7 +76,10 @@ const posControllerNames = [
     'updateBulkCatalogOverrides', 'updateCatalogOverride', 'updateDeliveryJobStatus',
     'updateESalesReportStatus', 'uploadBulkCatalogImages', 'uploadCatalogImage',
     'updateOnlineOrderStatus', 'upsertFiscalTerminalRegistration', 'verifyDiscountApproval',
-    'verifyFiscalEventLedger', 'verifyTerminal', 'voidTransaction', 'cashRefundTransaction', 'externalRefundTransaction', 'providerRefundTransaction', 'splitAllocationReversal'
+    'verifyFiscalEventLedger', 'verifyTerminal', 'voidTransaction', 'cashRefundTransaction', 'externalRefundTransaction', 'providerRefundTransaction', 'splitAllocationReversal',
+    // Phase 148 (#825): this list enumerates every named export posController.js provides, so a
+    // new one has to be added here too or the route wiring under test fails to construct.
+    'recordOrderBalancePayment'
 ];
 
 const employeeCreditControllerNames = [
