@@ -95,9 +95,11 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time.
   @.agents/skills/promoter/SKILL.md
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
-  files → Worker fixes → fast-track Reviewer → Promoter redeploys). Carries a narrow, phrase-gated
+  files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
+  `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
   override to merge a hotfix into `main` during an open incident; every other case keeps "never
-  merge `main`" absolute. Only runs when explicitly authorized to start an incident session.
+  merge `main`" absolute. Only runs when explicitly authorized — either an active incident session,
+  or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
   @.agents/skills/incident-responder/SKILL.md
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
