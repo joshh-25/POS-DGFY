@@ -7615,6 +7615,110 @@ unshipped reservation.
 
 ---
 
+## Phase 148 - Balance Settlement at Delivery/Pickup (Staff-Recorded)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815 / #273). Issue #825.
+- Release: `develop`, via PR (branch `feature/825-downpayment-balance-settlement`).
+- Phase number 148 is the slot this issue was already reserved under by the 2026-08-22 renumber note
+  above (#825 moved from its original "Phase 145" title under the #578 precedent). No new collision
+  and nothing to reconcile — AGENTS.md's Continuous Phase Numbering rule 10 satisfied by using the
+  existing reservation rather than appending a new highest number.
+
+### Objective and Scope
+
+- Close the middle of the downpayment flow. Phase 141 (#822) captures a downpayment online and
+  leaves the order `partially_paid`; Phase 144 (#824) shows POS staff how much is still owed;
+  Phase 151 (#826) shows the customer the same split. Nothing could *record* the balance actually
+  being paid, so such an order could never reach `paid` and never complete.
+- New use case + endpoint `POST /pos/orders/:id/record-payment`, extending — never loosening — the
+  existing Collect Cash flow. `collect-cash` keeps both of its guards (`payment_status === 'unpaid'`,
+  `cash_received >= total_amount`) untouched; the two endpoints' domains are disjoint by
+  construction (`unpaid` vs. `partially_paid`).
+- Settlement methods are ADR 0063 clause 4 `[binding]`'s merchant-owned V1 set — `cash`, `gcash`,
+  `maya`, `card` (a store-owned terminal, never PayMongo card), `bank_transfer`. This **widens
+  #825's own written scope**, which named only "cash + manually-recorded gcash"; decided by Pat
+  2026-08-23 on the grounds that clauses 5 and 6 already govern all four digital methods
+  identically, so nothing per-method had to be invented. Issue body updated to record the change.
+- Writes `amount_paid`/`balance_due`, flips to `paid` at zero balance, and writes ledger row 2
+  (`pos_order_payments.kind = 'balance'`) in the same transaction, linked to the Phase 141
+  `downpayment` row via `related_pos_order_payment_id`.
+- Both completion paths become balance-aware: `assertDeliveryCompletionReadiness` and the pickup
+  branch of `buildUpdateOnlineOrderStatusUseCase` now require a zero balance, not merely
+  `payment_status === 'paid'`.
+- Terminal UI: a separate `Settle Balance` button and dialog beside the untouched Collect Cash pair,
+  with the explicit merchant-owned confirmation ADR 0063 clause 6 requires.
+- v1 settles the full remaining balance in one action; the ledger supports N rows, so instalments
+  stay a later UI concern.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 137 (#819, the `partially_paid` vocabulary, `amount_paid`/`balance_due` columns,
+  and the `pos_order_payments` table including its `'balance'` enum value) and Phase 141 (#822, the
+  capture that produces a partially-paid order and writes ledger row 1). Both `completed`.
+- **No ADR change.** Every decision was already written: ADR 0069 clause 2 `[binding]` (balance is
+  staff-recorded, never a second automatic charge, and must carry its own single-use confirmation
+  guard) and clause 4b `[default]` (ledger row shape), both carried forward verbatim by ADR 0070
+  (`authoritative`) and cited through it; ADR 0063 clauses 4, 5, 6, and 12 `[binding]` (method set,
+  what an attestation must persist and must never claim, explicit confirmation failing closed, and
+  no PayMongo involvement). Classification: `within-existing-boundary`.
+- **ADR 0069 clause 9 `[default]` — VAT/BIR/fiscal treatment of a balance-settlement event remains
+  deferred.** Stated, not invented. A settlement produces no fiscal event.
+- **ADR 0069 clause 10 `[default]` — platform fee unchanged**, still computed on the captured
+  downpayment only; #817 tracks whether the balance leg should generate one separately.
+- **Compliance impact declaration required and filed**:
+  `docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md`,
+  classification `major`, surfaces `pos,terminal,payments`. The gate was confirmed to fail first
+  with eleven sensitive files listed, then pass.
+- **No migration.** First writer of an enum value and columns that have existed since Phase 137.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/posOrderBalanceSettlement.usecase.test.js` (new) — cash settlement with
+  change computed off `balance_due`; all four merchant-owned methods at exact amount; fail-closed
+  without `manual_payment_received`; duplicate submit writes exactly one ledger row (#825's own
+  verification condition); the ledger records the balance settled and never the cash tendered;
+  `payment_provider` is `merchant_owned` and never `paymongo`; `unpaid` and `paid` orders rejected.
+- `apps/dgfy-api/tests/posOnlineOrderCompletionBalanceGate.usecase.test.js` (new) — completion
+  blocked at a nonzero balance on both paths with distinct reason codes; allowed at zero for both a
+  cash and a merchant-owned settlement; **a plain COD delivery with `amount_paid: 0` still requires
+  the original cash evidence** (the discriminator pin).
+- `apps/dgfy-web/src/features/pos/__tests__/terminalBalanceSettlement.behavior.test.jsx` (new) —
+  button mutual-exclusivity with Collect Cash, dialog based on `balance_due` not `total_amount`,
+  fail-closed submit for merchant-owned methods, and the store-attested-not-DGFY-verified copy.
+- Regression: `posPickupCashCollection`, `posDeliveryCashCollection`, and
+  `posDeliveryCompletionGuard` pass unchanged — the evidence that the live COD path was not
+  loosened. Full `apps/dgfy-web` POS suite green.
+- `npm run build:pos` (real Vite build), `node --check` on every changed backend file,
+  `npm run check:compliance` (failing then passing), `npm run check:architecture`,
+  `npm run lint:docs`.
+
+### Implementation Links
+
+- Issue: #825. Epic: #815 / #273.
+- ADRs: `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md`
+  (authoritative carrier for ADR 0069 clauses 2 and 4b),
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+  (clauses 4, 5, 6, 12).
+- Compliance: `docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md`.
+- Backend: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/controllers/posController.js`,
+  `apps/dgfy-api/src/routes/pos.js`, `apps/dgfy-api/src/validators/posValidator.js`.
+- Frontend: `apps/dgfy-web/src/features/pos/components/BalanceSettlementDialog.jsx` (new),
+  `TerminalOperationsPanels.jsx`, `TerminalPageDialogLayer.jsx`, `pages/TerminalPage.jsx`,
+  `services/posService.js`.
+- Next eligible phase: **149** (#827, hardening + documentation closure — the epic's final phase,
+  which depends on this one).
+
+---
+
 ## Phase 150 - Downpayment Settings Clarity + The `customer_choice` Payment Mode
 
 ### Initiative and Release
