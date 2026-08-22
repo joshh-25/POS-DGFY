@@ -8,9 +8,11 @@ export function SimpleCheckoutPaymentStep({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
-  guestCheckoutOtpVerified = false,
+  downpaymentCallout = null,
   DropdownComponent,
+  guestCheckoutOtpVerified = false,
   isDgfyCustomerSignedIn = false,
+  isDownpaymentActive = false,
   isMobileViewport = false,
   money,
   onImageError,
@@ -33,15 +35,16 @@ export function SimpleCheckoutPaymentStep({
       <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Step 3: Review & Payment</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart and calculated order total, then choose payment and submit the order.</div>
       <PaymentMethodSelectorBlock
-        label="Payment Type"
+        label={isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'}
         value={paymentType}
         onChange={onPaymentTypeChange}
         options={paymentOptions}
         DropdownComponent={DropdownComponent}
         triggerStyle={{ minHeight: 44, borderRadius: 12 }}
-        showCashInfo={paymentType === 'cash'}
+        showCashInfo={!isDownpaymentActive && paymentType === 'cash'}
         cashInfoAccent="#176B3A"
         bodyFont={bodyFont}
+        downpaymentCallout={downpaymentCallout}
       />
       {onlinePaymentPanel}
       <SimpleCheckoutReviewItemsList

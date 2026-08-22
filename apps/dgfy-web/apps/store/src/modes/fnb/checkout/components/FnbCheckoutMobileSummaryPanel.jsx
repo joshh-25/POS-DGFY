@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, ShoppingBag, X } fr
 import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 /**
  * F&B mobile checkout summary sheet and persistent action footer.
@@ -41,6 +42,13 @@ export function FnbCheckoutMobileSummaryPanel({
   totalFeeAndTaxes,
   totals,
 }) {
+  // Phase 142 (#823): independent copy of FnbCheckoutSummaryContent's own downpayment rows -- this
+  // panel is a separate mobile bottom-sheet presentation, not a shared render path.
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
@@ -130,6 +138,9 @@ export function FnbCheckoutMobileSummaryPanel({
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
                 </div>
+                {downpaymentRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
               </div>
             </div>
           </div>

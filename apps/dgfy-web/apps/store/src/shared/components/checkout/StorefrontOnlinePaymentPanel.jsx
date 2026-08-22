@@ -80,11 +80,20 @@ const getCardLabelStyle = (hasError) => ({
 });
 
 export function StorefrontOnlinePaymentPanel({
+  // Phase 142 (#823): pre-formatted strings (built by the caller via its own `money()`), not raw
+  // numbers -- this shared panel takes no money-formatting dependency of its own. amountDue null
+  // (the default, and what a full_payment checkout always passes) renders nothing new here; the
+  // synthetic session built by StorefrontApp.jsx's return-URL handler carries no session amounts
+  // until the first poll lands, so this must render fine with amountDue still null on that pass.
+  amountDue = null,
+  amountDueLabel = 'Downpayment due',
+  balanceNote = null,
   billing = {},
   onConfirmTestPayment,
   onChooseAnotherPaymentMethod,
   paymentEnvironment = null,
   paymentSession,
+  qrAmountNote = null,
   refreshing = false,
   paymentType = paymentSession?.payment_method || 'qrph'
 }) {
@@ -214,8 +223,17 @@ export function StorefrontOnlinePaymentPanel({
               ? `Continue in the ${paymentLabel} app or browser authorization screen. Payment confirmation updates automatically when you return.`
               : hosted
                 ? `Continue to PayMongo to complete your ${paymentLabel} payment. Payment confirmation updates automatically.`
-                : `This QR contains the exact order total. Complete it through ${isTestEnvironment ? 'the PayMongo test flow' : 'your banking or wallet app'}; payment confirmation updates automatically.`}
+                : `${qrAmountNote || 'This QR contains the exact order total.'} Complete it through ${isTestEnvironment ? 'the PayMongo test flow' : 'your banking or wallet app'}; payment confirmation updates automatically.`}
       </p>
+      {amountDue ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+          <span>{amountDueLabel}</span>
+          <strong>{amountDue}</strong>
+        </div>
+      ) : null}
+      {balanceNote ? (
+        <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>{balanceNote}</p>
+      ) : null}
       {directCard && !terminal && !cardAuthorizationSubmitted && !paymentReturnPending ? (
         <div style={{ display: 'grid', gap: 9, borderRadius: 10, background: '#fff', border: '1px solid #bfdbfe', padding: 12 }}>
           <label style={getCardLabelStyle(cardFieldErrors.cardholder)}>

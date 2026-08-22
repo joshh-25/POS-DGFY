@@ -17,7 +17,12 @@ export function PaymentMethodSelectorBlock({
   cashInfoBorder = '#dbe8f5',
   cashInfoBackground = '#f8fbff',
   labelColor = '#475569',
-  bodyFont = 'inherit'
+  bodyFont = 'inherit',
+  // Phase 142 (#823): an optional node rendered under the dropdown -- the downpayment amount
+  // callout + refundable seam. Kept generic (any node, not a fixed shape) so this shared block
+  // doesn't need to know about downpayment presentation at all; each mode builds its own callout
+  // from shared/model/storefrontDownpaymentPresentation.js and passes it in.
+  downpaymentCallout = null
 }) {
   if (typeof DropdownComponent !== 'function') return null;
 
@@ -35,6 +40,7 @@ export function PaymentMethodSelectorBlock({
           selectedLabelStyle={selectedLabelStyle}
         />
       </label>
+      {downpaymentCallout}
       {showCashInfo ? (
         <div style={{ border: `1px solid ${cashInfoBorder}`, borderRadius: 16, background: cashInfoBackground, padding: '14px 16px', display: 'grid', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>

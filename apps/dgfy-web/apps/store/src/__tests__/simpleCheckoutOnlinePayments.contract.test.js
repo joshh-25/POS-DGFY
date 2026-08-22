@@ -320,13 +320,17 @@ describe('Simple Storefront online payment contract', () => {
     const submission = readSource('shared/hooks/useCheckoutSubmission.js');
     const shell = readSource('StorefrontApp.jsx');
 
-    expect(route).toContain('buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)');
+    // Phase 142 (#823): gained a second hideCash argument -- see storefrontDownpaymentPresentation.test.js
+    // and simpleCheckoutOnlinePayments.contract.test.js's own downpayment-specific assertions below.
+    expect(route).toContain('buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })');
     expect(route).toContain('StorefrontOnlinePaymentPanel');
     expect(route).toContain('getStorefrontOnlinePaymentLabel');
     expect(route).toContain('Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}');
     expect(route).toContain("fnbPaymentType === 'qrph'");
     expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
-    expect(submission).toContain('isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)');
+    // Phase 142 (#823): Retail joined this branch -- see the new Retail contract test file for
+    // its own dedicated coverage.
+    expect(submission).toContain('(isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
     expect(submission).toContain('startStorefrontDirectPayment');
     expect(submission).toContain('isStorefrontDirectPaymentSession');
@@ -355,5 +359,21 @@ describe('Simple Storefront online payment contract', () => {
     expect(shell).toContain("setCheckoutTab('checkout')");
     expect(shell).toContain("paymentSession?.status === 'finalized' && paymentSession?.tracking_pin");
     expect(shell).toContain('goStoreTrackPage({ pin: trackingPin });');
+  });
+
+  // Phase 142 (#823): downpayment-required stores hide cash and swap in the downpayment label/
+  // callout/submit-label -- pin the wiring at the source-text level (the full render path is
+  // exercised end-to-end by storefrontDownpaymentPresentation.test.js's model-level coverage).
+  it('hides cash and shows downpayment copy for a downpayment-required store', () => {
+    const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+    const step = readSource('modes/simple/checkout/components/SimpleCheckoutPaymentStep.jsx');
+
+    expect(route).toContain('resolveDownpaymentDisplay({ quoteResult: totals })');
+    expect(route).toContain("hideCash: downpaymentDisplay.active");
+    expect(route).toContain('isDownpaymentActive={downpaymentDisplay.active}');
+    expect(route).toContain('downpaymentDisplay.active');
+    expect(route).toContain("Pay downpayment (");
+    expect(step).toContain("isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'");
+    expect(step).toContain('!isDownpaymentActive && paymentType');
   });
 });

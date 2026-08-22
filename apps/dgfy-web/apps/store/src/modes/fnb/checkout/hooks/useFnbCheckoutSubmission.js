@@ -10,19 +10,10 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
+// see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
+import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
-
-// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
-// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
-// and it was still being set from the client's pre-submission totalsForDisplay, not the
-// server-persisted order.
-// Restored 2026-08-22 (#857) -- reverted by #853's develop reconciliation without a stated reason.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -88,6 +79,9 @@ export function useFnbCheckoutSubmission({
       access_mode: 'This storefront is not accepting online checkout right now.',
       missing_quote: 'Please click Quote first before checkout.',
       stale_quote: 'Your cart changed. Please refresh Quote before checkout.',
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
+      // fully discounts a downpayment-required order to zero -- see that file's comment.
+      downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody
