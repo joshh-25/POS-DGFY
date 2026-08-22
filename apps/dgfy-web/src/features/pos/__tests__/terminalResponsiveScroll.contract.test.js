@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posTerminalLayoutPath = path.resolve(__dirname, '../utils/posTerminalLayout.js');
 const posCatalogWorkflowPath = path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js');
 const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurrentSaleActions.jsx');
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
@@ -18,6 +19,7 @@ const appStylesPath = path.resolve(__dirname, '../../../index.css');
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let posCheckoutContent = '';
+  let posTerminalLayoutContent = '';
   let posCatalogWorkflowContent = '';
   let posCurrentSaleActionsContent = '';
   let posHistoryContent = '';
@@ -29,6 +31,7 @@ describe('POS terminal responsive scroll contracts', () => {
     posCheckoutContent = [posCheckoutPath, posCheckoutViewPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
+    posTerminalLayoutContent = fs.readFileSync(posTerminalLayoutPath, 'utf8');
     posCatalogWorkflowContent = fs.readFileSync(posCatalogWorkflowPath, 'utf8');
     posCurrentSaleActionsContent = fs.readFileSync(posCurrentSaleActionsPath, 'utf8');
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
@@ -79,13 +82,13 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps checkout split into catalog and current-sale panes', () => {
-    expect(posCheckoutContent).toContain("const shellClassName = 'h-full min-h-0 overflow-hidden';");
-    expect(posCheckoutContent).toContain("const checkoutGridClassName = isTabletViewport");
-    expect(posCheckoutContent).toContain("md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]");
-    expect(posCheckoutContent).toContain("md:grid-cols-[minmax(0,1fr)_325px]");
+    expect(posTerminalLayoutContent).toContain("shellClassName: 'h-full min-h-0 overflow-hidden'");
+    expect(posTerminalLayoutContent).toContain('checkoutGridClassName: isTabletViewport');
+    expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]");
+    expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_325px]");
     expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
     expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
-    expect(posCheckoutContent).toContain("const checkoutPaneClassName = 'flex h-full min-h-0 max-h-full flex-col overflow-hidden';");
+    expect(posTerminalLayoutContent).toContain("checkoutPaneClassName: 'flex h-full min-h-0 max-h-full flex-col overflow-hidden'");
     expect(posCheckoutContent).not.toContain('md:max-xl:min-h-[78rem]');
   });
 
@@ -123,8 +126,8 @@ describe('POS terminal responsive scroll contracts', () => {
   it('keeps current-sale actions and mobile sheet behavior intact', () => {
     expect(posCheckoutContent).toContain('fixed inset-x-0 bottom-0 z-50 h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)]');
     expect(posCheckoutContent).toContain('md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto');
-    expect(posCheckoutContent).toContain("const currentSaleBodyClassName = 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y';");
-    expect(posCheckoutContent).toContain("const currentSaleItemsListClassName = 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y';");
+    expect(posTerminalLayoutContent).toContain("currentSaleBodyClassName: 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y'");
+    expect(posTerminalLayoutContent).toContain("currentSaleItemsListClassName: 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y'");
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-panel"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-items"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-totals"');
