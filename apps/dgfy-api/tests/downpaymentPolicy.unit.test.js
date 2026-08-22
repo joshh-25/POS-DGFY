@@ -173,3 +173,85 @@ describe('resolveDownpaymentForTotal', () => {
         expect(result.downpayment_refundable).toBe(false);
     });
 });
+
+// Phase 150 (#866): customer_choice's split only fires on an explicit customer election -- the
+// settings-level payment_mode alone never determines the result for this mode, unlike
+// full_payment/downpayment_required.
+describe('resolveDownpaymentForTotal -- customer_choice (Phase 150, #866)', () => {
+    const customerChoiceSettings = (overrides = {}) => ({
+        payment_mode: 'customer_choice',
+        downpayment_type: 'percentage',
+        downpayment_rate_bps: 2000, // 20%
+        downpayment_fixed_centavos: null,
+        min_downpayment_centavos: 5000, // PHP 50
+        downpayment_refundable: true,
+        ...overrides
+    });
+
+    it('splits when the election is "downpayment"', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: customerChoiceSettings(),
+            totalAmount: 500,
+            paymentElection: 'downpayment'
+        });
+        expect(result).toEqual({
+            payment_mode: 'downpayment_required',
+            downpayment_amount: 100,
+            balance_due_amount: 400,
+            downpayment_refundable: true
+        });
+    });
+
+    it('does not split when the election is "full"', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: customerChoiceSettings(),
+            totalAmount: 500,
+            paymentElection: 'full'
+        });
+        expect(result).toEqual({
+            payment_mode: 'full_payment',
+            downpayment_amount: null,
+            balance_due_amount: null,
+            downpayment_refundable: null
+        });
+    });
+
+    it('defaults to "full" (no split) when paymentElection is absent -- under-collecting is the dangerous direction', () => {
+        const result = resolveDownpaymentForTotal({ settings: customerChoiceSettings(), totalAmount: 500 });
+        expect(result.payment_mode).toBe('full_payment');
+    });
+
+    it('defaults to "full" when paymentElection is an unrecognized value -- never guesses a split from garbage input', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: customerChoiceSettings(),
+            totalAmount: 500,
+            paymentElection: 'not_a_real_choice'
+        });
+        expect(result.payment_mode).toBe('full_payment');
+    });
+
+    it('never returns payment_mode "customer_choice" itself, even on a split -- only full_payment or downpayment_required describe a resolved order', () => {
+        const split = resolveDownpaymentForTotal({ settings: customerChoiceSettings(), totalAmount: 500, paymentElection: 'downpayment' });
+        const noSplit = resolveDownpaymentForTotal({ settings: customerChoiceSettings(), totalAmount: 500, paymentElection: 'full' });
+        expect(split.payment_mode).not.toBe('customer_choice');
+        expect(noSplit.payment_mode).not.toBe('customer_choice');
+    });
+
+    it('paymentElection is ignored for downpayment_required -- the merchant decided, not the customer', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: percentageSettings(),
+            totalAmount: 500,
+            paymentElection: 'full'
+        });
+        expect(result.payment_mode).toBe('downpayment_required');
+    });
+
+    it('paymentElection is ignored for full_payment', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: fullPaymentSettings(),
+            totalAmount: 500,
+            paymentElection: 'downpayment'
+        });
+        expect(result.payment_mode).toBe('full_payment');
+    });
+});

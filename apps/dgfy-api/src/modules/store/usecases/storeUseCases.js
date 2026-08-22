@@ -446,6 +446,11 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
         order_method: orderMethod,
         payment_type: paymentType,
         payment_timing: resolvePaymentTiming({ orderMethod, paymentType }),
+        // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election at a
+        // payment_mode='customer_choice' store. Meaningless (and ignored, by
+        // resolveDownpaymentForTotal) at any other store -- see storeValidator.js's own comment on
+        // this same field.
+        payment_election: String(payload.payment_election || 'full').trim().toLowerCase() === 'downpayment' ? 'downpayment' : 'full',
         promo_code: normalizePromoCode(payload.promo_code),
         voucher_code: normalizeVoucherCode(payload.voucher_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
@@ -1794,7 +1799,14 @@ const resolveCheckoutContext = async ({
     const downpaymentSettings = resolvedTenantIdForDownpayment
         ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
         : null;
-    const downpayment = resolveDownpaymentForTotal({ settings: downpaymentSettings || null, totalAmount });
+    const downpayment = resolveDownpaymentForTotal({
+        settings: downpaymentSettings || null,
+        totalAmount,
+        // Phase 150 (#866): only consulted by resolveDownpaymentForTotal when the settings row is
+        // 'customer_choice' -- a no-op for every existing 'full_payment'/'downpayment_required'
+        // store, so this addition needs no edits to any test that doesn't exercise customer_choice.
+        paymentElection: normalized.payment_election
+    });
 
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
         orderMethod,
@@ -2006,13 +2018,20 @@ const resolveStorefrontPaymentCapabilities = async ({
 // tenant's stored intent verbatim, so the UI hides cash and forces a quote even against a
 // malformed row; the malformed case still 422s at session-create time
 // (DOWNPAYMENT_POLICY_UNRESOLVED), never silently falls through to an un-gated cash order.
+//
+// Phase 150 (#866): 'customer_choice' now passes through verbatim too (previously flattened into
+// 'full_payment' along with everything else that wasn't 'downpayment_required') -- the storefront
+// needs to see it to render the pay-in-full-vs-downpayment election control at all.
 const resolveStorefrontPaymentMode = async ({ downpaymentSettingsRepository, tenantId }) => {
     if (!tenantId || typeof downpaymentSettingsRepository?.getSettings !== 'function') {
         return 'full_payment';
     }
     try {
         const settings = await downpaymentSettingsRepository.getSettings(tenantId);
-        return settings?.payment_mode === 'downpayment_required' ? 'downpayment_required' : 'full_payment';
+        if (settings?.payment_mode === 'downpayment_required' || settings?.payment_mode === 'customer_choice') {
+            return settings.payment_mode;
+        }
+        return 'full_payment';
     } catch (error) {
         logger?.warn?.('Failed to resolve storefront payment_mode for catalog; defaulting to full_payment', {
             tenantId,
@@ -3746,8 +3765,18 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             // downpayment_required tenant) -- that's "nothing to capture," not a malformed settings
             // row, and it already 422s a few lines below on its own, more accurate reason
             // (`totalAmountCentavos <= 0`). Reviewer finding RF-2, PR #840.
+            //
+            // Phase 150 (#866): extended to 'customer_choice' + an actual 'downpayment' election.
+            // A 'customer_choice' store with election='full' is NOT malformed -- resolved.downpayment
+            // correctly reports 'full_payment' by design (requiresSplit is false), so that case must
+            // never trip this guard. Only "customer asked for a split, and the row couldn't produce
+            // one" is the malformed case this guard exists to catch.
+            const requestedDownpaymentElection = String(normalizedPayload.payment_election || '').trim().toLowerCase() === 'downpayment';
             if (
-                resolved.downpaymentSettings?.payment_mode === 'downpayment_required'
+                (
+                    resolved.downpaymentSettings?.payment_mode === 'downpayment_required'
+                    || (resolved.downpaymentSettings?.payment_mode === 'customer_choice' && requestedDownpaymentElection)
+                )
                 && resolved.downpayment.payment_mode !== 'downpayment_required'
                 && resolved.totalAmount > 0
             ) {

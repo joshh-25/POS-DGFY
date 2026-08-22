@@ -93,17 +93,15 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
                 }
             }
 
-            // customer_choice is a real, schema-authorized literal (#820's own scope: "Schema
-            // customer_choice now; server rejects it as unsupported in v1"), rejected only here --
-            // never silently downgraded to something else -- since it isn't built yet.
+            // Phase 150 (#866): customer_choice was a real, schema-authorized literal held reserved
+            // since #820 ("Schema customer_choice now; server rejects it as unsupported in v1") --
+            // that reservation is lifted here. It needs the same fully-configured effective row as
+            // downpayment_required: a customer electing "pay a downpayment" at checkout still needs
+            // a real type/amount/minimum to resolve against (downpaymentPolicy.js's
+            // resolveDownpaymentForTotal now takes the customer's election as an input for this
+            // mode). ADR 0070 records the un-lifted reservation in its Consequences; this PR's dated
+            // amendment there is the paper trail for the lift.
             const effectivePaymentMode = updates.payment_mode ?? current.payment_mode;
-            if (effectivePaymentMode === 'customer_choice') {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'payment_mode "customer_choice" is not supported yet.', {
-                    statusCode: 422,
-                    details: [{ field: 'payment_mode', message: 'customer_choice is reserved for a future phase and cannot be set yet.' }],
-                    observabilityReasonCode: 'PAYMENT_MODE_NOT_SUPPORTED'
-                });
-            }
 
             // ADR 0070 clause 7 ([binding]): downpayment is authorized for every workflow mode
             // (ADR 0070 supersedes ADR 0069's Retail-only gate that used to live here -- see ADR
@@ -111,15 +109,15 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
             // Enforcement here is no longer about *which vertical* -- it's about internal
             // consistency of the effective row, so it stays in this write path regardless.
             // Every write re-validates the *full effective* row when payment_mode is (or becomes)
-            // downpayment_required -- not just the fields this particular request touches -- so a
-            // partial update can never leave the row internally inconsistent (e.g. a lone
-            // downpayment_refundable flip on a row whose type/rate never got fully configured).
+            // downpayment_required/customer_choice -- not just the fields this particular request
+            // touches -- so a partial update can never leave the row internally inconsistent (e.g. a
+            // lone downpayment_refundable flip on a row whose type/rate never got fully configured).
             // Deliberate fail-closed choice, not an oversight: see the "effective state" test in
             // downpaymentSettingsUseCases.unit.test.js.
-            if (effectivePaymentMode === 'downpayment_required') {
+            if (effectivePaymentMode === 'downpayment_required' || effectivePaymentMode === 'customer_choice') {
                 const effectiveType = updates.downpayment_type !== undefined ? updates.downpayment_type : current.downpayment_type;
                 if (!effectiveType) {
-                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'downpayment_type is required when payment_mode is downpayment_required.', { statusCode: 422 });
+                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `downpayment_type is required when payment_mode is ${effectivePaymentMode}.`, { statusCode: 422 });
                 }
 
                 const effectiveRateBps = updates.downpayment_rate_bps !== undefined ? updates.downpayment_rate_bps : current.downpayment_rate_bps;
@@ -135,9 +133,19 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
                 // #820's own scope: min_downpayment_centavos "required -- feeds Phase 141's fee
                 // guard". DB NOT NULL DEFAULT 0 alone can't express "must be positive while
                 // downpayment is actually active" -- that conditional lives here.
-                const effectiveMinDownpaymentCentavos = updates.min_downpayment_centavos !== undefined ? updates.min_downpayment_centavos : current.min_downpayment_centavos;
-                if (!effectiveMinDownpaymentCentavos || effectiveMinDownpaymentCentavos <= 0) {
-                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'min_downpayment_centavos must be greater than 0 when payment_mode is downpayment_required.', { statusCode: 422 });
+                //
+                // Phase 150 (#865): scoped to `percentage` only. This field's one real consumer
+                // (downpaymentPolicy.js's floor) exists to guarantee a *percentage-derived* capture
+                // clears the PayMongo fee on a small order -- in `fixed` mode the merchant-entered
+                // fixed amount already IS that floor, so requiring a second constant here was either
+                // a no-op or a silent override of the amount the merchant just typed (the bug #865
+                // reports). The settings UI hides this field entirely for `fixed`, so this branch
+                // simply stops demanding it be sent.
+                if (effectiveType === 'percentage') {
+                    const effectiveMinDownpaymentCentavos = updates.min_downpayment_centavos !== undefined ? updates.min_downpayment_centavos : current.min_downpayment_centavos;
+                    if (!effectiveMinDownpaymentCentavos || effectiveMinDownpaymentCentavos <= 0) {
+                        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'min_downpayment_centavos must be greater than 0 when downpayment_type is percentage.', { statusCode: 422 });
+                    }
                 }
             }
 
