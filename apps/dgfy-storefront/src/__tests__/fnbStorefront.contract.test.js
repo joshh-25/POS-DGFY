@@ -25,13 +25,15 @@ const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnb
 const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
-const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
+const checkoutPaymentOptionsSource = () => readSource('shared/model/storefrontCheckoutPaymentOptions.js');
+const onlinePaymentSessionSource = () => readSource('shared/services/storefrontOnlinePaymentSession.js');
 const checkoutRouteMountSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteMount.jsx');
 const checkoutRouteContainerSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
 const cartDrawerShellContainerSource = () => readSource('app/pages/StorefrontCartDrawerShellContainer.jsx');
 const checkoutSubmissionSource = () => readSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
 const signedInCheckoutAddressesSource = () => readSource('modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js');
 const fnbTrackingContainerSource = () => readSource('modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx');
+const servicesTrackingContainerSource = () => readSource('modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx');
 const fnbTrackingAdapterSource = () => readSource('modes/fnb/tracking/model/fnbTrackingAdapter.js');
 const fnbTrackingPayloadSource = () => readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
 const fnbTrackingDrawerTotalsSource = () => readSource('modes/fnb/tracking/components/FnbTrackingDrawerTotals.jsx');
@@ -214,29 +216,58 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('buildStorefrontCheckoutPaymentOptions');
     expect(source).toContain("paymentCapabilities?.qrph?.enabled === true");
     expect(source).toContain("paymentCapabilities?.qrph?.environment === 'test'");
-    expect(source).not.toContain("value: 'gcash'");
-    expect(source).not.toContain("value: 'maya'");
-    expect(source).not.toContain("value: 'card'");
+    expect(source).toContain("{ value: 'card', label: 'Credit or debit card' }");
+    expect(source).toContain("{ value: 'gcash', label: 'GCash' }");
+    expect(source).toContain("{ value: 'maya', label: 'Maya' }");
+    expect(source).toContain("{ value: 'grab_pay', label: 'GrabPay' }");
+    expect(source).toContain("{ value: 'shopeepay', label: 'ShopeePay' }");
+    expect(source).toContain("paymentCapabilities?.[paymentType]?.enabled === true");
     expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
     expect(checkoutRouteContainer).toContain('buildStorefrontCheckoutPaymentOptions');
     expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
-    expect(submission).toContain('/api/v1/store/checkout/payment-sessions');
-    expect(submission).toContain("payment_type: 'qrph'");
-    expect(submission).toContain('payment_type: fnbPaymentType');
+    expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
+    expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
-    expect(storefrontAppSource()).toContain("handleRefreshQrphPaymentSession({ silent: true })");
-    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)");
+    expect(storefrontAppSource()).toContain("qrphPaymentRefreshRef.current?.({ silent: true })");
+    expect(storefrontAppSource()).toContain('createCompletionTrackingScheduler');
+    expect(storefrontAppSource()).toContain('resolveTrackingRetryDelayMs');
+    expect(storefrontAppSource()).toContain('qrphPaymentRefreshRef.current');
+    expect(storefrontAppSource()).not.toContain('window.setInterval(pollPaymentStatus');
+    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(paymentStatus)");
+    expect(storefrontAppSource()).toContain('setFnbOrderStep(4)');
+    expect(storefrontAppSource()).toContain('setSimpleOrderStep(3)');
+    expect(storefrontAppSource()).toContain("setCheckoutTab('checkout')");
+    expect(storefrontAppSource()).toContain('paymentReturnSessionRef.current === paymentSessionId');
+    expect(storefrontAppSource()).toContain("paymentSession?.status === 'finalized' && paymentSession?.tracking_pin");
+    expect(storefrontAppSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
+  });
+
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its
+  // options capture online, matching ADR 0070's amendment. Cash must stay hidden even under
+  // election='full', where downpaymentDisplay.active alone would be false.
+  it('hides cash for a customer_choice store regardless of the current election', () => {
+    const checkoutRouteContainer = checkoutRouteContainerSource();
+
+    expect(checkoutRouteContainer).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
   });
 
   it('provides a development-only PayMongo sandbox confirmation control', () => {
-    const panel = readSource('modes/fnb/checkout/components/FnbQrphPaymentPanel.jsx');
+    const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
     const checkout = readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
     const storefront = storefrontAppSource();
 
     expect(panel).toContain('Confirm test payment');
     expect(panel).toContain('Confirming test payment...');
-    expect(checkout).toContain('import.meta.env.DEV ? handleConfirmQrphTestPayment : null');
+    expect(panel).toContain('Payment processing');
+    expect(panel).toContain('Please do not pay again');
+    expect(panel).toContain("aria-busy={processing || refreshing ? 'true' : undefined}");
+    expect(panel).toContain('Loader2');
+    expect(panel).toContain('animate-spin');
+    expect(checkout).toContain("fnbPaymentType === 'qrph'");
+    expect(checkout).toContain("selectedStore?.payment_capabilities?.qrph?.environment === 'test'");
+    expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
     expect(storefront).toContain('/confirm-test');
     expect(storefront).toContain("method: 'POST'");
   });
@@ -283,6 +314,18 @@ describe('Food & Beverage storefront contract', () => {
     expect(payload).toContain('display');
     expect(payload).toContain('Array.isArray(order?.lines)');
     expect(payload).toContain('deliveryAddress');
+  });
+
+  it('routes Services tracking through the Services-owned runtime and drawer outlet', () => {
+    const source = appSource();
+    const shell = cartDrawerShellContainerSource();
+
+    expect(source).toContain("trackingMode: 'services'");
+    expect(source).toContain('const servicesTrackingRouteProps = buildServicesTrackingRouteProps');
+    expect(shell).toContain('ServicesTrackingRouteContainer');
+    expect(shell).toContain("visible={checkoutTab === 'track'}");
+    expect(shell).toContain('!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer');
+    expect(servicesTrackingContainerSource()).toContain('ServicesTrackingRoutePage');
   });
 
   it('preserves promo discount labels across F&B tracking summaries', () => {

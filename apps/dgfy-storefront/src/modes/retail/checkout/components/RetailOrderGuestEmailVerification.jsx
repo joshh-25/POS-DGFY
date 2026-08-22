@@ -4,7 +4,7 @@ import { Mail, Send, ShieldCheck } from 'lucide-react';
  * Retail order page's guest-checkout email OTP verification block. Mirrors
  * modes/fnb/checkout/components/FnbGuestEmailVerification.jsx exactly, kept as its own file
  * per the "independent trees" pattern — the underlying OTP state/handlers are shared
- * (useFnbGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
+ * (useGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
  * rendering is retail's own.
  */
 export function RetailOrderGuestEmailVerification({
@@ -100,7 +100,7 @@ export function RetailOrderGuestEmailVerification({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={onRequestCode}
+          onClick={() => onRequestCode()}
           disabled={loading || cooldownActive}
           style={{
             border: 'none',

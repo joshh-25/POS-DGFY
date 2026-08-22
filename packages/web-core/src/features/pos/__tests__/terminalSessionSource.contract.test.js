@@ -57,6 +57,22 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('canViewPos');
   });
 
+  it('closes the login drawer after terminal unlock completes', () => {
+    const completionStart = terminalPageSource.indexOf('const completeTerminalUnlock');
+    const completionEnd = terminalPageSource.indexOf('const handleSelectAdminTerminal', completionStart);
+    const completionSource = terminalPageSource.slice(completionStart, completionEnd);
+
+    expect(completionSource).toContain('setDrawerOpen(false);');
+    expect(completionSource).toContain('setTerminalUnlockModalOpen(false);');
+  });
+
+  it('uses the floating toast for DGFY login failures without an inline duplicate', () => {
+    expect(terminalPageSource).toContain('const reportTerminalFailure = (error, flow, { showToast = true } = {}) => {');
+    expect(terminalPageSource).toContain('if (showToast) toast.error(message);');
+    expect(terminalPageSource).toContain("reportTerminalFailure(error, 'terminal_unlock');");
+    expect(terminalPageSource).not.toContain("reportTerminalFailure(error, 'terminal_unlock', { showToast: false });");
+  });
+
   it('hydrates the terminal registry before restoring a saved cashier terminal and relocks the live shell when it is invalid', () => {
     expect(terminalPageSource).toContain('const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });');
     expect(terminalPageSource).toContain('terminalBootstrap?.registry');
@@ -83,7 +99,7 @@ describe('TerminalPage session contract', () => {
 
   it('clears source-company terminal lock state before loading a switched company session', () => {
     expect(terminalPageSource).toContain(
-      "setStoredTerminalLock(false);\n        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);\n        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });\n        window.location.assign('/terminal');"
+      "setStoredTerminalLock(false);\n        safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);\n        preparePosCompanySwitchHandoff({ tenantId: normalizedTenantId });\n        window.location.assign('/terminal');"
     );
   });
 
@@ -91,7 +107,7 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('const dgfyTenantHandoff = consumePosDgfyTenantHandoff();');
     expect(terminalPageSource).toContain('const companySwitchHandoff = getFreshPosCompanySwitchHandoff();');
     expect(terminalPageSource).toContain("String(dgfyTenantHandoff?.tenantId || companySwitchHandoff?.tenantId || '').trim()");
-    expect(terminalPageSource).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
+    expect(terminalPageSource).toContain("safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageSource).toContain("setActiveTerminalId('');");
     expect(terminalPageSource).toContain('setOperatingLocationId(null);');
     expect(terminalPageSource).toContain("setFormData((prev) => ({ ...prev, terminalId: '' }));");

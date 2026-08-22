@@ -24,6 +24,30 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:manage')");
   });
 
+  it('keeps cashier POS void authorization inside POS Settings and preserves other permissions', () => {
+    expect(workspaceSource).toContain('Cashier Void and Cash Authorization');
+    expect(workspaceSource).toContain('data-testid="pos-cashier-void-authorization"');
+    expect(workspaceSource).toContain('data-testid={`pos-cashier-void-toggle-${cashier.user_id}`}');
+    expect(workspaceSource).toContain("cashierPermissions.includes('pos:void')");
+    expect(workspaceSource).toContain("Array.from(new Set([...permissions, 'pos:void']))");
+    expect(workspaceSource).toContain("permissions.filter((permission) => permission !== 'pos:void')");
+    expect(workspaceSource).toContain('const updated = await updateUserPermissions(userId, nextPermissions);');
+    expect(workspaceSource).toContain('activeCashierUsers.map((cashier) =>');
+    expect(workspaceSource).toContain('const [cashiersLoaded, setCashiersLoaded] = useState(false);');
+    expect(workspaceSource).toContain('Loading active cashier accounts...');
+    expect(workspaceSource).toContain("role !== 'cashier'");
+    expect(workspaceSource).not.toContain('Skupervisor');
+  });
+
+  it('keeps physical cash authority separate and configurable inside POS Settings', () => {
+    expect(workspaceSource).toContain('Can refund cash / adjust drawer');
+    expect(workspaceSource).toContain('data-testid={`pos-cashier-drawer-toggle-${cashier.user_id}`}');
+    expect(workspaceSource).toContain("cashierPermissions.includes('pos:cash_drawer_adjust')");
+    expect(workspaceSource).toContain("Array.from(new Set([...permissions, 'pos:cash_drawer_adjust']))");
+    expect(workspaceSource).toContain("permissions.filter((permission) => permission !== 'pos:cash_drawer_adjust')");
+    expect(workspaceSource).toContain('updateCashierDrawerAccess(cashier, !hasDrawerAccess)');
+  });
+
   it('keeps POS onboarding primary location control aligned with IMS settings', () => {
     expect(tenantSetupModalSource).toContain("import { Switch } from '@/components/ui/switch';");
     expect(tenantSetupModalSource).toContain('Primary Business Location');
@@ -35,19 +59,26 @@ describe('regular POS Setup cashier management contract', () => {
     expect(primaryLocationControl).not.toContain('disabled={normalizedLocations.length === 0}');
   });
 
-  it('adds per-terminal cashier email and password onboarding without removing DGFY invitation flow', () => {
-    expect(tenantSetupModalSource).toContain('Cashier Gmail');
-    expect(tenantSetupModalSource).toContain('Cashier Password');
-    expect(tenantSetupModalSource).toContain('Use a valid Gmail address under each terminal below.');
+  it('keeps cashier provisioning out of POS onboarding while preserving authorization readiness', () => {
+    expect(tenantSetupModalSource).not.toContain('Cashier Gmail');
+    expect(tenantSetupModalSource).not.toContain('Cashier Password');
+    expect(tenantSetupModalSource).not.toContain('provisionCashierFromGmail');
+    expect(tenantSetupModalSource).not.toContain('Invite DGFY Cashier');
+    expect(tenantSetupModalSource).toContain('Cashier invitations and location permissions are managed from POS Settings.');
+    expect(tenantSetupModalSource).toContain('active cashier or company master admin');
     expect(tenantSetupModalSource).toContain('Select a store for each active terminal before saving.');
     expect(tenantSetupModalSource).toContain('terminalSaveFeedback');
     expect(tenantSetupModalSource).toContain('terminalFieldErrors');
-    expect(tenantSetupModalSource).toContain('Cashier login credentials were emailed successfully.');
-    expect(tenantSetupModalSource).toContain('Configure SMTP or Brevo to enable automatic cashier emails.');
-    expect(tenantSetupModalSource).toContain('provisionCashierFromGmail');
-    expect(tenantSetupModalSource).toContain('Cashier email must be a valid Gmail address.');
-    expect(tenantSetupModalSource).toContain('cashier_email');
-    expect(tenantSetupModalSource).toContain('Invite DGFY Cashier');
+  });
+
+  it('places business hours before the location editor and persists the shared storefront setting', () => {
+    expect(tenantSetupModalSource).toContain('StorefrontBusinessHoursScheduler');
+    expect(tenantSetupModalSource).toContain('Save Business Hours');
+    expect(tenantSetupModalSource).toContain('storefront_hours: serializeStorefrontBusinessHours(storefrontHours)');
+    expect(tenantSetupModalSource).toContain('onKeyDown={handleDialogKeyDown}');
+    expect(tenantSetupModalSource.indexOf('Business Hours')).toBeLessThan(tenantSetupModalSource.indexOf('Business Location'));
+    expect(tenantSetupModalSource).not.toContain('STARTER_ITEM');
+    expect(tenantSetupModalSource).not.toContain('starterItemRequirements');
   });
 
   it('keeps onboarding open until Finish Setup instead of allowing early dismissal', () => {
@@ -59,8 +90,9 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('lets cashier protected tools reach the POS access PIN gate without an open shift', () => {
-    expect(terminalPageSource).toContain("const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'services', 'history']);");
-    expect(terminalPageSource).toContain("const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);");
+    expect(terminalPageSource).toContain("const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);");
+    expect(terminalPageSource).toContain('const PIN_PROTECTED_VIEW_MODES = new Set(');
+    expect(terminalPageSource).toContain("[...SETTINGS_VIEW_MODES, 'items'].filter((mode) => mode !== 'settings_vouchers' && mode !== 'settings_pricelists')");
     expect(terminalPageSource).toContain('if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {');
     expect(terminalPageSource).toContain('await verifyPosSettingsAccessPin(normalizedPin);');
     expect(terminalPageSource).toContain('const hydrateTerminalMeta = useCallback');

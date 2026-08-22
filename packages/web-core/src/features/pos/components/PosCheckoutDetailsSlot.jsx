@@ -25,6 +25,7 @@ export function PosCheckoutDetailsSlot({
   setServicesResource,
   servicesNotes,
   setServicesNotes,
+  paymentTypeField = null,
   disabled = false
 }) {
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
@@ -44,6 +45,7 @@ export function PosCheckoutDetailsSlot({
             setTableNumber={setTableNumber}
             kitchenNotes={kitchenNotes}
             setKitchenNotes={setKitchenNotes}
+            paymentTypeField={paymentTypeField}
             disabled={disabled}
           />
         )}
@@ -73,6 +75,7 @@ export function PosCheckoutDetailsSlot({
             disabled={disabled}
           />
         )}
+        {checkoutDetailsOwner !== POS_PRESENTATION_SLOT_OWNERS.FNB && paymentTypeField}
       </Suspense>
     </>
   );

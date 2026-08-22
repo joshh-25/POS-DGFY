@@ -84,7 +84,18 @@ export function toRetailTrackingViewState(trackingPayload) {
       || 'Promo / Discount'
     ).trim(),
     serviceFeeAmount: numberOrNull(source.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
-    totalAmount: numberOrNull(source.totalAmount ?? root?.total_amount ?? raw?.total_amount ?? order?.total_amount ?? raw?.order_total),
+    // #747: `order?.total_amount` (the server-persisted value) now outranks `root?.total_amount` /
+    // `raw?.total_amount` -- those can carry a client-snapshotted pre-submission total (see
+    // useCheckoutSubmission.js / useFnbCheckoutSubmission.js) that doesn't reflect a just-applied
+    // voucher discount. Defensive for THIS parser specifically -- the same source-side fix and the
+    // same reorder are applied to the fnb/simple sibling copies of this file too (RF-4, PR #753
+    // review), so no caller of any of the three is left relying on this fallback alone.
+    totalAmount: numberOrNull(source.totalAmount ?? order?.total_amount ?? root?.total_amount ?? raw?.total_amount ?? raw?.order_total),
+    // Phase 142 (#823): order-sourced only -- serializeOrderBase now returns these (previously
+    // omitted entirely), null for any order that isn't partially_paid.
+    paymentStatus: String(source.paymentStatus || order?.payment_status || root?.payment_status || raw?.payment_status || '').trim().toLowerCase(),
+    amountPaid: numberOrNull(source.amountPaid ?? order?.amount_paid ?? root?.amount_paid ?? raw?.amount_paid),
+    balanceDue: numberOrNull(source.balanceDue ?? order?.balance_due ?? root?.balance_due ?? raw?.balance_due),
     branchName: String(source.branchName || location?.name || payloadDisplay?.branch_name || orderDisplay?.branch_name || root?.branch_name || raw?.branch_name || '').trim(),
     branchAddress: String(source.branchAddress || location?.full_address || location?.address_line || payloadDisplay?.branch_address || orderDisplay?.branch_address || root?.branch_address || raw?.branch_address || '').trim(),
     deliveryAddress: String(source.deliveryAddress || order?.delivery_address || payloadDisplay?.delivery_address || orderDisplay?.delivery_address || root?.delivery_address || raw?.delivery_address || payloadDisplay?.customer_address || orderDisplay?.customer_address || root?.customer_address || raw?.customer_address || '').trim(),

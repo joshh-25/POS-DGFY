@@ -162,11 +162,87 @@ function listAddedInHistory(projectRoot, fromRef, toRef) {
   return Array.from(new Set(result.stdout.split(/\r?\n/).filter(Boolean)));
 }
 
-function fileExistsAt(projectRoot, ref, filePath) {
+function createGitBlobReader(projectRoot) {
+  const cache = new Map();
+
+  const cacheKey = (ref, filePath) => `${ref}:${filePath}`;
+
+  const readMany = (requests) => {
+    const uniqueRequests = [];
+    const seen = new Set();
+    for (const request of requests) {
+      if (!request || !request.ref || !request.filePath) continue;
+      const key = cacheKey(request.ref, request.filePath);
+      if (cache.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      uniqueRequests.push({ ...request, key });
+    }
+    if (uniqueRequests.length === 0) return;
+
+    const input = Buffer.from(uniqueRequests
+      .map(({ ref, filePath }) => `${ref}:${filePath}\n`)
+      .join(''), 'utf8');
+    const result = spawnSync('git', ['cat-file', '--batch'], {
+      cwd: projectRoot,
+      input,
+      encoding: 'buffer',
+      maxBuffer: 256 * 1024 * 1024,
+    });
+    if (result.status !== 0) {
+      throw new MergeHygieneError('Could not read git blobs for merge hygiene.', {
+        code: 'BLOB_READ_FAILED',
+        errors: [result.stderr?.toString('utf8').trim() || `git cat-file exited ${result.status}`],
+      });
+    }
+
+    const output = result.stdout || Buffer.alloc(0);
+    let offset = 0;
+    for (const request of uniqueRequests) {
+      const headerEnd = output.indexOf(0x0a, offset);
+      if (headerEnd < 0) {
+        throw new MergeHygieneError('Git blob response was truncated.', { code: 'BLOB_READ_FAILED' });
+      }
+      const header = output.subarray(offset, headerEnd).toString('utf8');
+      offset = headerEnd + 1;
+      const parts = header.split(' ');
+      if (header.endsWith(' missing')) {
+        cache.set(request.key, null);
+        continue;
+      }
+      const size = Number(parts[2]);
+      if (!Number.isSafeInteger(size) || size < 0 || offset + size > output.length) {
+        throw new MergeHygieneError(`Git blob response had an invalid size for ${request.key}: ${header}`, {
+          code: 'BLOB_READ_FAILED'
+        });
+      }
+      cache.set(request.key, output.subarray(offset, offset + size).toString('utf8'));
+      offset += size;
+      if (output[offset] === 0x0a) offset += 1;
+    }
+  };
+
+  return {
+    prime: readMany,
+    read(ref, filePath) {
+      const key = cacheKey(ref, filePath);
+      if (!cache.has(key)) readMany([{ ref, filePath }]);
+      return cache.get(key);
+    },
+    exists(ref, filePath) {
+      const key = cacheKey(ref, filePath);
+      if (!cache.has(key)) readMany([{ ref, filePath }]);
+      return cache.has(key) && cache.get(key) !== null;
+    },
+  };
+}
+
+function fileExistsAt(projectRoot, ref, filePath, blobReader = null) {
+  if (blobReader) return blobReader.exists(ref, filePath);
   return runGit(projectRoot, ['cat-file', '-e', `${ref}:${filePath}`]).ok;
 }
 
-function readFileAt(projectRoot, ref, filePath) {
+function readFileAt(projectRoot, ref, filePath, blobReader = null) {
+  if (blobReader) return blobReader.read(ref, filePath);
   const result = runGit(projectRoot, ['show', `${ref}:${filePath}`]);
   if (!result.ok) return null;
   return result.stdout;
@@ -234,7 +310,7 @@ function changedFileSummary(entry) {
   };
 }
 
-function inspectConflictMarkers(projectRoot, headRef, changedFiles) {
+function inspectConflictMarkers(projectRoot, headRef, changedFiles, blobReader = null) {
   const findings = [];
   for (const entry of changedFiles) {
     const filePath = entry.path;
@@ -242,8 +318,8 @@ function inspectConflictMarkers(projectRoot, headRef, changedFiles) {
       findings.push({ path: filePath, reason: 'conflict-resolution temporary file is present' });
       continue;
     }
-    if (!fileExistsAt(projectRoot, headRef, filePath)) continue;
-    const content = readFileAt(projectRoot, headRef, filePath);
+    if (!fileExistsAt(projectRoot, headRef, filePath, blobReader)) continue;
+    const content = readFileAt(projectRoot, headRef, filePath, blobReader);
     if (content === null || content.length > 1024 * 1024) continue;
     if (CONFLICT_MARKER_PATTERN.test(content)) {
       findings.push({ path: filePath, reason: 'unresolved conflict marker is present' });
@@ -273,21 +349,29 @@ function inspectSuspiciousDeletions(changedFiles, justification) {
     }));
 }
 
-function inspectTargetReversions(projectRoot, mergeBase, headRef, targetRef, justification) {
+function inspectTargetReversions(
+  projectRoot,
+  mergeBase,
+  headRef,
+  targetRef,
+  justification,
+  blobReader = null,
+  targetChanges = null,
+) {
   if (!targetRef) return { preserved: [], suspicious: [] };
 
-  const targetChanges = collectNameStatus(projectRoot, mergeBase, targetRef);
+  const resolvedTargetChanges = targetChanges || collectNameStatus(projectRoot, mergeBase, targetRef);
   const preserved = [];
   const suspicious = [];
 
-  for (const entry of targetChanges) {
+  for (const entry of resolvedTargetChanges) {
     const filePath = entry.path;
     if (entry.status === 'D') continue;
 
-    const targetExists = fileExistsAt(projectRoot, targetRef, filePath);
+    const targetExists = fileExistsAt(projectRoot, targetRef, filePath, blobReader);
     if (!targetExists) continue;
 
-    const headExists = fileExistsAt(projectRoot, headRef, filePath);
+    const headExists = fileExistsAt(projectRoot, headRef, filePath, blobReader);
     if (!headExists) {
       if (!isJustified(justification.accepted_reversions, filePath)) {
         suspicious.push({
@@ -299,11 +383,11 @@ function inspectTargetReversions(projectRoot, mergeBase, headRef, targetRef, jus
       continue;
     }
 
-    const baseContent = fileExistsAt(projectRoot, mergeBase, filePath)
-      ? readFileAt(projectRoot, mergeBase, filePath)
+    const baseContent = fileExistsAt(projectRoot, mergeBase, filePath, blobReader)
+      ? readFileAt(projectRoot, mergeBase, filePath, blobReader)
       : null;
-    const targetContent = readFileAt(projectRoot, targetRef, filePath);
-    const headContent = readFileAt(projectRoot, headRef, filePath);
+    const targetContent = readFileAt(projectRoot, targetRef, filePath, blobReader);
+    const headContent = readFileAt(projectRoot, headRef, filePath, blobReader);
 
     if (baseContent !== null && targetContent !== baseContent && headContent === baseContent) {
       if (!isJustified(justification.accepted_reversions, filePath)) {
@@ -332,9 +416,34 @@ function checkMergeHygiene(options, logger = console) {
 
   const suspiciousDeletions = inspectSuspiciousDeletions(changedFiles, justification);
   const suspiciousDroppedAdditions = inspectDroppedAdditions(projectRoot, mergeBase, headSha, justification);
-  const conflictFindings = inspectConflictMarkers(projectRoot, headSha, changedFiles);
   const targetComparisonBase = computeTargetComparisonBase(projectRoot, headSha, targetSha, mergeBase);
-  const targetReview = inspectTargetReversions(projectRoot, targetComparisonBase, headSha, targetSha, justification);
+  const blobReader = createGitBlobReader(projectRoot);
+  const blobRequests = changedFiles.map(({ path: filePath }) => ({ ref: headSha, filePath }));
+  const targetChanges = targetSha
+    ? collectNameStatus(projectRoot, targetComparisonBase, targetSha)
+    : [];
+  if (targetSha) {
+    for (const { path: filePath } of targetChanges) {
+      blobRequests.push(
+        { ref: targetSha, filePath },
+        { ref: headSha, filePath },
+        { ref: targetComparisonBase, filePath },
+      );
+    }
+  }
+  // The checker may inspect hundreds of files. Prime one batch request instead of
+  // spawning one `git show`/`git cat-file` process per ref/path pair.
+  blobReader.prime(blobRequests);
+  const conflictFindings = inspectConflictMarkers(projectRoot, headSha, changedFiles, blobReader);
+  const targetReview = inspectTargetReversions(
+    projectRoot,
+    targetComparisonBase,
+    headSha,
+    targetSha,
+    justification,
+    blobReader,
+    targetChanges,
+  );
 
   const warnings = [...justification.warnings];
   const errors = [];

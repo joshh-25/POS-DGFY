@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-16
+last_reviewed: 2026-08-21
 applies_to: ims_pos_sales_ux
 topic: end_to_end_cashier_admin_journey
 ---
@@ -67,6 +67,15 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
    their authorized catalog automatically. The refresh must preserve the
    cashier's cart, search, filters, and checkout draft; location-scoped catalog
    access remains enforced by the normal catalog read.
+8. Point 2's POS `Items` (the cashier-facing, POS-visibility-filtered list) is a distinct surface
+   from the admin **Items** page (SKUpervisor `/items`, `apps/dgfy-web/src/features/inventory/pages/ItemsPage.jsx`)
+   -- a separate, sibling top-level nav item, not embedded in or reached from the POS terminal.
+   The admin Items page is tenant-wide SKU management (catalog data, POS/storefront visibility
+   config, CSV import/export) and, as of #682, exposes its own explicit Branch selector for
+   viewing per-location stock (`GET /items?location_id=`), independent of any POS terminal's
+   active shift location. Selecting "All Locations" there (the default) keeps the tenant-wide
+   aggregate this contract's other points already assume; it does not change POS Sell's own
+   location-scoped catalog behavior in point 7.
 
 ## Readiness Gate Behavior
 1. Enabling `Show in POS` is readiness-gated.

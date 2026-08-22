@@ -85,6 +85,12 @@ REFRESH_TOKEN_EXPIRY=7d
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
 REDIS_URL=redis://localhost:6379
 DB_AUTO_SYNC=false
+# Keep the local connection budget below MySQL's default max_connections (151):
+# 20 cached tenant pools * 5 connections + 20 landlord connections = 120.
+DB_MAX_CONNECTIONS=151
+LANDLORD_DB_POOL_MAX=20
+TENANT_MAX_CACHED_CONNECTIONS=20
+TENANT_DB_POOL_MAX=5
 # Auto-bootstrap storefront pin for newly activated tenants
 # - latitude: -90 to 90
 # - longitude: -180 to 180
@@ -94,9 +100,11 @@ DB_AUTO_SYNC=false
 # Set to true only when subscription workflows are intentionally re-enabled.
 PAYMENTS_ENABLED=false
 # Admin portal auth hardening (credentials are env-backed + bcrypt hash)
-# Default username remains "skupervisor"; default hash matches password "252378"
-# ADMIN_USERNAME=skupervisor
-# ADMIN_PASSWORD_HASH=$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK
+# Local development only: if omitted, the legacy bootstrap account is used.
+# Production requires ADMIN_USERNAME + ADMIN_PASSWORD_HASH or ADMIN_ACCOUNTS_JSON.
+# Never use the documented local bootstrap credentials in production.
+# ADMIN_USERNAME=local-admin
+# ADMIN_PASSWORD_HASH=<bcrypt hash>
 # Admin lockout policy (Redis-backed when REDIS_URL is configured; in-memory fallback otherwise)
 # ADMIN_LOGIN_LOCKOUT_MAX_ATTEMPTS=5
 # ADMIN_LOGIN_LOCKOUT_WINDOW_MS=900000

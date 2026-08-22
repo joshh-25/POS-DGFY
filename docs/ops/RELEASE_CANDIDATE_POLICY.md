@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-12
+last_reviewed: 2026-08-16
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -47,38 +47,77 @@ anything beyond dispatch access.
 ## Flow
 
 ```text
-feature branch -> develop -> staging -> release/<label> -> main
+feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main
 ```
 
 1. Feature branches PR into `develop`. Ordinary PR checks apply
    (`pr-checks.yml`).
-2. `develop` PRs into `staging` when a batch of work is ready to qualify
-   together.
-3. A **release candidate** branch — `release/<label>`, e.g.
+2. A **staging-candidate** branch — `to-staging/<label>`, e.g. `to-staging/2026-08-16` — is cut
+   fresh from `origin/develop` at the exact commit being promoted, whenever a batch of work is
+   ready to qualify together. It carries no new commits of its own; it exists only to be a PR
+   head. Cut it fresh each time, never reused — the same pattern as `release/<label>` below, not
+   a separate one.
+3. `to-staging/<label>` PRs into `staging`. Once its checks pass and it is merged, `staging`
+   reflects that commit.
+4. A **release candidate** branch — `release/<label>`, e.g.
    `release/2026-07-30` — is cut from `staging` at the exact commit being
    promoted. It carries no new commits of its own; it exists only to be a PR
    head. Cut it fresh each time from `origin/staging`, never reused.
-4. `release/<label>` PRs into `main`. Once its checks pass and it is merged,
+5. `release/<label>` PRs into `main`. Once its checks pass and it is merged,
    production is live at that commit.
 
-`release/*` is already in `.github/branch-cleanup-policy.json`'s
-`protectedHeadPrefixes`, so a release branch is never eligible for automatic
-deletion even if the (currently archived) cleanup workflow is restored.
+`release/*` and `to-staging/*` are both already in
+`.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes`, so neither kind of promotion
+branch is ever eligible for automatic deletion even if the (currently archived) cleanup workflow
+is restored.
 
-## Why a release branch instead of `staging` directly
+## Why every promotion cuts a branch, rather than using the long-lived branch directly
 
-`scripts/check-compliance-impact.js` recognizes both shapes as an aggregate
-promotion (`PROMOTION_HEAD_BY_BASE` for an exact `staging` head,
-`PROMOTION_HEAD_PREFIX_BY_BASE` for a `release/` head into `main`) and skips
-re-validating every bundled compliance declaration against the combined diff
-— each one already passed this same check on its own PR into `develop`.
-Re-validating the bundle produces false positives; see the failure this
-caused on the first attempt at this promotion (PR #143), fixed alongside this
-document.
+`scripts/check-compliance-impact.js` recognizes an aggregate promotion by its PR head —
+`PROMOTION_HEAD_PREFIX_BY_BASE` matches a `to-staging/` head into `staging` and a `release/` head
+into `main` the same way — and skips re-validating every bundled compliance declaration against
+the combined diff — each one already passed this same check on its own PR into `develop`.
+Re-validating the bundle produces false positives; see the failure this caused on the first
+attempt at the `staging -> main` leg (PR #143), fixed alongside this document.
 
-A named release branch exists mainly for a clean, reviewable PR title/diff
-and a stable reference if the promotion needs to be reopened; functionally it
-is the same qualified snapshot as `staging`.
+A named promotion branch exists mainly for a clean, reviewable PR title/diff and a stable
+reference if the promotion needs to be reopened; functionally it is the same qualified snapshot as
+the branch it was cut from.
+
+`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE.staging` still recognizes bare
+`develop` and the un-dated literal `to-staging` as exact-match heads too (unchanged, not removed)
+— a compatibility fallback, not the recommended path going forward.
+
+### Amendment (2026-08-16): `develop → staging` now uses this same pattern
+
+This document originally recorded `develop → staging` as a deliberate exception — direct-head, no
+cut branch — reasoned from a real, verified fact that is still true: `develop` is this repo's
+default branch, and GitHub hard-refuses to delete a repository's default branch regardless of the
+delete-branch-on-merge setting:
+
+```
+$ gh api -X DELETE repos/Sieitzz/dgfy-platform/git/refs/heads/develop
+{"message":"Cannot delete the default branch", "status":"422"}
+```
+
+That still means a `develop → staging` promotion PR merged with delete-branch checked cannot
+reproduce the `staging`-deletion incident (#426) that `release/<label>` exists to guard against for
+the `staging → main` leg. But the branch-deletion risk was never the *only* reason
+`release/<label>` exists — see "clean PR title," "stable reopen reference," and the
+compliance-bypass mechanism above, none of which are specific to deletion risk, and all of which
+apply equally to `develop → staging`.
+
+Reconsidered 2026-08-16: keeping `develop → staging` as the one direct-head exception meant #512
+(the Promoter/Release agent) would need to implement *two* separate promotion mechanisms — a
+special-cased direct merge for one leg, cut-branch-and-PR for the other — for no benefit beyond
+avoiding one extra branch-cut step on the leg that happens to be safe from deletion. A single
+uniform mechanism is simpler to build and reason about, and is already resilient to the residual
+risk the original version of this section named: if the default branch is ever repointed away from
+`develop`, nothing about this flow needs to change, because it was never depending on that
+protection to begin with. Direct-head is retired for this leg; `to-staging/<label>` replaces it.
+
+#512 is built: `.agents/skills/promoter/SKILL.md` implements exactly this single mechanism for both
+legs.
 
 ## What actually gates a release into `main` today
 
@@ -155,3 +194,30 @@ invoke it.
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed
   on `staging` for several days before it was ported back to `develop` as
   part of this same change. Worth an audit of what else has diverged.
+
+## Amendments
+
+### 2026-08-18: Hotfix and back-port
+
+A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow — the
+P0-production-outage case, e.g. #664/PR #665) creates a real risk: `main` now contains a fix that
+`develop` and `staging` don't, and the next ordinary promotion can silently overwrite it if the same
+line is touched upstream. This happened for real with PR #665 — its own body flagged the gap and
+promised a follow-up, closed by #675.
+
+**Procedure**, added here so it's not re-discovered by hand each time:
+
+1. Before the incident is considered closed, merge `origin/main` into `develop` — via a **cut
+   branch** off fresh `origin/develop` (`git merge origin/main`, push, PR into `develop`), never
+   using `main` itself as a PR head. This is the same principle `to-staging/<label>` and
+   `release/<label>` already use for promotion, and for the same reason: PR-ing a long-lived branch
+   as head risks GitHub deleting it on merge (the #426 incident).
+2. `staging` is **not** back-ported separately — it inherits the fix on the next
+   `develop → staging` promotion, same as any other `develop` commit.
+3. Link the back-port PR to a fresh issue (`Refs` the original incident and hotfix PR, not `Closes`
+   — those are already closed), since the incident issue itself is typically already closed by the
+   hotfix PR.
+
+This does not change anything about who may merge `main` (`AGENTS.md`'s Merge Safety rule, and every
+role's own "never merge `main`" boundary, are unaffected) — it only closes the gap on what happens
+*after* an authorized `main` merge, so the fix doesn't get lost going the other direction.

@@ -29,8 +29,10 @@ const isDeferredCustomerValidation = (error) => {
 export function useFnbCheckoutQuote({
   accessCapabilities,
   cart,
+  cartSignature,
   checkoutPermitted,
   checkoutPromoCode,
+  checkoutVoucherCode,
   customerEmail,
   customerName,
   customerPhone,
@@ -40,13 +42,27 @@ export function useFnbCheckoutQuote({
   fnbScheduledFor,
   fnbSpecialInstructions,
   isDeliveryOrder,
+  // #746: requestQuote previously used readStoreAuthToken() unconditionally, the same as a guest.
+  // A signed-in DGFY customer's identity lives on their account, not in these local form fields --
+  // without their real token the server's optionalStoreCustomer middleware never resolves it, so
+  // the quote falls back to requiring customer_name/phone/email exactly as it does for a guest who
+  // hasn't typed anything yet. The actual checkout-submission hooks
+  // (useFnbCheckoutSubmission.js, useCheckoutSubmission.js) already select the right token this way
+  // -- requestQuote was the one path that never did.
+  isDgfyCustomerSignedIn,
   normalizeErrorMessage,
   orderMethod,
+  // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
+  // payment_mode='customer_choice' store -- see storefrontPaymentElection.js.
+  paymentElection,
+  readDgfyAuthToken,
   readStoreAuthToken,
   requestJson,
   selectedLocationId,
   selectedStore,
   setCheckoutPromoCode,
+  setCheckoutVoucherCode,
+  setQuotedCartSignature,
   setQuoteError,
   setQuoteNeedsRefresh,
   setQuoteResult,
@@ -56,7 +72,14 @@ export function useFnbCheckoutQuote({
   buildStockExceededMessage,
   extractStockViolation,
 }) {
-  const buildPayload = useCallback((promoCode = checkoutPromoCode, cartOverride = cart) => buildFnbCheckoutPayload({
+  // #672: voucherCode is a second, independent override alongside promoCode -- the two checkout
+  // discounts are separate fields (see buildFnbCheckoutPayload.js), so each needs its own override
+  // rather than reusing promoCode's single positional slot.
+  const buildPayload = useCallback(({
+    promoCode = checkoutPromoCode,
+    voucherCode = checkoutVoucherCode,
+    cartOverride = cart
+  } = {}) => buildFnbCheckoutPayload({
     selectedLocationId,
     selectedStore,
     orderMethod,
@@ -67,13 +90,16 @@ export function useFnbCheckoutQuote({
     deliveryAddress,
     customerPin,
     promoCode,
+    voucherCode,
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     cart: cartOverride,
+    paymentElection,
   }), [
     cart,
     checkoutPromoCode,
+    checkoutVoucherCode,
     customerEmail,
     customerName,
     customerPhone,
@@ -84,20 +110,32 @@ export function useFnbCheckoutQuote({
     fnbSpecialInstructions,
     isDeliveryOrder,
     orderMethod,
+    paymentElection,
     selectedLocationId,
     selectedStore,
   ]);
 
-  const requestQuote = useCallback(async ({ promoCodeOverride = checkoutPromoCode, successMessage = '', silent = false } = {}) => {
+  const requestQuote = useCallback(async ({
+    promoCodeOverride = checkoutPromoCode,
+    voucherCodeOverride = checkoutVoucherCode,
+    successMessage = '',
+    silent = false
+  } = {}) => {
     if (!selectedStore) return null;
+
+    // #746: snapshot the cart fingerprint the request is built from, BEFORE awaiting. Recording it
+    // after the response would attribute the quote to whatever the cart looks like when the network
+    // finally returns -- which is exactly the cart edit that should have invalidated it.
+    const signatureAtRequest = cartSignature;
 
     const data = await requestJson('/api/v1/store/cart/quote', {
       method: 'POST',
       storeSlug: selectedStore.slug,
-      authToken: readStoreAuthToken(),
-      body: buildPayload(promoCodeOverride),
+      authToken: isDgfyCustomerSignedIn ? (readDgfyAuthToken() || readStoreAuthToken()) : readStoreAuthToken(),
+      body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
     setQuoteResult(data);
+    setQuotedCartSignature(signatureAtRequest);
     setQuoteNeedsRefresh(false);
     if (!silent) {
       toast.success(data?.promo_feedback?.message || successMessage || 'Totals updated.');
@@ -105,10 +143,15 @@ export function useFnbCheckoutQuote({
     return data;
   }, [
     buildPayload,
+    cartSignature,
     checkoutPromoCode,
+    checkoutVoucherCode,
+    isDgfyCustomerSignedIn,
+    readDgfyAuthToken,
     readStoreAuthToken,
     requestJson,
     selectedStore,
+    setQuotedCartSignature,
     setQuoteNeedsRefresh,
     setQuoteResult,
     toast,
@@ -188,9 +231,84 @@ export function useFnbCheckoutQuote({
     toast,
   ]);
 
+  // #672: symmetric to handlePromoCardApply above, for the separate voucher_code field. Mirrors the
+  // same "added but not yet server-validated" early-return shape (closed hours, empty cart, offline
+  // checkout) and the same stock-violation/deferred-customer-validation error handling.
+  const handleVoucherCardApply = useCallback(async (voucherCode) => {
+    const normalizedVoucherCode = String(voucherCode || '').trim().toUpperCase();
+    if (!normalizedVoucherCode) return;
+
+    setCheckoutVoucherCode(normalizedVoucherCode);
+    setQuoteError('');
+
+    if (!Array.isArray(cart) || cart.length === 0) {
+      toast.success(`Voucher code ${normalizedVoucherCode} added. Add items to validate the discount.`);
+      return;
+    }
+    if (!selectedStore) {
+      // #746: not a success -- nothing validated the code, so don't dress it up as applied.
+      toast.info(`Voucher code ${normalizedVoucherCode} added. It will validate once a store is selected.`);
+      return;
+    }
+    if (storefrontClosedByHours) {
+      const message = storefrontHoursLabel
+        ? `Voucher code ${normalizedVoucherCode} added. It will validate during business hours: ${storefrontHoursLabel}.`
+        : `Voucher code ${normalizedVoucherCode} added. It will validate when ordering opens again.`;
+      toast.info(message);
+      return;
+    }
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      toast.info(`Voucher code ${normalizedVoucherCode} added. It will validate when online checkout is available.`);
+      return;
+    }
+
+    try {
+      await requestQuote({
+        voucherCodeOverride: normalizedVoucherCode,
+        successMessage: `Voucher code ${normalizedVoucherCode} applied.`,
+      });
+      trackFunnelEvent(ANALYTICS_EVENTS.VOUCHER_CODE_APPLIED, {
+        store_slug: selectedStore?.slug,
+        voucher_code: normalizedVoucherCode
+      });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setQuoteError(message);
+        toast.error(message);
+        return;
+      }
+      if (isDeferredCustomerValidation(error)) {
+        setQuoteNeedsRefresh(true);
+        toast.success(`Voucher code ${normalizedVoucherCode} added. It will apply after customer details are completed.`);
+        return;
+      }
+      const message = normalizeErrorMessage(error, 'Unable to apply voucher code right now.');
+      setQuoteError(message);
+      toast.error(message);
+    }
+  }, [
+    accessCapabilities.quote,
+    buildStockExceededMessage,
+    cart,
+    checkoutPermitted,
+    extractStockViolation,
+    normalizeErrorMessage,
+    requestQuote,
+    selectedStore,
+    setCheckoutVoucherCode,
+    setQuoteError,
+    setQuoteNeedsRefresh,
+    storefrontClosedByHours,
+    storefrontHoursLabel,
+    toast,
+  ]);
+
   return {
     buildPayload,
     handlePromoCardApply,
+    handleVoucherCardApply,
     requestQuote,
   };
 }

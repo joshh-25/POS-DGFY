@@ -1,7 +1,7 @@
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
 // guest/DGFY-account identity + guest email OTP infrastructure (useGuestCustomerIdentity.js,
-// useFnbGuestCheckoutOtp.js), and the shared saved-address/map-pin infrastructure
+// useGuestCheckoutOtp.js), and the shared saved-address/map-pin infrastructure
 // (useSignedInCheckoutAddresses.js, useDeliveryPinResolution.js) — all instantiated once in
 // StorefrontApp.jsx and already consumed by F&B/MSME. Schedule mode/time and special
 // instructions remain intentionally local state owned by RetailOrderPage itself, since neither
@@ -40,6 +40,7 @@ export function useRetailOrderPageProps({
   money,
   orderMethod,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   pinLocationError,
   pinLocationLoading,
   renderAccountOwnedIdentitySummary,
@@ -65,7 +66,22 @@ export function useRetailOrderPageProps({
   withAssetOrigin,
   handleCheckout,
   checkoutLoading,
-  checkoutError
+  checkoutError,
+  // Phase 142 (#823): Retail's payment step was a local, disconnected cash-only placeholder --
+  // wired to the same shared online-payment-session state F&B/MSME already coordinate on
+  // through StorefrontApp.jsx (useFnbCheckoutRouteState.js), same rename convention already used
+  // by useSimpleCheckoutRouteProps.js (handleConfirmQrphTestPayment -> onConfirmQrphTestPayment).
+  fnbPaymentType,
+  handlePaymentTypeChange,
+  handleConfirmQrphTestPayment,
+  qrphPaymentSession,
+  qrphPaymentStatusLoading,
+  resetQrphPaymentSession,
+  // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange above --
+  // StorefrontApp.jsx's paymentElection/setElected, threaded through unrenamed since there's no
+  // legacy name to reconcile with here (unlike fnbPaymentType, this is new).
+  paymentElection,
+  onPaymentElectionChange
 }) {
   return {
     canAddPinnedLocation,
@@ -99,6 +115,7 @@ export function useRetailOrderPageProps({
     onSelectAddress: applySavedDeliveryLocation,
     orderMethod,
     promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
@@ -125,6 +142,14 @@ export function useRetailOrderPageProps({
     checkoutError,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
+    paymentType: fnbPaymentType,
+    onPaymentTypeChange: handlePaymentTypeChange,
+    paymentElection,
+    onPaymentElectionChange,
+    onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    resetQrphPaymentSession,
     onImageError: (itemId) => {
       const normalizedLineItemId = Number(itemId);
       if (!Number.isFinite(normalizedLineItemId)) return;

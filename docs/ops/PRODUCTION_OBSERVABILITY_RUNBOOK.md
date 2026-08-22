@@ -88,6 +88,16 @@ The first rollout remains report-only. After one successful production release i
 OBSERVABILITY_GATE_MODE=enforce
 ```
 
+**Complementary tooling (#514):** `.github/workflows/verify-deployment.yml` is a separate,
+manually-dispatched (`workflow_dispatch`) check that SSHs into the deployed server and polls
+`docker compose ps` health status + each service's `RestartCount` over a few minutes, plus an
+in-container `/health` hit each poll. It catches a crash-loop signature the gate above cannot —
+this doc's gate is a reachable-HTTP-endpoint check run once; a container that restarts every
+~30s (the exact pattern in `docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`) can still
+answer that single HTTP check successfully depending on timing. Run it via `gh workflow run
+verify-deployment.yml -f environment=<ENV>`, read the result via `gh run view <id>`. v1 is
+report-only, same as this gate's own first-rollout stance.
+
 ## Investigation Order
 
 1. Confirm the production SHA from `/health.services.observability.runtime_sha`, deploy summary, and `.deploy-state/last_deployed_commit`.

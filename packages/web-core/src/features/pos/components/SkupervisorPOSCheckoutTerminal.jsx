@@ -2434,11 +2434,11 @@ export default function POSCheckoutTerminal({
                     )}
                     <div className="border-t border-dashed border-slate-200 my-2" />
                     <div className="flex justify-between">
-                        <span className="text-slate-600">Vatable Sales</span>
+                        <span className="text-slate-600">VATable Sales</span>
                         <span className="font-medium">PHP {money(vatBreakdown.vatableSales)}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-slate-600">VAT Amount</span>
+                        <span className="text-slate-600">VAT Amount (12%)</span>
                         <span className="font-medium">PHP {money(vatBreakdown.vatAmount)}</span>
                     </div>
                     <div className="flex justify-between">
@@ -2636,9 +2636,13 @@ export default function POSCheckoutTerminal({
                         <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
                         <Input
                             id="skupervisor-day-close-pin"
-                            type="password"
+                            type="text"
                             inputMode="numeric"
                             autoComplete="one-time-code"
+                            data-1p-ignore="true"
+                            data-lpignore="true"
+                            data-bwignore="true"
+                            style={{ WebkitTextSecurity: 'disc' }}
                             value={zReadingClosePin}
                             onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
                             onKeyDown={(event) => {

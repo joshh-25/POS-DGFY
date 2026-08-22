@@ -177,7 +177,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
     // Step 1: Upload
     const renderUploadStep = () => (
         <div className="space-y-6">
-            <div className="text-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:border-teal-400 hover:bg-teal-50/30 transition-all"
+            <div className="min-w-0 max-w-full text-center p-6 sm:p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:border-teal-400 hover:bg-teal-50/30 transition-all"
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
             >
@@ -198,9 +198,9 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                 </label>
 
                 {fileName && (
-                    <div className="mt-4 p-3 bg-white rounded-lg border border-teal-200 inline-flex items-center gap-2">
+                    <div className="mt-4 inline-flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-teal-200 bg-white p-3">
                         <FileText className="w-4 h-4 text-teal-600" />
-                        <span className="text-sm font-medium text-slate-700">{fileName}</span>
+                        <span className="min-w-0 truncate text-sm font-medium text-slate-700">{fileName}</span>
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
                     </div>
                 )}
@@ -220,7 +220,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
     // Step 2: Review & edit
     const renderPreviewStep = () => (
         <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 <div className="bg-slate-50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-slate-700">{previewData?.totalRows || 0}</p>
                     <p className="text-xs text-slate-500">Extracted</p>
@@ -235,8 +235,8 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                 </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                <table className="w-full text-sm">
+            <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-lg border max-h-96">
+                <table className="w-full min-w-[44rem] text-sm">
                     <thead className="bg-slate-50 sticky top-0">
                         <tr>
                             <th className="text-left p-3 font-medium text-slate-600">Import</th>
@@ -261,7 +261,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                                     <Input
                                         value={row.data?.name || ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'name', e.target.value)}
-                                        className="h-8 text-sm"
+                                        className="h-8 min-w-0 text-sm"
                                     />
                                 </td>
                                 <td className="p-3">
@@ -271,14 +271,14 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                                         min="0"
                                         value={row.data?.default_sale_price ?? ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'default_sale_price', e.target.value)}
-                                        className="h-8 w-28 text-sm"
+                                        className="h-8 w-28 min-w-0 text-sm"
                                     />
                                 </td>
                                 <td className="p-3">
                                     <Input
                                         value={row.data?.product_folder || ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'product_folder', e.target.value)}
-                                        className="h-8 text-sm"
+                                        className="h-8 min-w-0 text-sm"
                                     />
                                 </td>
                                 <td className="p-3">
@@ -351,7 +351,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-[calc(100vw-1rem)] overflow-x-hidden p-3 sm:w-full sm:max-w-2xl sm:p-5">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />

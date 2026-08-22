@@ -44,6 +44,36 @@ const serviceItem = {
     }
 };
 
+// Phase 100 of #482 (ADR 0064). A service_area_type: 'item_handoff' item -- the only grain that
+// makes handoff_legs reachable (ADR 0057 clause 4).
+const handoffServiceItem = {
+    item_id: 10,
+    name: 'Wash & Fold',
+    default_sale_price: 500,
+    vat_type: 'vatable',
+    serviceDetail: {
+        service_detail_id: 9,
+        service_category: 'Cleaning',
+        duration_minutes: 60,
+        buffer_before_minutes: 0,
+        buffer_after_minutes: 0,
+        lead_time_minutes: 0,
+        bookable: true,
+        payment_policy: 'customer_choice',
+        service_area_type: 'item_handoff'
+    }
+};
+
+const pickupReturnLegsPayload = () => ([
+    { direction: 'inbound', method: 'business_pickup', address_line: '123 Sample St' },
+    { direction: 'outbound', method: 'business_delivery', address_line: '456 Other Ave' }
+]);
+
+const pickupCollectionLegsPayload = () => ([
+    { direction: 'inbound', method: 'business_pickup', customer_address_id: 55 },
+    { direction: 'outbound', method: 'customer_collection', location_id: 3 }
+]);
+
 const nextDateForWeekday = (targetWeekday) => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -1816,5 +1846,665 @@ describe('Services Mode use cases', () => {
             status: 'sent',
             provider_message_id: 'smtp-123'
         }));
+    });
+
+    // Phase 100 of #482 (ADR 0064). The API contract: booking payload carries handoff legs,
+    // persistence of both legs + a status-event trail, and the public tracking read.
+    describe('handoff legs (#482 Phase 100)', () => {
+        it('persists both legs and a seed status event on creation (item_pickup_return shape)', async () => {
+            const tx = transaction();
+            const createBooking = jest.fn(async (payload) => ({ booking_id: 21, ...payload }));
+            const createBookingHandoffLegs = jest.fn(async (rows) => rows.map((row, index) => ({ handoff_leg_id: 500 + index, ...row })));
+            const createBookingStatusEvents = jest.fn(async (rows) => rows);
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking,
+                    createBookingHandoffLegs,
+                    createBookingStatusEvents,
+                    getBookingById: jest.fn(async (bookingId) => ({
+                        booking_id: bookingId,
+                        public_reference: 'SV-HANDOFF1',
+                        service_item_id: 10,
+                        serviceItem: handoffServiceItem,
+                        quantity: 1,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'requested',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid',
+                        handoffLegs: []
+                    }))
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-create-1',
+                    handoff_legs: pickupReturnLegsPayload()
+                },
+                source: 'storefront'
+            });
+
+            expect(result.success).toBe(true);
+            expect(createBookingHandoffLegs).toHaveBeenCalledTimes(1);
+            const legRows = createBookingHandoffLegs.mock.calls[0][0];
+            expect(legRows).toHaveLength(2);
+            expect(legRows.find((leg) => leg.direction === 'inbound')).toEqual(expect.objectContaining({
+                booking_id: 21, method: 'business_pickup', address_line: '123 Sample St', status: 'pending'
+            }));
+            expect(legRows.find((leg) => leg.direction === 'outbound')).toEqual(expect.objectContaining({
+                booking_id: 21, method: 'business_delivery', address_line: '456 Other Ave', status: 'pending'
+            }));
+
+            expect(createBookingStatusEvents).toHaveBeenCalledTimes(1);
+            expect(createBookingStatusEvents.mock.calls[0][0][0]).toEqual(expect.objectContaining({
+                booking_id: 21,
+                from_status: null,
+                to_status: 'requested',
+                actor_type: 'customer',
+                source: 'storefront',
+                handoff_leg_id: null
+            }));
+        });
+
+        it('snapshots a saved customer_address_id onto the leg (item_pickup_collection shape)', async () => {
+            const tx = transaction();
+            const createBooking = jest.fn(async (payload) => ({ booking_id: 22, ...payload }));
+            const createBookingHandoffLegs = jest.fn(async (rows) => rows);
+            const findCustomerAddressById = jest.fn(async () => ({
+                address_id: 55, customer_id: 900, address_line: 'Saved Home Address', latitude: 10.3, longitude: 123.9
+            }));
+            const findTenantLocationById = jest.fn(async () => ({ location_id: 3, name: 'Main Branch', is_active: true }));
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking,
+                    createBookingHandoffLegs,
+                    createBookingStatusEvents: jest.fn(async (rows) => rows),
+                    findCustomerAddressById,
+                    findTenantLocationById,
+                    getBookingById: jest.fn(async (bookingId) => ({
+                        booking_id: bookingId,
+                        public_reference: 'SV-HANDOFF2',
+                        service_item_id: 10,
+                        serviceItem: handoffServiceItem,
+                        quantity: 1,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'requested',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid',
+                        handoffLegs: []
+                    }))
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Ana Customer',
+                    customer_email: 'ana@example.com',
+                    idempotency_key: 'svc-handoff-create-2',
+                    handoff_legs: pickupCollectionLegsPayload()
+                },
+                source: 'storefront',
+                storeCustomer: { customer_id: 900, email: 'ana@example.com' }
+            });
+
+            expect(result.success).toBe(true);
+            expect(findCustomerAddressById).toHaveBeenCalledWith(55, expect.any(Object));
+            const legRows = createBookingHandoffLegs.mock.calls[0][0];
+            const inbound = legRows.find((leg) => leg.direction === 'inbound');
+            expect(inbound.customer_address_id).toBe(55);
+            expect(inbound.address_line).toBe('Saved Home Address');
+            const outbound = legRows.find((leg) => leg.direction === 'outbound');
+            expect(outbound.location_id).toBe(3);
+        });
+
+        it('rejects handoff_legs on a non-item_handoff service (ADR 0057 clause 4 grain)', async () => {
+            const tx = transaction();
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => serviceItem),
+                    createBooking: jest.fn()
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-wrong-item',
+                    handoff_legs: pickupReturnLegsPayload()
+                },
+                source: 'storefront'
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(422);
+            expect(result.error.details?.reason_code).toBe('HANDOFF_LEGS_NOT_SUPPORTED_FOR_SERVICE');
+            expect(tx.rollback).toHaveBeenCalled();
+        });
+
+        it('rejects an item_handoff service booking with no handoff_legs', async () => {
+            const tx = transaction();
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    createBooking: jest.fn()
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-missing-legs'
+                },
+                source: 'storefront'
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(422);
+            expect(result.error.details?.reason_code).toBe('HANDOFF_LEGS_REQUIRED');
+            expect(tx.rollback).toHaveBeenCalled();
+        });
+
+        it('rejects a guest sending customer_address_id (requires a signed-in account)', async () => {
+            const tx = transaction();
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking: jest.fn()
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-guest-addr',
+                    handoff_legs: pickupCollectionLegsPayload()
+                },
+                source: 'storefront'
+                // no storeCustomer -- a guest
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(422);
+            expect(tx.rollback).toHaveBeenCalled();
+        });
+
+        it("rejects a customer_address_id that does not belong to the authenticated customer (IDOR, sibling of the pos_transaction_id boundary)", async () => {
+            const tx = transaction();
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    // The address belongs to a different customer than the one on the request.
+                    findCustomerAddressById: jest.fn(async () => ({ address_id: 55, customer_id: 12345, address_line: 'Someone else' })),
+                    createBooking: jest.fn()
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Ana Customer',
+                    customer_email: 'ana@example.com',
+                    idempotency_key: 'svc-handoff-wrong-owner',
+                    handoff_legs: pickupCollectionLegsPayload()
+                },
+                source: 'storefront',
+                storeCustomer: { customer_id: 900, email: 'ana@example.com' }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(403);
+            expect(tx.rollback).toHaveBeenCalled();
+        });
+
+        it('replay writes zero legs and returns the identical handoff_leg_ids from the original create', async () => {
+            const bookingsByKey = new Map();
+            let bookingId = 60;
+            const beginTransaction = jest.fn(async () => transaction());
+            const createBooking = jest.fn(async (payload) => {
+                const row = {
+                    booking_id: bookingId += 1,
+                    public_reference: `SV-HOREPLAY${bookingId}`,
+                    ...payload,
+                    serviceItem: handoffServiceItem,
+                    handoffLegs: []
+                };
+                const existing = bookingsByKey.get(payload.idempotency_key) || [];
+                bookingsByKey.set(payload.idempotency_key, [...existing, row]);
+                return row;
+            });
+            const createBookingHandoffLegs = jest.fn(async (rows) => {
+                const legs = rows.map((row, index) => ({ handoff_leg_id: 700 + index, ...row }));
+                const [row] = [...bookingsByKey.values()].flat().filter((candidate) => candidate.booking_id === rows[0].booking_id);
+                if (row) row.handoffLegs = legs;
+                return legs;
+            });
+            const getBookingById = jest.fn(async (id) => {
+                const rows = [...bookingsByKey.values()].flat();
+                return rows.find((row) => row.booking_id === id);
+            });
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction,
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findBookingsByIdempotencyKey: jest.fn(async (key) => bookingsByKey.get(key) || []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking,
+                    createBookingHandoffLegs,
+                    createBookingStatusEvents: jest.fn(async (rows) => rows),
+                    getBookingById
+                }
+            });
+            const legs = pickupReturnLegsPayload();
+            const request = {
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-idem-1',
+                    handoff_legs: legs
+                },
+                source: 'storefront'
+            };
+
+            const first = await useCase(request);
+            const replay = await useCase(request);
+            // Same payload, legs sent in the opposite array order -- the hash must not depend on
+            // wire order (bookingRequestHashPayload sorts handoff_legs by direction before hashing).
+            const reordered = await useCase({
+                ...request,
+                payload: { ...request.payload, handoff_legs: [...legs].reverse() }
+            });
+
+            expect(first.success).toBe(true);
+            expect(replay.success).toBe(true);
+            expect(reordered.success).toBe(true);
+            expect(createBookingHandoffLegs).toHaveBeenCalledTimes(1);
+            expect(replay.data.idempotency.idempotent_replay).toBe(true);
+            expect(reordered.data.idempotency.idempotent_replay).toBe(true);
+            expect(replay.data.booking.public_reference).toBe(first.data.booking.public_reference);
+        });
+
+        it('creates independent legs per draft in a batch', async () => {
+            const tx = transaction();
+            let bookingId = 80;
+            const createBooking = jest.fn(async (payload) => ({ booking_id: bookingId += 1, ...payload }));
+            const createBookingHandoffLegs = jest.fn(async (rows) => rows.map((row, index) => ({ handoff_leg_id: 900 + index, ...row })));
+            const useCase = createServiceBookingBatchUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => handoffServiceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking,
+                    createBookingHandoffLegs,
+                    createBookingStatusEvents: jest.fn(async (rows) => rows),
+                    findCustomerAddressById: jest.fn(async () => ({ address_id: 55, customer_id: 900, address_line: 'Saved Home Address' })),
+                    findTenantLocationById: jest.fn(async () => ({ location_id: 3, name: 'Main Branch', is_active: true })),
+                    getBookingById: jest.fn(async (id) => ({
+                        booking_id: id,
+                        public_reference: `SV-BATCH${id}`,
+                        service_item_id: 10,
+                        serviceItem: handoffServiceItem,
+                        quantity: 1,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'requested',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid',
+                        handoffLegs: []
+                    }))
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-handoff-batch-1',
+                    bookings: [
+                        { service_item_id: 10, start_at: '2026-06-01T09:00:00Z', handoff_legs: pickupReturnLegsPayload() },
+                        { service_item_id: 10, start_at: '2026-06-02T09:00:00Z', handoff_legs: pickupCollectionLegsPayload() }
+                    ]
+                },
+                source: 'storefront',
+                storeCustomer: { customer_id: 900, email: 'guest@example.com' }
+            });
+
+            expect(result.success).toBe(true);
+            expect(createBookingHandoffLegs).toHaveBeenCalledTimes(2);
+            const firstDraftLegs = createBookingHandoffLegs.mock.calls[0][0];
+            const secondDraftLegs = createBookingHandoffLegs.mock.calls[1][0];
+            expect(firstDraftLegs.find((leg) => leg.direction === 'outbound').method).toBe('business_delivery');
+            expect(secondDraftLegs.find((leg) => leg.direction === 'outbound').method).toBe('customer_collection');
+        });
+
+        it('creates an appointment booking (no legs) unchanged: fulfillment null, handoff_legs empty', async () => {
+            const useCase = buildGetServiceBookingByReferenceUseCase({
+                serviceRepository: {
+                    getBookingByReference: jest.fn(async () => ({
+                        booking_id: 1,
+                        public_reference: 'SV-APPT1',
+                        service_item_id: 10,
+                        serviceItem: serviceItem,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'confirmed',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid'
+                        // no handoffLegs on the row at all -- mirrors every booking today
+                    }))
+                }
+            });
+
+            const result = await useCase({ publicReference: 'SV-APPT1' });
+
+            expect(result.success).toBe(true);
+            expect(result.data.booking.fulfillment).toBeNull();
+            expect(result.data.booking.handoff_legs).toEqual([]);
+        });
+
+        it('writes a status-transition event with the correct from/to and actor, none on a no-op update', async () => {
+            const tx = transaction();
+            const createBookingStatusEvents = jest.fn(async (rows) => rows);
+            const updateBookingById = jest.fn();
+            const useCase = buildUpdateServiceBookingStatusUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getBookingById: jest.fn(async () => ({
+                        booking_id: 1,
+                        status: 'requested',
+                        serviceItem,
+                        handoffLegs: []
+                    })),
+                    updateBookingById,
+                    createBookingStatusEvents
+                }
+            });
+
+            const result = await useCase({
+                bookingId: 1,
+                payload: { status: 'confirmed' },
+                user: { user_id: 42 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(createBookingStatusEvents).toHaveBeenCalledTimes(1);
+            expect(createBookingStatusEvents.mock.calls[0][0][0]).toEqual(expect.objectContaining({
+                booking_id: 1,
+                from_status: 'requested',
+                to_status: 'confirmed',
+                actor_type: 'staff',
+                actor_user_id: 42,
+                source: 'admin'
+            }));
+
+            createBookingStatusEvents.mockClear();
+            const noop = await useCase({ bookingId: 1, payload: { status: 'requested' } });
+            expect(noop.success).toBe(true);
+            expect(createBookingStatusEvents).not.toHaveBeenCalled();
+        });
+
+        it('allows the confirmed -> for_pickup transition (Phase 88 left this dead-ended)', async () => {
+            const tx = transaction();
+            const useCase = buildUpdateServiceBookingStatusUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getBookingById: jest.fn(async () => ({ booking_id: 1, status: 'confirmed', serviceItem, handoffLegs: [] })),
+                    updateBookingById: jest.fn(),
+                    createBookingStatusEvents: jest.fn(async (rows) => rows)
+                }
+            });
+
+            const result = await useCase({ bookingId: 1, payload: { status: 'for_pickup' } });
+
+            expect(result.success).toBe(true);
+            expect(tx.commit).toHaveBeenCalled();
+        });
+
+        it('pickup_completed advances the inbound leg to completed with a completed_at timestamp', async () => {
+            const tx = transaction();
+            const updateBookingHandoffLegById = jest.fn(async (id, updates) => ({ handoff_leg_id: id, ...updates }));
+            const useCase = buildUpdateServiceBookingStatusUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getBookingById: jest.fn(async () => ({
+                        booking_id: 1,
+                        status: 'for_pickup',
+                        serviceItem: handoffServiceItem,
+                        handoffLegs: [
+                            { handoff_leg_id: 501, direction: 'inbound', method: 'business_pickup', status: 'in_transit' },
+                            { handoff_leg_id: 502, direction: 'outbound', method: 'business_delivery', status: 'pending' }
+                        ]
+                    })),
+                    updateBookingById: jest.fn(),
+                    updateBookingHandoffLegById,
+                    createBookingStatusEvents: jest.fn(async (rows) => rows)
+                }
+            });
+
+            const result = await useCase({ bookingId: 1, payload: { status: 'pickup_completed' } });
+
+            expect(result.success).toBe(true);
+            expect(updateBookingHandoffLegById).toHaveBeenCalledTimes(1);
+            expect(updateBookingHandoffLegById).toHaveBeenCalledWith(
+                501,
+                expect.objectContaining({ status: 'completed', completed_at: expect.any(Date) }),
+                expect.any(Object)
+            );
+        });
+
+        it('cancelling a booking cancels every non-terminal leg', async () => {
+            const tx = transaction();
+            const updateBookingHandoffLegById = jest.fn(async (id, updates) => ({ handoff_leg_id: id, ...updates }));
+            const useCase = buildUpdateServiceBookingStatusUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getBookingById: jest.fn(async () => ({
+                        booking_id: 1,
+                        status: 'for_pickup',
+                        serviceItem: handoffServiceItem,
+                        handoffLegs: [
+                            { handoff_leg_id: 501, direction: 'inbound', method: 'business_pickup', status: 'in_transit' },
+                            { handoff_leg_id: 502, direction: 'outbound', method: 'business_delivery', status: 'pending' }
+                        ]
+                    })),
+                    updateBookingById: jest.fn(),
+                    updateBookingHandoffLegById,
+                    createBookingStatusEvents: jest.fn(async (rows) => rows)
+                }
+            });
+
+            const result = await useCase({ bookingId: 1, payload: { status: 'cancelled', cancellation_reason: 'Customer changed mind' } });
+
+            expect(result.success).toBe(true);
+            expect(updateBookingHandoffLegById).toHaveBeenCalledTimes(2);
+            expect(updateBookingHandoffLegById).toHaveBeenCalledWith(501, { status: 'cancelled' }, expect.any(Object));
+            expect(updateBookingHandoffLegById).toHaveBeenCalledWith(502, { status: 'cancelled' }, expect.any(Object));
+        });
+
+        it('returns the derived six-stage timeline and redacts leg PII on the public tracking read (item_pickup_return)', async () => {
+            const useCase = buildGetServiceBookingByReferenceUseCase({
+                serviceRepository: {
+                    getBookingByReference: jest.fn(async () => ({
+                        booking_id: 1,
+                        public_reference: 'SV-TRACK1',
+                        service_item_id: 10,
+                        serviceItem: handoffServiceItem,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'pickup_completed',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid',
+                        handoffLegs: [
+                            {
+                                handoff_leg_id: 501,
+                                direction: 'inbound',
+                                method: 'business_pickup',
+                                status: 'completed',
+                                address_line: '123 Sample St',
+                                contact_name: 'Ana Customer',
+                                contact_phone: '09171234567',
+                                instructions: 'Ring the doorbell twice',
+                                latitude: 10.3,
+                                longitude: 123.9,
+                                customer_address_id: 55,
+                                completed_at: new Date('2026-06-01T09:30:00Z'),
+                                location: null
+                            },
+                            {
+                                handoff_leg_id: 502,
+                                direction: 'outbound',
+                                method: 'business_delivery',
+                                status: 'pending',
+                                address_line: '456 Other Ave',
+                                contact_name: 'Ana Customer',
+                                contact_phone: '09171234567',
+                                instructions: null,
+                                latitude: null,
+                                longitude: null,
+                                customer_address_id: null,
+                                completed_at: null,
+                                location: null
+                            }
+                        ]
+                    })),
+                    listBookingStatusEvents: jest.fn(async () => ([
+                        { booking_id: 1, from_status: null, to_status: 'requested', occurred_at: new Date('2026-06-01T08:00:00Z') },
+                        { booking_id: 1, from_status: 'requested', to_status: 'for_pickup', occurred_at: new Date('2026-06-01T08:30:00Z') },
+                        { booking_id: 1, from_status: 'for_pickup', to_status: 'pickup_completed', occurred_at: new Date('2026-06-01T09:30:00Z') }
+                    ]))
+                }
+            });
+
+            const result = await useCase({ publicReference: 'SV-TRACK1' });
+
+            expect(result.success).toBe(true);
+            const { fulfillment, handoff_legs: legs } = result.data.booking;
+            expect(fulfillment.timeline.map((stage) => stage.key)).toEqual([
+                'requested', 'for_pickup', 'pickup_completed', 'in_service', 'out_for_return', 'completed'
+            ]);
+            expect(fulfillment.timeline[0]).toEqual(expect.objectContaining({ key: 'requested', reached: true, occurred_at: expect.any(Date) }));
+            expect(fulfillment.timeline[2]).toEqual(expect.objectContaining({ key: 'pickup_completed', reached: true }));
+            expect(fulfillment.timeline[3]).toEqual(expect.objectContaining({ key: 'in_service', reached: false, occurred_at: null }));
+            // Never the raw profile key -- only the resolved timeline (ADR 0064 decision 3).
+            expect(fulfillment.variant).toBeUndefined();
+            expect(JSON.stringify(result.data)).not.toContain('item_pickup_return');
+
+            // Redacted: address/contact/instructions/geo/internal id must not leak publicly.
+            for (const leg of legs) {
+                expect(leg.address_line).toBeUndefined();
+                expect(leg.contact_name).toBeUndefined();
+                expect(leg.contact_phone).toBeUndefined();
+                expect(leg.instructions).toBeUndefined();
+                expect(leg.latitude).toBeUndefined();
+                expect(leg.longitude).toBeUndefined();
+                expect(leg.customer_address_id).toBeUndefined();
+                expect(leg.handoff_leg_id).toBeUndefined();
+            }
+            // Surviving publicly: direction, method, status, scheduling window, completed_at.
+            expect(legs.find((leg) => leg.direction === 'inbound')).toEqual(expect.objectContaining({
+                direction: 'inbound', method: 'business_pickup', status: 'completed'
+            }));
+        });
+
+        it('a repository stub lacking the new handoff methods still creates a plain booking', async () => {
+            const tx = transaction();
+            const createBooking = jest.fn(async (payload) => ({ booking_id: 33, ...payload }));
+            const useCase = createServiceBookingUseCase({
+                serviceRepository: {
+                    beginTransaction: jest.fn(async () => tx),
+                    getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                    findServiceItemById: jest.fn(async () => serviceItem),
+                    listActiveAssignmentsForService: jest.fn(async () => []),
+                    findConflictingBookings: jest.fn(async () => []),
+                    findStoreCustomerByEmail: jest.fn(async () => null),
+                    isBookingReferenceTaken: jest.fn(async () => false),
+                    createBooking,
+                    getBookingById: jest.fn(async (bookingId) => ({
+                        booking_id: bookingId,
+                        public_reference: 'SV-NOMETHODS',
+                        service_item_id: 10,
+                        serviceItem,
+                        quantity: 1,
+                        start_at: new Date('2026-06-01T09:00:00Z'),
+                        end_at: new Date('2026-06-01T10:00:00Z'),
+                        status: 'requested',
+                        payment_timing: 'postpaid',
+                        payment_status: 'unpaid'
+                    }))
+                    // No createBookingHandoffLegs / createBookingStatusEvents on this stub at all.
+                }
+            });
+
+            const result = await useCase({
+                payload: {
+                    service_item_id: 10,
+                    start_at: '2026-06-01T09:00:00Z',
+                    customer_name: 'Guest',
+                    customer_email: 'guest@example.com',
+                    idempotency_key: 'svc-no-handoff-methods'
+                },
+                source: 'storefront'
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.booking.public_reference).toBe('SV-NOMETHODS');
+        });
     });
 });

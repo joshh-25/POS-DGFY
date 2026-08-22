@@ -28,6 +28,11 @@ const SUCCEEDED_REFUND_STATUSES = ['succeeded'];
 const SETTLEMENT_REPORT_STATUSES = ['finalized', 'paid', 'refund_pending', 'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'];
 const PAID_PROVIDER_STATUSES = new Set(['paid', 'succeeded', 'success', 'completed']);
 
+const isAmbiguousProviderRefundError = (error = {}) => {
+  const status = Number(error?.response?.status || 0);
+  return !error?.response || status === 408 || status === 429 || status >= 500;
+};
+
 const serializeAccount = (account = {}) => ({
   account_id: account.account_id,
   tenant_id: account.tenant_id,
@@ -997,12 +1002,27 @@ export const buildCreateCommercePaymentRefundUseCase = ({
         splitRefund
       });
     } catch (error) {
+      const pendingReconciliation = isAmbiguousProviderRefundError(error);
       const failed = await commercePaymentRepository.updateRefundById(refund.refund_id, {
-        status: 'failed',
-        failure_code: 'PROVIDER_REFUND_FAILED',
+        status: pendingReconciliation ? 'pending' : 'failed',
+        failure_code: pendingReconciliation
+          ? 'PROVIDER_REFUND_PENDING_RECONCILIATION'
+          : 'PROVIDER_REFUND_FAILED',
         failure_reason: error.response?.data?.errors?.[0]?.detail || error.message || 'PayMongo refund failed'
       });
-      return ok({ refund: serializeRefund(failed) });
+      if (pendingReconciliation) {
+        const pendingSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
+        return ok({
+          refund: serializeRefund(failed),
+          payment_session: serializeSession(
+            pendingSession,
+            await commercePaymentRepository.listRefundsBySession(session.session_id)
+          ),
+          provider_confirmation_required: true,
+          retryable: false
+        });
+      }
+      return ok({ refund: serializeRefund(failed), retryable: true });
     }
 
     const providerStatus = String(providerRefund?.attributes?.status || 'pending').toLowerCase();

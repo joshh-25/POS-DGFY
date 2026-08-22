@@ -45,6 +45,26 @@ const checkoutLineSchema = Joi.object({
     special_instructions: Joi.string().trim().max(1000).allow(null, '').optional(),
     kitchen_station_id: Joi.number().integer().positive().allow(null).optional(),
     selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).unique().optional(),
+    item_discount: Joi.object({
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').default('manual'),
+        label: Joi.string().trim().max(100).allow('', null).optional(),
+        method: Joi.string().valid('percentage', 'fixed').required(),
+        rate: Joi.number().min(0).max(100).precision(4).allow(null).optional(),
+        amount: Joi.number().min(0).precision(4).allow(null).optional(),
+        customer_name: Joi.string().trim().max(255).allow('', null).optional(),
+        id_number: Joi.string().trim().max(100).allow('', null).optional(),
+        employee_name: Joi.string().trim().max(255).allow('', null).optional(),
+        employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+        promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+        reason: Joi.string().trim().max(500).allow('', null).optional(),
+        approver_user_id: Joi.number().integer().positive().allow(null).optional()
+    }).unknown(false).allow(null).optional(),
+    item_discount_approval: Joi.object({
+        approver_user_id: Joi.number().integer().positive().allow(null).optional(),
+        manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
+        employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
+    }).unknown(false).allow(null).optional(),
     scan_metadata: Joi.object({
         barcode_id: Joi.number().integer().positive().optional(),
         code: Joi.string().trim().max(512).optional(),
@@ -64,7 +84,10 @@ const discountBeneficiarySchema = Joi.object({
 });
 
 const governedDiscountSchema = Joi.object({
-    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
+    // #712: sale-level only -- a voucher's own voucher_scopes/pricelist decides which lines it
+    // touches, matching how the storefront already works. No per-line voucher entry
+    // (checkoutLineSchema.item_discount, below) is added for this type.
+    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').required(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
     method: Joi.string().valid('percentage', 'fixed').optional(),
     rate: Joi.number().min(0).max(100).allow(null).optional(),
@@ -75,6 +98,10 @@ const governedDiscountSchema = Joi.object({
     employee_id: Joi.string().trim().max(100).allow('', null).optional(),
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // 40 matches VOUCHER_CODE_PATTERN's own cap (voucherValidator.js) -- narrower than
+    // vouchers.code's VARCHAR(64) because the fiscal audit column this rides on
+    // (pos_transaction_discounts.promo_code) is itself VARCHAR(40).
+    voucher_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     reason: Joi.string().trim().max(500).allow('', null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
@@ -91,7 +118,7 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
-    discount_type: Joi.string().valid('employee', 'manual').optional()
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -127,6 +154,7 @@ const checkoutPosSchema = Joi.object({
     restaurant_service_charge: restaurantServiceChargeSchema.optional(),
     discount_mode: Joi.string().valid(...DISCOUNT_MODES).optional(),
     discount_amount: Joi.number().min(0).precision(4).default(0),
+    item_discount_amount: Joi.number().min(0).precision(4).default(0),
     discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
     discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
@@ -139,15 +167,18 @@ const checkoutPosSchema = Joi.object({
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
+    discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
 }).custom((value, helpers) => {
     const discountAmount = Number(value?.discount_amount || 0);
+    const itemDiscountAmount = Number(value?.item_discount_amount || 0);
+    const globalDiscountAmount = Math.max(0, discountAmount - itemDiscountAmount);
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
-    const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (discountAmount > 0 ? 'amount' : 'none')));
+    const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (globalDiscountAmount > 0 ? 'amount' : 'none')));
 
     if (value.payment_type === 'employee_credit' && !value.employee_credit) {
         return helpers.error('any.invalid', {
@@ -161,7 +192,7 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
-    if (discountMode === 'none' && (hasProfile || hasDiscountRate || discountAmount > 0)) {
+    if (discountMode === 'none' && (hasProfile || hasDiscountRate || globalDiscountAmount > 0)) {
         return helpers.error('any.invalid', {
             message: 'discount_mode none cannot include discount values'
         });
@@ -185,14 +216,14 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
-    if (hasDiscountRate && !hasProfile && discountAmount <= 0) {
+    if (hasDiscountRate && !hasProfile && globalDiscountAmount <= 0) {
         return helpers.error('any.invalid', {
             message: 'manual discount_rate requires discount_amount'
         });
     }
 
     // Manual discount (without profile) is allowed in MSME-friendly checkout.
-    if (discountAmount > 0 && !hasProfile) {
+    if (globalDiscountAmount > 0 && !hasProfile) {
         return value;
     }
 
@@ -209,6 +240,7 @@ const listTransactionsQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
+    cashier_name: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
@@ -225,6 +257,7 @@ const parkedSaleLineSchema = Joi.object({
 const createPosParkedSaleSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
     location_id: Joi.number().integer().positive().optional(),
     snapshot: Joi.object({
@@ -469,6 +502,15 @@ const terminalCurrentShiftQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const terminalShiftHistoryQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    status: Joi.string().valid('all', 'open', 'closed').default('all'),
+    page: Joi.number().integer().min(1).max(100000).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(20)
+});
+
 const terminalDashboardTodayQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional(),
@@ -551,6 +593,48 @@ const cashDrawerEventSchema = Joi.object({
     event_type: Joi.string().valid('cash_in', 'cash_out', 'opening_adjustment', 'closing_adjustment').required(),
     amount: Joi.number().positive().precision(4).required(),
     reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const cashRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const externalRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    external_reference: Joi.string().trim().min(3).max(255).required(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
+});
+
+const providerRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    provider_reason: Joi.string().valid('requested_by_customer', 'duplicate', 'fraudulent', 'others').default('others')
+});
+
+const splitAllocationReversalSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    amount: Joi.number().positive().precision(4).allow(null).optional(),
+    external_reference: Joi.string().trim().min(3).max(255).allow('', null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
 });
 
 const closeTerminalShiftSchema = Joi.object({
@@ -640,8 +724,18 @@ const deviceOpenDrawerSchema = Joi.object({
     transaction_id: Joi.number().integer().positive().allow(null).optional(),
     reason: Joi.string().trim().min(3).max(255).required(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    drawer_authorization_token: Joi.string().trim().min(20).max(2048).optional(),
     client_driver_id: Joi.string().trim().max(60).optional(),
     client_result: deviceClientResultSchema.optional()
+});
+
+const deviceDrawerAuthorizationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    authorization_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional()
 });
 
 const fiscalPrintEventSchema = Joi.object({
@@ -650,7 +744,7 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
-    shift_id: Joi.number().integer().positive().required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
@@ -874,6 +968,7 @@ export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'vali
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
+export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
@@ -884,6 +979,10 @@ export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params',
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
+export const validateCashRefundPosTransaction = validateSchema(cashRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateExternalRefundPosTransaction = validateSchema(externalRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateProviderRefundPosTransaction = validateSchema(providerRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateSplitAllocationReversal = validateSchema(splitAllocationReversalSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
@@ -895,6 +994,7 @@ export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSc
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
+export const validatePosDrawerAuthorization = validateSchema(deviceDrawerAuthorizationSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');

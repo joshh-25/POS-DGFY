@@ -2,6 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import {
     inventoryStockCommandService,
+    inventoryReservationService,
     itemRepository,
     createItemUseCase,
     updateItemUseCase,
@@ -13,7 +14,11 @@ import { employeeCreditService } from '../employeeCredit/index.js';
 import { serviceRepository } from '../services/repositories/serviceRepository.js';
 import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
 import { buildCalculateServiceQuoteUseCase } from '../services/usecases/calculateServiceQuoteUseCase.js';
-import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js';
+import {
+    commercePaymentRepository,
+    createCommercePaymentRefundUseCase,
+    handleCommerceOrderLifecycleUseCase
+} from '../commercePayments/index.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
 import {
@@ -51,6 +56,7 @@ import {
     buildLoginPosCashierUseCase,
     buildSwitchTerminalShiftLocationUseCase,
     buildGetCurrentTerminalShiftUseCase,
+    buildGetCashierShiftHistoryUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
     buildForceCloseStaleTerminalShiftUseCase,
@@ -67,11 +73,16 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
+import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
+import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRefundUseCases.js';
+import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
     buildPrintPosZReadingUseCase,
+    buildAuthorizePosDrawerUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
 import {
@@ -110,6 +121,7 @@ import {
     buildReviewMerchantTenderReconciliationUseCase
 } from './usecases/merchantTenderReconciliationUseCases.js';
 import { paymongoService } from '../../services/paymongoService.js';
+import posDrawerAuthorizationService from './services/posDrawerAuthorizationService.js';
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
@@ -166,6 +178,18 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService
 });
+export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
+export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
+export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({
+    posRepository,
+    commercePaymentRepository,
+    createCommercePaymentRefundUseCase,
+    paymongoService
+});
+export const splitAllocationReversalUseCase = buildSplitAllocationReversalUseCase({
+    posRepository,
+    providerReconciler: createPosPayMongoReconciler({ paymongoService })
+});
 export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
 export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });
 export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
@@ -198,6 +222,7 @@ export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ us
 export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
 export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
+export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
 export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
@@ -213,6 +238,7 @@ export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCas
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
+    inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
 export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
@@ -240,9 +266,14 @@ export const printPosZReadingUseCase = buildPrintPosZReadingUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });
+export const authorizePosDrawerUseCase = buildAuthorizePosDrawerUseCase({
+    posRepository,
+    authorizationService: posDrawerAuthorizationService
+});
 export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
-    deviceDriver: posDeviceDriver
+    deviceDriver: posDeviceDriver,
+    authorizationService: posDrawerAuthorizationService
 });
 export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();

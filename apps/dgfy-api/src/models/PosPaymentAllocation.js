@@ -77,6 +77,16 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    reversed_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    reversal_status: {
+        type: DataTypes.ENUM('none', 'pending', 'partial', 'completed', 'manual_review_required'),
+        allowNull: false,
+        defaultValue: 'none'
+    },
     failure_code: {
         type: DataTypes.STRING(80),
         allowNull: true
@@ -140,6 +150,7 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
         { fields: ['shift_id', 'status'] },
         { fields: ['location_id', 'status'] },
         { fields: ['payment_method', 'status'] },
+        { fields: ['session_id', 'reversal_status'] },
         { fields: ['provider_event_id'], unique: true, name: 'uq_pos_payment_allocations_provider_event_id' },
         { fields: ['provider_refund_event_id'], unique: true, name: 'uq_pos_payment_allocations_provider_refund_event_id' },
         { fields: ['session_id', 'idempotency_key'], unique: true },

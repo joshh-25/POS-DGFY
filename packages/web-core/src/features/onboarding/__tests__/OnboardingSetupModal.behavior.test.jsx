@@ -466,10 +466,10 @@ describe('OnboardingSetupModal behavior', () => {
     await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(0, 2));
     const selectedImageCarousel = screen.getByRole('region', { name: /Starter Bread selected image carousel/i });
     expect(selectedImageCarousel).toBeTruthy();
-    expect(within(selectedImageCarousel).getByText(/Showing 1\/2:/i)).toBeTruthy();
+    expect(within(selectedImageCarousel).getAllByRole('button', { name: /Focus selected item image/i })).toHaveLength(2);
     await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(2));
     await waitFor(() => {
-      expect(within(selectedImageCarousel).getByText(/Showing 1\/5:/i)).toBeTruthy();
+      expect(within(selectedImageCarousel).getAllByRole('button', { name: /Focus selected item image/i })).toHaveLength(5);
       expect(within(selectedImageCarousel).getByLabelText(/Selected item image thumbnails/i)).toBeTruthy();
     });
     await user.click(within(selectedImageCarousel).getByRole('button', { name: /Next selected item image/i }));

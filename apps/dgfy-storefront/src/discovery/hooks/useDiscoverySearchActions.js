@@ -67,12 +67,13 @@ export function useDiscoverySearchActions({
   // search submit.
   const handleDiscoverySearch = useCallback((source = 'search_box') => {
     const currentSearch = String(searchRef.current || search || '').trim();
+    const nextPinScope = currentSearch ? 'all_matching_branches' : 'tenant_primary';
     setHasDiscoveryExplorationStarted(true);
     setIsStoreListVisible(false);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
     setDebouncedDiscoverySearch(currentSearch);
-    setDiscoveryPinScope('tenant_primary');
+    setDiscoveryPinScope(nextPinScope);
     if (lastSubmittedSearchRef.current === currentSearch) {
       return;
     }
@@ -80,7 +81,7 @@ export function useDiscoverySearchActions({
     if (source === 'search_box') {
       trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_SEARCH_SUBMITTED, { query: currentSearch });
     }
-    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
+    loadStores(null, { useImmediateSearch: true, pinScope: nextPinScope });
   }, [
     loadStores,
     search,

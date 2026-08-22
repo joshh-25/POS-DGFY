@@ -250,6 +250,50 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         jest.clearAllMocks();
     });
 
+    it('includes same-database-second sales in shift-close cash expectations', async () => {
+        const posRepository = buildReplayRepository();
+        const openedAt = new Date('2026-04-09T10:15:04.000Z');
+        posRepository.getZReadingSummary = jest.fn().mockResolvedValue({
+            transaction_count: 1,
+            payment_breakdown: [{ payment_type: 'cash', amount: 150 }]
+        });
+        const shift = await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'WEB-POS-01',
+            location_id: 1,
+            cashier_id: 17,
+            opening_float_amount: 0,
+            opened_at: openedAt,
+            status: 'open'
+        });
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        const beforeClose = Date.now();
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await closeShiftUseCase({
+                shiftId: shift.pos_terminal_shift_id,
+                payload: {
+                    closing_cash_amount: 150,
+                    idempotency_key: 'NVP-CLOSE-SAME-SECOND-0001'
+                },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.cash_summary.expected_cash_amount).toBe(150);
+            expect(result.data.cash_summary.cash_variance_amount).toBe(0);
+        });
+        const afterClose = Date.now();
+
+        const summaryWindow = posRepository.getZReadingSummary.mock.calls[0][0];
+        expect(summaryWindow.startAt.getTime()).toBe(openedAt.getTime() - 1000);
+        expect(summaryWindow.endAt.getTime()).toBeGreaterThanOrEqual(beforeClose + 1000);
+        expect(summaryWindow.endAt.getTime()).toBeLessThanOrEqual(afterClose + 1000);
+    });
+
     it('prevents two cashiers from opening shifts on the same terminal', async () => {
         const posRepository = buildReplayRepository();
         const openShiftUseCase = buildOpenShiftUseCase(posRepository);
@@ -499,7 +543,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(sequelize.transaction).toHaveBeenCalledTimes(4);
     });
 
-    it('blocks shift close while active parked sales remain unresolved', async () => {
+    it('blocks shift close while claimed parked sales remain unresolved', async () => {
         const posRepository = buildReplayRepository();
         const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
@@ -533,6 +577,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             expect(result.error.details).toEqual(expect.objectContaining({
                 reason_code: 'POS_PARKED_SALES_UNRESOLVED',
                 active_parked_sale_count: 2,
+                claimed_parked_sale_count: 2,
                 shift_id: shiftId
             }));
             expect(posRepository.counters.shiftCloses).toBe(0);

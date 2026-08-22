@@ -10,6 +10,7 @@ import { DashboardOverviewSection } from '../components/DashboardOverviewSection
 import { LoyaltySection } from '../components/LoyaltySection.jsx';
 import { OrdersSection } from '../components/OrdersSection.jsx';
 import { ReviewComposerModal } from '../components/ReviewComposerModal.jsx';
+import { useCustomerDashboardRouteState } from './useCustomerDashboardRouteState.js';
 import {
   ACTIVE_CUSTOMER_ORDER_STATUSES,
   COMPLETED_CUSTOMER_ORDER_STATUSES
@@ -101,7 +102,7 @@ export function DgfyCustomerAccountPage({
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
 
-  const [activeNav, setActiveNav] = useState('overview');
+  const { activeNav, setActiveNav } = useCustomerDashboardRouteState({ routeBacked: presentation === 'page' });
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [activeOrdersTab, setActiveOrdersTab] = useState('active');
   const [activeBookingsTab, setActiveBookingsTab] = useState('active');

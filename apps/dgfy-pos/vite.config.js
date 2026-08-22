@@ -6,6 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
+import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +32,15 @@ const sharedAliases = [
   // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
   ...buildWebCoreRuntimeDepAliases(appNodeModules)
 ];
+const securityHeaders = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+const devSecurityHeaders = {
+  ...securityHeaders,
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+};
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
@@ -65,7 +75,7 @@ const proxyTargets = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
   },
@@ -81,12 +91,14 @@ export default defineConfig({
     host: true,
     port: 5174,
     allowedHosts,
+    headers: devSecurityHeaders,
     proxy: proxyTargets
   },
   preview: {
     host: true,
     port: 5174,
     allowedHosts,
+    headers: securityHeaders,
     proxy: proxyTargets
   },
   build: {
@@ -114,5 +126,15 @@ export default defineConfig({
     // tests. packages/web-core's own tests run from apps/dgfy-ims, not here -- see
     // docs/architecture/frontend-split-sync.md.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    // The integration-heavy jsdom suite exercises lazy routes and mocked API
+    // boundaries in parallel. Five seconds is below the normal cold-start
+    // budget on CI/local Windows workers and turns healthy tests into flakes.
+    testTimeout: 15000,
+    // Bound fork fan-out on Windows. The default pool size starts one worker
+    // per available CPU and starves the integration-heavy Storefront/POS files,
+    // causing false timeouts and cross-file state failures under a full run.
+    // Four workers preserve file parallelism while keeping the system-test gate
+    // deterministic on the supported local/CI environments.
+    maxWorkers: 4,
   },
 });

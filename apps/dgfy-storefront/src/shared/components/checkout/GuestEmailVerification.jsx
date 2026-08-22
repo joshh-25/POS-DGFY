@@ -1,6 +1,7 @@
 import { Mail, Send, ShieldCheck } from 'lucide-react';
 
 export function GuestEmailVerification({
+  badgeLabel,
   bodyFont,
   code,
   cooldownActive,
@@ -11,6 +12,7 @@ export function GuestEmailVerification({
   onCodeChange,
   onRequestCode,
   onVerifyCode,
+  resendLabel,
   verified
 }) {
   if (verified) {
@@ -38,7 +40,9 @@ export function GuestEmailVerification({
         <div style={{ display: 'grid', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ color: '#0f172a', fontSize: isMobileViewport ? 18 : 20 }}>Verify your email</strong>
-            <span style={{ borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>Required</span>
+            <span style={{ borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>
+              {badgeLabel}
+            </span>
           </div>
           <span style={{ color: '#64748b', fontSize: 13 }}>We will send a 6-digit code before your order is placed.</span>
         </div>
@@ -55,14 +59,34 @@ export function GuestEmailVerification({
             value={code}
             onChange={(event) => onCodeChange(event.target.value)}
             placeholder="6-digit code"
-            style={{ width: '100%', minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 44px', boxSizing: 'border-box', fontFamily: bodyFont, fontWeight: 600, letterSpacing: 2 }}
+            style={{
+              width: '100%',
+              minHeight: 44,
+              border: '1px solid #cbd5e1',
+              borderRadius: 12,
+              padding: '0 14px 0 44px',
+              boxSizing: 'border-box',
+              fontFamily: bodyFont,
+              fontWeight: 600,
+              letterSpacing: 2
+            }}
           />
         </label>
         <button
           type="button"
           onClick={onVerifyCode}
           disabled={loading || String(code || '').length !== 6}
-          style={{ minHeight: 44, borderRadius: 12, border: 'none', background: loading || String(code || '').length !== 6 ? '#dbeafe' : '#1a4e8d', color: loading || String(code || '').length !== 6 ? '#1a4e8d' : '#fff', padding: '0 22px', fontWeight: 800, fontFamily: bodyFont, cursor: loading || String(code || '').length !== 6 ? 'not-allowed' : 'pointer' }}
+          style={{
+            minHeight: 44,
+            borderRadius: 12,
+            border: 'none',
+            background: loading || String(code || '').length !== 6 ? '#dbeafe' : '#1a4e8d',
+            color: loading || String(code || '').length !== 6 ? '#1a4e8d' : '#fff',
+            padding: '0 22px',
+            fontWeight: 800,
+            fontFamily: bodyFont,
+            cursor: loading || String(code || '').length !== 6 ? 'not-allowed' : 'pointer'
+          }}
         >
           {loading ? 'Checking...' : 'Verify'}
         </button>
@@ -71,12 +95,23 @@ export function GuestEmailVerification({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={onRequestCode}
+          onClick={() => onRequestCode()}
           disabled={loading || cooldownActive}
-          style={{ border: 'none', background: 'transparent', color: '#1a4e8d', display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, fontWeight: 800, fontFamily: bodyFont, cursor: loading || cooldownActive ? 'not-allowed' : 'pointer' }}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: '#1a4e8d',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: 0,
+            fontWeight: 800,
+            fontFamily: bodyFont,
+            cursor: loading || cooldownActive ? 'not-allowed' : 'pointer'
+          }}
         >
           <Send size={16} />
-          {cooldownActive ? `Send again in ${cooldownLabel}` : 'Send verification code'}
+          {cooldownActive ? `Send again in ${cooldownLabel}` : resendLabel}
         </button>
         <span style={{ color: '#64748b', fontSize: 12 }}>Didn&apos;t receive the code? Check your spam folder.</span>
       </div>

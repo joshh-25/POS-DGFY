@@ -20,7 +20,7 @@ for (const device of IPHONE_VIEWPORTS) {
       const crashChecker = registerCrashDetection(page);
 
       await page.goto('/pos');
-      await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /.*manifest\.webmanifest/);
+      await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /.*manifest(?:-[^/]+)?\.webmanifest/);
       await crashChecker.assertNoCrashes();
 
       const viewportMetrics = await page.evaluate(() => ({

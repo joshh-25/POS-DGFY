@@ -25,8 +25,15 @@ boxes rather than deleting them.
 
 ## PR base branch
 
-- Non `rc/*` branches (features, fixes, chores, docs) target `develop` as base
-- `rc/*` branches target `main` as base
+- Ordinary branches (features, fixes, chores, docs) target `develop` as base
+- A promotion PR targets `staging`, headed from a `to-staging/<label>` branch, or targets `main`,
+  headed from a `release/<label>` branch — per `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  (authoritative) and the `promoter` role (`.agents/skills/promoter/SKILL.md`, #512)
+
+Corrected 2026-08-16: this previously referenced an `rc/*` prefix that is not used anywhere else in
+the repo — the actual promotion-branch prefixes are `to-staging/*` and `release/*`, which is also
+what `scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_PREFIX_BY_BASE` and
+`.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes` already match against.
 
 ## Pre-commit safety check
 

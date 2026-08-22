@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ShoppingBag, X } from 'lucide-react';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -16,12 +17,15 @@ export function RetailOrderMobileSummaryPanel({
   cartCount = 0,
   cartImageErrors,
   checkoutLoading = false,
+  guestCheckoutOtpVerified = false,
+  isDgfyCustomerSignedIn = false,
   isDeliveryOrder = false,
   money,
   onBackToCatalog,
   onCheckout,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   onStepChange,
   orderStep,
@@ -31,6 +35,13 @@ export function RetailOrderMobileSummaryPanel({
   totals = {},
   withAssetOrigin
 }) {
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: downpaymentDisplay,
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
+  const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
   const handleBack = () => {
     if (orderStep === 1) {
       onBackToCatalog();
@@ -95,11 +106,15 @@ export function RetailOrderMobileSummaryPanel({
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} color="#15803d" /> : null}
+                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} color="#7c3aed" /> : null}
                 <SummaryRow label="Fees & Taxes" value={money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0))} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
                 </div>
+                {downpaymentRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
               </div>
             </div>
           </div>
@@ -125,10 +140,12 @@ export function RetailOrderMobileSummaryPanel({
               <button
                 type="button"
                 onClick={onCheckout}
-                disabled={checkoutLoading}
-                style={{ ...primaryButtonStyle, background: checkoutLoading ? '#93b4d6' : `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}`, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+                disabled={checkoutLoading || guestCheckoutVerificationRequired}
+                style={{ ...primaryButtonStyle, background: checkoutLoading ? '#93b4d6' : guestCheckoutVerificationRequired ? '#cbd5e1' : `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}`, cursor: checkoutLoading ? 'wait' : guestCheckoutVerificationRequired ? 'not-allowed' : 'pointer' }}
               >
-                {checkoutLoading ? 'Placing...' : 'Place Order'}
+                {checkoutLoading
+                  ? (downpaymentDisplay.active ? 'Creating payment...' : 'Placing...')
+                  : (downpaymentDisplay.active ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})` : 'Place Order')}
               </button>
             ) : (
               <button type="button" onClick={handlePrimary} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}` }}>

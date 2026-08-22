@@ -2,6 +2,7 @@ import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont, headingWeight }) {
   return (
@@ -19,7 +20,7 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
   checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
-  paymentStep = false, promoDiscountSummaryRow, promoPanel, scheduleLabel, totals,
+  paymentStep = false, promoDiscountSummaryRow, voucherDiscountSummaryRow, promoPanel, scheduleLabel, totals,
   variant = 'detailed'
 }) {
   const statusRows = [
@@ -40,12 +41,19 @@ export function FnbCheckoutSummaryContent({
       </div>
     )
   }));
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
+    ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     { label: 'Fees & Taxes', value: money(totals.service_fee_amount + totals.vat_amount) },
-    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
+    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
+    ...downpaymentRows
   ];
 
   const detailedCard = (

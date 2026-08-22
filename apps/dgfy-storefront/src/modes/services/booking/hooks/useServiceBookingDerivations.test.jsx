@@ -39,10 +39,19 @@ describe('useServiceBookingDerivations fulfillment gates', () => {
     expect(result.current.fulfillmentStepComplete).toBe(false);
   });
 
-  it('allows pickup after the required schedule is selected', () => {
+  it('still requires the pickup address for pickup-and-collection after the schedule is selected', () => {
     const { result } = renderHook(() => useServiceBookingDerivations(buildProps({
       serviceAppointmentAt: '2026-08-10T09:00:00',
       serviceOrderMethod: 'pickup',
+    })));
+
+    expect(result.current.missingScheduleAndServiceInfo).toEqual(['Service Location']);
+    expect(result.current.fulfillmentStepComplete).toBe(false);
+  });
+
+  it('does not require an appointment schedule for quote requests', () => {
+    const { result } = renderHook(() => useServiceBookingDerivations(buildProps({
+      serviceOrderMethod: 'quote'
     })));
 
     expect(result.current.missingScheduleAndServiceInfo).toEqual([]);

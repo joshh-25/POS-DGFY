@@ -41,6 +41,65 @@ export function GuestIdentityForm({
     return () => window.clearTimeout(timerId);
   }, [autoFocusFirstField, firstFieldFocusKey]);
 
+  if (layoutVariant === 'servicesCheckout') {
+    const inputStyle = {
+      minHeight: 40,
+      border: '1px solid #cce8ee',
+      borderRadius: 10,
+      padding: '10px 13px',
+      background: '#fbfcfd',
+      boxSizing: 'border-box',
+      width: '100%',
+      color: '#153e4a',
+    };
+    const fieldStyle = { display: 'grid', gap: 6.4, minWidth: 0, fontSize: 13.76, lineHeight: 1.6, color: '#153e4a', fontWeight: 700 };
+    const noteStyle = { fontSize: 11.47, lineHeight: 1.6, color: '#58717a', fontWeight: 400 };
+    const nameFields = showSingleNameField ? (
+      <label style={{ ...fieldStyle, gridColumn: '1 / -1' }}>
+        <span>Customer name</span>
+        <input ref={firstInputRef} value={customerName} onChange={(event) => onCustomerNameChange?.(event.target.value)} placeholder="Enter your full name" style={inputStyle} />
+      </label>
+    ) : (
+      <>
+        <label style={fieldStyle}>
+          <span>First name</span>
+          <input ref={firstInputRef} value={firstName} onChange={(event) => onFirstNameChange?.(event.target.value)} placeholder="Enter first name" style={inputStyle} />
+        </label>
+        <label style={fieldStyle}>
+          <span>Last name</span>
+          <input value={lastName} onChange={(event) => onLastNameChange?.(event.target.value)} placeholder="Enter last name" style={inputStyle} />
+        </label>
+      </>
+    );
+    const formContent = (
+      <>
+        {title ? <legend style={{ padding: '0 2px', fontFamily: "'Lexend', 'Segoe UI', Arial, sans-serif", fontSize: 24.8, lineHeight: 1.6, fontWeight: 800, color: '#101010' }}>{title}</legend> : null}
+        {subtitle ? <p style={{ margin: '0 0 24px', fontSize: 16, lineHeight: 1.6, color: '#101010' }}>{subtitle}</p> : null}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+          {nameFields}
+          <label style={fieldStyle}>
+            <span>Phone Number</span>
+            <input value={phone} onChange={(event) => onPhoneChange?.(event.target.value)} placeholder="Mobile number" style={inputStyle} />
+            <small style={noteStyle}>Used only inside this browser</small>
+          </label>
+          <label style={fieldStyle}>
+            <span>Email{requireEmail ? ' *' : ''}</span>
+            <input value={email} onChange={(event) => onEmailChange?.(event.target.value)} placeholder="For tickets and updates" style={inputStyle} />
+            <small style={noteStyle}>No message will be sent</small>
+          </label>
+          {includeAddress ? (
+            <label style={{ ...fieldStyle, gridColumn: '1 / -1' }}>
+              <span>{addressLabel}{addressRequired ? ' *' : ''}</span>
+              <textarea value={address} onChange={(event) => onAddressChange?.(event.target.value)} placeholder={addressPlaceholder} rows={3} style={{ ...inputStyle, minHeight: 92, resize: 'vertical' }} />
+            </label>
+          ) : null}
+          {footer ? <div style={{ gridColumn: '1 / -1' }}>{footer}</div> : null}
+        </div>
+      </>
+    );
+    if (embedded) return <fieldset style={{ border: 0, margin: '0 2px', padding: 0, display: 'grid' }}>{formContent}</fieldset>;
+    return <fieldset style={{ border: 0, margin: '0 2px', padding: 0, display: 'grid' }}>{formContent}</fieldset>;
+  }
 
   if (layoutVariant === 'fnbGuest') {
     const inputStyle = { minHeight: 42, border: '1px solid #cbd5e1', borderRadius: 12, padding: '9px 12px', background: '#fff', boxSizing: 'border-box', width: '100%', fontWeight: 500 };

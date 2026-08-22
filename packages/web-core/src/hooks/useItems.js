@@ -32,6 +32,10 @@ export const useItems = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
+  // #682: the backend's optional per-branch stock overlay reports whether it actually applied
+  // (location_id omitted -> null/tenant-wide; requested but the tenant's schema doesn't support
+  // it yet -> resolved:false) so callers like ItemsPage can render the correct scope label.
+  const [locationScope, setLocationScope] = useState(null);
   const paramsKey = JSON.stringify(params);
   const paramsRef = useRef(params);
   paramsRef.current = params;
@@ -47,6 +51,7 @@ export const useItems = (params = {}) => {
       if (cached?.data) {
         setItems(cached.data.items || []);
         setPagination(cached.data.pagination);
+        setLocationScope(cached.data.location_scope || null);
         setLoading(false);
         setError(null);
         return;
@@ -58,6 +63,7 @@ export const useItems = (params = {}) => {
           const data = await cached.promise;
           setItems(data.items || []);
           setPagination(data.pagination);
+          setLocationScope(data.location_scope || null);
           setError(null);
         } catch (err) {
           setError(err.message || 'Failed to fetch items');
@@ -81,6 +87,7 @@ export const useItems = (params = {}) => {
       cache.set(key, { promise: null, data, ts: Date.now() });
       setItems(data.items || []);
       setPagination(data.pagination);
+      setLocationScope(data.location_scope || null);
     } catch (err) {
       cache.delete(key); // don't cache errors — allow next mount to retry
       setError(err.message || 'Failed to fetch items');
@@ -93,7 +100,7 @@ export const useItems = (params = {}) => {
     fetchItems();
   }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, error, pagination, refetch: () => fetchItems({ bust: true }) };
+  return { items, loading, error, pagination, locationScope, refetch: () => fetchItems({ bust: true }) };
 };
 
 export const useItemById = (itemId) => {

@@ -1,5 +1,6 @@
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 const SIMPLE_ACCENT = '#176B3A';
 const SIMPLE_ACCENT_SOFT = '#E4C98E';
@@ -30,6 +31,7 @@ export function SimpleCheckoutSummaryContent({
   money,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
@@ -53,12 +55,22 @@ export function SimpleCheckoutSummaryContent({
       </div>
     )
   }));
+  // Phase 142 (#823): quote-sourced only (resolveDownpaymentDisplay's lowest-precedence source) --
+  // this card renders before a payment session or order exists.
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: downpaymentDisplay,
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
+    ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     { label: 'Fees & Taxes', value: money((totals.service_fee_amount || 0) + (totals.vat_amount || 0)) },
-    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
+    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
+    ...downpaymentRows
   ];
 
   return (

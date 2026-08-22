@@ -37,7 +37,35 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
+    pattern: /^apps\/dgfy-api\/src\/modules\/vouchers\//,
+    surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    pattern: /^apps\/dgfy-api\/src\/modules\/store\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/modules\/payments\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    // #707: the QRPh money-capture module -- webhook-confirmed payment finalization, order
+    // creation, and the paid_manual_resolution_required reconciliation queue -- was absent from
+    // this list despite `modules/payments/` and `modules/store/` both being covered. Same floor as
+    // those two neighbors, not a new tier.
+    pattern: /^apps\/dgfy-api\/src\/modules\/commercePayments\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    // Phase 138 (#820): the per-tenant downpayment/payment-mode config surface. Deliberately added
+    // here rather than left uncovered -- this is substantively a payment/checkout config surface
+    // (ADR 0069's own Hardening Contract names "payment, checkout" as a trigger domain regardless
+    // of folder), same floor as its `payments`/`commercePayments` neighbors.
+    pattern: /^apps\/dgfy-api\/src\/modules\/downpayment\//,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
@@ -58,6 +86,13 @@ const COMPLIANCE_SENSITIVE_RULES = [
   },
   {
     pattern: /^apps\/dgfy-api\/src\/routes\/payments\.js$/,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
+    // #707: the route file lives outside modules/, so the commercePayments/ directory rule above
+    // does not cover it -- same reasoning as the routes/payments.js rule immediately above.
+    pattern: /^apps\/dgfy-api\/src\/routes\/commercePayments\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
@@ -175,12 +210,14 @@ const PROMOTION_HEAD_BY_BASE = Object.freeze({
 
 // Release-candidate PRs into `main` carry an unmodified staging snapshot in
 // under a human-readable name (release/2026-07-30) instead of reusing the
-// literal `staging` ref -- see docs/ops/RELEASE_CANDIDATE_POLICY.md. Scoped
-// to `main` and to this one prefix, same reasoning as PROMOTION_HEAD_BY_BASE
-// above: a hotfix PR opened directly against main from an arbitrary branch
-// name (e.g. PR #83) must still get full per-declaration scrutiny, so this
-// must not become "anything into main".
+// literal `staging` ref, and (2026-08-16) a develop->staging promotion does
+// the same via to-staging/<label> -- see docs/ops/RELEASE_CANDIDATE_POLICY.md.
+// Scoped to these two prefixes only, same reasoning as PROMOTION_HEAD_BY_BASE
+// above: a hotfix PR opened directly against staging/main from an arbitrary
+// branch name (e.g. PR #83) must still get full per-declaration scrutiny, so
+// this must not become "anything into staging/main".
 const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+  staging: /^to-staging\//,
   main: /^release\//
 });
 

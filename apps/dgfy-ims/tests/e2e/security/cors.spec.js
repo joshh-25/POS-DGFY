@@ -13,12 +13,16 @@ test.describe('Security - CORS Policy checks', () => {
       
       const corsResult = await page.evaluate(async (baseUrl) => {
         try {
-          const res = await fetch(`${baseUrl}/auth/lookup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'cors-test@dgfy.ph' })
+          const health = await fetch(`${baseUrl}/api/v1/health`, {
+            credentials: 'include'
           });
-          return { status: res.status, ok: res.ok };
+          const protectedRoute = await fetch(`${baseUrl}/api/v1/dgfy/auth/me`, {
+            credentials: 'include'
+          });
+          return {
+            healthStatus: health.status,
+            protectedStatus: protectedRoute.status
+          };
         } catch (err) {
           return { error: err.message };
         }
@@ -26,8 +30,8 @@ test.describe('Security - CORS Policy checks', () => {
       
       console.log(`${surface.name} CORS result:`, corsResult);
       expect(corsResult.error).toBeUndefined();
-      // 404 means the endpoint was reached successfully (the email is not registered), confirming no CORS block.
-      expect(corsResult.status).toBe(404); 
+      expect(corsResult.healthStatus).toBe(200);
+      expect(corsResult.protectedStatus).toBe(401);
     });
   }
 });

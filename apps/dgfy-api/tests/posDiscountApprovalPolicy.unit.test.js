@@ -8,6 +8,9 @@ describe('POS discount approval policy', () => {
         role: 'manager',
         is_active: true,
         deleted_at: null,
+        permissions: [],
+        is_master_admin: false,
+        can_authorize_discounts: false,
         pos_approval_pin_hash: await bcrypt.hash('2468', 4),
         ...overrides
     });
@@ -27,7 +30,18 @@ describe('POS discount approval policy', () => {
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_APPROVER_PIN_INVALID' } });
     });
 
-    test('rejects users outside Admin and Manager roles', async () => {
+    test('allows a cashier explicitly granted the discount authorization permission', async () => {
+        await expect(verifyPosDiscountApprover({
+            approver: await buildApprover({
+                role: 'cashier',
+                permissions: ['pos:discount_authorize'],
+                can_authorize_discounts: true
+            }),
+            pin: '2468'
+        })).resolves.toEqual({ user_id: 9, username: 'manager-nine', role: 'cashier' });
+    });
+
+    test('rejects employees without discount authorization', async () => {
         await expect(verifyPosDiscountApprover({
             approver: await buildApprover({ role: 'cashier' }),
             pin: '2468'

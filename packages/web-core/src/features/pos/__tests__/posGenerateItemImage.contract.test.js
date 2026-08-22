@@ -60,7 +60,7 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const surrounding = workspace.slice(buttonStart - 400, buttonEnd);
 
         expect(surrounding).toContain('canEditItems &&');
-        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage}');
+        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}');
         expect(surrounding).toContain("'Regenerate Image (AI)' : 'Generate Image (AI)'");
         expect(surrounding).toContain("'Queuing…'");
         expect(surrounding).toContain("'Generating…'");

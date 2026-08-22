@@ -24,48 +24,6 @@
   "version": 1,
   "entries": [
     {
-      "tree": "apps/dgfy-ims",
-      "package": "react-router-dom",
-      "severity": "moderate",
-      "reason": "GHSA-jjmj-jmhj-qwj2 (open redirect leading to XSS). Fix requires react-router-dom@7.18.2, a v6->v7 major across the whole app's routing -- not a dependency bump. Tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-ims",
-      "package": "react-router",
-      "severity": "moderate",
-      "reason": "Transitive via react-router-dom. GHSA-wrjc-x8rr-h8h6 (open redirect via backslash in <Link>/useNavigate), GHSA-337j-9hxr-rhxg (constructor injection via deserializeErrors() in SSR hydration). Same react-router-dom@7.18.2 fix as the direct entry above; tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-pos",
-      "package": "react-router-dom",
-      "severity": "moderate",
-      "reason": "GHSA-jjmj-jmhj-qwj2 (open redirect leading to XSS). Fix requires react-router-dom@7.18.2, a v6->v7 major across the whole app's routing -- not a dependency bump. Tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-pos",
-      "package": "react-router",
-      "severity": "moderate",
-      "reason": "Transitive via react-router-dom. GHSA-wrjc-x8rr-h8h6 (open redirect via backslash in <Link>/useNavigate), GHSA-337j-9hxr-rhxg (constructor injection via deserializeErrors() in SSR hydration). Same react-router-dom@7.18.2 fix as the direct entry above; tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-storefront",
-      "package": "react-router-dom",
-      "severity": "moderate",
-      "reason": "GHSA-jjmj-jmhj-qwj2 (open redirect leading to XSS). Fix requires react-router-dom@7.18.2, a v6->v7 major across the whole app's routing -- not a dependency bump. Tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-storefront",
-      "package": "react-router",
-      "severity": "moderate",
-      "reason": "Transitive via react-router-dom. GHSA-wrjc-x8rr-h8h6 (open redirect via backslash in <Link>/useNavigate), GHSA-337j-9hxr-rhxg (constructor injection via deserializeErrors() in SSR hydration). Same react-router-dom@7.18.2 fix as the direct entry above; tracked in #389.",
-      "reviewBy": "2026-10-15"
-    },
-    {
       "tree": "tests/frontend-cross-app",
       "package": "@lhci/cli",
       "severity": "high",

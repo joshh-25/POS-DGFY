@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, ShoppingBag, X } fr
 import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 /**
  * F&B mobile checkout summary sheet and persistent action footer.
@@ -33,6 +34,7 @@ export function FnbCheckoutMobileSummaryPanel({
   onToggleSummary,
   orderStep,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   promoPanel,
   scheduleLabel,
   setSummaryOpen,
@@ -40,6 +42,13 @@ export function FnbCheckoutMobileSummaryPanel({
   totalFeeAndTaxes,
   totals,
 }) {
+  // Phase 142 (#823): independent copy of FnbCheckoutSummaryContent's own downpayment rows -- this
+  // panel is a separate mobile bottom-sheet presentation, not a shared render path.
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
@@ -122,12 +131,16 @@ export function FnbCheckoutMobileSummaryPanel({
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
+                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
                 <SummaryRow label="Fees & Taxes" value={money(totalFeeAndTaxes)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
                 </div>
+                {downpaymentRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
               </div>
             </div>
           </div>

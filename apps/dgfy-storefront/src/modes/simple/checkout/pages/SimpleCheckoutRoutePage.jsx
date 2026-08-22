@@ -6,6 +6,14 @@ import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentSt
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
+import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
+import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import {
+  getStorefrontOnlinePaymentLabel,
+  isStorefrontOnlinePaymentType
+} from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -16,12 +24,16 @@ export function SimpleCheckoutRoutePage({
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
   deliverySavedLocations = [],
   DropdownComponent,
   fnbPaymentType = 'cash',
+  paymentElection = 'full',
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
@@ -40,6 +52,9 @@ export function SimpleCheckoutRoutePage({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
+  qrphPaymentSession = null,
+  qrphPaymentStatusLoading = false,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
@@ -71,7 +86,9 @@ export function SimpleCheckoutRoutePage({
   onImageError,
   onOpenExpandedMap,
   onOrderMethodChange,
+  onPaymentElectionChange,
   onPaymentTypeChange,
+  onConfirmQrphTestPayment,
   onPinChange,
   onPinMyLocation,
   onRequestGuestCheckoutOtp,
@@ -80,9 +97,11 @@ export function SimpleCheckoutRoutePage({
   onSelectAddress,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
+  onSignInToCheckout,
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
+  resetQrphPaymentSession,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -96,6 +115,17 @@ export function SimpleCheckoutRoutePage({
   const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
     ? new Date(fnbScheduledFor).toLocaleString()
     : 'NOW';
+  const isOnlinePayment = isStorefrontOnlinePaymentType(fnbPaymentType);
+  const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
+  // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  const paymentSubmitLabel = downpaymentDisplay.active
+    ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})`
+    : fnbPaymentType === 'qrph'
+      ? 'Generate QR Ph'
+      : isOnlinePayment
+        ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
+        : 'Place Order';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
@@ -158,6 +188,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -222,6 +253,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -239,19 +271,57 @@ export function SimpleCheckoutRoutePage({
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
+            isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
             isMobileViewport={isMobileViewport}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             money={money}
             onImageError={onImageError}
+            onPaymentElectionChange={onPaymentElectionChange}
+            paymentElection={paymentElection}
             paymentType={fnbPaymentType}
-            paymentOptions={[
-              { value: 'cash', label: 'Cash on delivery/pickup' }
-            ]}
-            simpleCheckoutAllowed={simpleCheckoutAllowed}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
+            isDownpaymentActive={downpaymentDisplay.active}
+            downpaymentCallout={(
+              <DownpaymentPaymentCallout
+                accentColor="#176B3A"
+                bodyFont={servicesBodyFont}
+                display={downpaymentDisplay}
+                money={money}
+                orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
+              />
+            )}
+            onlinePaymentPanel={isOnlinePayment ? (
+              <StorefrontOnlinePaymentPanel
+                amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
+                amountDueLabel="Downpayment due"
+                balanceNote={downpaymentDisplay.active
+                  ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                  : null}
+                billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
+                onConfirmTestPayment={import.meta.env.DEV
+                  && fnbPaymentType === 'qrph'
+                  && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
+                  ? onConfirmQrphTestPayment
+                  : null}
+                onChooseAnotherPaymentMethod={() => {
+                  resetQrphPaymentSession?.();
+                }}
+                paymentSession={qrphPaymentSession}
+                paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
+                paymentType={fnbPaymentType}
+                qrAmountNote={downpaymentDisplay.active ? 'This QR contains your downpayment amount.' : null}
+                refreshing={qrphPaymentStatusLoading}
+              />
+            ) : null}
+            simpleCheckoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
+            submitLabel={paymentSubmitLabel}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
+            onSignInToCheckout={onSignInToCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
           />
           {!isMobileViewport && (
@@ -266,6 +336,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
+              voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
@@ -299,7 +370,7 @@ export function SimpleCheckoutRoutePage({
           cart={cart}
           cartCount={cartCount}
           cartImageErrors={cartImageErrors}
-          checkoutAllowed={simpleCheckoutAllowed}
+          checkoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
           checkoutLoading={checkoutLoading}
           customerStepComplete={simpleCustomerStepComplete}
           fulfillmentStepComplete={simpleStepOneReady}
@@ -311,10 +382,12 @@ export function SimpleCheckoutRoutePage({
           onStepChange={onSetSimpleOrderStep}
           orderStep={simpleOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          voucherDiscountSummaryRow={voucherDiscountSummaryRow}
           promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={scheduleLabel}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
           showSummary={showSimpleMobileOrderSummary}
+          submitLabel={paymentSubmitLabel}
           totals={totals}
           withAssetOrigin={withAssetOrigin}
         />

@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -26,14 +27,24 @@ export function SimpleCheckoutMobileSummaryPanel({
   onStepChange,
   orderStep,
   promoDiscountSummaryRow,
+  voucherDiscountSummaryRow,
   promoPanel,
   scheduleLabel = 'NOW',
   setSummaryOpen,
   showSummary,
+  submitLabel = 'Place Order',
   totals = {},
   withAssetOrigin,
 }) {
   const totalFeeAndTaxes = (totals.service_fee_amount || 0) + (totals.vat_amount || 0);
+  // Phase 142 (#823): independent copy of SimpleCheckoutSummaryContent's own downpayment rows --
+  // this panel is a separate desktop/mobile presentation, not a shared render path (per the
+  // file's own doc comment above).
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const isPrimaryDisabled = orderStep === 1
     ? !customerStepComplete
     : orderStep === 3
@@ -105,12 +116,16 @@ export function SimpleCheckoutMobileSummaryPanel({
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
+                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
                 <SummaryRow label="Fees & Taxes" value={money(totalFeeAndTaxes)} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
                 </div>
+                {downpaymentRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
               </div>
             </div>
           </div>
@@ -133,7 +148,7 @@ export function SimpleCheckoutMobileSummaryPanel({
               Back
             </button>
             <button type="button" onClick={handlePrimary} disabled={isPrimaryDisabled} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)`, boxShadow: `0 12px 24px ${SIMPLE_BRAND_SHADOW}`, opacity: isPrimaryDisabled ? 0.6 : 1 }}>
-              {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : 'Place Order'}</> : <>Continue<ChevronRight size={20} /></>}
+              {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : submitLabel}</> : <>Continue<ChevronRight size={20} /></>}
             </button>
           </div>
         </div>

@@ -80,6 +80,20 @@ const ORDER_METHOD_LABELS = {
 
 const money = (value, currencySymbol = 'PHP') => `${currencySymbol} ${Number(value || 0).toFixed(2)}`;
 const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
+const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
+  ? 'Other'
+  : String(value || '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+const printDateTime = (value) => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString();
+};
 
 const toDateInput = (date) => {
   const year = date.getFullYear();
@@ -318,9 +332,7 @@ function PosReportsAnalyticsWorkspace({
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (!reportData) {
-            setReportData(null);
-          }
+          setReportData((current) => current || null);
           setError(loadError?.response?.data?.message || 'Failed to load POS reports.');
         }
       } finally {
@@ -364,8 +376,21 @@ function PosReportsAnalyticsWorkspace({
   const hasData = Boolean(reportData) && (
     Number(summaryCards.total_transactions || 0) > 0
     || Number(summaryCards.total_sales || 0) > 0
+    || Number(dailyReport.adjustment_summary?.adjustment_count || 0) > 0
     || (trendSeries || []).length > 0
   );
+
+  const cashiers = Array.isArray(filterOptions.cashiers) ? filterOptions.cashiers : [];
+  const categories = (Array.isArray(filterOptions.categories) ? filterOptions.categories : []).map((entry) => (
+    typeof entry === 'string'
+      ? { folder_id: null, name: entry, legacy: true }
+      : entry
+  ));
+  const transactionRows = Array.isArray(dailyReport.transaction_rows) ? dailyReport.transaction_rows : [];
+  const selectedCashier = cashiers.find((entry) => String(entry.cashier_id) === String(cashierId));
+  const reportCashierLabel = cashierId
+    ? (selectedCashier?.cashier_name || `Cashier #${cashierId}`)
+    : 'All cashiers';
 
   const handleExportCsv = async () => {
     const { blob, filename } = await exportPosReportCsv({
@@ -388,18 +413,46 @@ function PosReportsAnalyticsWorkspace({
 
     const topItems = (dailyReport.top_items || []).slice(0, 10).map((item) => `
       <tr>
-        <td>${item.item_name}</td>
-        <td>${item.sku_code || '-'}</td>
+        <td>${escapeHtml(item.item_name)}</td>
+        <td>${escapeHtml(item.sku_code || '-')}</td>
         <td style="text-align:right">${Number(item.quantity || 0).toFixed(2)}</td>
-        <td style="text-align:right">${money(item.net_sales, currencySymbol)}</td>
-        <td style="text-align:right">${money(item.pos_profit_loss, currencySymbol)}</td>
+        <td style="text-align:right">${escapeHtml(money(item.net_sales, currencySymbol))}</td>
+        <td style="text-align:right">${escapeHtml(money(item.pos_profit_loss, currencySymbol))}</td>
+      </tr>
+    `).join('');
+    const cashierRows = (dailyReport.cashier_summary || []).map((entry) => {
+      const cash = entry?.shift_money || {};
+      return `
+        <tr>
+          <td>${escapeHtml(entry.cashier_name || '-')}</td>
+          <td style="text-align:right">${Number(cash.shift_count || entry.shift_ids?.length || 0)}</td>
+          <td style="text-align:right">${Number(cash.closed_shift_count || 0)}</td>
+          <td style="text-align:right">${escapeHtml(money(cash.opening_float_amount, currencySymbol))}</td>
+          <td style="text-align:right">${escapeHtml(money(cash.cash_sales_amount, currencySymbol))}</td>
+          <td style="text-align:right">${escapeHtml(money(cash.cash_in_total, currencySymbol))}</td>
+          <td style="text-align:right">${escapeHtml(money(cash.cash_out_total, currencySymbol))}</td>
+          <td style="text-align:right">${escapeHtml(money(cash.expected_cash_amount, currencySymbol))}</td>
+          <td style="text-align:right">${cash.closing_cash_amount == null ? '-' : escapeHtml(money(cash.closing_cash_amount, currencySymbol))}</td>
+          <td style="text-align:right">${cash.cash_variance_amount == null ? '-' : escapeHtml(money(cash.cash_variance_amount, currencySymbol))}</td>
+        </tr>
+      `;
+    }).join('');
+    const filteredTransactions = transactionRows.map((entry) => `
+      <tr>
+        <td>${escapeHtml(entry.invoice_number || entry.pos_transaction_id || '-')}</td>
+        <td>${escapeHtml(printDateTime(entry.created_at))}</td>
+        <td>${escapeHtml(entry.cashier_name || '-')}</td>
+        <td>${escapeHtml(entry.payment_type || '-')}</td>
+        <td>${escapeHtml(entry.status || '-')}</td>
+        <td style="text-align:right">${escapeHtml(money(entry.total_amount, currencySymbol))}</td>
+        <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
       </tr>
     `).join('');
 
     printWindow.document.write(`
       <html>
         <head>
-          <title>Reports & Analytics</title>
+          <title>Cashier Sales & Cash Reconciliation</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
             h1 { margin: 0 0 8px; font-size: 28px; }
@@ -411,32 +464,41 @@ function PosReportsAnalyticsWorkspace({
             table { width: 100%; border-collapse: collapse; margin-top: 18px; }
             th, td { border: 1px solid #e2e8f0; padding: 10px; font-size: 12px; }
             th { background: #f8fafc; text-transform: uppercase; letter-spacing: 0.08em; text-align: left; }
+            .section { page-break-inside: avoid; margin-top: 24px; }
           </style>
         </head>
         <body>
-          <h1>Reports & Analytics</h1>
-          <p>Daily totals, sales comparison, POS profit/loss, top items, and transaction performance.</p>
-          <p>Range: ${dateRange.dateFrom} to ${dateRange.dateTo}</p>
+          <h1>Cashier Sales & Cash Reconciliation</h1>
+          <p>Cashier: ${escapeHtml(reportCashierLabel)}</p>
+          <p>Range: ${escapeHtml(normalizedDateRange.dateFrom)} to ${escapeHtml(normalizedDateRange.dateTo)}</p>
           <div class="grid">
-            <div class="card"><div class="label">Total Sales</div><div class="value">${money(summaryCards.total_sales, currencySymbol)}</div></div>
+            <div class="card"><div class="label">Total Sales</div><div class="value">${escapeHtml(money(summaryCards.total_sales, currencySymbol))}</div></div>
             <div class="card"><div class="label">Transactions</div><div class="value">${Number(summaryCards.total_transactions || 0)}</div></div>
-            <div class="card"><div class="label">Gross Sales</div><div class="value">${money(summaryCards.gross_sales, currencySymbol)}</div></div>
-            <div class="card"><div class="label">All Discounts</div><div class="value">${money(dailyReport.summary?.discounts, currencySymbol)}</div></div>
-            <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${money(summaryCards.pos_profit_loss, currencySymbol)}</div></div>
+            <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(summaryCards.gross_sales, currencySymbol))}</div></div>
+            <div class="card"><div class="label">All Discounts</div><div class="value">${escapeHtml(money(dailyReport.summary?.discounts, currencySymbol))}</div></div>
+            <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${escapeHtml(money(summaryCards.pos_profit_loss, currencySymbol))}</div></div>
           </div>
-          <h2>Daily Top Items</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Net Sales</th>
-                <th>POS Profit/Loss</th>
-              </tr>
-            </thead>
-            <tbody>${topItems || '<tr><td colspan="5">No rows found.</td></tr>'}</tbody>
-          </table>
+          <div class="section">
+            <h2>Cash Reconciliation</h2>
+            <table>
+              <thead><tr><th>Cashier</th><th>Shifts</th><th>Closed</th><th>Opening Float</th><th>Cash Sales</th><th>Cash In</th><th>Cash Out</th><th>Expected Cash</th><th>Closing Cash</th><th>Variance</th></tr></thead>
+              <tbody>${cashierRows || '<tr><td colspan="10">No shift cash records found.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h2>Filtered Transactions</h2>
+            <table>
+              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
+              <tbody>${filteredTransactions || '<tr><td colspan="7">No transactions found.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h2>Daily Top Items</h2>
+            <table>
+              <thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Net Sales</th><th>POS Profit/Loss</th></tr></thead>
+              <tbody>${topItems || '<tr><td colspan="5">No rows found.</td></tr>'}</tbody>
+            </table>
+          </div>
         </body>
       </html>
     `);
@@ -446,16 +508,10 @@ function PosReportsAnalyticsWorkspace({
   };
 
   const comparisonCards = comparisonReport.fixed_periods || [];
-  const cashiers = Array.isArray(filterOptions.cashiers) ? filterOptions.cashiers : [];
-  const categories = (Array.isArray(filterOptions.categories) ? filterOptions.categories : []).map((entry) => (
-    typeof entry === 'string'
-      ? { folder_id: null, name: entry, legacy: true }
-      : entry
-  ));
 
   return (
-    <div id={sectionId} className="space-y-4">
-      <div className="flex flex-col gap-4">
+    <div id={sectionId} className="min-w-0 max-w-full overflow-x-hidden space-y-4">
+      <div className="flex min-w-0 max-w-full flex-col gap-4">
       <div className="flex flex-col gap-3 sm:hidden">
         <div className="flex items-center gap-2">
           <label className="min-w-0 flex-1 space-y-1.5">
@@ -483,32 +539,32 @@ function PosReportsAnalyticsWorkspace({
           POS-only reporting with IMS cost data
         </div>
       </div>
-      <section className="order-2 md:order-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
-          <div className="grid grid-cols-2 gap-3 sm:contents">
-            <label className="space-y-1.5">
+      <section className="order-2 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 md:order-1">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:contents">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date from</span>
               <div className="relative">
-                <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+                <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="pos-report-date-input h-11 w-full min-w-0 max-w-full rounded-xl pr-9 md:pr-3" />
                 <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
               </div>
             </label>
-            <label className="space-y-1.5">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date to</span>
               <div className="relative">
-                <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+                <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="pos-report-date-input h-11 w-full min-w-0 max-w-full rounded-xl pr-9 md:pr-3" />
                 <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
               </div>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:contents">
-            <label className="space-y-1.5">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:contents">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Range</span>
               <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={granularity} onChange={(event) => setGranularity(event.target.value)}>
                 {GRANULARITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <label className="space-y-1.5">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashier</span>
               <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => setCashierId(event.target.value)}>
                 <option value="">All cashiers</option>
@@ -516,11 +572,11 @@ function PosReportsAnalyticsWorkspace({
               </select>
             </label>
           </div>
-          <Button type="button" variant="outline" className="h-11 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
+          <Button type="button" variant="outline" className="h-11 min-w-0 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Button type="button" className="h-11 rounded-xl bg-[#2563EB] px-4 font-extrabold text-white hover:bg-[#1D4ED8]" onClick={handlePrint} disabled={!reportData}>
+          <Button type="button" className="h-11 min-w-0 rounded-xl bg-[#2563EB] px-4 font-extrabold text-white hover:bg-[#1D4ED8]" onClick={handlePrint} disabled={!reportData}>
             <Printer className="mr-2 h-4 w-4" />
             Print / Save PDF
           </Button>
@@ -669,6 +725,33 @@ function PosReportsAnalyticsWorkspace({
                 </div>
               </SectionCard>
 
+              <SectionCard title="Refund & Adjustment Events">
+                <p className="mb-3 text-xs font-semibold text-slate-500">
+                  These rows use the refund/adjustment event timestamp. They disclose after-close activity without changing a prior Z-reading or subtracting an already-voided sale twice.
+                </p>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard label="Adjustment events" value={Number(dailyReport.adjustment_summary?.adjustment_count || 0)} />
+                  <MetricCard label="Completed amount" value={money(dailyReport.adjustment_summary?.succeeded_amount, currencySymbol)} />
+                  <MetricCard label="Pending amount" value={money(dailyReport.adjustment_summary?.pending_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.pending_amount || 0) > 0 ? 'negative' : 'default'} />
+                  <MetricCard label="Manual review" value={money(dailyReport.adjustment_summary?.manual_review_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.manual_review_amount || 0) > 0 ? 'negative' : 'default'} />
+                </div>
+                <DataTable
+                  columns={[
+                    { key: 'event_at', label: 'Event Datetime', render: (row) => printDateTime(row.event_at) },
+                    { key: 'invoice_number', label: 'Invoice', render: (row) => row.invoice_number || row.pos_transaction_id },
+                    { key: 'adjustment_type', label: 'Action', render: (row) => String(row.adjustment_type || '').replace(/_/g, ' ') },
+                    { key: 'status', label: 'Status', render: (row) => String(row.status || '').replace(/_/g, ' ') },
+                    { key: 'amount', label: 'Amount', align: 'right', render: (row) => money(row.amount, currencySymbol) },
+                    { key: 'original_cashier_name', label: 'Original Cashier', render: (row) => row.original_cashier_name || row.original_cashier_id || '-' },
+                    { key: 'actor_name', label: 'Actioned By', render: (row) => row.actor_name || row.actor_user_id || '-' },
+                    { key: 'actor_shift_id', label: 'Actor Shift', render: (row) => row.actor_shift_id || 'No shift' },
+                    { key: 'adjustment_reference', label: 'Reference' }
+                  ]}
+                  rows={Array.isArray(dailyReport.adjustment_rows) ? dailyReport.adjustment_rows : []}
+                  emptyMessage="No refund or adjustment events were recorded in this event-date range."
+                />
+              </SectionCard>
+
               <div className="grid gap-4 xl:grid-cols-2">
                 <SectionCard title="All Discounts">
                   <DataTable
@@ -679,7 +762,10 @@ function PosReportsAnalyticsWorkspace({
                       { key: 'discount_amount', label: 'Discount Total', align: 'right', render: (row) => money(row.discount_amount, currencySymbol) },
                       { key: 'vat_removed', label: 'VAT Removed', align: 'right', render: (row) => money(row.vat_removed, currencySymbol) }
                     ]}
-                    rows={dailyReport.discount_breakdown || []}
+                    rows={(dailyReport.discount_breakdown || []).map((row) => ({
+                      ...row,
+                      discount_type: displayDiscountType(row.discount_type)
+                    }))}
                     emptyMessage="No discounts were recorded for the selected filters."
                   />
                 </SectionCard>
@@ -774,6 +860,22 @@ function PosReportsAnalyticsWorkspace({
                       ))}
                     </div>
                   </div>
+                </SectionCard>
+
+                <SectionCard title="Filtered Transactions">
+                  <DataTable
+                    columns={[
+                      { key: 'invoice_number', label: 'Invoice' },
+                      { key: 'created_at', label: 'Datetime', render: (row) => printDateTime(row.created_at) },
+                      { key: 'cashier_name', label: 'Cashier' },
+                      { key: 'payment_type', label: 'Payment' },
+                      { key: 'status', label: 'Status' },
+                      { key: 'total_amount', label: 'Total', align: 'right', render: (row) => money(row.total_amount, currencySymbol) },
+                      { key: 'net_sales', label: 'Reported Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) }
+                    ]}
+                    rows={transactionRows}
+                    emptyMessage="No transactions found for the selected filters."
+                  />
                 </SectionCard>
               </div>
             </div>

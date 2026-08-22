@@ -24,6 +24,7 @@ node_modules/
 /tests/frontend-cross-app/test-results/
 /tests/frontend-cross-app/playwright/.auth/
 /tests/frontend-cross-app/.env.e2e
+/test-results/
 
 # Legacy frontend local artifacts and secrets. The maintained Playwright
 # workspace lives under apps/dgfy-ims (formerly apps/dgfy-web, retired in
@@ -85,6 +86,7 @@ Thumbs.db
 *.log
 /\.tmp/
 backend/storage/temp-ai-exports/
+apps/dgfy-api/storage/temp-ai-exports/
 backend/storage/platform-invoices/
 
 # Local compatibility-backend runtime media. Uploaded tenant/customer files
@@ -148,6 +150,7 @@ bun.lock
 
 # Verification and test reports (generated locally, environment-specific)
 /reports/
+/tests/frontend-cross-app/.lighthouseci/
 
 # GSD (Get Stuff Done) local planning scaffolding — not tracked
 /.planning/

@@ -195,7 +195,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
     expect(screen.getByText('SOLD TO:')).toBeTruthy();
     expect(screen.getByText('Business Style: Juan Trading')).toBeTruthy();
-    expect(screen.getByText('VAT 12%')).toBeTruthy();
+    expect(screen.getByText('VAT Amount (12%)')).toBeTruthy();
     expect(screen.getByText('Includes tax breakdown and fiscal identifiers.')).toBeTruthy();
   });
 
@@ -302,7 +302,6 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       'TOTAL SALES',
       'Estimated Tax',
       'Discount',
-      'DGFY convenience fee',
       'TOTAL AMOUNT DUE',
       'Payment Method:',
       'Powered by DGFY POS'
@@ -346,6 +345,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(text).toContain('Payment Status:PAID');
     expect(text).toContain('Payment Reference:pay_authoritative_123');
     expect(text).toContain('TOTAL AMOUNT DUE111.00');
+    expect(text).not.toContain('DGFY convenience fee');
     expect(text).not.toContain('Cash Received:');
 
     const hardwareText = formatIminReceiptText({
@@ -357,7 +357,46 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(hardwareText).toContain('Delivery Fee');
     expect(hardwareText).toContain('Payment Status: PAID');
     expect(hardwareText).toContain('Payment Reference: pay_authoritative_123');
+    expect(hardwareText).not.toContain('DGFY convenience fee');
     expect(hardwareText).not.toContain('Cash Received');
+  });
+
+  it('keeps the physical receipt line discount breakdown aligned with the preview', () => {
+    const transaction = buildTransaction({
+      subtotal_amount: 80,
+      discount_amount: 12,
+      discount_label_snapshot: 'Employee Discount',
+      total_amount: 68,
+      lines: [{
+        line_id: 7,
+        item_id: 11,
+        item_name_snapshot: 'Garlic',
+        quantity: 1,
+        sale_price: 40,
+        line_subtotal: 68,
+        item: { name: 'Renamed Later' }
+      }],
+      discount: {
+        lines: [{
+          transaction_line_id: 7,
+          gross_eligible_amount: 80,
+          discount_amount: 12,
+          vat_removed: 0
+        }]
+      }
+    });
+
+    const hardwareText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(hardwareText).toContain('Garlic');
+    expect(hardwareText).not.toContain('Renamed Later');
+    expect(hardwareText).toContain('PHP 80.00');
+    expect(hardwareText).toContain('-PHP 12.00');
+    expect(hardwareText).toContain('NET TOTAL');
+    expect(hardwareText).toContain('PHP 68.00');
   });
 
   it('renders and formats receipts when Android WebView does not provide replaceAll', () => {

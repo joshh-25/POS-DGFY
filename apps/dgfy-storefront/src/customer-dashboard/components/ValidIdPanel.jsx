@@ -6,6 +6,7 @@ import {
   normalizeCustomerIdentityDocument
 } from '../model/customerIdentityDocument.js';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
+import { AccountActionStatusModal } from './AccountActionStatusModal.jsx';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_FILE_TYPES = '.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf';
@@ -96,9 +97,13 @@ export function ValidIdPanel({ isMobileViewport, theme, accountPanel, profileVer
   const [showBack, setShowBack] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [actionStatus, setActionStatus] = useState('');
+  const [actionStatusMessage, setActionStatusMessage] = useState('');
   const objectUrlsRef = useRef([]);
+  const statusTimerRef = useRef(null);
 
   useEffect(() => () => {
+    clearTimeout(statusTimerRef.current);
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL?.(url));
   }, []);
 
@@ -108,11 +113,17 @@ export function ValidIdPanel({ isMobileViewport, theme, accountPanel, profileVer
     ? localDocument.isVerified === true
     : Boolean(activeDocument?.isVerified || (profileVerification?.idVerified && hasUploadedDocument));
 
+  const showUploadError = (message) => {
+    setUploadError(message);
+    setActionStatusMessage(message);
+    setActionStatus('error');
+  };
+
   const handleFileChange = (side) => (event) => {
     const file = event.target.files?.[0] || null;
     if (!file) return;
     if (file.size > MAX_FILE_SIZE) {
-      setUploadError('Each file must be 5 MB or smaller.');
+      showUploadError('Each file must be 5 MB or smaller.');
       return;
     }
     setUploadError('');
@@ -122,28 +133,37 @@ export function ValidIdPanel({ isMobileViewport, theme, accountPanel, profileVer
 
   const handleUpload = (event) => {
     event.preventDefault();
-    if (!idType) return setUploadError('Select an ID type before uploading.');
-    if (!frontFile) return setUploadError('Upload the front side of your ID.');
+    if (!idType) return showUploadError('Select an ID type before uploading.');
+    if (!frontFile) return showUploadError('Upload the front side of your ID.');
+    clearTimeout(statusTimerRef.current);
     setIsUploading(true);
-    const nextFrontUrl = createPreviewUrl(frontFile);
-    const nextBackUrl = createPreviewUrl(backFile);
-    [nextFrontUrl, nextBackUrl].filter(Boolean).forEach((url) => objectUrlsRef.current.push(url));
-    setLocalDocument(normalizeCustomerIdentityDocument({
-      front_url: nextFrontUrl,
-      back_url: nextBackUrl,
-      id_type: idType,
-      uploaded_at: new Date().toISOString(),
-      status: 'pending',
-      frontFile,
-      backFile
-    }));
-    setIsPersistedDocumentHidden(false);
-    setIsUploadPanelOpen(false);
-    setShowBack(false);
-    setIsUploading(false);
+    setUploadError('');
+    setActionStatusMessage('');
+    setActionStatus('pending');
+    statusTimerRef.current = setTimeout(() => {
+      const nextFrontUrl = createPreviewUrl(frontFile);
+      const nextBackUrl = createPreviewUrl(backFile);
+      [nextFrontUrl, nextBackUrl].filter(Boolean).forEach((url) => objectUrlsRef.current.push(url));
+      setLocalDocument(normalizeCustomerIdentityDocument({
+        front_url: nextFrontUrl,
+        back_url: nextBackUrl,
+        id_type: idType,
+        uploaded_at: new Date().toISOString(),
+        status: 'pending',
+        frontFile,
+        backFile
+      }));
+      setIsPersistedDocumentHidden(false);
+      setShowBack(false);
+      setIsUploading(false);
+      setActionStatus('success');
+    }, 650);
   };
 
   const handleRemove = () => {
+    clearTimeout(statusTimerRef.current);
+    setActionStatus('');
+    setIsUploading(false);
     setLocalDocument(null);
     setIsPersistedDocumentHidden(true);
     setFrontFile(null);
@@ -151,6 +171,22 @@ export function ValidIdPanel({ isMobileViewport, theme, accountPanel, profileVer
     setShowBack(false);
     setIsUploadPanelOpen(true);
     setUploadError('');
+  };
+
+  const closeActionStatus = () => {
+    const completed = actionStatus === 'success';
+    clearTimeout(statusTimerRef.current);
+    setActionStatus('');
+    setIsUploading(false);
+    if (completed) setIsUploadPanelOpen(false);
+  };
+
+  const retryActionStatus = () => {
+    clearTimeout(statusTimerRef.current);
+    setActionStatus('');
+    setActionStatusMessage('');
+    setUploadError('');
+    setIsUploading(false);
   };
 
   if (!isUploadPanelOpen && !hasUploadedDocument) return <CompactValidIdState isMobileViewport={isMobileViewport} theme={theme} onOpen={() => setIsUploadPanelOpen(true)} />;
@@ -210,6 +246,7 @@ export function ValidIdPanel({ isMobileViewport, theme, accountPanel, profileVer
           <button type="submit" disabled={isUploading} style={{ width: isMobileViewport ? '100%' : 132, minHeight: isMobileViewport ? 44 : 40, border: 0, borderRadius: 8, background: theme.primary, color: '#fff', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}>{isUploading ? 'Uploading...' : 'Upload ID'}</button>
         </div>
       </form>
+      <AccountActionStatusModal mode="identity" status={actionStatus} message={actionStatusMessage} isMobileViewport={isMobileViewport} theme={theme} onClose={closeActionStatus} onRetry={retryActionStatus} />
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Badge, GhostButton, PrimaryButton } from '../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontHeroShell } from '../../shared/components/StorefrontHeroShell.jsx';
 import { DefaultStorefrontHero } from '../../shared/components/DefaultStorefrontHeroLazy.jsx';
@@ -21,6 +21,7 @@ import { ServicesHero } from '../../modes/services/storefront/components/Service
 import { FnbHero } from '../../modes/fnb/storefront/components/FnbHeroLazy.jsx';
 import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHeroLazy.jsx';
 import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanelLazy.jsx';
+import { buildServicesRetailHeroSectionModel } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
 
 // ZONE 1-3: Navigation & Header / Hero Branding / Location Map Snapshot + hospitality booking
 // panel — cross-mode composition (services/fnb/simple/hospitality/shared/discovery). Moved
@@ -39,7 +40,6 @@ export function StorefrontHeroBandContainer(props) {
     isServiceDetailsSubpage,
     serviceHeroModel,
     isMobileViewport,
-    viewportWidth,
     hasMultipleStoreBranches,
     hasSelectedBranchFromMenu,
     selectedLocationId,
@@ -49,6 +49,8 @@ export function StorefrontHeroBandContainer(props) {
     setCatalogSearch,
     goDiscovery,
     goStore,
+    goStoreCatalogPage,
+    goStoreOrderPage,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,
@@ -56,10 +58,6 @@ export function StorefrontHeroBandContainer(props) {
     isBrandingImageBlocked,
     markBrandingImageError,
     selectedLocation,
-    isAboutExpanded,
-    setIsAboutExpanded,
-    isServiceGalleryExpanded,
-    setIsServiceGalleryExpanded,
     openStorefrontActionLink,
     openTrackPanel,
     openStorefrontHeaderAccount,
@@ -87,6 +85,11 @@ export function StorefrontHeroBandContainer(props) {
     simpleStorefrontModel,
     isHospitalityMode
   } = props;
+  const servicesRetailHeroSectionModel = useMemo(() => (
+    isServicesMode
+      ? buildServicesRetailHeroSectionModel({ heroSectionModel, serviceHeroModel })
+      : null
+  ), [heroSectionModel, isServicesMode, serviceHeroModel]);
 
   return (
     <>
@@ -108,69 +111,57 @@ export function StorefrontHeroBandContainer(props) {
         </div>
       )}
       {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
-        <ServicesHero
-            serviceHeroModel={serviceHeroModel}
-            selectedStore={selectedStore}
-            isMobileViewport={isMobileViewport}
-            viewportWidth={viewportWidth}
-            hasMultipleStoreBranches={hasMultipleStoreBranches}
+        <DefaultStorefrontHero
+          modeAdapter={modeAdapter}
+          heroSectionModel={servicesRetailHeroSectionModel}
+          selectedStore={selectedStore}
+          isMobileViewport={isMobileViewport}
+          cartCount={0}
+          setIsCheckoutOpen={setIsCheckoutOpen}
+          primaryActionLabel="Browse Services"
+          onPrimaryAction={() => {
+            goStoreCatalogPage();
+            window.requestAnimationFrame(() => {
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+          }}
+          goDiscovery={goDiscovery}
+          goStore={goStore}
+          hasMultipleStoreBranches={hasMultipleStoreBranches}
           hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
           selectedLocationId={selectedLocationId}
           handleBranchMenuSelection={handleBranchMenuSelection}
           storeLocations={storeLocations}
-          catalogSearch={catalogSearch}
-          setCatalogSearch={setCatalogSearch}
-          goDiscovery={goDiscovery}
-          goStore={goStore}
-          hasServiceCart={hasServiceCart}
-          goStoreBookingPage={goStoreBookingPage}
-          cartCount={cartCount}
-          modeAdapter={modeAdapter}
           isBrandingImageBlocked={isBrandingImageBlocked}
           markBrandingImageError={markBrandingImageError}
           selectedLocation={selectedLocation}
-          isAboutExpanded={isAboutExpanded}
-          setIsAboutExpanded={setIsAboutExpanded}
-            isServiceGalleryExpanded={isServiceGalleryExpanded}
-            setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
-            openStorefrontActionLink={openStorefrontActionLink}
-            openTrackPanel={openTrackPanel}
-            openAccountPanel={openStorefrontHeaderAccount}
-            onRegisterBusiness={openBusinessRegistrationFlow}
-            isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-            activeCustomerOrderCount={activeCustomerOrderCount}
-            accountIdentityName={accountIdentityName}
-            accountIdentityRawEmail={accountIdentityRawEmail}
-            accountIdentityContact={accountIdentityContact}
-            accountIdentityInitials={accountIdentityInitials}
-            followEnabled={followUiEnabledForStore}
-            shareEnabled={shareEnabledForStore}
-            followState={followState}
-            handleFollowAction={handleFollowAction}
-            ui={{
-              Badge,
-              GhostButton,
-              PrimaryButton,
-              StorefrontExpandableBusinessHours,
-              StorefrontHeroShell
-            }}
-            heroStyles={{
-              HERO_CANVAS_MAX_WIDTH,
-              MAX_STOREFRONT_WHY_CHOOSE_US,
-              MOBILE_DROPDOWN_MENU_STYLE,
-              MOBILE_DROPDOWN_OPTION_STYLE,
-              MOBILE_NATIVE_SELECT_STYLE,
-              STOREFRONT_CONTACT_INFO_COLUMNS,
-              STOREFRONT_INFO_ICON_COLUMN,
-              STOREFRONT_INFO_PANEL_MAX_WIDTH,
-              STOREFRONT_INFO_ROW_GAP,
-              STYLES
-            }}
-            helperFns={{
-              buildVisibleStorefrontContactRows,
-              getDeliveryPlatformLinks
-            }}
-          />
+          openStorefrontActionLink={openStorefrontActionLink}
+          openTrackPanel={openTrackPanel}
+          openAccountPanel={openStorefrontHeaderAccount}
+          onRegisterBusiness={openBusinessRegistrationFlow}
+          isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+          activeCustomerOrderCount={activeCustomerOrderCount}
+          accountIdentityName={accountIdentityName}
+          accountIdentityRawEmail={accountIdentityRawEmail}
+          accountIdentityContact={accountIdentityContact}
+          accountIdentityInitials={accountIdentityInitials}
+          followEnabled={followUiEnabledForStore}
+          shareEnabled={shareEnabledForStore}
+          followState={followState}
+          handleFollowAction={handleFollowAction}
+          ui={{ StorefrontExpandableBusinessHours }}
+          heroStyles={{
+            HERO_CANVAS_MAX_WIDTH,
+            MAX_STOREFRONT_WHY_CHOOSE_US,
+            MOBILE_DROPDOWN_MENU_STYLE,
+            MOBILE_DROPDOWN_OPTION_STYLE,
+            MOBILE_NATIVE_SELECT_STYLE,
+            STOREFRONT_CONTACT_INFO_COLUMNS,
+            STOREFRONT_INFO_ICON_COLUMN,
+            STOREFRONT_INFO_ROW_GAP,
+            STYLES
+          }}
+        />
       )}
       {!isServicesMode && (
         <>
@@ -230,6 +221,7 @@ export function StorefrontHeroBandContainer(props) {
               setCatalogSearch={setCatalogSearch}
               goDiscovery={goDiscovery}
               goStore={goStore}
+              goStoreOrderPage={goStoreOrderPage}
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               modeAdapter={modeAdapter}

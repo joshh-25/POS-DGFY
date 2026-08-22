@@ -11,7 +11,8 @@ describe('storefront load failure presentation', () => {
     expect(app).toContain('hasStoreProfile={Boolean(selectedStore)}');
     expect(app).toContain('onRetry={refreshStorePageForTenantSetup}');
     expect(app).toContain('onBackToDiscovery={goDiscovery}');
-    expect(app).toContain('isStorePage && selectedStore && (checkoutPermitted');
+    expect(app).toContain('isStorePage && selectedStore && !isServicesTrackingPage');
+    expect(app).toContain('<StorefrontCartDrawerShellContainer {...storefrontCartDrawerShellProps} />');
   });
 
   it('keeps catalog-only errors inside the loaded industry storefront', () => {

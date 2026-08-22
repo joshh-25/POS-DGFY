@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Banknote, Ban, CheckCircle2, CreditCard, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { Banknote, Ban, CreditCard, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle
 } from '@/components/ui/dialog';
@@ -14,8 +13,6 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     addPosPaymentAllocation,
     cancelPosPaymentAllocation,
-    cancelPosPaymentSession,
-    completePosPaymentSession,
     createPosPaymentSession,
     fetchActivePosPaymentSession,
     fetchPosPaymentSession
@@ -39,8 +36,7 @@ const MAX_PAYMENT_ROWS = PAYMENT_METHODS.length;
 const createPaymentRow = (id, method) => ({
     id,
     method,
-    amount: '',
-    paymentReceived: method === 'cash'
+    amount: ''
 });
 const createDefaultPaymentRows = () => [
     createPaymentRow('payment-row-1', 'gcash'),
@@ -90,7 +86,6 @@ export default function POSSplitPaymentDialog({
     open = false,
     onOpenChange,
     cart = [],
-    catalog = [],
     totalAmount = 0,
     shiftId = null,
     locationId = null,
@@ -98,8 +93,8 @@ export default function POSSplitPaymentDialog({
     parkedSaleId = null,
     storageScopeKey = '',
     checkoutSnapshot = null,
-    onCompleted = null,
-    onSessionStateChange = null
+    onSessionStateChange = null,
+    onReadyToComplete = null
 }) {
     const storageKey = useMemo(
         () => buildPosSplitPaymentStorageKey(storageScopeKey),
@@ -112,11 +107,11 @@ export default function POSSplitPaymentDialog({
     const [paymentRows, setPaymentRows] = useState(createDefaultPaymentRows);
     const [cancelTarget, setCancelTarget] = useState(null);
     const [cancelReason, setCancelReason] = useState('');
-    const [sessionCancelReason, setSessionCancelReason] = useState('');
     const [recoveredFromStorage, setRecoveredFromStorage] = useState(false);
     const nextPaymentRowIdRef = useRef(3);
     const paymentRowIdempotencyKeysRef = useRef(new Map());
-    const autoCompletionAttemptRef = useRef(0);
+    const sessionOpenAttemptRef = useRef(false);
+    const recoveredCompletionAttemptRef = useRef(false);
 
     const remainingAmount = round4(session?.remaining_amount ?? totalAmount);
     const paidAmount = round4(session?.paid_amount);
@@ -137,30 +132,20 @@ export default function POSSplitPaymentDialog({
     const cashAppliedPreview = round4(Math.min(cashReceivedAmount, remainingAfterNonCash));
     const cashChangePreview = round4(Math.max(cashReceivedAmount - cashAppliedPreview, 0));
     const enteredAppliedAmount = round4(nonCashEnteredAmount + cashAppliedPreview);
+    const liveAppliedAmount = round4(Math.min(remainingAmount, nonCashEnteredAmount) + cashAppliedPreview);
+    const livePaidAmount = round4(paidAmount + liveAppliedAmount);
+    const liveRemainingAmount = round4(Math.max(0, remainingAmount - liveAppliedAmount));
     const amountStillDue = round4(Math.max(0, remainingAmount - enteredAppliedAmount));
     const cashHasNoBalance = cashReceivedAmount > 0 && remainingAfterNonCash <= 0;
     const hasEnteredPayment = activePaymentRows.length > 0;
-    const hasUnconfirmedDigitalPayment = activeNonCashRows.some((row) => !row.paymentReceived);
     const canCompletePaymentRows = Boolean(session)
         && hasEnteredPayment
         && !duplicatePaymentMethod
         && !nonCashAmountTooHigh
         && !cashHasNoBalance
-        && amountStillDue === 0
-        && !hasUnconfirmedDigitalPayment;
+        && amountStillDue === 0;
     const isReadyToComplete = session?.status === 'ready_to_complete';
     const allocations = Array.isArray(session?.allocations) ? session.allocations : [];
-    const savedLines = useMemo(
-        () => (Array.isArray(session?.snapshot?.lines) ? session.snapshot.lines : []),
-        [session?.snapshot?.lines]
-    );
-    const catalogNameById = useMemo(
-        () => new Map((Array.isArray(catalog) ? catalog : []).map((item) => [
-            Number(item?.item_id),
-            String(item?.name || '').trim()
-        ])),
-        [catalog]
-    );
 
     useEffect(() => {
         if (!session) return;
@@ -211,7 +196,8 @@ export default function POSSplitPaymentDialog({
     }, [applySession, onOpenChange, onSessionStateChange, sessionScope, storageKey]);
 
     const openOrResumeSession = useCallback(async () => {
-        if (!open || !storageKey) return;
+        if (!open || !storageKey || sessionOpenAttemptRef.current) return;
+        sessionOpenAttemptRef.current = true;
         setLoading(true);
         setError('');
         try {
@@ -263,59 +249,18 @@ export default function POSSplitPaymentDialog({
 
     useEffect(() => {
         if (open) return;
+        sessionOpenAttemptRef.current = false;
         setPaymentRows(createDefaultPaymentRows());
         nextPaymentRowIdRef.current = 3;
         paymentRowIdempotencyKeysRef.current.clear();
-        autoCompletionAttemptRef.current = 0;
     }, [open]);
-
-    const handleComplete = useCallback(async ({ automatic = false } = {}) => {
-        const sessionId = getSessionId(session);
-        if (!sessionId || session?.status !== 'ready_to_complete') return false;
-        if (automatic && autoCompletionAttemptRef.current === sessionId) return false;
-        autoCompletionAttemptRef.current = sessionId;
-        setLoading(true);
-        setError('');
-        try {
-            const result = await completePosPaymentSession(sessionId, {
-                idempotency_key: `split-complete:${sessionId}`,
-                shift_id: shiftId,
-                terminal_id: terminalId,
-                location_id: locationId || undefined
-            });
-            clearPosSplitPaymentSessionPointer(storageKey);
-            setSession(result?.session || session);
-            setRecoveredFromStorage(false);
-            onSessionStateChange?.({ active: false, recovered: false, session: result?.session || session });
-            toast.success('Sale completed.');
-            onCompleted?.(result);
-            onOpenChange?.(false);
-            return true;
-        } catch (requestError) {
-            const message = requestError?.response?.data?.message || requestError?.message || 'Unable to finish the sale. Retry when the connection is stable.';
-            setError(message);
-            toast.error(message);
-            return false;
-        } finally {
-            setLoading(false);
-        }
-    }, [locationId, onCompleted, onOpenChange, onSessionStateChange, session, shiftId, storageKey, terminalId]);
-
-    useEffect(() => {
-        if (!open || loading || !isReadyToComplete) return;
-        handleComplete({ automatic: true });
-    }, [handleComplete, isReadyToComplete, loading, open]);
 
     const updatePaymentRow = (rowId, updates) => {
         setPaymentRows((currentRows) => currentRows.map((row) => {
             if (row.id !== rowId) return row;
-            const nextMethod = updates.method ?? row.method;
             return {
                 ...row,
-                ...updates,
-                paymentReceived: nextMethod === 'cash'
-                    ? true
-                    : (updates.paymentReceived ?? false)
+                ...updates
             };
         }));
         setError('');
@@ -339,6 +284,43 @@ export default function POSSplitPaymentDialog({
         setError('');
     };
 
+    const finishReadySession = async (readySession) => {
+        setLoading(true);
+        setError('');
+        try {
+            applySession(readySession);
+            onSessionStateChange?.({ active: true, recovered: recoveredFromStorage, session: readySession });
+            if (typeof onReadyToComplete !== 'function') {
+                setError('Payment is recorded, but sale completion is unavailable. Keep this payment saved and try again from the POS.');
+                return false;
+            }
+            try {
+                const completed = await onReadyToComplete(readySession);
+                if (!completed) {
+                    setError('Payment was recorded, but the sale was not completed and no receipt was created.');
+                    return false;
+                }
+                return true;
+            } catch (completionError) {
+                setError(completionError?.message || 'Payment was recorded, but the sale was not completed.');
+                return false;
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!open) {
+            recoveredCompletionAttemptRef.current = false;
+            return;
+        }
+        if (loading || !recoveredFromStorage || !session || round4(session?.remaining_amount) !== 0 || recoveredCompletionAttemptRef.current) return;
+        recoveredCompletionAttemptRef.current = true;
+        onOpenChange?.(false);
+        void finishReadySession(session);
+    }, [loading, onOpenChange, open, recoveredFromStorage, session]);
+
     const handleCompletePaymentRows = async () => {
         const sessionId = getSessionId(session);
         if (!sessionId || !hasEnteredPayment) {
@@ -359,12 +341,6 @@ export default function POSSplitPaymentDialog({
         }
         if (amountStillDue > 0) {
             setError(`Enter PHP ${money(amountStillDue)} more before completing payment.`);
-            return;
-        }
-        if (hasUnconfirmedDigitalPayment) {
-            const unconfirmedMethod = activeNonCashRows.find((row) => !row.paymentReceived)?.method;
-            const methodLabel = PAYMENT_METHODS.find((method) => method.value === unconfirmedMethod)?.label || 'digital';
-            setError(`Confirm that the store received the ${methodLabel} payment.`);
             return;
         }
 
@@ -409,7 +385,11 @@ export default function POSSplitPaymentDialog({
 
             setPaymentRows(createDefaultPaymentRows());
             nextPaymentRowIdRef.current = 3;
-            toast.success('Payment recorded.');
+            if (round4(latestSession?.remaining_amount) === 0) {
+                onOpenChange?.(false);
+                await finishReadySession(latestSession);
+                return;
+            }
         } catch (requestError) {
             let recoveredSession = latestSession;
             try {
@@ -430,14 +410,14 @@ export default function POSSplitPaymentDialog({
                 setPaymentRows(createDefaultPaymentRows());
                 nextPaymentRowIdRef.current = 3;
                 paymentRowIdempotencyKeysRef.current.clear();
-                toast.success('Payment recorded. The server balance is complete.');
+                await finishReadySession(recoveredSession);
                 return;
             }
 
             if (completedRowIds.length > 0) {
                 setPaymentRows((currentRows) => currentRows.map((row) => (
                     completedRowIds.includes(row.id)
-                        ? { ...row, amount: '', paymentReceived: row.method === 'cash' }
+                        ? { ...row, amount: '' }
                         : row
                 )));
             }
@@ -486,38 +466,6 @@ export default function POSSplitPaymentDialog({
         }
     };
 
-    const handleCancelSession = async () => {
-        const sessionId = getSessionId(session);
-        const reason = String(sessionCancelReason).trim();
-        if (!sessionId || reason.length < 3) {
-            setError('Enter a cancellation reason of at least 3 characters.');
-            return;
-        }
-        setLoading(true);
-        setError('');
-        try {
-            await cancelPosPaymentSession(sessionId, {
-                shift_id: shiftId,
-                terminal_id: terminalId,
-                location_id: locationId || undefined,
-                reason
-            });
-            clearPosSplitPaymentSessionPointer(storageKey);
-            setSession(null);
-            setRecoveredFromStorage(false);
-            onSessionStateChange?.({ active: false, recovered: false, session: null });
-            setSessionCancelReason('');
-            toast.message('Split payment session cancelled.');
-            onOpenChange?.(false);
-        } catch (requestError) {
-            const message = requestError?.response?.data?.message || requestError?.message || 'Unable to cancel split payment.';
-            setError(message);
-            toast.error(message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => {
             if (!nextOpen && loading) return;
@@ -533,7 +481,7 @@ export default function POSSplitPaymentDialog({
                             <div>
                                 <DialogTitle className="text-[17px] font-black text-[#0F172A]">Split Payment</DialogTitle>
                                 <DialogDescription className="mt-0.5 text-[12px] font-medium text-[#475569]">
-                                    Choose each payment method, enter its amount, then complete the payment once.
+                                    Enter each payment amount. Record Payment saves the tenders and completes the sale.
                                 </DialogDescription>
                             </div>
                         </div>
@@ -546,60 +494,24 @@ export default function POSSplitPaymentDialog({
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                     {error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" role="alert">{error}</p>}
 
-                    <div className="grid grid-cols-3 gap-2" aria-live="polite">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-live="polite" data-testid="pos-split-payment-summary">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                             <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Total</p>
                             <p className="mt-1 text-base font-black text-[#1A4E8D]">PHP {money(session?.total_amount ?? totalAmount)}</p>
                         </div>
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3" data-testid="pos-split-payment-paid">
                             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Paid</p>
-                            <p className="mt-1 text-base font-black text-emerald-700">PHP {money(paidAmount)}</p>
+                            <p className="mt-1 text-base font-black text-emerald-700">PHP {money(livePaidAmount)}</p>
                         </div>
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="pos-split-payment-remaining">
                             <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Remaining</p>
-                            <p className="mt-1 text-base font-black text-amber-700">PHP {money(remainingAmount)}</p>
+                            <p className="mt-1 text-base font-black text-amber-700">PHP {money(liveRemainingAmount)}</p>
+                        </div>
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3" data-testid="pos-split-payment-change">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-sky-700">Change</p>
+                            <p className="mt-1 text-base font-black text-sky-700">PHP {money(cashChangePreview)}</p>
                         </div>
                     </div>
-
-                    {session && savedLines.length > 0 && (
-                        <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/50 p-3" data-testid="pos-split-payment-saved-sale">
-                            <div className="flex items-start justify-between gap-3">
-                                <div>
-                                    <p className="text-[11px] font-black uppercase tracking-wide text-[#1A4E8D]">
-                                        {recoveredFromStorage ? 'Sale awaiting completion' : 'Items in this payment'}
-                                    </p>
-                                    <p className="mt-1 text-xs font-medium text-slate-600">
-                                        This is the server-saved sale. It is read-only while payment is in progress.
-                                    </p>
-                                </div>
-                                <span className="shrink-0 rounded-md border border-blue-200 bg-white px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-blue-700">
-                                    {savedLines.length} {savedLines.length === 1 ? 'item' : 'items'}
-                                </span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {savedLines.map((line, index) => {
-                                    const itemId = Number(line?.item_id || 0);
-                                    const itemName = catalogNameById.get(itemId) || `Item #${itemId || index + 1}`;
-                                    const quantity = Number(line?.quantity || 0);
-                                    const salePrice = Number(line?.sale_price || 0);
-                                    return (
-                                        <div key={`${itemId}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-blue-100 bg-white px-3 py-2">
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-extrabold text-slate-800">{itemName}</p>
-                                                <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                                                    Qty {quantity} × PHP {money(salePrice)}
-                                                </p>
-                                            </div>
-                                            <span className="self-center text-sm font-black text-[#1A4E8D]">PHP {money(quantity * salePrice)}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            {session?.session_reference && (
-                                <p className="text-[10px] font-semibold text-slate-500">Payment session: {session.session_reference}</p>
-                            )}
-                        </div>
-                    )}
 
                     {loading && !session && (
                         <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm font-semibold text-slate-500">
@@ -651,8 +563,6 @@ export default function POSSplitPaymentDialog({
                                 <div className="space-y-3" data-testid="pos-payment-rows">
                                     {paymentRows.map((row, index) => {
                                         const selectedMethod = PAYMENT_METHODS.find((method) => method.value === row.method);
-                                        const rowAmount = round4(Math.max(0, Number(row.amount) || 0));
-                                        const isCash = row.method === 'cash';
                                         return (
                                             <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-3" data-testid={`pos-payment-row-${index + 1}`}>
                                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
@@ -661,8 +571,7 @@ export default function POSSplitPaymentDialog({
                                                         <select
                                                             value={row.method}
                                                             onChange={(event) => updatePaymentRow(row.id, {
-                                                                method: event.target.value,
-                                                                paymentReceived: event.target.value === 'cash'
+                                                                method: event.target.value
                                                             })}
                                                             disabled={loading}
                                                             aria-label={`Method of payment ${index + 1}`}
@@ -688,9 +597,11 @@ export default function POSSplitPaymentDialog({
                                                             step="0.01"
                                                             value={row.amount}
                                                             onChange={(event) => updatePaymentRow(row.id, {
-                                                                amount: event.target.value,
-                                                                paymentReceived: isCash
+                                                                amount: event.target.value
                                                             })}
+                                                            onFocus={(event) => {
+                                                                if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });
+                                                            }}
                                                             disabled={loading}
                                                             placeholder="0.00"
                                                             aria-label={`Amount for ${selectedMethod?.label || 'payment'}`}
@@ -712,18 +623,6 @@ export default function POSSplitPaymentDialog({
                                                     )}
                                                 </div>
 
-                                                {!isCash && rowAmount > 0 && (
-                                                    <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900" data-testid={`pos-payment-received-${index + 1}`}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={row.paymentReceived}
-                                                            onChange={(event) => updatePaymentRow(row.id, { paymentReceived: event.target.checked })}
-                                                            disabled={loading}
-                                                            className="mt-0.5 h-4 w-4 rounded border-amber-300"
-                                                        />
-                                                        <span>I confirm the store received this {selectedMethod?.label} payment through its own QR, terminal, or account. This does not use PayMongo.</span>
-                                                    </label>
-                                                )}
                                             </div>
                                         );
                                     })}
@@ -741,27 +640,6 @@ export default function POSSplitPaymentDialog({
                                     </button>
                                 )}
 
-                                {hasEnteredPayment && (
-                                    <div className="grid grid-cols-2 gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5" data-testid="pos-payment-rows-preview" aria-live="polite">
-                                        <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Non-cash applied</p>
-                                            <p className="text-sm font-black text-emerald-900">PHP {money(Math.min(nonCashEnteredAmount, remainingAmount))}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Cash applied</p>
-                                            <p className="text-sm font-black text-emerald-900">PHP {money(cashAppliedPreview)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Change due</p>
-                                            <p className="text-sm font-black text-emerald-900">PHP {money(cashChangePreview)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Still due</p>
-                                            <p className="text-sm font-black text-emerald-900">PHP {money(amountStillDue)}</p>
-                                        </div>
-                                    </div>
-                                )}
-
                                 {duplicatePaymentMethod && (
                                     <p className="text-xs font-semibold text-rose-700" role="alert">Use each payment method only once.</p>
                                 )}
@@ -774,26 +652,8 @@ export default function POSSplitPaymentDialog({
 
                                 <Button type="button" onClick={handleCompletePaymentRows} disabled={loading || !canCompletePaymentRows} className="h-12 w-full bg-[#1A4E8D] text-sm font-extrabold hover:bg-[#143F73]" data-testid="pos-complete-payment-rows">
                                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Banknote className="mr-2 h-4 w-4" aria-hidden="true" />}
-                                    Complete Payment
+                                    Record Payment
                                 </Button>
-                            </div>
-                        </div>
-                    )}
-
-                    {isReadyToComplete && (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4" role="status">
-                            <div className="flex items-start gap-3">
-                                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
-                                <div>
-                                    <p className="text-sm font-black text-emerald-800">{loading ? 'Finishing sale…' : 'Payment received'}</p>
-                                    <p className="mt-1 text-xs font-medium text-emerald-700">The POS automatically posts one sale and one inventory movement when the balance reaches zero.</p>
-                                    {!loading && error && (
-                                        <Button type="button" onClick={() => handleComplete()} className="mt-3 h-10 w-full bg-emerald-600 text-sm font-extrabold text-white hover:bg-emerald-700" data-testid="pos-split-payment-retry-completion">
-                                            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                                            Retry Finish Sale
-                                        </Button>
-                                    )}
-                                </div>
                             </div>
                         </div>
                     )}
@@ -809,23 +669,8 @@ export default function POSSplitPaymentDialog({
                         </div>
                     )}
 
-                    {session && paidAmount === 0 && !['completed', 'cancelled'].includes(session.status) && (
-                        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="pos-split-payment-cancel-session">
-                            <div className="flex items-center gap-2 text-xs font-black text-slate-700"><RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Cancel unpaid session</div>
-                            <div className="flex gap-2">
-                                <Input value={sessionCancelReason} onChange={(event) => setSessionCancelReason(event.target.value)} placeholder="Reason" disabled={loading} className="h-9 bg-white text-sm" />
-                                <Button type="button" variant="outline" onClick={handleCancelSession} disabled={loading} className="h-9 shrink-0 border-slate-300 text-slate-700">Cancel session</Button>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
-                <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
-                    <Button type="button" onClick={() => loadSession(getSessionId(session))} disabled={loading || refreshing || !session} className="h-10 w-full bg-slate-900 font-extrabold text-white hover:bg-slate-800">
-                        {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />}
-                        Refresh balance
-                    </Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

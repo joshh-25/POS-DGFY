@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
+import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +32,7 @@ const routerAliases = [
 // but were missing from apps/skupervisor/vite.config.js's server/preview blocks -- carried
 // forward here rather than silently dropped during the merge.
 const securityHeaders = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
@@ -39,7 +40,7 @@ const devSecurityHeaders = {
   ...securityHeaders,
   // Vite React Refresh injects an inline preamble in development.
   // Keep preview/build CSP strict while allowing the local dev app to boot.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
 };
 
 const proxyTargets = {
@@ -86,7 +87,7 @@ const proxyTargets = {
 };
 
 export default defineConfig({
-  plugins: [react(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('skupervisor')
   },
@@ -160,5 +161,15 @@ export default defineConfig({
     // README).
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     include: [...configDefaults.include, '../../packages/web-core/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    // The integration-heavy jsdom suite exercises lazy routes and mocked API
+    // boundaries in parallel. Five seconds is below the normal cold-start
+    // budget on CI/local Windows workers and turns healthy tests into flakes.
+    testTimeout: 15000,
+    // Bound fork fan-out on Windows. The default pool size starts one worker
+    // per available CPU and starves the integration-heavy Storefront/POS files,
+    // causing false timeouts and cross-file state failures under a full run.
+    // Four workers preserve file parallelism while keeping the system-test gate
+    // deterministic on the supported local/CI environments.
+    maxWorkers: 4,
   },
 });

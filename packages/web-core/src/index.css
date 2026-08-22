@@ -15,6 +15,18 @@ body {
   box-sizing: border-box;
 }
 
+/* POS amount and numeric fields require deliberate manual entry. */
+.dgfy-number-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.dgfy-number-input::-webkit-outer-spin-button,
+.dgfy-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* Desktop shell spacing guard: keep main content out from under fixed sidebar. */
 @media (min-width: 1024px) {
   .app-main {
@@ -270,9 +282,40 @@ body {
   }
 }
 
-@media (min-width: 768px) and (max-height: 720px) {
-  .dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Portrait tablets need two comfortable action columns so labels such as
+ * "Open Cash Drawer" remain comfortable touch targets. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+}
+
+/* Portrait tablets need two comfortable action columns. The parked-sale
+ * variant otherwise switches to three columns at the `sm` breakpoint, which
+ * leaves labels such as "Open Cash Drawer" compressed into narrow targets. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
   }
 }
 
@@ -301,6 +344,11 @@ body {
   background: var(--pos-shell-bg);
   color: var(--pos-shell-text);
   font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+}
+
+html.dgfy-pos-document-scroll-lock,
+body.dgfy-pos-document-scroll-lock {
+  overflow: hidden;
 }
 
 @supports (height: 100dvh) {
@@ -362,6 +410,203 @@ body {
   border-color: var(--pos-shell-border);
 }
 
+/*
+ * POS text-size compatibility layer. The preference changes font metrics only;
+ * it deliberately does not change html/body rem geometry, shell dimensions, or
+ * Tailwind spacing utilities. The body-level scope also reaches POS dialogs and
+ * other controls rendered through document.body portals.
+ */
+body[data-pos-text-size="normal"] {
+  --pos-text-size-scale: 1;
+}
+
+body[data-pos-text-size="large"] {
+  --pos-text-size-scale: 1.15;
+}
+
+body[data-pos-text-size="extra-large"] {
+  --pos-text-size-scale: 1.3;
+}
+
+@media screen {
+  body[data-pos-text-size="large"],
+  body[data-pos-text-size="extra-large"] {
+    font-size: calc(1rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-xs, [class*="text-xs"]),
+  body[data-pos-text-size="extra-large"] :where(.text-xs, [class*="text-xs"]) {
+    font-size: calc(0.75rem * var(--pos-text-size-scale));
+    line-height: calc(1rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-sm, [class*="text-sm"]),
+  body[data-pos-text-size="extra-large"] :where(.text-sm, [class*="text-sm"]) {
+    font-size: calc(0.875rem * var(--pos-text-size-scale));
+    line-height: calc(1.25rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-base, [class*="text-base"]),
+  body[data-pos-text-size="extra-large"] :where(.text-base, [class*="text-base"]) {
+    font-size: calc(1rem * var(--pos-text-size-scale));
+    line-height: calc(1.5rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-lg, [class*="text-lg"]),
+  body[data-pos-text-size="extra-large"] :where(.text-lg, [class*="text-lg"]) {
+    font-size: calc(1.125rem * var(--pos-text-size-scale));
+    line-height: calc(1.75rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-xl, [class*="text-xl"]),
+  body[data-pos-text-size="extra-large"] :where(.text-xl, [class*="text-xl"]) {
+    font-size: calc(1.25rem * var(--pos-text-size-scale));
+    line-height: calc(1.75rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-2xl, [class*="text-2xl"]),
+  body[data-pos-text-size="extra-large"] :where(.text-2xl, [class*="text-2xl"]) {
+    font-size: calc(1.5rem * var(--pos-text-size-scale));
+    line-height: calc(2rem * var(--pos-text-size-scale));
+  }
+
+  /* Existing POS arbitrary text utilities are scaled without rewriting the
+     large component surface or changing the terminal's spacing contract. */
+  body[data-pos-text-size="large"] :where([class*="text-[7px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[7px]"]) {
+    font-size: calc(7px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[8px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[8px]"]) {
+    font-size: calc(8px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[9px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[9px]"]) {
+    font-size: calc(9px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[10px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[10px]"]) {
+    font-size: calc(10px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[10.5px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[10.5px]"]) {
+    font-size: calc(10.5px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[11px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[11px]"]) {
+    font-size: calc(11px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[12px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[12px]"]) {
+    font-size: calc(12px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[13px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[13px]"]) {
+    font-size: calc(13px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[13.5px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[13.5px]"]) {
+    font-size: calc(13.5px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[14px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[14px]"]) {
+    font-size: calc(14px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[15px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[15px]"]) {
+    font-size: calc(15px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[17px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[17px]"]) {
+    font-size: calc(17px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[18px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[18px]"]) {
+    font-size: calc(18px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[20px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[20px]"]) {
+    font-size: calc(20px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[21px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[21px]"]) {
+    font-size: calc(21px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[22px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[22px]"]) {
+    font-size: calc(22px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[26px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[26px]"]) {
+    font-size: calc(26px * var(--pos-text-size-scale));
+  }
+}
+
+/* Print receipts must keep their existing fiscal/document typography. */
+@media print {
+  body[data-pos-text-size] {
+    --pos-text-size-scale: 1;
+  }
+}
+
+/* Phase 4 layout hardening: let the text setting consume vertical space in
+   bounded interactive regions instead of clipping labels or action text. */
+@media screen {
+  body[data-pos-text-size] .dgfy-pos-current-sale-actions > button {
+    min-height: max(46px, calc(46px * var(--pos-text-size-scale, 1)));
+  }
+
+  body[data-pos-text-size] .dgfy-pos-current-sale-actions span {
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [role="dialog"] {
+    min-width: 0;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
+
+  body[data-pos-text-size] [role="dialog"] :where(h1, h2, h3, h4, p, label, button) {
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] {
+    table-layout: auto;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] :where(th, td) {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] button {
+    min-height: max(3rem, calc(3rem * var(--pos-text-size-scale, 1)));
+    height: auto;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  body[data-pos-text-size] .dgfy-pos-tablet-action-grid > button {
+    min-height: max(54px, calc(54px * var(--pos-text-size-scale, 1)));
+  }
+}
+
 /* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
    must not override this inside the standalone POS terminal. */
 @media (max-width: 639.98px) {
@@ -400,6 +645,32 @@ body {
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+/* POS add-to-cart toast: enter from the right without relying on an optional
+   Tailwind animation plugin that is not part of this workspace. */
+.pos-add-to-cart-toast {
+  animation: pos-add-to-cart-toast-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes pos-add-to-cart-toast-enter {
+  from {
+    transform: translate3d(28px, 0, 0);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-add-to-cart-toast {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
   }
 }
 
@@ -450,7 +721,20 @@ body {
 }
 
 @media (max-width: 767.98px) {
+  .pos-report-date-input {
+    box-sizing: border-box;
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
   .pos-report-date-input::-webkit-calendar-picker-indicator {
+    position: static;
+    width: auto;
+    height: auto;
     opacity: 0;
   }
 }
@@ -548,16 +832,19 @@ body.pos-receipt-print-mode {
     margin: 0 auto;
   }
 
-  body:has(.pos-shift-summary-print-shell) > #root {
+  /* Chrome 80-84 iMin POS WebView has no :has() (Chrome 105+); a body class
+     toggled by ShiftCloseSummaryPrintView.jsx's mount/unmount effect replaces
+     it -- see #666. */
+  body.pos-shift-summary-printing > #root {
     visibility: hidden;
   }
 
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell,
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell * {
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell,
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell * {
     visibility: visible;
   }
 
-  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell {
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell {
     position: fixed;
     inset: 0;
     z-index: 2147483647;
@@ -616,12 +903,6 @@ body.pos-receipt-print-mode {
    native browser calendar-picker-indicator so it doesn't render a second,
    overlapping calendar affordance inside the same input. */
 .pos-report-date-input::-webkit-calendar-picker-indicator {
-  position: absolute;
-  right: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
   cursor: pointer;
 }
 

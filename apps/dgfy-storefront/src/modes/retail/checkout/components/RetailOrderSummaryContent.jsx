@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SOFT = '#b9cfe8';
@@ -34,6 +35,7 @@ export function RetailOrderSummaryContent({
   money,
   onImageError,
   promoDiscountSummaryRow = null,
+  voucherDiscountSummaryRow = null,
   promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
@@ -57,12 +59,23 @@ export function RetailOrderSummaryContent({
       </div>
     )
   }));
+  // Phase 142 (#823): quote-sourced only, same as every other mode's summary -- Retail now
+  // quotes for a downpayment-required store (see StorefrontApp.jsx's forced-quote arm), so
+  // `totals` carries the real server split in that one case, exactly as this doc comment's
+  // "not connected to a fee/quote backend yet" caveat above describes for everything else.
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
     ...(promoDiscountSummaryRow ? [{ ...promoDiscountSummaryRow, color: '#15803d' }] : []),
+    ...(voucherDiscountSummaryRow ? [{ ...voucherDiscountSummaryRow, color: '#7c3aed' }] : []),
     { label: 'Fees & Taxes', value: money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0)) },
-    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
+    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
+    ...downpaymentRows
   ];
 
   return (

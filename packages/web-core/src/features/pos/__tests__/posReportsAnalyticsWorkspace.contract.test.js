@@ -23,4 +23,18 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
     expect(workspaceSource).toContain('min-w-[720px]');
   });
+
+  it('stacks report date controls on narrow screens without widening the filter card', () => {
+    expect(workspaceSource).toContain('grid min-w-0 grid-cols-1 gap-3 sm:contents');
+    expect(workspaceSource).toContain('pos-report-date-input h-11 w-full min-w-0 max-w-full');
+    expect(workspaceSource).toContain('order-2 min-w-0 max-w-full overflow-hidden rounded-2xl');
+  });
+
+  it('prints the selected cashier cash reconciliation and filtered transaction rows', () => {
+    expect(workspaceSource).toContain('Cashier Sales & Cash Reconciliation');
+    expect(workspaceSource).toContain('dailyReport.transaction_rows');
+    expect(workspaceSource).toContain('Cash Reconciliation');
+    expect(workspaceSource).toContain('Filtered Transactions');
+    expect(workspaceSource).toContain('reportCashierLabel');
+  });
 });

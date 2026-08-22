@@ -16,7 +16,7 @@
   "protectedBranches": [
     "main",
     "staging",
-    "development",
+    "develop",
     "pr-testing",
     "codex/storefront-merged-pilot",
     "codex/storefront-pilot-on-master",
@@ -24,6 +24,7 @@
   ],
   "protectedHeadPrefixes": [
     "release/",
+    "to-staging/",
     "deployment/",
     "production/",
     "safety/",

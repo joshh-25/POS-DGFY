@@ -15,20 +15,18 @@ const renderActions = (workflowMode, effectiveCapabilities = null) => {
     resolvePosWorkflow(workflowMode, effectiveCapabilities)
   );
   const actions = {
-    onOpenParkedSales: vi.fn(),
-    onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
     onOpenCashDrawer: vi.fn(),
-    onApplyDiscount: vi.fn()
+    onParkSale: vi.fn()
   };
 
   render(
     <PosCurrentSaleActions
-      presentationBundle={presentationBundle}
       {...actions}
       itemCount={2}
       printerAvailable
+      showParkedSaleControls={presentationBundle.currentSaleActions.showParkedSaleControls}
     />
   );
 
@@ -36,23 +34,24 @@ const renderActions = (workflowMode, effectiveCapabilities = null) => {
 };
 
 describe('PosCurrentSaleActions', () => {
-  it('shows F&B parked-sale actions together with shared cashier actions', () => {
-    const { presentationBundle } = renderActions('fnb');
+  it('shows the explicit park action separately from the header history action in F&B', () => {
+    const { actions, presentationBundle } = renderActions('fnb');
 
     expect(presentationBundle.key).toBe('fnb');
-    expect(screen.getByTestId('pos-open-parked-sales-button')).toBeDefined();
-    expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
-    expect(screen.getByText('Checkout (2 Items)')).toBeDefined();
+    const parkButton = screen.getByTestId('pos-park-sale-button');
+    expect(parkButton).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
-    expect(screen.getByText('Apply Discount')).toBeDefined();
+    expect(screen.queryByText('Apply Discount')).toBeNull();
+    fireEvent.click(parkButton);
+    expect(actions.onParkSale).toHaveBeenCalledOnce();
   });
 
-  it('shows Counter parked-sale actions after F&B dining capabilities are removed', () => {
+  it('keeps the parked action for Counter mode after F&B dining capabilities are removed', () => {
     const { presentationBundle } = renderActions('fnb', []);
 
     expect(presentationBundle.key).toBe('counter');
-    expect(screen.getByTestId('pos-open-parked-sales-button')).toBeDefined();
     expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
   });
 
@@ -60,30 +59,25 @@ describe('PosCurrentSaleActions', () => {
     const { presentationBundle } = renderActions('services');
 
     expect(presentationBundle.key).toBe('services');
-    expect(screen.queryByTestId('pos-open-parked-sales-button')).toBeNull();
     expect(screen.queryByTestId('pos-park-sale-button')).toBeNull();
     expect(screen.queryByText('Parked Sales')).toBeNull();
     expect(screen.queryByText('Park & New Sale')).toBeNull();
-    expect(screen.getByText('Checkout (2 Items)')).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
-    expect(screen.getByText('Apply Discount')).toBeDefined();
+    expect(screen.queryByText('Apply Discount')).toBeNull();
   });
 
   it('keeps shared cashier action callbacks intact for Services', () => {
     const { actions } = renderActions('services');
 
-    fireEvent.click(screen.getByText('Checkout (2 Items)'));
+    fireEvent.click(screen.getByText('Checkout'));
     fireEvent.click(screen.getByText('Print Order'));
     fireEvent.click(screen.getByText('Open Cash Drawer'));
-    fireEvent.click(screen.getByText('Apply Discount'));
 
     expect(actions.onCheckout).toHaveBeenCalledOnce();
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
-    expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
-    expect(actions.onOpenParkedSales).not.toHaveBeenCalled();
-    expect(actions.onParkAndNewSale).not.toHaveBeenCalled();
   });
 
   it('falls back to the Services-safe action set when the bundle is missing', () => {
@@ -91,14 +85,13 @@ describe('PosCurrentSaleActions', () => {
       <PosCurrentSaleActions
         presentationBundle={null}
         onCheckout={vi.fn()}
-        onPrintOrder={vi.fn()}
         onOpenCashDrawer={vi.fn()}
-        onApplyDiscount={vi.fn()}
+        showParkedSaleControls={false}
       />
     );
 
     expect(screen.queryByTestId('pos-open-parked-sales-button')).toBeNull();
     expect(screen.queryByTestId('pos-park-sale-button')).toBeNull();
-    expect(screen.getByText('Checkout (0 Items)')).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
   });
 });

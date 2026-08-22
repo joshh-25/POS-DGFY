@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, ChevronDown, Filter, LayoutGrid, List, Search, Sparkles, X } from 'lucide-react';
 
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { VoucherCodePanel } from '../../../../shared/components/storefront/VoucherCodePanel.jsx';
 import { SIMPLE_CATEGORY_ICON_MAP } from '../model/simpleCategoryIconMap.jsx';
 
 const SORT_OPTIONS = [
@@ -25,6 +26,9 @@ function buildCategoryOptions(viewModel) {
 
 export function SimpleCatalogToolbar({
   catalogSearch,
+  checkoutVoucherCode,
+  setCheckoutVoucherCode,
+  handleVoucherCardApply,
   categoryDropdownRef,
   filteredCatalogViewModel,
   isCategoryDropdownOpen,
@@ -56,6 +60,24 @@ export function SimpleCatalogToolbar({
   const activeCount = resolvedSection
     ? categories.find((option) => option.key === resolvedSection)?.count || 0
     : filteredCatalogViewModel?.menuItems?.length || 0;
+
+  // #694: same entry point StorefrontCatalogToolbar.jsx adds for fnb/retail -- applying a code here
+  // re-fetches the catalog in place, no new data flow needed.
+  // #750 (RF-5, PR #753 review): see StorefrontCatalogToolbar.jsx's own note -- same fix, same
+  // reasoning. No `triggerLabel` passed here deliberately.
+  const voucherEntry = handleVoucherCardApply ? (
+    <VoucherCodePanel
+      code={checkoutVoucherCode}
+      onChange={setCheckoutVoucherCode}
+      onClear={() => setCheckoutVoucherCode?.('')}
+      onApplyVoucher={handleVoucherCardApply}
+      compact
+      accentColor={accent}
+      bodyFont={bodyFont}
+      isMobile={isMobileViewport}
+      helperText="Prices update in place below -- no need to open checkout."
+    />
+  ) : null;
 
   if (isMobileViewport) {
     return (
@@ -125,6 +147,12 @@ export function SimpleCatalogToolbar({
             </div>
           </div>
         </div>
+
+        {voucherEntry && (
+          <div style={{ width: 'calc(100% - 32px)', margin: '0 auto' }}>
+            {voucherEntry}
+          </div>
+        )}
       </div>
     );
   }
@@ -137,7 +165,10 @@ export function SimpleCatalogToolbar({
           <h2 style={{ margin: 0, fontSize: typography.catalogTitle?.desktop || 32, fontWeight: typography.catalogTitle?.weight || 700, color: textPrimary, lineHeight: typography.catalogTitle?.lineHeight || 1.2, fontFamily: displayFont }}>{modeAdapter.catalogHeading}</h2>
           <p style={{ margin: 0, color: textMuted, fontSize: 15, lineHeight: 1.5, maxWidth: 720, fontFamily: bodyFont }}>{modeAdapter.catalogSubtitle}</p>
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: '#FFFBF0', border: `1px solid ${border}`, color: textPrimary, fontSize: 13, fontWeight: 700, fontFamily: bodyFont }}><span style={{ width: 8, height: 8, borderRadius: 999, background: accent }} />{filteredCatalogViewModel?.totalItems || 0} items available</div>
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: '#FFFBF0', border: `1px solid ${border}`, color: textPrimary, fontSize: 13, fontWeight: 700, fontFamily: bodyFont }}><span style={{ width: 8, height: 8, borderRadius: 999, background: accent }} />{filteredCatalogViewModel?.totalItems || 0} items available</div>
+          {voucherEntry && <div style={{ width: 260, minWidth: 0 }}>{voucherEntry}</div>}
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
+import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build` so it can't perturb
 // production build size/timing. See issue #282's Phase A baseline:
@@ -23,6 +24,15 @@ const allowedHosts = true;
 // 'store', not 'storefront' -- kept as-is pending Phase 6's consumer fanout.
 const appSurface = 'store';
 const appNodeModules = path.resolve(__dirname, 'node_modules');
+const securityHeaders = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+const devSecurityHeaders = {
+  ...securityHeaders,
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+};
 // Mirrors the `@/components` entry in the other two apps' vite configs. The DGFY auth and
 // business pages ported into this app import the shared shadcn primitives
 // (`@/components/ui/input`, `button`, `label`) that live in packages/web-core/Components.
@@ -84,6 +94,7 @@ export default defineConfig(async () => {
   base: normalizedBasePath,
   plugins: [
     react(),
+    esCompatGuardPlugin(),
     ...buildSentryVitePlugins(appSurface),
     ...(shouldAnalyzeBundle
       ? [visualizer({
@@ -110,12 +121,14 @@ export default defineConfig(async () => {
     host: true,
     port: 5175,
     allowedHosts,
+    headers: devSecurityHeaders,
     proxy: proxyTargets
   },
   preview: {
     host: true,
     port: 5175,
     allowedHosts,
+    headers: securityHeaders,
     proxy: proxyTargets
   },
   build: {
@@ -152,6 +165,16 @@ export default defineConfig(async () => {
     // tests. packages/web-core's own tests run from apps/dgfy-ims, not here -- see
     // docs/architecture/frontend-split-sync.md.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    // The integration-heavy jsdom suite exercises lazy routes and mocked API
+    // boundaries in parallel. Five seconds is below the normal cold-start
+    // budget on CI/local Windows workers and turns healthy tests into flakes.
+    testTimeout: 15000,
+    // Bound fork fan-out on Windows. The default pool size starts one worker
+    // per available CPU and starves the integration-heavy Storefront/POS files,
+    // causing false timeouts and cross-file state failures under a full run.
+    // Four workers preserve file parallelism while keeping the system-test gate
+    // deterministic on the supported local/CI environments.
+    maxWorkers: 4,
   },
   };
 });

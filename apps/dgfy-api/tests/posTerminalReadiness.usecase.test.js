@@ -95,7 +95,7 @@ describe('POS terminal readiness context', () => {
       posRepository: {
         getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
         findOpenTerminalShift: jest.fn().mockResolvedValue(shift),
-        getShiftCashSalesTotal: jest.fn().mockResolvedValue(425.5),
+        getShiftCashSalesTotal: jest.fn().mockResolvedValue(999),
         getZReadingSummary
       },
       resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
@@ -108,8 +108,11 @@ describe('POS terminal readiness context', () => {
 
     expect(result.success).toBe(true);
     expect(result.data.sales_summary).toEqual(expect.objectContaining({
-      transaction_count: 3,
-      total_amount: 425.5
+        transaction_count: 3,
+        total_amount: 425.5
+    }));
+    expect(result.data.cash_summary).toEqual(expect.objectContaining({
+        cash_sales_amount: 425.5
     }));
     expect(getZReadingSummary).toHaveBeenCalledWith(
       expect.objectContaining({

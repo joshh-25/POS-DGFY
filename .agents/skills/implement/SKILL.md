@@ -25,10 +25,11 @@ inventing new detection:
 | New/changed files under `apps/dgfy-migration-runner/migrations/` | High blast radius, effectively irreversible once run | Ask before committing; a human confirms direction/correctness first |
 | `.husky/pre-commit`'s `check:compliance` step reports a missing/required declaration | Classifying `major`/`regulatory` impact is a human judgment call, not something to self-certify | Ask; a human writes or approves the `docs/compliance/impact-declarations/*.md` file (shape: `scripts/check-compliance-impact.js:196-220`) |
 | The PR's base would be `staging` or `main` | Those are promotion PRs — human-initiated every time so far | Never open one; this skill's PRs always target `develop` (already `docs/ai/PR.md`'s rule — never deviate) |
-| Anything that would dispatch a deploy workflow, SSH to a server, or mutate `/opt/dgfy-platform` | No approval gate exists on a deploy dispatch; a mistake there is live | Ask, always. Read-only checks (log tail, `docker buildx imagetools inspect`) are fine — nothing that changes server state runs unattended |
+| Anything that would dispatch a deploy workflow, SSH to a server, or mutate `/opt/dgfy-platform` | No approval gate exists on a deploy dispatch; a mistake there is live | Ask, always. Read-only checks (log tail, `docker buildx imagetools inspect`) are fine — nothing that changes server state runs unattended. This row is Worker-scoped — `promoter` (#331/#512) holds its own, narrower tier that permits unattended DEV/STAGING deploy dispatch as part of a promotion; that's a different role's checkpoint table, not a carve-out in this one |
 | Force-push, branch deletion, or rewriting already-pushed shared history | Not recoverable by a second party | Ask |
 | No GitHub issue exists yet for the work | Repo SOP (`docs/process/ISSUE-TAXONOMY.md`) — every PR needs a linked issue | File one first, then proceed |
 | Moving the issue's board card (`In progress`, `For Review`) | Not high-risk or hard to reverse — the opposite of every other row here | **Unattended, never a checkpoint.** See "Board transitions" below |
+| A merge-shaped action comes up while executing this skill | This skill never merges its own PR (see above) — but if a task drifts into one, `AGENTS.md`'s repo-wide Merge Safety rule applies regardless of role | Don't merge. Follow `AGENTS.md`'s rule if any check state needs confirming first, then hand off — merging stays out of scope for this skill either way |
 
 If a task doesn't trip any of these, proceed through commit/push/PR without pausing — that's the
 default case, not the exception. See `references/checkpoint-examples.md` for four worked examples
@@ -42,10 +43,10 @@ of these triggers actually firing (or correctly not firing) in practice.
    Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
    below.
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
-   `feature/`, `fix/`, `chore/`, `docs/`, `test/` — matching the change's actual kind. (That file's
-   eligible list doesn't currently include `ci/`, despite it being in heavy real use for
-   workflow-only changes; that's a known gap, not something to route around by inventing a
-   different unlisted prefix.)
+   `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
+   actual kind. (`ci/` was previously missing from that file despite being in heavy real use for
+   workflow-only changes; it has since been added — confirmed live in the file, 2026-08-16 — so
+   this is no longer a gap to route around.)
 3. **Commit** using Conventional Commits, batched by domain, per `docs/ai/PR.md` — read that file
    for the exact format rather than relying on this summary; it's short and it's the source of
    truth, not this skill.
@@ -106,6 +107,10 @@ of these triggers actually firing (or correctly not firing) in practice.
    `should-fix` and `nit` rows are judgment calls, not required, but say what was done with them
    too rather than ignoring them without comment. Push once addressed.
 7. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
+
+If a task surfaces work outside this PR's own scope (a correction, a bug, a gap), hand it to `pm`
+to shape and file rather than improvising a `gh issue create` mid-task — see `AGENTS.md`'s "Role
+handoffs and composite instructions".
 
 ## Board transitions
 

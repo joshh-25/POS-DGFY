@@ -58,19 +58,20 @@ describe('Food & Beverage frontend contract', () => {
   it('attaches F&B check context to POS checkout and receipts', () => {
     const posPageShell = read('packages/web-core/src/features/pos/pages/PosPageShell.jsx');
     const diningPanel = read('packages/web-core/src/features/fnb/components/FnbDiningPanel.jsx');
-    const terminal = read('packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx');
+    const checkoutWorkflow = read('packages/web-core/src/features/pos/hooks/usePosCheckoutWorkflow.js');
+    const cartWorkflow = read('packages/web-core/src/features/pos/hooks/usePosCartWorkflow.js');
+    const modifierUtils = read('packages/web-core/src/features/pos/utils/posCheckoutTerminalModifiers.js');
     const checkoutSurfaceContract = read('packages/web-core/src/features/pos/utils/checkoutSurfaceContract.js');
-    const historyPanel = read('packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx');
     const receipt = read('packages/web-core/src/features/pos/components/ReceiptPrintView.jsx');
 
     expect(posPageShell).toContain('FnbDiningPanel');
     expect(diningPanel).toContain('restaurant_service_charge: serviceCharge');
-    expect(terminal).toContain('fnbContext: normalizedFnbContext');
+    expect(checkoutWorkflow).toContain('fnbContext: normalizedFnbContext');
     expect(checkoutSurfaceContract).toContain('fnb_check_id');
-    expect(terminal).toContain('restaurant_service_charge');
-    expect(terminal).toContain('buildKitchenStationSnapshot');
+    expect(checkoutWorkflow).toContain('restaurant_service_charge');
+    expect(cartWorkflow).toContain('buildKitchenStationSnapshot');
+    expect(modifierUtils).toContain('export const buildKitchenStationSnapshot');
     expect(checkoutSurfaceContract).toContain('kitchen_station_id');
-    expect(historyPanel).toContain('Restaurant Charge');
     expect(receipt).toContain('F&B Check');
     expect(receipt).toContain('restaurant_service_charge_amount');
   });

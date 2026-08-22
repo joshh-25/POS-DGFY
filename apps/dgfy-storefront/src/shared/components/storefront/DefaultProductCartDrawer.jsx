@@ -1,5 +1,6 @@
 import { ChevronRight, Plus } from 'lucide-react';
 import { DefaultProductCartLineItem } from './DefaultProductCartLineItem.jsx';
+import { resolveCartDiscountDisplay } from '../../model/cartDiscountDisplay.js';
 
 const DEFAULT_BRAND = '#1a4e8d';
 const DEFAULT_BRAND_DARK = '#1a4586';
@@ -39,8 +40,29 @@ export function DefaultProductCartDrawer({
   onUpdateQuantity,
   renderPromoCodePanel,
   servicesBodyFont,
+  promoDiscountAmount = 0,
+  promoDiscountLabel = '',
+  isQuoteStale = false,
+  voucherDiscountAmount = 0,
   withAssetOrigin
 }) {
+  // #746 (second occurrence): the discount decision now lives in one shared helper instead of three
+  // copies of this arithmetic. `isQuoteStale` compares the cart the quote was priced against to the
+  // live cart -- a real validity test, unlike the old `!quoteNeedsRefresh` gate, which was the F&B
+  // checkout-quote lifecycle flag and sat `true` in this drawer almost permanently, hiding the
+  // discount outright. A stale discount is now shown and marked, not hidden; only a discount that
+  // exceeds the cart is suppressed (RF-2's real concern -- never a confident PHP0 on a full cart).
+  const {
+    hasVoucherDiscount,
+    hasPromoDiscount,
+    displayTotal,
+    isStale: isDiscountStale
+  } = resolveCartDiscountDisplay({
+    cartTotal,
+    voucherDiscountAmount,
+    promoDiscountAmount,
+    isQuoteStale
+  });
   return (
     <div
       style={{
@@ -169,14 +191,29 @@ export function DefaultProductCartDrawer({
               <span>Subtotal</span>
               <span style={{ fontWeight: 700, color: '#334155' }}>{money(cartSubtotal)}</span>
             </div>
+            {hasPromoDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>{promoDiscountLabel || 'Promo Discount'}</span>
+                <span style={{ fontWeight: 700 }}>- {money(promoDiscountAmount)}</span>
+              </div>
+            )}
+            {hasVoucherDiscount && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#15803d' }}>
+                <span>Voucher Discount</span>
+                <span style={{ fontWeight: 700 }}>- {money(voucherDiscountAmount)}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'grid', gap: 6 }}>
               <div style={{ fontSize: 18, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
+              {isDiscountStale && (
+                <div style={{ fontSize: 12, color: '#b45309' }}>Updating total&hellip;</div>
+              )}
             </div>
-            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(displayTotal)}</div>
           </div>
 
           <button

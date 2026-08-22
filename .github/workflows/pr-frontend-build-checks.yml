@@ -12,6 +12,14 @@ on:
         required: false
         type: string
         default: '["self-hosted"]'
+      cache_from:
+        description: >-
+          Cache backend for cache-from, e.g. "type=gha". Empty disables the
+          cache entirely -- see #726: the Actions cache endpoint currently
+          costs ~21x the build it's meant to skip on self-hosted runners.
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build-check:
@@ -39,4 +47,4 @@ jobs:
           context: .
           file: infrastructure/docker/${{ inputs.app }}/Dockerfile
           push: false
-          cache-from: type=gha,scope=${{ inputs.app }}
+          cache-from: ${{ inputs.cache_from != '' && format('{0},scope={1}', inputs.cache_from, inputs.app) || '' }}

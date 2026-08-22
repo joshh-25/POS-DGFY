@@ -11,7 +11,11 @@ are thin pointers back to this file — edit here, not there. On Claude Code spe
 runs as an isolated **subagent** (tool allowlist `Read, Grep, Glob, Bash`, set in the shim, not
 here) — isolation is deliberate, see below; other runtimes should apply the tightest read-mostly
 restriction their own permission mechanism offers, using the audit list below as the source of what
-"read-mostly" needs to cover.
+"read-mostly" needs to cover. `.claude/skills/pr-reviewer/SKILL.md` is a **second, distinct**
+Claude Code file, not a duplicate shim — it's a `context: fork` / `agent: pr-reviewer` dispatch
+skill that exists only to give `/pr-reviewer` a typed slash command; Claude Code doesn't turn
+`.claude/agents/*.md` into `/`-invocable commands on its own, so without it this role is only
+reachable by natural language or explicit Agent-tool invocation.
 
 Audits one open PR on `dgfy-platform` and posts a single structured verdict comment. This is the
 "PR Reviewer" role from #331/#366 — the counterpart to the `implement` skill's Worker: *Worker
@@ -53,7 +57,15 @@ moment that doc changes). This file names *where* each rule lives; go read it th
 7. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
    A pending or red check is not evidence of a broken PR by itself — this repo has a known pattern
    of transient `docker.io` anonymous-token timeouts unrelated to any given diff — but it is always
-   reported, never silently waited past.
+   reported, never silently waited past. **Also check for a `## Local CI` comment** (`gh pr view <N>
+   --comments`) — when GitHub's checks are stuck (`queued`/`in_progress` with no terminal result
+   coming, or the runners are verifiably offline), that comment is the evidence artifact
+   `AGENTS.md`'s Merge Safety carve-out allows in place of a green check on `develop`/`staging`. See
+   the Merge policy table below for exactly when it may be acted on — it is never sufficient by
+   itself; the carve-out's full precondition list lives in `AGENTS.md`, not restated here. **Confirm
+   the comment's stated `Commit:` SHA equals `gh pr view <N> --json headRefOid`** before treating it
+   as qualifying — a comment generated for an earlier commit is stale, not a lesser confirmation
+   (#725 RF-2).
 8. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
 
@@ -93,14 +105,26 @@ Rules for filling this in:
 
 | Condition | Action |
 |---|---|
-| Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --squash --delete-branch` — unattended, no confirmation needed |
-| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval |
+| Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` (true merge commit, never `--squash`) — unattended, no confirmation needed |
+| Base `develop` or `staging`, verdict `APPROVE`, GitHub's checks are stuck (verified `runner_offline` / `queue_starvation` / `billing_allocation_failure`, not merely slow), a `## Local CI` comment reads `PASS`, **and its `Commit:` SHA matches `headRefOid`** | `gh pr merge <N> --merge --delete-branch`, citing the `## Local CI` comment as evidence in the merge — the bounded carve-out in `AGENTS.md`'s Merge Safety section, full precondition list there. Still never `--squash` |
+| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never. The local-CI carve-out above **also never applies to `main`** |
 | Verdict `BLOCK`, any base | Never merge |
-| Checks red, or still pending, any base | Never merge — report the state, don't wait it out silently |
+| Checks red, or still pending, any base, with no qualifying `## Local CI` comment | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
 
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in
 `.agents/skills/implement/SKILL.md`.
+
+**Never `--squash`, on any base** (corrected 2026-08-18, Pat's call) — a true merge commit preserves
+every individual commit from the PR branch, so `git blame` resolves to the actual commit that
+introduced a line rather than one collapsed PR-sized blob. This also removes the inconsistency
+where `promoter` already refused `--squash` on promotion PRs
+(`.agents/skills/promoter/SKILL.md`, "never `--squash` — squashing would diverge the target's
+history from what the next promotion diffs against") while this role squashed everything feeding
+into the same branches. Relies on `implement`'s existing commit discipline (Conventional Commits,
+batched by domain) to keep merge-commit history legible — a PR with sloppy fixup commits will carry
+that noise into `develop`/`staging` too, so Worker's batching rule matters more now than it did
+under squash.
 
 **Said plainly, not glossed over:** this repo has no branch protection (GitHub Free — confirmed
 403 on both `branches/main/protection` and `rulesets`). Beyond that, **every runtime this role might
@@ -119,6 +143,14 @@ every runtime it runs on, not reliably by any tool restriction** — it's a disc
 expected to hold itself to, not a sandbox guarantee. Treat every one of the "never"s in the table
 with that in mind, regardless of which tool is executing this role.
 
+## Chaining into a deploy, and handing off out-of-scope work
+
+A "review, merge, and deploy" composite instruction chains this role's merge into `promoter`'s
+promotion as the next step of the same acting session — see `AGENTS.md`'s "Role handoffs and
+composite instructions" for the full shape and where it stops at the `main` boundary. If a review
+turns up work outside this PR's own scope (a correction, a bug, a gap), hand it to `pm` to shape and
+file rather than improvising a `gh issue create` here.
+
 ## Where this runs
 
 **Local, on demand — not CI.** GHA minutes are currently exhausted, and the working model for this
@@ -134,8 +166,8 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
   consequence for this role.
   - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
-    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; a
-    Verifier/QA role (tracked as a child of #331, not yet built) is what eventually flips it to
+    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; the
+    Verifier/QA role (`.agents/skills/verifier/SKILL.md`, #536) is what eventually flips it to
     `Done` or `Failed`.
   - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
     workflow already set `Done`.

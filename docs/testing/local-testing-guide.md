@@ -102,14 +102,17 @@ Audit Layout Shifts, Core Web Vitals, and PWA configurations locally. Lighthouse
 must already be built on disk (each app builds into its own `apps/<app>/dist/`; there is no shared
 `build:all` script anymore):
 
-1. Build the surfaces you want audited, from the repo root:
+1. Build all three surfaces, from the repo root:
    ```bash
    npm run build:skupervisor
+   npm run build:pos
    npm run build:store
    ```
-   `tests/frontend-cross-app/lighthouserc.js` collects `http://localhost:5173/login` from IMS
-   always, and adds a storefront URL on `http://localhost:5175/` only when `E2E_STORE_SLUG` names a
-   real seeded tenant. `npm run build:pos` is only needed if you extend that config to POS.
+   `tests/frontend-cross-app/lighthouserc.cjs` collects `http://localhost:5173/login` from IMS and
+   `http://localhost:5174/pos` from POS always, and adds a storefront URL (root, or
+   `/${E2E_STORE_SLUG}` when that env var names a real seeded tenant) from
+   `http://localhost:5175`. Override any of the three origins with `LHCI_SKUPERVISOR_URL`,
+   `LHCI_POS_URL`, or `LHCI_STOREFRONT_URL`.
 2. Run Lighthouse CI audits:
    ```bash
    cd tests/frontend-cross-app

@@ -21,7 +21,9 @@ const baseEnv = {
   TEMP_FILE_STORAGE: 'local',
   RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
   RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
-  HOSTING_INSTANCE_COUNT: '1'
+  HOSTING_INSTANCE_COUNT: '1',
+  ADMIN_USERNAME: 'platform-admin',
+  ADMIN_PASSWORD_HASH: `$2b$12$${'a'.repeat(53)}`
 };
 
 describe('hosting profile preflight validator', () => {

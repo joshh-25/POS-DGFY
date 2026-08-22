@@ -597,20 +597,27 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
 
   const normalizedUrl = normalizeRequestUrl(url);
   const normalizedMethod = String(method || 'GET').toUpperCase();
-  // Network-class failures (no response at all -- offline, DNS, CORS)
-  // deliberately DROP the URL from the fingerprint, unlike the server class
-  // below. A single connectivity blip during a fan-out (e.g. loadDgfyPanel's
-  // 11 parallel requestJson calls) used to mint one issue PER endpoint,
-  // because each endpoint's URL made its own fingerprint -- 11 "new" issues
-  // from one blip, each with its own independent cooldown, defeating the
-  // cooldown below entirely. Collapsing to one fingerprint per method means
-  // the whole fan-out grouped as a single event and the cooldown finally
-  // covers it. A genuine 5xx from a specific endpoint keeps its own
-  // fingerprint (including status, via the 4th element) so a real broken
-  // endpoint still surfaces as its own actionable issue.
-  const fingerprint = hasResponse
-    ? ['api', normalizedMethod, normalizedUrl, String(status)]
-    : ['api', normalizedMethod, 'network'];
+  const failureClass = classifyRequestFailure({ status });
+  // Network-class failures (no response at all -- offline, DNS, CORS) and
+  // transient 5xx (502/503/504 -- a deploy window or a single gateway/worker
+  // restart, see classifyRequestFailure above) both DROP the URL from the
+  // fingerprint, unlike a genuine server-class 5xx below. A single
+  // connectivity blip or restart during a fan-out (e.g. loadDgfyPanel's 11
+  // parallel requestJson calls, or several bootstrap requests hitting a
+  // container mid-restart) used to mint one issue PER endpoint, because each
+  // endpoint's URL made its own fingerprint -- e.g. 5 "new" issues from one
+  // restart, each with its own independent cooldown, defeating the cooldown
+  // below entirely. Collapsing network and transient classes to one
+  // fingerprint per method means the whole blip/restart groups as a single
+  // event and the cooldown finally covers it. A genuine server-class 5xx from
+  // a specific endpoint keeps its own fingerprint (including status, via the
+  // 4th element) so a real broken endpoint still surfaces as its own
+  // actionable issue.
+  const fingerprint = !hasResponse
+    ? ['api', normalizedMethod, 'network']
+    : failureClass === 'transient'
+      ? ['api', normalizedMethod, 'transient', String(status)]
+      : ['api', normalizedMethod, normalizedUrl, String(status)];
   const fingerprintKey = fingerprint.join('|');
 
   const now = Date.now();
@@ -620,8 +627,6 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
 
   requestFailureLastSentAt.set(fingerprintKey, now);
   requestFailureEventCount += 1;
-
-  const failureClass = classifyRequestFailure({ status });
 
   withSentry((Sentry) => {
     Sentry.captureException(error || new Error(`Request failed: ${method || 'GET'} ${normalizedUrl}`), {

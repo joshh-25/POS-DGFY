@@ -1,5 +1,6 @@
 import {
   adjustEmployeeCreditOutstandingUseCase,
+  enableEmployeeCreditForActiveEmployeesUseCase,
   getEmployeeCreditReportUseCase,
   listEmployeeCreditAccountsUseCase,
   listEmployeeCreditCheckoutOptionsUseCase,
@@ -29,6 +30,17 @@ export const listEmployeeCreditAccounts = async (req, res, next) => {
   try {
     const result = await listEmployeeCreditAccountsUseCase();
     return respond(req, res, result, 'Employee Credit accounts retrieved successfully');
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const enableEmployeeCreditForActiveEmployees = async (req, res, next) => {
+  try {
+    const result = await enableEmployeeCreditForActiveEmployeesUseCase({
+      actorUserId: req.user.user_id
+    });
+    return respond(req, res, result, 'Employee Credit enabled for active employees');
   } catch (error) {
     return next(error);
   }

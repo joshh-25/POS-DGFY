@@ -1,5 +1,7 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { PosText as Text } from './PosTextScale';
+import { PosTextSizeControl } from './PosTextSizeControl';
 
 export const PosHeader = ({
     title,
@@ -13,7 +15,8 @@ export const PosHeader = ({
     <View style={{ padding: 20, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
         <Text style={{ fontSize: 24, fontWeight: '700', color: '#0F172A' }}>{title}</Text>
         <Text style={{ marginTop: 4, color: '#475569' }}>{subtitle}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'center' }}>
+            <PosTextSizeControl compact />
             {statusPills.map((pill) => {
                 const backgroundColor = pill.tone === 'success'
                     ? '#DCFCE7'

@@ -30,7 +30,14 @@ const ROUTE_BUDGETS = [
   // offline queue, terminal-session, and hardware-runtime controls were added.
   // Rebased 2026-06-30 after the standalone POS terminal candidate measured
   // above the June baseline during the governed release-local build.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 154 },
+  // Rebased 2026-08-16 after governed per-sale discount authorization, shared
+  // parked-sale handoff, and resumable split-payment completion were added to
+  // the cashier route. Heavy dialogs remain lazy chunks; this ceiling covers
+  // the route-level coordination state that must stay resident during a sale.
+  // Raised 166 -> 190 on 2026-08-18 for the #631 POS drawer/discount/notes/PayMongo work
+  // (measured 183.93KB). This is the second raise from the same workstream after #577; #392
+  // tracks splitting POSCheckoutTerminal.jsx rather than raising the ceiling again.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 190 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
   // Rebased after terminal auth, shift, queue orchestration, and setup-flow
@@ -38,7 +45,10 @@ const ROUTE_BUDGETS = [
   // split into lazy chunks.
   // Rebased 2026-07-01 after the POS map hotfix restored lazy checkout chunks
   // and measured the remaining route controller at 110.39KB.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 116 },
+  // Rebased 2026-08-16 after terminal recovery, cross-cashier shift resume,
+  // admin audit authorization, and shared parked-sale ownership checks added
+  // route-level orchestration while their rendered workspaces remain lazy.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 121 },
   // Rebased 2026-06-30 to the current sales route candidate.
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 49 },
 ];

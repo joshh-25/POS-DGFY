@@ -182,6 +182,34 @@ export const voidPosTransaction = async (id, payload = {}) => {
     return response.data?.data;
 };
 
+export const refundCashPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/cash-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const recordExternalPosTransactionRefund = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/external-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const refundProviderPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/provider-refund`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const reversePosSplitAllocation = async (transactionId, allocationId, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${transactionId}/split-allocations/${allocationId}/reversal`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const createPosSetupCashier = async (payload = {}) => {
     const response = await api.post('/pos/setup/cashiers', payload);
     return response.data?.data;
@@ -342,6 +370,15 @@ export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {})
     }
 };
 
+export const authorizePosDrawerOpen = async (payload = {}) => {
+    const response = await api.post('/pos/device/authorize-drawer', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined
+    });
+    return response.data?.data;
+};
+
 const CLIENT_RESULT_AUDIT_MAX_ATTEMPTS = 3;
 
 const shouldRetryClientResultAudit = (error) => {
@@ -362,6 +399,7 @@ export const reportPosDeviceClientResult = async ({
     terminalId,
     reason,
     idempotencyKey,
+    drawerAuthorizationToken,
     driverId,
     result
 }) => {
@@ -373,6 +411,7 @@ export const reportPosDeviceClientResult = async ({
                 transaction_id: transactionId || undefined,
                 terminal_id: terminalId || undefined,
                 reason: reason || 'client_driver_report',
+                drawer_authorization_token: drawerAuthorizationToken || undefined,
                 client_driver_id: driverId,
                 client_result: result
             }, { silent: true });
@@ -462,6 +501,14 @@ export const incrementGovernedResetCounter = async (payload) => {
 
 export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/terminal/shifts/current', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchCashierShiftHistory = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/shifts/history', {
+        params,
+        ...requestConfig
+    });
     return response.data?.data;
 };
 
@@ -752,6 +799,7 @@ export default {
     fetchCurrentXReading,
     incrementGovernedResetCounter,
     fetchCurrentTerminalShift,
+    fetchCashierShiftHistory,
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,

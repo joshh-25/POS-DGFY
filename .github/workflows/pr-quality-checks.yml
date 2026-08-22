@@ -228,6 +228,7 @@ jobs:
           ../../packages/web-core/src/features/pos/__tests__/FnbModifierPickerDialog.test.jsx
           ../../packages/web-core/src/features/pos/__tests__/posFnbModifierManager.session.test.jsx
           ../../packages/web-core/src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
+          ../../packages/web-core/src/config/__tests__/permissionsFrontendParity.test.js
 
   frontend-pos-quality:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}

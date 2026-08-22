@@ -119,6 +119,52 @@ describe('POS split-payment engine', () => {
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
     });
 
+    it('verifies a PIN-protected discount during session creation and stores only a server approval proof', async () => {
+        const harness = buildHarness();
+        const governedSnapshot = {
+            ...basePayload().snapshot,
+            governed_discount: {
+                type: 'manual',
+                method: 'percentage',
+                rate: 10,
+                amount: null,
+                reason: 'Service recovery',
+                approver_user_id: 23,
+                manager_pin: '1234'
+            }
+        };
+        const quoteWithApproval = jest.fn(async ({ payload, discountApproval }) => {
+            expect(payload.governed_discount).not.toHaveProperty('manager_pin');
+            expect(discountApproval).toEqual(expect.objectContaining({
+                discount_type: 'manual',
+                approver_user_id: 23,
+                manager_pin: '1234'
+            }));
+            return {
+                success: true,
+                data: { quote: { subtotal_amount: 1250, discount_amount: 125, total_amount: 1125 } }
+            };
+        });
+        const useCase = buildCreatePosPaymentSessionUseCase({
+            posRepository: harness.posRepository,
+            quotePosCheckoutUseCase: quoteWithApproval
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            payload: { ...basePayload(), snapshot: governedSnapshot },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.total_amount).toBe(1125);
+        expect(result.data.snapshot.governed_discount).not.toHaveProperty('manager_pin');
+        expect(result.data.snapshot.governed_discount.approval_proof).toEqual(expect.objectContaining({
+            version: 1,
+            discount_type: 'manual',
+            approver_user_id: 23
+        }));
+    });
+
     it('replays an idempotent session request without creating a duplicate', async () => {
         const harness = buildHarness();
         const useCase = buildCreatePosPaymentSessionUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
@@ -689,6 +735,75 @@ describe('POS split-payment engine', () => {
             expect.objectContaining({ transaction: harness.transaction })
         );
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the server approval proof to completion without exposing it in the checkout payload', async () => {
+        const allocation = {
+            pos_payment_allocation_id: 701,
+            session_id: 501,
+            status: 'successful',
+            payment_method: 'cash',
+            applied_amount: 1125,
+            cash_tendered: 1125,
+            change_amount: 0
+        };
+        const harness = buildHarness({
+            session: baseSession({
+                status: 'ready_to_complete',
+                subtotal_amount: 1250,
+                total_amount: 1125,
+                paid_amount: 1125,
+                remaining_amount: 0,
+                session_reference: 'PAY-COMPLETE-DISCOUNT',
+                snapshot: JSON.stringify({
+                    governed_discount: {
+                        type: 'manual',
+                        method: 'percentage',
+                        rate: 10,
+                        reason: 'Service recovery',
+                        approver_user_id: 23,
+                        approval_proof: {
+                            version: 1,
+                            discount_type: 'manual',
+                            approver_user_id: 23,
+                            self_approved: false,
+                            approved_at: '2026-08-15T09:00:00.000Z'
+                        }
+                    },
+                    lines: [{ item_id: 7, quantity: 2, sale_price: 625 }]
+                })
+            }),
+            allocations: [allocation]
+        });
+        const checkoutPosUseCase = jest.fn(async ({ payload, trustedDiscountApproval, transaction, beforeCommit }) => {
+            expect(transaction).toBe(harness.transaction);
+            expect(payload.governed_discount).not.toHaveProperty('approval_proof');
+            expect(trustedDiscountApproval).toEqual(expect.objectContaining({
+                discount_type: 'manual',
+                approver_user_id: 23
+            }));
+            await beforeCommit({ transactionId: 9901, idempotentReplay: false });
+            return {
+                success: true,
+                data: {
+                    idempotent_replay: false,
+                    transaction: { pos_transaction_id: 9901, total_amount: 1125, status: 'completed' }
+                }
+            };
+        });
+        const useCase = buildCompletePosPaymentSessionUseCase({
+            posRepository: harness.posRepository,
+            checkoutPosUseCase
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: { idempotency_key: 'split-complete-discount', shift_id: 41, terminal_id: 'COUNTER-01', location_id: 3 },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.transaction.total_amount).toBe(1125);
     });
 
     it('fails closed with a recovery-specific error when the stored checkout snapshot is invalid', async () => {

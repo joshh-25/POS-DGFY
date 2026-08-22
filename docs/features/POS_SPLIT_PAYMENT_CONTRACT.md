@@ -354,3 +354,43 @@ change is calculated against the final digital balance. Successful earlier
 rows remain visible and are cleared from the retry form if a later row fails.
 The server-owned allocation, recovery, automatic-completion, and PayMongo
 boundaries are unchanged.
+
+## Phase 94 status
+
+Phase 94 adds a visible discount summary to Confirm Checkout with the applied
+discount label, amount, and an explicit trash action for unsaved discounts.
+Removing the discount clears the local governed, preset, and manual discount
+state and recalculates the server-bound checkout snapshot before payment is
+recorded.
+
+All valid discounts may use split tender. The server-owned quote applies the
+discount before calculating the split-session total, and the final checkout
+revalidates the governed discount against the current rules and lines. For
+every governed POS discount type (Senior, PWD, Employee, Promo, and Manual),
+the split-session request verifies the selected authorized employee PIN once
+and stores only a non-secret server approval proof; the raw PIN is never
+stored, returned, or sent to the completion checkout. Senior/PWD beneficiary
+validation remains server-authoritative. An active split-payment session
+prevents changing or removing the discount until the session is completed or
+cancelled.
+
+## Completed-transaction allocation reversal
+
+After a completed split transaction is internally voided, each successful
+allocation is reversed independently through
+`POST /api/v1/pos/transactions/:id/split-allocations/:allocation_id/reversal`.
+The server resolves the allocation, payment session, tender ownership, and
+remaining reversible amount.
+
+- Cash requires the actual refunding cashier's owned open shift and creates one
+  linked `cash_out` event.
+- Merchant-owned digital tender starts as external evidence under manual review
+  and requires explicit same-reference confirmation.
+- Provider-owned allocation evidence must match the provider payment/session;
+  this split endpoint does not submit a partial provider mutation.
+- The transaction remains `refund_pending` while evidence is unresolved,
+  becomes `partial_refunded` when only part is terminal, and becomes `refunded`
+  only when every successful allocation is fully reversed.
+
+Every reversal is append-only and idempotent. It preserves original cashier and
+shift attribution and records the actual refund actor/shift separately.

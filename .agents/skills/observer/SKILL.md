@@ -10,7 +10,9 @@ description: Triage Sentry error/performance signals for dgfy-platform on a peri
 — edit here, not there. On Claude Code specifically, this role runs as an isolated **subagent**
 (tool allowlist in the shim, not here) — same rationale as `pr-reviewer`: Observer runs mostly
 unattended against live production data and can file issues, so a fresh, restricted context matters
-more than convenience.
+more than convenience. `.claude/skills/observer/SKILL.md` is a **second, distinct** Claude Code
+file, not a duplicate shim — see `pr-reviewer`'s own note on this; it's the `context: fork` dispatch
+skill that gives `/observer` a typed slash command.
 
 This is the "Observer" role from #331/#368 — ingests Sentry error/performance signals, triages them
 against a noise policy, and converts findings into issues **only when warranted**. The failure mode
@@ -34,7 +36,9 @@ not as something this file restates.
   precisely because Sentry alone is insufficient there.
 - Filing an issue, once a finding clears the noise policy below, is governed by `pm`'s own
   search-before-filing discipline (`.agents/skills/pm/SKILL.md`) and
-  `docs/process/ISSUE-TAXONOMY.md` — don't re-derive a separate filing procedure here.
+  `docs/process/ISSUE-TAXONOMY.md` — don't re-derive a separate filing procedure here. This is the
+  pattern every other role now follows for out-of-scope findings too — see `AGENTS.md`'s "Role
+  handoffs and composite instructions" (#543).
 
 ## Target
 

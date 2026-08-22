@@ -25,4 +25,10 @@ describe('custom storefront domain routing', () => {
     setCustomStorefrontRouteContext(null);
     expect(storePath('grand-matador', 'track')).toBe('/tenant-store/grand-matador/track');
   });
+
+  it('keeps the tenant identity for account tab routes', () => {
+    window.history.replaceState({}, '', '/tenant-store/len2-sari-sari-store/account/business');
+    expect(readRouteSlug()).toBe('len2-sari-sari-store');
+    expect(readStoreSubpage()).toBe('account');
+  });
 });

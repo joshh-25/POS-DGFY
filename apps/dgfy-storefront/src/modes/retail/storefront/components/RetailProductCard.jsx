@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { VoucherPriceDisplay, VoucherAppliedBadge } from '../../../../shared/components/storefront/VoucherPriceDisplay.jsx';
 
 /**
  * Retail's own item card — not shared with any other mode. Container sizing/layout
@@ -96,6 +97,7 @@ const RetailProductCard = ({
               Affiliate price
             </div>
           )}
+          <VoucherAppliedBadge item={item} style={{ top: 6, right: 6 }} />
 
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.0) 40%, rgba(15,23,42,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
@@ -112,7 +114,7 @@ const RetailProductCard = ({
             fontFamily: cardUiFont,
             lineHeight: 1
           }}>
-            {money(item.default_sale_price ?? 0)}
+            <VoucherPriceDisplay item={item} money={money} size="sm" />
           </div>
         </div>
 
@@ -245,6 +247,7 @@ const RetailProductCard = ({
             Affiliate price
           </div>
         )}
+        <VoucherAppliedBadge item={item} style={{ top: isMobileViewport ? 10 : 16, right: isMobileViewport ? 10 : 16, fontSize: 10, padding: '3px 8px' }} />
         <div style={{
           position: 'absolute',
           left: isMobileViewport ? 10 : 12,
@@ -282,7 +285,7 @@ const RetailProductCard = ({
           fontFamily: cardUiFont,
           lineHeight: 1
         }}>
-          {money(item.default_sale_price ?? 0)}
+          <VoucherPriceDisplay item={item} money={money} />
         </div>
       </div>
       <div style={{ padding: isMobileViewport ? 14 : '16px 18px 18px', flex: 1, display: 'grid', gap: isMobileViewport ? 12 : 16 }}>

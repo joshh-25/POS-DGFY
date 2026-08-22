@@ -1,7 +1,7 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-08-13
+Last reviewed: 2026-08-20
 
 ## Scope
 
@@ -56,6 +56,67 @@ This means the cashier can view POS items, operate checkout, view POS history/re
     while a shift is open. Services uses its booking workspace instead and
     does not show the storefront Orders queue.
 11. Use `Shift` to monitor the active shift and close the shift at the end of the cashier's work period.
+
+## Accountable void and refund flow
+
+POS Settings owns cashier authorization; this is not configured in
+SKUpervisor. An authorized administrator may independently grant `pos:void`
+and `pos:cash_drawer_adjust` to an active cashier without replacing the
+cashier's other permissions.
+
+### Internal void
+
+1. The operator opens a completed transaction from POS History, selects
+   **Void**, and enters a reason of at least three characters.
+2. A cashier with `pos:void` must own an open shift. An administrator with
+   `pos:void` may use the no-shift exception, but still needs an authenticated
+   POS session and paired terminal.
+3. POS records the void actor and reason, reverses applicable inventory,
+   fiscal, and Employee Credit effects, and keeps the original cashier and
+   original shift unchanged.
+4. History retains the transaction under **Voided**, with a red status label,
+   reason, actor, timestamp, adjustment evidence, and financial follow-up.
+
+An internal void is not proof that paid customer money was returned. The server
+classifies the required follow-up from persisted tender evidence.
+
+### Paid cash
+
+The cashier physically returning cash must have `pos:cash_drawer_adjust` and
+own the acting open shift. A successful cash-refund request atomically records
+one `cash_refund` adjustment and one linked `cash_out` drawer event. Retry with
+the same idempotency key returns the same evidence; another completed refund is
+rejected.
+
+### Merchant-owned digital tender
+
+Walk-in GCash, Maya, card-terminal, and bank-transfer payments do not call
+PayMongo. POS first records the store's external reversal reference as
+`manual_review_required`; explicit confirmation with the same reference and a
+new idempotency key changes the transaction to `refunded`.
+
+### Provider-owned online tender
+
+Only server-classified PayMongo-owned online transactions use the provider
+refund endpoint. The backend derives and verifies the payment ID, provider,
+method, amount, currency, status, and commerce-session ownership before a
+refund can succeed. Walk-in merchant-owned tenders cannot enter this path.
+
+### Split tender
+
+Each successful allocation is reversed separately. Cash creates the linked
+drawer event; merchant-owned digital tender uses external evidence; provider
+allocations require matching provider refund evidence. The transaction is
+`refund_pending` or `partial_refunded` until all successful allocations are
+fully reversed.
+
+### Shift close and Z-reading
+
+If the original shift is still open, its live summary includes the void. If it
+is closed, the saved close summary and Z-reading remain immutable. Cashier
+History reports the later adjustment against the original cashier/shift while
+also showing the acting user/shift. Daily reports group adjustments by their
+own event timestamp and do not subtract the original void twice.
 
 ## Login behavior with multiple companies
 

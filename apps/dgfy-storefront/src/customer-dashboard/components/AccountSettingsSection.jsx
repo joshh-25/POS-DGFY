@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, Edit2, Lock, Mail, Phone, ShieldCheck } from 'lucide-react';
 import { AccountSettingsChangeModal } from './AccountSettingsChangeModal.jsx';
 import { AccountSettingsProfileEditModal } from './AccountSettingsProfileEditModal.jsx';
+import { AccountActionStatusModal } from './AccountActionStatusModal.jsx';
 import { CustomerAccountDetailRow } from './CustomerAccountDetailRow.jsx';
 import { ProfileVerificationCard } from './ProfileVerificationCard.jsx';
 import { ProfileVerificationStatusBadge } from './ProfileVerificationStatusBadge.jsx';
@@ -19,8 +20,32 @@ export function AccountSettingsSection({
   profileVerification
 }) {
   const [changeModal, setChangeModal] = useState('');
+  const [accountActionStatus, setAccountActionStatus] = useState(null);
   const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
   const [profileOverride, setProfileOverride] = useState(null);
+  const accountActionStatusTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(accountActionStatusTimerRef.current), []);
+
+  const updateAccountActionStatus = (nextStatus) => {
+    clearTimeout(accountActionStatusTimerRef.current);
+    if (!nextStatus) {
+      setAccountActionStatus(null);
+      return;
+    }
+    const { nextStatus: followUpStatus, delay = 650, autoClose = false, ...visibleStatus } = nextStatus;
+    setAccountActionStatus(visibleStatus);
+    if (followUpStatus) {
+      accountActionStatusTimerRef.current = setTimeout(() => updateAccountActionStatus(followUpStatus), delay);
+    } else if (autoClose || visibleStatus.status === 'success') {
+      accountActionStatusTimerRef.current = setTimeout(() => setAccountActionStatus(null), 1800);
+    }
+  };
+
+  const retryAccountAction = () => {
+    const mode = accountActionStatus?.mode;
+    updateAccountActionStatus(null);
+    if (mode) setChangeModal(mode);
+  };
   const scrollToValidId = () => document.getElementById('customer-valid-id-panel')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
   const idIsVerified = profileVerification?.idVerified === true;
   const displayName = profileOverride?.fullName || accountIdentityName;
@@ -69,7 +94,8 @@ export function AccountSettingsSection({
         </div>
         <ValidIdPanel isMobileViewport={isMobileViewport} theme={theme} accountPanel={accountPanel} profileVerification={profileVerification} />
       </div>
-      {changeModal && <AccountSettingsChangeModal mode={changeModal} isMobileViewport={isMobileViewport} theme={theme} accountPanel={accountPanel} onClose={() => setChangeModal('')} />}
+      {changeModal && <AccountSettingsChangeModal mode={changeModal} isMobileViewport={isMobileViewport} theme={theme} accountPanel={accountPanel} onClose={() => setChangeModal('')} onStatusChange={updateAccountActionStatus} />}
+      {accountActionStatus && <AccountActionStatusModal mode={accountActionStatus.mode} status={accountActionStatus.status} message={accountActionStatus.message} isMobileViewport={isMobileViewport} theme={theme} onClose={() => updateAccountActionStatus(null)} onRetry={retryAccountAction} />}
       {isProfileEditOpen && <AccountSettingsProfileEditModal isMobileViewport={isMobileViewport} theme={theme} profileVerification={profileVerification} initialProfile={{ fullName: displayName, photoUrl: displayPhoto }} onClose={() => setIsProfileEditOpen(false)} onSave={(nextProfile) => { setProfileOverride(nextProfile); setIsProfileEditOpen(false); }} />}
     </div>
   );

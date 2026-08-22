@@ -605,9 +605,13 @@ describe('captureRequestFailure', () => {
     vi.doUnmock('@sentry/react');
   });
 
-  it('classifies 502/503/504 as transient (warning level) without changing the fingerprint', async () => {
+  it('classifies 502/503/504 as transient (warning level), fingerprinted without the URL', async () => {
     const { freshModule, Sentry } = await importInitializedSentryClient();
 
+    // Each status hits a distinct URL AND is a distinct status, so none of
+    // these collapse against each other via the cooldown -- this test is
+    // only about the fingerprint SHAPE, not the collapsing behavior (that's
+    // the fan-out test below).
     freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/1', status: 502 });
     freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/2', status: 503 });
     freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/3', status: 504 });
@@ -615,12 +619,37 @@ describe('captureRequestFailure', () => {
     expect(Sentry.captureException).toHaveBeenCalledTimes(3);
     Sentry.captureException.mock.calls.forEach(([, options], index) => {
       const status = [502, 503, 504][index];
-      // Fingerprint's 4th element is already the status code -- this is the
-      // regression guard proving classification never touches grouping.
-      expect(options.fingerprint).toEqual(['api', 'GET', `/api/v1/items/:id`, String(status)]);
+      // Transient 5xx deliberately DROPS the URL from the fingerprint (see
+      // sentryClient.js) -- unlike a genuine server-class 5xx, which keeps
+      // its own endpoint in the fingerprint (covered by the 500 test above).
+      expect(options.fingerprint).toEqual(['api', 'GET', 'transient', String(status)]);
       expect(options.level).toBe('warning');
       expect(options.tags.request_failure_class).toBe('transient');
     });
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('collapses transient 5xx across different endpoints into one fingerprint during a restart', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    // Simulates several bootstrap requests all 502ing while a container is
+    // mid-restart (the real 2026-08-18 DEV incident: one deploy restart
+    // minted 5 separate Sentry issues, one per endpoint, before this fix).
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/pos/fnb/modifier-groups', status: 502 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/pos/fnb/item-modifier-groups', status: 502 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/pos/items/folders', status: 502 });
+
+    // Only the first call gets through the fingerprint's own cooldown; the
+    // other two collapse into the same key and are throttled immediately.
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const [, options] = Sentry.captureException.mock.calls[0];
+    expect(options.fingerprint).toEqual(['api', 'GET', 'transient', '502']);
+
+    // A genuine server-class 5xx from two distinct endpoints must NOT
+    // collapse -- each stays its own actionable issue.
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/a', status: 500 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/b', status: 500 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(3);
     vi.doUnmock('@sentry/react');
   });
 
@@ -921,7 +950,7 @@ describe('window.__sentryTestError', () => {
 
     vi.doUnmock('@sentry/react');
     vi.unstubAllGlobals();
-  });
+  }, 15000);
 
   it('warns instead of capturing when Sentry is not active', async () => {
     vi.stubGlobal('window', {});

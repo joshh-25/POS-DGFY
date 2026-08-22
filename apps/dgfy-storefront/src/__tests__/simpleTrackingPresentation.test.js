@@ -42,6 +42,19 @@ describe('Simple tracking route boundary', () => {
     expect(page).toContain("backLabel || 'Back to Items'");
   });
 
+  // Phase 142 (#823): serializeOrderBase now returns amount_paid/balance_due -- the payload model
+  // and route page must both carry the split through to a partially_paid order's tracking view.
+  it('carries the downpayment balance-due split through the payload model and route page', () => {
+    const payloadModel = readSource('modes/simple/tracking/model/simpleTrackingPayload.js');
+    const page = readSource('modes/simple/tracking/components/SimpleTrackingRoutePage.jsx');
+
+    expect(payloadModel).toContain('paymentStatus:');
+    expect(payloadModel).toContain('balanceDue:');
+    expect(payloadModel).toContain('order?.balance_due');
+    expect(page).toContain("viewModel.trackingResult.paymentStatus === 'partially_paid'");
+    expect(page).toContain('Balance due: {money(viewModel.trackingResult.balanceDue)}');
+  });
+
   it('mounts Simple tracking at the app route boundary and leaves other modes on their paths', () => {
     const appRoute = readSource('app/pages/StorefrontCatalogRouteContainer.jsx');
     const retailRoute = readSource('modes/retail/storefront/pages/RetailStorefrontRouteContainer.jsx');
@@ -54,7 +67,7 @@ describe('Simple tracking route boundary', () => {
     expect(classicCatalog).not.toContain('RetailTrackingRouteContainer');
     expect(appRoute).toContain('RetailStorefrontRouteContainer');
     expect(retailRoute).toContain('RetailTrackingRouteContainer');
-    expect(shell).toContain('!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer');
+    expect(shell).toContain('!isSimpleMode && !isRetailMode && !isServicesMode && <FnbTrackingRouteContainer');
     expect(shell).toContain('isRetailMode && <RetailTrackingRouteContainer');
   });
 });
@@ -72,5 +85,40 @@ describe('Retail tracking route boundary', () => {
     expect(route).not.toContain('FnbTrackingRouteContainer');
     expect(routeProps).toContain("backLabel: 'Back to Items'");
     expect(routeProps).toContain('showTrustStrip: false');
+  });
+
+  // Phase 142 (#823): same wiring as Simple's own version above, in Retail's active + completed
+  // views (Retail has no single shared route-page total row the way Simple does).
+  it('carries the downpayment balance-due split through the payload model and both tracking views', () => {
+    const payloadModel = readSource('modes/retail/tracking/model/retailTrackingPayload.js');
+    const activeView = readSource('modes/retail/tracking/components/RetailTrackingActiveView.jsx');
+    const completedView = readSource('modes/retail/tracking/components/RetailTrackingCompletedView.jsx');
+
+    expect(payloadModel).toContain('paymentStatus:');
+    expect(payloadModel).toContain('balanceDue:');
+    expect(payloadModel).toContain('order?.balance_due');
+    expect(activeView).toContain("trackingResult.paymentStatus === 'partially_paid'");
+    expect(activeView).toContain('Balance due: {money(trackingResult.balanceDue)}');
+    expect(completedView).toContain("trackingResult.paymentStatus === 'partially_paid'");
+    expect(completedView).toContain('Balance due: {money(trackingResult.balanceDue)}');
+  });
+});
+
+describe('F&B tracking route boundary', () => {
+  // Phase 142 (#823): same wiring as Simple/Retail above -- fnbTrackingPayload.js is the payload
+  // model actually consumed by useFnbTrackingRuntime.js (confirmed by import graph), not the
+  // separate legacy tracking/fnbAdapter.js registry exercised by fnbOrderTracking.contract.test.js.
+  it('carries the downpayment balance-due split through the payload model and both tracking views', () => {
+    const payloadModel = readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
+    const activeView = readSource('modes/fnb/tracking/components/FnbTrackingActiveView.jsx');
+    const completedView = readSource('modes/fnb/tracking/components/FnbTrackingCompletedView.jsx');
+
+    expect(payloadModel).toContain('paymentStatus:');
+    expect(payloadModel).toContain('balanceDue:');
+    expect(payloadModel).toContain('order?.balance_due');
+    expect(activeView).toContain("trackingResult.paymentStatus === 'partially_paid'");
+    expect(activeView).toContain('Balance due: {money(trackingResult.balanceDue)}');
+    expect(completedView).toContain("trackingResult.paymentStatus === 'partially_paid'");
+    expect(completedView).toContain('Balance due: {money(trackingResult.balanceDue)}');
   });
 });

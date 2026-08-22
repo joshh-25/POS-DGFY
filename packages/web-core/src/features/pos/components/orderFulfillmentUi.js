@@ -39,11 +39,24 @@ export const getNextStatusActions = (order = {}) => {
   case 'preparing':
     return method === 'delivery' ? ['out_for_delivery'] : ['ready_for_pickup'];
   case 'ready_for_pickup':
-  case 'out_for_delivery':
     return ['completed'];
+  case 'out_for_delivery':
+    return String(order?.deliveryJob?.status || '').trim().toLowerCase() === 'delivered'
+      ? ['completed']
+      : [];
   default:
     return [];
   }
+};
+
+export const isCompletionPaymentPending = (order = {}) => {
+  const fulfillmentStatus = String(order?.fulfillment_status || '').trim();
+  const orderMethod = String(order?.order_method || '').trim();
+  const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
+  return (
+    (orderMethod === 'pickup' && fulfillmentStatus === 'ready_for_pickup')
+    || (orderMethod === 'delivery' && fulfillmentStatus === 'out_for_delivery' && String(order?.deliveryJob?.status || '').trim().toLowerCase() === 'delivered')
+  ) && paymentStatus !== 'paid';
 };
 
 export const FULFILLMENT_ACTION_LABELS = Object.freeze({
@@ -109,20 +122,26 @@ export const getFulfillmentActionLabel = (status, order = {}) => {
     if (orderMethod === 'delivery') return 'Delivered';
     if (orderMethod === 'takeout') return 'Collected';
     if (orderMethod === 'dine_in') return 'Served';
-    if (orderMethod === 'pickup') return 'Picked Up';
+    if (orderMethod === 'pickup') return 'Pickup';
   }
   return FULFILLMENT_ACTION_LABELS[normalizedStatus] || FULFILLMENT_STATUS_LABELS[normalizedStatus] || status;
 };
 
 export const getIncomingOrderUtilityActions = (order = {}) => {
   const current = String(order.fulfillment_status || '').trim();
+  const method = String(order.order_method || '').trim();
   switch (current) {
   case 'placed':
+    return ['open_order'];
   case 'confirmed':
+    return ['print_order', 'open_order'];
   case 'preparing':
+    return method === 'delivery'
+      ? ['print_order', 'open_order']
+      : ['print_receipt', 'open_order'];
   case 'ready_for_pickup':
   case 'out_for_delivery':
-    return ['open_order', 'print_receipt', 'print_order'];
+    return ['open_order'];
   default:
     return [];
   }

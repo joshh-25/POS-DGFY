@@ -1,6 +1,19 @@
 import { useCallback } from 'react';
 
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import {
+  createStorefrontOnlinePaymentSession,
+  getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
+  isStorefrontDirectPaymentSession,
+  isStorefrontHostedPaymentType,
+  isStorefrontOnlinePaymentType,
+  startStorefrontDirectPayment
+} from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
+// see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
+import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -66,6 +79,9 @@ export function useFnbCheckoutSubmission({
       access_mode: 'This storefront is not accepting online checkout right now.',
       missing_quote: 'Please click Quote first before checkout.',
       stale_quote: 'Your cart changed. Please refresh Quote before checkout.',
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
+      // fully discounts a downpayment-required order to zero -- see that file's comment.
+      downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody
@@ -79,7 +95,7 @@ export function useFnbCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
-      const message = 'Verify the email code before placing this guest order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -98,36 +114,54 @@ export function useFnbCheckoutSubmission({
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
-      if (fnbPaymentType === 'qrph') {
+      if (isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'A QR Ph payment is already awaiting confirmation. Refresh its status or use cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
         }
 
-        const sessionResult = await requestJson('/api/v1/store/checkout/payment-sessions', {
-          method: 'POST',
-          storeSlug: selectedStore.slug,
+        const paymentSession = await createStorefrontOnlinePaymentSession({
           authToken,
-          body: {
-            ...buildPayload(),
-            idempotency_key: isDgfyCustomerSignedIn
-              ? qrphIdempotencyKey
-              : guestCheckoutIntentId,
-            payment_type: 'qrph',
-            guest_checkout_proof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null,
-          },
+          checkoutPayload: buildPayload(),
+          guestCheckoutProof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null,
+          idempotencyKey: isDgfyCustomerSignedIn
+            ? qrphIdempotencyKey
+            : guestCheckoutIntentId,
+          paymentType: fnbPaymentType,
+          requestJson,
+          storeSlug: selectedStore.slug
         });
-        const paymentSession = sessionResult?.payment_session;
-        if (!paymentSession?.payment_session_id) {
-          throw new Error('PayMongo did not return a QR Ph payment session.');
+        if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
+          const directPayment = await startStorefrontDirectPayment({
+            billing: {
+              name: customerName,
+              email: customerEmail,
+              phone: customerPhone
+            },
+            paymentSession
+          });
+          setQrphPaymentSession(paymentSession);
+          if (typeof window !== 'undefined') window.location.assign(directPayment.redirectUrl);
+        } else {
+          setQrphPaymentSession(paymentSession);
         }
-        setQrphPaymentSession(paymentSession);
-        if (paymentSession.status === 'failed') {
-          throw new Error(paymentSession.failure_reason || 'PayMongo could not create this QR Ph payment.');
+        if (!isStorefrontDirectPaymentSession(paymentSession)
+          && isStorefrontHostedPaymentType(fnbPaymentType)
+          && paymentSession.checkout_url
+          && typeof window !== 'undefined') {
+          window.location.assign(paymentSession.checkout_url);
+        } else if (!isStorefrontDirectPaymentSession(paymentSession)) {
+          toast.success(fnbPaymentType === 'qrph'
+            ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
+            : `${getStorefrontOnlinePaymentLabel(fnbPaymentType)} payment created. Complete it on PayMongo to continue.`);
         }
-        toast.success('QR Ph payment created. Complete the PayMongo test payment to continue.');
         return;
       }
 
@@ -145,7 +179,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
@@ -170,7 +204,9 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0,
+          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
+          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 

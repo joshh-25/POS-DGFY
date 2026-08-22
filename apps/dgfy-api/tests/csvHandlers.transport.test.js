@@ -11,6 +11,7 @@ const mockGetSupplierTemplateHeadersUseCase = jest.fn();
 const mockPreviewSuppliersImportUseCase = jest.fn();
 const mockConfirmSuppliersImportUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockPublishCatalogChange = jest.fn();
 
 jest.unstable_mockModule('../src/modules/csv/index.js', () => ({
   exportByIdsUseCase: mockExportByIdsUseCase,
@@ -27,6 +28,10 @@ jest.unstable_mockModule('../src/modules/csv/index.js', () => ({
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
   trackProductUsageFromResult: mockTrackProductUsageFromResult
+}));
+
+jest.unstable_mockModule('../src/modules/shared/services/catalogChangeEventBus.js', () => ({
+  publishCatalogChange: mockPublishCatalogChange
 }));
 
 let exportItems;
@@ -63,6 +68,7 @@ describe('csv handlers transport contracts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTrackProductUsageFromResult.mockResolvedValue({ created: true });
+    mockPublishCatalogChange.mockResolvedValue(true);
   });
 
   it('item export sends CSV on success', async () => {
@@ -287,6 +293,41 @@ describe('csv handlers transport contracts', () => {
       request_id: 'req-csv-confirm-mode-mismatch',
       timestamp: expect.any(String)
     });
+  });
+
+  it('item confirm import publishes a tenant-scoped catalog invalidation for created and updated items', async () => {
+    mockConfirmItemsImportUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        createdCount: 1,
+        updatedCount: 1,
+        failedCount: 1,
+        results: {
+          created: [{ item_id: 101 }],
+          updated: [{ item_id: 202 }],
+          failed: [{ rowNumber: 4 }]
+        }
+      }
+    });
+
+    const req = {
+      body: { rows: [{ rowNumber: 1 }, { rowNumber: 2 }] },
+      user: { user_id: 5, tenant_id: 'tenant-csv-1' },
+      requestId: 'req-csv-confirm-success'
+    };
+    const res = createRes();
+
+    await confirmImportItems(req, res);
+
+    expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+      tenantId: 'tenant-csv-1',
+      reason: 'csv_items_imported',
+      itemIds: [101, 202]
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({ createdCount: 1, updatedCount: 1, failedCount: 1 })
+    }));
   });
 
   it('supplier confirm import preserves success payload shape', async () => {

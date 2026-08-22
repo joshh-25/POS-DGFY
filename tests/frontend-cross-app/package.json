@@ -11,7 +11,7 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:report": "playwright show-report",
     "test:e2e:codegen": "playwright codegen",
-    "test:lighthouse": "lhci autorun",
+    "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
     "test:load": "k6 run tests/load/smoke-load.js",
     "test:load:api": "k6 run tests/load/api-load.js",
     "test:load:auth": "k6 run tests/load/auth-load.js",

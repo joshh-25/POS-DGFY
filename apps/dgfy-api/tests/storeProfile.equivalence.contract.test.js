@@ -101,6 +101,7 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         expect(servicesProfile.pos_defaults.show_online_queue).toBe(false);
         expect(fnbProfile.pos_defaults.show_online_queue).toBe(true);
         expect(retailProfile.pos_defaults.show_online_queue).toBe(true);
+        expect(buildStoreProfile({ workflowMode: 'msme' }).pos_defaults.show_online_queue).toBe(true);
     });
 
     it('applies the enabled-capabilities overlay exactly as the runtime does', () => {

@@ -96,6 +96,7 @@ const renderDashboard = (props = {}) => render(
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, '', '/');
 });
 
 describe('DGFY customer account dashboard', () => {
@@ -113,6 +114,28 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Reorder Items')).toBeTruthy();
     expect(screen.getByText('Update Profile')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Edit Profile' })).toBeTruthy();
+  });
+
+  it('selects the Business section from its canonical dashboard route', () => {
+    window.history.replaceState({}, '', '/map-dgfy/account/business');
+    renderDashboard();
+
+    expect(screen.getByText('Your businesses')).toBeTruthy();
+    expect(screen.getByTestId('customer-business-card-grid')).toBeTruthy();
+  });
+
+  it('updates the canonical route from sidebar navigation and browser history', async () => {
+    window.history.replaceState({}, '', '/map-dgfy/account/overview');
+    renderDashboard();
+
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Business', exact: true }));
+    expect(window.location.pathname).toBe('/map-dgfy/account/business');
+    expect(screen.getByText('Your businesses')).toBeTruthy();
+
+    window.history.pushState({}, '', '/map-dgfy/account/orders');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Orders' })).toBeTruthy());
   });
 
   it('hides Loyalty navigation while retaining its future navigation configuration', () => {
@@ -134,6 +157,7 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByRole('button', { name: /Active Orders2/ }).style.fontSize).toBe('14px');
 
     cleanup();
+    window.history.replaceState({}, '', '/');
     renderDashboard({ isMobileViewport: true });
 
     fireEvent.click(screen.getByRole('button', { name: /0 Bookings/ }));
@@ -231,6 +255,7 @@ describe('DGFY customer account dashboard', () => {
     ];
 
     for (const [label, heading] of mobileKpiDestinations) {
+      window.history.replaceState({}, '', '/');
       renderDashboard({ isMobileViewport: true });
 
       expect(screen.queryByText('Past Orders')).toBeNull();

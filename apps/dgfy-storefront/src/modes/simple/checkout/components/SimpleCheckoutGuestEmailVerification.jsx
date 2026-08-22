@@ -7,7 +7,7 @@ const SIMPLE_BRAND_SOFT = '#FFF8E7';
  * MSME (Simple) guest-checkout email OTP verification block. Mirrors
  * modes/fnb/checkout/components/FnbGuestEmailVerification.jsx exactly, kept as its own file
  * per the "independent trees" pattern — the underlying OTP state/handlers are shared
- * (useFnbGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
+ * (useGuestCheckoutOtp, instantiated once in StorefrontApp.jsx and threaded down), only the
  * rendering (teal accent) is MSME's own.
  */
 export function SimpleCheckoutGuestEmailVerification({
@@ -47,12 +47,12 @@ export function SimpleCheckoutGuestEmailVerification({
         </span>
         <div style={{ display: 'grid', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <strong style={{ color: '#0f172a', fontSize: isMobileViewport ? 18 : 20 }}>Verify your email</strong>
+            <strong style={{ color: '#0f172a', fontSize: isMobileViewport ? 18 : 20 }}>Verify this guest checkout email</strong>
             <span style={{ borderRadius: 999, background: SIMPLE_BRAND_SOFT, color: SIMPLE_BRAND, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>
               Recommended
             </span>
           </div>
-          <span style={{ color: '#64748b', fontSize: 13 }}>We will send a 6-digit code before your order is placed.</span>
+          <span style={{ color: '#64748b', fontSize: 13 }}>Account email verification and guest checkout verification are separate. We will send a 6-digit checkout code for this order.</span>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export function SimpleCheckoutGuestEmailVerification({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={onRequestCode}
+          onClick={() => onRequestCode()}
           disabled={loading || cooldownActive}
           style={{
             border: 'none',

@@ -8,18 +8,20 @@ export function CustomerIdentityCard({
   email = '',
   isMobileViewport = false,
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
-  displayFont = "'Avenir Next', 'Segoe UI', sans-serif"
+  displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
+  layoutVariant = 'default'
 }) {
   const hasName = String(name || '').trim().length > 0;
   const hasPhone = String(phone || '').trim().length > 0;
   const hasEmail = String(email || '').trim().length > 0;
 
+  const isServicesReference = layoutVariant === 'services-reference';
   return (
-    <section style={{ border: '1px solid #dbeafe', borderRadius: 16, background: 'linear-gradient(135deg,#eff6ff,#ffffff)', padding: isMobileViewport ? 13 : 14, display: 'grid', gap: 10 }}>
+    <section style={{ border: isServicesReference ? 'none' : '1px solid #dbeafe', borderRadius: isServicesReference ? 0 : 16, background: isServicesReference ? 'transparent' : 'linear-gradient(135deg,#eff6ff,#ffffff)', padding: isServicesReference ? 0 : (isMobileViewport ? 13 : 14), display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
-          <div style={{ width: isMobileViewport ? 44 : 52, height: isMobileViewport ? 44 : 52, borderRadius: '50%', background: '#dbeafe', color: '#2563eb', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-            <User size={isMobileViewport ? 20 : 22} />
+          <div style={{ width: isServicesReference ? 40 : (isMobileViewport ? 44 : 52), height: isServicesReference ? 40 : (isMobileViewport ? 44 : 52), borderRadius: '50%', background: isServicesReference ? '#e0f2fe' : '#dbeafe', color: isServicesReference ? '#0891b2' : '#2563eb', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <User size={isServicesReference ? 18 : (isMobileViewport ? 20 : 22)} />
           </div>
           <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

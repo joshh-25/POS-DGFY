@@ -16,10 +16,10 @@ describe('POS catalog realtime contract', () => {
     });
 
     test('keeps terminal cart state independent of catalog refresh', () => {
-        const terminal = read('../components/POSCheckoutTerminal.jsx');
-        expect(terminal).toContain('subscribeToRemotePosCatalogUpdates();');
-        expect(terminal).toContain('refreshCatalogAfterInvalidation');
-        expect(terminal).toContain('loadCatalog();');
-        expect(terminal).not.toContain('setCart([]);\n            loadCatalog();');
+        const catalogWorkflow = read('../hooks/usePosCatalogWorkflow.js');
+        expect(catalogWorkflow).toContain('subscribeToRemotePosCatalogUpdates');
+        expect(catalogWorkflow).toContain('refreshCatalogAfterInvalidation');
+        expect(catalogWorkflow).toContain('loadCatalog();');
+        expect(catalogWorkflow).not.toContain('setCart([]);\n            loadCatalog();');
     });
 });

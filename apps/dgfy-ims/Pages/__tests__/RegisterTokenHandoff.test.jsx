@@ -101,7 +101,7 @@ describe('Register token handoff', () => {
       password: 'abcdefgh',
       email_otp_code: '123456'
     }, 'token-autofoods-12345678'));
-    expect(screen.getByText('Login screen')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Login screen')).toBeTruthy());
   });
 
   it('requires an email verification code before submitting registration', async () => {

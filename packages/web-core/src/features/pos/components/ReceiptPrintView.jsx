@@ -3,8 +3,10 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
 
 const money = (value) => Number(value || 0).toFixed(2);
+const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
+    ? 'OTHER'
+    : String(value || '').replace(/_/g, ' ').toUpperCase();
 const DGFY_BRAND_NAME = 'DGFY';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem';
 const RECEIPT_LINE_GRID_COLUMNS_57MM = 'minmax(0, 1fr) 2.45rem 1.05rem 2.45rem';
 const RECEIPT_PAPER_WIDTHS = {
@@ -211,6 +213,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     const quantity = resolveReceiptLineQuantity(line);
                     const unitPrice = resolveReceiptLineUnitPrice(line);
                     const lineTotal = resolveReceiptLineTotal(line);
+                    const itemDiscountAmount = Number((line?.item_discount || line?.item_discount_snapshot)?.discount_amount || 0);
                     const itemNameParts = splitReceiptItemName(line.item?.name || `Item #${line.item_id}`);
                     return (
                         <div
@@ -231,10 +234,19 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                                     {itemNameParts.secondLine}
                                 </p>
                             )}
-                            {(modifiers.length || line.fnb_special_instructions) && (
-                                <p className="mt-0.5 text-[9px] leading-snug text-slate-500 print:text-[8px]">
-                                    {modifiers.length ? `Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
-                                    {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
+                            {itemDiscountAmount > 0 && (
+                                <p className="mt-0.5 text-[9px] font-semibold leading-snug text-rose-700 print:text-[8px]">
+                                    Item discount: -PHP {money(itemDiscountAmount)}
+                                </p>
+                            )}
+                            {modifiers.length > 0 && (
+                                <p className="mt-0.5 pl-2 text-[9px] font-semibold leading-snug text-slate-500 print:pl-1.5 print:text-[8px]">
+                                    Add-ons: {modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}
+                                </p>
+                            )}
+                            {line.fnb_special_instructions && (
+                                <p className="mt-0.5 pl-2 text-[9px] italic leading-snug text-slate-500 print:pl-1.5 print:text-[8px]">
+                                    Note: {line.fnb_special_instructions}
                                 </p>
                             )}
                         </div>
@@ -254,16 +266,16 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     {governedDiscount.senior_pwd_id_number && <div className="flex justify-between gap-2 text-slate-600"><span>Senior/PWD ID</span><span className="text-right">{governedDiscount.senior_pwd_id_number}</span></div>}
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
-                    {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>Promo Code</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
-                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{String(governedDiscount.discount_type).replace(/_/g, ' ').toUpperCase()}</span></div>}
+                    {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>{governedDiscount.discount_type === 'voucher' ? 'Voucher Code' : 'Promo Code'}</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
+                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{displayDiscountType(governedDiscount.discount_type)}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">Vatable Sales</span>
+                    <span className="min-w-0 flex-1">VATable Sales</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vatable_sales)}</span>
                 </div>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">VAT 12%</span>
+                    <span className="min-w-0 flex-1">VAT Amount (12%)</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_amount)}</span>
                 </div>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
@@ -285,13 +297,6 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                         {transaction.discount_rate_snapshot != null ? ` @ ${Number(transaction.discount_rate_snapshot).toFixed(2)}%` : ''}
                     </span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.discount_amount)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">
-                        {transaction.service_fee_label_snapshot || DGFY_CONVENIENCE_FEE_LABEL}
-                        {transaction.service_fee_method_snapshot ? ` (${transaction.service_fee_method_snapshot})` : ''}
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.service_fee_amount)}</span>
                 </div>
                 {restaurantServiceChargeAmount > 0 && (
                     <div className="flex items-start justify-between gap-2 text-slate-600">

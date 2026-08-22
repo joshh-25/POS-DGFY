@@ -43,6 +43,16 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Poppins', sans-serif;
   }
+
+  /* Services keeps its own display/body pairing, but every Services screen
+     must resolve it from the same runtime theme values. */
+  main[data-storefront-mode='services'] :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--services-display-font);
+  }
+
+  main[data-storefront-mode='services'] :where(button, input, select, textarea) {
+    font-family: var(--services-body-font);
+  }
 }
 
 /* Custom scrollbar for tabs */

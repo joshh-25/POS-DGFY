@@ -9,7 +9,8 @@ import {
   PAYMENT_TYPE_LABELS,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
-  getNextStatusActions
+  getNextStatusActions,
+  isCompletionPaymentPending
 } from './orderFulfillmentUi.js';
 
 const WORKSPACE_VIEW_CONFIG = {
@@ -132,7 +133,7 @@ export default function TerminalSidebarPanel({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
+  const hiddenSectionsInMsme = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
@@ -248,14 +249,6 @@ export default function TerminalSidebarPanel({
             <span className="text-[#334155]">Active Discounts</span>
             <span className="font-extrabold text-[#0F172A]">{terminalMeta.activeDiscountCount}</span>
           </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[#334155]">DGFY Global Fee Policy</span>
-                <span className="font-extrabold text-[#0F172A]">
-                  {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
-                    ? 'Active'
-                    : 'Inactive'}
-                </span>
-              </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-[#334155]">Compliance Policy</span>
             <span className="font-extrabold text-emerald-700">Dual-mode</span>
@@ -289,7 +282,7 @@ export default function TerminalSidebarPanel({
                 <p className="mt-1 text-sm font-semibold text-slate-900">{activeShiftLocationLabel}</p>
               </div>
               <div className="flex items-center justify-between rounded-md border border-blue-100 bg-blue-50 px-2 py-2">
-                <span className="text-[11px] font-semibold text-slate-600">Current shift sales</span>
+                <span className="text-[11px] font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
                 <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState?.salesSummary?.total_amount)}</span>
               </div>
               <Button
@@ -349,11 +342,11 @@ export default function TerminalSidebarPanel({
                 <span className="font-semibold text-slate-900">{parseIsoDateTime(activeShift.opened_at)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Opening Float</span>
+                <span className="text-slate-600">Opening/Petty Cash</span>
                 <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(activeShift.opening_float_amount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Expected Cash</span>
+                <span className="text-slate-600">Expected Cash in Drawer</span>
                 <span className="font-semibold text-slate-900">
                   {terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}
                 </span>
@@ -663,7 +656,7 @@ export default function TerminalSidebarPanel({
                           size="sm"
                           variant={status === 'rejected' ? 'destructive' : 'outline'}
                           className="h-7 text-[11px]"
-                          disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                          disabled={Boolean(actionLoading) || !canTransactPos || locked || (status === 'completed' && isCompletionPaymentPending(order))}
                           onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                         >
                           {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
