@@ -6436,8 +6436,11 @@ after this update: **135**.
 ### Dependencies and Governance Note
 
 - Depends on Phase 136 (ADR 0069) being in force — cites clause 4 throughout.
-- Gates the phases that build on this vocabulary: Phase 139 (quote/checkout resolution), Phase 140
-  (capture), Phase 142 (refund/forfeiture), Phase 143 (balance settlement).
+- Gates the phases that build on this vocabulary: Phase 140 (quote/checkout resolution), Phase 141
+  (capture), Phase 144 (refund/forfeiture), Phase 145 (balance settlement). (Corrected 2026-08-22,
+  #848: this line's own phase numbers had already drifted from what those phases actually became
+  before the renumbering below — Phase 139 turned out to be the ADR 0070 governance correction, not
+  quote/checkout resolution.)
 - Board: #819 was set `Done` automatically by the project's own workflow when PR #829 merged with
   `Closes #819`. Flagged back to `For QA` in the Phase 138 (#820) session (Housekeeping, this
   session) since no deployed-environment verification (Verifier/QA role) has actually run yet —
@@ -6834,9 +6837,10 @@ after this update: **135**.
 - Depends on Phase 140 (#821, the resolution this phase captures against) and, transitively, Phase
   137's (#819) tenant schema (`pos_transactions.amount_paid`/`balance_due`, the `partially_paid`
   enum value, `pos_order_payments`) — all first written by this phase.
-- Gates Phase 142 (#823, storefront UI), Phase 143 (#824, accept/reject/refund — the reject-refund
-  path this phase makes refund the correct, downpayment-only amount), and Phase 144 (#825, balance
-  settlement, the second ledger-row writer).
+- Gates Phase 142 (#823, storefront UI), Phase 144 (#824, accept/reject/refund — the reject-refund
+  path this phase makes refund the correct, downpayment-only amount), and Phase 145 (#825, balance
+  settlement, the second ledger-row writer). (#824/#825 renumbered 2026-08-22, #848 — see that
+  phase's own entry.)
 - **Governance wrinkle identified, not resolved here:** ADR 0070 carries ADR 0069's clauses 1-5/8-10
   forward *by reference* rather than restating them, so those live, load-bearing clauses physically
   sit in a document marked `status: superseded`/`authority_level: historical` — which `AGENTS.md`
@@ -6878,7 +6882,7 @@ after this update: **135**.
   (`storefrontPrimaryLocation.discovery.integration.test.js`, `storeRouteTenantContext.integration.test.js`).
 - **Reviewer feedback (PR #840, `pr-reviewer`, verdict COMMENT, no blockers) addressed**: RF-1 —
   `createOrderPaymentEntry` now records `payment_reference` (the actual PayMongo charge ID), not
-  just `provider_event_id` (the webhook delivery ID); needed by Phase 143/#824's refund-vs-forfeiture
+  just `provider_event_id` (the webhook delivery ID); needed by Phase 144/#824's refund-vs-forfeiture
   logic to trace a ledger row back to its charge. RF-2 — the `DOWNPAYMENT_POLICY_UNRESOLVED` guard
   now excludes a legitimate zero-total order (gated on `resolved.totalAmount > 0`), which previously
   misclassified that case instead of falling through to the pre-existing, more accurate
