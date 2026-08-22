@@ -108,6 +108,22 @@ export const resolveDownpaymentDisplay = ({ order = null, paymentSession = null,
   return NULL_DISPLAY;
 };
 
+// Phase 151 (#826): the three tracking payload models (retailTrackingPayload.js,
+// fnbTrackingPayload.js, simpleTrackingPayload.js) normalize into a camelCase view state
+// (paymentStatus/amountPaid/balanceDue) rather than the snake_case order shape
+// resolveDownpaymentDisplay expects. This is a thin adapter so tracking joins the same
+// precedence machinery instead of growing a parallel one -- passing a truthy `order` engages
+// resolveDownpaymentDisplay's existing "presence, not activity, decides precedence" branch,
+// so a tracked order that isn't partially_paid correctly returns NULL_DISPLAY.
+export const resolveTrackingDownpaymentDisplay = (trackingResult) => resolveDownpaymentDisplay({
+  order: {
+    payment_status: trackingResult?.paymentStatus,
+    amount_paid: trackingResult?.amountPaid,
+    balance_due: trackingResult?.balanceDue,
+    total_amount: trackingResult?.totalAmount
+  }
+});
+
 /** Two OrderSummaryCard-shaped rows ({label, value, emphasis?}), or [] when inactive. */
 export const buildDownpaymentTotalsRows = ({ display, money, orderMethod }) => {
   if (!display?.active || typeof money !== 'function') return [];

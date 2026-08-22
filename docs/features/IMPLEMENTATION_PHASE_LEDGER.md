@@ -7595,6 +7595,24 @@ an ancestor of `f22fd51fb` (#853's own merge of `develop`). Resolution, decided 
 No code changes accompany this renumber — PR #844 and PR #859 both keep their existing phase
 numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments needed edits.
 
+**Addendum, 2026-08-22 (#826/Phase 151 planning session) — the above table's own "no prior
+reservation existed for 145" claim was itself incomplete.** #826's issue title read
+*"Phase 145: Customer-facing surfaces"* at authoring time, predating the collision resolved above,
+and was never checked against it — the same class of miss the table itself exists to fix, one level
+up. Caught while planning #826's implementation, not by a second collision landing in code (#826 had
+shipped no PR yet). Resolution, decided by Pat 2026-08-22, same #578 precedent: **#826 → Phase 151**,
+extending the table above:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | #826 customer-facing downpayment surfaces | **moved from 145** (own row, this addendum — not part of the #853 collision the table above resolves) |
+
+150 was the ledger's highest entry at authoring time; 148/149 remain reserved (not yet implemented)
+by #825/#827 per the table above, so 151 is the next free number. #827 keeps 149 rather than moving
+again — its number now reads before the phase it closes (149 before 151), which is cosmetic
+(sequence position is not itself a governed property) and cheaper than a third renumber of an
+unshipped reservation.
+
 ---
 
 ## Phase 150 - Downpayment Settings Clarity + The `customer_choice` Payment Mode
@@ -7728,3 +7746,96 @@ numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments nee
 - `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (amended)
 - `docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md` (new)
 - Issues #865, #866
+
+## Phase 151 - Customer-Facing Downpayment Surfaces
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #826, retitled from a
+  collided "Phase 145" claim to Phase 151 — see the dated addendum on the #853/#578-precedent
+  renumber note above.
+- Release: single `develop`-targeted PR, cut from fresh `origin/develop`.
+
+### Objective and Scope
+
+- Order tracking and confirmation screens show the downpayment paid, not only the balance due.
+  `serializeOrderBase` (Phase 142, #823) already returns `amount_paid`/`balance_due` on both the
+  customer and public-tracking order payloads, and all three tracking payload models
+  (Retail/F&B/Simple) already carry `amountPaid`/`balanceDue` into their view state — but every
+  tracking UI rendered only `balanceDue`. `amountPaid` was parsed and carried and never displayed.
+- Consolidate five hand-rolled inline copies of the same row (Retail/F&B active + completed views,
+  Simple's route page) and two hand-rolled balance-label ternaries (Simple/F&B confirmation
+  screens) onto `shared/model/storefrontDownpaymentPresentation.js` — the module every *checkout*
+  surface already used, which the *tracking* surfaces had drifted away from.
+- The order-confirmation email (#532) is explicitly descoped — greenfield work with no existing
+  customer/order-facing email in `emailService.js`, large enough to be its own phase. #532 gained
+  an acceptance line requiring the downpayment split when it's eventually built. #826 links with
+  `Refs`, not `Closes`, and stays open for that reason.
+- Deliberately out of scope, named rather than silently omitted: the tracked-orders drawer
+  (`tracking/storage.js`'s `normalizeTrackedOrderEntry` persists no payment split, so its four
+  `*TrackingDrawerTotals.jsx` consumers can't show one) and the downloadable receipt image
+  (`shared/utils/storefrontTicketImage.js` prints raw `payment_status` with no amounts).
+- Fiscal/BIR treatment of a downpayment or balance-settlement event stays deferred per ADR 0069
+  clause 9 `[default]` — stated explicitly in the new shared component's own comment, not silently
+  omitted.
+
+### Status
+
+- `completed`
+- Completed 2026-08-22.
+
+### Dependencies and Governance Note
+
+- [ADR 0069](../architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md)
+  clause 9 `[default]` (fiscal/BIR deferral), carried forward by ADR 0070 (`status: superseded` /
+  `historical` on ADR 0069 itself — not cited as authority for any new decision here).
+- Phase 142 (#823) — built the backend serialization and payload-model threading this phase
+  displays; no backend change accompanies this phase.
+- Phase 144 (#824) — the refund/forfeiture mechanism this epic's customer-facing side reports on.
+- **No ADR amendment.** Presentation-only: displays fields the API already serializes, introduces
+  no new decision. Classification `within-existing-boundary`.
+- **No compliance declaration.** Confirmed against `scripts/check-compliance-impact.js`: its
+  `dgfy-web` rules cover only `src/features/pos/`, `src/features/compliance/`,
+  `src/pages/Settings`, and three named service files — `apps/dgfy-web/apps/store/**` matches none
+  of them, and no `apps/dgfy-api/**` file is touched. `npm run check:compliance` confirmed
+  "No compliance-sensitive changes detected" rather than assumed.
+
+### Acceptance and Validation Evidence
+
+- [x] `__tests__/storefrontDownpaymentPresentation.test.js` extended for the new
+  `resolveTrackingDownpaymentDisplay` adapter — active split, inactive when `paymentStatus` isn't
+  `partially_paid`, inactive when `amountPaid` is null, undefined input returns `NULL_DISPLAY`.
+- [x] New `__tests__/downpaymentTrackingSummary.test.jsx` — both amounts render for a downpayment
+  order, nothing renders for a fully-paid order or missing `trackingResult`, the balance label
+  follows delivery vs. pickup.
+- [x] `__tests__/simpleTrackingPresentation.test.js` — its three Phase 142 assertions
+  string-matched the literal inline block being consolidated away; rewritten to assert each of the
+  five tracking views imports and renders `DownpaymentTrackingSummary` (not deleted — the only
+  guard that the split stays wired at all).
+- [x] Full `apps/dgfy-web/apps/store/src` suite: 734 passed across 137 files (was 723/136 at Phase
+  150's measurement).
+- [x] `npm run build:store` — real Vite build, succeeded.
+- [x] `npx eslint` on every new/changed file — 0 problems.
+- [x] `npm run check:architecture` — OK, 50 modules/508 files.
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected", confirming no
+  declaration was required rather than assuming it.
+- [x] `npm run lint:docs` (chains `check:adr --strict`) — OK, 28 governed docs / 77 ADRs.
+- No order, payment, inventory, or database record was created, modified, migrated, or deleted —
+  presentation-only diff.
+
+### Implementation Links
+
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`
+  (`resolveTrackingDownpaymentDisplay`, new)
+- `apps/dgfy-web/apps/store/src/shared/components/tracking/DownpaymentTrackingSummary.jsx` (new)
+- `apps/dgfy-web/apps/store/src/modes/retail/tracking/components/RetailTrackingActiveView.jsx`,
+  `RetailTrackingCompletedView.jsx`
+- `apps/dgfy-web/apps/store/src/modes/fnb/tracking/components/FnbTrackingActiveView.jsx`,
+  `FnbTrackingCompletedView.jsx`
+- `apps/dgfy-web/apps/store/src/modes/simple/tracking/components/SimpleTrackingRoutePage.jsx`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/components/SimpleCheckoutSuccessStep.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/fnb/checkout/components/FnbCheckoutConfirmation.jsx`
+- `apps/dgfy-web/apps/store/src/__tests__/downpaymentTrackingSummary.test.jsx` (new),
+  `storefrontDownpaymentPresentation.test.js`, `simpleTrackingPresentation.test.js`
+- Issue #826 (`Refs`, stays open for #532's descoped email work), Issue #532 (gained an acceptance
+  line)

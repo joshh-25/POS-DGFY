@@ -42,17 +42,19 @@ describe('Simple tracking route boundary', () => {
     expect(page).toContain("backLabel || 'Back to Items'");
   });
 
-  // Phase 142 (#823): serializeOrderBase now returns amount_paid/balance_due -- the payload model
-  // and route page must both carry the split through to a partially_paid order's tracking view.
-  it('carries the downpayment balance-due split through the payload model and route page', () => {
+  // Phase 142 (#823) carried amount_paid/balance_due into the payload model. Phase 151 (#826)
+  // consolidated the render side into one shared DownpaymentTrackingSummary component (previously
+  // five hand-rolled copies that only ever rendered balanceDue, never amountPaid) -- assert the
+  // payload model still carries the split and the route page renders through the shared component.
+  it('carries the downpayment balance-due split through the payload model and renders it via the shared component', () => {
     const payloadModel = readSource('modes/simple/tracking/model/simpleTrackingPayload.js');
     const page = readSource('modes/simple/tracking/components/SimpleTrackingRoutePage.jsx');
 
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(page).toContain("viewModel.trackingResult.paymentStatus === 'partially_paid'");
-    expect(page).toContain('Balance due: {money(viewModel.trackingResult.balanceDue)}');
+    expect(page).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
+    expect(page).toContain('<DownpaymentTrackingSummary trackingResult={viewModel.trackingResult}');
   });
 
   it('mounts Simple tracking at the app route boundary and leaves other modes on their paths', () => {
@@ -87,9 +89,9 @@ describe('Retail tracking route boundary', () => {
     expect(routeProps).toContain('showTrustStrip: false');
   });
 
-  // Phase 142 (#823): same wiring as Simple's own version above, in Retail's active + completed
-  // views (Retail has no single shared route-page total row the way Simple does).
-  it('carries the downpayment balance-due split through the payload model and both tracking views', () => {
+  // Phase 142 (#823) carried the split into the payload model. Phase 151 (#826) consolidated both
+  // Retail views (active + completed) onto the shared DownpaymentTrackingSummary component.
+  it('carries the downpayment balance-due split through the payload model and renders it via the shared component in both views', () => {
     const payloadModel = readSource('modes/retail/tracking/model/retailTrackingPayload.js');
     const activeView = readSource('modes/retail/tracking/components/RetailTrackingActiveView.jsx');
     const completedView = readSource('modes/retail/tracking/components/RetailTrackingCompletedView.jsx');
@@ -97,18 +99,19 @@ describe('Retail tracking route boundary', () => {
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(activeView).toContain("trackingResult.paymentStatus === 'partially_paid'");
-    expect(activeView).toContain('Balance due: {money(trackingResult.balanceDue)}');
-    expect(completedView).toContain("trackingResult.paymentStatus === 'partially_paid'");
-    expect(completedView).toContain('Balance due: {money(trackingResult.balanceDue)}');
+    expect(activeView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
+    expect(activeView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
+    expect(completedView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
+    expect(completedView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
   });
 });
 
 describe('F&B tracking route boundary', () => {
-  // Phase 142 (#823): same wiring as Simple/Retail above -- fnbTrackingPayload.js is the payload
-  // model actually consumed by useFnbTrackingRuntime.js (confirmed by import graph), not the
-  // separate legacy tracking/fnbAdapter.js registry exercised by fnbOrderTracking.contract.test.js.
-  it('carries the downpayment balance-due split through the payload model and both tracking views', () => {
+  // Phase 142 (#823): fnbTrackingPayload.js is the payload model actually consumed by
+  // useFnbTrackingRuntime.js (confirmed by import graph), not the separate legacy
+  // tracking/fnbAdapter.js registry exercised by fnbOrderTracking.contract.test.js. Phase 151
+  // (#826) consolidated both F&B views onto the shared DownpaymentTrackingSummary component.
+  it('carries the downpayment balance-due split through the payload model and renders it via the shared component in both views', () => {
     const payloadModel = readSource('modes/fnb/tracking/model/fnbTrackingPayload.js');
     const activeView = readSource('modes/fnb/tracking/components/FnbTrackingActiveView.jsx');
     const completedView = readSource('modes/fnb/tracking/components/FnbTrackingCompletedView.jsx');
@@ -116,9 +119,9 @@ describe('F&B tracking route boundary', () => {
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(activeView).toContain("trackingResult.paymentStatus === 'partially_paid'");
-    expect(activeView).toContain('Balance due: {money(trackingResult.balanceDue)}');
-    expect(completedView).toContain("trackingResult.paymentStatus === 'partially_paid'");
-    expect(completedView).toContain('Balance due: {money(trackingResult.balanceDue)}');
+    expect(activeView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
+    expect(activeView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
+    expect(completedView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
+    expect(completedView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
   });
 });

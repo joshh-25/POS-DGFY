@@ -6,7 +6,8 @@ import {
   isCustomerChoiceStore,
   isDownpaymentRequiredStore,
   resolveDownpaymentBalanceLabel,
-  resolveDownpaymentDisplay
+  resolveDownpaymentDisplay,
+  resolveTrackingDownpaymentDisplay
 } from '../shared/model/storefrontDownpaymentPresentation.js';
 
 describe('buildPaymentModeStorePatch', () => {
@@ -185,3 +186,53 @@ describe('buildDownpaymentRefundableNote', () => {
     expect(note.length).toBeGreaterThan(0);
   });
 });
+
+// Phase 151 (#826): the adapter tracking's five view surfaces route through so they join
+// resolveDownpaymentDisplay's own precedence machinery instead of a parallel camelCase reader.
+describe('resolveTrackingDownpaymentDisplay', () => {
+  it('returns an inactive null-shape for undefined input', () => {
+    expect(resolveTrackingDownpaymentDisplay(undefined)).toEqual({
+      active: false,
+      downpaymentAmount: null,
+      balanceDueAmount: null,
+      orderTotalAmount: null,
+      refundable: null
+    });
+  });
+
+  it('returns an active split for a partially_paid tracked order', () => {
+    const display = resolveTrackingDownpaymentDisplay({
+      paymentStatus: 'partially_paid',
+      amountPaid: 200,
+      balanceDue: 800,
+      totalAmount: 1000
+    });
+    expect(display).toEqual({
+      active: true,
+      downpaymentAmount: 200,
+      balanceDueAmount: 800,
+      orderTotalAmount: 1000,
+      refundable: null
+    });
+  });
+
+  it('is inactive when paymentStatus is not partially_paid', () => {
+    const display = resolveTrackingDownpaymentDisplay({
+      paymentStatus: 'paid',
+      amountPaid: 0,
+      balanceDue: 0,
+      totalAmount: 1000
+    });
+    expect(display.active).toBe(false);
+  });
+
+  it('is inactive when amountPaid is null even if paymentStatus says partially_paid', () => {
+    const display = resolveTrackingDownpaymentDisplay({
+      paymentStatus: 'partially_paid',
+      amountPaid: null,
+      balanceDue: 800
+    });
+    expect(display.active).toBe(false);
+  });
+});
+
