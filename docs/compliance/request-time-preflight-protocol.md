@@ -149,11 +149,16 @@ curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
 
 Record the response's `result`, `reason_code`, and a run timestamp into the
 declaration's `preflight_result` / `preflight_reason_code` / `preflight_run_at`
-/ `preflight_request_ref` fields, replacing the `NOT-EXECUTED-*` placeholder,
-in a commit that lands on `develop` before the `to-staging/<label>` branch is
-cut. If the response is `breach` or `review_required`, do not write
-`no_breach` — record the actual result and treat the change as blocked from
-promotion pending review, per the Mandatory Workflow above.
+/ `preflight_request_ref` fields, replacing the `NOT-EXECUTED-*` placeholder.
+**Land the reconciled front matter via a small cut branch and PR into
+`develop`, never a direct commit** — the same cut-branch discipline
+`RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port amendment already requires
+for anything landing on `develop` outside the normal feature-PR path; this is
+regulator-facing evidence and gets the same review, not an exception. Merge
+that PR before the `to-staging/<label>` branch is cut. If the response is
+`breach` or `review_required`, do not write `no_breach` — record the actual
+result and treat the change as blocked from promotion pending review, per the
+Mandatory Workflow above.
 
 ## Dirty Worktree Handling
 1. Use path-scoped diffs while preparing declaration evidence:
