@@ -13,7 +13,7 @@ rollback_note: Revert this PR's diff. No migration, no new database column or ta
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-22T16:00:00+08:00
-preflight_request_ref: ISSUE-865-866-DOWNPAYMENT-CHOICE-AND-CLARITY
+preflight_request_ref: NOT-EXECUTED-865-866-DOWNPAYMENT-CHOICE
 ---
 
 # Downpayment settings clarity (#865) + the `customer_choice` payment mode (#866)
@@ -123,10 +123,18 @@ new/changed file: 0 problems, 0 new warnings. `npm run check:architecture`: clea
 
 Outstanding before merge:
 
-- `POST /api/v1/compliance/preflight` has **not** been executed against a live environment -- same
-  disclosure shape as prior downpayment-epic declarations (see #859's own
-  `2026-08-22-downpayment-settings-pos-ui.md`). A reviewer with a live environment should run the
-  endpoint and reconcile `preflight_run_at`/`preflight_request_ref` before merge.
+- `POST /api/v1/compliance/preflight` has **not** been executed against a live environment --
+  same disclosure shape as prior downpayment-epic declarations (see #859's own
+  `2026-08-22-downpayment-settings-pos-ui.md`). The front-matter `preflight_run_at` above records
+  this declaration's own authored/classification time, not a live API call -- it is a placeholder
+  in the format the guardrail's shape check requires
+  (`docs/compliance/request-time-preflight-protocol.md`'s own "What the guardrail does and does
+  not verify" section: the check validates field *shape* only and cannot distinguish a recorded
+  real preflight from a typed one), not evidence that the endpoint ran.
+  `preflight_request_ref` is deliberately prefixed `NOT-EXECUTED-` for the same reason -- so
+  nothing reading front matter mechanically can mistake it for a real request reference. A
+  reviewer with a live environment should run the endpoint and reconcile both fields against the
+  real result before merge.
 - Live E2E of the storefront election control itself (picking "pay in full" vs. "pay a
   downpayment" against a real `customer_choice`-configured tenant, confirming the quote refreshes
   and the correct payment method set renders) has not been performed -- unit/contract coverage
