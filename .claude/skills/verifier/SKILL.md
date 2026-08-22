@@ -1,0 +1,15 @@
+---
+name: verifier
+description: Verify a merged dgfy-platform change against a deployed environment and flip the issue's board Status to Done or Failed — dispatches to the verifier subagent so it stays isolated.
+argument-hint: "[optional issue number]"
+context: fork
+agent: verifier
+background: false
+disable-model-invocation: true
+---
+
+Run a QA verification pass for `dgfy-platform`. Target: $ARGUMENTS (if empty, process every item
+in the `For QA` board lane). Follow `.agents/skills/verifier/SKILL.md` in full: resolve the
+deployed environment (default `STAGING`, stated as an assumption unless the issue names one),
+dispatch `verify-deployment.yml`, do the best-effort functional check, and decide Done/Failed per
+your own board-transition rules.
