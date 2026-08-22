@@ -2991,6 +2991,19 @@ export default function StorefrontApp() {
     setDiscoveryAppliedFilters,
     setActiveDiscoveryNavItem
   });
+  // #889: a customer forcing/reloading a direct link into checkout (any mode -- Simple, Retail,
+  // and F&B's checkout drawer all key off the same `isOrderSubpage`/`checkoutTab` state) while the
+  // store is outside its configured business hours must be kicked back to the storefront instead
+  // of being shown the checkout form. `checkoutTab === 'checkout'` (vs 'track') is required so this
+  // never fires for a customer viewing an already-placed order's tracking view, which stays
+  // reachable regardless of current hours. Scoped to entering checkout only -- service *booking*
+  // (STORE_BOOKING_SUBPAGE) is a separate subpage/flow, not covered by this guard.
+  useEffect(() => {
+    if (!storefrontClosedByHours) return;
+    if (!isOrderSubpage || checkoutTab !== 'checkout') return;
+    goStoreCatalogPage();
+    toast.error(storefrontClosedToastMessage);
+  }, [checkoutTab, goStoreCatalogPage, isOrderSubpage, storefrontClosedByHours, storefrontClosedToastMessage]);
   const fnbCartDrawerRouteProps = useFnbCartDrawerRouteProps({
     cart,
     cartAddOnsTotal,
