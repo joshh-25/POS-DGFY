@@ -66,6 +66,9 @@ export function useFnbCheckoutRouteProps({
   handleCheckout,
   handleDownloadCheckoutImage,
   handleGuestCheckoutOtpCodeChange,
+  // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange --
+  // StorefrontApp.jsx's paymentElection/setElected, unrenamed like every other prop in this file.
+  onPaymentElectionChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
@@ -83,6 +86,7 @@ export function useFnbCheckoutRouteProps({
   isMobileViewport,
   money,
   orderMethod,
+  paymentElection,
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
@@ -187,6 +191,7 @@ export function useFnbCheckoutRouteProps({
     handleCheckout,
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
+    onPaymentElectionChange,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleConfirmQrphTestPayment,
@@ -204,6 +209,7 @@ export function useFnbCheckoutRouteProps({
     isMobileViewport,
     money,
     orderMethod,
+    paymentElection,
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,

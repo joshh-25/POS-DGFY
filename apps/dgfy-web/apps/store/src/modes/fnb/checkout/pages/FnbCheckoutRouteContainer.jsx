@@ -14,7 +14,8 @@ import { StorefrontDropdown } from '../../../../features/shared-storefront/compo
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   MOBILE_DROPDOWN_MENU_STYLE,
   MOBILE_DROPDOWN_OPTION_STYLE,
@@ -119,6 +120,7 @@ export function FnbCheckoutRouteContainer({
   handleCheckout,
   handleDownloadCheckoutImage,
   handleGuestCheckoutOtpCodeChange,
+  onPaymentElectionChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
@@ -136,6 +138,7 @@ export function FnbCheckoutRouteContainer({
   isMobileViewport,
   money,
   orderMethod,
+  paymentElection = 'full',
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
@@ -695,11 +698,18 @@ export function FnbCheckoutRouteContainer({
             onSubmit={handleCheckout}
             paymentControl={(
               <div style={{ display: 'grid', gap: 12 }}>
+                <PaymentElectionSelector
+                  accentColor={fnbOrderBrand}
+                  active={isCustomerChoiceStore(selectedStore)}
+                  bodyFont={servicesBodyFont}
+                  onChange={onPaymentElectionChange}
+                  value={paymentElection}
+                />
                 <PaymentMethodSelectorBlock
                   label={downpaymentDisplay.active ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
-                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })}
+                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
                   DropdownComponent={StorefrontDropdown}
                   triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}

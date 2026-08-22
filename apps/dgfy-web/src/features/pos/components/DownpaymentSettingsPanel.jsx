@@ -10,6 +10,7 @@ import { fetchDownpaymentSettings, updateDownpaymentSettings } from '../services
 import {
     createDefaultDownpaymentForm,
     formToPayload,
+    isSplitConfigurable,
     previewDownpaymentSplit,
     settingsToForm,
     validateDownpaymentForm
@@ -40,12 +41,15 @@ const resolveUserPermissionList = (user) => {
     }
 };
 
+// Phase 150 (#866): customer_choice was reserved (schema-authorized, backend-rejected) since #820
+// -- that reservation is lifted, and it's now offered here as a third mode. Under it, the customer
+// gets exactly two options at checkout: pay the full total online, or pay a downpayment online with
+// the balance settled on delivery/pickup (COD) -- plain COD-with-no-downpayment is not a third
+// option here, since that's already what 'full_payment' + a cash capability expresses.
 const PAYMENT_MODE_OPTIONS = [
     { value: 'full_payment', label: 'Full payment up front', description: 'Customers pay the full order total at checkout.' },
-    // customer_choice is deliberately not offered: the ENUM allows it but the backend 422s any
-    // write with it as the effective mode ("payment_mode \"customer_choice\" is not supported
-    // yet") -- see downpaymentSettingsUseCases.js.
-    { value: 'downpayment_required', label: 'Downpayment required', description: 'Customers pay a downpayment online; the balance is settled on delivery/pickup.' }
+    { value: 'downpayment_required', label: 'Downpayment required', description: 'Customers pay a downpayment online; the balance is settled on delivery/pickup.' },
+    { value: 'customer_choice', label: 'Let the customer choose', description: 'Customers pick at checkout: pay the full total online, or pay a downpayment online with the balance on delivery/pickup.' }
 ];
 
 export default function DownpaymentSettingsPanel({ terminalUser = null, locked = false, sectionId }) {
@@ -83,7 +87,8 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
 
     const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-    const isDownpaymentRequired = form.payment_mode === 'downpayment_required';
+    const splitConfigurable = isSplitConfigurable(form.payment_mode);
+    const isCustomerChoice = form.payment_mode === 'customer_choice';
     const preview = useMemo(
         () => previewDownpaymentSplit({ form, sampleTotalPesos }),
         [form, sampleTotalPesos]
@@ -184,7 +189,7 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                 </div>
             </div>
 
-            {isDownpaymentRequired && (
+            {splitConfigurable && (
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                     <h3 className="text-[13px] font-black text-slate-900">Downpayment Amount</h3>
 
@@ -218,6 +223,10 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                                 onChange={(e) => updateField('downpayment_rate_percentage', e.target.value)}
                                 placeholder="20"
                             />
+                            <p className="text-xs text-slate-500">
+                                What share of each order&apos;s total is captured online now. Scales with the
+                                order, so it&apos;s paired with a minimum below to protect small orders.
+                            </p>
                             {fieldErrorFor('downpayment_rate_bps') && (
                                 <p className="text-xs text-rose-600">{fieldErrorFor('downpayment_rate_bps')}</p>
                             )}
@@ -235,32 +244,40 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                                 onChange={(e) => updateField('downpayment_fixed_pesos', e.target.value)}
                                 placeholder="500.00"
                             />
+                            <p className="text-xs text-slate-500">
+                                The same amount is captured online on every order, regardless of its total — it
+                                is reduced only if the order itself is worth less than this. There&apos;s no
+                                separate minimum in this mode: this amount already is the floor.
+                            </p>
                             {fieldErrorFor('downpayment_fixed_centavos') && (
                                 <p className="text-xs text-rose-600">{fieldErrorFor('downpayment_fixed_centavos')}</p>
                             )}
                         </div>
                     )}
 
-                    <div className="mt-3 space-y-1.5">
-                        <Label htmlFor="downpayment-min">Minimum downpayment (PHP)</Label>
-                        <Input
-                            id="downpayment-min"
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            disabled={!canManage}
-                            value={form.min_downpayment_pesos}
-                            onChange={(e) => updateField('min_downpayment_pesos', e.target.value)}
-                            placeholder="50.00"
-                        />
-                        <p className="text-xs text-slate-500">
-                            Applied as a floor — if the computed downpayment falls below this, this amount is
-                            charged instead.
-                        </p>
-                        {fieldErrorFor('min_downpayment_centavos') && (
-                            <p className="text-xs text-rose-600">{fieldErrorFor('min_downpayment_centavos')}</p>
-                        )}
-                    </div>
+                    {form.downpayment_type === 'percentage' && (
+                        <div className="mt-3 space-y-1.5">
+                            <Label htmlFor="downpayment-min">Minimum downpayment (PHP)</Label>
+                            <Input
+                                id="downpayment-min"
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                disabled={!canManage}
+                                value={form.min_downpayment_pesos}
+                                onChange={(e) => updateField('min_downpayment_pesos', e.target.value)}
+                                placeholder="50.00"
+                            />
+                            <p className="text-xs text-slate-500">
+                                A floor under the percentage above, so a small order never produces a
+                                downpayment too small to be worth collecting online. E.g. 10% of PHP 500 is
+                                PHP 50 — with a PHP 100 minimum, that order captures PHP 100 instead.
+                            </p>
+                            {fieldErrorFor('min_downpayment_centavos') && (
+                                <p className="text-xs text-rose-600">{fieldErrorFor('min_downpayment_centavos')}</p>
+                            )}
+                        </div>
+                    )}
 
                     <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                         <div>
@@ -290,17 +307,33 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                                 onChange={(e) => setSampleTotalPesos(e.target.value)}
                             />
                         </div>
-                        <div className="mt-2 flex items-center justify-between text-sm">
-                            <span className="text-slate-600">Customer pays now</span>
-                            <span className="font-bold text-slate-900">
-                                {preview.downpaymentAmountPesos !== null ? `PHP ${preview.downpaymentAmountPesos}` : '—'}
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-600">Balance on delivery</span>
-                            <span className="font-bold text-slate-900">
-                                {preview.balanceDueAmountPesos !== null ? `PHP ${preview.balanceDueAmountPesos}` : '—'}
-                            </span>
+                        {isCustomerChoice && (
+                            <div className="mt-2 rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">If they pay in full</p>
+                                <div className="mt-1 flex items-center justify-between text-sm">
+                                    <span className="text-slate-600">Customer pays now</span>
+                                    <span className="font-bold text-slate-900">
+                                        {Number(sampleTotalPesos) > 0 ? `PHP ${Number(sampleTotalPesos).toFixed(2)}` : '—'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        <div className="mt-2 rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                            {isCustomerChoice && (
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">If they pay a downpayment</p>
+                            )}
+                            <div className="mt-1 flex items-center justify-between text-sm">
+                                <span className="text-slate-600">Customer pays now</span>
+                                <span className="font-bold text-slate-900">
+                                    {preview.downpaymentAmountPesos !== null ? `PHP ${preview.downpaymentAmountPesos}` : '—'}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-600">Balance on delivery</span>
+                                <span className="font-bold text-slate-900">
+                                    {preview.balanceDueAmountPesos !== null ? `PHP ${preview.balanceDueAmountPesos}` : '—'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>

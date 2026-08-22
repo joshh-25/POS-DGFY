@@ -31,6 +31,9 @@ export function useCheckoutTotalsAndGating({
   isSimpleMode,
   money,
   orderMethod,
+  // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
+  // payment_mode='customer_choice' store.
+  paymentElection,
   quoteError,
   quoteNeedsRefresh,
   quoteResult,
@@ -117,7 +120,11 @@ export function useCheckoutTotalsAndGating({
   // catalog-resolved payment_mode directly (not totalsForDisplay.payment_mode, which is quote-
   // sourced and therefore not yet known before the first quote lands -- the exact thing this gate
   // exists to force).
-  const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required';
+  // Phase 150 (#866): a customer_choice store's split is server-only too, but ONLY once the
+  // customer has actually elected "downpayment" -- an election of "full" needs no quote-forcing,
+  // exactly like a plain full_payment store.
+  const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required'
+    || (selectedStore?.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
   const requireQuoteForCheckout = !hasServiceCart
     && (isDownpaymentStore || (!isFnbMode && !isSimpleMode && !isRetailMode));
   const checkoutBlockReason = getCheckoutBlockReason({
@@ -129,7 +136,8 @@ export function useCheckoutTotalsAndGating({
     accessCapabilities,
     quoteResult,
     quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
+    requireQuote: requireQuoteForCheckout,
+    paymentElection
   });
   const serviceCartValidationIssues = useMemo(
     () => buildServiceCartValidationIssues(serviceCartLines),
@@ -144,7 +152,8 @@ export function useCheckoutTotalsAndGating({
     accessCapabilities,
     quoteResult,
     quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
+    requireQuote: requireQuoteForCheckout,
+    paymentElection
   }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,

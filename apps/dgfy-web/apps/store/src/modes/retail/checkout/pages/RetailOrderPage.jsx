@@ -9,7 +9,7 @@ import { RetailOrderStoreHeader } from '../components/RetailOrderStoreHeader.jsx
 import { RetailOrderSummaryContent } from '../components/RetailOrderSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
@@ -86,8 +86,10 @@ export function RetailOrderPage({
   onImageError,
   onSelectAddress,
   onConfirmQrphTestPayment,
+  onPaymentElectionChange,
   onPaymentTypeChange,
   orderMethod = 'delivery',
+  paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
@@ -156,9 +158,13 @@ export function RetailOrderPage({
   const totals = totalsForDisplay;
   // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- the ADR
+  // amendment states "pay the full order total online", and customer_choice "does not add a
+  // third customer-facing option". Cash stays hidden regardless of election at this store, not
+  // only once a downpayment is actually active.
   const retailPaymentOptions = buildStorefrontCheckoutPaymentOptions(
     selectedStore?.payment_capabilities,
-    { hideCash: downpaymentDisplay.active }
+    { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) }
   );
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()
@@ -335,6 +341,7 @@ export function RetailOrderPage({
               checkoutLoading={checkoutLoading}
               downpaymentDisplay={downpaymentDisplay}
               guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+              isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
               isDeliveryOrder={isDeliveryOrder}
               isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
@@ -343,6 +350,8 @@ export function RetailOrderPage({
               onBackToAccount={() => setStep(1)}
               onCheckout={onCheckout}
               onImageError={onImageError}
+              onPaymentElectionChange={onPaymentElectionChange}
+              paymentElection={paymentElection}
               onPaymentTypeChange={onPaymentTypeChange}
               paymentOptions={retailPaymentOptions}
               paymentType={paymentType}

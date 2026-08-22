@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-21
-last_reviewed: 2026-08-21
+last_reviewed: 2026-08-22
 review_by: 2027-02-21
 applies_to: retail_storefront, payments, checkout
 topic: downpayment_authorization_across_workflow_modes
@@ -124,6 +124,36 @@ here — see ADR 0069 for their text. Only clauses 6 and 7 are replaced; one new
 - **Reversible.** This is a widening of an authorization boundary with no schema or migration
   impact; narrowing it again, if ever needed, is an ordinary dated amendment under clause 6's own
   `[default]` tier.
+
+## Amendments
+
+### 2026-08-22 — `customer_choice` is lifted from reserved to built
+
+- Clause amended: **Consequences item 2** (untagged, and outside the `## Decision` list — so
+  `default` tier per ADR 0039). That item listed *"the unconstructed `customer_choice` mode"* among
+  the deferrals this ADR carried forward unchanged from ADR 0069.
+- Change: `customer_choice` — a schema-authorized `payment_mode` literal since Phase 138 (#820),
+  previously rejected outright by `downpaymentSettingsUseCases.js` with a 422 — is now a fully
+  supported settings-level mode. A tenant configured `customer_choice` presents the customer, at
+  checkout, with exactly two options: pay the full order total online, or pay a downpayment online
+  with the balance settled on delivery/pickup (COD). The customer's election is carried as a new
+  `payment_election` request field (`'full'` | `'downpayment'`, default `'full'`), consulted by
+  `downpaymentPolicy.js`'s `resolveDownpaymentForTotal` **only** when the tenant's stored
+  `payment_mode` is `customer_choice` — ignored (and irrelevant) for `full_payment` and
+  `downpayment_required`, whose resolution is unchanged by this amendment.
+- Scope this amendment does **not** touch: clauses 6 and 7 (vertical-agnostic authorization,
+  reachability-scoped enforcement) are unaffected — `customer_choice` runs through the same shared
+  `resolveCheckoutContext` every other mode already uses, with no new checkout flow and no new
+  reachability question. Plain COD with no downpayment at all remains expressible as
+  `full_payment` plus a cash capability; `customer_choice` does not add a third customer-facing
+  option beyond the two named above.
+- Reason: the reservation existed because the mechanism wasn't built yet, not because of an
+  unresolved design question — once the merchant-configuration UI (#848/#859) and the underlying
+  split math were live, the only missing piece was a customer-facing choice between the two modes
+  the platform already supports individually. Filed as #866 from hands-on feedback on the Phase 143
+  settings UI, once the reservation's own rationale (nothing to choose between yet) no longer held.
+- PR: #865/#866 (Phase 150). Issues: #865 (settings-form clarity, shipped in the same PR, no ADR
+  clause of its own), #866 (this amendment).
 
 ## Related
 

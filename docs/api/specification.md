@@ -3593,11 +3593,14 @@ Catalog rows include:
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
-**Response Envelope (Phase 142, #823)**
+**Response Envelope (Phase 142, #823; `customer_choice` added Phase 150, #866)**
 - The catalog response includes a top-level `payment_mode` field, sibling to `payment_capabilities`
-  (`'full_payment'` | `'downpayment_required'`) -- always present, defaulting to `'full_payment'`
-  for any tenant without downpayment settings configured, and fail-closed to `'full_payment'` if
-  the settings read itself fails (a catalog request never 500s over this).
+  (`'full_payment'` | `'downpayment_required'` | `'customer_choice'`) -- always present, defaulting
+  to `'full_payment'` for any tenant without downpayment settings configured, and fail-closed to
+  `'full_payment'` if the settings read itself fails (a catalog request never 500s over this).
+  `'customer_choice'` means the storefront must render the pay-in-full-vs-downpayment election
+  control (see the Downpayment Contract below); it never appears in a resolved quote/checkout
+  response, only on the catalog.
 - `payment_mode` is advisory/presentational for the storefront client (hide the cash payment
   option, force a quote before the payment step); it is not itself an enforcement point -- the
   actual capture guards live on the quote/checkout endpoints (see Phase 141's own contract below).
@@ -3866,25 +3869,45 @@ Route mapping note:
   - `service_fee_amount = round4(subtotal_amount * 0.01)`
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
-**Downpayment Contract** (Phase 140, #821, ADR 0069/0070)
-- Response also includes, computed server-side from the tenant's `tenant_downpayment_settings` row
-  (Phase 138, #820) -- never accepted from the request body:
-  - `payment_mode` (`full_payment` or `downpayment_required`)
+**Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
+added Phase 150, #866)
+- Request body accepts an optional `payment_election` field (`'full'` | `'downpayment'`, default
+  `'full'`) -- the customer's checkout-time pay-in-full-vs-downpayment choice. Only consulted when
+  the tenant's resolved `payment_mode` is `customer_choice`; ignored (and irrelevant) for
+  `full_payment` (always full) and `downpayment_required` (always split -- the merchant decided,
+  not the customer). Absent or unrecognized input defaults to `'full'` -- under-collecting is the
+  dangerous direction for a merchant expecting a downpayment, so an unresolved election fails
+  toward the safer, unambiguous shape rather than guessing a split.
+- Response includes, computed server-side from the tenant's `tenant_downpayment_settings` row
+  (Phase 138, #820) and, for a `customer_choice` tenant, the request's `payment_election` -- never
+  otherwise accepted from the request body:
+  - `payment_mode` (`full_payment` or `downpayment_required` -- **never** `customer_choice` in a
+    resolved quote/checkout response; that value only ever describes a tenant's settings/catalog,
+    never a resolved order)
   - `downpayment_amount`, `balance_due_amount`, `downpayment_refundable` -- all `null` when
     `payment_mode` is `full_payment` (never `0` or the total, so a `null` cannot be mistaken for "no
     downpayment configured")
 - Downpayment formula, applied to the already promo/voucher-discounted `total_amount`:
   - `percentage` type: `downpayment_amount = round(total_amount_centavos * downpayment_rate_bps / 10000)`
   - `fixed` type: `downpayment_amount = downpayment_fixed_centavos`
-  - Floored to `min_downpayment_centavos`, then clamped to `total_amount` (never more than the order
-    is worth; `balance_due_amount` is never negative).
+  - Floored to `min_downpayment_centavos` -- **percentage type only** (Phase 150, #865); a `fixed`
+    row's minimum is not enforced at resolution time, matching the write-time rule that only
+    requires it for `percentage` -- then clamped to `total_amount` (never more than the order is
+    worth; `balance_due_amount` is never negative).
 - Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
   restriction.
 - **(Phase 141, #822)** A `downpayment_required` order is, by construction, cash-on-delivery for the
-  balance -- `payment_mode` never means "pay everything online" (that's the separate, unbuilt
-  `customer_choice` mode). The customer's only online payment choice is which method pays the
-  downpayment leg (`POST /store/checkout/payment-sessions`, below); the balance is always collected
-  in person (ADR 0069 clause 2 `[binding]`).
+  balance -- `payment_mode` never means "pay everything online". The customer's only online payment
+  choice is which method pays the downpayment leg (`POST /store/checkout/payment-sessions`, below);
+  the balance is always collected in person (ADR 0069 clause 2 `[binding]`).
+- **(Phase 150, #866)** A `customer_choice` tenant offers exactly two outcomes, both resolved from
+  the same `payment_election` field: `'full'` resolves to `payment_mode: 'full_payment'`, paid in
+  full online (cash/COD is hidden from the payment-method list at this store regardless of
+  election -- storefront-side `hideCash`, RF-3); `'downpayment'` resolves to `payment_mode:
+  'downpayment_required'` (online downpayment leg, balance COD, identical to a merchant-forced
+  `downpayment_required` store). Plain COD-with-no-deposit is not offered under `customer_choice`
+  at all -- that outcome is already expressible as a plain `full_payment` store with a cash
+  capability.
 
 ### POST /store/checkout
 Create online-store order and return tracking metadata.

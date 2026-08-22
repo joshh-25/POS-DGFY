@@ -7434,3 +7434,137 @@ an ancestor of `f22fd51fb` (#853's own merge of `develop`). Resolution, decided 
 
 No code changes accompany this renumber — PR #844 and PR #859 both keep their existing phase
 numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments needed edits.
+
+---
+
+## Phase 150 - Downpayment Settings Clarity + The `customer_choice` Payment Mode
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issues #865 and #866, filed
+  2026-08-22 from hands-on feedback on the Phase 143 (#848) POS Payments tab. Highest existing entry
+  in this ledger at authoring time was 147; 148/149 are reserved (not yet implemented) by the #853
+  renumber note immediately above, so 150 is the next free number.
+- Release: single `develop`-targeted PR, cut from `origin/feature/848-downpayment-settings-ui`
+  (PR #859's own branch, still open/unmerged at authoring time) rather than fresh `origin/develop`
+  -- both new files this phase extends (`DownpaymentSettingsPanel.jsx`,
+  `downpaymentSettingsForm.js`) exist only on that branch, not yet on `develop`. This PR's diff
+  against `develop` will therefore shrink to its own true scope automatically once #859 merges and
+  this PR's base is retargeted -- a deliberate, disclosed consequence of stacking, not an error.
+
+### Objective and Scope
+
+- **#865 — settings-form clarity.** The Minimum downpayment field was required in `fixed` type mode
+  yet could only be a no-op or a silent override of the fixed amount the merchant just typed (both
+  are constants, so the effective downpayment collapses to `max(fixed, min)` permanently). Resolved
+  by scoping the requirement to `percentage` type only, both server-side
+  (`downpaymentSettingsUseCases.js`'s effective-row validation) and client-side
+  (`downpaymentSettingsForm.js`'s `validateDownpaymentForm`/`formToPayload`, which now zeroes the
+  field for any non-percentage type rather than resubmitting a stale value). The panel hides the
+  field entirely outside `percentage` mode and adds helper text to all three amount fields
+  (Percentage, Fixed, Minimum) -- previously only Minimum had any.
+- **#866 — build the reserved `customer_choice` payment mode.** Reserved since Phase 138 (#820,
+  "Schema `customer_choice` now; server rejects it as unsupported in v1") and carried forward as an
+  explicit deferral by ADR 0069 and ADR 0070's Consequences. Lifted via a dated `## Amendments`
+  block on ADR 0070 (this PR, `[default]` tier per ADR 0039 -- the amended clause is an untagged
+  Consequences item, not a `[binding]` Decision clause). A `customer_choice`-configured store now
+  presents the customer, at checkout, with exactly two options: pay the full total online, or pay a
+  downpayment online with the balance settled on delivery/pickup (COD) -- mirroring the fact,
+  confirmed in code (`storeUseCases.js`), that a downpayment capture already forces the order's
+  `payment_type` to `'cash'` (COD for the balance). Plain COD with no downpayment remains
+  expressible as `full_payment` + a cash capability; `customer_choice` does not add a third option.
+- **Key simplification: no new order semantics.** `resolveDownpaymentForTotal`
+  (`downpaymentPolicy.js`) still returns only `full_payment` or `downpayment_required` -- never
+  `customer_choice` itself. The customer's checkout-time election (`payment_election`, a new
+  `'full'` | `'downpayment'` request field, default `'full'` -- under-collecting is the safer
+  failure direction) collapses `customer_choice`'s settings-level value into whichever of the two
+  existing shapes applies. Every downstream consumer (`capture_kind`, the order-placement gate,
+  `serializePaymentSession`, `storefrontDownpaymentPresentation.js`'s `resolveDownpaymentDisplay`)
+  needed **zero** changes, since all of them key off the *resolved* shape, which was already
+  correct.
+- **Storefront wiring, not just settings.** `payment_election` threads from a new pure model
+  (`storefrontPaymentElection.js`) through `StorefrontApp.jsx`'s state (self-healing back to
+  `'full'` the instant a store stops being `customer_choice`), the shared checkout-payload builder
+  (`buildFnbCheckoutPayload.js`, used by all three modes' quote and real-checkout paths alike), and
+  a new presentational control (`PaymentElectionSelector.jsx`) rendered only at a `customer_choice`
+  store, in each of the three checkout page containers (Retail/F&B/Simple). An election change
+  invalidates the quote via the same master effect that already reacts to cart/order-method/promo
+  changes -- getting this wrong would show a stale split against the new election.
+- Extended (not just widened) two existing guards to be election-aware rather than merely
+  mode-aware: the `downpayment_zero_total` checkout-block reason (`checkoutRules.js`) and the
+  `DOWNPAYMENT_POLICY_UNRESOLVED` fail-closed guard (`storeUseCases.js`) both now key on "did the
+  customer actually elect a downpayment," not just "is this store `customer_choice`" -- an election
+  of `'full'` at a `customer_choice` store must never trip either guard, since the quote correctly
+  resolving to `full_payment` there is by design, not a malformed-row symptom.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the settings API) and Phase 143 (#848/PR #859, the POS settings panel
+  this phase extends in place rather than duplicating).
+- ADR 0070 amended (dated `## Amendments` block, `status: amended`) rather than superseded --
+  `[default]` tier per ADR 0039, since the lifted clause is an untagged Consequences item.
+- Compliance declaration: `docs/compliance/impact-declarations/
+  2026-08-22-downpayment-choice-and-settings-clarity.md` (`major`, `pos,terminal,payments`).
+  Storefront checkout code (`apps/dgfy-web/apps/store/`) is touched but is not a recognized
+  compliance surface in `check-compliance-impact.js`'s current rule set -- named in the declaration
+  for visibility, not silently omitted.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table -- no migration
+  (`customer_choice` was already a schema-authorized ENUM value), no compliance-declaration
+  ambiguity, no `staging`/`main` base, no deploy dispatch, no force-push.
+- Board: #865/#866 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- Backend: `downpaymentPolicy.unit.test.js` (21 passed, new `customer_choice` election matrix --
+  splits/doesn't-split, defaults to `'full'` when absent or garbage, never returns
+  `payment_mode: 'customer_choice'` itself, ignored for the other two modes),
+  `downpaymentSettingsUseCases.unit.test.js` (16 passed, `customer_choice` accepted with the same
+  effective-row rules as `downpayment_required`, `fixed`-type minimum no longer required),
+  `downpaymentSettingsValidator.unit.test.js` (6 passed), `storeCheckoutDownpaymentResolution.unit.test.js`
+  (23 passed, election threading through the quote and both checkout paths, plus the extended
+  `DOWNPAYMENT_POLICY_UNRESOLVED` guard verified in both directions -- trips on election=
+  `'downpayment'` against a malformed row, does NOT trip on election=`'full'` against the same row).
+- Backend regression sweep: every other test file importing the touched functions
+  (`downpaymentWebhookFinalization`, `storeCheckoutAffiliatePricing`,
+  `storeCartQuotePreviewNoContactRequired`, `storeCheckoutInventoryReservation`,
+  `storeCheckoutVoucherPromoStacking`, `storeCatalogPaymentMode`) -- all green. Two pre-existing,
+  unrelated failures (`storeDirectGcash.usecase.test.js`, `storeUsecases.applicationResult.test.js`,
+  a `DIRECT_PAYMENT_NOT_READY`/`DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE` drift) confirmed identical
+  on the unmodified baseline via `git stash` before/after -- not a regression.
+- Frontend (POS): `downpaymentSettingsForm.test.js` (23 passed, was 18) and
+  `downpaymentSettingsPanel.behavior.test.jsx` (11 passed, was 6) -- new coverage for the third
+  radio option, the hidden Minimum field in fixed mode, and the relaxed fixed-mode save path.
+- Frontend (storefront): full `apps/dgfy-web/apps/store/src/` suite, 723 passed across 136 files,
+  including the pre-existing `retailCheckoutOnlinePayments`/`simpleCheckoutOnlinePayments`/
+  `fnbStorefront` contract tests, which render the exact three checkout containers this phase wires
+  the election control through end to end.
+- `npm run build:pos` and `npm run build:store` -- real Vite builds, both succeeded. Full
+  `dgfy-web` workspace: 2381 passed across 421 files. `npm run lint`: 0 problems on every
+  new/changed file. `npm run check:architecture`: clean. `npm run check:compliance`: PASS (6
+  sensitive files, correctly scoped to this phase's own changes in local-worktree mode).
+- **Not verifiable this session, disclosed rather than glossed:** no live E2E of the storefront
+  election control against a deployed `customer_choice`-configured tenant (unit/contract coverage
+  only), and `POST /api/v1/compliance/preflight` not executed against a live environment -- same
+  disclosure shape as #859's own declaration.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`,
+  `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js`,
+  `apps/dgfy-api/src/validators/storeValidator.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`
+- `apps/dgfy-web/src/features/pos/components/DownpaymentSettingsPanel.jsx`,
+  `apps/dgfy-web/src/features/pos/utils/downpaymentSettingsForm.js`
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontPaymentElection.js` (new),
+  `apps/dgfy-web/apps/store/src/shared/components/checkout/PaymentElectionSelector.jsx` (new),
+  `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/checkoutRules.js`,
+  `apps/dgfy-web/apps/store/src/StorefrontApp.jsx`, and the three checkout route
+  containers/props-hooks (Retail, F&B, Simple)
+- `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (amended)
+- `docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md` (new)
+- Issues #865, #866

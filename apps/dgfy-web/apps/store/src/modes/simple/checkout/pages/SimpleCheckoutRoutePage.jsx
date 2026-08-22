@@ -9,7 +9,7 @@ import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummar
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   getStorefrontOnlinePaymentLabel,
   isStorefrontOnlinePaymentType
@@ -33,6 +33,7 @@ export function SimpleCheckoutRoutePage({
   deliverySavedLocations = [],
   DropdownComponent,
   fnbPaymentType = 'cash',
+  paymentElection = 'full',
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
@@ -85,6 +86,7 @@ export function SimpleCheckoutRoutePage({
   onImageError,
   onOpenExpandedMap,
   onOrderMethodChange,
+  onPaymentElectionChange,
   onPaymentTypeChange,
   onConfirmQrphTestPayment,
   onPinChange,
@@ -271,12 +273,15 @@ export function SimpleCheckoutRoutePage({
             checkoutLoading={checkoutLoading}
             guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
+            isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
             isMobileViewport={isMobileViewport}
             isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             money={money}
             onImageError={onImageError}
+            onPaymentElectionChange={onPaymentElectionChange}
+            paymentElection={paymentElection}
             paymentType={fnbPaymentType}
-            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active })}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
             isDownpaymentActive={downpaymentDisplay.active}
             downpaymentCallout={(
               <DownpaymentPaymentCallout

@@ -3,6 +3,7 @@ import {
   buildDownpaymentRefundableNote,
   buildDownpaymentTotalsRows,
   buildPaymentModeStorePatch,
+  isCustomerChoiceStore,
   isDownpaymentRequiredStore,
   resolveDownpaymentBalanceLabel,
   resolveDownpaymentDisplay
@@ -20,8 +21,12 @@ describe('buildPaymentModeStorePatch', () => {
     expect(buildPaymentModeStorePatch(undefined)).toEqual({ payment_mode: 'full_payment' });
   });
 
-  it('never passes through an unrecognized value verbatim', () => {
-    expect(buildPaymentModeStorePatch({ payment_mode: 'customer_choice' })).toEqual({ payment_mode: 'full_payment' });
+  // Phase 150 (#866): customer_choice now passes through verbatim -- it used to be flattened into
+  // full_payment along with every other unrecognized value. An actually-unrecognized literal still
+  // falls back to full_payment.
+  it('passes through customer_choice verbatim, but still defaults an unrecognized literal to full_payment', () => {
+    expect(buildPaymentModeStorePatch({ payment_mode: 'customer_choice' })).toEqual({ payment_mode: 'customer_choice' });
+    expect(buildPaymentModeStorePatch({ payment_mode: 'not_a_real_mode' })).toEqual({ payment_mode: 'full_payment' });
   });
 });
 
@@ -29,8 +34,20 @@ describe('isDownpaymentRequiredStore', () => {
   it('is true only for payment_mode=downpayment_required', () => {
     expect(isDownpaymentRequiredStore({ payment_mode: 'downpayment_required' })).toBe(true);
     expect(isDownpaymentRequiredStore({ payment_mode: 'full_payment' })).toBe(false);
+    expect(isDownpaymentRequiredStore({ payment_mode: 'customer_choice' })).toBe(false);
     expect(isDownpaymentRequiredStore({})).toBe(false);
     expect(isDownpaymentRequiredStore(null)).toBe(false);
+  });
+});
+
+// Phase 150 (#866).
+describe('isCustomerChoiceStore', () => {
+  it('is true only for payment_mode=customer_choice', () => {
+    expect(isCustomerChoiceStore({ payment_mode: 'customer_choice' })).toBe(true);
+    expect(isCustomerChoiceStore({ payment_mode: 'downpayment_required' })).toBe(false);
+    expect(isCustomerChoiceStore({ payment_mode: 'full_payment' })).toBe(false);
+    expect(isCustomerChoiceStore({})).toBe(false);
+    expect(isCustomerChoiceStore(null)).toBe(false);
   });
 });
 

@@ -27,11 +27,23 @@ const FULL_PAYMENT_RESULT = Object.freeze({
  * @param {object} params.settings - a downpaymentSettingsRepository.getSettings() result (or its
  *   DEFAULT_SETTINGS shape) -- never null, per that repository's own contract.
  * @param {number} params.totalAmount - the order's total in pesos, AFTER promo/voucher discounts.
+ * @param {string} [params.paymentElection] - Phase 150 (#866): the customer's checkout-time choice,
+ *   'full' | 'downpayment'. Only consulted when settings.payment_mode is 'customer_choice';
+ *   ignored for 'full_payment' (always full) and 'downpayment_required' (always split -- the
+ *   merchant, not the customer, decided). Defaults to 'full' when absent -- under-collecting is
+ *   the dangerous direction for a merchant expecting a downpayment, so an unresolved/omitted
+ *   election fails toward the safer, unambiguous shape rather than guessing a split.
  * @returns {{payment_mode: string, downpayment_amount: number|null, balance_due_amount: number|null,
- *   downpayment_refundable: boolean|null}}
+ *   downpayment_refundable: boolean|null}} payment_mode here is always 'full_payment' or
+ *   'downpayment_required' -- this function never returns 'customer_choice'; that value only ever
+ *   describes a tenant's settings, never a resolved order.
  */
-export const resolveDownpaymentForTotal = ({ settings, totalAmount }) => {
-    if (!settings || settings.payment_mode !== 'downpayment_required') {
+export const resolveDownpaymentForTotal = ({ settings, totalAmount, paymentElection }) => {
+    if (!settings) return FULL_PAYMENT_RESULT;
+
+    const requiresSplit = settings.payment_mode === 'downpayment_required'
+        || (settings.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
+    if (!requiresSplit) {
         return FULL_PAYMENT_RESULT;
     }
 
@@ -57,7 +69,15 @@ export const resolveDownpaymentForTotal = ({ settings, totalAmount }) => {
         return FULL_PAYMENT_RESULT;
     }
 
-    const minCentavos = Number.isInteger(settings.min_downpayment_centavos) && settings.min_downpayment_centavos > 0
+    // Phase 150 (#865/#866) RF-5: the minimum only ever meant "protect a percentage-mode online
+    // capture from being too small to be worth the payment-gateway fee" -- it was never a floor on
+    // a fixed amount the merchant chose deliberately. downpaymentSettingsUseCases.js's write-time
+    // rule now requires (and downpaymentSettingsForm.js/DownpaymentSettingsPanel.jsx now render) the
+    // minimum only for type === 'percentage'; this resolution-time floor must match that, or a
+    // tenant still carrying a stale min > fixed from before this change keeps silently overriding
+    // its own fixed amount with a value the panel no longer even shows.
+    const minCentavos = type === 'percentage'
+        && Number.isInteger(settings.min_downpayment_centavos) && settings.min_downpayment_centavos > 0
         ? settings.min_downpayment_centavos
         : 0;
     const flooredCentavos = Math.max(rawCentavos, minCentavos);

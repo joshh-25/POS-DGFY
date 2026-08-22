@@ -121,4 +121,26 @@ describe('buildFnbCheckoutPayload', () => {
 
     expect(payload.scheduled_for).toBeNull();
   });
+
+  // Phase 150 (#866).
+  it('defaults payment_election to "full" when omitted -- every pre-#866 caller is unaffected', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed' },
+      orderMethod: 'pickup',
+      cart: [{ item_id: 1, quantity: 1 }]
+    });
+    expect(payload.payment_election).toBe('full');
+  });
+
+  it('passes payment_election through as "downpayment" when the customer elected it, "full" for a garbage value', () => {
+    const base = {
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed' },
+      orderMethod: 'pickup',
+      cart: [{ item_id: 1, quantity: 1 }]
+    };
+    expect(buildFnbCheckoutPayload({ ...base, paymentElection: 'downpayment' }).payment_election).toBe('downpayment');
+    expect(buildFnbCheckoutPayload({ ...base, paymentElection: 'not_a_real_choice' }).payment_election).toBe('full');
+  });
 });

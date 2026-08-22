@@ -36,6 +36,13 @@ describe('Retail Storefront online payment contract', () => {
     expect(options.some((option) => option.value === 'cash')).toBe(false);
   });
 
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- see
+  // simpleCheckoutOnlinePayments.contract.test.js's own copy of this assertion for the rationale.
+  it('hides cash for a customer_choice Retail store regardless of the current election', () => {
+    const page = readSource('modes/retail/checkout/pages/RetailOrderPage.jsx');
+    expect(page).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
+  });
+
   it('wires Retail checkout to live payment capabilities, PayMongo sessions, and step-3 return recovery', () => {
     const page = readSource('modes/retail/checkout/pages/RetailOrderPage.jsx');
     const step = readSource('modes/retail/checkout/components/RetailOrderPaymentStep.jsx');

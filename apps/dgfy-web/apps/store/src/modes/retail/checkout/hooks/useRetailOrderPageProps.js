@@ -76,7 +76,12 @@ export function useRetailOrderPageProps({
   handleConfirmQrphTestPayment,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
-  resetQrphPaymentSession
+  resetQrphPaymentSession,
+  // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange above --
+  // StorefrontApp.jsx's paymentElection/setElected, threaded through unrenamed since there's no
+  // legacy name to reconcile with here (unlike fnbPaymentType, this is new).
+  paymentElection,
+  onPaymentElectionChange
 }) {
   return {
     canAddPinnedLocation,
@@ -139,6 +144,8 @@ export function useRetailOrderPageProps({
     onCheckout: handleCheckout,
     paymentType: fnbPaymentType,
     onPaymentTypeChange: handlePaymentTypeChange,
+    paymentElection,
+    onPaymentElectionChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
