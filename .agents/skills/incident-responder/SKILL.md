@@ -85,14 +85,18 @@ no new capability and no second path to `main`.
 5. **Back-port to `develop` (#861 gap 2) — part of "done," not a follow-up.** If the fix landed on
    `main` outside the normal promotion flow, this loop is not finished at the deploy step. Follow
    `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-18 "Hotfix and back-port" procedure before
-   closing the incident: cut a branch off fresh `origin/develop`, `git merge origin/main`, open a PR
-   into `develop` (`Refs` the incident and the hotfix PR — both already closed, never `Closes`).
-   **That PR needs no new merge authority** — it targets `develop`, so `pr-reviewer`'s existing
-   unattended-merge policy already covers it, same as any other `develop` PR. If the fix instead
-   landed on `staging`, this step doesn't apply — say so explicitly rather than silently skipping
-   it, since `staging` already forward-merges into `main` on the next promotion and doesn't need a
-   separate back-port. Only once this PR is open (or the explicit no-back-port-needed reason is
-   stated) is the incident considered closeable.
+   closing the incident, in full — including its step 3, restated here because getting it wrong
+   breaks board mechanics: the back-port PR does **not** `Refs` the closed incident/hotfix PR
+   directly (a closed issue can't take the `Refs #N` → `For QA` transition
+   `docs/process/ISSUE-TAXONOMY.md` relies on). Hand off to `pm` to file a **fresh issue** for the
+   back-port itself first (that fresh issue in turn `Refs`es the original incident and hotfix PR for
+   context); then cut a branch off fresh `origin/develop`, `git merge origin/main`, and open the PR
+   into `develop` `Refs`-ing the fresh issue. **That PR needs no new merge authority** — it targets
+   `develop`, so `pr-reviewer`'s existing unattended-merge policy already covers it, same as any
+   other `develop` PR. If the fix instead landed on `staging`, this step doesn't apply — say so
+   explicitly rather than silently skipping it, since `staging` already forward-merges into `main`
+   on the next promotion and doesn't need a separate back-port. Only once this PR is open (or the
+   explicit no-back-port-needed reason is stated) is the incident considered closeable.
 
 Every guardrail elsewhere in this file — the bounded retry, the three "cannot do yet" prerequisites,
 the phrase-gated `main` override and its every-single-invocation restatement/logging requirement —
