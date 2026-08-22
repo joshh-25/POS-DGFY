@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { checkAnyPermission } from '../src/middleware/auth.js';
+import { buildModePermissionRequirements } from '../src/config/modeRbacFallback.js';
 import dbStore from '../src/utils/dbStore.js';
 
 const createResponse = () => {
@@ -50,7 +51,7 @@ describe('checkAnyPermission middleware', () => {
     const res = createResponse();
     const next = jest.fn();
 
-    await checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
+    await checkAnyPermission(buildModePermissionRequirements('fnb:checks:manage', 'pos:transact'))(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
@@ -67,6 +68,25 @@ describe('checkAnyPermission middleware', () => {
         path: '/api/v1/services/bookings'
       })
     }));
+  });
+
+  it('does not audit a regular OR permission list as mode fallback', async () => {
+    const auditCreate = jest.fn().mockResolvedValue({});
+    jest.spyOn(dbStore, 'get').mockReturnValue({ create: auditCreate });
+    const req = {
+      user: {
+        user_id: 42,
+        permissions: ['pos:transact'],
+        is_master_admin: false
+      }
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(auditCreate).not.toHaveBeenCalled();
   });
 
   it('denies unrelated permissions and returns the accepted list', async () => {

@@ -486,6 +486,14 @@ export const checkAnyPermission = (requiredPermissions) => {
   const permissions = Array.isArray(requiredPermissions)
     ? requiredPermissions.filter(Boolean)
     : [requiredPermissions].filter(Boolean);
+  if (Array.isArray(requiredPermissions) && requiredPermissions.__modeRbacFallback) {
+    Object.defineProperty(permissions, '__modeRbacFallback', {
+      value: requiredPermissions.__modeRbacFallback,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    });
+  }
 
   return async (req, res, next) => {
     if (!req.user) {
@@ -504,7 +512,13 @@ export const checkAnyPermission = (requiredPermissions) => {
       const effectivePermissions = await filterCapabilityDisabledPermissions(req, permissions);
       const matchedPermissionIndex = effectivePermissions.findIndex((permission) => userPermissions.includes(permission));
       if (matchedPermissionIndex >= 0) {
-        if (matchedPermissionIndex > 0) {
+        const modeFallback = permissions.__modeRbacFallback;
+        if (
+          modeFallback
+          && matchedPermissionIndex > 0
+          && effectivePermissions[0] === modeFallback.primary
+          && effectivePermissions[matchedPermissionIndex] === modeFallback.fallback
+        ) {
           await persistModeRbacFallbackAudit(req, {
             primaryPermission: effectivePermissions[0],
             fallbackPermission: effectivePermissions[matchedPermissionIndex]

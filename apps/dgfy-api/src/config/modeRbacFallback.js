@@ -13,6 +13,12 @@ export const buildModePermissionRequirements = (primary, fallback = null) => {
   const permissions = [primary].filter(Boolean);
   if (fallback && isModeRbacGenericFallbackEnabled()) {
     permissions.push(fallback);
+    Object.defineProperty(permissions, '__modeRbacFallback', {
+      value: Object.freeze({ primary, fallback }),
+      enumerable: false,
+      configurable: false,
+      writable: false
+    });
   }
   return permissions;
 };
