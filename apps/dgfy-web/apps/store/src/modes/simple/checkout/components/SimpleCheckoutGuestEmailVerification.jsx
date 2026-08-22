@@ -103,7 +103,7 @@ export function SimpleCheckoutGuestEmailVerification({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={onRequestCode}
+          onClick={() => onRequestCode()}
           disabled={loading || cooldownActive}
           style={{
             border: 'none',
