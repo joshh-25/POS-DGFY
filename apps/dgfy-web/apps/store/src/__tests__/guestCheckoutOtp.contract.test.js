@@ -32,6 +32,7 @@ describe('Storefront guest checkout OTP contract', () => {
     const sharedSubmissionSource = readAppSource('shared/hooks/useCheckoutSubmission.js');
     const checkoutRouteContainerSource = readAppSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
     const simpleCustomerStepSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx');
+    const simpleRoutePropsSource = readAppSource('modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js');
     const serviceValidatorSource = readRepoSource('apps/dgfy-api/src/validators/serviceValidator.js');
     const serviceUseCaseSource = readRepoSource('apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js');
     const submissionCallStart = appSource.indexOf('} = useCheckoutSubmission({');
@@ -73,6 +74,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(sharedSubmissionSource).toContain('GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE');
     expect(modelSource).toContain('Guest checkout needs a separate 6-digit email code.');
     expect(simpleCustomerStepSource).toContain('SimpleCheckoutGuestEmailVerification');
+    expect(simpleRoutePropsSource).toContain('onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp');
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
   });

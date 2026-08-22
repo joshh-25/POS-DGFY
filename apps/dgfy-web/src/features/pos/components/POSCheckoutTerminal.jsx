@@ -39,66 +39,11 @@ import {
     toArray
 } from '../utils/posCheckoutTerminalUtils.js';
 import { resolveModifierDelta } from '../utils/posCheckoutTerminalModifiers.js';
+import { flyImageToCheckoutBar } from '../utils/posCatalogAnimations.js';
+import { getPosTerminalLayoutClasses } from '../utils/posTerminalLayout.js';
+import { normalizeAppliedDiscount, normalizePosTerminalDraftState, parseTerminalPermissions } from '../utils/posTerminalDraftState.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
-// Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
-// delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
-// removes itself on finish/cancel. Skips silently if not mobile, no image, or no target -
-// never throws, never touches cart/backend state.
-const flyImageToCheckoutBar = (cardElement) => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    if (!window.matchMedia('(max-width: 639.98px)').matches) return;
-    if (!cardElement) return;
-    const sourceImg = cardElement.querySelector('.product-image');
-    if (!sourceImg || typeof sourceImg.animate !== 'function') return;
-
-    const checkoutBar = document.getElementById('checkout-bar');
-    if (!checkoutBar) return;
-    // Land on the Checkout button (right side of the bar) instead of the bar's midpoint;
-    // falls back to the bar itself if the button isn't in the DOM for some reason.
-    const checkoutTarget = document.getElementById('checkout-bar-button') || checkoutBar;
-
-    const sourceRect = sourceImg.getBoundingClientRect();
-    if (sourceRect.width === 0 || sourceRect.height === 0) return;
-    const targetRect = checkoutTarget.getBoundingClientRect();
-
-    const size = 44;
-    const clone = sourceImg.cloneNode(true);
-    clone.removeAttribute('id');
-    clone.style.cssText = [
-        'position: fixed',
-        `left: ${sourceRect.left + (sourceRect.width / 2) - (size / 2)}px`,
-        `top: ${sourceRect.top + (sourceRect.height / 2) - (size / 2)}px`,
-        `width: ${size}px`,
-        `height: ${size}px`,
-        'border-radius: 9999px',
-        'object-fit: cover',
-        'pointer-events: none',
-        'z-index: 2147483647',
-        'will-change: transform, opacity'
-    ].join(';');
-    document.body.appendChild(clone);
-
-    const deltaX = (targetRect.left + targetRect.width / 2) - (sourceRect.left + sourceRect.width / 2);
-    const deltaY = (targetRect.top + targetRect.height / 2) - (sourceRect.top + sourceRect.height / 2);
-
-    const animation = clone.animate(
-        [
-            { transform: 'translate(0px, 0px) scale(1)', opacity: 1, offset: 0 },
-            { transform: `translate(${deltaX * 0.5}px, ${deltaY * 0.35}px) scale(0.7)`, opacity: 1, offset: 0.6 },
-            { transform: `translate(${deltaX}px, ${deltaY}px) scale(0.15)`, opacity: 0, offset: 1 }
-        ],
-        { duration: 550, easing: 'cubic-bezier(0.3, 0.7, 0.4, 1)', fill: 'forwards' }
-    );
-
-    const cleanup = () => clone.remove();
-    if (animation.finished && typeof animation.finished.then === 'function') {
-        animation.finished.then(cleanup).catch(cleanup);
-    } else {
-        animation.onfinish = cleanup;
-        animation.oncancel = cleanup;
-    }
-};
 
 export default function POSCheckoutTerminal({
     sessionLocked = false,
@@ -396,58 +341,46 @@ export default function POSCheckoutTerminal({
         onCatalogAddAnimation: handleCatalogAddAnimation
     });
     const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;
-    const shellClassName = 'h-full min-h-0 overflow-hidden';
-    const checkoutGridClassName = isTabletViewport
-        ? 'grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] md:pb-0 2xl:gap-4'
-        : 'grid h-full min-h-0 grid-cols-1 gap-4 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 2xl:gap-6';
-    const catalogGridClassName = 'grid';
-    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden';
-    const currentSaleBodyClassName = 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y';
-    const currentSaleItemsListClassName = 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
-    const checkoutPaneClassName = 'flex h-full min-h-0 max-h-full flex-col overflow-hidden';
-    const catalogPaneHeightClassName = 'h-full max-h-full';
-    const currentSalePaneHeightClassName = 'h-full max-h-full';
-    const safeCatalog = toArray(catalog);
-    const safeCart = toArray(cart);
-    const safeDiscountProfiles = toArray(discountProfiles);
-    const safeCommercialPromoConfig = toArray(commercialPromoConfig);
-    const safeDiscountApprovers = toArray(discountApprovers);
-    const activeShiftCashierApprover = safeDiscountApprovers.find((approver) => (
-        Number(approver?.user_id) === Number(activeShiftCashierId)
-    )) || null;
-    const safeQueuedCheckouts = toArray(queuedCheckouts);
-    const safeEligibleDiscountItemIds = toArray(discountDraft?.eligible_item_ids);
-    const safeEligibleDiscountItems = toArray(discountDraft?.eligible_items);
-    const employeeDiscountRateOptions = Array.from(new Set([
-        ...safeDiscountProfiles
-            .filter((profile) => profile?.active !== false)
-            .map((profile) => Number(profile?.percentage))
-            .filter((percentage) => Number.isFinite(percentage) && percentage > 0 && percentage <= 100),
-        Number(discountDraft?.rate || 15),
-        15
-    ])).sort((left, right) => left - right);
+    const {
+        shellClassName,
+        checkoutGridClassName,
+        catalogGridClassName,
+        catalogViewportClassName,
+        currentSaleBodyClassName,
+        currentSaleItemsListClassName,
+        checkoutPaneClassName,
+        catalogPaneHeightClassName,
+        currentSalePaneHeightClassName
+    } = getPosTerminalLayoutClasses({ isTabletViewport });
+    const {
+        safeCatalog,
+        safeCart,
+        safeDiscountProfiles,
+        safeCommercialPromoConfig,
+        safeDiscountApprovers,
+        activeShiftCashierApprover,
+        safeQueuedCheckouts,
+        safeEligibleDiscountItemIds,
+        safeEligibleDiscountItems,
+        employeeDiscountRateOptions
+    } = normalizePosTerminalDraftState({
+        catalog,
+        cart,
+        discountProfiles,
+        commercialPromoConfig,
+        discountApprovers,
+        activeShiftCashierId,
+        queuedCheckouts,
+        discountDraft
+    });
     const isCartLineSeniorPwdEligible = (line) => (
         isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
     );
-    const terminalPermissionList = useMemo(() => {
-        if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
-        if (typeof terminalUser?.permissions !== 'string') return [];
-        try {
-            const parsed = JSON.parse(terminalUser.permissions);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    }, [terminalUser?.permissions]);
+    const terminalPermissionList = useMemo(() => parseTerminalPermissions(terminalUser?.permissions), [terminalUser?.permissions]);
     const canVoidTransactions = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void');
-    const isAdminOperator = terminalUser?.is_master_admin === true
-        || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
-    const safeAppliedDiscount = useMemo(() => (
-        appliedDiscount && typeof appliedDiscount === 'object'
-            ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
-            : null
-    ), [appliedDiscount]);
+    const isAdminOperator = terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
+    const safeAppliedDiscount = useMemo(() => normalizeAppliedDiscount(appliedDiscount), [appliedDiscount]);
     const {
         cartSubtotal,
         itemDiscountTotals,

@@ -20,6 +20,7 @@ test.describe('Security - HTTP Headers', () => {
     console.log('Referrer-Policy Value:', referrer);
     
     expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("worker-src 'self' blob:");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(xContentType).toBe('nosniff');
     expect(referrer).toBe('strict-origin-when-cross-origin');

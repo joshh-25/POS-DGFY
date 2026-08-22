@@ -196,6 +196,7 @@ export function useSimpleCheckoutRouteProps({
     onPinMyLocation: handlePinMyLocation,
     onRemoveDeliveryAddress: handleRemoveDeliveryAddress,
     onRequestGuestCheckoutOtp: handleRequestGuestCheckoutOtp,
+    onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp,
     onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
