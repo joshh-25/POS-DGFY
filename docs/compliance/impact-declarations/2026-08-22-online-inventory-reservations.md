@@ -38,6 +38,9 @@ receipt rules.
 4. `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs` and
    `apps/dgfy-api/scripts/sync-tenant-schemas.js` — add two tenant-local tables and their indexes
    and foreign keys without broad `sync({ alter: true })` behavior.
+5. `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx` and its extracted
+   presentation utilities — keep terminal checkout, catalog animation, discount state, and
+   layout behavior unchanged while enforcing the POS shell-size contract.
 
 ## Compliance Preconditions
 
@@ -64,7 +67,7 @@ receipt rules.
    a release gate rather than claimed evidence here.
 5. Architecture guardrails, controller-boundary checks, source lint, syntax checks, and
    `git diff --check` pass for the scoped implementation.
-6. The implementation and migration changes are committed separately from unrelated
-   worktree changes so the declaration remains bound to the Phase 153 scope.
+6. The implementation and migration changes are committed separately from the isolated router
+   and compliance follow-up branches so this declaration remains bound to the core release batch.
 7. Tenant-location reference coverage includes `InventoryReservation.location`, preventing
    reservation rows from bypassing location deletion guards.
