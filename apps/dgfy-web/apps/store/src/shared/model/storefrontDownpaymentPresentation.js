@@ -117,10 +117,15 @@ export const buildDownpaymentTotalsRows = ({ display, money, orderMethod }) => {
   ];
 };
 
-// Phase 143 (#824): legal copy for the non-refundable case is BLOCKED on #280 (T&C lawyer
-// review still open) -- this is a deliberately neutral placeholder, not reviewed legal language.
-// When #824 ships, replace ONLY this string; keep the seam (the `refundable === false` gate, and
-// every call site that renders this note) exactly as-is.
+// Phase 144 (#824 -- the label previously read "Phase 143", predating the 2026-08-22 renumber):
+// legal copy for the non-refundable case is BLOCKED on #280 (T&C lawyer review), still open with
+// every checkbox unchecked as of 2026-08-22; #280 itself records that no Storefront ToS and no
+// refund policy exist anywhere in this codebase. This is a deliberately neutral placeholder, not
+// reviewed legal language.
+//
+// Phase 144 shipped the refund/forfeiture MECHANISM without touching this string, on purpose. The
+// seam is unchanged: when #280 lands, replace ONLY this string and keep the `refundable === false`
+// gate and every call site that renders this note exactly as-is.
 const NON_REFUNDABLE_DOWNPAYMENT_NOTE = 'The downpayment reserves your order. Refund terms are provided by the store.';
 
 /** A neutral disclosure line, only when the downpayment is explicitly non-refundable. */

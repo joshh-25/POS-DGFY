@@ -4759,6 +4759,12 @@ export default function TerminalPage() {
         toast.success('Order rejected. The PayMongo refund is being processed.');
       } else if (paymentLifecycle?.payment_action === 'refund_failed') {
         toast.error('Order rejected, but the automatic refund needs admin review.');
+      } else if (paymentLifecycle?.payment_action === 'forfeited') {
+        // Phase 144 (#824). Not reachable from this handler today -- only the storefront's own
+        // self-service cancel can forfeit, and a store-side reject/cancel always refunds. Mapped
+        // anyway so the outcome never degrades into the generic "status updated" message if that
+        // origin rule is ever widened.
+        toast.success('Order cancelled. The downpayment was non-refundable and has been retained.');
       } else {
         toast.success('Online order status updated.');
       }
