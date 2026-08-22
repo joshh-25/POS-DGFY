@@ -55,6 +55,19 @@ that isn't there. Also confirm the head you're about to cut has never been used 
 (long-lived branches — `develop`, `staging`, `main` — must never be a head; that's the mechanism the
 `to-staging/`/`release/` prefixes exist to prevent).
 
+## Pre-`staging` gate: compliance preflight sweep
+
+Before cutting `to-staging/<label>`: for every `major`/`regulatory` impact declaration in the batch
+still carrying a `NOT-EXECUTED-*` `preflight_request_ref`, run the real
+`POST /api/v1/compliance/preflight` against a deployed non-production host (DEV suffices — this
+never needs staging or production) and commit the reconciled front matter to `develop` before
+cutting the branch. Full protocol, the request-body shape, and the curl recipe:
+`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs" — read it
+there, don't reconstruct the request shape here. **No `NOT-EXECUTED-*` declaration may reach the
+`staging → main` leg** — this sweep is what clears them first. Find the batch's declarations with
+`git diff --name-only origin/staging origin/develop -- docs/compliance/impact-declarations/` and
+grep the results for `NOT-EXECUTED-` — cheaper and more precise than sweeping the whole directory.
+
 ## Pre-`main` gates
 
 Before a `release/<label>` → `main` PR: run `npm run gate:release:local` — **invoke it, do not
