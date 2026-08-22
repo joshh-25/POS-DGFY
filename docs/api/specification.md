@@ -3959,7 +3959,7 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   `platform_fee_centavos` are all computed against the downpayment, not the full order. The session
   additionally records `capture_kind=downpayment`, `order_total_centavos` (the full order value),
   `capture_payment_method` (the online rail used), and `downpayment_refundable` (a policy snapshot
-  for Phase 143/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
+  for Phase 144/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
   tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
   the request must never silently fall through to authorizing the full total.
 - **(Phase 142, #823)** The session response (both this endpoint and `GET

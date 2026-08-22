@@ -95,7 +95,7 @@ phase," in #822's own words.
 
 1. **No second automatic online charge.** ADR 0069 clause 2 `[binding]`,
    unchanged by this PR: only the downpayment leg is captured online; the
-   balance is collected out-of-band by staff (Phase 144/#825, not this
+   balance is collected out-of-band by staff (Phase 145/#825, not this
    phase). No code path in this PR initiates a second PayMongo charge.
 2. **The captured amount is never the order total for a downpayment order.**
    ADR 0069 clause 1b `[binding]`. Unit-tested
