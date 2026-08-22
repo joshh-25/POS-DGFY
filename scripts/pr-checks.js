@@ -43,7 +43,9 @@ const REPO_SLUG = 'Sieitzz/dgfy-platform';
 // tool reproduces, and it doesn't gate a develop/staging merge today. Not an
 // oversight (#725 RF-3).
 const PATH_FILTERS = {
-  frontend: /^(apps\/dgfy-web\/|packages\/pos-receipt\/|packages\/shared-constants\/|infrastructure\/docker\/frontend\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
+  frontend_ims: /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
+  frontend_pos: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
+  frontend_storefront: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
   dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
   migration_runner: /^(apps\/dgfy-migration-runner\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
 };
@@ -53,7 +55,7 @@ const NOT_REPRODUCED_LOCALLY = [
   'npm ci under the Dockerfiles’ node:22-alpine (this host is whatever `node -v` reports below)',
   'target architecture (production is linux/amd64; this host may not be)',
   'the Dockerfile’s workspace-path `sed` rewrite step',
-  'GitHub Actions’ layer cache (type=gha, scope=api/frontend/migration-runner)',
+  'GitHub Actions’ layer cache (type=gha, scope=api/dgfy-ims/dgfy-pos/dgfy-storefront/migration-runner)',
 ];
 
 class PrChecksError extends Error {
@@ -139,7 +141,9 @@ function resolveChangedFiles(base, runner = captureStdout) {
 
 function detectComponents(changedFiles) {
   return {
-    frontend: changedFiles.some((file) => PATH_FILTERS.frontend.test(file)),
+    frontend_ims: changedFiles.some((file) => PATH_FILTERS.frontend_ims.test(file)),
+    frontend_pos: changedFiles.some((file) => PATH_FILTERS.frontend_pos.test(file)),
+    frontend_storefront: changedFiles.some((file) => PATH_FILTERS.frontend_storefront.test(file)),
     dgfy_api: changedFiles.some((file) => PATH_FILTERS.dgfy_api.test(file)),
     migration_runner: changedFiles.some((file) => PATH_FILTERS.migration_runner.test(file)),
   };
@@ -157,7 +161,7 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
     try {
       // eslint-disable-next-line global-require
       const { collect } = require('./collect-github-actions-unavailability');
-      const report = collect({ repository: REPO_SLUG, targetSha: headSha, requiredChecks: ['dgfy-api-build-check', 'frontend-build-check', 'migration-runner-build-check'], output: '' });
+      const report = collect({ repository: REPO_SLUG, targetSha: headSha, requiredChecks: ['dgfy-api-build-check', 'frontend-ims-build-check', 'frontend-pos-build-check', 'frontend-storefront-build-check', 'migration-runner-build-check'], output: '' });
       return report;
     } catch {
       return null;
@@ -238,12 +242,20 @@ function runChecks(options, changedFiles, components) {
     addCheck(checks, 'dgfy-migration-runner-build-check', 'npm ci --omit=dev --dry-run + node --check on changed .js', (ciResult.ok && syntaxOk) ? 'pass' : 'fail');
   }
 
-  if (components.frontend) {
-    // Serial (build:all), never build:all:parallel -- parallel is what OOM-
-    // kills locally against the 3.8GB Docker VM ceiling (#662); serial has
-    // no such ceiling running natively.
-    const buildResult = runCommand('npm', ['--prefix', 'apps/dgfy-web', 'run', 'build:all']);
-    addCheck(checks, 'frontend-build-check', 'npm --prefix apps/dgfy-web run build:all (serial)', buildResult.ok ? 'pass' : 'fail');
+  // One real `vite build` per changed app, run serially -- never in parallel
+  // against multiple apps at once, which is what OOM-killed the old combined
+  // build:all:parallel locally against the 3.8GB Docker VM ceiling (#662);
+  // serial has no such ceiling running natively. Post-split (issue #322)
+  // each app has its own build script; there is no single build:all anymore.
+  const frontendApps = [
+    { key: 'frontend_ims', name: 'frontend-ims-build-check', dir: 'apps/dgfy-ims' },
+    { key: 'frontend_pos', name: 'frontend-pos-build-check', dir: 'apps/dgfy-pos' },
+    { key: 'frontend_storefront', name: 'frontend-storefront-build-check', dir: 'apps/dgfy-storefront' },
+  ];
+  for (const app of frontendApps) {
+    if (!components[app.key]) continue;
+    const buildResult = runCommand('npm', ['--prefix', app.dir, 'run', 'build']);
+    addCheck(checks, app.name, `npm --prefix ${app.dir} run build`, buildResult.ok ? 'pass' : 'fail');
   }
 
   const docTouchingFiles = changedFiles.some((f) => /^(docs\/|AGENTS\.md$|scripts\/lint-docs\.js$|scripts\/check-adr\.js$|package\.json$)/.test(f));
@@ -269,7 +281,9 @@ function runFullTierDockerChecks(checks, components) {
   const builds = [
     { key: 'dgfy_api', name: 'dgfy-api-build-check (docker)', file: 'infrastructure/docker/dgfy-api/Dockerfile' },
     { key: 'migration_runner', name: 'dgfy-migration-runner-build-check (docker)', file: 'infrastructure/docker/dgfy-migration-runner/Dockerfile' },
-    { key: 'frontend', name: 'frontend-build-check (docker)', file: 'infrastructure/docker/frontend/Dockerfile' },
+    { key: 'frontend_ims', name: 'frontend-ims-build-check (docker)', file: 'infrastructure/docker/dgfy-ims/Dockerfile' },
+    { key: 'frontend_pos', name: 'frontend-pos-build-check (docker)', file: 'infrastructure/docker/dgfy-pos/Dockerfile' },
+    { key: 'frontend_storefront', name: 'frontend-storefront-build-check (docker)', file: 'infrastructure/docker/dgfy-storefront/Dockerfile' },
   ];
   for (const build of builds) {
     if (!components[build.key]) continue;
@@ -362,7 +376,7 @@ function main() {
   const components = detectComponents(changedFiles);
 
   console.log(`[pr-checks] tier=${options.tier} base=${options.base} pr=${options.pr || '<unresolved>'} sha=${headSha}`);
-  console.log(`[pr-checks] components: frontend=${components.frontend} dgfy_api=${components.dgfy_api} migration_runner=${components.migration_runner}`);
+  console.log(`[pr-checks] components: frontend_ims=${components.frontend_ims} frontend_pos=${components.frontend_pos} frontend_storefront=${components.frontend_storefront} dgfy_api=${components.dgfy_api} migration_runner=${components.migration_runner}`);
 
   const checks = runChecks(options, changedFiles, components);
   const failed = checks.filter((c) => c.blocking && c.result === 'fail');

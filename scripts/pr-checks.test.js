@@ -58,18 +58,39 @@ test('parseArgs rejects an unknown flag', () => {
 
 test('detectComponents flags only the components a change actually touches', () => {
   const components = detectComponents(['apps/dgfy-api/src/routes/pos.js', 'docs/README.md']);
-  assert.deepEqual(components, { frontend: false, dgfy_api: true, migration_runner: false });
+  assert.deepEqual(components, {
+    frontend_ims: false,
+    frontend_pos: false,
+    frontend_storefront: false,
+    dgfy_api: true,
+    migration_runner: false,
+  });
 });
 
-test('detectComponents flags frontend for a shared-constants change', () => {
+test('detectComponents flags all three frontend apps for a shared-constants change', () => {
   const components = detectComponents(['packages/shared-constants/index.js']);
-  assert.equal(components.frontend, true);
+  assert.equal(components.frontend_ims, true);
+  assert.equal(components.frontend_pos, true);
+  assert.equal(components.frontend_storefront, true);
   assert.equal(components.dgfy_api, true);
+});
+
+test('detectComponents flags only dgfy-ims and dgfy-pos, not storefront, for a pos-receipt change', () => {
+  const components = detectComponents(['packages/pos-receipt/index.js']);
+  assert.equal(components.frontend_ims, true);
+  assert.equal(components.frontend_pos, true);
+  assert.equal(components.frontend_storefront, false);
 });
 
 test('detectComponents flags nothing for a docs-only change', () => {
   const components = detectComponents(['docs/ops/RUNBOOK.md']);
-  assert.deepEqual(components, { frontend: false, dgfy_api: false, migration_runner: false });
+  assert.deepEqual(components, {
+    frontend_ims: false,
+    frontend_pos: false,
+    frontend_storefront: false,
+    dgfy_api: false,
+    migration_runner: false,
+  });
 });
 
 // --- classifyCiUnavailability ---------------------------------------------
@@ -107,7 +128,7 @@ test('classifyCiUnavailability returns queue_starvation for a cancelled-without-
     {
       fetchRunners: () => ({ runners: [{ status: 'online' }] }),
       fetchCheckRuns: () => ({
-        check_runs: [{ name: 'frontend-build-check', status: 'completed', conclusion: 'cancelled' }],
+        check_runs: [{ name: 'frontend-ims-build-check', status: 'completed', conclusion: 'cancelled' }],
       }),
       tryBillingFallback: () => null,
     }
