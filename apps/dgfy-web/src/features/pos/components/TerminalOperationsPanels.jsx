@@ -376,6 +376,7 @@ function IncomingQueueWorkspace({
   handleAssignDeliveryPersonnel,
   deliveryPersonnelState,
   handleOpenCashCollection,
+  handleOpenBalanceSettlement,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
@@ -546,6 +547,17 @@ function IncomingQueueWorkspace({
                 (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
                 || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
               );
+            // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
+            // separate predicate on a disjoint payment_status -- collect-cash owns 'unpaid', this
+            // owns 'partially_paid', so the two buttons can never both appear on one card and the
+            // live COD path's own condition is untouched.
+            const orderBalanceDue = Number(order.balance_due || 0);
+            const canSettleBalance = order.payment_status === 'partially_paid'
+              && orderBalanceDue > 0
+              && (
+                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
+              );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
@@ -567,6 +579,20 @@ function IncomingQueueWorkspace({
                 >
                   <Wallet className="mr-2 h-4 w-4 shrink-0" />
                   {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
+                </Button>
+              );
+            }
+            if (canSettleBalance) {
+              buttons.push(
+                <Button
+                  key="settle_balance"
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
+                  onClick={() => handleOpenBalanceSettlement?.(order)}
+                >
+                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
+                  Settle Balance
                 </Button>
               );
             }
