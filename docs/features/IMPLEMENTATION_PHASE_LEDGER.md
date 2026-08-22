@@ -6933,3 +6933,44 @@ after this update: **135**.
   `tenant_downpayment_settings` reader notes corrected/extended)
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` (new)
 - Issue #822 (this phase); #838, #839 (handed to PM during this phase)
+
+## Phase 142 - PR #845 develop reconciliation and POS release rebuild
+
+### Initiative and Release
+
+- Initiative: POS release-batch reconciliation and release-readiness closure.
+- Release: draft PR replacement for #845, targeting `develop`.
+
+### Objective and Scope
+
+- Rebuild from the current `develop` head, then reapply only the intended POS, storefront,
+  inventory-reservation, payment, PWA, and audit changes from the prior PR branch.
+- Preserve newer `develop` checkout, voucher, payment, schema-registry, and phase-ledger contracts
+  when cherry-pick conflicts occur.
+- Keep React Router security work and compliance-script enforcement in separate follow-up PRs.
+
+### Status
+
+- `in_progress`
+
+### Dependencies and Governance Note
+
+- Depends on the current `develop` head and the PR conventions in `docs/ai/PR.md`.
+- Requires fresh-schema and upgrade migration checks, architecture/compliance/docs gates, and
+  targeted POS/storefront payment and inventory tests before completion.
+- No production database, deployment, or PR merge is authorized by this phase.
+
+### Acceptance and Validation Evidence
+
+- Reconciliation base: `0e2d329f483c8bf7b94a9941f80fb9c690eef379`.
+- Old PR state preserved in local branch `backup/pr-845-before-rebuild`.
+- Remaining evidence: migration certification, targeted tests, production builds, and final diff
+  audit are still in progress.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`
+- `apps/dgfy-api/src/modules/shared/utils/onlineInventoryEffects.js`
+- `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs`
+- Issue #843 and replacement PR for #845
