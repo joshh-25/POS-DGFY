@@ -112,6 +112,24 @@ describe('mode-owned guest checkout OTP UIs', () => {
     expect(screen.getByRole('button', { name: 'Place Order' }).disabled).toBe(false);
   });
 
+  // #846: a bare `onClick={onRequestCode}` (no arrow wrapper) passes the click SyntheticEvent as
+  // onRequestCode's first argument -- String(event) coerces to "[object Object]", which then
+  // reaches the OTP request body as the email. `toHaveBeenCalledTimes(1)` above would pass either
+  // way; only checking the call's arguments catches the regression.
+  it.each([
+    ['F&B', FnbGuestEmailVerification, 'Send code again'],
+    ['Retail', RetailOrderGuestEmailVerification, 'Send code again'],
+    ['Simple MSME', SimpleCheckoutGuestEmailVerification, 'Send code again'],
+    ['Services', ServiceBookingGuestEmailVerification, 'Send verification code']
+  ])('%s calls onRequestCode with no arguments, never the click event (#846)', (_mode, Component, requestLabel) => {
+    const props = buildProps();
+    render(<Component {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: requestLabel }));
+
+    expect(props.onRequestCode).toHaveBeenCalledWith();
+  });
+
   it.each([
     ['F&B', FnbGuestEmailVerification],
     ['Retail', RetailOrderGuestEmailVerification],
