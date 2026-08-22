@@ -213,6 +213,44 @@ describe('storefrontPublicVisibilityAuditService', () => {
         }));
     });
 
+    it('flags no-location tenants that still advertise customer fulfillment locations', async () => {
+        const tenant = buildTenant('tenant-no-location-fulfillment-conflict');
+        const harness = buildHarness({
+            tenants: [tenant],
+            settings: {
+                'tenant-no-location-fulfillment-conflict': {
+                    store_is_visible: 'true',
+                    store_has_no_location: 'true'
+                }
+            },
+            indexRows: {
+                'tenant-no-location-fulfillment-conflict': {
+                    tenant_id: 'tenant-no-location-fulfillment-conflict',
+                    is_visible: true,
+                    location_id: null,
+                    latitude: null,
+                    longitude: null,
+                    slug: 'no-location-fulfillment-conflict'
+                }
+            },
+            locations: {
+                'tenant-no-location-fulfillment-conflict': [{
+                    location_id: 4,
+                    is_active: true,
+                    is_primary_storefront: true,
+                    supports_pickup: true,
+                    latitude: 10,
+                    longitude: 122
+                }]
+            }
+        });
+
+        const result = await auditStorefrontPublicVisibility(harness);
+
+        expect(result.status).toBe('critical');
+        expect(result.summary.issue_counts.no_location_flag_conflicts_with_active_fulfillment_location).toBe(1);
+    });
+
     it('flags no-location tenants that still publish map coordinates', async () => {
         const tenant = buildTenant('tenant-no-location-map');
         const harness = buildHarness({

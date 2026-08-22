@@ -11,7 +11,9 @@ const scanFile = (relativePath) => fs.readFileSync(path.resolve(frontendRoot, re
 
 describe('Numeric step policy contracts', () => {
   it('keeps POS checkout quantity increment/decrement at step-by-1', () => {
-    const posCheckout = scanFile('src/features/pos/components/POSCheckoutTerminal.jsx');
+    // The terminal shell owns orchestration; the lazy presentation view owns
+    // the quantity controls. Keep this contract attached to the rendered UI.
+    const posCheckout = scanFile('src/features/pos/components/POSCheckoutTerminalView.jsx');
     expect(posCheckout).toContain("onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}");
     expect(posCheckout).toContain("onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}");
     expect(posCheckout).not.toContain('? 0.25 : -0.25');

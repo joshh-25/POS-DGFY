@@ -1,15 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, ChevronsUpDown, Loader2, RefreshCw, Search, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Command,
     CommandEmpty,
     CommandGroup,
-    CommandInput,
     CommandItem,
     CommandList
 } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { fetchEmployeeCreditCheckoutOptions } from '../services/employeeCreditService.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
@@ -29,6 +27,7 @@ export default function EmployeeCreditPaymentPanel({
     const [optionsError, setOptionsError] = useState('');
     const [refreshKey, setRefreshKey] = useState(0);
     const requestSequence = useRef(0);
+    const employeePickerRef = useRef(null);
 
     useEffect(() => {
         const requestId = requestSequence.current + 1;
@@ -55,6 +54,20 @@ export default function EmployeeCreditPaymentPanel({
         return () => window.clearTimeout(timer);
     }, [locationId, refreshKey, search]);
 
+    useEffect(() => {
+        if (!open) return undefined;
+
+        const handlePointerDown = (event) => {
+            if (!employeePickerRef.current?.contains(event.target)) {
+                setOpen(false);
+                setSearch('');
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        return () => document.removeEventListener('mousedown', handlePointerDown);
+    }, [open]);
+
     const currentOutstanding = Number(
         account?.outstanding_balance
         ?? selectedEmployee?.outstanding_balance
@@ -63,15 +76,6 @@ export default function EmployeeCreditPaymentPanel({
     );
     const outstandingAfterSale = currentOutstanding + Number(totalDue || 0);
     const isVerified = Boolean(account && selectedEmployee && selectedEmployee.is_eligible);
-    const selectionStatus = useMemo(() => {
-        if (!selectedEmployee) return null;
-        if (lookupLoading) return { label: 'Validating employee credit…', tone: 'text-blue-700' };
-        if (!selectedEmployee.account_configured) return { label: 'Employee Credit is not configured.', tone: 'text-amber-700' };
-        if (!selectedEmployee.is_eligible) return { label: 'This employee is not eligible for Employee Credit.', tone: 'text-rose-700' };
-        if (!account) return { label: 'Employee credit validation failed.', tone: 'text-rose-700' };
-        return { label: 'Eligible. This sale will be added to the employee outstanding balance.', tone: 'text-emerald-700' };
-    }, [account, lookupLoading, selectedEmployee]);
-
     return (
         <div className="space-y-3.5">
             <div className="space-y-3 rounded-xl border border-blue-100 bg-[#F8FAFC] p-3.5">
@@ -81,54 +85,48 @@ export default function EmployeeCreditPaymentPanel({
                     </div>
                     <div>
                         <p className="text-[13px] font-bold text-[#1A4E8D]">Employee Credit</p>
-                        <p className="mt-0.5 text-[11px] font-medium text-slate-500 leading-snug">
-                            Select an employee. Eligibility is validated automatically and the sale is recorded as an outstanding employee balance.
-                        </p>
                     </div>
                 </div>
 
-                <div className="relative">
+                <div ref={employeePickerRef} className="relative">
                     <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Select Employee</p>
-                    <Popover open={open} onOpenChange={setOpen}>
-                        <PopoverTrigger asChild>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={open}
-                                aria-label={selectedEmployee ? `Select Employee, ${selectedEmployee.employee_name}` : 'Select Employee'}
-                                className="h-auto min-h-11 w-full justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm hover:bg-slate-50"
-                            >
-                                <span className="flex items-center gap-2.5 min-w-0">
-                                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                                    <span className="min-w-0">
-                                        <span className="block truncate text-[13px] font-extrabold text-slate-900">
-                                            {selectedEmployee?.employee_name || 'Search and select employee'}
-                                        </span>
-                                        {selectedEmployee ? (
-                                            <span className="block truncate text-[11px] font-semibold text-slate-500">
-                                                {selectedEmployee.employee_code} · {selectedEmployee.branch_name}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                </span>
-                                {lookupLoading
-                                    ? <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin text-blue-600" />
-                                    : <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-slate-400" />}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                            className="w-[var(--radix-popover-trigger-width)] min-w-[280px] max-w-[calc(100vw-2rem)] p-0 z-50 shadow-xl border border-slate-200"
-                            align="start"
-                        >
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                        <input
+                            type="text"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded={open}
+                            aria-controls="employee-credit-options-list"
+                            aria-label={selectedEmployee ? `Select Employee, ${selectedEmployee.employee_name}` : 'Select Employee'}
+                            autoComplete="off"
+                            value={open ? search : (selectedEmployee?.employee_name || '')}
+                            onFocus={() => {
+                                setOpen(true);
+                                setSearch('');
+                            }}
+                            onChange={(event) => {
+                                setSearch(event.target.value);
+                                setOpen(true);
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Escape' || event.key === 'Tab') {
+                                    setOpen(false);
+                                    setSearch('');
+                                }
+                            }}
+                            placeholder="Search and select employee"
+                            data-testid="employee-credit-employee-input"
+                            className="h-auto min-h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-left text-[13px] font-extrabold text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        />
+                        {lookupLoading
+                            ? <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-blue-600" aria-hidden="true" />
+                            : <ChevronsUpDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />}
+                    </div>
+                    {open ? (
+                        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-w-[calc(100vw-2rem)] rounded-md border border-slate-200 bg-white p-0 shadow-xl">
                             <Command>
-                                <CommandInput
-                                    value={search}
-                                    onValueChange={setSearch}
-                                    placeholder="Search name or employee ID…"
-                                    aria-label="Search employees"
-                                />
-                                <CommandList className="max-h-72">
+                                <CommandList id="employee-credit-options-list" role="listbox" data-testid="employee-credit-options-list" data-visible-record-limit="5" className="max-h-[24rem] overflow-y-auto">
                                     {optionsLoading ? (
                                         <div className="flex items-center justify-center gap-2 px-4 py-8 text-xs font-semibold text-slate-500">
                                             <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Loading employees…
@@ -164,8 +162,11 @@ export default function EmployeeCreditPaymentPanel({
                                                         onSelect={() => {
                                                             onSelectEmployee(option);
                                                             setOpen(false);
+                                                            setSearch('');
                                                         }}
-                                                        className="items-start gap-2"
+                                                        role="option"
+                                                        aria-selected={selected}
+                                                        className="items-start gap-2 py-2 leading-tight"
                                                     >
                                                         <Check className={`mt-0.5 h-4 w-4 shrink-0 ${selected ? 'opacity-100 text-blue-700' : 'opacity-0'}`} />
                                                         <span className="min-w-0 flex-1">
@@ -190,8 +191,8 @@ export default function EmployeeCreditPaymentPanel({
                                     ) : null}
                                 </CommandList>
                             </Command>
-                        </PopoverContent>
-                    </Popover>
+                        </div>
+                    ) : null}
                 </div>
 
                 {selectedEmployee ? (
@@ -222,17 +223,8 @@ export default function EmployeeCreditPaymentPanel({
                                 <span className="font-extrabold text-slate-900">PHP {money(outstandingAfterSale)}</span>
                             </div>
                         ) : null}
-                        {selectionStatus ? (
-                            <p className={`border-t border-slate-100 pt-2 text-[11px] font-extrabold ${selectionStatus.tone}`}>
-                                {selectionStatus.label}
-                            </p>
-                        ) : null}
                     </div>
                 ) : null}
-
-                <p className="text-[11px] font-medium text-slate-500">
-                    Full Employee Credit payment only. The charge is excluded from cash drawer totals and remains recorded in the employee credit ledger.
-                </p>
             </div>
 
             {optionsError ? (

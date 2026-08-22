@@ -136,6 +136,7 @@ bun.lock
 
 # Verification and test reports (generated locally, environment-specific)
 /reports/
+/apps/dgfy-web/.lighthouseci/
 
 # GSD (Get Stuff Done) local planning scaffolding — not tracked
 /.planning/

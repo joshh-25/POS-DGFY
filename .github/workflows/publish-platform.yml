@@ -100,10 +100,24 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
+          SENTRY_RELEASE: ${{ github.sha }}
         run: |
           # Token is piped over the existing SSH stdin into `docker login
           # --password-stdin` on the remote -- never an argv or env var on
           # that host, so it can't leak via `ps aux` there.
+          #
+          # SENTRY_RELEASE (#633): the backend image is built
+          # environment-agnostically (no build-args, unlike frontend's
+          # `VITE_SENTRY_RELEASE` baked in at `docker build` time in
+          # deploy-frontend.yml) -- its config is entirely runtime-.env-driven.
+          # docker-compose.yml already declares `SENTRY_RELEASE: ${SENTRY_RELEASE:-}`
+          # as a passthrough, but nothing ever set a value, so every backend
+          # Sentry event carried release: null. Passing it as a shell env var
+          # here (same mechanism already used for $DOCKER_DIR/$GITHUB_ACTOR)
+          # fills that gap at the one point every environment's deploy goes
+          # through. Note: the target server's own docker-compose.yml must
+          # actually contain that passthrough line for this to take effect --
+          # #401 documents PROD's copy is currently drifted and missing it.
           #
           # Staleness guard (PR #55): $DOCKER_DIR on the server is
           # hand-maintained, NOT a git checkout (see this file's header
@@ -132,7 +146,7 @@ jobs:
              COMPOSE_IMAGES=\$(docker compose config --images) && \
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
-             docker compose up -d --remove-orphans && docker logout ghcr.io" \
+             SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
 
       # Hosted runners are ephemeral and threw these away for free. On a

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { SafeAreaView } from 'react-native';
+import { SafeAreaView, useWindowDimensions } from 'react-native';
 import type { SyncPolicyRecord } from '../domain/types';
 import { authorizeManualSync } from '../domain/syncPolicy';
 import { hardwarePosSchema } from '../db/schema';
@@ -15,6 +15,7 @@ import { SyncCenterScreen } from './screens/SyncCenterScreen';
 import { CloseShiftScreen } from './screens/CloseShiftScreen';
 import { AccountManagementScreen } from './screens/AccountManagementScreen';
 import { BootstrapErrorScreen } from './screens/BootstrapErrorScreen';
+import { PosTextScaleProvider } from './components/PosTextScale';
 
 const initialSyncPolicy: SyncPolicyRecord = {
     businessDayKey: new Date().toISOString().slice(0, 10),
@@ -79,6 +80,8 @@ const HardwarePosApp = () => {
         lastCatalogRefreshAt,
         settingsSummary,
         devicePolicySummary,
+        textScale,
+        setTextScale,
         bootstrap,
         unlockCashier,
         unlockOfflineCashier,
@@ -109,13 +112,21 @@ const HardwarePosApp = () => {
         loadHardwareDiagnostics,
         closeShift
     } = useHardwarePosStore();
+    const { fontScale } = useWindowDimensions();
 
     useEffect(() => {
         void bootstrap();
     }, [bootstrap]);
 
     return (
-        <SafeAreaView style={{ flex: 1 }}>
+        <PosTextScaleProvider
+            scale={textScale}
+            systemFontScale={fontScale}
+            onScaleChange={(nextScale) => {
+                void setTextScale(nextScale);
+            }}
+        >
+            <SafeAreaView style={{ flex: 1 }}>
             {screen === 'splash' && <SplashScreen />}
             {screen === 'bootstrap_error' && (
                 <BootstrapErrorScreen
@@ -248,7 +259,8 @@ const HardwarePosApp = () => {
                     onBack={backToSell}
                 />
             )}
-        </SafeAreaView>
+            </SafeAreaView>
+        </PosTextScaleProvider>
     );
 };
 

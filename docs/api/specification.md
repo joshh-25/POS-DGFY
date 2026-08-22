@@ -659,6 +659,11 @@ Get all items with pagination and filtering
 &status=active
 &fields=dropdown     # Lightweight projection: returns only item_id, sku_code, name, unit_of_measure, category, current_stock. Skips all JOINs. Use for dropdowns.
 &valuation_location_id=3   # Optional: adds location-scoped weighted metrics in cost_metrics.scoped
+&location_id=3       # Optional (#682): overlays current_stock with this branch's item_location_stocks
+                      # quantity_on_hand instead of the tenant-wide aggregate. Grant-checked the same
+                      # way as POS's /pos/catalog?location_id= (404 unknown/inactive location, 403 no
+                      # grant, 422 malformed id). Omitted -> current_stock is unchanged, the tenant-wide
+                      # aggregate, exactly as before this param existed. Not applied when fields=dropdown.
 ```
 
 **Response (200)**
@@ -704,6 +709,10 @@ Get all items with pagination and filtering
       "limit": 20,
       "total": 150,
       "pages": 8
+    },
+    "location_scope": {
+      "location_id": null,
+      "resolved": true
     }
   }
 }
@@ -715,6 +724,7 @@ Get all items with pagination and filtering
 - `cost_metrics.global` is always returned. `cost_metrics.scoped` is returned only when `valuation_location_id` is provided.
 - `cost_metrics.*.source` indicates valuation origin (`fifo_batches` or `item_cost_fallback`).
 - `cost_per_unit` is internal inventory/COGS data. `default_sale_price` is the explicit customer price used only when the row is sellable through POS, Storefront, or Dispatch Orders.
+- `location_scope` (#682): `location_id: null, resolved: true` when `location_id` was omitted (every `current_stock` in the response is the tenant-wide aggregate, as before this field existed). When `location_id` was provided: `resolved: true` means every stock-bearing item's `current_stock` was overlaid from `item_location_stocks` for that branch (including legitimate zeros); `resolved: false` means the tenant's schema doesn't support per-location stock yet and `current_stock` silently fell back to the tenant-wide aggregate -- callers must not treat a `resolved: false` response's `current_stock` as branch-accurate.
 
 > **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint still uses a lightweight row projection (no join-heavy composition/folder payload), but now includes additive `cost_metrics` valuation data for procurement and planning surfaces. Prefer this mode for dropdowns and quick selectors; avoid it when you need full `ProductComposition`, `ItemFolder`, or deep detail payloads.
 
@@ -3779,7 +3789,7 @@ Hospitality admin routes live under `/api/v1/hospitality`, require authenticatio
 
 ## Services Admin Endpoints
 
-Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
@@ -3845,6 +3855,26 @@ Route mapping note:
   - `service_fee_amount = round4(subtotal_amount * 0.01)`
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
+**Downpayment Contract** (Phase 140, #821, ADR 0069/0070)
+- Response also includes, computed server-side from the tenant's `tenant_downpayment_settings` row
+  (Phase 138, #820) -- never accepted from the request body:
+  - `payment_mode` (`full_payment` or `downpayment_required`)
+  - `downpayment_amount`, `balance_due_amount`, `downpayment_refundable` -- all `null` when
+    `payment_mode` is `full_payment` (never `0` or the total, so a `null` cannot be mistaken for "no
+    downpayment configured")
+- Downpayment formula, applied to the already promo/voucher-discounted `total_amount`:
+  - `percentage` type: `downpayment_amount = round(total_amount_centavos * downpayment_rate_bps / 10000)`
+  - `fixed` type: `downpayment_amount = downpayment_fixed_centavos`
+  - Floored to `min_downpayment_centavos`, then clamped to `total_amount` (never more than the order
+    is worth; `balance_due_amount` is never negative).
+- Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
+  restriction.
+- **(Phase 141, #822)** A `downpayment_required` order is, by construction, cash-on-delivery for the
+  balance -- `payment_mode` never means "pay everything online" (that's the separate, unbuilt
+  `customer_choice` mode). The customer's only online payment choice is which method pays the
+  downpayment leg (`POST /store/checkout/payment-sessions`, below); the balance is always collected
+  in person (ADR 0069 clause 2 `[binding]`).
+
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
 
@@ -3861,6 +3891,13 @@ Route mapping note:
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, a direct
+  request to this endpoint (a customer picking plain `cash`, with no online payment at any point)
+  returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no order -- this
+  path collects nothing, so it must not honor the downpayment configuration (ADR 0070 clause 7
+  `[binding]`). A `downpayment_required` order is instead created only by the PayMongo webhook
+  finalizer, after the downpayment payment session (below) has been confirmed paid; that internal
+  call is not reachable from any HTTP client request.
 
 **Persistence Contract**
 - Checkout persists service-fee snapshots from the same fixed policy as quote:
@@ -3868,6 +3905,15 @@ Route mapping note:
   - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
   - `service_fee_method_snapshot` (order method for traceability)
   - `service_fee_overridden=false`
+- `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
+  `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
+  Downpayment Contract above.
+- **(Phase 141, #822)** A downpayment order finalized via the webhook is created cash-on-delivery
+  for the balance -- `payment_type` is `cash`, `payment_timing` follows the normal
+  delivery/pickup-cash rule (`on_delivery`/`on_pickup`), and `payment_status` lands `partially_paid`
+  with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
+  ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
+  order.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
@@ -3891,6 +3937,15 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   `payment_flow=direct_maya`. The Storefront creates the wallet-specific
   Payment Method with the public key and attaches it with the client key; the
   returned authorization URL is a provider redirect, not an order result.
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
+  endpoint authorizes only the downpayment amount online, never the order total (ADR 0069 clause 1b
+  `[binding]`) -- the PayMongo `amount`, the session's `total_amount`/`total_amount_centavos`, and
+  `platform_fee_centavos` are all computed against the downpayment, not the full order. The session
+  additionally records `capture_kind=downpayment`, `order_total_centavos` (the full order value),
+  `capture_payment_method` (the online rail used), and `downpayment_refundable` (a policy snapshot
+  for Phase 144/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
+  tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
+  the request must never silently fall through to authorizing the full total.
 
 **Response (201)**
 ```json
@@ -4174,7 +4229,7 @@ Fiscal activation also requires at least one verified fiscal terminal registrati
 
 ## Food & Beverage Endpoints
 
-Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |

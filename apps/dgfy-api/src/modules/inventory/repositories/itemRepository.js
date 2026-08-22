@@ -10,6 +10,10 @@ import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
 import {
+    loadItemLocationStockMap,
+    applyItemLocationStockMap
+} from '../../shared/repositories/itemLocationStockOverlay.js';
+import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
@@ -872,8 +876,14 @@ export const itemRepository = {
             search,
             sortBy = 'name',
             sortOrder = 'asc',
-            status
+            status,
+            location_id: locationId = null
         } = queryParams;
+
+        // #682: an already-resolved (grant-checked) location_id, passed by getItemsUseCase.
+        // Omitted -> current_stock stays the tenant-wide aggregate exactly as before this change.
+        const parsedLocationId = Number.parseInt(locationId, 10);
+        const hasLocationFilter = Number.isInteger(parsedLocationId) && parsedLocationId > 0;
 
         const parsedPage = parseInt(page, 10);
         const parsedLimit = parseInt(limit, 10);
@@ -1000,10 +1010,27 @@ export const itemRepository = {
             locationId: hasValuationLocation ? valuationLocationId : null
         });
 
-        const itemsWithCostMetrics = transformedItems.map((item) => ({
+        let itemsWithCostMetrics = transformedItems.map((item) => ({
             ...item,
             cost_metrics: costMetricsByItemId.get(Number(item.item_id))
         }));
+
+        // #682: branch-scoped stock overlay -- mirrors POS's /pos/catalog handling of
+        // item_location_stocks exactly (same shared helpers), so Items and Sell never disagree
+        // about what a given branch actually has on hand. Honest fallback (not a hard error) when
+        // an older tenant schema doesn't have item_location_stocks yet -- location_scope.resolved
+        // tells the caller whether the overlay actually happened.
+        let locationScopeResolved = true;
+        if (hasLocationFilter) {
+            const { stockMap, locationScopeResolved: resolved } = await loadItemLocationStockMap(
+                itemsWithCostMetrics.map((item) => item.item_id),
+                parsedLocationId
+            );
+            locationScopeResolved = resolved;
+            itemsWithCostMetrics = resolved
+                ? applyItemLocationStockMap(itemsWithCostMetrics, stockMap)
+                : itemsWithCostMetrics;
+        }
 
         return {
             items: itemsWithCostMetrics,
@@ -1012,7 +1039,10 @@ export const itemRepository = {
                 limit: parsedLimit,
                 total: count,
                 pages: Math.ceil(count / parsedLimit)
-            }
+            },
+            location_scope: hasLocationFilter
+                ? { location_id: parsedLocationId, resolved: locationScopeResolved }
+                : { location_id: null, resolved: true }
         };
     },
     async getItemById(itemId, queryParams = {}) {

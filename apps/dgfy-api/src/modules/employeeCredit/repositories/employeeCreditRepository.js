@@ -49,6 +49,16 @@ export const employeeCreditRepository = {
     }).then((rows) => rows.map(toPlain));
   },
 
+  async listActiveEmployees(options = {}) {
+    return dbStore.get('Employee').findAll({
+      where: { is_active: true },
+      attributes: ['employee_id', 'employee_code', 'full_name'],
+      order: [['full_name', 'ASC'], ['employee_id', 'ASC']],
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+  },
+
   async listLegacyCheckoutAccounts({ search = '', limit = 100 } = {}, options = {}) {
     const normalizedSearch = String(search || '').trim();
     const userWhere = { is_active: true, deleted_at: null };

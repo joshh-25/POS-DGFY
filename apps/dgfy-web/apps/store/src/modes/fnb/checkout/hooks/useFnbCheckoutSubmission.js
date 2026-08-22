@@ -4,22 +4,14 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
-// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
-// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
-// and it was still being set from the client's pre-submission totalsForDisplay, not the
-// server-persisted order.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -98,7 +90,7 @@ export function useFnbCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
-      const message = 'Verify the email code before placing this guest order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -119,7 +111,7 @@ export function useFnbCheckoutSubmission({
         : readStoreAuthToken();
       if (isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -137,6 +129,11 @@ export function useFnbCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
@@ -177,7 +174,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
@@ -202,9 +199,7 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
-          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
-          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
+          total_amount: totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 

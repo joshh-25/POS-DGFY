@@ -25,6 +25,15 @@ SENTRY_SEND_DEFAULT_PII=false
 SENTRY_DEBUG=false
 ```
 
+**`SENTRY_RELEASE` — leave this blank, do not hand-maintain it (#633).** Every deploy already
+injects it automatically: `.github/workflows/publish-platform.yml` passes
+`SENTRY_RELEASE=${{ github.sha }}` as a shell env var to `docker compose up` at deploy time, which
+takes precedence over whatever (if anything) is in `.env`. A value hand-set here would just be
+silently overridden on the next deploy. This only takes effect on a server whose
+`docker-compose.yml` actually contains the `dgfy-api` service's `SENTRY_RELEASE: ${SENTRY_RELEASE:-}`
+passthrough -- see #401 for the tracked drift where PROD's live compose file is currently missing
+that (and the rest of the `SENTRY_*` block) entirely.
+
 Behavior:
 
 - `SENTRY_ENABLED=false` hard-disables backend Sentry, even if a DSN is present.
@@ -310,4 +319,4 @@ Set this GitHub secret only if uploading source maps:
 
 - `SENTRY_AUTH_TOKEN`
 
-For server runtime, update the target server Docker `.env` with `SENTRY_ENABLED`, the backend DSN, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, and `SENTRY_DEBUG`, then restart the stack.
+For server runtime, update the target server Docker `.env` with `SENTRY_ENABLED`, the backend DSN, `SENTRY_ENVIRONMENT`, and `SENTRY_DEBUG`, then restart the stack. Do not hand-set `SENTRY_RELEASE` there -- see "Server Runtime Env" above; it's injected automatically per deploy.

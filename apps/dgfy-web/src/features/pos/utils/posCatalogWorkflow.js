@@ -59,12 +59,24 @@ export const getVisibleCatalogRange = (catalogLength, catalogPage, catalogPageSi
     };
 };
 
-export const getNextCatalogImageUrls = (catalog, catalogPage, catalogPageSize, totalCatalogPages) => {
+export const getNextCatalogImageUrls = (
+    catalog,
+    catalogPage,
+    catalogPageSize,
+    totalCatalogPages,
+    failedItemIds = new Set()
+) => {
     if (Number(catalogPage || 1) >= Number(totalCatalogPages || 1)) return [];
     const nextPageStart = Math.max(1, Number(catalogPage || 1)) * Math.max(1, Number(catalogPageSize || 0));
+    const failedIds = new Set(
+        (failedItemIds instanceof Set ? Array.from(failedItemIds) : Array.isArray(failedItemIds) ? failedItemIds : [])
+            .map((itemId) => String(itemId ?? '').trim())
+            .filter(Boolean)
+    );
     return Array.from(new Set(
         (Array.isArray(catalog) ? catalog : [])
             .slice(nextPageStart, nextPageStart + Math.max(1, Number(catalogPageSize || 0)))
+            .filter((item) => !failedIds.has(String(item?.item_id ?? '').trim()))
             .map((item) => resolvePosCatalogImageSources(item).src)
             .filter(Boolean)
     ));

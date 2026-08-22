@@ -361,6 +361,26 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           outcome: 'ignored',
           status: 'session_not_found'
         });
+        // #476: a paid event with no local session is money collected with no order record.
+        // Scoped to the money-bearing event types only -- refunds/account-lifecycle events
+        // already logger.warn and return the same way, and alerting on every ignored event
+        // type would bury this signal in noise.
+        if (eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid') {
+          await Promise.resolve(raiseOperationalAlert({
+            key: 'paymongo.commerce_webhook_unknown_session_paid',
+            level: 'error',
+            message: 'PayMongo reported a paid payment for an unknown commerce payment session.',
+            context: {
+              event_type: eventType,
+              provider_event_id: providerEventId,
+              provider_payment_id: getPaymentId(paymentResource),
+              payment_intent_id: getPaymentIntentId(paymentResource),
+              session_reference: getSessionReference(resource)
+            }
+          })).catch((alertError) => {
+            logger?.warn?.('PayMongo commerce webhook unknown-session alert failed', { error: alertError?.message });
+          });
+        }
         return ok({ handled: false, reason: 'session_not_found' });
       }
 

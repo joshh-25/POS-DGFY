@@ -37,6 +37,7 @@ import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
+import PosOrderPayment from './PosOrderPayment.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -69,6 +70,8 @@ import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
+import InventoryReservation from './InventoryReservation.js';
+import InventoryReservationLine from './InventoryReservationLine.js';
 import UserLocationGrant from './UserLocationGrant.js';
 import StoreCustomer from './StoreCustomer.js';
 import StoreCustomerAddress from './StoreCustomerAddress.js';
@@ -187,6 +190,7 @@ import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
+import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
@@ -261,6 +265,7 @@ const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
+const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
@@ -422,6 +427,8 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantDownpaymentSettings, { foreignKey: 'tenant_id', as: 'downpaymentSettings' });
+TenantDownpaymentSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 // dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
@@ -603,6 +610,12 @@ TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_locatio
 TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
 PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
 PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
+// Phase 137 (#819) -- ADR 0069 clause 4 downpayment/balance/refund/forfeiture ledger.
+PosTransaction.hasMany(PosOrderPayment, { foreignKey: 'pos_transaction_id', as: 'orderPayments' });
+PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
+PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
+User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -675,6 +688,7 @@ User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' }
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
 Item.hasMany(ItemLocationStock, { foreignKey: 'item_id', as: 'locationStocks' });
+Item.hasMany(InventoryReservationLine, { foreignKey: 'item_id', as: 'inventoryReservationLines' });
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
@@ -755,12 +769,25 @@ User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'pos
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
+TenantLocation.hasMany(InventoryReservation, { foreignKey: 'location_id', as: 'inventoryReservations' });
 TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'destination_location_id', as: 'destinationStockMovements' });
 ItemLocationStock.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(PosTransaction, { foreignKey: 'source_id', as: 'sourceOrder', constraints: false });
+InventoryReservation.hasMany(InventoryReservationLine, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'lines',
+  onDelete: 'CASCADE'
+});
+InventoryReservationLine.belongsTo(InventoryReservation, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'reservation'
+});
+InventoryReservationLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
@@ -1027,6 +1054,7 @@ const db = {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
+  PosOrderPayment,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1060,6 +1088,8 @@ const db = {
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
@@ -1176,6 +1206,7 @@ const db = {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings
+  ,TenantDownpaymentSettings
   ,PlatformAdminUser
   ,PlatformAdminPermission
   ,PlatformAdminSession
@@ -1234,6 +1265,7 @@ export {
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
+  PosOrderPayment,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
@@ -1265,6 +1297,8 @@ export {
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
@@ -1381,6 +1415,7 @@ export {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   TenantAffiliateSettings,
+  TenantDownpaymentSettings,
   PlatformAdminUser,
   PlatformAdminPermission,
   PlatformAdminSession,

@@ -52,6 +52,19 @@ describe('guest checkout draft storage', () => {
     });
   });
 
+  // #613: grab_pay/shopeepay are live storefront online rails
+  // (storefrontCheckoutPaymentOptions.js) but were missing from this module's own allow-list,
+  // so a restored draft with either selected silently coerced back to 'cash'.
+  it.each(['grab_pay', 'shopeepay'])('preserves %s as a valid restored payment type', (paymentType) => {
+    const draft = normalizeGuestCheckoutDraft({
+      routeSlug: 'demo-store',
+      cart: [{ item_id: 1, quantity: 2 }],
+      paymentType
+    });
+
+    expect(draft).toMatchObject({ paymentType });
+  });
+
   it('reads only matching store drafts and clears successful writes', () => {
     const { storage, sessionStorage } = installSessionStorage();
 

@@ -30,9 +30,9 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0005 | [Unified Sales Read Model Across POS and Dispatch](0005-unified-sales-read-model.md) | `accepted` | unified_sales_read_model | 2026-09-27 | 0 |
 | 0006 | [(untitled)](0006-skupervisor-expansion-program-boundaries.md) | `accepted` | skupervisor_expansion_program_boundaries | 2026-09-28 | 0 |
 | 0007 | [Dual-Mode POS Compliance Program](0007-dual-mode-pos-compliance-program.md) | `accepted` | dual_mode_pos_compliance_program | 2026-10-06 | 0 |
-| 0008 | [Tenant Workflow Mode (Manufacturing vs MSME)](0008-tenant-workflow-mode-msme-simplification.md) | `accepted` | tenant_workflow_mode_msme_simplification | 2026-10-10 | 0 |
+| 0008 | [Tenant Workflow Mode (Manufacturing vs MSME)](0008-tenant-workflow-mode-msme-simplification.md) | `amended` | tenant_workflow_mode_msme_simplification | 2027-02-22 | 0 |
 | 0009 | [Multi-Location Inventory Ledger and Safety-First Rollout](0009-multi-location-inventory-ledger-and-safety-rollout.md) | `accepted` | multi_location_inventory_ledger_and_safety_rollout | 2026-10-16 | 0 |
-| 0010 | [Storefront Discovery Item-Match Index and Union Query Contract](0010-storefront-discovery-item-match-index-and-union-query.md) | `accepted` | storefront_discovery_item_match_index_and_union_query | 2026-10-20 | 0 |
+| 0010 | [Storefront Discovery Item-Match Index and Union Query Contract](0010-storefront-discovery-item-match-index-and-union-query.md) | `amended` | storefront_discovery_item_match_index_and_union_query | 2026-10-20 | 0 |
 | 0011 | [Compliance Downgrade Escape Hatches](0011-compliance-downgrade-escape-hatches.md) | `accepted` | compliance_downgrade_escape_hatches | 2026-10-21 | 6 |
 | 0012 | [DGFY Global Convenience Fee and UI Brand Separation](0012-dgfy-global-convenience-fee-and-ui-brand-separation.md) | `accepted` | dgfy_global_convenience_fee_and_ui_brand_separation | 2026-10-23 | 0 |
 | 0013 | [Tenant First-Login Onboarding and Storefront Readiness Contract](0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md) | `accepted` | tenant_first_login_onboarding_and_storefront_readiness_contract | 2026-10-25 | 0 |
@@ -88,8 +88,11 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
-| 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `accepted` | voucher_sale_time_price_resolution | 2027-02-17 | 4 |
+| 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 6 |
 | 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `accepted` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 2 |
+| 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
+| 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
+| 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `accepted` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 5 |
 
 ## Renumbered (collision stubs)
 

@@ -41,7 +41,7 @@ export function useGuestCheckoutOtp({
     }
 
     const verifiedEmail = normalizeGuestCheckoutEmail(guestCheckoutProof?.email);
-    if (guestCheckoutProof && verifiedEmail !== normalizedEmail) {
+    if (guestCheckoutProof && normalizedEmail && verifiedEmail !== normalizedEmail) {
       setGuestCheckoutProof(null);
       setGuestCheckoutOtpCode('');
       setGuestCheckoutOtpError('');
@@ -65,7 +65,13 @@ export function useGuestCheckoutOtp({
 
   const handleRequestGuestCheckoutOtp = useCallback(async (emailOverride = '') => {
     if (isDgfyCustomerSignedIn) return true;
-    const requestEmail = normalizeGuestCheckoutEmail(emailOverride || customerEmail);
+    // #846: a bare `onClick={onRequestCode}` (no arrow wrapper) passes the click SyntheticEvent
+    // as emailOverride -- String(event) coerces to "[object Object]", which then goes straight
+    // into the OTP request body. Fixed at both call sites (RetailOrderGuestEmailVerification.jsx,
+    // shared GuestEmailVerification.jsx), but guarded here too so a future bare-reference mistake
+    // can't silently resurrect this bug.
+    const safeOverride = typeof emailOverride === 'string' ? emailOverride : '';
+    const requestEmail = normalizeGuestCheckoutEmail(safeOverride || customerEmail);
     if (!requestEmail) {
       setGuestCheckoutOtpError('Enter an email address before requesting a code.');
       return false;
