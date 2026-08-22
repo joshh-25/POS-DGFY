@@ -1,3 +1,5 @@
+import { getCardFieldErrors, stripCardNumberFormatting } from '../utils/cardValidation.js';
+
 export const STOREFRONT_HOSTED_PAYMENT_TYPES = Object.freeze([
   'card',
   'gcash',
@@ -25,9 +27,19 @@ export const isStorefrontDirectMayaPaymentSession = (paymentSession) => (
   && paymentSession?.payment_method === 'maya'
 );
 
-export const isStorefrontDirectPaymentSession = (paymentSession) => (
+export const isStorefrontDirectCardPaymentSession = (paymentSession) => (
+  paymentSession?.payment_flow === 'direct_card'
+  && paymentSession?.payment_method === 'card'
+);
+
+export const isStorefrontDirectWalletPaymentSession = (paymentSession) => (
   isStorefrontDirectGcashPaymentSession(paymentSession)
   || isStorefrontDirectMayaPaymentSession(paymentSession)
+);
+
+export const isStorefrontDirectPaymentSession = (paymentSession) => (
+  isStorefrontDirectWalletPaymentSession(paymentSession)
+  || isStorefrontDirectCardPaymentSession(paymentSession)
 );
 
 export const getStorefrontOnlinePaymentLabel = (paymentType) => {
@@ -67,8 +79,12 @@ const buildPayMongoPublicAuthHeaders = (publicKey) => ({
 
 export async function startStorefrontDirectPayment({
   billing = {},
+  cardDetails = null,
   paymentSession
 }) {
+  if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+    return startStorefrontDirectCardPayment({ billing, cardDetails, paymentSession });
+  }
   if (!isStorefrontDirectPaymentSession(paymentSession)) {
     throw new Error('This is not a direct GCash or Maya payment session.');
   }
@@ -141,6 +157,118 @@ export async function startStorefrontDirectPayment({
     paymentMethodId,
     redirectUrl
   };
+}
+
+const normalizeCardDetails = (cardDetails = {}) => {
+  const cardNumber = stripCardNumberFormatting(cardDetails.cardNumber);
+  const expirationParts = String(cardDetails.expiration || '').trim().split('/').map((part) => part.trim());
+  const expMonth = Number(cardDetails.expMonth || expirationParts[0]);
+  const rawYear = String(cardDetails.expYear || expirationParts[1] || '').replace(/\D/g, '');
+  const expYear = rawYear.length === 2 ? Number(`20${rawYear}`) : Number(rawYear);
+  const cvc = String(cardDetails.cvc || '').replace(/\D/g, '');
+  const cardholder = String(cardDetails.cardholder || '').trim();
+
+  const fieldErrors = getCardFieldErrors(cardDetails);
+  const firstError = ['cardNumber', 'expiration', 'cvc', 'cardholder']
+    .map((field) => fieldErrors[field])
+    .find(Boolean);
+  if (firstError) throw new Error(firstError);
+
+  return { cardNumber, expMonth, expYear, cvc, cardholder };
+};
+
+export async function startStorefrontDirectCardPayment({
+  billing = {},
+  cardDetails = {},
+  paymentSession
+}) {
+  if (!isStorefrontDirectCardPaymentSession(paymentSession)) {
+    throw new Error('This is not a direct card payment session.');
+  }
+
+  const normalizedCard = normalizeCardDetails(cardDetails);
+  const paymentIntentId = String(paymentSession.provider_payment_intent_id || '').trim();
+  const clientKey = String(paymentSession.paymongo_client_key || '').trim();
+  const publicKey = String(paymentSession.paymongo_public_key || '').trim();
+  const returnUrl = String(paymentSession.paymongo_return_url || '').trim();
+  if (!paymentIntentId || !clientKey || !publicKey || !returnUrl) {
+    throw new Error('PayMongo did not return the required card authorization details.');
+  }
+
+  const paymentMethodResponse = await globalThis.fetch(`${PAYMONGO_API_BASE_URL}/payment_methods`, {
+    method: 'POST',
+    headers: buildPayMongoPublicAuthHeaders(publicKey),
+    body: JSON.stringify({
+      data: {
+        attributes: {
+          type: 'card',
+          details: {
+            card_number: normalizedCard.cardNumber,
+            exp_month: normalizedCard.expMonth,
+            exp_year: normalizedCard.expYear,
+            cvc: normalizedCard.cvc
+          },
+          billing: {
+            name: normalizedCard.cardholder,
+            email: billing.email || undefined,
+            phone: billing.phone || undefined
+          }
+        }
+      }
+    })
+  });
+  if (!paymentMethodResponse.ok) {
+    throw new Error(await readPayMongoError(paymentMethodResponse, 'PayMongo could not create the card payment method.'));
+  }
+  const paymentMethodPayload = await paymentMethodResponse.json();
+  const paymentMethodId = String(paymentMethodPayload?.data?.id || '').trim();
+  if (!paymentMethodId) throw new Error('PayMongo did not return a card payment method.');
+
+  const attachResponse = await globalThis.fetch(
+    `${PAYMONGO_API_BASE_URL}/payment_intents/${encodeURIComponent(paymentIntentId)}/attach`,
+    {
+      method: 'POST',
+      headers: buildPayMongoPublicAuthHeaders(publicKey),
+      body: JSON.stringify({
+        data: {
+          attributes: {
+            payment_method: paymentMethodId,
+            client_key: clientKey,
+            return_url: returnUrl
+          }
+        }
+      })
+    }
+  );
+  if (!attachResponse.ok) {
+    throw new Error(await readPayMongoError(attachResponse, 'PayMongo could not start the card authorization.'));
+  }
+  const attachPayload = await attachResponse.json();
+  const attachAttributes = attachPayload?.data?.attributes || {};
+  const redirectUrl = String(
+    attachAttributes?.next_action?.redirect?.url
+      || attachAttributes?.next_action?.redirect_url
+      || ''
+  ).trim();
+  const status = String(attachAttributes.status || '').trim() || null;
+  const paymentError = attachAttributes.last_payment_error || {};
+  const errorMessage = String(
+    paymentError.message
+      || paymentError.detail
+      || paymentError.code
+      || ''
+  ).trim();
+  if (status === 'awaiting_payment_method') {
+    return {
+      paymentMethodId,
+      redirectUrl: null,
+      status,
+      ...(errorMessage ? { errorMessage } : {})
+    };
+  }
+  if (!redirectUrl && !status) throw new Error('PayMongo did not return the card authorization result.');
+
+  return { paymentMethodId, redirectUrl: redirectUrl || null, status };
 }
 
 export async function startStorefrontDirectGcashPayment(params = {}) {

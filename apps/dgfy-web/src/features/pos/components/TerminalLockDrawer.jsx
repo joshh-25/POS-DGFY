@@ -3,6 +3,7 @@ import { Building2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { Input } from '../../../../Components/ui/input.jsx';
 import { Label } from '../../../../Components/ui/label.jsx';
+import PosTextSizeControl from './PosTextSizeControl.jsx';
 
 export default function TerminalLockDrawer({
   drawerOpen,
@@ -16,7 +17,9 @@ export default function TerminalLockDrawer({
   onDayCloseSubmit,
   onIdentityChange,
   onUseDifferentAccount,
-  onLegacySubmit
+  onLegacySubmit,
+  posTextSize,
+  onPosTextSizeChange
 }) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const dgfyCompanies = Array.isArray(dgfyPosState?.companies) ? dgfyPosState.companies : [];
@@ -48,6 +51,18 @@ export default function TerminalLockDrawer({
             <div>
               <h2 className="text-[15px] font-extrabold tracking-tight">Terminal Login Required</h2>
             </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold text-[#0F172A]">Display</p>
+              <p className="text-[11px] leading-5 text-[#64748B]">Adjust POS text size for this device.</p>
+            </div>
+            <PosTextSizeControl
+              id="pos-text-size-lock-drawer"
+              value={posTextSize}
+              onChange={onPosTextSizeChange}
+              className="shrink-0"
+            />
           </div>
         </div>
 

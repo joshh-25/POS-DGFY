@@ -7,7 +7,6 @@ const displayDiscountType = (value) => String(value || '').trim().toLowerCase() 
     ? 'OTHER'
     : String(value || '').replace(/_/g, ' ').toUpperCase();
 const DGFY_BRAND_NAME = 'DGFY';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.25rem 1.25rem 3.25rem';
 const RECEIPT_LINE_GRID_COLUMNS_57MM = 'minmax(0, 1fr) 2.45rem 1.05rem 2.45rem';
 const RECEIPT_PAPER_WIDTHS = {
@@ -272,11 +271,11 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">Vatable Sales</span>
+                    <span className="min-w-0 flex-1">VATable Sales</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vatable_sales)}</span>
                 </div>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">VAT 12%</span>
+                    <span className="min-w-0 flex-1">VAT Amount (12%)</span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_amount)}</span>
                 </div>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
@@ -298,13 +297,6 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                         {transaction.discount_rate_snapshot != null ? ` @ ${Number(transaction.discount_rate_snapshot).toFixed(2)}%` : ''}
                     </span>
                     <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.discount_amount)}</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 text-slate-600">
-                    <span className="min-w-0 flex-1">
-                        {transaction.service_fee_label_snapshot || DGFY_CONVENIENCE_FEE_LABEL}
-                        {transaction.service_fee_method_snapshot ? ` (${transaction.service_fee_method_snapshot})` : ''}
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.service_fee_amount)}</span>
                 </div>
                 {restaurantServiceChargeAmount > 0 && (
                     <div className="flex items-start justify-between gap-2 text-slate-600">

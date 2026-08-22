@@ -84,6 +84,7 @@ import {
   getInventoryDisplayLabel,
   getStorefrontAccessBlockMessage
 } from './shared/model/customerAccess.js';
+import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
@@ -128,6 +129,7 @@ import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbC
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
 import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from './shared/checkout/model/guestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
@@ -239,6 +241,10 @@ import { useFnbProductDetailsReviewProps } from './modes/fnb/storefront/hooks/us
 import { useFnbItemReviewRuntime } from './modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js';
 import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProductModifiers.js';
 import { createTrackingAdapterRegistry } from './tracking/core.js';
+import {
+  createCompletionTrackingScheduler,
+  resolveTrackingRetryDelayMs
+} from './tracking/customerTrackingRefresh.js';
 import {
   fnbTrackingAdapter,
   getCompletedTrackingLabel,
@@ -695,6 +701,7 @@ export default function StorefrontApp() {
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
   const paymentReturnSessionRef = useRef('');
+  const qrphPaymentRefreshRef = useRef(null);
   const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
   const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
@@ -706,15 +713,37 @@ export default function StorefrontApp() {
     setQrphIdempotencyKey(globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`);
   }, [setQrphIdempotencyKey, setQrphPaymentSession]);
 
+  // Phase 142 (#823): the first enabled online rail, for a downpayment-required store where
+  // plain 'cash' is not a valid selection (the backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on
+  // it -- see storeCheckoutPaymentOptions.js's hideCash option, which removes it from the list
+  // this reads). Falls back to 'qrph' if the store's payment_capabilities haven't loaded yet.
+  const resolveDefaultDownpaymentRail = useCallback(() => (
+    buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: true })[0]?.value || 'qrph'
+  ), [selectedStore?.payment_capabilities]);
+
   const handlePaymentTypeChange = useCallback((val) => {
+    const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required';
     if (val === 'online') {
       uiOpenOnlinePaymentModal();
-      setFnbPaymentType('cash');
+      // Phase 142 (#823): this legacy value opens the "online payment unavailable" modal and
+      // used to always reset to 'cash' -- wrong at a downpayment store, where 'cash' isn't a
+      // choice at all. Reset to a valid rail instead so the selector never lands on cash there.
+      setFnbPaymentType(isDownpaymentStore ? resolveDefaultDownpaymentRail() : 'cash');
     } else {
       if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
-  }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+  }, [resolveDefaultDownpaymentRail, resetQrphPaymentSession, selectedStore?.payment_mode, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+
+  // Phase 142 (#823): every mode's paymentType state defaults to 'cash' (useFnbCheckoutRouteState.js
+  // / RetailOrderPage.jsx's own local state) -- not a valid choice once a store resolves to
+  // downpayment_required. Self-heals a stale 'cash' selection (a restored guest draft, a store that
+  // just flipped modes, or simply the unchanged default) to the first enabled rail. No-op for a
+  // full_payment store.
+  useEffect(() => {
+    if (selectedStore?.payment_mode !== 'downpayment_required' || fnbPaymentType !== 'cash') return;
+    setFnbPaymentType(resolveDefaultDownpaymentRail());
+  }, [selectedStore?.payment_mode, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
   // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
   // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
@@ -1458,7 +1487,12 @@ export default function StorefrontApp() {
   }, [currentPathSubpage, isFnbOrderSubpage, isServicesTrackingPage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, selectedTrackingPin, setSelectedTrackingPin, setTrackingPinInput, trackingPinInput]);
 
   useEffect(() => {
-    const supportsProductPaymentReturn = isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage);
+    // Phase 142 (#823): Retail joins Simple here -- a downpayment-required Retail order can only
+    // be placed by paying online, so it needs the same PayMongo-return rehydration path Simple
+    // already has. Retail's own step state is local to RetailOrderPage.jsx (not hoisted here like
+    // simpleOrderStep), so it self-resumes to its payment step by watching qrphPaymentSession
+    // (see RetailOrderPage.jsx) rather than needing a setRetailOrderStep call here.
+    const supportsProductPaymentReturn = isFnbOrderSubpage || ((isSimpleMode || isRetailMode) && isResolvedOrderSubpage);
     if (!supportsProductPaymentReturn || typeof window === 'undefined' || qrphPaymentSession) return;
     const params = new URLSearchParams(window.location.search);
     const paymentSessionId = String(params.get('payment_session') || '').trim().toUpperCase();
@@ -1477,7 +1511,7 @@ export default function StorefrontApp() {
       payment_method: paymentMethod,
       status: returnedStatus === 'cancelled' ? 'cancelled' : 'awaiting_payment'
     });
-  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
+  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isRetailMode, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -2301,7 +2335,7 @@ export default function StorefrontApp() {
     guestCheckoutProof,
     handleGuestCheckoutOtpCodeChange,
     handleRequestGuestCheckoutOtp,
-    handleVerifyGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp: verifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
   } = useGuestCheckoutOtp({
     customerEmail,
@@ -2310,6 +2344,13 @@ export default function StorefrontApp() {
     selectedStore,
     toast,
   });
+  const handleVerifyGuestCheckoutOtp = useCallback(async () => {
+    const verified = await verifyGuestCheckoutOtp();
+    if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
+      setCheckoutError('');
+    }
+    return verified;
+  }, [checkoutError, setCheckoutError, verifyGuestCheckoutOtp]);
   const handleApplyGuestDetailsAndRequestOtp = useCallback(() => {
     handleApplyGuestDetails();
     // The session identity is ready to review before OTP verification.
@@ -2413,6 +2454,9 @@ export default function StorefrontApp() {
     const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
     if (!paymentSessionId || !selectedStore?.slug || qrphPaymentStatusLoading) return;
 
+    let pollResult = {
+      status: String(qrphPaymentSession?.status || '').trim().toLowerCase()
+    };
     setQrphPaymentStatusLoading(true);
     if (!silent) setCheckoutError('');
     try {
@@ -2428,6 +2472,9 @@ export default function StorefrontApp() {
       );
       const paymentSession = data?.payment_session || null;
       setQrphPaymentSession(paymentSession);
+      pollResult = {
+        status: String(paymentSession?.status || '').trim().toLowerCase()
+      };
 
       if (paymentSession?.status === 'finalized' && paymentSession?.tracking_pin) {
         const trackingPin = String(paymentSession.tracking_pin).trim().toUpperCase();
@@ -2440,7 +2487,13 @@ export default function StorefrontApp() {
           order_method: orderMethod,
           order: null,
           order_name: cart[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // Phase 142 (#823): prefer the finalized session's own order_total_amount (the full
+          // order value, widened onto serializePaymentSession alongside this poll's data) over
+          // the client's pre-payment quote snapshot -- more authoritative, and never the
+          // captured (downpayment) amount for a downpayment session, where paymentSession.total_amount
+          // means something else entirely (see storefrontDownpaymentPresentation.js). Null for a
+          // full_payment session, so the quote-based fallback still applies there unchanged.
+          total_amount: paymentSession.order_total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, trackingPin);
         setCart([]);
         setQuoteResult(null);
@@ -2449,7 +2502,7 @@ export default function StorefrontApp() {
         resetQrphPaymentSession();
         goStoreTrackPage({ pin: trackingPin });
         toast.success('Payment confirmed. Your order has been placed.');
-        return;
+        return pollResult;
       }
 
       if (paymentSession?.status === 'paid') {
@@ -2466,6 +2519,7 @@ export default function StorefrontApp() {
         toast.info('Payment is still awaiting confirmation.');
       }
     } catch (error) {
+      pollResult = { ...pollResult, error };
       const message = normalizeStorefrontErrorMessage(error, 'Unable to refresh PayMongo payment status.');
       if (!silent) {
         setCheckoutError(message);
@@ -2474,6 +2528,7 @@ export default function StorefrontApp() {
     } finally {
       setQrphPaymentStatusLoading(false);
     }
+    return pollResult;
   }, [
     cart,
     goStoreTrackPage,
@@ -2500,6 +2555,7 @@ export default function StorefrontApp() {
     toast,
     totalsForDisplay
   ]);
+  qrphPaymentRefreshRef.current = handleRefreshQrphPaymentSession;
   const handleConfirmQrphTestPayment = useCallback(async () => {
     const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
     if (!paymentSessionId || !selectedStore?.slug) return;
@@ -2537,16 +2593,35 @@ export default function StorefrontApp() {
     toast
   ]);
   useEffect(() => {
-    if (!['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)) return undefined;
-    const pollPaymentStatus = () => {
-      if (isDocumentVisibleAndOnline()) {
-        handleRefreshQrphPaymentSession({ silent: true });
-      }
+    const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
+    const paymentStatus = String(qrphPaymentSession?.status || '').trim().toLowerCase();
+    if (!paymentSessionId || !selectedStore?.slug || !['awaiting_payment', 'paid'].includes(paymentStatus)) {
+      return undefined;
+    }
+
+    const scheduler = createCompletionTrackingScheduler({
+      poll: () => {
+        if (!isDocumentVisibleAndOnline()) return { status: paymentStatus };
+        return qrphPaymentRefreshRef.current?.({ silent: true }) || { status: paymentStatus };
+      },
+      resolveDelayMs: ({ result, error }) => resolveTrackingRetryDelayMs({
+        error: error || result?.error,
+        normalDelayMs: QRPH_PAYMENT_POLL_INTERVAL_MS
+      })
+    });
+
+    const handleVisibilityChange = () => {
+      scheduler.stop();
+      if (document.visibilityState !== 'hidden') scheduler.start();
     };
-    pollPaymentStatus();
-    const timer = window.setInterval(pollPaymentStatus, QRPH_PAYMENT_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [handleRefreshQrphPaymentSession, qrphPaymentSession?.status]);
+
+    scheduler.start();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      scheduler.stop();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [qrphPaymentSession?.payment_session_id, qrphPaymentSession?.status, selectedStore?.slug]);
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
@@ -2692,6 +2767,7 @@ export default function StorefrontApp() {
     hasServiceCart,
     isDgfyCustomerSignedIn,
     isFnbMode,
+    isRetailMode,
     isServicesMode,
     isSimpleMode,
     missingCustomerInformation,
@@ -3038,7 +3114,13 @@ export default function StorefrontApp() {
     withAssetOrigin,
     handleCheckout,
     checkoutLoading,
-    checkoutError
+    checkoutError,
+    fnbPaymentType,
+    handlePaymentTypeChange,
+    handleConfirmQrphTestPayment,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    resetQrphPaymentSession
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
@@ -3055,6 +3137,9 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     checkoutTab,
+    customerEmail,
+    customerName,
+    customerPhone,
     customerPin,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
@@ -3201,7 +3286,27 @@ export default function StorefrontApp() {
       && !hasStockViolation
     );
 
-    if (!shouldAutoSyncFnbQuote && !shouldAutoSyncDiscountQuote) {
+    // Phase 142 (#823): a downpayment-required store's checkout needs the server-resolved split
+    // (payment_mode/downpayment_amount/balance_due_amount) before the customer ever reaches the
+    // payment step -- and Simple/Retail never quote at all without a discount code (the gap the
+    // discount arm's own comment above documents). Mode-agnostic and structured exactly like that
+    // arm, deliberately WITHOUT the F&B arm's quoteNeedsRefresh/step-complete gates -- like the
+    // discount arm, re-fire prevention for an unchanged cart comes from the syncKey below, not
+    // from quoteNeedsRefresh. Gated purely on the store's catalog-resolved payment_mode, so a
+    // full_payment store's request pattern is completely unchanged by this addition.
+    const shouldAutoSyncDownpaymentQuote = (
+      isStorePage
+      && !hasServiceCart
+      && selectedStore?.payment_mode === 'downpayment_required'
+      && Boolean(selectedStore)
+      && cart.length > 0
+      && checkoutPermitted
+      && accessCapabilities.quote !== false
+      && !storefrontClosedByHours
+      && !hasStockViolation
+    );
+
+    if (!shouldAutoSyncFnbQuote && !shouldAutoSyncDiscountQuote && !shouldAutoSyncDownpaymentQuote) {
       fnbAutoQuoteSyncKeyRef.current = '';
       return undefined;
     }
@@ -3304,6 +3409,9 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
     customerPin,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
@@ -3332,6 +3440,10 @@ export default function StorefrontApp() {
     handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
     handleSetDefaultDeliveryAddress,
+    onSignInToCheckout: () => openCheckoutAuthFlow('sign-in', {
+      checkoutTab: 'checkout',
+      simpleOrderStep: 1
+    }),
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,

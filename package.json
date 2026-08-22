@@ -95,6 +95,7 @@
     "promote:staging-to-master": "node scripts/promote-staging-to-master.js",
     "review:deployed-change-accuracy": "node scripts/review-deployed-change-accuracy.js",
     "audit:master-promotion": "node scripts/audit-master-promotion.js",
+    "audit:mode-rbac-users": "cd apps/dgfy-api && npm run audit:mode-rbac-users --",
     "collect:master-promotion-evidence": "node scripts/collect-master-promotion-evidence.js",
     "collect:github-actions-unavailability": "node scripts/collect-github-actions-unavailability.js",
     "check:pr": "node scripts/pr-checks.js",

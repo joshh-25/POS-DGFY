@@ -6,12 +6,17 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../src/features/pos/pages/TerminalPage.jsx';
+import { publishPosUpdateNoticeState } from '../../../src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../src/components/common/GlobalApiErrorListener.jsx';
 import { PermissionProvider } from '../../../src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import {
+  getPosUpdateSafetyState,
+  POS_UPDATE_SAFETY_EVENT
+} from '../../../src/features/pos/utils/posUpdateSafety.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
 import { getCurrentUser } from '../../../src/services/authService.js';
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../src/observability/sentryClient.js';
@@ -162,12 +167,68 @@ const registerPosServiceWorker = async () => {
     const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
     if (!probe.ok || !scriptLike) return;
 
+    let waitingWorker = null;
+    let reloadAfterControllerChange = false;
+    let reloadTriggered = false;
+    let updateDeferredBySafety = false;
+    let updateActivationStarted = false;
+
+    const activateWaitingWorker = () => {
+      if (!waitingWorker || waitingWorker.state !== 'installed') return false;
+      if (updateActivationStarted) return true;
+      const safetyState = getPosUpdateSafetyState();
+      if (safetyState.unsafe) {
+        updateDeferredBySafety = true;
+        publishPosUpdateNoticeState({
+          message: 'POS update will install after the current transaction is finished.'
+        });
+        return false;
+      }
+
+      updateDeferredBySafety = false;
+      updateActivationStarted = true;
+      reloadAfterControllerChange = true;
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+      publishPosUpdateNoticeState(null);
+      return true;
+    };
+
+    const handleWaitingWorker = (worker) => {
+      if (!worker) return;
+      waitingWorker = worker;
+      activateWaitingWorker();
+    };
+
+    const handlePosUpdateSafetyChange = () => {
+      if (!updateDeferredBySafety) return;
+      activateWaitingWorker();
+    };
+
+    window.addEventListener(POS_UPDATE_SAFETY_EVENT, handlePosUpdateSafetyChange);
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!reloadAfterControllerChange || reloadTriggered) return;
+      reloadTriggered = true;
+      window.location.reload();
+    });
+
     const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
       scope: appBasePath === '/' ? '/' : `${appBasePath}/`
     });
-    if (registration?.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    }
+
+    const observeInstallingWorker = () => {
+      const installingWorker = registration.installing;
+      if (!installingWorker) return;
+      installingWorker.addEventListener('statechange', () => {
+        if (installingWorker.state === 'installed' && registration.waiting) {
+          handleWaitingWorker(registration.waiting);
+        }
+      });
+    };
+
+    registration.addEventListener('updatefound', observeInstallingWorker);
+    observeInstallingWorker();
+    handleWaitingWorker(registration.waiting);
   } catch {
     // Service worker support is optional for local development.
   }
@@ -211,7 +272,12 @@ const mountApp = () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <HashRouter>
+        <HashRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}
+        >
           <AnalyticsRouteTracker />
           <ObservabilityIdentitySync />
           <PermissionProvider>

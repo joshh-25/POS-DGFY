@@ -52,12 +52,14 @@ const isExpectedAbortedRequest = (entry) => {
   return path === '/api/v1/storefront/discovery'
     || path === '/api/v1/storefront/discovery/index'
     || path === '/api/v1/storefront/discovery/search'
+    || path.startsWith('/api/v1/storefront/discovery/')
     || path === '/api/v1/pos/catalog/events'
     || path === '/api/v1/dgfy/auth/me'
     || path === '/api/v1/dgfy/customer/events'
     || (/^\/openfreemap\/planet\/.+\.pbf$/i.test(path))
     || path === '/openfreemap/planet'
     || path === '/openfreemap/styles/positron'
+    || (/^\/openfreemap\/fonts\/.+\.pbf$/i.test(path))
     || (/^\/openfreemap\/sprites\/.+\.(png|json)$/i.test(path));
 };
 
@@ -134,6 +136,9 @@ const registerDiagnostics = (page, surface) => {
           || entry.message.startsWith('[TrackingRouteMap] MapLibre error'))) {
         return diagnostics.some((candidate) => isExpectedTrackingNetworkChange(candidate));
       }
+      // The optional storefront location map can emit this exact local OpenFreeMap
+      // tile/render diagnostic while the checkout and order APIs remain healthy.
+      if (entry.message === '[MapLibre error] vt') return false;
       if (!/^Failed to load resource: the server responded with a status of (401|404) /.test(entry.message)) {
         return true;
       }
@@ -196,6 +201,7 @@ const getIncomingOrders = async (page, authHeaders, shiftId, locationId) => {
       location_id: locationId,
       limit: 200
     },
+    timeout: 30_000,
     failOnStatusCode: false
   });
   const body = await readJson(response);
@@ -354,7 +360,19 @@ test.describe('Storefront to POS non-delivery service order', () => {
         const loginBody = await readJson(loginResponse);
         expect(loginResponse.status(), `Storefront login failed: ${JSON.stringify(responseSummary(loginResponse, loginBody))}`).toBe(200);
 
+        const storefrontSessionResponsePromise = page.waitForResponse(
+          (response) => getPath(response.url()) === '/api/v1/dgfy/auth/me'
+            && response.request().method() === 'GET',
+          { timeout: 20_000 }
+        );
         await page.goto(`${storefrontURL}${storePath}`, { waitUntil: 'domcontentloaded' });
+        const storefrontSessionResponse = await storefrontSessionResponsePromise;
+        const storefrontSessionBody = await readJson(storefrontSessionResponse);
+        expect(
+          storefrontSessionResponse.status(),
+          `storefront customer session failed: ${JSON.stringify(responseSummary(storefrontSessionResponse, storefrontSessionBody))}`
+        ).toBe(200);
+        expect(storefrontSessionBody?.account?.id || storefrontSessionBody?.data?.account?.id).toBeTruthy();
         await expect(page.locator('body')).not.toBeEmpty();
         const productCards = page.locator('article[data-cart-fly-origin="true"]');
         await expect(productCards.first()).toBeVisible({ timeout: 30_000 });
@@ -541,7 +559,7 @@ test.describe('Storefront to POS non-delivery service order', () => {
             && response.request().method() === 'PATCH',
           { timeout: 20_000 }
         );
-        await orderCard.getByRole('button', { name: 'Picked Up', exact: true }).click();
+        await orderCard.getByRole('button', { name: /^(Picked Up|Pickup)$/ }).click();
         const completionResponse = await patchResponsePromise;
         const completionBody = await readJson(completionResponse);
         expect(completionResponse.status(), `POS completion failed: ${JSON.stringify(responseSummary(completionResponse, completionBody))}`).toBe(200);

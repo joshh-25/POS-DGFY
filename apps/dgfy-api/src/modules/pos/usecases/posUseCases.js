@@ -37,6 +37,10 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import {
+    buildOnlineInventoryEffects,
+    buildLineStockPolicySubject
+} from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -1758,83 +1762,26 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
         compositions: productCompositions,
         locationId: order.location_id || null
     });
-
-    return lines.flatMap((line, index) => {
-        const itemId = parsePositiveInt(line?.item_id);
-        const lineReference = parsePositiveInt(line?.line_id) || `${itemId}-${index + 1}`;
-        const recipeMovements = recipePlan.movementsByLineIndex[index] || [];
-
-        // Recipe consumption always fires when the line has one, regardless of
-        // the finished item's own stock effect - see the matching fix in the
-        // in-person POS checkout movement loop above. The finished item's own
-        // (movement-exempt) effect is skipped below via stock_effect_type,
-        // trusted directly on the persisted line rather than recomputed from
-        // category, since the checkout path that created this line now sets it
-        // correctly for every mode (untracked/toggle/service alike).
-        const modifierMovements = (Array.isArray(line?.fnb_modifiers_snapshot)
-            ? line.fnb_modifiers_snapshot
-            : [])
-            .map((modifier) => ({
-                item_id: parsePositiveInt(modifier?.sku_item_id),
-                quantity: Number(line?.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
-                movement_type: 'goods_issue',
-                location_id: parsePositiveInt(modifier?.location_id) || order.location_id || null,
-                reference_type: 'POS',
-                reference_id: `ONLINE:${orderId}:${lineReference}:MOD:${parsePositiveInt(modifier?.modifier_option_id) || parsePositiveInt(modifier?.sku_item_id)}`,
-                notes: `Online F&B modifier consumption for ${modifier?.option_name || `item ${modifier?.sku_item_id}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-            }))
-            .filter((movement) => movement.item_id && Number.isFinite(movement.quantity) && movement.quantity > 0);
-
-        if (recipeMovements.length > 0) {
-            if (!itemId) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    `Online order line ${index + 1} has invalid inventory movement data`,
-                    { statusCode: 409 }
-                );
-            }
-            return [...recipeMovements.map((movement) => ({
-                item_id: movement.ingredient_item_id,
-                quantity: movement.quantity,
-                movement_type: 'goods_issue',
-                location_id: order.location_id || null,
-                reference_type: 'POS',
-                reference_id: `ONLINE:${orderId}:${lineReference}:ING:${movement.ingredient_item_id}`,
-                notes: `Online F&B recipe consumption for ${movement.product_name || `item ${itemId}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-            })), ...modifierMovements];
-        }
-
-        const isStockExemptLine = line?.stock_effect_type
-            ? line.stock_effect_type === 'stock_exempt'
-            : !isStockBearingItem(buildLineStockPolicySubject(line));
-        if (isStockExemptLine) return modifierMovements;
-
-        const quantity = Number(line?.quantity);
-        if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
-            throw new DomainError(
-                DomainErrorCode.CONFLICT,
-                `Online order line ${index + 1} has invalid inventory movement data`,
-                { statusCode: 409 }
-            );
-        }
-
-        return [{
-            item_id: itemId,
-            quantity,
-            movement_type: 'goods_issue',
-            location_id: order.location_id || null,
-            reference_type: 'POS',
-            reference_id: `ONLINE:${orderId}:${lineReference}`,
-            notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-        }, ...modifierMovements];
+    const effects = buildOnlineInventoryEffects({
+        lines,
+        itemMap,
+        recipePlan,
+        locationId: order.location_id || null,
+        orderId,
+        invoiceNumber: order.invoice_number || null,
+        trackingPin: order.tracking_pin || null,
+        strict: true
     });
+    return effects.map((effect) => ({
+        item_id: effect.item_id,
+        quantity: effect.quantity,
+        movement_type: 'goods_issue',
+        location_id: effect.location_id || order.location_id || null,
+        reference_type: 'POS',
+        reference_id: effect.reference_id,
+        notes: effect.notes
+    }));
 };
-
-const buildLineStockPolicySubject = (line = {}) => ({
-    ...(line || {}),
-    ...(line?.item || {}),
-    category: line?.item?.category ?? line?.category
-});
 
 const executeInventoryStockCommand = async ({
     inventoryCommandService,
@@ -8900,7 +8847,8 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
     commerceOrderLifecycleUseCase = null,
-    activityRecorder = recordDgfyOrderActivity
+    activityRecorder = recordDgfyOrderActivity,
+    inventoryReservationService = null
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
@@ -9019,28 +8967,42 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
             const mutationTimestamp = new Date();
 
-            if (
-                currentStatus !== 'completed'
-                && targetStatus === 'completed'
-                && (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement)
-            ) {
-                const stockMovements = await buildOnlineOrderStockMovements({
-                    order: existing,
-                    posRepository,
-                    options: {
-                        transaction,
-                        lock: true
+            if (currentStatus !== 'completed' && targetStatus === 'completed') {
+                if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
+                    const stockMovements = await buildOnlineOrderStockMovements({
+                        order: existing,
+                        posRepository,
+                        options: {
+                            transaction,
+                            lock: true
+                        }
+                    });
+                    for (const movement of stockMovements) {
+                        await executeInventoryStockCommand({
+                            inventoryCommandService: stockCommands,
+                            command: 'issueStockForOnlineFulfillment',
+                            movementData: movement,
+                            userId: actingUserId,
+                            transaction
+                        });
                     }
-                });
-                for (const movement of stockMovements) {
-                    await executeInventoryStockCommand({
-                        inventoryCommandService: stockCommands,
-                        command: 'issueStockForOnlineFulfillment',
-                        movementData: movement,
-                        userId: actingUserId,
+                }
+                if (inventoryReservationService?.convertOnlineOrderInventory) {
+                    await inventoryReservationService.convertOnlineOrderInventory({
+                        sourceId: normalizedTransactionId,
                         transaction
                     });
                 }
+            } else if (
+                currentStatus !== targetStatus
+                && ['cancelled', 'rejected'].includes(targetStatus)
+                && inventoryReservationService?.releaseOnlineOrderInventory
+            ) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: normalizedTransactionId,
+                    transaction,
+                    reason: targetStatus
+                });
             }
 
             const updatePayload = {

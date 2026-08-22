@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 
+const configuredBaseUrl = process.env.E2E_BASE_URL || 'http://localhost:5174';
+const isPosSurface = process.env.E2E_AUTH_SURFACE === 'pos' || /:5174(?:\/|$)/.test(configuredBaseUrl);
+
 test.describe('Security - Input Sanitization & Password Constraints', () => {
   test('Password inputs are masked by default', async ({ page }) => {
     await page.goto('/login');
@@ -12,7 +15,20 @@ test.describe('Security - Input Sanitization & Password Constraints', () => {
 
   test('Form rejects or handles special character SQL-injection patterns gracefully', async ({ page }) => {
     await page.goto('/login');
-    
+
+    if (isPosSurface) {
+      await page.locator('#dgfy-pos-email').fill("admin'OR'1'='1'--@test.com");
+      await page.locator('#dgfy-pos-password').fill('admin');
+      await page.getByRole('button', { name: /Sign In/i }).click();
+
+      const bodyText = await page.locator('body').innerText();
+      expect(bodyText).not.toContain('SQL');
+      expect(bodyText).not.toContain('SELECT');
+      expect(bodyText).not.toContain('error in your SQL syntax');
+      await expect(page.getByRole('heading', { name: 'Terminal Login Required' })).toBeVisible();
+      return;
+    }
+
     // Set up lookup request promise before triggering blur
     const lookupPromise = page.waitForResponse(
       res => res.url().includes('/auth/lookup'),
@@ -45,10 +61,12 @@ test.describe('Security - Input Sanitization & Password Constraints', () => {
 
   test('Form handles extremely long buffers gracefully without crashing UI', async ({ page }) => {
     await page.goto('/login');
-    
+
     const hugeBuffer = 'A'.repeat(5000);
-    await page.locator('input[type="email"]').fill(`${hugeBuffer}@test.com`);
-    await page.locator('input[type="password"]').fill(hugeBuffer);
+    const emailInput = isPosSurface ? page.locator('#dgfy-pos-email') : page.locator('input[type="email"]');
+    const passwordInput = isPosSurface ? page.locator('#dgfy-pos-password') : page.locator('input[type="password"]');
+    await emailInput.fill(`${hugeBuffer}@test.com`);
+    await passwordInput.fill(hugeBuffer);
     
     // App should not crash and should still be functional
     await expect(page.getByRole('button', { name: /Sign In/i })).toBeVisible();

@@ -94,6 +94,44 @@ describe('service worker caching contracts', () => {
     expect(source).toContain('scope: appBasePath === \'/\' ? \'/\' : `${appBasePath}/`');
   });
 
+  it('automatically activates POS updates only after the safety guard clears', () => {
+    const serviceWorkerSource = readSource(posServiceWorkerPath);
+    const installStart = serviceWorkerSource.indexOf("self.addEventListener('install'");
+    const messageStart = serviceWorkerSource.indexOf("self.addEventListener('message'");
+    const installSource = serviceWorkerSource.slice(installStart, messageStart);
+    const mainSource = readSource(posMainPath);
+    const layoutSource = readSource(path.resolve(frontendRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
+
+    expect(installSource).not.toContain('skipWaiting');
+    expect(serviceWorkerSource).toContain("event?.data?.type === 'SKIP_WAITING'");
+    expect(mainSource).toContain("registration.addEventListener('updatefound'");
+    expect(mainSource).toContain("navigator.serviceWorker.addEventListener('controllerchange'");
+    expect(mainSource).toContain('getPosUpdateSafetyState()');
+    expect(mainSource).toContain('POS_UPDATE_SAFETY_EVENT');
+    expect(mainSource).toContain('updateDeferredBySafety');
+    expect(mainSource).toContain('activateWaitingWorker();');
+    expect(layoutSource).toContain('{notice.activate ? (');
+    expect(mainSource).toContain('POS update will install after the current transaction is finished.');
+    expect(mainSource).not.toContain("toast.info('POS update ready'");
+    expect(mainSource).not.toContain("toast.dismiss('pos-service-worker-update-ready'");
+    expect(mainSource).not.toContain("registration.waiting.postMessage({ type: 'SKIP_WAITING' });");
+  });
+
+  it('renders the service-worker update prompt as an inline POS notice', () => {
+    const layoutSource = readSource(path.resolve(frontendRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
+    const noticeSource = readSource(path.resolve(frontendRoot, 'src/features/pos/utils/posUpdateNotice.js'));
+
+    expect(layoutSource).toContain('data-testid="pos-update-ready-notice"');
+    expect(layoutSource).toContain('fixed right-3 top-3');
+    expect(layoutSource).toContain('bg-white');
+    expect(layoutSource).toContain('shadow-[0_8px_24px_rgba(15,23,42,0.16)]');
+    expect(layoutSource).toContain("import { Bell, Info, Menu, UserRound } from 'lucide-react';");
+    expect(layoutSource).toContain('POS_UPDATE_NOTICE_EVENT');
+    expect(layoutSource).toContain('readPosUpdateNoticeState()');
+    expect(noticeSource).toContain("export const POS_UPDATE_NOTICE_EVENT = 'dgfy-pos:update-notice';");
+    expect(noticeSource).toContain('window.dispatchEvent(new Event(POS_UPDATE_NOTICE_EVENT));');
+  });
+
   it('removes stale root-scoped workers before mounting the local POS app', () => {
     const source = readSource(posMainPath);
     expect(source).toContain('const resetStaleDevelopmentServiceWorkers = async () => {');

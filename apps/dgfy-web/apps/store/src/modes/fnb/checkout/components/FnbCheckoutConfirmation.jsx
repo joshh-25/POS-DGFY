@@ -1,3 +1,5 @@
+import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+
 /**
  * Pure F&B checkout success view. Submission, routing, and state ownership
  * stay in the F&B checkout view model or route container.
@@ -19,6 +21,12 @@ export function FnbCheckoutConfirmation({
   paymentType,
   totalAmount,
 }) {
+  // Phase 142 (#823): order-sourced (see SimpleCheckoutSuccessStep.jsx's identical comment --
+  // same caveat applies: in ordinary flow this rarely renders for a downpayment order at all).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ order: checkoutResult?.order });
+  const paymentRowLabel = downpaymentDisplay.active
+    ? `${String(paymentType || 'cash').toUpperCase()} DOWNPAYMENT`
+    : String(paymentType || 'cash').toUpperCase();
   return (
     <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: brandColor, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -38,8 +46,14 @@ export function FnbCheckoutConfirmation({
       </div>
       <div style={{ display: 'grid', gap: 6, fontSize: 14, color: '#334155' }}>
         <div>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
-        <div>Payment: <strong>{String(paymentType || 'cash').toUpperCase()}</strong></div>
+        <div>Payment: <strong>{paymentRowLabel}</strong></div>
         <div>Total: <strong>{money(totalAmount)}</strong></div>
+        {downpaymentDisplay.active && (
+          <>
+            <div>Paid now: <strong>{money(downpaymentDisplay.downpaymentAmount)}</strong></div>
+            <div>{isDeliveryOrder ? 'Balance due on delivery' : 'Balance due at pickup'}: <strong>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
+          </>
+        )}
       </div>
       <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 2 }}>
         {cartLines.map((line) => (

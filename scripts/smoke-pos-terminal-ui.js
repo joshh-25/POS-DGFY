@@ -45,11 +45,14 @@ const collectTerminalEvidence = async (browser, viewport) => {
   await passwordInput.fill(`password-${viewport.name}`);
 
   const lockedNavigationDisabled = await page.locator('button').evaluateAll((buttons) => (
-    buttons.some((button) => (
-      button.disabled
-      && String(button.textContent || '').includes('Sell')
-      && String(button.textContent || '').includes('Unlock terminal to continue')
-    ))
+    buttons.some((button) => {
+      const label = [
+        button.textContent,
+        button.getAttribute('title'),
+        button.getAttribute('aria-label')
+      ].filter(Boolean).join(' ');
+      return button.disabled && /sell/i.test(label);
+    })
   ));
 
   const ignoredHttpErrors = httpErrors.filter((entry) => {

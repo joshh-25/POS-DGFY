@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveDgfyPostAuthTarget,
+  resolvePosTerminalUrl,
   resolveStorefrontAccountUrl,
   resolveStorefrontItemUrl,
   resolveStorefrontTenantUrl,
@@ -20,9 +21,27 @@ describe('DGFY route helper contracts', () => {
   it('routes POS terminal handoffs through the configured terminal URL', () => {
     expect(routeHelperSource).toContain("export const resolvePosTerminalUrl = (search = '') => {");
     expect(routeHelperSource).toContain("import.meta.env?.VITE_POS_TERMINAL_URL");
-    expect(routeHelperSource).toContain('configured.search = terminalPath.includes');
+    expect(routeHelperSource).toContain("target.pathname.replace(/\\/+$/, '') === '/terminal'");
+    expect(routeHelperSource).toContain('target.hash = terminalPath');
     expect(routeHelperSource).toContain("VITE_POS_DEV_PORT || '5174'");
     expect(routeHelperSource).toContain("hostname.startsWith('skupervisor.')");
+  });
+
+  it('keeps standalone POS handoffs inside the HashRouter route', () => {
+    vi.stubGlobal('window', {
+      location: {
+        protocol: 'http:',
+        hostname: 'localhost',
+        port: '5173'
+      }
+    });
+
+    try {
+      expect(resolvePosTerminalUrl('?setup_flow=tenant_onboarding&setup_step=profile'))
+        .toBe('http://localhost:5174/#/terminal?setup_flow=tenant_onboarding&setup_step=profile');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('keeps the SKUpervisor terminal route on the governed terminal page', () => {

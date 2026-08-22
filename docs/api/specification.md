@@ -3593,6 +3593,17 @@ Catalog rows include:
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
+**Response Envelope (Phase 142, #823)**
+- The catalog response includes a top-level `payment_mode` field, sibling to `payment_capabilities`
+  (`'full_payment'` | `'downpayment_required'`) -- always present, defaulting to `'full_payment'`
+  for any tenant without downpayment settings configured, and fail-closed to `'full_payment'` if
+  the settings read itself fails (a catalog request never 500s over this).
+- `payment_mode` is advisory/presentational for the storefront client (hide the cash payment
+  option, force a quote before the payment step); it is not itself an enforcement point -- the
+  actual capture guards live on the quote/checkout endpoints (see Phase 141's own contract below).
+  It is subject to the same 45s public cache above, so a tenant that just flipped its downpayment
+  setting may see up to ~45s of stale UI; the checkout/session-create guards remain the backstop.
+
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when `storefront_visible=true`.
 - Storefront-visible follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when the new Storefront override table is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`. A missing row in an existing Storefront override table does not inherit POS state.
@@ -3789,7 +3800,7 @@ Hospitality admin routes live under `/api/v1/hospitality`, require authenticatio
 
 ## Services Admin Endpoints
 
-Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
@@ -3914,6 +3925,11 @@ Route mapping note:
   with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
   ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
   order.
+- **(Phase 142, #823)** `amount_paid`/`balance_due` -- persisted since Phase 141 as described above
+  -- are now also serialized on every order-shaped response that reaches a storefront client
+  (`/store/checkout`'s own `order`, `/store/track/:tracking_pin`, `/store/orders` history, and the
+  claim-by-pin response), all sharing the same base order serializer. `null` for any order that
+  isn't `partially_paid`.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
@@ -3946,6 +3962,13 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   for Phase 144/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
   tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
   the request must never silently fall through to authorizing the full total.
+- **(Phase 142, #823)** The session response (both this endpoint and `GET
+  /store/checkout/payment-sessions/:payment_session_id` below, which shares the same serializer)
+  now additionally returns `capture_kind` (`'full'` | `'downpayment'`), `order_total_amount` (the
+  full order value, pesos), `balance_due_amount` (pesos), and `downpayment_refundable` -- the four
+  fields above were persisted on the session row since Phase 141 but never reached the client. All
+  four are `'full'`/`null`/`null`/`null` for a `capture_kind='full'` (i.e. `full_payment`) session,
+  same present-and-null convention as the quote response's own downpayment fields.
 
 **Response (201)**
 ```json
@@ -4229,7 +4252,7 @@ Fiscal activation also requires at least one verified fiscal terminal registrati
 
 ## Food & Beverage Endpoints
 
-Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
