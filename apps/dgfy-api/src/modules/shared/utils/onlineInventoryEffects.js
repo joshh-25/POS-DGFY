@@ -1,4 +1,5 @@
 import { isStockBearingItem } from './stockBearingPolicy.js';
+import { DomainError, DomainErrorCode } from '../contracts/domainErrors.js';
 
 const positiveInt = (value) => {
   const parsed = Number.parseInt(value, 10);
@@ -28,9 +29,18 @@ export const buildOnlineInventoryEffects = ({
   orderId = null,
   invoiceNumber = null,
   trackingPin = null,
-  allowOutOfStockSales = false
+  allowOutOfStockSales = false,
+  strict = false
 } = {}) => {
   const resolvedRecipePlan = recipePlan || { movementsByLineIndex: [] };
+  const rejectInvalidEffect = (reasonCode, details = {}) => {
+    if (!strict) return;
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      'Online inventory data is invalid and cannot be reserved or fulfilled.',
+      { statusCode: 422, details: { reason_code: reasonCode, ...details } }
+    );
+  };
   return (Array.isArray(lines) ? lines : []).flatMap((line, index) => {
     const itemId = positiveInt(line?.item_id);
     const lineReference = positiveInt(line?.line_id) || `${itemId || 'line'}-${index + 1}`;
@@ -42,7 +52,13 @@ export const buildOnlineInventoryEffects = ({
     for (const movement of recipeMovements) {
       const ingredientId = positiveInt(movement?.ingredient_item_id);
       const quantity = Number(movement?.quantity || 0);
-      if (!ingredientId || !Number.isFinite(quantity) || quantity <= 0) continue;
+      if (!ingredientId || !Number.isFinite(quantity) || quantity <= 0) {
+        rejectInvalidEffect('ONLINE_INVENTORY_RECIPE_EFFECT_INVALID', {
+          line_index: index,
+          ingredient_item_id: movement?.ingredient_item_id || null
+        });
+        continue;
+      }
       effects.push({
         item_id: ingredientId,
         quantity,
@@ -65,7 +81,13 @@ export const buildOnlineInventoryEffects = ({
     for (const modifier of (Array.isArray(line?.fnb_modifiers_snapshot) ? line.fnb_modifiers_snapshot : [])) {
       const modifierItemId = positiveInt(modifier?.sku_item_id);
       const quantity = modifierQuantity(line, modifier);
-      if (!modifierItemId || !Number.isFinite(quantity) || quantity <= 0) continue;
+      if (!modifierItemId || !Number.isFinite(quantity) || quantity <= 0) {
+        rejectInvalidEffect('ONLINE_INVENTORY_MODIFIER_EFFECT_INVALID', {
+          line_index: index,
+          modifier_option_id: modifier?.modifier_option_id || null
+        });
+        continue;
+      }
       const modifierReference = `ONLINE:${orderId || 'PENDING'}:${lineReference}:MOD:${positiveInt(modifier?.modifier_option_id) || modifierItemId}`;
       effects.push({
         item_id: modifierItemId,
@@ -94,7 +116,10 @@ export const buildOnlineInventoryEffects = ({
     if (recipeMovements.length > 0 || isStockExemptLine || allowOutOfStockSales) return effects;
 
     const quantity = Number(line?.quantity);
-    if (!itemId || !Number.isFinite(quantity) || quantity <= 0) return effects;
+    if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
+      rejectInvalidEffect('ONLINE_INVENTORY_LINE_EFFECT_INVALID', { line_index: index, item_id: line?.item_id || null });
+      return effects;
+    }
     effects.push({
       item_id: itemId,
       quantity,

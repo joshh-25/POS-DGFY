@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const migration = require('../../dgfy-migration-runner/migrations/20260821000002-create-inventory-reservations.cjs');
+const migration = require('../../dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs');
 
 const Sequelize = {
   INTEGER: 'INTEGER',

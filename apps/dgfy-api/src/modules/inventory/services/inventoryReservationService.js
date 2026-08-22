@@ -2,7 +2,7 @@ import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-const EPSILON = 0.000001;
+const EPSILON = 0.000000000001;
 const DEFAULT_TTL_MINUTES = 30;
 
 const positiveInt = (value) => {
@@ -10,7 +10,7 @@ const positiveInt = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const round12 = (value) => Math.round(((Number(value) || 0) + Number.EPSILON) * 1e12) / 1e12;
 
 const getOptionalModel = (name) => {
   try {
@@ -52,7 +52,7 @@ const normalizedEffects = (effects = [], locationId) => {
     if (!itemId || !Number.isFinite(quantity) || quantity <= 0) continue;
     normalized.push({
       item_id: itemId,
-      quantity: round4(quantity),
+      quantity: round12(quantity),
       effect_type: effect?.effect_type || 'line_item',
       source_line_reference: String(effect?.source_line_reference || `item-${itemId}`),
       metadata: effect?.metadata || null
@@ -60,7 +60,7 @@ const normalizedEffects = (effects = [], locationId) => {
   }
   const totalsByItem = new Map();
   for (const effect of normalized) {
-    totalsByItem.set(effect.item_id, round4((totalsByItem.get(effect.item_id) || 0) + effect.quantity));
+    totalsByItem.set(effect.item_id, round12((totalsByItem.get(effect.item_id) || 0) + effect.quantity));
   }
   return {
     locationId: normalizedLocationId,
@@ -182,14 +182,14 @@ export const buildInventoryReservationService = ({ resolveModels = requireModels
     const heldByItem = new Map();
     for (const row of activeLines) {
       const itemId = positiveInt(row.item_id);
-      heldByItem.set(itemId, round4((heldByItem.get(itemId) || 0) + Number(row.quantity || 0)));
+      heldByItem.set(itemId, round12((heldByItem.get(itemId) || 0) + Number(row.quantity || 0)));
     }
 
     const violations = itemIds
       .map((itemId) => ({
         item_id: itemId,
-        available_stock: round4(Math.max(0, (onHandByItem.get(itemId) || 0) - (heldByItem.get(itemId) || 0))),
-        requested_qty: round4(totalsByItem.get(itemId) || 0)
+        available_stock: round12(Math.max(0, (onHandByItem.get(itemId) || 0) - (heldByItem.get(itemId) || 0))),
+        requested_qty: round12(totalsByItem.get(itemId) || 0)
       }))
       .filter((entry) => entry.available_stock + EPSILON < entry.requested_qty);
     if (violations.length > 0) throw buildShortfallError({ locationId: normalizedLocationId, violations });

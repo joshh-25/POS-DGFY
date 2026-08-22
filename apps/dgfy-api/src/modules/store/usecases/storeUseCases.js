@@ -67,6 +67,7 @@ import {
     getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
@@ -3084,7 +3085,8 @@ export const buildStoreCheckoutUseCase = ({
                     locationId: normalized.location_id,
                     orderId,
                     invoiceNumber,
-                    trackingPin
+                    trackingPin,
+                    strict: true
                 });
                 await inventoryReservationService.reserveOnlineOrderInventory({
                     sourceId: orderId,
@@ -4208,7 +4210,7 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
+export const buildCancelStoreOrderUseCase = ({ storeRepository, inventoryReservationService = null }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
@@ -4286,6 +4288,14 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
                     'Order can only be cancelled before preparing.',
                     { statusCode: 409 }
                 );
+            }
+
+            if (inventoryReservationService?.releaseOnlineOrderInventory) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: existing.pos_transaction_id,
+                    transaction,
+                    reason: 'cancelled'
+                });
             }
 
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {

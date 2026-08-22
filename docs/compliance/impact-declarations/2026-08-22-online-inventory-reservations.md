@@ -35,7 +35,7 @@ receipt rules.
 3. `apps/dgfy-api/src/modules/inventory/` and the shared inventory-effect utility — locks
    location stock rows, accounts for active non-expired holds, and preserves the existing direct,
    recipe, modifier, and stock-exempt policies.
-4. `apps/dgfy-migration-runner/migrations/20260821000002-create-inventory-reservations.cjs` and
+4. `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs` and
    `apps/dgfy-api/scripts/sync-tenant-schemas.js` — add two tenant-local tables and their indexes
    and foreign keys without broad `sync({ alter: true })` behavior.
 

@@ -98,4 +98,18 @@ describe('inventory reservation service', () => {
     expect(converted.status).toBe('converted');
     expect(models.InventoryReservation._rows[1].converted_at).toBeInstanceOf(Date);
   });
+
+  it('preserves inventory quantities to the migration precision', async () => {
+    const models = buildFakeModels({ stock: [{ item_id: 10, quantity_on_hand: 0.123456789012 }] });
+    const service = buildInventoryReservationService({ resolveModels: () => models });
+
+    await service.reserveOnlineOrderInventory({
+      sourceId: 301,
+      locationId: 4,
+      effects: [{ item_id: 10, quantity: 0.123456789012, effect_type: 'line_item', source_line_reference: 'ONLINE:301:1' }],
+      transaction
+    });
+
+    expect(models.InventoryReservationLine.bulkCreate.mock.calls[0][0][0].quantity).toBe(0.123456789012);
+  });
 });

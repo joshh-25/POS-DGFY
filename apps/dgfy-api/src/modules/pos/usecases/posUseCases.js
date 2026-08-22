@@ -1769,7 +1769,8 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
         locationId: order.location_id || null,
         orderId,
         invoiceNumber: order.invoice_number || null,
-        trackingPin: order.tracking_pin || null
+        trackingPin: order.tracking_pin || null,
+        strict: true
     });
     return effects.map((effect) => ({
         item_id: effect.item_id,
