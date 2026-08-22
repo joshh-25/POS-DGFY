@@ -153,6 +153,7 @@ import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
+import DownpaymentSettingsPanel from './DownpaymentSettingsPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5416,6 +5417,12 @@ function SettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
   const canManageEmployees = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
+  // Phase 143 (#848): separate view/manage gate for the Payments tab -- downpayment:view
+  // sees it, downpayment:settings can save it, mirroring the same two-tier split
+  // downpaymentSettings.js already enforces server-side.
+  const canViewDownpayment = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('downpayment:view')
+    || resolveUserPermissionList(terminalUser).includes('downpayment:settings');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -5642,6 +5649,11 @@ function SettingsWorkspace({
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
     { id: 'storefront', label: 'Storefront', icon: Store },
+    // Phase 143 (#848): downpayment policy config -- gated on downpayment:view/downpayment:settings,
+    // not on any of the other tabs' permissions.
+    ...(canViewDownpayment
+      ? [{ id: 'payments', label: 'Payments', icon: Banknote }]
+      : []),
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
       : [])
@@ -9218,6 +9230,15 @@ function SettingsWorkspace({
     }
     if (renderedTab === 'profile') return renderProfilePane();
     if (renderedTab === 'storefront') return renderStorefrontPane();
+    if (renderedTab === 'payments' && canViewDownpayment) {
+      return (
+        <DownpaymentSettingsPanel
+          terminalUser={terminalUser}
+          locked={locked}
+          sectionId={sectionId}
+        />
+      );
+    }
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }

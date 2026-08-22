@@ -7100,6 +7100,136 @@ after this update: **135**.
   (`docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md`, new)
 - Issue #823 (this phase); #613 (prerequisite, PR #841); #626 gap 2 subsumed, gap 1 deferred
 
+## Phase 143 - Downpayment Settings UI in the POS App
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #848, Phase 143 of the
+  epic's phase sequence, continuing this ledger's numbering. Built in parallel to Phase 142 (#823) --
+  cut from a fresh `origin/develop` worktree rather than #823's branch, sharing no files with it.
+  Phase 142 merged into `develop` 2026-08-22 (PR #844), ahead of this phase's own merge.
+- Release: single `develop`-targeted PR (`feature/848-downpayment-settings-ui`).
+
+### Objective and Scope
+
+- **#848's own premise was corrected during planning, before implementation.** The issue as filed
+  said the POS app has no settings surface and needs "its own route, page shell, and nav entry
+  point." That's wrong — `TerminalOperationsWorkspace.jsx`'s `SettingsWorkspace` already ships a
+  full tab strip (Profile Setting / POS Setup / Storefront / Employees), reached from the terminal's
+  existing Settings entry. POS also has essentially one React route; every settings/reports/items
+  surface is a `?view=` view mode inside `TerminalPage`, not a `<Route>`. Corrected the issue body
+  to match before opening the PR (surface: a new **Payments** tab in the existing tab strip, not a
+  new route). The destination #848 asked for — the POS app, deliberately not the back-office app
+  whose extract/freeze/deprecate future is unresolved per #358 — is unchanged; only the "from
+  scratch" framing was wrong.
+- New self-contained `DownpaymentSettingsPanel.jsx`, modelled directly on
+  `AffiliatesWorkspacePanel.jsx` (the closest existing analogue: tenant-scoped settings, bps/centavos
+  fields, its own permission gate, its own fetch/save cycle). Reads/writes the already-shipped Phase
+  138 (#820) `GET`/`PUT /api/v1/downpayment/settings` — no backend change.
+- Two-tier permission gate that genuinely splits: `downpayment:view` shows the tab, and
+  `downpayment:settings` is required to save (`admin`/`is_master_admin` get both, `manager` is
+  view-only, `staff`/`cashier` see nothing). A view-only user sees a disabled Save button with an
+  amber explanatory note, following the `Pages/Settings.jsx` convention of disabling rather than
+  hiding.
+- New pure module `downpaymentSettingsForm.js` (no React, no I/O): wire-unit ↔ form-string mapping
+  (`_bps`/`_centavos` on the wire, `_percentage`/`_pesos` on the form — naming convention from
+  `tenantRevenuePolicyForm.js`), client-side validation mirroring the backend's own effective-row
+  rules in `downpaymentSettingsUseCases.js` (type required, matching amount field required,
+  `min_downpayment_centavos > 0` when mode is `downpayment_required`), and a live split preview
+  mirroring `downpaymentPolicy.js`'s `resolveDownpaymentForTotal` math exactly (rounding, min floor,
+  clamp to total) — pinned to that file the same way `affiliatePricingPolicy.js` pins itself to
+  `affiliateCommissionAccrual.js`'s rounding.
+- **`customer_choice` is deliberately never offered** in the mode selector — the backend 422s any
+  write that resolves to it as the effective mode, and a tenant somehow stored in that state is
+  bricked (every later PUT 422s regardless of payload, since the rejection keys on the *effective*
+  mode). The UI cannot create that state.
+- **Save always PUTs the full six-field set, never a single dirty field.** Not a style choice: the
+  backend re-validates the whole merged (effective) row on every write, so flipping only
+  `downpayment_refundable` on an incompletely-configured `downpayment_required` row 422s
+  (`downpaymentSettingsUseCases.js`'s own "deliberate fail-closed choice"). Verified in the panel's
+  behavior test.
+- **Real INT-column bug defended against, not just documented.** The Joi validator on
+  `downpaymentSettingsValidator.js` allows amount fields up to `999999999999`, but the migration's
+  columns are `Sequelize.INTEGER` (MySQL `INT`, max `2147483647`) — a value between those bounds
+  passes validation and then fails or truncates at the database. `MAX_SAFE_CENTAVOS` in
+  `downpaymentSettingsForm.js` clamps both amount inputs client-side so this UI can never trigger
+  that path. Unit-tested.
+- **Standalone pre-existing defect fixed on the way, in scope because this PR is the first UI
+  consumer of the permission group it affects:** `apps/dgfy-web/src/config/permissions_frontend.js`
+  never mirrored the `DOWNPAYMENT` permission group Phase 138 (#820) added backend-side.
+  `permissionsFrontendParity.test.js` has been red on `develop` since (confirmed: "frontend is
+  missing group DOWNPAYMENT", 2 failed / 15 passed before this PR). Fixed by adding the group,
+  verbatim-mirrored from `apps/dgfy-api/src/config/permissions.js` — test now 17/17. (The same fix
+  landed independently on `develop` via PR #853's release batch before this PR's own merge into
+  `develop`; this PR's copy of the fix is a byte-identical no-op, kept only for its comment,
+  resolved during the post-#853 conflict merge.)
+- Three-line addition inside `SettingsWorkspace` (`TerminalOperationsWorkspace.jsx`): an import, a
+  `canViewDownpayment` permission derivation feeding a conditional `SETTINGS_TABS` entry, and a
+  `renderPane` branch. No existing tab, permission derivation, or save path changed —
+  `hydrateSettingsWorkspace` and the shared `handleSave` used by the other four tabs are untouched,
+  since the new panel self-fetches and self-saves independently.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the settings API this UI reads/writes). ADR 0070 (`accepted`) clause 6
+  `[default]` authorizes downpayment for every workflow mode, so this UI needs no per-vertical gate;
+  the Retail-only `422 WORKFLOW_MODE_NOT_RETAIL` gate Phase 139 removed from
+  `downpaymentSettingsUseCases.js` is already gone on `develop`.
+- Does not gate or depend on Phase 142 (#823) — different app (POS settings vs. storefront
+  checkout), different files, cut from a separate `origin/develop` worktree. Both phases merged
+  independently and required no coordination between their PRs.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table — no migration, no
+  compliance-declaration ambiguity (the `pos, terminal` surface floor was already clear), no
+  `staging`/`main` base, no deploy dispatch, no force-push. Proceeded through commit/push/PR per the
+  standing preference recorded in the Worker skip-checkpoint-confirmation memory.
+- Board: #848 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsForm.test.js` (new, 18 tests) — unit
+  mapping round-trips, all four effective-row validation rules, the INT clamp, and the split-preview
+  math checked directly against `downpaymentPolicy.unit.test.js`'s own backend cases.
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsPanel.behavior.test.jsx` (new, 6
+  tests) — view-gate denial, load-and-hydrate against a seeded row, `full_payment` hides the amount
+  fields, client-side save-block on an incomplete row (never calls the API), a valid save's exact
+  six-field payload shape, and the manager view-only disabled state.
+- `apps/dgfy-web/src/config/__tests__/permissionsFrontendParity.test.js` — 15/17 (red, pre-existing)
+  → 17/17.
+- Full `apps/dgfy-web` `src/features/pos/__tests__/` suite: 533 passed, 3 pre-existing failures in
+  `receiptContractConformance.contract.test.js` confirmed identical on a clean `origin/develop`
+  checkout (stashed this PR's diff, re-ran, same 3 failures) — unrelated to receipts/fiscal
+  printing, not a regression.
+- `npm run build:pos` — real Vite build (the only affected app), succeeded.
+- `npm run lint` on every new/changed file — 0 problems (two `react/no-unescaped-entities` findings
+  in the new panel fixed; one pre-existing unrelated finding elsewhere in
+  `TerminalOperationsWorkspace.jsx`, at a line this PR does not touch, left as-is).
+- `npm run check:compliance` — confirmed to require a declaration for the `pos, terminal` surface;
+  `docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md` added
+  (`major`/`pos,terminal`).
+- **Not verifiable this session, disclosed rather than glossed:** no live end-to-end verification
+  against a deployed environment — unit/behavior coverage only. `POST /api/v1/compliance/preflight`
+  not executed against a live environment (same disclosure shape as prior downpayment-epic
+  declarations). The local Docker stack (`do-not-commit/local-test/`) has tenant *Pat Marketing*
+  already seeded `downpayment_required` (20%, PHP 50.00 minimum) from an earlier session and is the
+  intended manual verification target before this PR is marked ready for review.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/DownpaymentSettingsPanel.jsx` (new)
+- `apps/dgfy-web/src/features/pos/services/downpaymentSettingsService.js` (new)
+- `apps/dgfy-web/src/features/pos/utils/downpaymentSettingsForm.js` (new)
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx` (`SettingsWorkspace`:
+  import, `canViewDownpayment`, `SETTINGS_TABS` entry, `renderPane` branch)
+- `apps/dgfy-web/src/config/permissions_frontend.js` (`DOWNPAYMENT` group added)
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsForm.test.js` (new),
+  `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsPanel.behavior.test.jsx` (new)
+- `docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md` (new)
+- Issue #848 (this phase)
+
 ## Phase 145 - MSME POS Online Order Queue Visibility
 
 ### Initiative and Release
