@@ -10,6 +10,21 @@ import {
 } from '../services/storefrontOnlinePaymentSession.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
+// RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
+// -- this object's own `totals.total_amount` is what the order-confirmation screens
+// (SimpleCheckoutSuccessStep.jsx, FnbCheckoutRouteContainer.jsx) and the downloadable receipt
+// image actually read, and it was still being set from the client's pre-submission
+// `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
+// the authoritative `order.total_amount` from the checkout response, fall back to the client
+// value only if the server didn't send one.
+// Restored 2026-08-22 (#857) -- reverted by #853's develop reconciliation without a stated reason.
+const resolveTrackedTotals = (order, fallbackTotals) => {
+  const serverTotal = Number(order?.total_amount);
+  return Number.isFinite(serverTotal)
+    ? { ...fallbackTotals, total_amount: serverTotal }
+    : fallbackTotals;
+};
+
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
  * (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`).
@@ -82,6 +97,10 @@ export function useCheckoutSubmission({
   serviceCartLines,
   serviceCartValidationIssues,
   serviceDraftQuantity,
+  serviceOrderMethod,
+  servicesLocalSimulationEnabled,
+  isServicesLocalSimulationMethod,
+  createServicesLocalSimulation,
   servicePaymentTiming,
   serviceIntakeResponses,
   setCart,
@@ -204,7 +223,7 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
+    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
@@ -234,6 +253,48 @@ export function useCheckoutSubmission({
       const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
+      return;
+    }
+    // Restored 2026-08-22 (#857) -- Services local-simulation preview, reverted by #853's develop
+    // reconciliation while StorefrontApp.jsx kept passing this branch's own params unchanged
+    // (servicesLocalSimulationEnabled/isServicesLocalSimulationMethod/createServicesLocalSimulation),
+    // leaving them silently dead-wired.
+    const shouldCreateLocalServicesSimulation = isServicesMode
+      && servicesLocalSimulationEnabled
+      && typeof isServicesLocalSimulationMethod === 'function'
+      && isServicesLocalSimulationMethod(serviceOrderMethod);
+    if (shouldCreateLocalServicesSimulation) {
+      const localSimulation = createServicesLocalSimulation({
+        customerAddress,
+        customerEmail,
+        customerName,
+        customerPhone,
+        fallbackAmount: totalsForDisplay?.total_amount,
+        routeSlug,
+        selectedStore,
+        serviceAppointmentAt,
+        serviceBookingLine,
+        serviceCartLines,
+        serviceOrderMethod
+      });
+      setCart([]);
+      setSelectedServiceCartLineId('');
+      setCheckoutResult(null);
+      setTrackingPinInput(localSimulation.tracking_pin);
+      setSelectedTrackingPin(localSimulation.tracking_pin);
+      writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, localSimulation.tracking_pin);
+      setServiceAppointmentAt('');
+      setServiceDraftQuantity(1);
+      setServiceDraftNotes('');
+      setServiceIntakeResponses({});
+      setServicePaymentPreviewMethod('qr');
+      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+      setServicePaymentPreviewReceiptName('');
+      setShowOrderSuccessAnimation(false);
+      setCheckoutTab('track');
+      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: serviceOrderMethod });
+      clearCheckoutAuthResumeDraft();
+      toast.success('Local Services preview created. No backend booking was submitted.');
       return;
     }
     const cartSnapshot = cart.map((line) => ({ ...line }));
@@ -275,6 +336,7 @@ export function useCheckoutSubmission({
           bookingPageIntakeFields,
           customerAddress,
           bookingFieldPlan,
+          serviceAppointmentAt,
           createIdempotencyKey: createStorefrontIdempotencyKey
         });
         if (!servicesSubmitContract.compatible) {
@@ -346,7 +408,11 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
-          ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
+          // Restored 2026-08-22 (#857) -- #853's develop reconciliation passed a second positional
+          // arg here, but buildPayload (useFnbCheckoutQuote.js) takes a single options object; the
+          // override was silently discarded and a mixed product+service cart submitted its service
+          // lines into the product order.
+          ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,
           payment_type: fnbPaymentType
@@ -383,7 +449,7 @@ export function useCheckoutSubmission({
           setCheckoutResult({
             ...productData,
             cart_lines: productCartLines,
-            totals: totalsForDisplay
+            totals: resolveTrackedTotals(productData?.order, totalsForDisplay)
           });
           if (productData?.tracking_pin) {
             setTrackingPinInput(productData.tracking_pin);
@@ -395,7 +461,11 @@ export function useCheckoutSubmission({
               order_method: productData?.order?.order_method || orderMethod,
               order: productData?.order || null,
               order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
-              total_amount: totalsForDisplay?.total_amount ?? 0
+              // #747: prefer the server-persisted total over the client's pre-submission snapshot
+              // -- the client value doesn't reflect a just-applied voucher discount, and
+              // retailTrackingPayload.js's own `??` chain would otherwise let this poisoned
+              // top-level field shadow the correct nested order.total_amount.
+              total_amount: productData?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
             }, productData.tracking_pin);
           }
           setQuoteResult(null);
@@ -423,7 +493,7 @@ export function useCheckoutSubmission({
         cart_lines: hasServiceCart && !hasMixedCart
           ? serviceCartLines
           : cartSnapshot,
-        totals: totalsForDisplay
+        totals: resolveTrackedTotals(data?.order, totalsForDisplay)
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -447,15 +517,26 @@ export function useCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // #747: see the partial-booking-failure branch above for why -- same fix, same reasoning.
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
         }
       }
-      if (data?.booking?.public_reference) {
-        setTrackingPinInput(data.booking.public_reference);
-        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
+      const serviceBookingReferences = isServicesMode
+        ? [
+          data?.booking?.public_reference,
+          ...(Array.isArray(data?.bookings) ? data.bookings.map((booking) => booking?.public_reference) : [])
+        ]
+          .map((reference) => String(reference || '').trim().toUpperCase())
+          .filter(Boolean)
+        : [];
+      const submittedServiceTrackingPin = serviceBookingReferences[0] || '';
+      if (submittedServiceTrackingPin) {
+        setTrackingPinInput(submittedServiceTrackingPin);
+        setSelectedTrackingPin(submittedServiceTrackingPin);
+        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, submittedServiceTrackingPin);
       }
       setCart([]);
       if (hasServiceCart) {
@@ -475,14 +556,18 @@ export function useCheckoutSubmission({
         void handleLoadAccountPanel();
       }
       const submittedTrackingPin = String(data?.tracking_pin || '').trim().toUpperCase();
-      if (submittedTrackingPin && !hasServiceCart) {
+      const trackingPinToOpen = isServicesMode ? submittedServiceTrackingPin : submittedTrackingPin;
+      if ((isServicesMode && submittedServiceTrackingPin) || (submittedTrackingPin && !hasServiceCart)) {
         setShowOrderSuccessAnimation(false);
         if (orderSuccessAnimationTimerRef.current) {
           window.clearTimeout(orderSuccessAnimationTimerRef.current);
           orderSuccessAnimationTimerRef.current = null;
         }
         setCheckoutResult(null);
-        goStoreTrackPage({ pin: submittedTrackingPin });
+        goStoreTrackPage({
+          pin: trackingPinToOpen,
+          serviceHandoff: isServicesMode ? serviceOrderMethod : ''
+        });
       } else {
         setFnbOrderStep(4);
         if (isSimpleMode) {
