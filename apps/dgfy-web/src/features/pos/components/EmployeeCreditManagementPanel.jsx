@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, Banknote, CreditCard, RefreshCw, Save, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   adjustEmployeeCreditOutstanding,
+  enableEmployeeCreditForActiveEmployees,
   recordEmployeeCreditRepayment,
   updateEmployeeCreditEmployeeAccount
 } from '../services/employeeCreditService.js';
@@ -19,6 +21,7 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState('');
+  const [bulkEligibilityConfirmOpen, setBulkEligibilityConfirmOpen] = useState(false);
   const [form, setForm] = useState({
     isEligible: false,
     creditLimit: '',
@@ -87,6 +90,25 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
       await loadAccounts();
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to update Employee Credit account.');
+    } finally {
+      setActiveAction('');
+    }
+  };
+
+  const handleEnableAllActive = async () => {
+    setActiveAction('bulk-eligibility');
+    try {
+      const result = await enableEmployeeCreditForActiveEmployees();
+      const enabledCount = Number(result?.enabled_count || 0);
+      toast.success(enabledCount > 0
+        ? `Employee Credit enabled for ${enabledCount} active employee${enabledCount === 1 ? '' : 's'}.`
+        : 'All active employees are already eligible for Employee Credit.');
+      await loadAccounts();
+      return { success: true };
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to enable Employee Credit for active employees.';
+      toast.error(message);
+      return { success: false, message };
     } finally {
       setActiveAction('');
     }
@@ -164,9 +186,14 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
             <p className="text-xs text-slate-500">Open-tab employee charges, repayments, and audited outstanding balances. Excluded from cash drawer sales totals.</p>
           </div>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={loadAccounts} disabled={busy || disabled}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setBulkEligibilityConfirmOpen(true)} disabled={busy || disabled || accounts.length === 0}>
+            <BadgeCheck className="mr-2 h-4 w-4" /> Enable active employees
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={loadAccounts} disabled={busy || disabled}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -246,6 +273,15 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
           Save Employee Credit
         </Button>
       </div>
+
+      <ConfirmActionDialog
+        open={bulkEligibilityConfirmOpen}
+        onOpenChange={setBulkEligibilityConfirmOpen}
+        title="Enable Employee Credit for active employees?"
+        description={`This will mark all ${accounts.length} active employee${accounts.length === 1 ? '' : 's'} eligible for Employee Credit. Existing credit limits and balances will not change. Inactive employees are not affected.`}
+        confirmLabel="Enable active employees"
+        onConfirm={handleEnableAllActive}
+      />
     </section>
   );
 }

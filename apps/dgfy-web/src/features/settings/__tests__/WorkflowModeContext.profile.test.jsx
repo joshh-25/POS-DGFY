@@ -24,6 +24,7 @@ const Probe = () => {
     <div>
       <span data-testid="profile-source">{profile?.provenance?.source_template_id ?? 'none'}</span>
       <span data-testid="profile-modules">{JSON.stringify(profile?.modules || [])}</span>
+      <span data-testid="show-online-queue">{String(profile?.pos_defaults?.show_online_queue)}</span>
       <span data-testid="disabled-capabilities">{JSON.stringify(disabledCapabilities)}</span>
       <span data-testid="has-table-service">{String(hasCapability('tableService'))}</span>
       <span data-testid="has-fnb-dining">{String(hasCapability('fnbDining'))}</span>
@@ -82,6 +83,30 @@ describe('WorkflowModeProvider Store Profile distribution (issue #178 Phase 18)'
     expect(JSON.parse(screen.getByTestId('profile-modules').textContent)).toEqual(
       buildStoreProfile({ workflowMode: 'retail' }).modules
     );
+  });
+
+  it('rebuilds a stale persisted MSME profile so the online Orders queue becomes visible', async () => {
+    const currentProfile = buildStoreProfile({ workflowMode: 'msme' });
+    const staleProfile = {
+      ...currentProfile,
+      pos_defaults: {
+        ...currentProfile.pos_defaults,
+        show_online_queue: false
+      }
+    };
+    settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      ops_workflow_mode: { value: 'msme' },
+      ops_store_profile: { value: staleProfile }
+    });
+
+    render(
+      <WorkflowModeProvider>
+        <Probe />
+      </WorkflowModeProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('show-online-queue').textContent).toBe('true'));
+    expect(screen.getByTestId('profile-source').textContent).toBe('none');
   });
 
   it('honors the disabled overlay in hasCapability (issue #178 Phase 21 - PosPageShell panel gating)', async () => {

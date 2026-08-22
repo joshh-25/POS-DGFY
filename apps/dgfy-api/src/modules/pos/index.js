@@ -2,6 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import {
     inventoryStockCommandService,
+    inventoryReservationService,
     itemRepository,
     createItemUseCase,
     updateItemUseCase,
@@ -237,6 +238,7 @@ export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCas
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
+    inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
 export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({

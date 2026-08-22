@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import type { PendingHistorySnapshot } from '../../services/pendingHistoryService';
 import { PosHeader } from '../components/PosHeader';
+import { PosText as Text } from '../components/PosTextScale';
 
 export const HistoryScreen = ({
     snapshot,

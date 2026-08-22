@@ -7,12 +7,13 @@ import { normalizeHardwareResult } from './posHardwareContract.js';
 // polls, and never throws — every action resolves to a HardwareCommandResult.
 // Components must not branch on driver ids; only on `isPrinterAvailable` /
 // `capabilities` for UI state. See ADR 0053.
-export const usePosHardware = () => {
+export const usePosHardware = ({ enabled = true } = {}) => {
     const [driver, setDriver] = useState(null);
     const [loading, setLoading] = useState(true);
     const mountedRef = useRef(true);
 
     const load = useCallback(async ({ forceRefresh = false } = {}) => {
+        if (!enabled) return null;
         setLoading(true);
         try {
             const resolved = forceRefresh
@@ -23,18 +24,33 @@ export const usePosHardware = () => {
         } finally {
             if (mountedRef.current) setLoading(false);
         }
-    }, []);
+    }, [enabled]);
 
     useEffect(() => {
         mountedRef.current = true;
+        if (!enabled) {
+            setDriver(null);
+            setLoading(false);
+            return () => {
+                mountedRef.current = false;
+            };
+        }
         load();
         return () => {
             mountedRef.current = false;
         };
-    }, [load]);
+    }, [enabled, load]);
 
     const withDriver = useCallback(async (methodName, args) => {
         const activeDriver = driver || await load();
+        if (!activeDriver) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: 'none',
+                reasonCode: 'AUTH_REQUIRED',
+                message: 'Sign in to use POS hardware.'
+            });
+        }
         if (typeof activeDriver[methodName] !== 'function') {
             return normalizeHardwareResult({
                 success: false,

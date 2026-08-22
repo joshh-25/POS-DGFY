@@ -40,7 +40,7 @@ describe('POS Park & New Sale cashier flow', () => {
     it('opens payment immediately for Pay while Resume stays edit-only', () => {
         const payBranch = workflowSource.indexOf("if (normalizedAction === 'pay') {");
         const paymentModalOpen = workflowSource.indexOf('setCheckoutConfirmModalOpen(true);', payBranch);
-        const paymentAmountReset = workflowSource.indexOf("setCustomerPaymentAmountInput('0');", payBranch);
+        const paymentAmountReset = workflowSource.indexOf('setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));', payBranch);
         const resumeToast = workflowSource.indexOf('Resumed ${formatParkedSaleDisplayName(claimedSale)}', payBranch);
 
         expect(payBranch).toBeGreaterThan(-1);

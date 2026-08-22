@@ -1444,6 +1444,49 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_order_payments_ibfk_2` FOREIGN KEY (`related_pos_order_payment_id`) REFERENCES `pos_order_payments` (`pos_order_payment_id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Online inventory reservations are tenant-local and must be repaired for tenants that
+    // predate the reservation migration. Keep this DDL aligned with
+    // 20260822000001-create-inventory-reservations.cjs; the runner uses the same additive shape.
+    inventory_reservations: Object.freeze({
+        sql: "CREATE TABLE `inventory_reservations` (\n"
+            + "  `inventory_reservation_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `source_type` enum('online_order') NOT NULL,\n"
+            + "  `source_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `status` enum('active','released','expired','converted') NOT NULL DEFAULT 'active',\n"
+            + "  `expires_at` datetime NOT NULL,\n"
+            + "  `released_at` datetime DEFAULT NULL,\n"
+            + "  `release_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `converted_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`inventory_reservation_id`),\n"
+            + "  UNIQUE KEY `uq_inventory_reservations_source` (`source_type`,`source_id`),\n"
+            + "  KEY `idx_inventory_reservations_location_status_expiry` (`location_id`,`status`,`expires_at`),\n"
+            + "  KEY `idx_inventory_reservations_status_expiry` (`status`,`expires_at`),\n"
+            + "  CONSTRAINT `inventory_reservations_ibfk_1` FOREIGN KEY (`source_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `inventory_reservations_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    inventory_reservation_lines: Object.freeze({
+        sql: "CREATE TABLE `inventory_reservation_lines` (\n"
+            + "  `inventory_reservation_line_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `inventory_reservation_id` int NOT NULL,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `quantity` decimal(24,12) NOT NULL,\n"
+            + "  `effect_type` enum('line_item','recipe_ingredient','modifier') NOT NULL,\n"
+            + "  `source_line_reference` varchar(120) NOT NULL,\n"
+            + "  `metadata` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`inventory_reservation_line_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_reservation` (`inventory_reservation_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_item` (`item_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_item_created` (`item_id`,`created_at`),\n"
+            + "  CONSTRAINT `inventory_reservation_lines_ibfk_1` FOREIGN KEY (`inventory_reservation_id`) REFERENCES `inventory_reservations` (`inventory_reservation_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `inventory_reservation_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     })
 });
 
@@ -1796,7 +1839,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-21.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-22.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

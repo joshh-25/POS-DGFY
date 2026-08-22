@@ -59,6 +59,81 @@ describe('POS parked-sale resume validation', () => {
         ]));
     });
 
+    it('allows an Always Available item to resume with zero stock', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: [{
+                ...catalog[0],
+                current_stock: 0,
+                pos_always_available: true
+            }],
+            allowedOrderMethods: ['takeout']
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.conflicts).toEqual([]);
+    });
+
+    it('resolves a legacy parked line by a unique current item name and rebuilds its current ID', () => {
+        const legacyParkedSale = {
+            ...parkedSale,
+            snapshot: {
+                ...parkedSale.snapshot,
+                lines: [{
+                    ...parkedSale.snapshot.lines[0],
+                    item_id: 999,
+                    item_name: 'Sliced Cheese',
+                    base_sale_price: 20,
+                    sale_price: 20
+                }]
+            }
+        };
+        const currentCatalog = [{
+            item_id: 42,
+            name: 'Sliced Cheese',
+            sku_code: 'CHEESE-01',
+            category: 'Add Ons',
+            default_sale_price: 20,
+            current_stock: 0,
+            pos_always_available: true,
+            vat_type: 'vatable'
+        }];
+
+        const validation = validateParkedSaleResume({
+            parkedSale: legacyParkedSale,
+            catalog: currentCatalog,
+            allowedOrderMethods: ['takeout']
+        });
+        const lines = buildResumedCartLines({ parkedSale: legacyParkedSale, catalog: currentCatalog });
+
+        expect(validation.ok).toBe(true);
+        expect(lines[0]).toEqual(expect.objectContaining({
+            item_id: 42,
+            item_name: 'Sliced Cheese',
+            sku_code: 'CHEESE-01'
+        }));
+    });
+
+    it('blocks an ambiguous legacy name instead of selecting the wrong item', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    lines: [{ ...parkedSale.snapshot.lines[0], item_id: 999, item_name: 'Sliced Cheese' }]
+                }
+            },
+            catalog: [
+                { item_id: 42, name: 'Sliced Cheese', default_sale_price: 125, current_stock: 0, pos_always_available: true },
+                { item_id: 43, name: 'Sliced Cheese', default_sale_price: 125, current_stock: 0, pos_always_available: true }
+            ],
+            allowedOrderMethods: ['takeout']
+        });
+
+        expect(validation.ok).toBe(false);
+        expect(validation.conflicts.join(' ')).toContain('matches multiple current POS catalog items');
+    });
+
     it('blocks stale price, stock, and missing-catalog conflicts before claim', () => {
         const validation = validateParkedSaleResume({
             parkedSale: {

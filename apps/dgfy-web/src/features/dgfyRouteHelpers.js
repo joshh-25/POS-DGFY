@@ -116,15 +116,26 @@ export const resolveStorefrontAccountUrl = () => {
   return defaultUrl;
 };
 
+const buildPosHashRouteUrl = (baseUrl, terminalPath) => {
+  const target = new URL(baseUrl);
+  // The standalone PWA is served from the POS origin root. Older configs may
+  // still contain `/terminal` from the pre-HashRouter URL shape; strip that
+  // path so it cannot produce `/terminal#/terminal`.
+  if (target.pathname.replace(/\/+$/, '') === '/terminal') {
+    target.pathname = '/';
+  }
+  target.search = '';
+  target.hash = terminalPath;
+  return target.toString();
+};
+
 export const resolvePosTerminalUrl = (search = '') => {
   const normalizedSearch = String(search || '').trim();
   const terminalPath = `/terminal${normalizedSearch && normalizedSearch.startsWith('?') ? normalizedSearch : (normalizedSearch ? `?${normalizedSearch}` : '')}`;
 
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_POS_TERMINAL_URL) {
     try {
-      const configured = new URL(import.meta.env.VITE_POS_TERMINAL_URL);
-      configured.search = terminalPath.includes('?') ? terminalPath.slice(terminalPath.indexOf('?')) : '';
-      return configured.toString();
+      return buildPosHashRouteUrl(import.meta.env.VITE_POS_TERMINAL_URL, terminalPath);
     } catch {
       return import.meta.env.VITE_POS_TERMINAL_URL;
     }
@@ -132,14 +143,25 @@ export const resolvePosTerminalUrl = (search = '') => {
 
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
-    if (isLocalRuntime()) return `${resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174')}${terminalPath}`;
-    if (hostname.startsWith('skupervisor.')) return `${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}${terminalPath}`;
-    if (hostname.startsWith('store.')) return `${protocol}//${hostname.replace(/^store\./, 'pos.')}${terminalPath}`;
-    if (hostname.startsWith('pos.')) return `${protocol}//${hostname}${terminalPath}`;
-    return `${protocol}//pos.${hostname}${terminalPath}`;
+    if (isLocalRuntime()) {
+      return buildPosHashRouteUrl(
+        resolveLocalOriginForPort(String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174'),
+        terminalPath
+      );
+    }
+    if (hostname.startsWith('skupervisor.')) {
+      return buildPosHashRouteUrl(`${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}`, terminalPath);
+    }
+    if (hostname.startsWith('store.')) {
+      return buildPosHashRouteUrl(`${protocol}//${hostname.replace(/^store\./, 'pos.')}`, terminalPath);
+    }
+    if (hostname.startsWith('pos.')) {
+      return buildPosHashRouteUrl(`${protocol}//${hostname}`, terminalPath);
+    }
+    return buildPosHashRouteUrl(`${protocol}//pos.${hostname}`, terminalPath);
   }
 
-  return terminalPath;
+  return `/#${terminalPath}`;
 };
 
 export const resolveStorefrontHomeUrl = () => {

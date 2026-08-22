@@ -5,8 +5,6 @@ import {
     Modal,
     Pressable,
     ScrollView,
-    Text,
-    TextInput,
     View,
     useWindowDimensions
 } from 'react-native';
@@ -14,6 +12,9 @@ import type { CatalogProduct } from '../../domain/catalog';
 import type { HistoryRow } from '../../domain/history';
 import type { PendingHistorySnapshot } from '../../services/pendingHistoryService';
 import type { SellScreenCartLine } from '../store';
+import { PosText as Text, PosTextInput as TextInput } from '../components/PosTextScale';
+import { PosTextSizeControl } from '../components/PosTextSizeControl';
+import { resolvePosLayout } from '../layoutPolicy';
 
 const ORDER_METHOD_OPTIONS = ['Dine In', 'Takeout', 'Pickup', 'Delivery'];
 const PAYMENT_TYPE_OPTIONS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank Transfer'];
@@ -365,9 +366,8 @@ export const SellScreen = ({
     onOpenAccountManagement: () => void;
     onCloseReceiptPreview: () => void;
 }) => {
-    const { width } = useWindowDimensions();
-    const isTabletLayout = width >= 1100;
-    const isCompactTablet = width >= 900 && width < 1100;
+    const { width, height } = useWindowDimensions();
+    const { isTabletDevice, isTabletLayout, isCompactTablet, isLargeTablet, catalogColumns } = resolvePosLayout(width, height);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [activeCenterPanel, setActiveCenterPanel] = useState<'catalog' | 'history'>('catalog');
@@ -438,7 +438,6 @@ export const SellScreen = ({
     const customerPaymentShortfall = Number(Math.max(0, checkoutDue - normalizedCustomerPaymentAmount).toFixed(2));
     const isCustomerPaymentSufficient = customerPaymentShortfall <= 0;
     const customerPaymentFieldLabel = isCashPayment ? 'TOTAL PAYMENT' : 'RECEIVED PAYMENT';
-    const catalogColumns = isTabletLayout ? 3 : isCompactTablet ? 2 : 1;
     const workspaceTitle = activeCenterPanel === 'history' ? 'History' : 'POS Catalog';
     const workspaceSubtitle = activeCenterPanel === 'history'
         ? 'Transaction history, pending local receipts, and sync state for this device.'
@@ -595,7 +594,7 @@ export const SellScreen = ({
                         backgroundColor: '#FFFFFF'
                     }}
                 >
-                    {isTabletLayout && !sidebarCollapsed ? renderSidebar(false) : null}
+                    {isTabletLayout && !isCompactTablet && !sidebarCollapsed ? renderSidebar(false) : null}
 
                     <View style={{ flex: 1, flexDirection: isTabletLayout ? 'row' : 'column', minHeight: 0 }}>
                         <View
@@ -620,7 +619,7 @@ export const SellScreen = ({
                                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                                     <Pressable
                                         onPress={() => {
-                                            if (isTabletLayout) {
+                                            if (isTabletLayout && !isCompactTablet) {
                                                 setSidebarCollapsed((current) => !current);
                                                 return;
                                             }
@@ -649,12 +648,15 @@ export const SellScreen = ({
                                         <Text style={{ color: '#64748B', marginTop: 4 }}>{workspaceSubtitle}</Text>
                                     </View>
                                 </View>
-                                {isTabletLayout ? (
-                                    <View style={{ alignItems: 'flex-end', marginLeft: 16 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                                    <PosTextSizeControl compact={!isTabletLayout} />
+                                    {isTabletLayout ? (
+                                        <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
                                         <Text style={{ color: '#0F172A', fontWeight: '800' }}>{cashierName || 'Cashier'}</Text>
                                         <Text style={{ color: '#64748B', marginTop: 2 }}>{activeShiftId ? 'Shift active' : 'Shift closed'}</Text>
-                                    </View>
-                                ) : null}
+                                        </View>
+                                    ) : null}
+                                </View>
                             </View>
 
                             <ScrollView contentContainerStyle={{ padding: 18 }}>
@@ -1010,7 +1012,7 @@ export const SellScreen = ({
 
                                         <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
                                             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                                <View style={{ minWidth: isTabletLayout ? 1080 : 860 }}>
+                                                <View style={{ minWidth: isLargeTablet ? 1080 : isTabletDevice ? 820 : 860 }}>
                                                     <View style={{ flexDirection: 'row', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
                                                         {['Invoice', 'Datetime', 'Source', 'Payment', 'Cashier', 'Status', 'Vatable', 'VAT', 'Total', 'Action'].map((column, index) => (
                                                             <Text

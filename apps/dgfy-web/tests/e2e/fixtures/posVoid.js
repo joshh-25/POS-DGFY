@@ -79,6 +79,8 @@ export const skipPosAdminShiftPrompt = async (page) => {
     if (promptVisible) {
         await skipButton.click();
         await expect(skipButton).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('heading', { name: 'Shift Controls', exact: true }))
+            .toBeVisible({ timeout: 10_000 });
     }
 };
 

@@ -346,6 +346,28 @@ describe('POS split allocation reversal use case', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_CASH_REFUND_SHIFT_REQUIRED'
+        }));
+        expect(fixture.state.events).toHaveLength(0);
+        expect(fixture.state.adjustments).toHaveLength(0);
+    });
+
+    it('requires an owned open shift for non-cash allocation reversals even for an administrator', async () => {
+        const fixture = buildFixture();
+        const useCase = buildSplitAllocationReversalUseCase({ posRepository: fixture.posRepository });
+        const result = await runInTenantContext(fixture.sequelize, () => useCase(adminRequest({
+            shift_id: null,
+            terminal_id: 'COUNTER-01',
+            terminal_location_id: 7,
+            idempotency_key: 'split-ext-admin-no-shift'
+        })));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_SHIFT_REQUIRED'
+        }));
         expect(fixture.state.events).toHaveLength(0);
         expect(fixture.state.adjustments).toHaveLength(0);
     });

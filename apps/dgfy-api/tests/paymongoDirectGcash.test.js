@@ -74,6 +74,7 @@ describe('PayMongo direct GCash Payment Intent flow', () => {
   });
 
   it('creates a Maya-only Payment Intent and returns only browser-safe authorization data', async () => {
+    post.mockReset();
     post.mockResolvedValueOnce({
       data: {
         data: {
@@ -87,9 +88,9 @@ describe('PayMongo direct GCash Payment Intent flow', () => {
 
     const service = new PayMongoService();
     const result = await service.createDirectMayaPaymentIntent({
-      amount: 200,
-      description: 'DGFY storefront checkout CPS-LIVE1235',
-      metadata: { commerce_payment_session: 'CPS-LIVE1235' },
+      amount: 9000,
+      description: 'DGFY storefront checkout CPS-LIVE5678',
+      metadata: { commerce_payment_session: 'CPS-LIVE5678' },
       returnUrl: 'https://dgfy.ph/tenant-store/example/order?payment_status=return'
     });
 
@@ -98,10 +99,10 @@ describe('PayMongo direct GCash Payment Intent flow', () => {
       {
         data: {
           attributes: expect.objectContaining({
-            amount: 200,
+            amount: 9000,
             currency: 'PHP',
             payment_method_allowed: ['paymaya'],
-            metadata: { commerce_payment_session: 'CPS-LIVE1235' }
+            metadata: { commerce_payment_session: 'CPS-LIVE5678' }
           })
         }
       },
@@ -116,6 +117,59 @@ describe('PayMongo direct GCash Payment Intent flow', () => {
       publicKey: 'pk_live_fixture',
       returnUrl: 'https://dgfy.ph/tenant-store/example/order?payment_status=return',
       paymentIntent: expect.objectContaining({ id: 'pi_live_maya' })
+    }));
+    expect(result).not.toHaveProperty('secretKey');
+  });
+
+  it('creates a card-only Payment Intent and returns only browser-safe authorization data', async () => {
+    post.mockReset();
+    post.mockResolvedValueOnce({
+      data: {
+        data: {
+          id: 'pi_live_card',
+          attributes: {
+            client_key: 'pi_live_card_client_key'
+          }
+        }
+      }
+    });
+
+    const service = new PayMongoService();
+    const result = await service.createDirectCardPaymentIntent({
+      amount: 9000,
+      description: 'DGFY storefront checkout CPS-LIVE9012',
+      metadata: { commerce_payment_session: 'CPS-LIVE9012' },
+      returnUrl: 'https://dgfy.ph/tenant-store/example/order?payment_status=return'
+    });
+
+    expect(post).toHaveBeenCalledWith(
+      'https://api.paymongo.com/v1/payment_intents',
+      {
+        data: {
+          attributes: expect.objectContaining({
+            amount: 9000,
+            currency: 'PHP',
+            payment_method_allowed: ['card'],
+            metadata: { commerce_payment_session: 'CPS-LIVE9012' },
+            payment_method_options: {
+              card: {
+                request_three_d_secure: 'automatic'
+              }
+            }
+          })
+        }
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: expect.stringContaining('Basic ')
+        })
+      })
+    );
+    expect(result).toEqual(expect.objectContaining({
+      paymentFlow: 'direct_card',
+      publicKey: 'pk_live_fixture',
+      returnUrl: 'https://dgfy.ph/tenant-store/example/order?payment_status=return',
+      paymentIntent: expect.objectContaining({ id: 'pi_live_card' })
     }));
     expect(result).not.toHaveProperty('secretKey');
   });

@@ -96,6 +96,13 @@ export const PERMISSION_GROUPS = {
             PAY_AFFILIATE_CASHOUTS: "affiliates:cashout_pay"
         }
     },
+    DOWNPAYMENT: {
+        label: "Downpayment & Partial Payment",
+        permissions: {
+            VIEW_DOWNPAYMENT_SETTINGS: "downpayment:view",
+            MANAGE_DOWNPAYMENT_SETTINGS: "downpayment:settings"
+        }
+    },
     // #655. This PERMISSION_GROUPS export is only the degraded-path fallback -- the live source is
     // the server-driven `roleCatalog.permission_groups` (GET /users/role-catalog, built by
     // apps/dgfy-api/src/config/modeRolePresets.js's buildPermissionGroupsForMode). Kept in sync so a

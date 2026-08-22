@@ -128,6 +128,7 @@ import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbC
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
 import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from './shared/checkout/model/guestCheckoutOtp.js';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { isStorefrontOnlinePaymentType } from './shared/services/storefrontOnlinePaymentSession.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
@@ -239,6 +240,10 @@ import { useFnbProductDetailsReviewProps } from './modes/fnb/storefront/hooks/us
 import { useFnbItemReviewRuntime } from './modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js';
 import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProductModifiers.js';
 import { createTrackingAdapterRegistry } from './tracking/core.js';
+import {
+  createCompletionTrackingScheduler,
+  resolveTrackingRetryDelayMs
+} from './tracking/customerTrackingRefresh.js';
 import {
   fnbTrackingAdapter,
   getCompletedTrackingLabel,
@@ -695,6 +700,7 @@ export default function StorefrontApp() {
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
   const paymentReturnSessionRef = useRef('');
+  const qrphPaymentRefreshRef = useRef(null);
   const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
   const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
@@ -2301,7 +2307,7 @@ export default function StorefrontApp() {
     guestCheckoutProof,
     handleGuestCheckoutOtpCodeChange,
     handleRequestGuestCheckoutOtp,
-    handleVerifyGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp: verifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
   } = useGuestCheckoutOtp({
     customerEmail,
@@ -2310,6 +2316,13 @@ export default function StorefrontApp() {
     selectedStore,
     toast,
   });
+  const handleVerifyGuestCheckoutOtp = useCallback(async () => {
+    const verified = await verifyGuestCheckoutOtp();
+    if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
+      setCheckoutError('');
+    }
+    return verified;
+  }, [checkoutError, setCheckoutError, verifyGuestCheckoutOtp]);
   const handleApplyGuestDetailsAndRequestOtp = useCallback(() => {
     handleApplyGuestDetails();
     // The session identity is ready to review before OTP verification.
@@ -2413,6 +2426,9 @@ export default function StorefrontApp() {
     const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
     if (!paymentSessionId || !selectedStore?.slug || qrphPaymentStatusLoading) return;
 
+    let pollResult = {
+      status: String(qrphPaymentSession?.status || '').trim().toLowerCase()
+    };
     setQrphPaymentStatusLoading(true);
     if (!silent) setCheckoutError('');
     try {
@@ -2428,6 +2444,9 @@ export default function StorefrontApp() {
       );
       const paymentSession = data?.payment_session || null;
       setQrphPaymentSession(paymentSession);
+      pollResult = {
+        status: String(paymentSession?.status || '').trim().toLowerCase()
+      };
 
       if (paymentSession?.status === 'finalized' && paymentSession?.tracking_pin) {
         const trackingPin = String(paymentSession.tracking_pin).trim().toUpperCase();
@@ -2449,7 +2468,7 @@ export default function StorefrontApp() {
         resetQrphPaymentSession();
         goStoreTrackPage({ pin: trackingPin });
         toast.success('Payment confirmed. Your order has been placed.');
-        return;
+        return pollResult;
       }
 
       if (paymentSession?.status === 'paid') {
@@ -2466,6 +2485,7 @@ export default function StorefrontApp() {
         toast.info('Payment is still awaiting confirmation.');
       }
     } catch (error) {
+      pollResult = { ...pollResult, error };
       const message = normalizeStorefrontErrorMessage(error, 'Unable to refresh PayMongo payment status.');
       if (!silent) {
         setCheckoutError(message);
@@ -2474,6 +2494,7 @@ export default function StorefrontApp() {
     } finally {
       setQrphPaymentStatusLoading(false);
     }
+    return pollResult;
   }, [
     cart,
     goStoreTrackPage,
@@ -2500,6 +2521,7 @@ export default function StorefrontApp() {
     toast,
     totalsForDisplay
   ]);
+  qrphPaymentRefreshRef.current = handleRefreshQrphPaymentSession;
   const handleConfirmQrphTestPayment = useCallback(async () => {
     const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
     if (!paymentSessionId || !selectedStore?.slug) return;
@@ -2537,16 +2559,35 @@ export default function StorefrontApp() {
     toast
   ]);
   useEffect(() => {
-    if (!['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)) return undefined;
-    const pollPaymentStatus = () => {
-      if (isDocumentVisibleAndOnline()) {
-        handleRefreshQrphPaymentSession({ silent: true });
-      }
+    const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
+    const paymentStatus = String(qrphPaymentSession?.status || '').trim().toLowerCase();
+    if (!paymentSessionId || !selectedStore?.slug || !['awaiting_payment', 'paid'].includes(paymentStatus)) {
+      return undefined;
+    }
+
+    const scheduler = createCompletionTrackingScheduler({
+      poll: () => {
+        if (!isDocumentVisibleAndOnline()) return { status: paymentStatus };
+        return qrphPaymentRefreshRef.current?.({ silent: true }) || { status: paymentStatus };
+      },
+      resolveDelayMs: ({ result, error }) => resolveTrackingRetryDelayMs({
+        error: error || result?.error,
+        normalDelayMs: QRPH_PAYMENT_POLL_INTERVAL_MS
+      })
+    });
+
+    const handleVisibilityChange = () => {
+      scheduler.stop();
+      if (document.visibilityState !== 'hidden') scheduler.start();
     };
-    pollPaymentStatus();
-    const timer = window.setInterval(pollPaymentStatus, QRPH_PAYMENT_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [handleRefreshQrphPaymentSession, qrphPaymentSession?.status]);
+
+    scheduler.start();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      scheduler.stop();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [qrphPaymentSession?.payment_session_id, qrphPaymentSession?.status, selectedStore?.slug]);
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
@@ -3055,6 +3096,9 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     checkoutTab,
+    customerEmail,
+    customerName,
+    customerPhone,
     customerPin,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
@@ -3304,6 +3348,9 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
     customerPin,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
@@ -3332,6 +3379,10 @@ export default function StorefrontApp() {
     handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
     handleSetDefaultDeliveryAddress,
+    onSignInToCheckout: () => openCheckoutAuthFlow('sign-in', {
+      checkoutTab: 'checkout',
+      simpleOrderStep: 1
+    }),
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,

@@ -30,7 +30,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0005 | [Unified Sales Read Model Across POS and Dispatch](0005-unified-sales-read-model.md) | `accepted` | unified_sales_read_model | 2026-09-27 | 0 |
 | 0006 | [(untitled)](0006-skupervisor-expansion-program-boundaries.md) | `accepted` | skupervisor_expansion_program_boundaries | 2026-09-28 | 0 |
 | 0007 | [Dual-Mode POS Compliance Program](0007-dual-mode-pos-compliance-program.md) | `accepted` | dual_mode_pos_compliance_program | 2026-10-06 | 0 |
-| 0008 | [Tenant Workflow Mode (Manufacturing vs MSME)](0008-tenant-workflow-mode-msme-simplification.md) | `accepted` | tenant_workflow_mode_msme_simplification | 2026-10-10 | 0 |
+| 0008 | [Tenant Workflow Mode (Manufacturing vs MSME)](0008-tenant-workflow-mode-msme-simplification.md) | `amended` | tenant_workflow_mode_msme_simplification | 2027-02-22 | 0 |
 | 0009 | [Multi-Location Inventory Ledger and Safety-First Rollout](0009-multi-location-inventory-ledger-and-safety-rollout.md) | `accepted` | multi_location_inventory_ledger_and_safety_rollout | 2026-10-16 | 0 |
 | 0010 | [Storefront Discovery Item-Match Index and Union Query Contract](0010-storefront-discovery-item-match-index-and-union-query.md) | `amended` | storefront_discovery_item_match_index_and_union_query | 2026-10-20 | 0 |
 | 0011 | [Compliance Downgrade Escape Hatches](0011-compliance-downgrade-escape-hatches.md) | `accepted` | compliance_downgrade_escape_hatches | 2026-10-21 | 6 |

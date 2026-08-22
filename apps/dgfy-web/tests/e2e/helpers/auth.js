@@ -1,4 +1,4 @@
-import { SKUPERVISOR_URL, POS_URL, TEST_COMPANY_TOKEN } from './urls.js';
+import { TEST_COMPANY_TOKEN } from './urls.js';
 
 export async function loginToApp(page, email, password, token = TEST_COMPANY_TOKEN) {
   // Set up lookup request promise before triggering blur
@@ -7,9 +7,10 @@ export async function loginToApp(page, email, password, token = TEST_COMPANY_TOK
     { timeout: 5000 }
   ).catch(() => null);
   
-  await page.locator('input[type="email"]').fill(email);
+  const emailInput = page.locator('input[type="email"], #dgfy-pos-email').first();
+  await emailInput.fill(email);
   await page.locator('input[type="password"]').fill(password);
-  await page.locator('input[type="email"]').blur();
+  await emailInput.blur();
   
   await lookupPromise; // Wait for async API company token lookup
   

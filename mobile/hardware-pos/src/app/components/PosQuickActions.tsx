@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, ScrollView, Text } from 'react-native';
+import { Pressable, ScrollView } from 'react-native';
+import { PosText as Text } from './PosTextScale';
 
 export const PosQuickActions = ({
     onCheckout,

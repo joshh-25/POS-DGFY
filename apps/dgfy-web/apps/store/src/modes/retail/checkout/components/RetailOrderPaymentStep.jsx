@@ -1,6 +1,7 @@
 import { ChevronLeft, Wallet } from 'lucide-react';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 import { RetailOrderReviewItemsList } from './RetailOrderReviewItemsList.jsx';
 
 // Placeholder payment options — not connected to the backend yet. See RetailOrderPage.jsx's
@@ -38,9 +39,12 @@ export function RetailOrderPaymentStep({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
+  guestCheckoutOtpVerified = false,
+  isDgfyCustomerSignedIn = false,
   isMobileViewport = false,
   money,
   onBack,
+  onBackToAccount,
   onCheckout,
   onImageError,
   onPaymentTypeChange,
@@ -49,6 +53,13 @@ export function RetailOrderPaymentStep({
   storefrontClosedNotice = null,
   withAssetOrigin
 }) {
+  const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
+  const displayedCheckoutError = guestCheckoutOtpVerified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE
+    ? ''
+    : checkoutError || (
+    guestCheckoutVerificationRequired ? GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE : ''
+    );
+
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
@@ -73,10 +84,19 @@ export function RetailOrderPaymentStep({
         onImageError={onImageError}
         withAssetOrigin={withAssetOrigin}
       />
-      {checkoutError && (
+      {displayedCheckoutError && (
         <div style={{ border: '1px solid #fecaca', borderRadius: 12, background: '#fef2f2', color: '#b91c1c', fontSize: 13, fontWeight: 600, padding: '10px 14px' }}>
-          {checkoutError}
+          {displayedCheckoutError}
         </div>
+      )}
+      {guestCheckoutVerificationRequired && typeof onBackToAccount === 'function' && (
+        <button
+          type="button"
+          onClick={onBackToAccount}
+          style={{ minHeight: 42, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer' }}
+        >
+          Back to Account &amp; Verify Email
+        </button>
       )}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -84,8 +104,8 @@ export function RetailOrderPaymentStep({
           <button
             type="button"
             onClick={onCheckout}
-            disabled={checkoutLoading}
-            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+            disabled={checkoutLoading || guestCheckoutVerificationRequired}
+            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : guestCheckoutVerificationRequired ? '#cbd5e1' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : guestCheckoutVerificationRequired ? 'not-allowed' : 'pointer' }}
           >
             {checkoutLoading ? 'Placing Order...' : 'Place Order'}
           </button>

@@ -256,6 +256,74 @@ export const buildListEmployeeCreditAccountsUseCase = ({ repository }) => async 
   }
 };
 
+export const buildEnableEmployeeCreditForActiveEmployeesUseCase = ({ repository }) => async ({ actorUserId }) => {
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  try {
+    const normalizedActorUserId = requirePositiveInt(actorUserId, 'actorUserId');
+    const employees = await repository.listActiveEmployees({ transaction, lock: true });
+    let enabledCount = 0;
+    let createdAccountCount = 0;
+    let alreadyEligibleCount = 0;
+
+    for (const employee of employees) {
+      const normalizedEmployeeId = requirePositiveInt(employee?.employee_id, 'employeeId');
+      let account = await repository.findAccountByEmployeeId(normalizedEmployeeId, { transaction, lock: true });
+      const wasEligible = Boolean(account?.is_eligible);
+
+      if (!account) {
+        account = await repository.createAccount({
+          employee_id: normalizedEmployeeId,
+          user_id: null,
+          account_code: `EC-E${normalizedEmployeeId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+          is_eligible: true,
+          balance: 0,
+          outstanding_balance: 0,
+          version: 0
+        }, { transaction });
+        createdAccountCount += 1;
+        enabledCount += 1;
+      } else if (!wasEligible) {
+        await repository.updateAccount(account, {
+          is_eligible: true,
+          version: Number(account.version || 0) + 1
+        }, { transaction });
+        enabledCount += 1;
+      } else {
+        alreadyEligibleCount += 1;
+      }
+
+      if (!wasEligible) {
+        await repository.createAuditLog({
+          user_id: normalizedActorUserId,
+          entity_type: 'employee_credit',
+          entity_id: account.account_id,
+          action: 'UPDATE',
+          changes: {
+            action: 'bulk_employee_account_eligibility',
+            employee_id: normalizedEmployeeId,
+            employee_code: employee.employee_code,
+            employee_name: employee.full_name,
+            is_eligible: true,
+            active_employees_only: true
+          }
+        }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+    return ok({
+      active_employee_count: employees.length,
+      enabled_count: enabledCount,
+      created_account_count: createdAccountCount,
+      already_eligible_count: alreadyEligibleCount
+    });
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    return fail(mapError(error, 'Failed to enable Employee Credit for active employees'));
+  }
+};
+
 export const buildListEmployeeCreditCheckoutOptionsUseCase = ({ repository }) => async ({ query = {} } = {}) => {
   try {
     const search = String(query.search || '').trim();

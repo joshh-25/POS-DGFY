@@ -6937,3 +6937,111 @@ after this update: **135**.
   `tenant_downpayment_settings` reader notes corrected/extended)
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` (new)
 - Issue #822 (this phase); #838, #839 (handed to PM during this phase)
+
+## Phase 142 - PR #845 develop reconciliation and POS release rebuild
+
+### Initiative and Release
+
+- Initiative: POS release-batch reconciliation and release-readiness closure.
+- Release: draft PR replacement for #845, targeting `develop`.
+
+### Objective and Scope
+
+- Rebuild from the current `develop` head, then reapply only the intended POS, storefront,
+  inventory-reservation, payment, PWA, and audit changes from the prior PR branch.
+- Preserve newer `develop` checkout, voucher, payment, schema-registry, and phase-ledger contracts
+  when cherry-pick conflicts occur.
+- Keep React Router security work and compliance-script enforcement in separate follow-up PRs.
+
+### Status
+
+- `in_progress`
+
+### Dependencies and Governance Note
+
+- Depends on the current `develop` head and the PR conventions in `docs/ai/PR.md`.
+- Requires fresh-schema and upgrade migration checks, architecture/compliance/docs gates, and
+  targeted POS/storefront payment and inventory tests before completion.
+- No production database, deployment, or PR merge is authorized by this phase.
+
+### Acceptance and Validation Evidence
+
+- Reconciliation base: `0e2d329f483c8bf7b94a9941f80fb9c690eef379`.
+- Old PR state preserved in local branch `backup/pr-845-before-rebuild`.
+- Focused inventory/RBAC tests: 6 suites, 41 tests passing; tenant migration and registry contracts
+  pass; architecture/compliance/docs hooks pass on the new commits.
+- Remaining evidence: full backend/frontend suites, production builds, and final diff audit are
+  still in progress.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`
+- `apps/dgfy-api/src/modules/shared/utils/onlineInventoryEffects.js`
+- `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs`
+- Issue #843 and replacement PR for #845
+
+## Phase 145 - MSME POS Online Order Queue Visibility
+
+### Initiative and Release
+
+- Initiative: MSME online-order operations visibility.
+- Release: POS workflow presentation and Store Profile correction.
+
+### Objective and Scope
+
+- Allow MSME POS tenants with effective `pos` and `storefront` capabilities to
+  see and load the shared Incoming Online Queue.
+- Repair stale persisted Store Profiles that still contain the historical
+  `show_online_queue: false` default.
+- Preserve Services isolation and all existing POS permission, active-shift,
+  location-scope, connectivity, API, order, payment, and inventory behavior.
+
+### Status
+
+- `completed`
+- User approval received on 2026-08-22.
+- Completed on 2026-08-22.
+
+### Dependencies and Governance Note
+
+- [ADR 0008](../architecture/adr/0008-tenant-workflow-mode-msme-simplification.md),
+  amended 2026-08-22.
+- [ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md)
+  for the customer-facing Online Ordering Mode boundary.
+- [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md)
+  for Storefront/POS ownership boundaries.
+- [ADR 0070](../architecture/adr/0070-downpayment-authorization-across-workflow-modes.md)
+  for the shared Storefront checkout path serving MSME.
+- Phase 79 Services navigation and online-queue isolation.
+- Phase 143 remains reserved for the existing PWA canary roadmap and Phase 144
+  remains reserved for the existing downpayment balance-settlement roadmap; this
+  initiative therefore uses the next non-conflicting phase number.
+- Classification: `within-existing-boundary` with an amendment to ADR 0008's
+  untagged/default MSME presentation rule. No new ADR, migration, API route,
+  permission, or exception allowlist is required.
+
+### Acceptance and Validation Evidence
+
+- [x] MSME profile defaults `show_online_queue` to `true`.
+- [x] Stale persisted MSME profiles rebuild to the current profile before POS
+  navigation and polling consume the profile.
+- [x] MSME queue visibility and Services isolation regression tests pass.
+- [x] Local authenticated Playwright verification passes: `Tindahan Ko`
+  (`workflow_mode=msme`) renders `Orders (0)`, while `Laundry`
+  (`workflow_mode=services`) does not render Orders; both sessions had no page
+  errors, console errors, or HTTP 5xx responses.
+- [x] Store Profile equivalence and MSME golden snapshot tests pass.
+- [x] Architecture checks pass before final validation.
+- [x] No tenant data, order, payment, inventory, shift, or database record was
+  created, modified, migrated, or deleted.
+
+### Implementation Links
+
+- `packages/shared-constants/src/posDefaultsAndTerminology.js`
+- `apps/dgfy-web/src/features/settings/WorkflowModeContext.jsx`
+- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posOperationalVisibility.test.js`
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js`
+- `apps/dgfy-api/tests/__snapshots__/storeProfile.equivalence.contract.test.js.snap`
+- `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`

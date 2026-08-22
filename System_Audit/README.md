@@ -142,7 +142,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 *Re-baselined 2026-08-05 against current `develop` (see `## Re-Baseline Update (2026-08-05)` sections inside each finding file for the evidence behind each verdict below). Status tags in the finding files themselves (`[OPEN]` / `[PARTIAL]` / `[FIXED]` / `[RESOLVED]`) are authoritative; this index summarizes them.*
 
 - `1.1-Dependency_vulnerabilities_block_production.md`
-- `1.2-Default_admin_credentials_remain_available.md` — **[OPEN], unchanged.** Default admin credentials (`skupervisor` / hash mapping to `252378`) remain reachable in production; no fail-stop guard exists for this specific gap. Critical.
+- `1.2-Default_admin_credentials_remain_available.md` — **[PARTIAL].** Production now fails closed on missing or documented-default admin credentials; deployment credential rotation and live startup evidence remain open. Critical.
 - `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md` — remediated 2026-06-02 with ADR 0026 cookie-session contract and storage guards
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
 - `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
@@ -154,7 +154,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md` — **[PARTIAL].** File shrank ~87% and the Babel deoptimization warning is gone; 88 lint warnings (unused vars, hook deps) remain, and the same threshold risk has migrated to `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx` (445KB).
 - `3.2-High_limit_queries_risk_slow_paths.md` — **[PARTIAL], net worse.** POS path fixed; 3 original high-limit CSV export paths unchanged; 5 new high-limit reads added via `tenantRevenueUseCases.js`. No global limit ceiling exists.
 - `3.3-Bulk_image_upload_accepts_any_mime_at_transport_layer.md`
-- `4.1-Mode_RBAC_generic_fallback_enabled_by_default.md` — **[OPEN], unchanged.** Still default-enabled in production with no fail-closed guard or usage alerting. High.
+- `4.1-Mode_RBAC_generic_fallback_enabled_by_default.md` — **[PARTIAL].** Production now defaults the generic fallback off and rejects a truthy override; dry-run remapping and durable fallback-use audit events are implemented, while tenant execution, external alert routing, and deployed evidence remain open. High.
 - `4.2-Architecture_allowlist_debt_due_2026_06_30.md` — **[OPEN], now overdue.** All 6 exceptions remain past their 2026-06-30 planned removal date with no owners assigned. Recommend escalating to High.
 - `5.1-AI_tool_registry_has_orphan_handler.md` — **[OPEN], unchanged.** `get_job_order_details` orphan handler remains; likely kept alive only by a QA script. `npm run validate:ai` is currently broken in a fresh checkout (missing workspace package).
 - `5.2-AI_red_team_and_cost_abuse_gate_missing_current_evidence.md` — **[OPEN], marginal progress only.** Zero adversarial test coverage exists anywhere; the one shipped cost control (menu-import daily budget) doesn't cover the main `ai_assistant` feature.
