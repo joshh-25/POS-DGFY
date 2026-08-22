@@ -9,6 +9,9 @@ export function useSimpleCheckoutRouteProps({
   checkoutLoading = false,
   checkoutResult = null,
   customerAddress = '',
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -36,6 +39,7 @@ export function useSimpleCheckoutRouteProps({
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
   handleVerifyGuestCheckoutOtp,
+  onSignInToCheckout,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
@@ -103,6 +107,9 @@ export function useSimpleCheckoutRouteProps({
     checkoutLoading,
     checkoutResult,
     customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
     customerPin,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
@@ -189,6 +196,8 @@ export function useSimpleCheckoutRouteProps({
     onPinMyLocation: handlePinMyLocation,
     onRemoveDeliveryAddress: handleRemoveDeliveryAddress,
     onRequestGuestCheckoutOtp: handleRequestGuestCheckoutOtp,
+    onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp,
+    onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
       if (nextMode === 'asap') setFnbScheduledFor('');

@@ -502,7 +502,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
   "pos_defaults": {
     "preferred_order_method": "takeout",
     "preferred_payment_type": "cash",
-    "show_online_queue": false,
+    "show_online_queue": true,
   },
   "pos_workflow": {
     "allowed_methods": [

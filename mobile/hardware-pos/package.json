@@ -5,7 +5,8 @@
   "description": "Standalone native hardware POS workspace for iMin Android devices.",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "catalog:bundle": "node scripts/export-bundled-catalog.mjs"
+    "catalog:bundle": "node scripts/export-bundled-catalog.mjs",
+    "test:layout": "node --experimental-strip-types scripts/test-layout-policy.ts"
   },
   "dependencies": {
     "react": "19.0.0",

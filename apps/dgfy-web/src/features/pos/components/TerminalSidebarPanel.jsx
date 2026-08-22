@@ -133,7 +133,7 @@ export default function TerminalSidebarPanel({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
+  const hiddenSectionsInMsme = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
@@ -249,14 +249,6 @@ export default function TerminalSidebarPanel({
             <span className="text-[#334155]">Active Discounts</span>
             <span className="font-extrabold text-[#0F172A]">{terminalMeta.activeDiscountCount}</span>
           </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[#334155]">DGFY Global Fee Policy</span>
-                <span className="font-extrabold text-[#0F172A]">
-                  {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
-                    ? 'Active'
-                    : 'Inactive'}
-                </span>
-              </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-[#334155]">Compliance Policy</span>
             <span className="font-extrabold text-emerald-700">Dual-mode</span>

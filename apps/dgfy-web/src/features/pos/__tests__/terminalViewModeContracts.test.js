@@ -97,7 +97,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'reports'");
   });
 
-  it('keeps the retail/F&B online queue out of Services navigation, restoration, notifications, and polling', () => {
+  it('keeps the online queue out of Services while retaining it for MSME/counter POS', () => {
     expect(terminalPageContent).toContain('isPosOnlineOrderQueueEnabled');
     expect(terminalPageContent).toContain('workflowMode,\n    posDefaults: modePosDefaults');
     expect(terminalPageContent).toContain("workflowScopedModes.filter((mode) => mode !== 'incoming_queue')");
@@ -106,8 +106,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('showIncomingQueue={onlineOrderQueueEnabled}');
     expect(terminalPageLayoutContent).toContain('showIncomingQueue={showIncomingQueue}');
     expect(terminalPageLayoutContent).toContain('showIncomingQueue && Array.isArray(incomingOrdersState?.orders)');
-    expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
+    expect(terminalPageContent).toContain("const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue'");
+    expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue;');
+    expect(terminalWorkspaceSidebarContent).not.toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
     expect(terminalWorkspaceSidebarContent).toContain('{shouldShowIncomingQueue && (');
+    expect(terminalSidebarPanelContent).not.toContain("new Set(['incoming_queue'");
+    expect(terminalOperationsWorkspaceContent).not.toContain("new Set(['incoming_queue'");
   });
 
   it('keeps MSME configuration views accessible instead of redirecting them to Shift', () => {
@@ -282,7 +286,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');
     expect(terminalPageContent).toContain('const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);');
     expect(terminalPageContent).toContain("source: 'dgfy_pos'");
-    expect(terminalPageContent).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
+    expect(terminalPageContent).toContain("safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);");
     expect(terminalPageContent).toContain("{ registryMode: setupFlowActive ? 'enforce' : 'warn' }");
     expect(terminalPageContent).not.toContain("toast.error('POS setup is incomplete. An active terminal and cashier account are required before terminal unlock.');");
     expect(terminalPageContent).toContain('const posSession = await startDgfyPosSession({');
@@ -360,8 +364,17 @@ describe('POS terminal view-mode contracts', () => {
   it('enforces incoming queue access-state handling in TerminalPage', () => {
     expect(terminalPageContent).toContain("accessState: 'forbidden'");
     expect(terminalPageContent).toContain("accessState: 'allowed'");
-    expect(terminalPageContent).toContain("accessState: isForbidden ? 'forbidden' : 'error'");
+    expect(terminalPageContent).toContain("accessState: isShiftUnavailable ? 'shift_required' : (isForbidden ? 'forbidden' : 'error')");
     expect(terminalPageContent).toContain("if (!canViewPos && ['incoming_queue'].includes(posViewMode)) {");
+  });
+
+  it('stops incoming-order polling after a closed-shift response and resumes for a new shift', () => {
+    expect(terminalPageContent).toContain('incomingOrdersShiftBlockedRef');
+    expect(terminalPageContent).toContain('hasUsableIncomingOrderShift({');
+    expect(terminalPageContent).toContain('isIncomingOrderShiftUnavailableError(error)');
+    expect(terminalPageContent).toContain("errorMessage: 'Open a shift to view orders for this branch.'");
+    expect(terminalPageContent).toContain('incomingOrdersShiftBlockedRef.current = true;');
+    expect(terminalPageContent).toContain('setShiftState((previous) => {');
   });
 
   it('does not load compliance gate context or block POS checkout from terminal readiness', () => {

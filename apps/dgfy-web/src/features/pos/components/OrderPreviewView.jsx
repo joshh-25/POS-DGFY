@@ -49,12 +49,11 @@ export default function OrderPreviewView({ transaction, mobileResponsive = false
     ? Number(transaction.subtotal_amount)
     : lines.reduce((sum, line) => sum + resolveLineSubtotal(line), 0);
   const discountAmount = Number(transaction.discount_amount || 0);
-  const serviceFeeAmount = Number(transaction.service_fee_amount || 0);
   const deliveryFeeAmount = Number(transaction.delivery_fee || 0);
   const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
   const totalAmount = Number.isFinite(Number(transaction.total_amount))
     ? Number(transaction.total_amount)
-    : (subtotalAmount - discountAmount + serviceFeeAmount + restaurantServiceChargeAmount + deliveryFeeAmount);
+    : (subtotalAmount - discountAmount + restaurantServiceChargeAmount + deliveryFeeAmount);
   const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
 
   // Format date to: May 18, 2024 • 10:34 AM
@@ -221,10 +220,6 @@ export default function OrderPreviewView({ transaction, mobileResponsive = false
               <div className={summaryRowClassName}>
                 <span className={summaryLabelClassName}>{governedDiscount?.promo_code ? `Promo (${governedDiscount.promo_code})` : 'Discount'}</span>
                 <span className={summaryValueClassName}>{money(discountAmount)}</span>
-              </div>
-              <div className={summaryRowClassName}>
-                <span className={summaryLabelClassName}>{transaction.service_fee_label_snapshot || 'DGFY Convenience Fee'}</span>
-                <span className={summaryValueClassName}>{money(serviceFeeAmount)}</span>
               </div>
               {restaurantServiceChargeAmount > 0 && <div className={summaryRowClassName}><span className={summaryLabelClassName}>Restaurant Service Charge</span><span className={summaryValueClassName}>{money(restaurantServiceChargeAmount)}</span></div>}
               {deliveryFeeAmount > 0 && <div className={summaryRowClassName}><span className={summaryLabelClassName}>Delivery Fee</span><span className={summaryValueClassName}>{money(deliveryFeeAmount)}</span></div>}

@@ -259,9 +259,9 @@ export class PayMongoService {
             throw new Error('PAYMONGO_PUBLIC_KEY is not configured');
         }
 
-        const allowedPaymentMethods = new Set(['gcash', 'paymaya']);
+        const allowedPaymentMethods = new Set(['gcash', 'paymaya', 'card']);
         if (!allowedPaymentMethods.has(paymentMethod)) {
-            throw new Error('Direct PayMongo wallet payment method is not supported');
+            throw new Error('Direct PayMongo payment method is not supported');
         }
 
         const paymentIntent = await this.createPaymentIntent({
@@ -269,7 +269,10 @@ export class PayMongoService {
             currency,
             description,
             paymentMethodAllowed: [paymentMethod],
-            metadata
+            metadata,
+            paymentMethodOptions: paymentMethod === 'card'
+                ? { card: { request_three_d_secure: 'automatic' } }
+                : null
         });
         const clientKey = String(paymentIntent?.attributes?.client_key || '').trim();
         if (!paymentIntent?.id || !clientKey) {
@@ -299,6 +302,19 @@ export class PayMongoService {
             paymentMethod: 'paymaya',
             paymentFlow: 'direct_maya',
             paymentMethodLabel: 'Maya'
+        });
+    }
+
+    async createDirectPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent(params);
+    }
+
+    async createDirectCardPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'card',
+            paymentFlow: 'direct_card',
+            paymentMethodLabel: 'Card'
         });
     }
 

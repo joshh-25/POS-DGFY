@@ -20,6 +20,19 @@ export const getCheckoutBlockReason = ({
   if (!requireQuote) return null;
   if (!quoteResult) return 'missing_quote';
   if (quoteNeedsRefresh) return 'stale_quote';
+  // Phase 142 (#823): a voucher/promo can fully discount a downpayment-required order to zero --
+  // the backend then resolves the quote to full_payment (nothing to capture) while the catalog
+  // still says downpayment_required, so cash stays hidden with no path to place the order at all.
+  // Caught here rather than left as a dead end: block with a specific, actionable reason instead
+  // of silently letting Place Order do nothing (or worse, appear enabled with no valid payment
+  // option showing).
+  if (
+    selectedStore?.payment_mode === 'downpayment_required'
+    && quoteResult.payment_mode !== 'downpayment_required'
+    && Number(quoteResult.total_amount) <= 0
+  ) {
+    return 'downpayment_zero_total';
+  }
   return null;
 };
 

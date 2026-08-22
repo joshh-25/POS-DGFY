@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import type { PendingHistorySnapshot } from '../../services/pendingHistoryService';
 import { PosHeader } from '../components/PosHeader';
+import { PosText as Text } from '../components/PosTextScale';
 
 export const SyncCenterScreen = ({
     snapshot,

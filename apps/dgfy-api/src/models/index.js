@@ -70,6 +70,8 @@ import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
+import InventoryReservation from './InventoryReservation.js';
+import InventoryReservationLine from './InventoryReservationLine.js';
 import UserLocationGrant from './UserLocationGrant.js';
 import StoreCustomer from './StoreCustomer.js';
 import StoreCustomerAddress from './StoreCustomerAddress.js';
@@ -686,6 +688,7 @@ User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' }
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
 Item.hasMany(ItemLocationStock, { foreignKey: 'item_id', as: 'locationStocks' });
+Item.hasMany(InventoryReservationLine, { foreignKey: 'item_id', as: 'inventoryReservationLines' });
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
@@ -766,12 +769,25 @@ User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'pos
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
+TenantLocation.hasMany(InventoryReservation, { foreignKey: 'location_id', as: 'inventoryReservations' });
 TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'destination_location_id', as: 'destinationStockMovements' });
 ItemLocationStock.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(PosTransaction, { foreignKey: 'source_id', as: 'sourceOrder', constraints: false });
+InventoryReservation.hasMany(InventoryReservationLine, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'lines',
+  onDelete: 'CASCADE'
+});
+InventoryReservationLine.belongsTo(InventoryReservation, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'reservation'
+});
+InventoryReservationLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
@@ -1072,6 +1088,8 @@ const db = {
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
@@ -1279,6 +1297,8 @@ export {
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,

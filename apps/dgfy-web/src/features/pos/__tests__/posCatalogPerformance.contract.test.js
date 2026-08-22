@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const checkoutPath = path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const checkoutViewPath = path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx');
 const catalogWorkflowPath = path.resolve(process.cwd(), 'src/features/pos/hooks/usePosCatalogWorkflow.js');
+const catalogImageFailureStorePath = path.resolve(process.cwd(), 'src/features/pos/services/posCatalogImageFailureStore.js');
 const checkoutUtilsPath = path.resolve(process.cwd(), 'src/features/pos/utils/posCheckoutTerminalUtils.js');
 const layoutPath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalPageLayout.jsx');
 const sidebarPath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
@@ -19,12 +20,18 @@ describe('hosted POS catalog performance contracts', () => {
     const catalogWorkflowSource = readSource(catalogWorkflowPath);
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
     const operationsSource = readSource(operationsPath);
+    const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
     expect(checkoutUtilsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
     expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
     expect(catalogWorkflowSource).toContain('nextCatalogImageUrls');
     expect(catalogWorkflowSource).toContain("image.fetchPriority = 'low';");
+    expect(catalogWorkflowSource).toContain('loadPosCatalogImageFailures');
+    expect(catalogWorkflowSource).toContain('savePosCatalogImageFailures');
+    expect(catalogWorkflowSource).toContain('catalogImageErrors\n        ),');
+    expect(catalogWorkflowSource).not.toContain('setCatalogImageErrors(new Set());');
+    expect(catalogImageFailureStoreSource).toContain('window.sessionStorage');
     expect(operationsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
     expect(operationsSource).toContain('loading="lazy"');
   });
@@ -69,6 +76,8 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).not.toContain('flex items-center justify-center bg-[#1A4E8D]/85');
     expect(checkoutSource).toContain('text-center text-[14px] font-black leading-tight text-white');
     expect(checkoutSource).not.toContain('No POS Image');
+    expect(checkoutSource).toContain('backgroundImage: `url(${imageSources.placeholderSrc})`');
+    expect(checkoutSource).toContain('next.add(String(item.item_id));');
   });
 
   it('keeps direct POS category chips without a redundant filter button', () => {

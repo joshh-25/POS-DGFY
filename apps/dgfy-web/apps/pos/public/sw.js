@@ -137,7 +137,6 @@ self.addEventListener('install', (event) => {
       await shellCache.addAll([...REQUIRED_SHELL_ASSETS, PRECACHE_MANIFEST_URL, ...assetUrls]);
     })()
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('message', (event) => {

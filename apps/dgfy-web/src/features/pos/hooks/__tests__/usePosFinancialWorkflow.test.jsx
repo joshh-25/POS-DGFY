@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { usePosFinancialWorkflow } from '../usePosFinancialWorkflow.js';
 
@@ -135,5 +135,22 @@ describe('usePosFinancialWorkflow', () => {
         expect(result.current.splitPaymentSummaryPaidAmount).toBe(100);
         expect(result.current.splitPaymentSummaryChangeAmount).toBe(2);
         expect(result.current.splitPaymentSuccessfulAllocations).toHaveLength(1);
+    });
+
+    it('derives the exact payment display while auto-fill is active without an effect update', () => {
+        const { result, rerender } = renderFinancials({
+            checkoutConfirmModalOpen: true,
+            customerPaymentAmountInput: ''
+        });
+
+        act(() => {
+            result.current.customerPaymentAmountState.setCustomerPaymentAmountAutoFilled(true);
+        });
+
+        expect(result.current.customerPaymentAmountState.customerPaymentAmountInput).toBe('274.00');
+        expect(result.current.customerPaymentAmount).toBe(274);
+
+        rerender();
+        expect(result.current.customerPaymentAmountState.customerPaymentAmountInput).toBe('274.00');
     });
 });

@@ -1863,7 +1863,7 @@ inside the same transaction that creates the order, when called with the
 `capturedPayment` sibling argument the PayMongo webhook finalizer
 (`finalizePaidCommerceSession.js`) supplies after a downpayment is confirmed
 paid. `kind: 'balance'`/`'refund'`/`'forfeiture'` rows remain unwritten until
-Phase 144/145 (#824/#825).
+Phase 144/148 (#824/#825).
 
 ### tenant_downpayment_settings (Phase 138)
 

@@ -2,9 +2,9 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-13
-review_by: 2027-02-13
-applies_to: pos,services,fnb,retail,store_templates
+last_reviewed: 2026-08-22
+review_by: 2027-02-22
+applies_to: pos,services,fnb,retail,msme,store_templates
 topic: pos_mode_presentation_ownership
 ---
 
@@ -239,7 +239,8 @@ source-string checks:
 - Keep Services bookings in the Services Today/Calendar lifecycle.
 - Remove the retail/F&B `Orders` queue from Services desktop and mobile
   navigation, stale-view restoration, notifications, and background polling.
-- Keep `Orders` unchanged for eligible retail, F&B, and counter workflows.
+- Keep `Orders` unchanged for eligible retail, F&B, counter, and MSME
+  workflows.
 - Correct the Services Store Profile default while failing closed at runtime
   for already-materialized profiles that still contain the legacy value.
 
@@ -371,7 +372,7 @@ Services cashier experience without changing booking or order records:
 - [x] The Services Store Profile default now sets `show_online_queue` to
   `false`; the runtime workflow guard also rejects a legacy Services profile
   that still says `true`.
-- [x] Eligible F&B, retail, and counter workflows retain their existing
+- [x] Eligible F&B, retail, counter, and MSME workflows retain their existing
   capability-gated Orders queue behavior.
 - [x] Focused rendered navigation, source-contract, and Store Profile
   equivalence tests pass, including all updated golden snapshots.
@@ -385,3 +386,23 @@ Services cashier experience without changing booking or order records:
 
 Phase 79 is complete. Phase 80 is the next eligible repository phase number;
 no Phase 80 scope is planned by this initiative.
+
+## 18. Phase 145 MSME Online Order Queue Visibility (2026-08-22)
+
+Phase 145 closes the MSME visibility gap identified after Phase 79. MSME was
+already wired to the shared online-order API and had an `incoming_queue` view,
+but its Store Profile default disabled the queue before the POS could request
+any orders.
+
+- [x] MSME `show_online_queue` defaults to `true` while Services remains
+  explicitly disabled.
+- [x] The frontend rebuilds a persisted Store Profile when its derived content
+  no longer matches the current shared registry, preventing an older MSME
+  profile from hiding the Orders action after reload.
+- [x] Existing POS permission, active-shift, location-scope, tenant capability,
+  and connectivity gates remain unchanged.
+- [x] Focused MSME queue, stale-profile, navigation, and Store Profile tests
+  pass.
+
+Phase 145 changes presentation visibility only; no online order, payment,
+inventory, tenant, or database record is migrated or rewritten.

@@ -690,6 +690,161 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
     });
 });
 
+describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the client-facing session payload', () => {
+    // Phase 141's own tests only assert on the pre-persistence attrs passed to createSession
+    // (sessionAttrs), never on what the client actually receives. These tests exercise the public
+    // use-case response (result.data.payment_session) through a commercePaymentRepository fake
+    // whose updateSessionById MERGES with the row's prior state -- matching the real repository
+    // (commercePaymentRepository.js: findByPk + row.update + return the full row) -- because the
+    // success path's own second updateSessionById call only passes provider/status fields, not
+    // capture_kind/order_total_centavos/downpayment_refundable; a non-merging fake would silently
+    // report those fields as always-undefined regardless of the serializer under test.
+    const buildMergingCommercePaymentRepository = () => {
+        const rows = new Map();
+        return {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn((attrs) => {
+                const row = { session_id: rows.size + 601, ...attrs };
+                rows.set(row.session_id, row);
+                return Promise.resolve(row);
+            }),
+            updateSessionById: jest.fn((sessionId, attrs) => {
+                const merged = { ...rows.get(sessionId), ...attrs };
+                rows.set(sessionId, merged);
+                return Promise.resolve(merged);
+            })
+        };
+    };
+
+    const buildFixtureStoreRepository = () => ({
+        findDefaultActiveLocation: jest.fn().mockResolvedValue({
+            location_id: 1,
+            is_open: true,
+            allow_out_of_stock_sales: true
+        }),
+        getSettingsByKeys: jest.fn().mockResolvedValue([
+            ...registeredTransactionSettings(),
+            { setting_key: 'store_delivery_fee', setting_value: '0' },
+            { setting_key: 'pos_open_status', setting_value: 'true' }
+        ]),
+        findSellableItemsByIds: jest.fn().mockResolvedValue([{
+            item_id: 1,
+            name: 'Test Item',
+            default_sale_price: 500,
+            sale_price: 500,
+            is_available: true,
+            availability_status: 'in_stock'
+        }])
+    });
+
+    const buildPaymongoServiceFixture = () => ({
+        createHostedCheckoutSession: jest.fn(),
+        createDirectGcashPaymentIntent: jest.fn(),
+        createDirectMayaPaymentIntent: jest.fn(),
+        createQrphPaymentIntent: jest.fn().mockResolvedValue({
+            payment_intent_id: 'pi_fixture_serializer',
+            checkout_url: 'https://paymongo.example/checkout/pi_fixture_serializer',
+            qr_code_image_url: null,
+            expires_at: new Date('2026-08-22T00:00:00Z')
+        })
+    });
+
+    test('exposes capture_kind, order_total_amount, balance_due_amount, and downpayment_refundable for a downpayment session', async () => {
+        const commercePaymentRepository = buildMergingCommercePaymentRepository();
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository: buildFixtureStoreRepository(),
+            commercePaymentRepository,
+            paymongoService: buildPaymongoServiceFixture(),
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-serializer-1',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-serializer-1'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const session = result.data.payment_session;
+        // 500 subtotal + 1% (5) service fee = 505 order total; 20% downpayment = 101 pesos.
+        expect(session.capture_kind).toBe('downpayment');
+        expect(session.order_total_amount).toBe(505);
+        expect(session.balance_due_amount).toBe(404);
+        expect(session.downpayment_refundable).toBe(true);
+        // total_amount keeps its pre-existing meaning: the CAPTURED amount, not the order total.
+        expect(session.total_amount).toBe(101);
+    });
+
+    test('additive-only: a full_payment session reports capture_kind "full" and the three new amount/refundable fields strictly null, with every pre-existing key unchanged', async () => {
+        const commercePaymentRepository = buildMergingCommercePaymentRepository();
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository: buildFixtureStoreRepository(),
+            commercePaymentRepository,
+            paymongoService: buildPaymongoServiceFixture(),
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(fullPaymentSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-serializer-2',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-serializer-2'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const session = result.data.payment_session;
+        expect(session.capture_kind).toBe('full');
+        expect(session.order_total_amount).toBeNull();
+        expect(session.balance_due_amount).toBeNull();
+        expect(session.downpayment_refundable).toBeNull();
+        // Every field a full_payment tenant's client already relied on, unchanged.
+        expect(session).toMatchObject({
+            status: 'awaiting_payment',
+            payment_method: 'qrph',
+            total_amount: 505,
+            currency: 'PHP'
+        });
+    });
+});
+
 afterAll(() => {
     delete process.env.STOREFRONT_PAYMENT_RETURN_URL;
 });

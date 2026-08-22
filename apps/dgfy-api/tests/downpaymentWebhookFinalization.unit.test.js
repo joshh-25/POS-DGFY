@@ -222,6 +222,12 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
         service_fee_amount: 5,
         delivery_fee: 0,
         total_amount: 505,
+        // Phase 142 (#823): matches what the "finalizes a downpayment order..." test already pins
+        // on the pre-persistence create attrs (header.amount_paid/header.balance_due) -- this
+        // fixture models the persisted row getOrderById would read back, so the new
+        // serializeOrderBase test below can assert these values actually reach the client.
+        amount_paid: 101,
+        balance_due: 404,
         customer_name: 'Buyer',
         customer_phone: '0917',
         customer_email: 'buyer@example.com',
@@ -306,6 +312,79 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
     expect(header.balance_due).toBe(404);
     expect(header.payment_reference).toBe('pay_dp_webhook');
     expect(header.payment_provider).toBe('paymongo');
+  });
+
+  // Phase 142 (#823): the test above only pins the pre-persistence create attrs
+  // (createOnlineTransactionWithLines's header) -- it never proved amount_paid/balance_due
+  // actually reach the client. serializeOrderBase previously omitted both fields entirely.
+  test('returns amount_paid/balance_due on the serialized order (client-facing response)', async () => {
+    const storeRepository = buildFakeCheckoutStoreRepository();
+    const useCase = buildStoreCheckoutUseCase({
+      storeRepository,
+      downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings())
+    });
+
+    const payload = checkoutPayload();
+    const result = await useCase({
+      tenantId: TENANT_ID,
+      payload: withGuestProof(payload),
+      allowExpiredGuestCheckoutProof: true,
+      capturedPayment: capturedPaymentFor()
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.order.amount_paid).toBe(101);
+    expect(result.data.order.balance_due).toBe(404);
+    expect(result.data.order.payment_status).toBe('partially_paid');
+  });
+
+  // Additive-only pin: a full_payment order (no capturedPayment, plain cash checkout) must keep
+  // returning null/null here, exactly as before this phase's serializeOrderBase widening.
+  test('additive-only: a full_payment order returns amount_paid/balance_due as null', async () => {
+    const storeRepository = buildFakeCheckoutStoreRepository();
+    storeRepository.getOrderById.mockResolvedValue({
+      pos_transaction_id: 9101,
+      tracking_pin: 'SK-DPWEBHOOK-FULL',
+      invoice_number: 'INV-000003',
+      order_source: 'online_store',
+      order_method: 'delivery',
+      payment_type: 'cash',
+      payment_status: 'unpaid',
+      fulfillment_status: 'placed',
+      subtotal_amount: 500,
+      discount_amount: 0,
+      service_fee_amount: 5,
+      delivery_fee: 0,
+      total_amount: 505,
+      customer_name: 'Buyer',
+      customer_phone: '0917',
+      customer_email: 'buyer@example.com',
+      location: { location_id: 2, name: 'Main', address_line: 'Address' },
+      lines: []
+    });
+    // No downpaymentSettingsRepository injected -- resolves to full_payment, same convention as
+    // the "no downpaymentSettingsRepository injected checks out normally" test elsewhere in this
+    // suite family.
+    const useCase = buildStoreCheckoutUseCase({ storeRepository });
+
+    const payload = checkoutPayload({
+      payment_type: 'cash',
+      payment_status: undefined,
+      payment_provider: undefined,
+      payment_reference: undefined,
+      payment_session_reference: undefined,
+      payment_webhook_confirmed: undefined,
+      idempotency_key: 'full-payment-cash-1'
+    });
+    const result = await useCase({
+      tenantId: TENANT_ID,
+      payload: withGuestProof(payload),
+      allowExpiredGuestCheckoutProof: true
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.order.amount_paid).toBeNull();
+    expect(result.data.order.balance_due).toBeNull();
   });
 
   test('writes ledger row 1 (kind: downpayment) inside the same transaction the order was created in', async () => {

@@ -33,9 +33,16 @@ export const isEnabledStorefrontCheckoutPaymentType = (paymentType, paymentCapab
   || (STOREFRONT_HOSTED_PAYMENT_TYPES.includes(paymentType) && paymentCapabilities?.[paymentType]?.enabled === true)
 );
 
-export const buildStorefrontCheckoutPaymentOptions = (paymentCapabilities = null) => (
+// Phase 142 (#823): hideCash lets a downpayment-required store's checkout drop the cash option
+// from the list -- the backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on it, so offering it would
+// just send the customer through a dead-end round trip. Deliberately NOT folded into
+// isEnabledStorefrontCheckoutPaymentType -- cash stays a "capability" (it's always technically
+// enabled) and hiding it here is a presentation decision, so callers that check the capability
+// function directly (e.g. draft-restore validation) are unaffected.
+export const buildStorefrontCheckoutPaymentOptions = (paymentCapabilities = null, { hideCash = false } = {}) => (
   ALL_STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
     .filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value, paymentCapabilities))
+    .filter((option) => !(hideCash && option.value === 'cash'))
     .map((option) => (
       option.value !== 'cash' && (
         option.value === 'qrph'

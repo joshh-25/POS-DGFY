@@ -69,6 +69,7 @@ describe('POS catalog workflow utilities', () => {
         expect(getNextCatalogImageUrls(catalog, 1, 2, 2)).toEqual([
             'https://cdn.test/a.jpg'
         ]);
+        expect(getNextCatalogImageUrls(catalog, 1, 2, 2, new Set(['3']))).toEqual([]);
         expect(getNextCatalogImageUrls(catalog, 2, 2, 2)).toEqual([]);
         expect(buildCatalogRequestKey('  coffee ', 7)).toBe('coffee::7');
         expect(buildCatalogRequestParams('', 7)).toEqual({ search: '', limit: 200, location_id: 7 });

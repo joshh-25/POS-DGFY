@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   buildAdjustEmployeeCreditOutstandingUseCase,
   buildEmployeeCreditService,
+  buildEnableEmployeeCreditForActiveEmployeesUseCase,
   buildGetEmployeeCreditReportUseCase,
   buildListEmployeeCreditCheckoutOptionsUseCase,
   buildRecordEmployeeCreditRepaymentUseCase
@@ -80,6 +81,64 @@ const runWithTenantTransaction = async (callback) => {
 };
 
 describe('Employee Credit service', () => {
+  it('enables Employee Credit for active employees without changing limits or balances', async () => {
+    const accounts = new Map([
+      [1, { account_id: 11, employee_id: 1, is_eligible: false, credit_limit: 500, balance: 25, outstanding_balance: 10, version: 2 }],
+      [2, { account_id: 12, employee_id: 2, is_eligible: true, credit_limit: null, balance: 0, outstanding_balance: 35, version: 4 }]
+    ]);
+    const repository = {
+      listActiveEmployees: jest.fn(async () => [
+        { employee_id: 1, employee_code: 'EMP-001', full_name: 'Previously Ineligible Worker' },
+        { employee_id: 2, employee_code: 'EMP-002', full_name: 'Already Eligible Worker' },
+        { employee_id: 3, employee_code: 'EMP-003', full_name: 'New Credit Worker' }
+      ]),
+      findAccountByEmployeeId: jest.fn(async (employeeId) => accounts.get(Number(employeeId)) || null),
+      createAccount: jest.fn(async (values) => {
+        const account = { account_id: 13, ...values };
+        accounts.set(Number(values.employee_id), account);
+        return account;
+      }),
+      updateAccount: jest.fn(async (account, values) => {
+        Object.assign(account, values);
+        return account;
+      }),
+      createAuditLog: jest.fn(async (values) => values)
+    };
+    const useCase = buildEnableEmployeeCreditForActiveEmployeesUseCase({ repository });
+
+    const { result } = await runWithTenantTransaction(() => useCase({ actorUserId: 99 }));
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      active_employee_count: 3,
+      enabled_count: 2,
+      created_account_count: 1,
+      already_eligible_count: 1
+    });
+    expect(accounts.get(1)).toMatchObject({
+      is_eligible: true,
+      credit_limit: 500,
+      balance: 25,
+      outstanding_balance: 10,
+      version: 3
+    });
+    expect(accounts.get(3)).toMatchObject({
+      is_eligible: true,
+      balance: 0,
+      outstanding_balance: 0,
+      version: 0
+    });
+    expect(repository.createAuditLog).toHaveBeenCalledTimes(2);
+    expect(repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 99,
+      changes: expect.objectContaining({
+        action: 'bulk_employee_account_eligibility',
+        active_employees_only: true,
+        is_eligible: true
+      })
+    }), expect.anything());
+  });
+
   it('authorizes and records one open-tab charge', async () => {
     const account = await buildAccount();
     const repository = buildRepository({ account });

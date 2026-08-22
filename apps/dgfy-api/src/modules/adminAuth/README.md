@@ -10,10 +10,13 @@ Flow:
 
 Credentials are env-backed and password verification uses bcrypt hash comparison.
 
-- `ADMIN_USERNAME` (default: `skupervisor`)
-- `ADMIN_PASSWORD_HASH` (default hash maps to password `252378`)
+- `ADMIN_USERNAME` (local-development fallback: `skupervisor`)
+- `ADMIN_PASSWORD_HASH` (local-development fallback only; never use the documented bootstrap hash in production)
 - `ADMIN_FINANCIAL_ROLE` (legacy single-account role, default: `platform_admin`)
 - `ADMIN_ACCOUNTS_JSON` (preferred production roster; replaces the single account when set)
+
+Production startup fails closed unless explicit `ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`
+or `ADMIN_ACCOUNTS_JSON` is configured, and the documented local bootstrap hash is rejected.
 
 `ADMIN_ACCOUNTS_JSON` contains bcrypt hashes only—never plaintext passwords:
 

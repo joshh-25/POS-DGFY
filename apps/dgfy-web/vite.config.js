@@ -8,7 +8,7 @@ import esCompatGuardPlugin from './build/esCompatGuardPlugin.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000'
 const securityHeaders = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin'
 }
@@ -16,7 +16,7 @@ const devSecurityHeaders = {
   ...securityHeaders,
   // Vite React Refresh injects an inline preamble in development.
   // Keep preview/build CSP strict while allowing the local dev app to boot.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
 }
 
 // https://vitejs.dev/config/
@@ -110,5 +110,15 @@ export default defineConfig({
   test: {
     // Playwright owns browser E2E specs; Vitest must run only unit and component tests.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    // The integration-heavy jsdom suite exercises lazy routes and mocked API
+    // boundaries in parallel. Five seconds is below the normal cold-start
+    // budget on CI/local Windows workers and turns healthy tests into flakes.
+    testTimeout: 15000,
+    // Bound fork fan-out on Windows. The default pool size starts one worker
+    // per available CPU and starves the integration-heavy Storefront/POS files,
+    // causing false timeouts and cross-file state failures under a full run.
+    // Four workers preserve file parallelism while keeping the system-test gate
+    // deterministic on the supported local/CI environments.
+    maxWorkers: 4,
   },
 })

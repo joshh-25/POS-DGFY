@@ -67,6 +67,7 @@ import {
     getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
@@ -374,6 +375,11 @@ const serializeOrderBase = (order) => ({
     payment_type: order?.payment_type,
     payment_timing: order?.payment_timing,
     payment_status: order?.payment_status,
+    // Phase 142 (#823): persisted since Phase 141 (resolveStorefrontPaymentSnapshot) but never
+    // serialized -- null for every order that isn't 'partially_paid' (full_payment orders keep
+    // returning null/null here, same additive-only guarantee as the session fields above).
+    amount_paid: order?.amount_paid ?? null,
+    balance_due: order?.balance_due ?? null,
     payment_reference: order?.payment_reference,
     payment_checkout_url: order?.payment_checkout_url,
     payment_provider: order?.payment_provider,
@@ -1989,6 +1995,33 @@ const resolveStorefrontPaymentCapabilities = async ({
 
 };
 
+// Phase 142 (#823): the storefront needs to know a store's downpayment payment_mode BEFORE it
+// ever quotes (Simple mode in particular never quotes without a discount code), so the storefront
+// can hide the cash option and force a quote up front instead of discovering the requirement only
+// at session-create time. Fails closed to 'full_payment' -- a settings-read error must never 500
+// the public catalog, and the storefront's existing behavior for every store that doesn't set
+// this must not change (same additive-only discipline as Phase 140's downpayment split on the
+// quote response). This intentionally does NOT reuse resolveDownpaymentForTotal (that also
+// downgrades a *malformed* downpayment_required row to full_payment) -- here we report the
+// tenant's stored intent verbatim, so the UI hides cash and forces a quote even against a
+// malformed row; the malformed case still 422s at session-create time
+// (DOWNPAYMENT_POLICY_UNRESOLVED), never silently falls through to an un-gated cash order.
+const resolveStorefrontPaymentMode = async ({ downpaymentSettingsRepository, tenantId }) => {
+    if (!tenantId || typeof downpaymentSettingsRepository?.getSettings !== 'function') {
+        return 'full_payment';
+    }
+    try {
+        const settings = await downpaymentSettingsRepository.getSettings(tenantId);
+        return settings?.payment_mode === 'downpayment_required' ? 'downpayment_required' : 'full_payment';
+    } catch (error) {
+        logger?.warn?.('Failed to resolve storefront payment_mode for catalog; defaulting to full_payment', {
+            tenantId,
+            error: error?.message || String(error)
+        });
+        return 'full_payment';
+    }
+};
+
 export const buildListStoreCatalogUseCase = ({
     storeRepository,
     commercePaymentRepository = null,
@@ -2000,7 +2033,8 @@ export const buildListStoreCatalogUseCase = ({
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     paymongoMode = 'test',
     revenueSharingEnabled = tenantRevenueSharingEnabled,
-    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault,
+    downpaymentSettingsRepository = null
 }) => {
     // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
     // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
@@ -2027,7 +2061,7 @@ export const buildListStoreCatalogUseCase = ({
                 );
             }
 
-            const [accessPolicy, paymentCapabilities] = await Promise.all([
+            const [accessPolicy, paymentCapabilities, paymentMode] = await Promise.all([
                 resolveStorefrontAccessPolicy({ storeRepository }),
                 resolveStorefrontPaymentCapabilities({
                     commercePaymentRepository,
@@ -2039,6 +2073,10 @@ export const buildListStoreCatalogUseCase = ({
                     requireCommercePaymentConfig,
                     paymongoMode,
                     revenueSharingEnabled
+                }),
+                resolveStorefrontPaymentMode({
+                    downpaymentSettingsRepository,
+                    tenantId: tenantId || currentTenantAccessContext().tenantId
                 })
             ]);
             // Live (15s-cached) workflow mode + composed-capability overlay, so a
@@ -2059,7 +2097,8 @@ export const buildListStoreCatalogUseCase = ({
                     access_policy: accessPolicy,
                     workflow_mode: workflowMode,
                     enabled_capabilities: enabledCapabilities,
-                    payment_capabilities: paymentCapabilities
+                    payment_capabilities: paymentCapabilities,
+                    payment_mode: paymentMode
                 });
             }
 
@@ -2108,7 +2147,8 @@ export const buildListStoreCatalogUseCase = ({
                 access_policy: accessPolicy,
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
-                payment_capabilities: paymentCapabilities
+                payment_capabilities: paymentCapabilities,
+                payment_mode: paymentMode
             });
         } catch (error) {
             if (error instanceof DomainError) {
@@ -2802,7 +2842,8 @@ export const buildStoreCheckoutUseCase = ({
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    inventoryReservationService = null
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3071,6 +3112,27 @@ export const buildStoreCheckoutUseCase = ({
                     idempotencyKey: capturedPayment.session_reference,
                     recordedBy: null
                 }, { transaction });
+            }
+
+            if (inventoryReservationService?.reserveOnlineOrderInventory) {
+                // Rebuild immutable effect references after the transaction identity exists so
+                // reservation evidence points to the exact online order, not the quote-time
+                // PENDING placeholder used by read-only checkout resolution.
+                const reservationEffects = buildOnlineInventoryEffects({
+                    lines: resolved.prepared.preparedLines,
+                    recipePlan: resolved.recipePlan,
+                    locationId: normalized.location_id,
+                    orderId,
+                    invoiceNumber,
+                    trackingPin,
+                    strict: true
+                });
+                await inventoryReservationService.reserveOnlineOrderInventory({
+                    sourceId: orderId,
+                    locationId: normalized.location_id,
+                    effects: reservationEffects,
+                    transaction
+                });
             }
 
             if (resolved.promoApplication.applied && typeof storeRepository.updateSettingByKey === 'function') {
@@ -3419,7 +3481,9 @@ const getDirectWalletSessionDetails = (session = {}) => {
     const paymentIntent = providerPayload.paymentIntent || providerPayload.payment_intent || {};
     const paymentIntentAttributes = paymentIntent.attributes || {};
     const paymentFlow = providerPayload.paymentFlow || providerPayload.payment_flow || null;
-    const isDirectWallet = paymentFlow === 'direct_gcash' || paymentFlow === 'direct_maya';
+    const isDirectWallet = paymentFlow === 'direct_gcash'
+        || paymentFlow === 'direct_maya'
+        || paymentFlow === 'direct_card';
 
     return {
         payment_flow: isDirectWallet ? paymentFlow : (session.checkout_url ? 'hosted' : null),
@@ -3432,6 +3496,35 @@ const getDirectWalletSessionDetails = (session = {}) => {
         paymongo_return_url: isDirectWallet
             ? (providerPayload.returnUrl || providerPayload.return_url || null)
             : null
+    };
+};
+
+// Phase 142 (#823): capture_kind/order_total_amount/balance_due_amount/downpayment_refundable
+// were persisted on the session row since Phase 141 (#822) but never reached the client -- the
+// pending-payment panel and the confirmation screen have no way to say "this is your downpayment
+// of X, Y is due on delivery" without them. Present-and-null for a 'full' capture, same
+// convention as the quote response's own downpayment fields (never 0, never the total, so a
+// frontend can't mistake "no downpayment" for "downpayment of zero").
+const serializeDownpaymentSessionFields = (session = {}) => {
+    const captureKind = session.capture_kind || 'full';
+    if (captureKind !== 'downpayment') {
+        return {
+            capture_kind: captureKind,
+            order_total_amount: null,
+            balance_due_amount: null,
+            downpayment_refundable: null
+        };
+    }
+    const orderTotalCentavos = session.order_total_centavos;
+    const capturedCentavos = session.total_amount_centavos;
+    const balanceDueAmount = (orderTotalCentavos != null && capturedCentavos != null)
+        ? centavosToPeso(Math.max(0, Number(orderTotalCentavos) - Number(capturedCentavos)))
+        : null;
+    return {
+        capture_kind: captureKind,
+        order_total_amount: orderTotalCentavos != null ? centavosToPeso(orderTotalCentavos) : null,
+        balance_due_amount: balanceDueAmount,
+        downpayment_refundable: session.downpayment_refundable ?? null
     };
 };
 
@@ -3458,7 +3551,8 @@ const serializePaymentSession = (session = {}) => ({
     tracking_pin: session.tracking_pin || null,
     pos_transaction_id: session.pos_transaction_id || null,
     failure_code: session.failure_code || null,
-    failure_reason: session.failure_reason || null
+    failure_reason: session.failure_reason || null,
+    ...serializeDownpaymentSessionFields(session)
 });
 
 export const buildStoreCheckoutPaymentSessionUseCase = ({
@@ -3473,6 +3567,9 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     directGcashRequested = false,
     directMayaEnabled = false,
     directMayaRequested = false,
+    directCardEnabled = false,
+    directCardRequested = false,
+    directPaymentRequired = false,
     requireCommerceQrphConfig = () => [],
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
@@ -3503,11 +3600,25 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 
             const directGcashConfigRequired = requestedPaymentType === 'gcash' && directGcashRequested;
             const directMayaConfigRequired = requestedPaymentType === 'maya' && directMayaRequested;
+            const directCardConfigRequired = requestedPaymentType === 'card' && directCardRequested;
+            const directMethodUnavailable = directPaymentRequired && (
+                (requestedPaymentType === 'gcash' && !directGcashEnabled)
+                || (requestedPaymentType === 'maya' && !directMayaEnabled)
+                || (requestedPaymentType === 'card' && !directCardEnabled)
+            );
+            if (directMethodUnavailable) {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'The selected online payment method is not configured for direct PayMongo authorization.',
+                    { statusCode: 503, details: { code: 'DIRECT_PAYMENT_NOT_READY' } }
+                );
+            }
             const missingConfig = requestedPaymentType === 'qrph'
                 ? requireCommerceQrphConfig()
                 : requireCommercePaymentConfig({
                     requiresDirectGcash: directGcashConfigRequired,
-                    requiresDirectMaya: directMayaConfigRequired
+                    requiresDirectMaya: directMayaConfigRequired,
+                    requiresDirectCard: directCardConfigRequired
                 });
             if (missingConfig.length > 0) {
                 throw new DomainError(
@@ -3830,6 +3941,20 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         metadata,
                         returnUrl: directReturnUrl
                     });
+                } else if (requestedPaymentType === 'card' && directCardEnabled) {
+                    const directReturnUrl = buildStorefrontPaymentCallbackUrl({
+                        paymentMethod: requestedPaymentType,
+                        paymentSession: publicReference,
+                        paymentStatus: 'return',
+                        returnUrl: storefrontReturnUrl
+                    });
+                    providerResult = await paymongoService.createDirectCardPaymentIntent({
+                        amount: totalAmountCentavos,
+                        currency: 'PHP',
+                        description: `DGFY storefront checkout ${publicReference}`,
+                        metadata,
+                        returnUrl: directReturnUrl
+                    });
                 } else {
                     const successUrl = buildStorefrontPaymentCallbackUrl({
                         paymentMethod: requestedPaymentType,
@@ -3883,6 +4008,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     ? new Date(Date.now() + 30 * 60 * 1000)
                     : ((requestedPaymentType === 'gcash' && directGcashEnabled)
                         || (requestedPaymentType === 'maya' && directMayaEnabled)
+                        || (requestedPaymentType === 'card' && directCardEnabled)
                         ? new Date(Date.now() + 4 * 60 * 60 * 1000)
                         : null));
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
@@ -4153,7 +4279,7 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
+export const buildCancelStoreOrderUseCase = ({ storeRepository, inventoryReservationService = null }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
@@ -4231,6 +4357,14 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
                     'Order can only be cancelled before preparing.',
                     { statusCode: 409 }
                 );
+            }
+
+            if (inventoryReservationService?.releaseOnlineOrderInventory) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: existing.pos_transaction_id,
+                    transaction,
+                    reason: 'cancelled'
+                });
             }
 
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {

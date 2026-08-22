@@ -2,25 +2,19 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observabi
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
-
-// RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
-// -- this object's own `totals.total_amount` is what the order-confirmation screens
-// (SimpleCheckoutSuccessStep.jsx, FnbCheckoutRouteContainer.jsx) and the downloadable receipt
-// image actually read, and it was still being set from the client's pre-submission
-// `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
-// the authoritative `order.total_amount` from the checkout response, fall back to the client
-// value only if the server didn't send one.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
+// Phase 142 (#823): this is the widened extraction (carries amount_paid/balance_due through, not
+// just total_amount) into a shared model both this hook and useFnbCheckoutSubmission.js consume.
+// #857 separately restored a plain, un-widened inline copy of this same RF-1 fix directly on
+// `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
+// copy supersedes that inline one; no functional loss, since this is a strict superset.
+import { resolveTrackedTotals } from '../model/trackedTotals.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -68,6 +62,7 @@ export function useCheckoutSubmission({
   hasServiceCart,
   isDgfyCustomerSignedIn,
   isFnbMode,
+  isRetailMode,
   isServicesMode,
   isSimpleMode,
   missingCustomerInformation,
@@ -208,14 +203,21 @@ export function useCheckoutSubmission({
       toast.error(storefrontClosedToastMessage);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
-      const message = 'Please click Quote first before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && (checkoutBlockReason === 'missing_quote' || checkoutBlockReason === 'stale_quote')) {
+      // Phase 142 (#823): this shared hook (unlike useFnbCheckoutSubmission.js's own copy of these
+      // two reason codes) now also serves Simple/Retail, neither of which has an explicit "Quote"
+      // button -- their totals quote automatically in the background on cart change. The block
+      // itself is correct (a downpayment store's split is server-only and must be known before
+      // Place Order), just rare and self-resolving; the message says so instead of directing the
+      // shopper to a button that doesn't exist on those two modes.
+      const message = 'Updating your order total -- please wait a moment and try again.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'stale_quote') {
-      const message = 'Your cart changed. Please refresh Quote before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'downpayment_zero_total') {
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code -- see that file's comment.
+      const message = 'This order total is fully covered by your discount -- contact the store to place it.';
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -247,11 +249,15 @@ export function useCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
-      const message = 'Verify your email before placing this order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
     }
+    // Restored 2026-08-22 (#857) -- Services local-simulation preview, reverted by #853's develop
+    // reconciliation while StorefrontApp.jsx kept passing this branch's own params unchanged
+    // (servicesLocalSimulationEnabled/isServicesLocalSimulationMethod/createServicesLocalSimulation),
+    // leaving them silently dead-wired.
     const shouldCreateLocalServicesSimulation = isServicesMode
       && servicesLocalSimulationEnabled
       && typeof isServicesLocalSimulationMethod === 'function'
@@ -346,9 +352,12 @@ export function useCheckoutSubmission({
           }
         };
       }
-      if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
+      // Phase 142 (#823): Retail now shares this online-session branch -- previously Simple-only,
+      // Retail's payment step was a cash-only placeholder with no path to create a payment
+      // session at all.
+      if (!wantsServicesSubmission && (isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -366,6 +375,11 @@ export function useCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,
@@ -396,6 +410,10 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
+          // Restored 2026-08-22 (#857) -- #853's develop reconciliation passed a second positional
+          // arg here, but buildPayload (useFnbCheckoutQuote.js) takes a single options object; the
+          // override was silently discarded and a mixed product+service cart submitted its service
+          // lines into the product order.
           ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,

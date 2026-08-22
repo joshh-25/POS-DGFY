@@ -1,5 +1,6 @@
 import type { MobilePosClientConfig } from '../api/mobilePosClient';
 import type { CatalogProduct } from '../domain/catalog';
+import type { PosTextScale } from '../domain/textScale';
 import type { SqliteDriver } from '../db/driver';
 
 export interface PersistedCashierSession {
@@ -24,6 +25,7 @@ const AUTH_CONFIG_KEY = 'auth_config';
 const CATALOG_CACHE_KEY = 'catalog_cache';
 const BOOTSTRAP_CACHE_KEY = 'bootstrap_cache';
 const OFFLINE_AUTH_PROFILE_KEY = 'offline_auth_profile';
+const TEXT_SCALE_PREFERENCE_KEY = 'text_scale_preference';
 
 export interface PersistedCatalogCache {
     savedAt: string;
@@ -97,6 +99,14 @@ export class RuntimeStateService {
 
     async getOfflineAuthProfile(): Promise<PersistedOfflineAuthProfile | null> {
         return await this.getRuntimeState<PersistedOfflineAuthProfile>(OFFLINE_AUTH_PROFILE_KEY);
+    }
+
+    async saveTextScalePreference(scale: PosTextScale): Promise<void> {
+        await this.saveRuntimeState(TEXT_SCALE_PREFERENCE_KEY, scale);
+    }
+
+    async getTextScalePreference(): Promise<PosTextScale | null> {
+        return await this.getRuntimeState<PosTextScale>(TEXT_SCALE_PREFERENCE_KEY);
     }
 
     async clearOfflineAuthProfile(): Promise<void> {
