@@ -69,7 +69,15 @@ export const resolveDownpaymentForTotal = ({ settings, totalAmount, paymentElect
         return FULL_PAYMENT_RESULT;
     }
 
-    const minCentavos = Number.isInteger(settings.min_downpayment_centavos) && settings.min_downpayment_centavos > 0
+    // Phase 150 (#865/#866) RF-5: the minimum only ever meant "protect a percentage-mode online
+    // capture from being too small to be worth the payment-gateway fee" -- it was never a floor on
+    // a fixed amount the merchant chose deliberately. downpaymentSettingsUseCases.js's write-time
+    // rule now requires (and downpaymentSettingsForm.js/DownpaymentSettingsPanel.jsx now render) the
+    // minimum only for type === 'percentage'; this resolution-time floor must match that, or a
+    // tenant still carrying a stale min > fixed from before this change keeps silently overriding
+    // its own fixed amount with a value the panel no longer even shows.
+    const minCentavos = type === 'percentage'
+        && Number.isInteger(settings.min_downpayment_centavos) && settings.min_downpayment_centavos > 0
         ? settings.min_downpayment_centavos
         : 0;
     const flooredCentavos = Math.max(rawCentavos, minCentavos);

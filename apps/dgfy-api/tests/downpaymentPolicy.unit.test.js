@@ -255,3 +255,28 @@ describe('resolveDownpaymentForTotal -- customer_choice (Phase 150, #866)', () =
         expect(result.payment_mode).toBe('full_payment');
     });
 });
+
+// Phase 150 (#865/#866) RF-5: the minimum floor's write-time rule is now percentage-only
+// (downpaymentSettingsUseCases.js requires it only for type='percentage'); the resolution-time
+// floor in resolveDownpaymentForTotal must match, or a tenant still carrying a stale
+// min_downpayment_centavos from before this change keeps silently overriding a fixed amount the
+// merchant chose deliberately -- exactly the #865 complaint, just moved from write-time to
+// resolution-time.
+describe('resolveDownpaymentForTotal -- fixed-mode minimum floor is a no-op (Phase 150 RF-5)', () => {
+    it('ignores a stale min_downpayment_centavos greater than the fixed amount', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: fixedSettings({ downpayment_fixed_centavos: 10000, min_downpayment_centavos: 50000 }), // fixed PHP 100, stale min PHP 500
+            totalAmount: 1000
+        });
+        expect(result.downpayment_amount).toBe(100); // the fixed amount, NOT the stale minimum
+        expect(result.balance_due_amount).toBe(900);
+    });
+
+    it('still applies the minimum in percentage mode, unchanged', () => {
+        const result = resolveDownpaymentForTotal({
+            settings: percentageSettings({ downpayment_rate_bps: 500, min_downpayment_centavos: 20000 }), // 5% floor PHP 200
+            totalAmount: 500
+        });
+        expect(result.downpayment_amount).toBe(200);
+    });
+});
