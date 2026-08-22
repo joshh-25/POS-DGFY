@@ -8,22 +8,13 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): this is the widened extraction (carries amount_paid/balance_due through, not
+// just total_amount) into a shared model both this hook and useFnbCheckoutSubmission.js consume.
+// #857 separately restored a plain, un-widened inline copy of this same RF-1 fix directly on
+// `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
+// copy supersedes that inline one; no functional loss, since this is a strict superset.
+import { resolveTrackedTotals } from '../model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
-
-// RF-1 (PR #753 review): the #747 fix only reached the tracking snapshot's `total_amount` field
-// -- this object's own `totals.total_amount` is what the order-confirmation screens
-// (SimpleCheckoutSuccessStep.jsx, FnbCheckoutRouteContainer.jsx) and the downloadable receipt
-// image actually read, and it was still being set from the client's pre-submission
-// `totalsForDisplay`, not the server-persisted order. Same fix as the tracking snapshot: prefer
-// the authoritative `order.total_amount` from the checkout response, fall back to the client
-// value only if the server didn't send one.
-// Restored 2026-08-22 (#857) -- reverted by #853's develop reconciliation without a stated reason.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -71,6 +62,7 @@ export function useCheckoutSubmission({
   hasServiceCart,
   isDgfyCustomerSignedIn,
   isFnbMode,
+  isRetailMode,
   isServicesMode,
   isSimpleMode,
   missingCustomerInformation,
@@ -211,14 +203,21 @@ export function useCheckoutSubmission({
       toast.error(storefrontClosedToastMessage);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
-      const message = 'Please click Quote first before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && (checkoutBlockReason === 'missing_quote' || checkoutBlockReason === 'stale_quote')) {
+      // Phase 142 (#823): this shared hook (unlike useFnbCheckoutSubmission.js's own copy of these
+      // two reason codes) now also serves Simple/Retail, neither of which has an explicit "Quote"
+      // button -- their totals quote automatically in the background on cart change. The block
+      // itself is correct (a downpayment store's split is server-only and must be known before
+      // Place Order), just rare and self-resolving; the message says so instead of directing the
+      // shopper to a button that doesn't exist on those two modes.
+      const message = 'Updating your order total -- please wait a moment and try again.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'stale_quote') {
-      const message = 'Your cart changed. Please refresh Quote before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'downpayment_zero_total') {
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code -- see that file's comment.
+      const message = 'This order total is fully covered by your discount -- contact the store to place it.';
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -353,7 +352,10 @@ export function useCheckoutSubmission({
           }
         };
       }
-      if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
+      // Phase 142 (#823): Retail now shares this online-session branch -- previously Simple-only,
+      // Retail's payment step was a cash-only placeholder with no path to create a payment
+      // session at all.
+      if (!wantsServicesSubmission && (isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
           const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);

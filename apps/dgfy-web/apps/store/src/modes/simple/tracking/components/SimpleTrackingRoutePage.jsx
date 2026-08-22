@@ -259,6 +259,12 @@ export function SimpleTrackingRoutePage({
                 {viewModel.hasServiceFee ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Service fee</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.serviceFeeAmount)}</span></div> : null}
               </div>
               {hasTotal ? <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span><span style={{ fontSize: 18, fontWeight: 800, color: dgfyPrimary, fontFamily: servicesDisplayFont }}>{money(viewModel.trackingResult.totalAmount)}</span></div> : null}
+              {viewModel.trackingResult.paymentStatus === 'partially_paid' && viewModel.trackingResult.balanceDue != null ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#92400e' }}>
+                  <span>Partially paid</span>
+                  <span style={{ fontWeight: 700 }}>Balance due: {money(viewModel.trackingResult.balanceDue)}</span>
+                </div>
+              ) : null}
             </div>
           </section>
 

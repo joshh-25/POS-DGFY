@@ -6940,6 +6940,166 @@ after this update: **135**.
 - `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` (new)
 - Issue #822 (this phase); #838, #839 (handed to PM during this phase)
 
+## Phase 142 - Storefront Checkout UI for Downpayment
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #823, Phase 142 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 141.
+- Release: two `develop`-targeted PRs — PR #841 (prerequisite fix, #613), then the Phase 142 PR
+  stacked on it (`feature/823-downpayment-checkout-ui`).
+
+### Objective and Scope
+
+- **Prerequisite fixed first, its own PR (#613).** Retail and Simple MSME guest checkout was
+  blocked at Place Order even after successful OTP verification — `StorefrontApp.jsx` never passed
+  `guestCheckoutIntentId`/`guestCheckoutOtpVerified`/`guestCheckoutProof` into the shared
+  `useCheckoutSubmission` call site, a pure wiring omission (the sibling F&B call a few lines above
+  it already had them). Guest checkout is broken without this fix and Surebiz (the epic's driving
+  customer) is Retail guest-heavy. Also fixed `guestCheckoutDraft.js`'s stale payment-type
+  allow-list (missing `grab_pay`/`shopeepay`, silently coercing a restored draft to `cash`).
+- **The frontend had zero downpayment awareness before this phase** — greenfield on the client.
+  Implements the corrected model from Phase 141/PR #840: at a `downpayment_required` store the
+  customer's only choice is which online rail pays the downpayment; no plain-cash option (the
+  backend already 422s `DOWNPAYMENT_CAPTURE_NOT_AVAILABLE`), no full-online option (the separate,
+  unbuilt `customer_choice` mode), no payment-mode toggle.
+- **Backend, additive-only, no capture logic touched:**
+  `buildListStoreCatalogUseCase` gains a top-level `payment_mode` field on the public
+  `GET /store/catalog` response (`'full_payment'` default, fail-closed on any settings-read
+  error) — lets the storefront hide cash and force a quote before the payment step, since Simple/
+  Retail previously never quoted at all without a discount code applied.
+  `serializePaymentSession` gains `capture_kind`/`order_total_amount`/`balance_due_amount`/
+  `downpayment_refundable` (persisted since Phase 141, never serialized before).
+  `serializeOrderBase` gains `amount_paid`/`balance_due` (same gap). All four new session/order
+  fields are `null`/`'full'` for a `full_payment` order, present-and-null per Phase 140's own
+  convention.
+- **Frontend, one shared presentation model
+  (`shared/model/storefrontDownpaymentPresentation.js`) every surface reads from:** normalizes
+  order/session/quote (in that precedence — presence of a higher-precedence source always wins,
+  even when it says "no downpayment here") into one `{active, downpaymentAmount,
+  balanceDueAmount, orderTotalAmount, refundable}` shape. Threaded through: a third mode-agnostic
+  auto-quote arm in `StorefrontApp.jsx` (forces the quote Simple/Retail previously skipped);
+  `requireQuoteForCheckout` in `useCheckoutTotalsAndGating.js` (blocks Place Order until that
+  quote lands); downpayment/balance rows on every checkout summary (Simple/F&B/Retail, desktop +
+  mobile); a downpayment-aware payment-step label/callout and hidden cash option
+  (`buildStorefrontCheckoutPaymentOptions`'s new `hideCash` option); a downpayment-aware pending-
+  payment panel (amount due, balance note, "Try a different payment method" instead of a
+  cash-fallback dead end); downpayment-aware confirmation-screen and tracking-page rows; a
+  dedicated `downpayment_zero_total` block reason for the voucher-discounts-order-to-zero edge
+  case (named risk in planning, not discovered live).
+- **Retail wired to online payment for the first time** (subsumes #626 gap 2). Its payment step
+  was a hardcoded cash-only placeholder with an inert "coming soon" card and its own disconnected
+  local `paymentType` state. Now shares `fnbPaymentType`/`handlePaymentTypeChange` with F&B/MSME
+  (threaded through `useRetailOrderPageProps.js`'s existing big-prop-object pattern — the
+  intermediate prop-forwarding layers needed no changes, since they already pass that object
+  through opaquely), and the online-session-creation branch in `useCheckoutSubmission.js`
+  (previously Simple-only) also serves Retail. Retail's own step state is local to
+  `RetailOrderPage.jsx` (not hoisted like Simple's), so it self-resumes to its payment step after a
+  PayMongo redirect by watching `qrphPaymentSession` rather than needing a pushed-down step
+  number. #626 gap 1 (per-store cash/COD disable for card-only full_payment stores) stays deferred.
+- `resolveTrackedTotals`, previously duplicated verbatim in `useCheckoutSubmission.js` and
+  `useFnbCheckoutSubmission.js`, extracted to `shared/model/trackedTotals.js` and widened to
+  overlay `amount_paid`/`balance_due` (previously silently discarded alongside the pre-existing
+  `total_amount` fix, RF-1/PR #753).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 141 (#822, the capture backend this phase's UI drives) and, for the guest
+  checkout prerequisite, #613 (fixed first, PR #841).
+- Gates nothing downstream directly, but is the storefront-visible half of what Phase 144 (#824,
+  accept/reject/refund) and Phase 148 (#825, balance settlement) will build on — the
+  `downpayment_refundable` seam (`buildDownpaymentRefundableNote`) exists now for Phase 144 but
+  ships no reviewed legal copy (blocked on #280). (#824/#825 renumbered 2026-08-22, #848 — Phase
+  143 is now the POS admin config UI, #848 (corrected from an earlier "skupervisor" framing during
+  #848's own planning). #825 renumbered again 145→148 on 2026-08-22 for the #853/#578-precedent
+  collision — see the dated note at the end of this file.)
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table — no migration, no
+  compliance-declaration ambiguity (declared major/payments per the existing `modules/store/**`
+  floor), no `staging`/`main` base — proceeded through commit/push/PR per the standing
+  skip-checkpoint-confirmation preference.
+- Board: #613 → `For Review` at PR #841's open. #823 → `In progress` at branch time, `For Review`
+  at PR-open time.
+- **Hand-off to PM, not resolved here:** #822 and #823 both still carry the stale "online order
+  that charges less" framing in their own issue text; #823 additionally cites superseded ADR 0069
+  clause 7 as its rationale (ADR 0070 clause 7 is the live successor). The admin UI gap this note
+  originally flagged (no way to configure downpayment for a real tenant except a raw authenticated
+  `PUT /api/v1/downpayment/settings` call) is now filed, scheduled, and shipped as its own Phase
+  143 ledger entry: #848, a POS Settings tab (not skupervisor, per that phase's own premise
+  correction), which prompted the #824/#825 renumbering to 144/145 above and a further 145→148
+  renumber since — see Phase 143's own entry and the dated note at the end of this file.
+
+### Acceptance and Validation Evidence
+
+- PR #841 (#613): a source-text contract test scoped to the `useCheckoutSubmission` call-site
+  block specifically (not the whole file — the three identifiers were already referenced
+  elsewhere via `useGuestCheckoutOtp`/`useFnbCheckoutSubmission`, so a blanket file-content check
+  would have passed even with the bug present) — verified to fail on the pre-fix code and pass
+  after. `grab_pay`/`shopeepay` regression cases added to `guestCheckoutDraft.test.js`. Full store
+  vitest suite: 453 passed, 1 pre-existing unrelated failure (confirmed identical on unmodified
+  `develop`). `npm run build:store` passed.
+- Backend: 15 tests in `storeCheckoutDownpaymentResolution.unit.test.js` (13 pre-existing + 2 new
+  — the client-facing session serializer's downpayment case and its additive-only pin), 7 in
+  `downpaymentWebhookFinalization.unit.test.js` (5 pre-existing + 2 new — the client-facing order
+  serializer's `amount_paid`/`balance_due` case and its additive-only pin), 5 new in
+  `storeCatalogPaymentMode.unit.test.js` (including the settings-read-failure and
+  no-repository-injected fallbacks). `npm run check:architecture` OK.
+  `GITHUB_BASE_REF=develop npm run check:compliance` confirmed to fail first (missing
+  declaration), then pass with
+  `docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md`. Full
+  `apps/dgfy-api` store-scoped suite: 392/397, the 3 failures (2 DB-dependent integration suites +
+  1 missing-workspace-module migration test) confirmed identical on unmodified `develop`.
+- Frontend: new/extended test coverage across every changed surface —
+  `storefrontDownpaymentPresentation.test.js` (the shared model, 18 cases including precedence and
+  the `buildPaymentModeStorePatch` patch builder), `retailCheckoutOnlinePayments.contract.test.js`
+  (new, mirrors the Simple contract test), extended
+  `simpleCheckoutOnlinePayments.contract.test.js`, `simpleCheckoutSuccessStep.test.jsx`, new
+  `fnbCheckoutConfirmation.test.jsx`, extended `simpleTrackingPresentation.test.js` (Simple/
+  Retail/F&B tracking balance-due wiring), new `trackedTotals.test.js`, `checkoutRules.test.js`
+  (the `downpayment_zero_total` reason and `requireQuote` behavior), and a `renderHook`-based
+  `useCheckoutTotalsAndGating.downpayment.test.js`. A first attempt at testing
+  `useStoreCatalogLoader.js`'s `payment_mode` patch through the full hook via `renderHook` crashed
+  the vitest worker on an effect-triggered infinite loop (an over-simplified `requestJson` mock
+  returning the same response for every call site) — fixed by extracting the pure
+  `buildPaymentModeStorePatch` function instead of testing through the hook, not by working around
+  the crash. Full store vitest suite: 495 passed, the same 1 pre-existing unrelated failure.
+  `npm run build:store` (tier-0) passed after every batch, not just once at the end.
+- **Not verifiable this session, disclosed rather than glossed:** no end-to-end verification
+  against a live PayMongo sandbox or a real tenant flipped to `downpayment_required` — unit/
+  contract coverage only. `POST /api/v1/compliance/preflight` not executed against a live
+  environment (same disclosure shape as every prior downpayment-epic declaration).
+
+### Implementation Links
+
+- PR #841: `apps/dgfy-web/apps/store/src/StorefrontApp.jsx`,
+  `apps/dgfy-web/apps/store/src/checkout/guestCheckoutDraft.js`
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/store/index.js` (catalog `payment_mode`, session/order serializer
+  widenings)
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js` (`hideCash`),
+  `apps/dgfy-web/apps/store/src/shared/model/trackedTotals.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/checkoutRules.js` (`downpayment_zero_total`)
+- `apps/dgfy-web/apps/store/src/shared/components/checkout/DownpaymentPaymentCallout.jsx` (new),
+  `PaymentMethodSelectorBlock.jsx`, `StorefrontOnlinePaymentPanel.jsx`,
+  `StorefrontCheckoutSummaryContainer.jsx`
+- `apps/dgfy-web/apps/store/src/shared/hooks/useStoreCatalogLoader.js`,
+  `apps/dgfy-web/apps/store/src/shared/hooks/useCheckoutSubmission.js`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/**`,
+  `apps/dgfy-web/apps/store/src/modes/fnb/checkout/**` (summary rows, payment step, confirmation)
+- `apps/dgfy-web/apps/store/src/modes/retail/checkout/pages/RetailOrderPage.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/retail/checkout/components/RetailOrderPaymentStep.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/retail/checkout/hooks/useRetailOrderPageProps.js` (Retail
+  wiring)
+- `apps/dgfy-web/apps/store/src/modes/{simple,retail,fnb}/tracking/model/*TrackingPayload.js`,
+  `.../components/*ActiveView.jsx`, `.../components/*CompletedView.jsx` (balance-due tracking rows)
+- `docs/api/specification.md`
+  (`docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md`, new)
+- Issue #823 (this phase); #613 (prerequisite, PR #841); #626 gap 2 subsumed, gap 1 deferred
+
 ## Phase 145 - MSME POS Online Order Queue Visibility
 
 ### Initiative and Release

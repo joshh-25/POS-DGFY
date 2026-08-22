@@ -3,6 +3,7 @@ import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinM
 import { DGFY_ACRONYM, ORDER_METHOD_OPTIONS } from '../model/storefrontConstants.js';
 import { StorefrontResponsiveImage } from './storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../model/storefrontDownpaymentPresentation.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the product/service checkout tab
@@ -77,6 +78,10 @@ export function StorefrontCheckoutSummaryContainer({
   totalsForDisplay,
   updateQty,
 }) {
+  // Phase 142 (#823): quote-sourced only -- this container renders before a payment session
+  // exists (it's the pre-checkout totals box, not a pending-payment or confirmation surface).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
+  const downpaymentRows = buildDownpaymentTotalsRows({ display: downpaymentDisplay, money, orderMethod });
   return (
     <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
       {isDgfyCustomerSignedIn ? (
@@ -368,6 +373,12 @@ export function StorefrontCheckoutSummaryContainer({
                 <span style={{ fontSize: 14, fontWeight: 800 }}>Total Amount Due</span>
                 <strong style={{ fontSize: 22 }}>{money(totalsForDisplay.total_amount)}</strong>
               </div>
+              {downpaymentRows.map((row) => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, opacity: .95, fontWeight: row.emphasis ? 800 : 400 }}>{row.label}</span>
+                  <strong style={{ fontSize: 14 }}>{row.value}</strong>
+                </div>
+              ))}
             </div>
             <div style={{ marginTop: 10, fontSize: 12, opacity: .95 }}>
               {hasServiceCart
@@ -406,7 +417,9 @@ export function StorefrontCheckoutSummaryContainer({
           {quoteError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
           {!hasServiceCart && quoteResult && (
             <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>
-              Quote synced. Total due: {money(totalsForDisplay.total_amount)}
+              {downpaymentDisplay.active
+                ? `Quote synced. Downpayment due now: ${money(downpaymentDisplay.downpaymentAmount)}`
+                : `Quote synced. Total due: ${money(totalsForDisplay.total_amount)}`}
             </p>
           )}
           {storefrontClosedByHours && renderStorefrontClosedNotice({ accent: servicesPrimary, background: '#eff6ff', border: '#bfdbfe' })}

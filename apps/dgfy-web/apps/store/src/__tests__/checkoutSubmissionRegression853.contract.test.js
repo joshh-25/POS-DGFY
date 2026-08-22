@@ -27,14 +27,23 @@ describe('checkout-submission hooks: #853 regression guards', () => {
     expect(submission).toContain('...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),');
   });
 
-  it('R1: resolveTrackedTotals is defined and used to overlay the server-persisted order total in both hooks', () => {
+  it('R1: resolveTrackedTotals is defined (or imported) and used to overlay the server-persisted order total in both hooks', () => {
     // Without this, checkoutResult.totals and the tracking snapshot's total_amount fall back to
     // the client's pre-submission totalsForDisplay, which does not reflect a just-applied voucher.
-    expect(submission).toContain('const resolveTrackedTotals = (order, fallbackTotals) => {');
+    // Two valid sources: the plain inline definition (#857's restore, what `develop` alone carries)
+    // or an import from shared/model/trackedTotals.js (#844/Phase 142's widened extraction, which
+    // additionally carries amount_paid/balance_due and supersedes the inline copy on that branch)
+    // -- either satisfies the property this test actually guards.
+    const definesOrImportsResolveTrackedTotals = (source) => (
+      source.includes('const resolveTrackedTotals = (order, fallbackTotals) => {')
+      || /import\s*\{\s*resolveTrackedTotals\s*\}\s*from\s*['"][^'"]*model\/trackedTotals\.js['"]/.test(source)
+    );
+
+    expect(definesOrImportsResolveTrackedTotals(submission)).toBe(true);
     expect(submission).toContain('totals: resolveTrackedTotals(productData?.order, totalsForDisplay)');
     expect(submission).toContain('totals: resolveTrackedTotals(data?.order, totalsForDisplay)');
 
-    expect(fnbSubmission).toContain('const resolveTrackedTotals = (order, fallbackTotals) => {');
+    expect(definesOrImportsResolveTrackedTotals(fnbSubmission)).toBe(true);
     expect(fnbSubmission).toContain('totals: resolveTrackedTotals(data?.order, totalsForDisplay)');
   });
 

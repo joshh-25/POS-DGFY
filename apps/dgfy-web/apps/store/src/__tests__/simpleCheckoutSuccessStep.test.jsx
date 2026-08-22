@@ -59,4 +59,41 @@ describe('SimpleCheckoutSuccessStep', () => {
     expect(screen.getByRole('button', { name: 'Download Image' }).style.width).toBe('auto');
     expect(screen.getByTestId('simple-checkout-success').style.gridTemplateColumns).toContain('1.45fr');
   });
+
+  // Phase 142 (#823): additive-only pin -- the fixture above (no checkoutResult.order) must keep
+  // rendering exactly as before; this covers the order-sourced downpayment branch specifically.
+  it('shows the downpayment/balance split for a partially_paid order, and stays unaffected otherwise', () => {
+    const downpaymentCheckoutResult = {
+      ...checkoutResult,
+      order: { payment_status: 'partially_paid', amount_paid: 101, balance_due: 404, total_amount: 505 }
+    };
+
+    render(
+      <SimpleCheckoutSuccessStep
+        {...sharedProps}
+        checkoutResult={downpaymentCheckoutResult}
+        fulfillmentLabel="Delivery"
+        paymentType="gcash"
+      />
+    );
+
+    expect(screen.getByText('GCASH DOWNPAYMENT')).toBeTruthy();
+    expect(screen.getByText('Paid now')).toBeTruthy();
+    expect(screen.getByText('Balance due on delivery')).toBeTruthy();
+    expect(screen.getByText('PHP 101.00')).toBeTruthy();
+    expect(screen.getByText('PHP 404.00')).toBeTruthy();
+  });
+
+  it('does not show the downpayment split for a plain paid/unpaid order', () => {
+    render(
+      <SimpleCheckoutSuccessStep
+        {...sharedProps}
+        fulfillmentLabel="Pickup"
+        paymentType="cash"
+      />
+    );
+
+    expect(screen.getByText('CASH')).toBeTruthy();
+    expect(screen.queryByText('Paid now')).toBeNull();
+  });
 });

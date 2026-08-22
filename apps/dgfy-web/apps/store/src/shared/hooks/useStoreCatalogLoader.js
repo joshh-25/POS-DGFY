@@ -18,6 +18,7 @@ import {
 import { normalizeBusinessMode } from '../../discovery/model/businessModePins.js';
 import { buildAccessPolicyStorePatch } from '../model/customerAccess.js';
 import { buildWorkflowCapabilityStorePatch } from '../model/workflowCapabilities.js';
+import { buildPaymentModeStorePatch } from '../model/storefrontDownpaymentPresentation.js';
 import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
 
@@ -109,8 +110,11 @@ export function useStoreCatalogLoader({
     const paymentCapabilitiesPatch = catalogData?.payment_capabilities
       ? { payment_capabilities: catalogData.payment_capabilities }
       : null;
-    if (accessPatch || capabilityPatch || paymentCapabilitiesPatch) {
-      setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch } : prev));
+    // Phase 142 (#823): always applied (not conditional like the two above) -- see
+    // buildPaymentModeStorePatch's own comment for why.
+    const paymentModePatch = buildPaymentModeStorePatch(catalogData);
+    if (accessPatch || capabilityPatch || paymentCapabilitiesPatch || paymentModePatch) {
+      setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch, ...paymentModePatch } : prev));
     }
     setCatalog(
       Array.isArray(catalogData?.items)
