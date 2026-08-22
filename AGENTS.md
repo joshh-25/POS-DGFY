@@ -127,9 +127,12 @@ framing *only* for that role, *only* mid-incident, *only* on Pat's explicit real
 allowlist has no Agent tool (`pr-reviewer`'s is `Read, Grep, Glob, Bash`) — it cannot itself invoke
 `promoter`. "Reviewer invokes Deploy/Release as the next step" is implemented as the acting session
 running each role's procedure in sequence, not one role programmatically calling another. This is
-also why `promoter` and `incident-responder` are Claude Code **skills**
-(`.claude/skills/<role>/SKILL.md`, auto-invoked in the main session) rather than isolated subagents
-like `pr-reviewer`/`observer`/`verifier`.
+also why `promoter` and `incident-responder` are Claude Code **skills that run inline in the main
+session**, rather than isolated subagents like `pr-reviewer`/`observer`/`verifier` — those three
+also have a `.claude/skills/<role>/SKILL.md` entry (#868, for a typed `/name` command), but it's a
+thin `context: fork` dispatch wrapper that spawns the isolated subagent rather than running inline
+itself. The distinction that matters is *where the work executes* (inline vs. forked/isolated), not
+which `.claude/` file exists — after #868, file location alone no longer tells them apart.
 
 **PM is callable by any role, mid-task, not just as the flow's entry point.** Worker, Reviewer, or
 Promoter — any role that finds work outside its own current scope (a correction, a bug, a gap) hands

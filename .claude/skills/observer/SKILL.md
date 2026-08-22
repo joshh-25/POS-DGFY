@@ -9,7 +9,5 @@ disable-model-invocation: true
 ---
 
 Run a Sentry triage pass for `dgfy-platform` now. Focus: $ARGUMENTS (if empty, cover the standard
-scope). Follow `.agents/skills/observer/SKILL.md` in full: establish the release timeline, bucket
-every open issue, dedupe against the GitHub backlog, apply the noise policy (cap of 3 filed issues
-per run), resolve confirmed-dead noise in Sentry, and write the dated summary to
-`docs/ops/SENTRY_TRIAGE_<date>.md`.
+scope). Follow `.agents/skills/observer/SKILL.md` in full — its procedure, noise policy, output
+location, and first-live-use gate all still apply. Do not restate its rules here.

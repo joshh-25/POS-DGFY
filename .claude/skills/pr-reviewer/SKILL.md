@@ -9,6 +9,6 @@ disable-model-invocation: true
 ---
 
 Review PR $ARGUMENTS on `Sieitzz/dgfy-platform`. If no PR number was given, find the PR for the
-current branch (`gh pr view`). Follow `.agents/skills/pr-reviewer/SKILL.md` in full: audit hygiene,
-issue linkage, compliance, architecture, the diff itself, and merge readiness; post exactly one
-`## Review` comment in the fixed table format; merge only if your own merge-policy table allows it.
+current branch (`gh pr view`). Follow `.agents/skills/pr-reviewer/SKILL.md` in full — its audit
+scope, output format, merge policy, and first-live-use gate all still apply. Do not restate its
+rules here.
