@@ -229,7 +229,9 @@ function createGitBlobReader(projectRoot) {
       return cache.get(key);
     },
     exists(ref, filePath) {
-      return this.read(ref, filePath) !== null;
+      const key = cacheKey(ref, filePath);
+      if (!cache.has(key)) readMany([{ ref, filePath }]);
+      return cache.has(key) && cache.get(key) !== null;
     },
   };
 }
@@ -347,14 +349,22 @@ function inspectSuspiciousDeletions(changedFiles, justification) {
     }));
 }
 
-function inspectTargetReversions(projectRoot, mergeBase, headRef, targetRef, justification, blobReader = null) {
+function inspectTargetReversions(
+  projectRoot,
+  mergeBase,
+  headRef,
+  targetRef,
+  justification,
+  blobReader = null,
+  targetChanges = null,
+) {
   if (!targetRef) return { preserved: [], suspicious: [] };
 
-  const targetChanges = collectNameStatus(projectRoot, mergeBase, targetRef);
+  const resolvedTargetChanges = targetChanges || collectNameStatus(projectRoot, mergeBase, targetRef);
   const preserved = [];
   const suspicious = [];
 
-  for (const entry of targetChanges) {
+  for (const entry of resolvedTargetChanges) {
     const filePath = entry.path;
     if (entry.status === 'D') continue;
 
@@ -409,8 +419,10 @@ function checkMergeHygiene(options, logger = console) {
   const targetComparisonBase = computeTargetComparisonBase(projectRoot, headSha, targetSha, mergeBase);
   const blobReader = createGitBlobReader(projectRoot);
   const blobRequests = changedFiles.map(({ path: filePath }) => ({ ref: headSha, filePath }));
+  const targetChanges = targetSha
+    ? collectNameStatus(projectRoot, targetComparisonBase, targetSha)
+    : [];
   if (targetSha) {
-    const targetChanges = collectNameStatus(projectRoot, targetComparisonBase, targetSha);
     for (const { path: filePath } of targetChanges) {
       blobRequests.push(
         { ref: targetSha, filePath },
@@ -430,6 +442,7 @@ function checkMergeHygiene(options, logger = console) {
     targetSha,
     justification,
     blobReader,
+    targetChanges,
   );
 
   const warnings = [...justification.warnings];

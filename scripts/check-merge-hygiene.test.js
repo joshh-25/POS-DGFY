@@ -121,6 +121,39 @@ test('reads batched git blobs when a changed path contains spaces', () => {
   }
 });
 
+test('reads target-side batched git blobs when a changed path contains spaces', () => {
+  const projectRoot = makeTempProject();
+  try {
+    initBase(projectRoot);
+    writeFile(projectRoot, 'Target Notes/release plan.md', 'base\n');
+    commitAll(projectRoot, 'add spaced target path');
+
+    git(projectRoot, ['switch', '-c', 'target']);
+    writeFile(projectRoot, 'Target Notes/release plan.md', 'target\n');
+    commitAll(projectRoot, 'update spaced target path');
+
+    git(projectRoot, ['switch', 'main']);
+    git(projectRoot, ['switch', '-c', 'feature']);
+    writeFile(projectRoot, 'Target Notes/release plan.md', 'target\n');
+    commitAll(projectRoot, 'preserve spaced target path');
+
+    const report = checkMergeHygiene({
+      projectRoot,
+      base: 'main',
+      head: 'feature',
+      target: 'target',
+    }, silentLogger);
+
+    assert.equal(report.status, 'pass');
+    assert.deepEqual(
+      report.target_changes_preserved.map((entry) => entry.path),
+      ['Target Notes/release plan.md'],
+    );
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('passes when no target drift exists', () => {
   const projectRoot = makeTempProject();
   try {
