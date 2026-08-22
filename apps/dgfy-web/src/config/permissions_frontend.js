@@ -96,6 +96,17 @@ export const PERMISSION_GROUPS = {
             PAY_AFFILIATE_CASHOUTS: "affiliates:cashout_pay"
         }
     },
+    // #848 (Phase 143). Mirrors apps/dgfy-api/src/config/permissions.js's DOWNPAYMENT group verbatim
+    // -- was missing from this fallback since Phase 138 (#820) added the group backend-side, which
+    // is exactly the drift #673's parity test above exists to catch (confirmed red on `develop`
+    // before this fix: "frontend is missing group DOWNPAYMENT").
+    DOWNPAYMENT: {
+        label: "Downpayment & Partial Payment",
+        permissions: {
+            VIEW_DOWNPAYMENT_SETTINGS: "downpayment:view",
+            MANAGE_DOWNPAYMENT_SETTINGS: "downpayment:settings"
+        }
+    },
     // #655. This PERMISSION_GROUPS export is only the degraded-path fallback -- the live source is
     // the server-driven `roleCatalog.permission_groups` (GET /users/role-catalog, built by
     // apps/dgfy-api/src/config/modeRolePresets.js's buildPermissionGroupsForMode). Kept in sync so a
