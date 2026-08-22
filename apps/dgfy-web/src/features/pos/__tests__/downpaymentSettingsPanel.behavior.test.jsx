@@ -117,4 +117,97 @@ describe('DownpaymentSettingsPanel', () => {
         expect(screen.getByText(/can't change them/i)).toBeTruthy();
         expect(screen.getByRole('button', { name: /save/i }).disabled).toBe(true);
     });
+
+    // Phase 150 (#865): the Minimum downpayment field is a no-op/silent-override trap in fixed
+    // mode -- it's hidden entirely rather than shown-but-confusing.
+    it('hides the Minimum downpayment field in fixed mode, shows it in percentage mode', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        const user = userEvent.setup();
+        render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
+
+        await screen.findByText(/Full payment up front/i);
+        await user.click(screen.getByText(/Downpayment required/i));
+
+        // Defaults to percentage -- Minimum is visible.
+        expect(await screen.findByLabelText(/Minimum downpayment/i)).toBeTruthy();
+
+        await user.click(screen.getByText('percentage'));
+        await user.click(await screen.findByText(/Fixed amount/i));
+
+        expect(screen.queryByLabelText(/Minimum downpayment/i)).toBeNull();
+    });
+
+    // Phase 150 (#865): saving a fixed-mode row never requires (or sends a nonzero)
+    // min_downpayment_centavos -- confirms the client-side gate matches the relaxed backend rule.
+    it('saves a valid fixed-amount row with no minimum entered', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        updateDownpaymentSettings.mockResolvedValueOnce({ ...downpaymentRequiredSettings(), downpayment_type: 'fixed', downpayment_fixed_centavos: 50000, min_downpayment_centavos: 0 });
+        const user = userEvent.setup();
+        render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
+
+        await screen.findByText(/Full payment up front/i);
+        await user.click(screen.getByText(/Downpayment required/i));
+        await user.click(screen.getByText('percentage'));
+        await user.click(await screen.findByText(/Fixed amount/i));
+        await user.type(screen.getByLabelText(/Fixed amount \(PHP\)/i), '500');
+        await user.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));
+        expect(updateDownpaymentSettings).toHaveBeenCalledWith({
+            payment_mode: 'downpayment_required',
+            downpayment_type: 'fixed',
+            downpayment_rate_bps: null,
+            downpayment_fixed_centavos: 50000,
+            min_downpayment_centavos: 0,
+            downpayment_refundable: true
+        });
+        expect(toastError).not.toHaveBeenCalled();
+    });
+
+    // Phase 150 (#866): the reserved literal is now offered, and selecting it shows the same
+    // amount fields as downpayment_required (customer_choice is split-configurable too).
+    it('offers "Let the customer choose" and shows the amount fields when selected', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        const user = userEvent.setup();
+        render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
+
+        await screen.findByText(/Full payment up front/i);
+        expect(screen.getByText(/Let the customer choose/i)).toBeTruthy();
+        expect(screen.queryByLabelText(/Percentage \(%\)/i)).toBeNull();
+
+        await user.click(screen.getByText(/Let the customer choose/i));
+        expect(await screen.findByLabelText(/Percentage \(%\)/i)).toBeTruthy();
+    });
+
+    it('saves customer_choice with a fully-configured percentage row', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        updateDownpaymentSettings.mockResolvedValueOnce({ ...downpaymentRequiredSettings(), payment_mode: 'customer_choice' });
+        const user = userEvent.setup();
+        render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
+
+        await screen.findByText(/Full payment up front/i);
+        await user.click(screen.getByText(/Let the customer choose/i));
+        await user.type(screen.getByLabelText(/Percentage \(%\)/i), '20');
+        await user.type(screen.getByLabelText(/Minimum downpayment/i), '50');
+        await user.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));
+        expect(updateDownpaymentSettings).toHaveBeenCalledWith({
+            payment_mode: 'customer_choice',
+            downpayment_type: 'percentage',
+            downpayment_rate_bps: 2000,
+            downpayment_fixed_centavos: null,
+            min_downpayment_centavos: 5000,
+            downpayment_refundable: true
+        });
+        expect(toastSuccess).toHaveBeenCalled();
+    });
+
+    it('hydrates a stored customer_choice row and shows the seeded amount fields', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce({ ...downpaymentRequiredSettings(), payment_mode: 'customer_choice' });
+        render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
+
+        expect(await screen.findByDisplayValue('20.00')).toBeTruthy();
+        expect(screen.getByDisplayValue('50.00')).toBeTruthy();
+    });
 });

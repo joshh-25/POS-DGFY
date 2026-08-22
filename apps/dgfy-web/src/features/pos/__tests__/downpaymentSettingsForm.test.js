@@ -49,7 +49,12 @@ describe('settingsToForm / formToPayload', () => {
         });
     });
 
-    it('round-trips a fixed-amount row through form and back to a payload', () => {
+    // Phase 150 (#865): the minimum is scoped to 'percentage' mode only -- a stored row that still
+    // carries an old min_downpayment_centavos from a prior percentage-mode configuration (a
+    // realistic case: the merchant switched types without clearing it) hydrates onto the form for
+    // display, but formToPayload zeroes it out on a 'fixed' round-trip rather than resubmitting a
+    // stale value the backend no longer requires or reads for this type.
+    it('round-trips a fixed-amount row through form and back to a payload -- min_downpayment_centavos is zeroed, not resubmitted', () => {
         const form = settingsToForm({
             payment_mode: 'downpayment_required',
             downpayment_type: 'fixed',
@@ -59,6 +64,8 @@ describe('settingsToForm / formToPayload', () => {
             downpayment_refundable: false
         });
         expect(form.downpayment_fixed_pesos).toBe('100.00');
+        // Still hydrated onto the form itself -- only formToPayload's emission is type-scoped.
+        expect(form.min_downpayment_pesos).toBe('50.00');
 
         const payload = formToPayload(form);
         expect(payload).toEqual({
@@ -66,7 +73,7 @@ describe('settingsToForm / formToPayload', () => {
             downpayment_type: 'fixed',
             downpayment_rate_bps: null,
             downpayment_fixed_centavos: 10000,
-            min_downpayment_centavos: 5000,
+            min_downpayment_centavos: 0,
             downpayment_refundable: false
         });
     });
@@ -94,6 +101,30 @@ describe('settingsToForm / formToPayload', () => {
         const form = { ...createDefaultDownpaymentForm(), payment_mode: 'downpayment_required', downpayment_type: 'percentage', downpayment_rate_percentage: '250' };
         const payload = formToPayload(form);
         expect(payload.downpayment_rate_bps).toBe(10000);
+    });
+
+    // Phase 150 (#866): customer_choice round-trips exactly like downpayment_required -- it's
+    // split-configurable, so it needs the same type/amount/minimum payload shape.
+    it('round-trips a customer_choice row through form and back to a payload', () => {
+        const form = settingsToForm({
+            payment_mode: 'customer_choice',
+            downpayment_type: 'percentage',
+            downpayment_rate_bps: 2000,
+            downpayment_fixed_centavos: null,
+            min_downpayment_centavos: 5000,
+            downpayment_refundable: true
+        });
+        expect(form.payment_mode).toBe('customer_choice');
+
+        const payload = formToPayload(form);
+        expect(payload).toEqual({
+            payment_mode: 'customer_choice',
+            downpayment_type: 'percentage',
+            downpayment_rate_bps: 2000,
+            downpayment_fixed_centavos: null,
+            min_downpayment_centavos: 5000,
+            downpayment_refundable: true
+        });
     });
 });
 
@@ -161,6 +192,46 @@ describe('validateDownpaymentForm -- mirrors downpaymentSettingsUseCases.js effe
         });
         expect(errors).toEqual([]);
     });
+
+    // Phase 150 (#865): the minimum is not required (or even read) outside 'percentage' -- a
+    // fully-configured fixed row with an empty min_downpayment_pesos is valid.
+    it('does not require min_downpayment_pesos when type is fixed', () => {
+        const errors = validateDownpaymentForm({
+            payment_mode: 'downpayment_required',
+            downpayment_type: 'fixed',
+            downpayment_rate_percentage: '',
+            downpayment_fixed_pesos: '500.00',
+            min_downpayment_pesos: '',
+            downpayment_refundable: true
+        });
+        expect(errors).toEqual([]);
+    });
+
+    // Phase 150 (#866): customer_choice needs the same fully-configured effective row as
+    // downpayment_required -- a customer electing "downpayment" still needs a real split.
+    it('applies the same effective-row rules to customer_choice as downpayment_required', () => {
+        const errors = validateDownpaymentForm({
+            payment_mode: 'customer_choice',
+            downpayment_type: null,
+            downpayment_rate_percentage: '',
+            downpayment_fixed_pesos: '',
+            min_downpayment_pesos: '',
+            downpayment_refundable: true
+        });
+        expect(errors).toEqual([{ field: 'downpayment_type', message: expect.stringContaining('downpayment_type is required when payment_mode is customer_choice') }]);
+    });
+
+    it('is valid for a fully-configured customer_choice row', () => {
+        const errors = validateDownpaymentForm({
+            payment_mode: 'customer_choice',
+            downpayment_type: 'percentage',
+            downpayment_rate_percentage: '20',
+            downpayment_fixed_pesos: '',
+            min_downpayment_pesos: '50.00',
+            downpayment_refundable: true
+        });
+        expect(errors).toEqual([]);
+    });
 });
 
 describe('previewDownpaymentSplit -- mirrors downpaymentPolicy.js:resolveDownpaymentForTotal', () => {
@@ -211,5 +282,16 @@ describe('previewDownpaymentSplit -- mirrors downpaymentPolicy.js:resolveDownpay
     it('returns nulls for a zero sample total', () => {
         expect(previewDownpaymentSplit({ form: percentForm(), sampleTotalPesos: '0' }))
             .toEqual({ downpaymentAmountPesos: null, balanceDueAmountPesos: null });
+    });
+
+    // Phase 150 (#866): customer_choice is split-configurable, so the preview computes the "if
+    // they pay a downpayment" branch exactly as it would for downpayment_required -- the panel
+    // renders this alongside the plain sample total for the "if they pay in full" branch.
+    it('computes the same split for customer_choice as downpayment_required', () => {
+        const result = previewDownpaymentSplit({
+            form: percentForm({ payment_mode: 'customer_choice' }),
+            sampleTotalPesos: '500'
+        });
+        expect(result).toEqual({ downpaymentAmountPesos: '100.00', balanceDueAmountPesos: '400.00' });
     });
 });
