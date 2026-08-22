@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const standalonePosMainPath = path.resolve(__dirname, '../../../../apps/pos/src/main.jsx');
+// This test lives in packages/web-core, but the standalone POS entrypoint it
+// asserts against is a sibling app post-split (issue #322) -- apps/dgfy-pos,
+// not anything under web-core itself.
+const standalonePosMainPath = path.resolve(__dirname, '../../../../../../apps/dgfy-pos/src/main.jsx');
 
 describe('standalone POS router compatibility contract', () => {
     it('opts the active HashRouter into the React Router v7 compatibility flags', () => {

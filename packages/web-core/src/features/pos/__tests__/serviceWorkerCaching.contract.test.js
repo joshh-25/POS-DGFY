@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 import {
   createPosOfflineBuildRevision,
@@ -7,6 +8,7 @@ import {
 } from '../../../../../../apps/dgfy-pos/vitePosOfflinePrecachePlugin.js';
 
 const frontendRoot = process.cwd();
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 // apps/dgfy-pos and apps/dgfy-storefront (issue #322 split) are siblings of apps/dgfy-ims,
 // not nested under it.
 const posServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-pos/public/sw.js');
@@ -102,7 +104,7 @@ describe('service worker caching contracts', () => {
     const messageStart = serviceWorkerSource.indexOf("self.addEventListener('message'");
     const installSource = serviceWorkerSource.slice(installStart, messageStart);
     const mainSource = readSource(posMainPath);
-    const layoutSource = readSource(path.resolve(frontendRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
+    const layoutSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
 
     expect(installSource).not.toContain('skipWaiting');
     expect(serviceWorkerSource).toContain("event?.data?.type === 'SKIP_WAITING'");
@@ -120,8 +122,8 @@ describe('service worker caching contracts', () => {
   });
 
   it('renders the service-worker update prompt as an inline POS notice', () => {
-    const layoutSource = readSource(path.resolve(frontendRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
-    const noticeSource = readSource(path.resolve(frontendRoot, 'src/features/pos/utils/posUpdateNotice.js'));
+    const layoutSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
+    const noticeSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateNotice.js'));
 
     expect(layoutSource).toContain('data-testid="pos-update-ready-notice"');
     expect(layoutSource).toContain('fixed right-3 top-3');

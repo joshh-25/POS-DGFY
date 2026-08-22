@@ -9,12 +9,15 @@
  * reviewable PR diff (exactly how #664's `.at(-1)` shipped -- commit
  * 7047b297 appears in neither merge parent).
  *
- * `structuredClone` is deliberately NOT in the deny list below, despite
- * being one of the methods #666's own issue named -- this plugin's first
- * real build caught it live, reachable from SKUpervisor's lazy AI Chat
- * chunk (mdast-util-to-hast), and it was promoted into Layer 1's shim list
- * instead of allowlisted here. That is the intended lifecycle for a denylist
- * hit: a real, shimmable find gets fixed at the source, not silenced.
+ * `structuredClone` and `.toSorted(` are deliberately NOT in the deny list
+ * below. `structuredClone` was #666's own first live catch (SKUpervisor's
+ * lazy AI Chat chunk, via mdast-util-to-hast); `.toSorted(` was caught on
+ * this guardrail's first build against the 2026-08-22 develop absorb
+ * (@radix-ui/react-collection, transitively bundled via
+ * @radix-ui/react-accordion/@radix-ui/react-scroll-area, reachable from
+ * IMS's Items page). Both were promoted into Layer 1's shim list instead of
+ * allowlisted here. That is the intended lifecycle for a denylist hit: a
+ * real, shimmable find gets fixed at the source, not silenced.
  *
  * It runs inside `vite build`'s own `generateBundle` hook, which means it
  * executes as part of `npm run build:all:parallel` -- the same command the
@@ -39,7 +42,6 @@
 const DENYLIST = [
   { token: 'Object.groupBy(', chromeVersion: 117 },
   { token: 'Map.groupBy(', chromeVersion: 117 },
-  { token: '.toSorted(', chromeVersion: 110 },
   { token: '.toReversed(', chromeVersion: 110 },
   { token: '.toSpliced(', chromeVersion: 110 },
   { token: 'AbortSignal.timeout(', chromeVersion: 103 },

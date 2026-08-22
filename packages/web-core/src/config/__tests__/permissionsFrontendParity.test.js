@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PERMISSION_GROUPS } from '../permissions_frontend.js';
-import { PERMISSIONS as BACKEND_PERMISSIONS } from '../../../../dgfy-api/src/config/permissions.js';
+import { PERMISSIONS as BACKEND_PERMISSIONS } from '../../../../../apps/dgfy-api/src/config/permissions.js';
 
 const sortedEntries = (obj) => Object.entries(obj).sort(([a], [b]) => a.localeCompare(b));
 

@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const componentRoot = path.resolve(process.cwd(), 'src/features/pos/components');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const componentRoot = path.resolve(webCoreRoot, 'src/features/pos/components');
 const shellSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminal.jsx'), 'utf8');
 const viewSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminalView.jsx'), 'utf8');
 const receiptDialogsSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminalReceiptDialogs.jsx'), 'utf8');

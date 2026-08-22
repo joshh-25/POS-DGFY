@@ -1,29 +1,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const panelContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSTransactionHistoryPanel.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSTransactionHistoryPanel.jsx'),
     'utf8'
 );
 const receiptDialogsContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
     'utf8'
 );
 const terminalContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
     'utf8'
 );
 const historyWorkflowContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/hooks/usePosHistoryVoidWorkflow.js'),
+    path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosHistoryVoidWorkflow.js'),
     'utf8'
 );
 const queryContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/utils/posHistoryQuery.js'),
+    path.resolve(webCoreRoot, 'src/features/pos/utils/posHistoryQuery.js'),
     'utf8'
 );
 const searchUtilityContent = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/utils/posHistorySearch.js'),
+    path.resolve(webCoreRoot, 'src/features/pos/utils/posHistorySearch.js'),
     'utf8'
 );
 

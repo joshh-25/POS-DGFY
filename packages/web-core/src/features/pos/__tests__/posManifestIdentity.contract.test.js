@@ -1,10 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-const frontendRoot = process.cwd();
-const manifestPath = path.resolve(frontendRoot, 'apps/pos/manifest.webmanifest');
-const publicRoot = path.resolve(frontendRoot, 'apps/pos/public');
+// This test lives in packages/web-core, but the standalone POS app it asserts
+// against is a sibling app post-split (issue #322) -- apps/dgfy-pos, not
+// anything under web-core itself.
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../..');
+const manifestPath = path.resolve(repoRoot, 'apps/dgfy-pos/manifest.webmanifest');
+const publicRoot = path.resolve(repoRoot, 'apps/dgfy-pos/public');
 
 const readManifest = () => JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 

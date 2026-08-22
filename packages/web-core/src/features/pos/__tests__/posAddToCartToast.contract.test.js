@@ -1,13 +1,15 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const componentSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/PosAddToCartToastContainer.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/PosAddToCartToastContainer.jsx'),
     'utf8'
 );
 const stylesSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/index.css'),
+    path.resolve(webCoreRoot, 'src/index.css'),
     'utf8'
 );
 

@@ -12,7 +12,8 @@ const NATIVE = {
   replaceAll: String.prototype.replaceAll,
   findLast: Array.prototype.findLast,
   findLastIndex: Array.prototype.findLastIndex,
-  structuredClone: globalThis.structuredClone
+  structuredClone: globalThis.structuredClone,
+  toSorted: Array.prototype.toSorted
 };
 
 function deleteNatives() {
@@ -23,6 +24,7 @@ function deleteNatives() {
   delete Array.prototype.findLast;
   delete Array.prototype.findLastIndex;
   delete globalThis.structuredClone;
+  delete Array.prototype.toSorted;
 }
 
 function restoreNatives() {
@@ -33,6 +35,7 @@ function restoreNatives() {
   Array.prototype.findLast = NATIVE.findLast;
   Array.prototype.findLastIndex = NATIVE.findLastIndex;
   globalThis.structuredClone = NATIVE.structuredClone;
+  Array.prototype.toSorted = NATIVE.toSorted;
 }
 
 describe('chrome80Runtime polyfill', () => {
@@ -185,6 +188,21 @@ describe('chrome80Runtime polyfill', () => {
 
     it('throws a DataCloneError on a function, matching the spec', () => {
       expect(() => structuredClone({ fn: () => {} })).toThrow();
+    });
+  });
+
+  describe('Array.prototype.toSorted', () => {
+    it('returns a new sorted array without mutating the original', () => {
+      const original = [3, 1, 2];
+      const sorted = original.toSorted();
+      expect(sorted).toEqual([1, 2, 3]);
+      expect(original).toEqual([3, 1, 2]);
+      expect(sorted).not.toBe(original);
+    });
+
+    it('accepts a compare function, matching Array.prototype.sort semantics', () => {
+      const sorted = [3, 1, 2].toSorted((a, b) => b - a);
+      expect(sorted).toEqual([3, 2, 1]);
     });
   });
 

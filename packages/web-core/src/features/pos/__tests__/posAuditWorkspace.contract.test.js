@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { formatAuditDetailLines, formatAuditEventLabel, formatAuditEventLabels, groupAuditDetailLines } from '../components/AuditWorkspacePanel.jsx';
 
-const read = (relativePath) => fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const read = (relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativePath), 'utf8');
 
 describe('POS audit workspace contract', () => {
     it('keeps the navigation and workspace admin-gated', () => {

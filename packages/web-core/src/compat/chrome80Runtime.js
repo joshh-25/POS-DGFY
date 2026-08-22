@@ -16,10 +16,14 @@
  * out of the hot path today by sentryClient.js's `enableInp: false`, but
  * shimming removes the dependency on that staying true forever), and
  * mdast-util-to-hast (a react-markdown dependency, reachable from
- * SKUpervisor's lazy-loaded AI Chat page) calls structuredClone -- caught
- * live by build/esCompatGuardPlugin.js (layer 2) during this guardrail's own
- * first build, and promoted here rather than allowlisted around, since a
- * shim actually fixes the crash instead of just silencing the alarm.
+ * SKUpervisor's lazy-loaded AI Chat page) calls structuredClone, and
+ * @radix-ui/react-collection (bundled transitively via @radix-ui/react-
+ * accordion and @radix-ui/react-scroll-area, reachable from IMS's Items
+ * page) calls Array.prototype.toSorted -- both caught live by
+ * build/esCompatGuardPlugin.js (layer 2) on this guardrail's own first
+ * build against the fully absorbed codebase (2026-08-22 develop absorb),
+ * and promoted here rather than allowlisted around, since a shim actually
+ * fixes the crash instead of just silencing the alarm.
  *
  * Every definition is feature-tested, so modern browsers pay nothing extra,
  * and installed non-enumerable so it never leaks into `for...in`/
@@ -197,6 +201,20 @@ if (typeof globalThis.structuredClone !== 'function') {
   Object.defineProperty(globalThis, 'structuredClone', {
     value: function structuredClone(value) {
       return cloneInternal(value, new Map());
+    },
+    writable: true,
+    configurable: true,
+    enumerable: false
+  });
+}
+
+if (typeof Array.prototype.toSorted !== 'function') {
+  Object.defineProperty(Array.prototype, 'toSorted', {
+    // Same sort semantics as Array.prototype.sort (default: convert to
+    // string and compare UTF-16 code units), just applied to a copy so the
+    // original array is left untouched, matching the spec.
+    value: function toSorted(compareFn) {
+      return this.slice().sort(compareFn);
     },
     writable: true,
     configurable: true,

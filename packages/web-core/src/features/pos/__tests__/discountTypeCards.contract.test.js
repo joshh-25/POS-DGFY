@@ -10,11 +10,11 @@ const checkoutPath = path.resolve(
 );
 const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
 const checkoutViewContent = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+  path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'
 );
 const checkoutUtilsContent = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/features/pos/utils/posCheckoutTerminalUtils.js'),
+  path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js'),
   'utf8'
 );
 const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutUtilsContent}`;

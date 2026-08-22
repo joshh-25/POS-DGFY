@@ -61,7 +61,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
-import CSVImportModal from '@/Components/items/CSVImportModal.jsx';
+import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
