@@ -12,6 +12,17 @@ import {
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
+// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
+// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
+// and it was still being set from the client's pre-submission totalsForDisplay, not the
+// server-persisted order.
+// Restored 2026-08-22 (#857) -- reverted by #853's develop reconciliation without a stated reason.
+const resolveTrackedTotals = (order, fallbackTotals) => {
+  const serverTotal = Number(order?.total_amount);
+  return Number.isFinite(serverTotal)
+    ? { ...fallbackTotals, total_amount: serverTotal }
+    : fallbackTotals;
+};
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -174,7 +185,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
@@ -199,7 +210,9 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0,
+          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
+          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 
