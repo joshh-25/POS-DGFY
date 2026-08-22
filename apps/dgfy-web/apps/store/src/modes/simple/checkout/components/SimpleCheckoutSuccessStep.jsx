@@ -1,4 +1,4 @@
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { resolveDownpaymentBalanceLabel, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 export function SimpleCheckoutSuccessStep({
   checkoutResult,
@@ -83,7 +83,7 @@ export function SimpleCheckoutSuccessStep({
           {downpaymentDisplay.active && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>Paid now</span><strong style={{ textAlign: 'right' }}>{money(downpaymentDisplay.downpaymentAmount)}</strong></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>{fulfillmentLabel === 'Delivery' ? 'Balance due on delivery' : 'Balance due at pickup'}</span><strong style={{ textAlign: 'right' }}>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10 }}><span>{resolveDownpaymentBalanceLabel(fulfillmentLabel === 'Delivery' ? 'delivery' : 'pickup')}</span><strong style={{ textAlign: 'right' }}>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
             </>
           )}
         </div>

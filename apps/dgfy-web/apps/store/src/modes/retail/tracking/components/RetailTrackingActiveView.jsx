@@ -17,6 +17,7 @@ import {
   Store,
   ThumbsUp,
 } from 'lucide-react';
+import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
 
 export function RetailTrackingActiveView({ actions, formatters, isMobileViewport, mapProps, viewModel }) {
   const {
@@ -296,12 +297,7 @@ export function RetailTrackingActiveView({ actions, formatters, isMobileViewport
                                  <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span>
                                  <span style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{money(trackingResult.totalAmount || 0)}</span>
                               </div>
-                              {trackingResult.paymentStatus === 'partially_paid' && trackingResult.balanceDue != null ? (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#92400e' }}>
-                                  <span>Partially paid</span>
-                                  <span style={{ fontWeight: 700 }}>Balance due: {money(trackingResult.balanceDue)}</span>
-                                </div>
-                              ) : null}
+                              <DownpaymentTrackingSummary trackingResult={trackingResult} money={money} orderMethod={isPickup ? 'pickup' : 'delivery'} />
                            </div>
                         </div>
 
