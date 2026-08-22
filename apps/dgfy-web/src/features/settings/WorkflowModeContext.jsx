@@ -11,7 +11,11 @@ import {
   normalizeDisabledCapabilities,
   normalizeWorkflowMode
 } from './workflowMode.js';
-import { STORE_PROFILE_SETTING_KEY, buildStoreProfile } from '@sieitzz/shared-constants/storeProfile';
+import {
+  STORE_PROFILE_SETTING_KEY,
+  buildStoreProfile,
+  storeProfilesEqual
+} from '@sieitzz/shared-constants/storeProfile';
 import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '@/services/publicRoutePolicy.js';
 
@@ -39,10 +43,34 @@ const extractDisabledCapabilitiesFromSettings = (settings) => (
 // exact same pure function the backend uses to build ops_store_profile in
 // the first place, so an uncurated tenant's rebuild is byte-identical to
 // what the server would have stamped).
+//
+// Persisted profiles are a server-derived shadow, not an independent source
+// of truth. Compare them with the current rebuild before using them so a
+// profile materialized before a shared default change cannot keep stale POS
+// affordances hidden in the browser. Provenance is historical metadata and
+// must not make an otherwise-current profile look stale.
+const stripProfileProvenance = (profile) => {
+  if (!profile || typeof profile !== 'object') return profile;
+  const comparable = { ...profile };
+  delete comparable.provenance;
+  return comparable;
+};
+
 const extractProfileFromSettings = (settings, { workflowMode, enabledCapabilities, disabledCapabilities }) => {
   const persisted = settings?.[STORE_PROFILE_SETTING_KEY]?.value;
-  if (persisted && typeof persisted === 'object') return persisted;
-  return buildStoreProfile({ workflowMode, enabledCapabilities, disabledCapabilities });
+  const rebuilt = buildStoreProfile({ workflowMode, enabledCapabilities, disabledCapabilities });
+  if (
+    persisted
+    && typeof persisted === 'object'
+    && persisted.profile_version === rebuilt.profile_version
+    && storeProfilesEqual(
+      stripProfileProvenance(persisted),
+      stripProfileProvenance(rebuilt)
+    )
+  ) {
+    return persisted;
+  }
+  return rebuilt;
 };
 
 export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) => {

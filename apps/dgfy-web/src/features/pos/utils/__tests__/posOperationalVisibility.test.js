@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   getIncomingOrderShiftReasonCode,
   hasUsableIncomingOrderShift,
-  isIncomingOrderShiftUnavailableError
+  isIncomingOrderShiftUnavailableError,
+  isPosOnlineOrderQueueEnabled
 } from '../posOperationalVisibility.js';
 
 describe('POS operational visibility', () => {
@@ -40,5 +41,12 @@ describe('POS operational visibility', () => {
 
     expect(getIncomingOrderShiftReasonCode(error)).toBe('POS_SHIFT_CLOSED');
     expect(isIncomingOrderShiftUnavailableError(error)).toBe(true);
+  });
+
+  it('keeps the online Orders queue enabled for MSME when the profile allows it', () => {
+    expect(isPosOnlineOrderQueueEnabled({
+      workflowMode: 'msme',
+      posDefaults: { show_online_queue: true }
+    })).toBe(true);
   });
 });
