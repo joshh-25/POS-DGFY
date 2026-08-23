@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-23
 related_adr: docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md
 declaration_id: 2026-08-22-downpayment-refund-and-forfeiture
 classification: major
@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/commerceOrderLifecycle.usecase.test.j
 rollback_note: Revert this PR's diff. No migration and no schema change -- pos_order_payments.kind has been ENUM('downpayment','balance','refund','forfeiture') with a related_pos_order_payment_id column since Phase 137 (#819), and commerce_payment_sessions.downpayment_refundable/capture_kind since Phase 141 (#822); this PR is the first reader and the first writer of the reversal half. Reverting restores the pre-existing behaviour exactly: every reject/cancel refunds unconditionally, the customer self-service cancel endpoint goes back to never touching payments at all, and no 'refund'/'forfeiture' ledger rows are written. Rows already written by this PR remain valid and readable -- they are additive evidence rows, not state other code branches on. No full_payment tenant is affected in either direction, since every new path is gated on capture_kind === 'downpayment'.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-22T19:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-824-DOWNPAYMENT-REFUND-FORFEITURE
+preflight_run_at: 2026-08-23T11:24:57+08:00
+preflight_request_ref: PROMOTER-824-2026-08-23
 ---
 
 # Accept/reject, refund, and forfeiture for downpayment orders (#824)
@@ -116,15 +116,14 @@ that string-matches the component this PR edits; `npm run build:pos` succeeded.
 
 Outstanding before merge:
 
-- `POST /api/v1/compliance/preflight` has **not** been executed against a live environment -- same
-  disclosure shape as every prior declaration in this epic (#822, #848/#859, #865/#866). The
-  front-matter `preflight_run_at` records this declaration's own authored/classification time, not
-  a live API call; it is a placeholder in the format the guardrail's shape check requires
-  (`docs/compliance/request-time-preflight-protocol.md`, "What the guardrail does and does not
-  verify" -- the check validates field *shape* only and cannot distinguish a recorded real
-  preflight from a typed one). `preflight_request_ref` is deliberately prefixed `NOT-EXECUTED-` so
-  nothing reading front matter mechanically can mistake it for a real request reference. A reviewer
-  with a live environment should run the endpoint and reconcile both fields before merge.
+- ~~`POST /api/v1/compliance/preflight` has not been executed against a live environment~~ --
+  **reconciled 2026-08-23** by the `develop -> staging` promotion-time sweep (#884,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment). Run against the DEV tenant
+  (`Loandry`, `dev.dgfy.ph`) with `request_name: "PR #877 downpayment refund and forfeiture
+  (#824)"`; the endpoint returned `result: no_breach`, `reason_code: ALLOWED`, matching the values
+  this declaration had provisionally recorded. Front matter above now carries the real run
+  timestamp and `preflight_request_ref: PROMOTER-824-2026-08-23` in place of the `NOT-EXECUTED-`
+  placeholder.
 - **No live end-to-end run against a real PayMongo sandbox refund**, and no live exercise of the
   forfeiture path against a `downpayment_refundable = false` tenant. Coverage is unit/behavioral
   only. This is the most significant gap in this PR specifically, because forfeiture is the one
