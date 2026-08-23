@@ -123,7 +123,19 @@ jobs:
           set -uo pipefail
           cd "$DOCKER_DIR" || exit 1
 
-          SERVICES="mysql redis dgfy-api frontend nginx"
+          # SERVICES was previously a hardcoded "mysql redis dgfy-api frontend nginx" -- stale
+          # after ADR 0071 (#322/#915) retired `frontend` in favor of dgfy-ims/dgfy-pos/dgfy-
+          # storefront, and also wrong on DEV/STAGING even before that split: they've never run a
+          # containerized nginx (fronted by a separate host nginx process, not part of this compose
+          # file), so the hardcoded list made every DEV/STAGING dispatch fail on "service nginx has
+          # no container at poll start" -- a pre-existing bug, not introduced by the frontend split.
+          # Deriving the list from the server's own compose config instead of hardcoding it fixes
+          # both, and self-adapts to any future service rename without another edit here: whatever
+          # this specific server's docker-compose.yml actually defines (frontend today, dgfy-ims/
+          # dgfy-pos/dgfy-storefront once the cutover runbook runs; nginx only where it's actually
+          # defined) is exactly what gets health-checked.
+          SERVICES="$(docker compose config --services)"
+
           POLLS=$(( POLL_MINUTES * 3 ))  # ~20s apart
           FAIL=0
 
