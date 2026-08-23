@@ -41,6 +41,14 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    diff. A required-but-missing impact declaration is an automatic **BLOCK**, full stop — this is
    the #284/#288 class of miss #331 names as the single highest-value thing this agent catches, so
    treat it as non-negotiable regardless of how the rest of the diff looks.
+   **A `NOT-EXECUTED-*` `preflight_request_ref` on a PR targeting `develop` is expected, not a
+   finding** (#884, 2026-08-22) — the real preflight runs once per batch at the `develop → staging`
+   promotion, per `docs/compliance/request-time-preflight-protocol.md`, "Where live preflight
+   actually runs." Do not raise it as a should-fix on a `develop`-targeting PR. On a promotion PR
+   (head `to-staging/*` or `release/*`), the opposite applies: a surviving `NOT-EXECUTED-*` in the
+   bundled diff **is** a finding — `should-fix` for a `to-staging/*` PR (the sweep should have
+   cleared it before this PR was opened), **blocker** for a `release/*` PR (per the policy, none may
+   reach `main`).
 4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or

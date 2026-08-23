@@ -108,6 +108,22 @@ export const resolveDownpaymentDisplay = ({ order = null, paymentSession = null,
   return NULL_DISPLAY;
 };
 
+// Phase 151 (#826): the three tracking payload models (retailTrackingPayload.js,
+// fnbTrackingPayload.js, simpleTrackingPayload.js) normalize into a camelCase view state
+// (paymentStatus/amountPaid/balanceDue) rather than the snake_case order shape
+// resolveDownpaymentDisplay expects. This is a thin adapter so tracking joins the same
+// precedence machinery instead of growing a parallel one -- passing a truthy `order` engages
+// resolveDownpaymentDisplay's existing "presence, not activity, decides precedence" branch,
+// so a tracked order that isn't partially_paid correctly returns NULL_DISPLAY.
+export const resolveTrackingDownpaymentDisplay = (trackingResult) => resolveDownpaymentDisplay({
+  order: {
+    payment_status: trackingResult?.paymentStatus,
+    amount_paid: trackingResult?.amountPaid,
+    balance_due: trackingResult?.balanceDue,
+    total_amount: trackingResult?.totalAmount
+  }
+});
+
 /** Two OrderSummaryCard-shaped rows ({label, value, emphasis?}), or [] when inactive. */
 export const buildDownpaymentTotalsRows = ({ display, money, orderMethod }) => {
   if (!display?.active || typeof money !== 'function') return [];
@@ -117,10 +133,15 @@ export const buildDownpaymentTotalsRows = ({ display, money, orderMethod }) => {
   ];
 };
 
-// Phase 143 (#824): legal copy for the non-refundable case is BLOCKED on #280 (T&C lawyer
-// review still open) -- this is a deliberately neutral placeholder, not reviewed legal language.
-// When #824 ships, replace ONLY this string; keep the seam (the `refundable === false` gate, and
-// every call site that renders this note) exactly as-is.
+// Phase 144 (#824 -- the label previously read "Phase 143", predating the 2026-08-22 renumber):
+// legal copy for the non-refundable case is BLOCKED on #280 (T&C lawyer review), still open with
+// every checkbox unchecked as of 2026-08-22; #280 itself records that no Storefront ToS and no
+// refund policy exist anywhere in this codebase. This is a deliberately neutral placeholder, not
+// reviewed legal language.
+//
+// Phase 144 shipped the refund/forfeiture MECHANISM without touching this string, on purpose. The
+// seam is unchanged: when #280 lands, replace ONLY this string and keep the `refundable === false`
+// gate and every call site that renders this note exactly as-is.
 const NON_REFUNDABLE_DOWNPAYMENT_NOTE = 'The downpayment reserves your order. Refund terms are provided by the store.';
 
 /** A neutral disclosure line, only when the downpayment is explicitly non-refundable. */

@@ -685,6 +685,16 @@ export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) =
     return response.data?.data;
 };
 
+// Phase 148 (#825): settles the remaining balance on a partially-paid downpayment order. A
+// separate endpoint from the two collect-cash calls above, not a variant of them -- those own the
+// plain-COD `unpaid` path and are deliberately untouched.
+export const recordOrderBalancePayment = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/record-payment`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
     return response.data?.data;
@@ -818,6 +828,7 @@ export default {
     fetchActiveDeliveryPersonnel,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    recordOrderBalancePayment,
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,

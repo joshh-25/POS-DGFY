@@ -5359,6 +5359,62 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    // Phase 148 (#825): the POS side of the `pos_order_payments` ledger. Phase 141 (#822) writes
+    // row 1 (`kind: 'downpayment'`) from storeRepository.createOrderPaymentEntry on the storefront
+    // checkout path; this is row 2 (`kind: 'balance'`), written when staff record the remaining
+    // balance at handover. Deliberately a mirror of that method rather than an import of it -- the
+    // POS module must not reach into the store module's repository, and both resolve the same
+    // tenant-scoped model through dbStore anyway.
+    //
+    // Not to be confused with commercePayments/repositories/tenantOrderPaymentLedgerRepository.js
+    // (Phase 144, #824), which writes the REVERSAL kinds from the landlord-scoped PayMongo webhook
+    // path and therefore has to reach the tenant DB explicitly. This path is an ordinary
+    // tenant-scoped POS request, so dbStore is in scope and the explicit connector is unnecessary.
+    async createOrderPaymentEntry({
+        posTransactionId,
+        kind,
+        status = 'successful',
+        amount,
+        paymentMethod,
+        paymentProvider = null,
+        providerEventId = null,
+        paymentReference = null,
+        idempotencyKey,
+        relatedPosOrderPaymentId = null,
+        recordedBy = null
+    }, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const created = await PosOrderPayment.create({
+            pos_transaction_id: posTransactionId,
+            kind,
+            status,
+            amount,
+            payment_method: paymentMethod,
+            payment_provider: paymentProvider,
+            provider_event_id: providerEventId,
+            payment_reference: paymentReference,
+            idempotency_key: idempotencyKey,
+            related_pos_order_payment_id: relatedPosOrderPaymentId,
+            recorded_by: recordedBy,
+            confirmed_at: new Date()
+        }, { transaction: options.transaction });
+        return created.pos_order_payment_id;
+    },
+
+    // Oldest row of a given kind for an order. Used to resolve the `downpayment` row a `balance`
+    // row links back to via related_pos_order_payment_id (ADR 0069 clause 4b, carried forward by
+    // ADR 0070) -- the same back-link convention tenantOrderPaymentLedgerRepository.js already
+    // uses for refund/forfeiture rows.
+    async findOrderPaymentEntryByKind(posTransactionId, kind, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const row = await PosOrderPayment.findOne({
+            where: { pos_transaction_id: posTransactionId, kind },
+            order: [['pos_order_payment_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
     async updateDeliveryJobByOrderId(orderId, payload = {}, options = {}) {
         const DeliveryJob = dbStore.get('DeliveryJob');
         const row = await DeliveryJob.findOne({

@@ -1,4 +1,4 @@
-import { resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { resolveDownpaymentBalanceLabel, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 /**
  * Pure F&B checkout success view. Submission, routing, and state ownership
@@ -51,7 +51,7 @@ export function FnbCheckoutConfirmation({
         {downpaymentDisplay.active && (
           <>
             <div>Paid now: <strong>{money(downpaymentDisplay.downpaymentAmount)}</strong></div>
-            <div>{isDeliveryOrder ? 'Balance due on delivery' : 'Balance due at pickup'}: <strong>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
+            <div>{resolveDownpaymentBalanceLabel(isDeliveryOrder ? 'delivery' : 'pickup')}: <strong>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
           </>
         )}
       </div>

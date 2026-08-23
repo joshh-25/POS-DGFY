@@ -21,6 +21,12 @@ This document exists so that doesn't happen again — see #345 and #330, which i
 proposal-to-rebuild failure mode this doc is meant to close off. #372 (a testing agent/skill) should
 *invoke* this gate, not reimplement it.
 
+This gate is one rung of a larger verification ladder — the compliance preflight sweep and the
+live-credential-dependent payment checks are separate rungs with their own placement and are not
+folded into this gate. See `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment,
+"Compliance verification ladder," for the full picture and why nothing on this ladder is a
+production precondition.
+
 This document is a runbook: how to run the gate and what its 18 checks mean. It is not a release
 ledger — dated pass/fail evidence for individual releases belongs in
 `.tmp/release-gates/<sha>/local_readiness.json` and, if worth keeping past that SHA's lifetime, a

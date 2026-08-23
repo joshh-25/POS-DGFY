@@ -77,6 +77,25 @@ const formatOrderAmount = (value) => {
 
 const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 
+// Phase 144 (#824): a downpayment order is persisted as COD (payment_type forced to 'cash' by
+// Phase 141, because the balance IS collected in person) with payment_status 'partially_paid'.
+// Until now the card rendered exactly those two facts and nothing else, so staff handing over
+// goods could not see how much cash to collect. amount_paid/balance_due are already on the wire
+// from listIncomingOnlineOrders -- this only reads them.
+const resolveOrderDownpaymentSplit = (order) => {
+  const amountPaid = Number(order?.amount_paid || 0);
+  const balanceDue = Number(order?.balance_due || 0);
+  if (order?.payment_status !== 'partially_paid' || !(amountPaid > 0)) return null;
+  return { amountPaid, balanceDue };
+};
+
+// Balance is always collected in person -- ADR 0069 clause 2 [binding], carried forward by ADR
+// 0070. Mirrors the storefront's own resolveDownpaymentBalanceLabel so both surfaces word it the
+// same way.
+const resolveBalanceCollectionLabel = (orderMethod) => (
+  orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
+);
+
 function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount }) {
   const tabs = [
     {
@@ -357,6 +376,7 @@ function IncomingQueueWorkspace({
   handleAssignDeliveryPersonnel,
   deliveryPersonnelState,
   handleOpenCashCollection,
+  handleOpenBalanceSettlement,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
@@ -380,6 +400,14 @@ function IncomingQueueWorkspace({
 
     return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
   });
+  // Phase 144 (#824): the reject dialog renders outside the per-order .map, so it only ever held
+  // an id. Resolving the order back out of the list lets the copy state the ACTUAL amount at
+  // stake instead of the old unconditional "DGFY will request a full refund", which on a
+  // downpayment order reads as if the customer's whole order total is coming back.
+  const pendingRejectionOrder = pendingRejectionOrderId === null
+    ? null
+    : sortedIncomingOrders.find((order) => Number(order?.pos_transaction_id) === pendingRejectionOrderId) || null;
+  const pendingRejectionSplit = resolveOrderDownpaymentSplit(pendingRejectionOrder);
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
@@ -519,6 +547,17 @@ function IncomingQueueWorkspace({
                 (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
                 || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
               );
+            // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
+            // separate predicate on a disjoint payment_status -- collect-cash owns 'unpaid', this
+            // owns 'partially_paid', so the two buttons can never both appear on one card and the
+            // live COD path's own condition is untouched.
+            const orderBalanceDue = Number(order.balance_due || 0);
+            const canSettleBalance = order.payment_status === 'partially_paid'
+              && orderBalanceDue > 0
+              && (
+                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
+              );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
@@ -540,6 +579,20 @@ function IncomingQueueWorkspace({
                 >
                   <Wallet className="mr-2 h-4 w-4 shrink-0" />
                   {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
+                </Button>
+              );
+            }
+            if (canSettleBalance) {
+              buttons.push(
+                <Button
+                  key="settle_balance"
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
+                  onClick={() => handleOpenBalanceSettlement?.(order)}
+                >
+                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
+                  Settle Balance
                 </Button>
               );
             }
@@ -716,6 +769,37 @@ function IncomingQueueWorkspace({
                         </div>
                       </div>
 
+                      {(() => {
+                        const split = resolveOrderDownpaymentSplit(order);
+                        if (!split) return null;
+                        return (
+                          <>
+                            <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100/80">
+                                <Wallet className="h-4 w-4" />
+                              </div>
+                              <div className="flex items-center flex-1 min-w-0">
+                                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Downpayment</span>
+                                <span className="text-xs font-semibold text-emerald-700 break-words flex-1 tabular-nums">
+                                  {formatOrderAmount(split.amountPaid)} <span className="font-medium text-slate-500">paid online</span>
+                                </span>
+                              </div>
+                            </div>
+                            <div className={`flex items-center gap-3 py-1.5 ${order.payment_collected_at ? 'border-b border-slate-100' : ''}`}>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                                <Receipt className="h-4 w-4" />
+                              </div>
+                              <div className="flex items-center flex-1 min-w-0">
+                                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Balance due</span>
+                                <span className="text-xs font-black text-amber-700 break-words flex-1 tabular-nums">
+                                  {formatOrderAmount(split.balanceDue)} <span className="font-medium text-slate-500">{resolveBalanceCollectionLabel(order.order_method)}</span>
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+
                       {order.payment_collected_at && (
                         <div className="flex items-center gap-3 py-1.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
@@ -830,7 +914,13 @@ function IncomingQueueWorkspace({
           if (!open) setPendingRejectionOrderId(null);
         }}
         title="Reject and refund this order?"
-        description="The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement."
+        description={pendingRejectionSplit
+          // A store-side reject ALWAYS refunds, even at a store whose downpayment is configured
+          // non-refundable -- the store's inability to fulfil is not the customer's forfeiture
+          // (Phase 144 / #824, ADR 0069 clause 8). So there is deliberately no forfeiture wording
+          // here: this dialog only ever describes a refund.
+          ? `The order will be rejected. DGFY will request a refund of the ${formatOrderAmount(pendingRejectionSplit.amountPaid)} downpayment collected online, and keep the transaction out of tenant settlement. The ${formatOrderAmount(pendingRejectionSplit.balanceDue)} balance was never charged.`
+          : 'The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement.'}
         confirmLabel="Reject and request refund"
         cancelLabel="Keep order"
         variant="destructive"

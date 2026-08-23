@@ -55,6 +55,26 @@ that isn't there. Also confirm the head you're about to cut has never been used 
 (long-lived branches — `develop`, `staging`, `main` — must never be a head; that's the mechanism the
 `to-staging/`/`release/` prefixes exist to prevent).
 
+## Pre-`staging` gate: compliance preflight sweep
+
+Before cutting `to-staging/<label>`: for every `major`/`regulatory` impact declaration in the batch
+still carrying a `NOT-EXECUTED-*` `preflight_request_ref`, run the real
+`POST /api/v1/compliance/preflight` against a deployed non-production host (DEV suffices — this
+never needs staging or production). Full protocol, the request-body shape, and the curl recipe:
+`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs" — read it
+there, don't reconstruct the request shape here. Find the batch's declarations with
+`git diff --name-only origin/staging origin/develop -- docs/compliance/impact-declarations/` and
+grep the results for `NOT-EXECUTED-` — cheaper and more precise than sweeping the whole directory.
+
+**Land the reconciled front matter the same way as the hotfix back-port below: a small cut branch
+off fresh `origin/develop` (e.g. `compliance-sweep/<label>`), a commit updating only the swept
+declarations' front matter, and a PR into `develop` — never a direct commit to `develop`.** This
+mirrors `AGENTS.md`'s and `implement`'s standing "never commit directly to develop" rule; regulator-
+facing compliance evidence gets the same review path as everything else, no exception for this role.
+Merge that PR (ordinary merge gate — build checks, `check:compliance` — applies) before cutting
+`to-staging/<label>`, so the promoted tree carries the reconciled declarations. **No `NOT-EXECUTED-*`
+declaration may reach the `staging → main` leg** — this sweep is what clears them first.
+
 ## Pre-`main` gates
 
 Before a `release/<label>` → `main` PR: run `npm run gate:release:local` — **invoke it, do not

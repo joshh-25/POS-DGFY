@@ -11,7 +11,9 @@ description: Autonomous production incident-response loop for dgfy-platform — 
 Closes the loop Pat described (#546): `promoter` monitors → on a bad signal, `pm` files an incident
 ticket → `implement` fixes on its own hotfix branch → `pr-reviewer` fast-tracks → `promoter`
 deploys → back to monitoring. This role is the orchestration and the guardrails around that
-sequence — it does not replace any of the five roles it hands off to.
+sequence — it does not replace any of the five roles it hands off to. Extended by #861 with a
+second, manual way in — `/hotfix` — that starts this same loop on demand instead of waiting for a
+monitor signal; see "Manual entry point" below.
 
 **Read rule sources at runtime.** `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` (incident-bundle
 workflow, evidence gate), `.github/workflows/verify-deployment.yml` (#514, the read-only health
@@ -41,6 +43,64 @@ promoter (or observer's Sentry sweep) monitors
 **Bounded retry: 2 remediation attempts.** If the second attempt does not resolve the incident, the
 loop stops and escalates to Pat — it does not attempt a third fix unattended, and it does not fall
 back to a rollback that doesn't exist (see prerequisite gap below).
+
+## Manual entry point — `/hotfix`
+
+Added 2026-08-22 (#861). The loop above starts from an automated monitor signal
+(`promoter`/`observer`). `/hotfix` is the second, manual way in — Pat explicitly asking for an
+on-demand fix outside that monitor loop. It is the *same* loop, the *same* guardrails, the *same*
+merge authority — this section changes only how the loop starts and what "done" requires; it grants
+no new capability and no second path to `main`.
+
+**Trigger precision (#861 gap 1).** Two distinct paths, not one:
+
+- **Explicit `/hotfix` invocation** — proceed directly into the procedure below. Typing the command
+  is itself the confirmation; no further check-in before branching.
+- **A free-text message that merely sounds hotfix-shaped** ("prepare a hotfix for X", "we need an
+  emergency fix"), with no `/hotfix` actually given — **propose only.** State what invoking
+  `/hotfix` would do (which base branch per the rule below, whether an incident ticket already
+  exists) and wait for explicit confirmation before creating a branch or writing any code. This
+  mirrors the description above ("never self-activates from urgency alone") and every other role in
+  the roster — none auto-fires implementation from a detected phrase alone.
+
+**Procedure once triggered:**
+
+1. **Ticket first.** Search for an existing open incident issue (`gh issue list --search`, ≥2
+   framings — `pm`'s own search-before-filing discipline). If none exists, hand off to `pm` to file
+   one now, before any branch is cut — the same "pm files an incident ticket" step the monitor path
+   already does, just manually sourced instead of signal-sourced.
+2. **Choose the base branch — a concrete rule, not a vibe (#861 gap 3):**
+   - `main` — only when the issue is a live production defect that needs a same-day fix and meets
+     this role's own bar for an "actively open incident" — the same bar that gates the `main`-merge
+     override below; don't invent a second definition.
+   - `staging` — the fix is real but can safely ride the next ordinary `staging → main` promotion
+     instead of jumping the queue.
+   - If genuinely unclear which applies, ask — this is a judgment call, not something to guess
+     silently.
+3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a same-day
+   prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
+   as the monitor path.
+4. **`pr-reviewer` fast-tracks** (as defined above), **`promoter`/this role's own override
+   deploys** — unchanged.
+5. **Back-port to `develop` (#861 gap 2) — part of "done," not a follow-up.** If the fix landed on
+   `main` outside the normal promotion flow, this loop is not finished at the deploy step. Follow
+   `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-18 "Hotfix and back-port" procedure before
+   closing the incident, in full — including its step 3, restated here because getting it wrong
+   breaks board mechanics: the back-port PR does **not** `Refs` the closed incident/hotfix PR
+   directly (a closed issue can't take the `Refs #N` → `For QA` transition
+   `docs/process/ISSUE-TAXONOMY.md` relies on). Hand off to `pm` to file a **fresh issue** for the
+   back-port itself first (that fresh issue in turn `Refs`es the original incident and hotfix PR for
+   context); then cut a branch off fresh `origin/develop`, `git merge origin/main`, and open the PR
+   into `develop` `Refs`-ing the fresh issue. **That PR needs no new merge authority** — it targets
+   `develop`, so `pr-reviewer`'s existing unattended-merge policy already covers it, same as any
+   other `develop` PR. If the fix instead landed on `staging`, this step doesn't apply — say so
+   explicitly rather than silently skipping it, since `staging` already forward-merges into `main`
+   on the next promotion and doesn't need a separate back-port. Only once this PR is open (or the
+   explicit no-back-port-needed reason is stated) is the incident considered closeable.
+
+Every guardrail elsewhere in this file — the bounded retry, the three "cannot do yet" prerequisites,
+the phrase-gated `main` override and its every-single-invocation restatement/logging requirement —
+applies identically here, unchanged and unweakened.
 
 ## Fast-track review, defined precisely
 
@@ -101,10 +161,13 @@ reason" — none of these are silently assumed away:
 | Any live-server action beyond a workflow dispatch (SSH, `docker logs`, manual restart) | **Stop.** No capability exists (gap 2 above) |
 | 2nd remediation attempt fails | **Stop.** No rollback exists (gap 3 above) — escalate to Pat, don't attempt a 3rd fix |
 | Merging the hotfix into `main` | **Stop, unless** the explicit-phrase override (above) is given in this exact moment. Restate the rule, log the override, then act — never silently |
-| The first live run of this role | Report-only regardless of outcome, same calibration as every other role in this roster |
+| Explicit `/hotfix` invocation | Unattended — proceed straight into the manual-entry procedure above |
+| A free-text message sounds hotfix-shaped but `/hotfix` was not actually given | **Stop.** Propose invoking `/hotfix` (state the base-branch choice and ticket status) and wait for explicit confirmation — never branch or write code from detection alone |
+| Opening the back-port PR into `develop` after a `main` hotfix | Unattended — an ordinary `develop`-based PR, same tier as any `implement`/`promoter` branch-cut PR |
+| The first live run of this role | Report-only regardless of outcome, same calibration as every other role in this roster — this governs the very first invocation whether it arrives via the monitor loop or via `/hotfix`; `/hotfix` gets no separate first-use exemption |
 
 ## Reference files
 
 None yet — this role is new and has not run live. A `references/` directory with worked incident
-examples should be added after the first live (or report-only) run, mirroring
-`implement/references/checkpoint-examples.md`.
+examples (including a `/hotfix`-triggered one) should be added after the first live (or
+report-only) run, mirroring `implement/references/checkpoint-examples.md`.

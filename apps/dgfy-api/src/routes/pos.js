@@ -48,6 +48,7 @@ import {
     validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
+    validateRecordOrderBalancePayment,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -214,6 +215,11 @@ router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_P
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.collectCashDeliveryOrder);
+// Phase 148 (#825): balance settlement for a partially-paid downpayment order. Same permission,
+// pairing, and param-validation chain as the two collect-cash routes above -- it is the same class
+// of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2
+// [binding], carried forward by ADR 0070: staff-recorded, never a second automatic charge).
+router.post('/orders/:id/record-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateRecordOrderBalancePayment, posController.recordOrderBalancePayment);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);

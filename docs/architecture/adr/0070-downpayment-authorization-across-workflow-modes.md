@@ -155,6 +155,40 @@ here — see ADR 0069 for their text. Only clauses 6 and 7 are replaced; one new
 - PR: #865/#866 (Phase 150). Issues: #865 (settings-form clarity, shipped in the same PR, no ADR
   clause of its own), #866 (this amendment).
 
+### 2026-08-22 — refund-vs-forfeiture is scoped by who ended the order, not only by the toggle
+
+- Clause amended: **ADR 0069 clause 8** (`[default]`), which this ADR carries forward verbatim
+  rather than restating — *"Whether a customer cancellation forfeits the collected downpayment or
+  refunds it is a per-store toggle, defaulting to refundable."* Recorded here, not on ADR 0069,
+  because that document is `status: superseded` / `authority_level: historical` and `AGENTS.md`
+  forbids citing it for a new decision; this ADR is the authoritative carrier of that clause.
+- Change: clause 8 says *whether* a cancellation may forfeit, but never defines what counts as a
+  *customer* cancellation — and `cancelled` is reachable from two different actors. That is now
+  settled explicitly:
+  - A **store-initiated** terminal state — `rejected`, or `cancelled` set by staff through
+    `PATCH /pos/orders/:id/status` — **always refunds the captured downpayment**, regardless of the
+    store's own `downpayment_refundable` setting.
+  - Only a **customer self-service** cancellation, through
+    `PATCH /store/orders/:tracking_pin/cancel`, may forfeit, and only when the policy snapshot
+    taken at capture time (`commerce_payment_sessions.downpayment_refundable`, Phase 141) is
+    explicitly `false`. A null/unknown snapshot refunds.
+  - The decision reads the **session snapshot**, never the tenant's live settings row, so a
+    merchant flipping the toggle after the customer has already paid cannot retroactively change
+    the terms that customer accepted.
+- Reason: the store's inability to fulfil is not the customer's forfeiture. Without this scoping,
+  a store that rejects its own order at a non-refundable-downpayment tenant would keep money for an
+  order it declined to supply — the reading clause 8 permits on its face but plainly did not
+  intend.
+- Known limitation, accepted deliberately rather than left implicit: a customer who phones the
+  store and has staff cancel on their behalf is recorded as store-initiated and is therefore
+  refunded. Attributing that intent requires an explicit origin field on the POS status payload;
+  it is not built, and the safe direction (refund) is the one that fails open for the customer.
+- Scope this amendment does **not** touch: clauses 6, 7, and 11 are unaffected, and the *amount*
+  refunded is unchanged — ADR 0069 clause 1b `[binding]` already fixes it at the captured
+  downpayment, never the order total.
+- PR: #824 (Phase 144). See also the companion amendment on ADR 0052, which owns the
+  provider-call side of the same behaviour.
+
 ## Related
 
 - ADR 0069 (Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis) — superseded by

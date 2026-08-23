@@ -67,6 +67,7 @@ import {
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
+    buildRecordOrderBalancePaymentUseCase,
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
@@ -233,6 +234,7 @@ export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonn
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const recordOrderBalancePaymentUseCase = buildRecordOrderBalancePaymentUseCase({ posRepository });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
