@@ -63,7 +63,21 @@ exists and positively identifies that box, satisfying that prerequisite, but not
 motivated #923 are not a resource problem. `tests/token_refresh_race.test.js`'s `beforeAll` hook
 hangs on `sequelize.authenticate()` and blows Jest's 120s hook timeout — confirmed failing the same
 4 tests, with the same signature, on both the 8-core box (chunk TIMEOUT at 600s) and the 4-core box
-(chunk FAIL at 524s). Routing this job to the large box does not make it green; tracked separately.
+(chunk FAIL at 524s). Routing this job to the large box does not make it green; tracked separately
+as #925.
+
+**Amendment, same day:** the bare `self-hosted` label was dropped from every array entirely, on
+Pat's direction — `sieitz-runner` (both boxes) and `sieitz-lg` (large box only) are the sole
+values now, e.g. `'["sieitz-lg"]'` rather than `'["self-hosted", "sieitz-lg"]'`. GitHub's
+`runs-on` label matching is AND, not OR, and only self-hosted runners can carry a custom label at
+all (a hosted image like `ubuntu-latest` can't be assigned one) — so `'["self-hosted", "sieitz-lg"]'`
+was already structurally unable to match anything but `vm-sieitzstaging`, and this amendment
+doesn't change what any job can land on. It's intentional cleanup, not a routing fix: `sieitz-lg`/
+`sieitz-runner` alone read as the actual policy instead of `self-hosted` plus a size qualifier,
+and it removes the now-redundant literal. `scripts/check-pr-quality-workflow.js`'s hosted/
+self-hosted detection was updated to match — it now keys off the presence of a GitHub-hosted image
+name (`ubuntu-latest` etc.) rather than the now-absent `self-hosted` substring, since that's the
+real signal the documented revert-to-hosted procedure actually swaps in.
 
 ## Status as of 2026-08-19 — cache backend added as a third flippable anchor (#726)
 
