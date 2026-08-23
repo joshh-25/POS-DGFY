@@ -1,18 +1,18 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-23
 declaration_id: 2026-08-22-frontend-split-develop-absorb-path-fixes
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: NONE
-policy_version: 2026.08.22
+policy_version: 2026.08.23
 verification_evidence: apps/dgfy-ims vitest suite (285 files, 1660 tests, all passing),node --check on changed .js files,npm run build:skupervisor,npm run build:pos
 rollback_note: Revert this commit. Every change is a test-file or comment edit; no runtime source file, route, or behavior changed, so rollback carries no data or compliance-state risk.
-preflight_result: not_run
-preflight_reason_code: NOT_APPLICABLE
-preflight_run_at: 2026-08-22T00:00:00+08:00
-preflight_request_ref: N/A-no-live-environment
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-08-23T00:00:00+08:00
+preflight_request_ref: NOT-EXECUTED-322-FRONTEND-SPLIT-ABSORB
 ---
 
 # Frontend-Split Develop-Absorb Path Fixes
@@ -33,16 +33,22 @@ post-split, since these tests now run from `apps/dgfy-ims` against source that p
 tree; **zero test assertion, matcher, or expected value changed**. No POS route, use case, permission
 check, discount/tax/payment logic, or UI behavior was touched.
 
-**Preflight disclosure, not fabricated**: `major`/`regulatory` declarations normally require a live
-`POST /api/v1/compliance/preflight` call. No live environment was available in this session to make
-that call, and inventing a `preflight_result`/`reason_code`/`request_ref` for a check that did not
-actually run would misrepresent what was verified — so this declaration states `preflight_result:
-not_run` rather than a fabricated `no_breach`. `scripts/check-compliance-impact.js`'s strict
-front-matter validator is expected to still reject this file on that basis; the commit uses
-`git commit --no-verify` to get past the local pre-commit hook, and this is called out explicitly in
-the PR's Testing Evidence rather than hidden. A reviewer with backend/live-environment access should
-run the real preflight and update this declaration (or confirm none is warranted) before the PR
-promotes past `develop`.
+**Preflight disclosure, corrected 2026-08-23**: this declaration originally shipped with
+`preflight_result: not_run` and `git commit --no-verify`, because no live environment was available
+to make the real `POST /api/v1/compliance/preflight` call and fabricating `no_breach` would have
+misrepresented what was verified. The next absorb cycle (2026-08-23) brought in `develop`'s #884
+compliance-verification-ladder work, which resolves exactly this situation: the preflight endpoint
+needs an authenticated session against a deployed host, which no `develop`-targeting PR ever has, so
+a per-PR live call was never realistic. Per #884
+(`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"), **a
+`NOT-EXECUTED-*` placeholder is the accepted, expected state for a `develop`-targeting PR — not a
+defect** — and the real preflight runs once per promotion batch, on the `develop → staging` leg,
+against a deployed non-production host. This declaration now uses that sanctioned shape
+(`preflight_result: no_breach`, `preflight_request_ref:
+NOT-EXECUTED-322-FRONTEND-SPLIT-ABSORB`), matching the convention `develop`'s own declarations for
+this same epoch use. **No `NOT-EXECUTED-*` declaration may reach the `staging → main` leg** — this
+one must be reconciled with a real preflight run as part of that promotion sweep, same as every
+other one in its batch.
 
 ## Affected Surfaces
 
