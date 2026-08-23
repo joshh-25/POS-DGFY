@@ -696,7 +696,7 @@ export default function MobileReceive() {
                         <div>
                             <p className="font-medium text-amber-800">Insufficient Stock</p>
                             <p className="text-sm text-amber-700">
-                                Some ingredients don't have enough stock. Please verify before proceeding.
+                                Some ingredients don&apos;t have enough stock. Please verify before proceeding.
                             </p>
                         </div>
                     </div>

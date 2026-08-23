@@ -259,7 +259,7 @@ export default function AcceptInvite() {
                 <Mail className="w-5 h-5 text-teal-600 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-teal-900">
-                    You've been invited to join
+                    You&apos;ve been invited to join
                   </p>
                   <p className="text-lg font-semibold text-teal-700">
                     {invitationData.tenantName || 'the team'}
