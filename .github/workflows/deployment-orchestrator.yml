@@ -45,7 +45,7 @@ on:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}

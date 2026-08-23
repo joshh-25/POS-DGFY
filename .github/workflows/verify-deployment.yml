@@ -68,7 +68,7 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ['self-hosted']
+    runs-on: ['sieitz-runner']  # #923: generic, either box
     timeout-minutes: 15
     environment: ${{ inputs.environment }}
     steps:

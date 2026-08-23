@@ -82,7 +82,7 @@ permissions:
 
 jobs:
   resolve-environment:
-    runs-on: ['self-hosted']
+    runs-on: ['sieitz-runner']  # #923: generic, either box
     timeout-minutes: 2
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
@@ -122,7 +122,7 @@ jobs:
       build_frontend_ims: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims' }}
       build_frontend_pos: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos' }}
       build_frontend_storefront: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront' }}
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
     secrets: inherit
     permissions:
       contents: read

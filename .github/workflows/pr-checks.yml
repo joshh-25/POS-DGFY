@@ -26,12 +26,15 @@ concurrency:
 
 env:
   # GHA billing is exhausted (spending limit / failed payment), so every job
-  # runs on self-hosted for now. Keep the light/heavy split -- it costs
-  # nothing on self-hosted and makes it a one-line revert if/when hosted
-  # runners come back (just swap the value, not the anchor name -- see
-  # scripts/check-pr-quality-workflow.js, which asserts *runner_heavy).
-  RUNNER_LIGHT_JSON: &runner_light '["self-hosted"]'
-  RUNNER_HEAVY_JSON: &runner_heavy '["self-hosted"]'
+  # runs on self-hosted for now. Since #923 (2026-08-23), light/heavy is a real
+  # routing split, not just a no-op scaffold: sieitz-runner is either box,
+  # sieitz-lg is vm-sieitzstaging only. Split by measured GHA history, not by
+  # guess -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's #923 section. This
+  # is still a one-line revert if/when hosted runners come back (swap the
+  # value, not the anchor name -- see scripts/check-pr-quality-workflow.js,
+  # which asserts *runner_heavy).
+  RUNNER_LIGHT_JSON: &runner_light '["sieitz-runner"]'
+  RUNNER_HEAVY_JSON: &runner_heavy '["sieitz-lg"]'
   # Empty on self-hosted: the Actions cache service serves these runners at 49-69 KB/s, so
   # importing the layer cache costs ~21x the build it skips (#726). Revert to type=gha when
   # hosted runners are back -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md.
@@ -93,7 +96,9 @@ jobs:
     if: needs.changes.outputs.dgfy_api == 'true'
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
-      runner_labels_json: *runner_heavy
+      # Measured (#923): npm ci --omit=dev + COPY, no compile step -- median
+      # 2.8m on the small box vs 3.4m on the large. Faster on either-box.
+      runner_labels_json: *runner_light
       cache_from: *build_cache_from
 
   dgfy-migration-runner-build-check:
@@ -101,7 +106,9 @@ jobs:
     if: needs.changes.outputs.migration_runner == 'true'
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
-      runner_labels_json: *runner_heavy
+      # Measured (#923): same shape as dgfy-api-build-check -- median 1.4m on
+      # the small box vs 1.8m on the large. Faster on either-box.
+      runner_labels_json: *runner_light
       cache_from: *build_cache_from
 
   frontend-ims-build-check:
@@ -109,6 +116,15 @@ jobs:
     if: needs.changes.outputs.frontend_ims == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
+      # #923's own measurement was taken pre-split, against the old
+      # `npm run build:all:parallel` (3 concurrent vite builds in one job) --
+      # median 3.7m on the small box vs 2.4m on the large, plus the documented
+      # exit-137 OOM case (#662). The split (#322) turned that into three
+      # separate single-app build jobs below; each now builds only one app
+      # instead of three concurrently, so the OOM risk per job is lower than
+      # what was measured, but this hasn't been re-measured post-split. Keep
+      # all three on the large box until it is -- the conservative default,
+      # not a re-confirmed one.
       app: dgfy-ims
       runner_labels_json: *runner_heavy
       cache_from: *build_cache_from

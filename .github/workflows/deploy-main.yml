@@ -88,7 +88,7 @@ jobs:
       image_tags: "beta"
       # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
       contents: read
@@ -102,7 +102,7 @@ jobs:
       environment: PROD
       image_tags: "beta"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
       contents: read
@@ -128,7 +128,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
       contents: read
@@ -194,7 +194,7 @@ jobs:
     with:
       environment: PROD
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
       contents: read
