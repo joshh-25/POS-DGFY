@@ -48,6 +48,10 @@ const mockListActiveDeliveryPersonnelUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockCollectCashDeliveryOrderUseCase = jest.fn();
+// Phase 148 (#825): the module mock enumerates every export posHandlers.js imports, so a new use
+// case has to be declared here too -- otherwise the whole suite fails to link, not just the tests
+// that exercise it.
+const mockRecordOrderBalancePaymentUseCase = jest.fn();
 const mockAssignDeliveryPersonnelUseCase = jest.fn();
 const mockUpdateDeliveryJobStatusUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
@@ -127,6 +131,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
+    recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,

@@ -49,6 +49,7 @@ import {
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    recordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
@@ -1613,6 +1614,36 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 148 (#825): the balance-settlement sibling of collectCashPickupOrder /
+// collectCashDeliveryOrder above. One handler for both order methods -- the use case derives the
+// required handover state from the order's own order_method, so there is no reason to split this
+// into a pickup and a delivery variant the way the collect-cash pair is split.
+export const recordOrderBalancePayment = async (req, res, next) => {
+    try {
+        const result = await recordOrderBalancePaymentUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Remaining balance recorded for this order.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

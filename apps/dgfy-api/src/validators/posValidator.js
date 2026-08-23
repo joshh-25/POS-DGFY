@@ -678,6 +678,38 @@ const collectCashPickupOrderSchema = Joi.object({
     cash_received: Joi.number().positive().precision(4).required()
 });
 
+// Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance. Distinct
+// from collectCashPickupOrderSchema above -- that one is the plain-COD path and is deliberately
+// untouched. Method set is ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
+// store-owned terminal, never PayMongo card.
+//
+// The cash/non-cash split is structural, not cosmetic: cash is TENDERED (change is possible, so
+// the server computes it from cash_received), while a merchant-owned digital tender is an EXACT
+// amount the client must echo back. `manual_payment_received` is ADR 0063 clause 6 [binding]'s
+// explicit request-side confirmation -- required for every non-cash method and forbidden as a
+// substitute for it on cash, so it can never be sent as a blanket "trust me" flag.
+const recordOrderBalancePaymentSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).required(),
+    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer').required(),
+    cash_received: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    }),
+    amount: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.required()
+    }),
+    manual_payment_received: Joi.boolean().when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.valid(true).required()
+    }),
+    payment_reference: Joi.string().trim().max(120).allow('', null).optional()
+});
+
 // A client-side driver (iMin native bridge, a future Web Bluetooth ESC/POS
 // driver) reports its own outcome here instead of asking the backend to
 // dispatch physically. See ADR 0053 and posDeviceUseCases.js.
@@ -990,6 +1022,7 @@ export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobS
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
