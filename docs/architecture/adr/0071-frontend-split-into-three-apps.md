@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-15
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-23
 review_by: 2027-02-15
 applies_to: repository_layout
 topic: frontend_split_into_three_apps
@@ -111,6 +111,26 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   (`frontend/` → `apps/dgfy-web/` per ADR 0059, then `apps/dgfy-web/**` → the three apps plus
   `packages/web-core` per this ADR) — a `develop`→branch sync during the transition period had to
   replay both.
+
+## Amendments
+
+### 2026-08-23 — `deploy-main.yml`'s frontend chain shrinks from 6 jobs to 3 (beta retired)
+
+- Clause amended: **Consequences item 3** (untagged, `default` tier per ADR 0039) — *"`deploy-
+  main.yml`'s frontend chain grew from 2 jobs to 6, fully serialized (`frontend-ims-beta` ->
+  `frontend-ims-prod` -> `frontend-pos-beta` -> ... )"*.
+- Change: beta.dgfy.ph was retired upstream on `develop` (#329, PRs #909/#910/#911/#912; nginx now
+  terminates the beta domain group in three bare `return 301` redirects into the equivalent prod
+  host, no upstream). Absorbing that into this branch (issue #322 cycle-3 develop-absorb,
+  2026-08-23) removes the three `*-beta` jobs this ADR originally described, leaving
+  `frontend-ims-prod` -> `frontend-pos-prod` -> `frontend-storefront-prod` — **3 jobs, not 6**.
+- What's unchanged: the chain is **still fully serialized**, for the same reason item 3 originally
+  gave — three large pushes to the same GHCR org around the same time is still the secondary-rate-
+  limit pressure #427 fixed (run 31728787346); dropping serialization now that only 3 jobs remain
+  was considered and rejected during this absorb cycle. The core decision this ADR governs (one
+  image per app, `deploy-main.yml`/`deployment-orchestrator.yml` running per-app jobs) is untouched
+  — only the beta half of the build matrix and the resulting job count changed.
+- PR: #513 (issue #322).
 
 ## Future Direction
 
