@@ -326,6 +326,16 @@ jobs:
       - name: Run compatibility-seam contract gate
         run: npm run check:compat-seams
 
+      # Guards the retired backend/frontend/android/apps-dgfy-web paths (issue
+      # #914): a develop-based in-flight branch's PR could otherwise silently
+      # reintroduce one of these -- git's directory-rename detection has no
+      # signal for a brand-new subdirectory with no base counterpart (the
+      # "silent reappearance" failure mode, documented five times in
+      # docs/architecture/backend-absorption.md's changelog). --strict fails
+      # this step, not just warns.
+      - name: Check retired-path resurrection
+        run: npm run report:frontend-split-sync:post-merge
+
       # PR-context only: github.event.pull_request.{base,head}.sha don't
       # exist under a plain workflow_dispatch run (this workflow is no
       # longer called with pull_request context by default -- see the on:

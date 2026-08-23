@@ -6,6 +6,24 @@ set -e
 
 STAGED_FILES="$(git diff --cached --name-only)"
 
+# Hard block on staging anything under a retired top-level tree (issue #914).
+# apps/dgfy-web/ is this branch's own split (issue #322); frontend/ and
+# backend/ predate it (the earlier backend/frontend/android -> apps/*
+# refactor). Git's directory-rename detection has no signal for a brand-new
+# subdirectory with no base counterpart, so a merge/rebase can silently
+# resurrect a file at one of these dead paths with no conflict and no
+# advisory -- this is the earliest point to catch that, before it's even
+# committed. See docs/architecture/apps-layout-migration.md and
+# scripts/frontend-split-path-map.json for where the file actually belongs.
+RETIRED_PATH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(apps/dgfy-web/|frontend/|backend/)" || true)"
+if [ -n "$RETIRED_PATH_FILES" ]; then
+  echo "[pre-commit] BLOCKED - staged file(s) under a retired path:"
+  echo "$RETIRED_PATH_FILES"
+  echo "[pre-commit] These trees no longer exist. See docs/architecture/apps-layout-migration.md"
+  echo "[pre-commit] for the path map, or run: node scripts/report-frontend-split-sync.js --post-merge --fix"
+  exit 1
+fi
+
 # apps/dgfy-api is the source of truth for the app (backend/ removed).
 # validate:ai needs a fully installed + configured app (sharp, JWT_SECRET,
 # ...), so it runs only when the staged AI tooling files under apps/dgfy-api

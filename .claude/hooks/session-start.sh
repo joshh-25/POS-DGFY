@@ -72,6 +72,17 @@ else
   echo "   ⚠️  Root      — missing  →  npm install"
 fi
 
+# Retired-path hint (issue #914): a merge/rebase from a pre-split branch can
+# silently resurrect a file under one of these dead trees (git's
+# directory-rename detection misses brand-new subdirectories). Report-only —
+# the hard stop is .husky/pre-commit and the CI repository-quality job; this
+# is just an early heads-up at session start.
+_retired_hits="$(cd "$PROJECT_ROOT" && git ls-files -- 'apps/dgfy-web/**' 'frontend/**' 'backend/**' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$_retired_hits" != "0" ] && [ -n "$_retired_hits" ]; then
+  echo "   ⚠️  Retired paths — $_retired_hits tracked file(s) under apps/dgfy-web/, frontend/, or backend/"
+  echo "      ▶  node scripts/report-frontend-split-sync.js --post-merge --fix"
+fi
+
 # ─── §2 Environment Variables ────────────────────────────────────────────────
 echo ""
 echo "🔑 §2 Environment Variables"

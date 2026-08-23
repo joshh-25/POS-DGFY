@@ -37,6 +37,7 @@ const requiredQualityMarkers = [
   'npm run audit:indexes',
   'npm run lint:docs',
   'npm run check:compat-seams',
+  'npm run report:frontend-split-sync:post-merge',
   'npx vitest run',
   'fnbMode.contract.test.js',
   'posFnbModifierManager.session.test.jsx',
