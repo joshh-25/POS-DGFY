@@ -63,6 +63,13 @@ function main() {
   addGate(gates, 'frontend.pos.lint', runCommand(npmCmd, ['--prefix', 'apps/dgfy-pos', 'run', 'lint']), 'npm --prefix apps/dgfy-pos run lint');
   addGate(gates, 'frontend.storefront.lint', runCommand(npmCmd, ['--prefix', 'apps/dgfy-storefront', 'run', 'lint']), 'npm --prefix apps/dgfy-storefront run lint');
   addGate(gates, 'frontend.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts']), 'npm run test:frontend:contracts');
+  // frontend.lint fanned out to three gates (ims/pos/storefront) when the split landed (#322);
+  // this gate wasn't -- it stayed pointed at ims only, so apps/dgfy-storefront's own
+  // contract/integration tests silently dropped out of the pre-main release gate (RF-3, PR #513).
+  // POS has no gate of its own here: apps/dgfy-pos has zero tests today (every POS test lives in
+  // packages/web-core, exercised via dgfy-ims's own contracts gate above) -- add one alongside
+  // this if that ever changes.
+  addGate(gates, 'frontend.storefront.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts:storefront']), 'npm run test:frontend:contracts:storefront');
   const frontendBudgetReportFile = path.join(evidenceDir, 'frontend-budgets', 'frontend_budget_report.json');
   addGate(
     gates,
