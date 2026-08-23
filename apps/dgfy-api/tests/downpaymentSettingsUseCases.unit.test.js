@@ -83,14 +83,30 @@ describe('buildUpdateDownpaymentSettingsUseCase', () => {
         expect(result.error.statusCode).toBe(422);
     });
 
-    // #820's own scope: "Schema customer_choice now; server rejects it as unsupported in v1".
-    // Unrelated to vertical scope -- unaffected by ADR 0070.
-    test('rejects customer_choice as not yet supported', async () => {
+    // Phase 150 (#866): the reservation #820 held on this literal ("Schema customer_choice now;
+    // server rejects it as unsupported in v1") is lifted -- customer_choice is now a fully
+    // supported settings-level payment_mode, subject to the same effective-row rules as
+    // downpayment_required (see the tests immediately below).
+    test('accepts customer_choice with a fully-configured effective row', async () => {
+        const useCase = buildUpdateDownpaymentSettingsUseCase({ repository: makeFakeRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            body: {
+                payment_mode: 'customer_choice',
+                downpayment_type: 'percentage',
+                downpayment_rate_bps: 2000,
+                min_downpayment_centavos: 5000
+            }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.settings.payment_mode).toBe('customer_choice');
+    });
+
+    test('rejects customer_choice with no downpayment_type set -- same effective-row rule as downpayment_required', async () => {
         const useCase = buildUpdateDownpaymentSettingsUseCase({ repository: makeFakeRepository() });
         const result = await useCase({ tenantId: TENANT_ID, body: { payment_mode: 'customer_choice' } });
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(422);
-        expect(result.error.observabilityReasonCode).toBe('PAYMENT_MODE_NOT_SUPPORTED');
     });
 
     // ADR 0070 (#833) corrected ADR 0069's Retail-only gate: downpayment is now authorized for
@@ -132,15 +148,30 @@ describe('buildUpdateDownpaymentSettingsUseCase', () => {
         expect(result.error.statusCode).toBe(422);
     });
 
-    // #820: min_downpayment_centavos "required -- feeds Phase 141's fee guard".
-    test('rejects downpayment_required with min_downpayment_centavos left at 0', async () => {
+    // #820: min_downpayment_centavos "required -- feeds Phase 141's fee guard". Scoped to
+    // downpayment_type 'percentage' only.
+    test('rejects downpayment_required + percentage with min_downpayment_centavos left at 0', async () => {
+        const useCase = buildUpdateDownpaymentSettingsUseCase({ repository: makeFakeRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            body: { payment_mode: 'downpayment_required', downpayment_type: 'percentage', downpayment_rate_bps: 1000 }
+        });
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+    });
+
+    // Phase 150 (#865): in `fixed` mode the fixed amount already IS the floor -- requiring a
+    // second, separate minimum was either a no-op or a silent override of the amount the merchant
+    // just typed. min_downpayment_centavos is no longer required (or even read) when the effective
+    // downpayment_type is 'fixed'.
+    test('accepts downpayment_required + fixed with min_downpayment_centavos left at 0 -- the minimum is not required outside percentage mode', async () => {
         const useCase = buildUpdateDownpaymentSettingsUseCase({ repository: makeFakeRepository() });
         const result = await useCase({
             tenantId: TENANT_ID,
             body: { payment_mode: 'downpayment_required', downpayment_type: 'fixed', downpayment_fixed_centavos: 10000 }
         });
-        expect(result.success).toBe(false);
-        expect(result.error.statusCode).toBe(422);
+        expect(result.success).toBe(true);
+        expect(result.data.settings.min_downpayment_centavos).toBe(0);
     });
 
     test('validates the effective (merged) state across partial updates, not just the current request body', async () => {

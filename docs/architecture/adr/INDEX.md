@@ -74,7 +74,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
 | 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `amended` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
-| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `amended` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
+| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `amended` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 1 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `amended` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
 | 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
 | 0055 | [Tenant-Scoped POS Catalog Realtime Invalidation](0055-tenant-scoped-pos-catalog-realtime-invalidation.md) | `accepted` | tenant_scoped_pos_catalog_realtime_invalidation | 2027-02-08 | 0 |
@@ -92,7 +92,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `accepted` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 2 |
 | 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
 | 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
-| 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `accepted` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 5 |
+| 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
 
 ## Renumbered (collision stubs)
 

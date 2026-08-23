@@ -11,6 +11,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
 
@@ -27,6 +28,12 @@ export default function TerminalPageDialogLayer({ model }) {
     adminReauthContext,
     adminReauthForm,
     adminReauthUnlock,
+    balanceSettlementCashInput,
+    balanceSettlementConfirmed,
+    balanceSettlementMethod,
+    balanceSettlementOrder,
+    balanceSettlementReference,
+    balanceSettlementSaving,
     canAdminBypassShiftPrompt,
     canOpenShift,
     canSubmitOpenShift,
@@ -51,6 +58,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleCashierResumeSubmit,
     handleCloseDay,
     handleCollectCash,
+    handleSettleBalance,
     handleCompleteLegacyLink,
     handleCompleteTenantSetup,
     handleConfirmCloseShift,
@@ -91,6 +99,11 @@ export default function TerminalPageDialogLayer({ model }) {
     resumeTenantSetupFlow,
     saveMyDayClosePin,
     setAdminReauthForm,
+    setBalanceSettlementCashInput,
+    setBalanceSettlementConfirmed,
+    setBalanceSettlementMethod,
+    setBalanceSettlementOrder,
+    setBalanceSettlementReference,
     setCashCollectionOrder,
     setCashReceivedInput,
     setCashierResumeForm,
@@ -171,6 +184,20 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <BalanceSettlementDialog
+          order={balanceSettlementOrder}
+          method={balanceSettlementMethod}
+          cashInput={balanceSettlementCashInput}
+          reference={balanceSettlementReference}
+          confirmed={balanceSettlementConfirmed}
+          saving={balanceSettlementSaving}
+          onClose={() => setBalanceSettlementOrder(null)}
+          onMethodChange={setBalanceSettlementMethod}
+          onCashInputChange={setBalanceSettlementCashInput}
+          onReferenceChange={setBalanceSettlementReference}
+          onConfirmedChange={setBalanceSettlementConfirmed}
+          onSubmit={handleSettleBalance}
+        />
         <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
           if (submitting) return;
           if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock' || cashierResumeUnlock || adminReauthUnlock)) {

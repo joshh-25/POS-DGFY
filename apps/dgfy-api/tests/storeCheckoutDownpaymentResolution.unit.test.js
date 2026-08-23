@@ -173,6 +173,57 @@ describe('buildStoreCartQuoteUseCase — Phase 140 downpayment resolution', () =
     });
 });
 
+// Phase 150 (#866): payment_election threaded from the quote payload through resolveCheckoutContext
+// into resolveDownpaymentForTotal, for a customer_choice-configured store. Existing
+// full_payment/downpayment_required quote coverage above is untouched by this addition -- the
+// election field is meaningless for both.
+describe('buildStoreCartQuoteUseCase — Phase 150 (#866) customer_choice election', () => {
+    const customerChoiceSettings = (overrides = {}) => downpaymentRequiredSettings({ payment_mode: 'customer_choice', ...overrides });
+
+    test('election "downpayment" produces the split', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: buildFakeQuoteStoreRepository(),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(customerChoiceSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID }, () => (
+            useCase({ payload: quotePayload({ payment_election: 'downpayment' }) })
+        ));
+
+        expect(result.success).toBe(true);
+        expect(result.data.payment_mode).toBe('downpayment_required');
+        expect(result.data.downpayment_amount).toBe(101); // 20% of 505
+        expect(result.data.balance_due_amount).toBe(404);
+    });
+
+    test('election "full" produces the null downpayment shape', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: buildFakeQuoteStoreRepository(),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(customerChoiceSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID }, () => (
+            useCase({ payload: quotePayload({ payment_election: 'full' }) })
+        ));
+
+        expect(result.success).toBe(true);
+        expect(result.data.payment_mode).toBe('full_payment');
+        expect(result.data.downpayment_amount).toBeNull();
+    });
+
+    test('no election in the payload defaults to "full" -- under-collecting is the dangerous direction', async () => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: buildFakeQuoteStoreRepository(),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(customerChoiceSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID }, () => useCase({ payload: quotePayload() }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.payment_mode).toBe('full_payment');
+    });
+});
+
 // --- Checkout fixture (mirrors storeCheckoutAffiliatePricing.unit.test.js) ---
 
 const buildFakeCheckoutStoreRepository = ({ createdOrderId = 9001 } = {}) => {
@@ -507,6 +558,120 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
     });
 
+    // Phase 150 (#866): same malformed-row scenario as the test immediately above, at a
+    // customer_choice store instead of downpayment_required. The guard's extended condition must
+    // key on the customer's *election*, not just the settings-level mode -- see the two tests below.
+    const buildMalformedCustomerChoicePaymentSessionFixture = (paymentElection) => {
+        const commercePaymentRepository = {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            // The 'downpayment' election test never reaches session creation (422s first); the
+            // 'full' election test does, and needs a resolved value here -- unlike the sibling
+            // "rejects 422 DOWNPAYMENT_POLICY_UNRESOLVED" test above (which stays a bare jest.fn()
+            // since it never gets this far either), this shared fixture is used by both, so it must
+            // support the success path too. Mirrors the working shape in the "authorizes only the
+            // downpayment amount online" test above.
+            createSession: jest.fn((attrs) => Promise.resolve({ session_id: 501, ...attrs })),
+            updateSessionById: jest.fn((sessionId, attrs) => Promise.resolve({ session_id: sessionId, ...attrs }))
+        };
+        const paymongoService = {
+            createHostedCheckoutSession: jest.fn(),
+            createDirectGcashPaymentIntent: jest.fn(),
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn().mockResolvedValue({
+                payment_intent_id: 'pi_fixture_customer_choice',
+                checkout_url: 'https://paymongo.example/checkout/pi_fixture_customer_choice',
+                qr_code_image_url: null,
+                expires_at: new Date('2026-08-22T00:00:00Z')
+            })
+        };
+        const storeRepository = {
+            findDefaultActiveLocation: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_open: true,
+                allow_out_of_stock_sales: true
+            }),
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                ...registeredTransactionSettings(),
+                { setting_key: 'store_delivery_fee', setting_value: '0' },
+                { setting_key: 'pos_open_status', setting_value: 'true' }
+            ]),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Test Item',
+                default_sale_price: 500,
+                sale_price: 500,
+                is_available: true,
+                availability_status: 'in_stock'
+            }])
+        };
+
+        const malformedSettings = downpaymentRequiredSettings({
+            payment_mode: 'customer_choice',
+            downpayment_type: null,
+            downpayment_rate_bps: null
+        });
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository,
+            commercePaymentRepository,
+            paymongoService,
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(malformedSettings)
+        });
+
+        const runResult = () => dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-customer-choice',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                payment_election: paymentElection,
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-customer-choice'
+                })
+            }
+        }));
+
+        return { runResult, commercePaymentRepository, paymongoService };
+    };
+
+    test('rejects 422 DOWNPAYMENT_POLICY_UNRESOLVED for customer_choice + election "downpayment" against the same malformed row', async () => {
+        const { runResult, commercePaymentRepository, paymongoService } = buildMalformedCustomerChoicePaymentSessionFixture('downpayment');
+        const result = await runResult();
+
+        expect(result.success).toBe(false);
+        expect(result.error?.statusCode).toBe(422);
+        expect(result.error?.details?.reason_code).toBe('DOWNPAYMENT_POLICY_UNRESOLVED');
+        expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
+        expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
+    });
+
+    test('does NOT trip DOWNPAYMENT_POLICY_UNRESOLVED for customer_choice + election "full" against the same malformed row -- the customer never asked for a split', async () => {
+        const { runResult, commercePaymentRepository, paymongoService } = buildMalformedCustomerChoicePaymentSessionFixture('full');
+        const result = await runResult();
+
+        expect(result.success).toBe(true);
+        expect(result.error?.details?.reason_code).not.toBe('DOWNPAYMENT_POLICY_UNRESOLVED');
+        expect(commercePaymentRepository.createSession).toHaveBeenCalled();
+        expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalled();
+    });
+
     test('a zero-total order (nothing to capture) 422s on the pre-existing totalAmountCentavos guard, not the misleading DOWNPAYMENT_POLICY_UNRESOLVED (RF-2, PR #840)', async () => {
         // resolveDownpaymentForTotal (downpaymentPolicy.js) falls back to the same full_payment
         // null-shape for TWO distinct cases: a malformed settings row (tested above) and a
@@ -687,6 +852,161 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(sessionAttrs.order_total_centavos).toBe(50500);
         expect(sessionAttrs.total_amount_centavos).toBe(50500);
         expect(sessionAttrs.downpayment_refundable).toBeNull();
+    });
+});
+
+describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the client-facing session payload', () => {
+    // Phase 141's own tests only assert on the pre-persistence attrs passed to createSession
+    // (sessionAttrs), never on what the client actually receives. These tests exercise the public
+    // use-case response (result.data.payment_session) through a commercePaymentRepository fake
+    // whose updateSessionById MERGES with the row's prior state -- matching the real repository
+    // (commercePaymentRepository.js: findByPk + row.update + return the full row) -- because the
+    // success path's own second updateSessionById call only passes provider/status fields, not
+    // capture_kind/order_total_centavos/downpayment_refundable; a non-merging fake would silently
+    // report those fields as always-undefined regardless of the serializer under test.
+    const buildMergingCommercePaymentRepository = () => {
+        const rows = new Map();
+        return {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn((attrs) => {
+                const row = { session_id: rows.size + 601, ...attrs };
+                rows.set(row.session_id, row);
+                return Promise.resolve(row);
+            }),
+            updateSessionById: jest.fn((sessionId, attrs) => {
+                const merged = { ...rows.get(sessionId), ...attrs };
+                rows.set(sessionId, merged);
+                return Promise.resolve(merged);
+            })
+        };
+    };
+
+    const buildFixtureStoreRepository = () => ({
+        findDefaultActiveLocation: jest.fn().mockResolvedValue({
+            location_id: 1,
+            is_open: true,
+            allow_out_of_stock_sales: true
+        }),
+        getSettingsByKeys: jest.fn().mockResolvedValue([
+            ...registeredTransactionSettings(),
+            { setting_key: 'store_delivery_fee', setting_value: '0' },
+            { setting_key: 'pos_open_status', setting_value: 'true' }
+        ]),
+        findSellableItemsByIds: jest.fn().mockResolvedValue([{
+            item_id: 1,
+            name: 'Test Item',
+            default_sale_price: 500,
+            sale_price: 500,
+            is_available: true,
+            availability_status: 'in_stock'
+        }])
+    });
+
+    const buildPaymongoServiceFixture = () => ({
+        createHostedCheckoutSession: jest.fn(),
+        createDirectGcashPaymentIntent: jest.fn(),
+        createDirectMayaPaymentIntent: jest.fn(),
+        createQrphPaymentIntent: jest.fn().mockResolvedValue({
+            payment_intent_id: 'pi_fixture_serializer',
+            checkout_url: 'https://paymongo.example/checkout/pi_fixture_serializer',
+            qr_code_image_url: null,
+            expires_at: new Date('2026-08-22T00:00:00Z')
+        })
+    });
+
+    test('exposes capture_kind, order_total_amount, balance_due_amount, and downpayment_refundable for a downpayment session', async () => {
+        const commercePaymentRepository = buildMergingCommercePaymentRepository();
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository: buildFixtureStoreRepository(),
+            commercePaymentRepository,
+            paymongoService: buildPaymongoServiceFixture(),
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-serializer-1',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-serializer-1'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const session = result.data.payment_session;
+        // 500 subtotal + 1% (5) service fee = 505 order total; 20% downpayment = 101 pesos.
+        expect(session.capture_kind).toBe('downpayment');
+        expect(session.order_total_amount).toBe(505);
+        expect(session.balance_due_amount).toBe(404);
+        expect(session.downpayment_refundable).toBe(true);
+        // total_amount keeps its pre-existing meaning: the CAPTURED amount, not the order total.
+        expect(session.total_amount).toBe(101);
+    });
+
+    test('additive-only: a full_payment session reports capture_kind "full" and the three new amount/refundable fields strictly null, with every pre-existing key unchanged', async () => {
+        const commercePaymentRepository = buildMergingCommercePaymentRepository();
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository: buildFixtureStoreRepository(),
+            commercePaymentRepository,
+            paymongoService: buildPaymongoServiceFixture(),
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(fullPaymentSettings())
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                idempotency_key: 'dp-payment-session-serializer-2',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-serializer-2'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const session = result.data.payment_session;
+        expect(session.capture_kind).toBe('full');
+        expect(session.order_total_amount).toBeNull();
+        expect(session.balance_due_amount).toBeNull();
+        expect(session.downpayment_refundable).toBeNull();
+        // Every field a full_payment tenant's client already relied on, unchanged.
+        expect(session).toMatchObject({
+            status: 'awaiting_payment',
+            payment_method: 'qrph',
+            total_amount: 505,
+            currency: 'PHP'
+        });
     });
 });
 

@@ -82,6 +82,10 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     completePosPaymentSessionUseCase: jest.fn(),
     getMerchantTenderReconciliationUseCase: jest.fn(),
     reviewMerchantTenderReconciliationUseCase: jest.fn(),
+    // Phase 148 (#825): this module mock enumerates every named export modules/pos/index.js
+    // provides, so a new use case has to be declared here too or the route wiring under test
+    // fails to construct.
+    recordOrderBalancePaymentUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000
 }));
 

@@ -66,7 +66,22 @@ export function useRetailOrderPageProps({
   withAssetOrigin,
   handleCheckout,
   checkoutLoading,
-  checkoutError
+  checkoutError,
+  // Phase 142 (#823): Retail's payment step was a local, disconnected cash-only placeholder --
+  // wired to the same shared online-payment-session state F&B/MSME already coordinate on
+  // through StorefrontApp.jsx (useFnbCheckoutRouteState.js), same rename convention already used
+  // by useSimpleCheckoutRouteProps.js (handleConfirmQrphTestPayment -> onConfirmQrphTestPayment).
+  fnbPaymentType,
+  handlePaymentTypeChange,
+  handleConfirmQrphTestPayment,
+  qrphPaymentSession,
+  qrphPaymentStatusLoading,
+  resetQrphPaymentSession,
+  // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange above --
+  // StorefrontApp.jsx's paymentElection/setElected, threaded through unrenamed since there's no
+  // legacy name to reconcile with here (unlike fnbPaymentType, this is new).
+  paymentElection,
+  onPaymentElectionChange
 }) {
   return {
     canAddPinnedLocation,
@@ -127,6 +142,14 @@ export function useRetailOrderPageProps({
     checkoutError,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
+    paymentType: fnbPaymentType,
+    onPaymentTypeChange: handlePaymentTypeChange,
+    paymentElection,
+    onPaymentElectionChange,
+    onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    resetQrphPaymentSession,
     onImageError: (itemId) => {
       const normalizedLineItemId = Number(itemId);
       if (!Number.isFinite(normalizedLineItemId)) return;

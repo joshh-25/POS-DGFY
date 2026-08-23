@@ -58,4 +58,81 @@ describe('store checkout rules', () => {
       accessCapabilities: { booking: false }
     })).toBe('access_mode');
   });
+
+  // Phase 142 (#823): requireQuote true for a downpayment_required store even in fnb/simple/
+  // retail (previously false for those three unconditionally); unchanged for full_payment.
+  describe('downpayment stores', () => {
+    const downpaymentStore = { slug: 'demo', payment_mode: 'downpayment_required' };
+
+    // getCheckoutBlockReason itself takes requireQuote as an external input -- the
+    // downpayment_required-vs-mode decision lives in useCheckoutTotalsAndGating.js's own
+    // isDownpaymentStore computation, not here. This pins that when that caller passes
+    // requireQuote: true (which it now does for a downpayment store even in fnb/simple/retail),
+    // the missing-quote gate actually fires.
+    it('requires a quote when the caller resolves requireQuote true for a downpayment store', () => {
+      expect(getCheckoutBlockReason({
+        ...base,
+        selectedStore: downpaymentStore,
+        quoteResult: null,
+        requireQuote: true
+      })).toBe('missing_quote');
+    });
+
+    it('does not require a quote for fnb/simple/retail at a full_payment store (unaffected)', () => {
+      expect(getCheckoutBlockReason({
+        ...base,
+        quoteResult: null,
+        requireQuote: false
+      })).toBeNull();
+    });
+
+    it('blocks with a specific reason when a voucher discounts a downpayment order to zero', () => {
+      expect(getCheckoutBlockReason({
+        ...base,
+        selectedStore: downpaymentStore,
+        quoteResult: { total_amount: 0, payment_mode: 'full_payment' }
+      })).toBe('downpayment_zero_total');
+    });
+
+    it('allows checkout when the quote genuinely resolves to downpayment_required', () => {
+      expect(getCheckoutBlockReason({
+        ...base,
+        selectedStore: downpaymentStore,
+        quoteResult: { total_amount: 505, payment_mode: 'downpayment_required', downpayment_amount: 101 }
+      })).toBeNull();
+    });
+
+    // Phase 150 (#866): the same zero-total dead end, at a customer_choice store, only when the
+    // customer actually elected 'downpayment'.
+    describe('customer_choice', () => {
+      const customerChoiceStore = { slug: 'demo', payment_mode: 'customer_choice' };
+
+      it('blocks with the same specific reason when election is "downpayment" and the quote zeroed out', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'downpayment',
+          quoteResult: { total_amount: 0, payment_mode: 'full_payment' }
+        })).toBe('downpayment_zero_total');
+      });
+
+      it('never blocks when election is "full" -- the quote correctly reads full_payment by design, not malformed', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'full',
+          quoteResult: { total_amount: 0, payment_mode: 'full_payment' }
+        })).toBeNull();
+      });
+
+      it('allows checkout when election is "downpayment" and the quote genuinely resolves to a split', () => {
+        expect(getCheckoutBlockReason({
+          ...base,
+          selectedStore: customerChoiceStore,
+          paymentElection: 'downpayment',
+          quoteResult: { total_amount: 505, payment_mode: 'downpayment_required', downpayment_amount: 101 }
+        })).toBeNull();
+      });
+    });
+  });
 });

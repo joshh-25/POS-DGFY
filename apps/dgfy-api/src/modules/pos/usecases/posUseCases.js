@@ -150,7 +150,22 @@ const POS_OPERATION_KEYS = Object.freeze({
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
-    DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update'
+    DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
+    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement'
+});
+
+// Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
+// This is ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
+// tenders it classifies as `merchant_owned`. #825's own scope line named only "cash + gcash"; that
+// reads as an example rather than an exhaustive list, since clause 5 (what an attestation must
+// persist) and clause 6 (explicit confirmation) already govern all four identically and nothing
+// per-method has to be invented. `card` here is a store-owned card terminal, never PayMongo card --
+// no balance leg ever touches a provider (ADR 0069 clause 2 [binding], carried forward verbatim by
+// ADR 0070; ADR 0063 clause 12 [binding]).
+const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer']);
+const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
+    pickup: 'ready_for_pickup',
+    delivery: 'out_for_delivery'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -1330,6 +1345,29 @@ const assertDeliveryCompletionReadiness = (order) => {
     }
 
     const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
+
+    // Phase 148 (#825): completion requires a zero balance, not merely a `paid` label. Before this
+    // there was no way to reach `paid` on a downpayment order at all, so `paid` and "fully settled"
+    // were the same thing by construction; now that staff can settle a balance, the two can
+    // disagree if anything ever writes one without the other, and completion must follow the money.
+    const outstandingBalance = round4(order?.balance_due);
+    if (outstandingBalance > 0) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Delivery orders must have a fully settled balance before completion.',
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'DELIVERY_BALANCE_DUE_OUTSTANDING',
+                        balance_due: outstandingBalance,
+                        payment_status: paymentStatus || null
+                    }
+                }
+            }
+        );
+    }
+
     if (!isCodDelivery({
         orderMethod: order?.order_method,
         paymentType: order?.payment_type,
@@ -1353,13 +1391,22 @@ const assertDeliveryCompletionReadiness = (order) => {
         return;
     }
 
-    const hasCollectionEvidence = Boolean(paymentStatus === 'paid'
-        && order?.cash_received != null
-        && order?.change_amount != null
-        && order?.payment_collected_at
+    // Phase 148 (#825): a downpayment order is persisted as COD (payment_type forced to 'cash' by
+    // Phase 141, because the balance IS collected in person), so it lands in this branch too -- but
+    // its balance may have been settled by a merchant-owned digital tender, which legitimately has
+    // no cash_received/change_amount to show (ADR 0063 clause 5 [binding]: never claim what didn't
+    // happen). Discriminate on amount_paid: only an order that captured money online carries a
+    // nonzero amount_paid, since resolveStorefrontPaymentSnapshot's non-capture branch never sets
+    // it and the column defaults to 0. A plain COD order therefore keeps the original, unchanged
+    // rule -- pinned by test, so this discriminator cannot rot silently.
+    const settledFromDownpayment = round4(order?.amount_paid) > 0;
+    const hasStaffCollectionAttribution = Boolean(order?.payment_collected_at
         && parsePositiveInt(order?.payment_collected_by)
         && parsePositiveInt(order?.payment_collected_shift_id)
         && String(order?.payment_collected_terminal_id || '').trim());
+    const hasCollectionEvidence = Boolean(paymentStatus === 'paid'
+        && hasStaffCollectionAttribution
+        && (settledFromDownpayment || (order?.cash_received != null && order?.change_amount != null)));
 
     if (!hasCollectionEvidence) {
         throw new DomainError(
@@ -8226,6 +8273,314 @@ export const buildCollectCashDeliveryOrderUseCase = ({ posRepository }) => build
     fulfillmentLabel: 'out for delivery'
 });
 
+// Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance at
+// handover -- the missing middle of epic #815/#273. Phase 141 (#822) captures the downpayment
+// online and leaves the order `partially_paid`; Phase 144 (#824) shows staff how much is still
+// owed; nothing until now could actually record the balance being paid, so such an order could
+// never reach `paid` and never complete.
+//
+// Deliberately a SIBLING of buildCollectCashOnlineOrderUseCase, not an extension of it. #825's
+// first requirement is "extend, don't loosen" -- collect-cash's `payment_status === 'unpaid'` and
+// `cash_received >= total_amount` guards protect the live plain-COD path and are not touched. The
+// two use cases' domains are disjoint by construction: collect-cash owns `unpaid`, this owns
+// `partially_paid`. Everything else here (durable operation replay, request-hash fingerprinting,
+// open-shift assertion, locked order read, audit row) reuses collect-cash's proven scaffolding
+// rather than inventing a second version of it.
+//
+// ADR 0069 clause 2 [binding], carried forward verbatim by ADR 0070 (authoritative): the balance
+// is collected out-of-band by staff and no automatic second PayMongo charge may ever be initiated
+// for it. That clause also requires this action to carry its own single-use confirmation guard
+// following ADR 0063 clause 6 -- a distinct concern from webhook-replay dedupe. Both are present:
+// the durable operation replay makes a duplicate submit a no-op, and a non-cash method fails
+// closed without an explicit `manual_payment_received` attestation.
+//
+// ADR 0069 clause 9 [default]: the VAT/BIR/fiscal treatment of a balance-settlement event is
+// explicitly deferred and is NOT decided here. This writes payment state and ledger evidence only.
+export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const terminalId = sanitizeTerminalId(payload?.terminal_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const paymentMethod = String(payload?.payment_method || '').trim().toLowerCase();
+        const paymentReference = String(payload?.payment_reference || '').trim() || null;
+        const manualPaymentReceived = payload?.manual_payment_received === true;
+        const isCashSettlement = paymentMethod === 'cash';
+        // Cash is tendered (change is possible); a digital tender is an exact amount. Read the
+        // relevant field per method rather than overloading one name with two meanings.
+        const cashReceived = isCashSettlement ? round4(payload?.cash_received) : null;
+        const declaredAmount = isCashSettlement ? null : round4(payload?.amount);
+
+        if (!orderId || !cashierId || !terminalId || !idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid order, terminal, and idempotency key are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!BALANCE_SETTLEMENT_METHODS.includes(paymentMethod)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Unsupported balance settlement method.',
+                {
+                    statusCode: 422,
+                    details: {
+                        reason_code: 'BALANCE_SETTLEMENT_METHOD_UNSUPPORTED',
+                        supported_methods: [...BALANCE_SETTLEMENT_METHODS]
+                    }
+                }
+            ));
+        }
+        // ADR 0063 clause 6 [binding]: the confirmation must be explicit in the request, not
+        // implied by picking a digital method, and a missing confirmation fails closed. ADR 0063
+        // clause 5 [binding] is what that confirmation attests to -- that the STORE received the
+        // money; DGFY verified nothing.
+        if (!isCashSettlement && !manualPaymentReceived) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Merchant-owned balance settlement requires an explicit confirmation that the store received the payment.',
+                { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_CONFIRMATION_REQUIRED' } }
+            ));
+        }
+        if (isCashSettlement ? !(cashReceived > 0) : !(declaredAmount > 0)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A positive settlement amount is required.',
+                { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_AMOUNT_REQUIRED' } }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            terminal_id: terminalId,
+            payment_method: paymentMethod,
+            cash_received: cashReceived,
+            amount: declaredAmount,
+            manual_payment_received: manualPaymentReceived,
+            payment_reference: paymentReference || ''
+        });
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            // Recheck inside the transaction so a concurrent duplicate submit that waited on the
+            // first one returns its durable replay instead of settling the balance twice.
+            const lockedReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (lockedReplay) {
+                await transaction.rollback();
+                transaction = null;
+                return ok(lockedReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+            // The disjoint-domain guard. An `unpaid` order belongs to collect-cash; a `paid` one is
+            // already settled. Neither is an error this endpoint may quietly absorb.
+            if (String(order.payment_status || '').trim().toLowerCase() !== 'partially_paid') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Balance settlement is available only for partially paid orders.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'BALANCE_SETTLEMENT_NOT_PARTIALLY_PAID',
+                            payment_status: String(order.payment_status || '').trim().toLowerCase() || null
+                        }
+                    }
+                );
+            }
+            const orderMethod = String(order.order_method || '').trim().toLowerCase();
+            const requiredFulfillmentStatus = BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD[orderMethod];
+            if (!requiredFulfillmentStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Balance settlement is available only for pickup and delivery orders.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_SETTLEMENT_ORDER_METHOD_UNSUPPORTED' } }
+                );
+            }
+            if (String(order.fulfillment_status || '').trim() !== requiredFulfillmentStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The balance can be settled only when the order reaches handover.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'BALANCE_SETTLEMENT_FULFILLMENT_NOT_READY',
+                            required_fulfillment_status: requiredFulfillmentStatus,
+                            fulfillment_status: String(order.fulfillment_status || '').trim() || null
+                        }
+                    }
+                );
+            }
+
+            const balanceDue = round4(order.balance_due);
+            if (!(balanceDue > 0)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order has no outstanding balance to settle.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_SETTLEMENT_NO_BALANCE_DUE' } }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                terminalId,
+                locationId: order.location_id || null,
+                transaction,
+                lock: true
+            });
+
+            // v1 settles the FULL remaining balance in one action (#825). The ledger schema
+            // supports N rows per order, so instalments are a later UI concern, not a schema one.
+            if (isCashSettlement) {
+                if (cashReceived < balanceDue) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Cash received must cover the remaining balance.',
+                        { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_CASH_SHORT', balance_due: balanceDue, cash_received: cashReceived } }
+                    );
+                }
+            } else if (declaredAmount !== balanceDue) {
+                // No change is possible on a digital tender, so the client must settle the exact
+                // remaining balance -- and echoing it back proves the terminal was not acting on a
+                // stale balance it read before some other event moved it.
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A merchant-owned settlement must be for the exact remaining balance.',
+                    { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_AMOUNT_MISMATCH', balance_due: balanceDue, amount: declaredAmount } }
+                );
+            }
+
+            const settledAt = new Date();
+            const changeAmount = isCashSettlement ? round4(cashReceived - balanceDue) : null;
+            const totalAmount = round4(order.total_amount);
+
+            const updated = await posRepository.updateOrderById(orderId, {
+                payment_status: 'paid',
+                amount_paid: totalAmount,
+                balance_due: 0,
+                // Cash-only. A merchant-owned digital settlement leaves these null rather than
+                // claiming cash changed hands -- ADR 0063 clause 5's "must never claim" applied to
+                // the cash-reconciliation fields, not just to provider verification.
+                ...(isCashSettlement ? { cash_received: cashReceived, change_amount: changeAmount } : {}),
+                payment_collected_at: settledAt,
+                payment_collected_by: cashierId,
+                payment_collected_shift_id: activeShift.pos_terminal_shift_id,
+                payment_collected_terminal_id: terminalId,
+                cashier_id: parsePositiveInt(order.cashier_id) || cashierId,
+                shift_id: activeShift.pos_terminal_shift_id
+            }, { transaction, lock: true });
+
+            // Ledger row 2, written in the SAME transaction as the order update -- there is no
+            // window where the order reads `paid` and the ledger has no matching event, mirroring
+            // how Phase 141 writes row 1 alongside order creation. ADR 0069 clause 4b [default],
+            // carried forward by ADR 0070.
+            const downpaymentEntry = await posRepository.findOrderPaymentEntryByKind(
+                orderId,
+                'downpayment',
+                { transaction }
+            );
+            const ledgerEntryId = await posRepository.createOrderPaymentEntry({
+                posTransactionId: orderId,
+                kind: 'balance',
+                status: 'successful',
+                // The balance settled, never the cash tendered -- change is not revenue.
+                amount: balanceDue,
+                paymentMethod,
+                // ADR 0063 clause 4 [binding]: a store-owned digital tender is `merchant_owned`,
+                // categorically separate from PayMongo. Cash has no provider at all.
+                paymentProvider: isCashSettlement ? null : 'merchant_owned',
+                // ADR 0063 clause 5 [binding]: never claim a provider event or provider
+                // verification for a manually attested payment.
+                providerEventId: null,
+                paymentReference,
+                idempotencyKey,
+                relatedPosOrderPaymentId: downpaymentEntry?.pos_order_payment_id || null,
+                recordedBy: cashierId
+            }, { transaction });
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'order_balance_settled',
+                    payment_method: paymentMethod,
+                    payment_provider: isCashSettlement ? null : 'merchant_owned',
+                    manual_payment_received: manualPaymentReceived,
+                    payment_reference: paymentReference,
+                    balance_settled: balanceDue,
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    pos_order_payment_id: ledgerEntryId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId,
+                    settled_at: settledAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                order: toSerializable(updated),
+                settlement: {
+                    order_method: orderMethod,
+                    payment_method: paymentMethod,
+                    payment_provider: isCashSettlement ? null : 'merchant_owned',
+                    balance_settled: balanceDue,
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    payment_reference: paymentReference,
+                    pos_order_payment_id: ledgerEntryId,
+                    settled_at: settledAt.toISOString(),
+                    settled_by: cashierId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId
+                },
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            return fail(mapPosUseCaseError(error, 'Failed to record the balance payment for this order'));
+        }
+    };
+};
+
 export const buildListActiveDeliveryPersonnelUseCase = ({
     posRepository,
     resolveLocationScope = resolvePosReadLocationScope
@@ -8946,6 +9301,33 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 nextStatus: targetStatus,
                 orderMethod: existing.order_method
             });
+            // Phase 148 (#825): the pickup twin of assertDeliveryCompletionReadiness's own
+            // zero-balance gate. Kept as a separate check with its own reason_code rather than
+            // folded into the `!== 'paid'` condition below -- a partially_paid order failing here
+            // is a different operational situation ("collect the balance first") from an unpaid one
+            // ("collect payment first"), and the terminal should be able to tell them apart.
+            //
+            // Ordered BEFORE the unpaid check deliberately: a partially_paid order fails both, and
+            // whichever runs first is the reason_code the terminal sees. The balance one is the
+            // actionable one.
+            if (
+                currentStatus === 'ready_for_pickup'
+                && targetStatus === 'completed'
+                && existing.order_method === 'pickup'
+                && round4(existing.balance_due) > 0
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Settle the remaining balance before marking this pickup order as picked up.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'PICKUP_BALANCE_DUE_OUTSTANDING',
+                            balance_due: round4(existing.balance_due)
+                        }
+                    }
+                );
+            }
             if (
                 currentStatus === 'ready_for_pickup'
                 && targetStatus === 'completed'

@@ -7,6 +7,11 @@ import { finalizePaidCommerceSession } from './finalizePaidCommerceSession.js';
 import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
 import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import { recordSucceededTenantRevenueRefundUseCase } from '../../tenantRevenue/index.js';
+import {
+  buildRefundLedgerIdempotencyKey,
+  mapRefundStatusToLedgerStatus,
+  writeTenantOrderPaymentEntry
+} from '../repositories/tenantOrderPaymentLedgerRepository.js';
 
 const randomReference = (prefix) => `${prefix}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
 const toInt = (value, fallback = null) => {
@@ -246,6 +251,34 @@ const updateTenantPaymentStatus = async ({ commercePaymentRepository, session, p
     { where: { pos_transaction_id: session.pos_transaction_id } }
   );
 };
+
+// Phase 144 (#824): mirror every refund attempt into the tenant's own per-order ledger
+// (`pos_order_payments`, kind 'refund'), so a downpayment order's reversal is visible in the same
+// place its capture was recorded rather than only landlord-side. Gated internally to downpayment
+// sessions and best-effort by contract -- see repositories/tenantOrderPaymentLedgerRepository.js.
+//
+// Deliberately NOT accompanied by any edit to the order's amount_paid/balance_due: ADR 0052
+// clause 4 requires corrections to be expressed as reversal entries, never as edits to the
+// original figures. `updateTenantPaymentStatus` (below) already moves payment_status to
+// refund_pending/partial_refunded/refunded, which is the only order-row change a refund makes.
+const recordTenantRefundLedgerEntry = async ({
+  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry,
+  commercePaymentRepository,
+  session,
+  refund,
+  status
+}) => (
+  writeOrderPaymentLedgerEntry({
+    commercePaymentRepository,
+    session,
+    kind: 'refund',
+    status: mapRefundStatusToLedgerStatus(status),
+    amountCentavos: Number(refund?.amount_centavos || 0),
+    paymentMethod: session?.capture_payment_method || null,
+    paymentReference: refund?.provider_payment_id || session?.provider_payment_id || null,
+    idempotencyKey: buildRefundLedgerIdempotencyKey(refund?.public_reference)
+  })
+);
 
 const getBasePaidSessionStatus = (session = {}) => {
   if (session.status === 'split_failed_manual_settlement_required') return session.status;
@@ -916,7 +949,10 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
 export const buildCreateCommercePaymentRefundUseCase = ({
   commercePaymentRepository,
   paymongoService,
-  revenueSharingEnabled = tenantRevenueSharingEnabled
+  revenueSharingEnabled = tenantRevenueSharingEnabled,
+  // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
+  // matching how commerceOrderLifecycleUseCase takes its own writer.
+  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry
 }) => async ({ paymentSessionId, payload = {}, actor = null }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
@@ -1010,6 +1046,9 @@ export const buildCreateCommercePaymentRefundUseCase = ({
           : 'PROVIDER_REFUND_FAILED',
         failure_reason: error.response?.data?.errors?.[0]?.detail || error.message || 'PayMongo refund failed'
       });
+      await recordTenantRefundLedgerEntry({
+        writeOrderPaymentLedgerEntry, commercePaymentRepository, session, refund, status: failed?.status
+      });
       if (pendingReconciliation) {
         const pendingSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
         return ok({
@@ -1035,6 +1074,9 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       provider_payload: providerRefund,
       failure_code: nextRefundStatus === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
       failure_reason: nextRefundStatus === 'failed' ? (providerRefund?.attributes?.failed_message || 'PayMongo reported refund failure.') : null
+    });
+    await recordTenantRefundLedgerEntry({
+      writeOrderPaymentLedgerEntry, commercePaymentRepository, session, refund, status: nextRefundStatus
     });
 
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });

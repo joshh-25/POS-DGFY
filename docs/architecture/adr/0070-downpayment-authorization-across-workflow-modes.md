@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-21
-last_reviewed: 2026-08-21
+last_reviewed: 2026-08-22
 review_by: 2027-02-21
 applies_to: retail_storefront, payments, checkout
 topic: downpayment_authorization_across_workflow_modes
@@ -124,6 +124,70 @@ here — see ADR 0069 for their text. Only clauses 6 and 7 are replaced; one new
 - **Reversible.** This is a widening of an authorization boundary with no schema or migration
   impact; narrowing it again, if ever needed, is an ordinary dated amendment under clause 6's own
   `[default]` tier.
+
+## Amendments
+
+### 2026-08-22 — `customer_choice` is lifted from reserved to built
+
+- Clause amended: **Consequences item 2** (untagged, and outside the `## Decision` list — so
+  `default` tier per ADR 0039). That item listed *"the unconstructed `customer_choice` mode"* among
+  the deferrals this ADR carried forward unchanged from ADR 0069.
+- Change: `customer_choice` — a schema-authorized `payment_mode` literal since Phase 138 (#820),
+  previously rejected outright by `downpaymentSettingsUseCases.js` with a 422 — is now a fully
+  supported settings-level mode. A tenant configured `customer_choice` presents the customer, at
+  checkout, with exactly two options: pay the full order total online, or pay a downpayment online
+  with the balance settled on delivery/pickup (COD). The customer's election is carried as a new
+  `payment_election` request field (`'full'` | `'downpayment'`, default `'full'`), consulted by
+  `downpaymentPolicy.js`'s `resolveDownpaymentForTotal` **only** when the tenant's stored
+  `payment_mode` is `customer_choice` — ignored (and irrelevant) for `full_payment` and
+  `downpayment_required`, whose resolution is unchanged by this amendment.
+- Scope this amendment does **not** touch: clauses 6 and 7 (vertical-agnostic authorization,
+  reachability-scoped enforcement) are unaffected — `customer_choice` runs through the same shared
+  `resolveCheckoutContext` every other mode already uses, with no new checkout flow and no new
+  reachability question. Plain COD with no downpayment at all remains expressible as
+  `full_payment` plus a cash capability; `customer_choice` does not add a third customer-facing
+  option beyond the two named above.
+- Reason: the reservation existed because the mechanism wasn't built yet, not because of an
+  unresolved design question — once the merchant-configuration UI (#848/#859) and the underlying
+  split math were live, the only missing piece was a customer-facing choice between the two modes
+  the platform already supports individually. Filed as #866 from hands-on feedback on the Phase 143
+  settings UI, once the reservation's own rationale (nothing to choose between yet) no longer held.
+- PR: #865/#866 (Phase 150). Issues: #865 (settings-form clarity, shipped in the same PR, no ADR
+  clause of its own), #866 (this amendment).
+
+### 2026-08-22 — refund-vs-forfeiture is scoped by who ended the order, not only by the toggle
+
+- Clause amended: **ADR 0069 clause 8** (`[default]`), which this ADR carries forward verbatim
+  rather than restating — *"Whether a customer cancellation forfeits the collected downpayment or
+  refunds it is a per-store toggle, defaulting to refundable."* Recorded here, not on ADR 0069,
+  because that document is `status: superseded` / `authority_level: historical` and `AGENTS.md`
+  forbids citing it for a new decision; this ADR is the authoritative carrier of that clause.
+- Change: clause 8 says *whether* a cancellation may forfeit, but never defines what counts as a
+  *customer* cancellation — and `cancelled` is reachable from two different actors. That is now
+  settled explicitly:
+  - A **store-initiated** terminal state — `rejected`, or `cancelled` set by staff through
+    `PATCH /pos/orders/:id/status` — **always refunds the captured downpayment**, regardless of the
+    store's own `downpayment_refundable` setting.
+  - Only a **customer self-service** cancellation, through
+    `PATCH /store/orders/:tracking_pin/cancel`, may forfeit, and only when the policy snapshot
+    taken at capture time (`commerce_payment_sessions.downpayment_refundable`, Phase 141) is
+    explicitly `false`. A null/unknown snapshot refunds.
+  - The decision reads the **session snapshot**, never the tenant's live settings row, so a
+    merchant flipping the toggle after the customer has already paid cannot retroactively change
+    the terms that customer accepted.
+- Reason: the store's inability to fulfil is not the customer's forfeiture. Without this scoping,
+  a store that rejects its own order at a non-refundable-downpayment tenant would keep money for an
+  order it declined to supply — the reading clause 8 permits on its face but plainly did not
+  intend.
+- Known limitation, accepted deliberately rather than left implicit: a customer who phones the
+  store and has staff cancel on their behalf is recorded as store-initiated and is therefore
+  refunded. Attributing that intent requires an explicit origin field on the POS status payload;
+  it is not built, and the safe direction (refund) is the one that fails open for the customer.
+- Scope this amendment does **not** touch: clauses 6, 7, and 11 are unaffected, and the *amount*
+  refunded is unchanged — ADR 0069 clause 1b `[binding]` already fixes it at the captured
+  downpayment, never the order total.
+- PR: #824 (Phase 144). See also the companion amendment on ADR 0052, which owns the
+  provider-call side of the same behaviour.
 
 ## Related
 

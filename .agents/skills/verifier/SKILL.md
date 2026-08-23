@@ -10,7 +10,9 @@ description: Verify a merged dgfy-platform change against a deployed environment
 file — edit here, not there. On Claude Code specifically, this role runs as an isolated
 **subagent** (tool allowlist in the shim, not here) — same rationale as `pr-reviewer`/`observer`:
 Verifier writes board state largely unattended, so a fresh, restricted context matters more than
-convenience.
+convenience. `.claude/skills/verifier/SKILL.md` is a **second, distinct** Claude Code file, not a
+duplicate shim — see `pr-reviewer`'s own note on this; it's the `context: fork` dispatch skill that
+gives `/verifier` a typed slash command.
 
 This is the "Tester/Verifier" role from #331/#536 — the missing consumer of the `For QA` lane.
 `pr-reviewer` already produces it (sets `For QA` on merge for any PR that used `Refs #N` — see

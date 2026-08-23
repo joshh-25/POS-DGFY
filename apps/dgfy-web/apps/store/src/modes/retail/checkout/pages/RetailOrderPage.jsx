@@ -7,6 +7,10 @@ import { RetailOrderMobileSummaryPanel } from '../components/RetailOrderMobileSu
 import { RetailOrderPaymentStep } from '../components/RetailOrderPaymentStep.jsx';
 import { RetailOrderStoreHeader } from '../components/RetailOrderStoreHeader.jsx';
 import { RetailOrderSummaryContent } from '../components/RetailOrderSummaryContent.jsx';
+import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
@@ -35,7 +39,16 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
  * remain local placeholder state, not wired to the backend yet. The cart/product list is real:
  * it's the same frontend cart state the rest of the app already uses. Order totals
  * (subtotal/total) are computed for real from the cart via the shared buildCartTotals model;
- * Delivery Fee and Fees & Taxes show as 0 since there's no fee/quote backend yet.
+ * Delivery Fee and Fees & Taxes show as 0 for a full_payment store, since there's still no
+ * general fee/quote backend for Retail. A downpayment-required store is the one exception
+ * (Phase 142, #823): StorefrontApp.jsx's mode-agnostic auto-quote arm forces a real server quote
+ * for Retail in that one case, so `totals` carries the real downpayment/balance split then.
+ *
+ * Payment type (Phase 142, #823) is likewise *shared* state now, not local -- `paymentType`/
+ * `onPaymentTypeChange` are StorefrontApp.jsx's `fnbPaymentType`/`handlePaymentTypeChange`
+ * (same coordination point F&B/MSME already use), threaded through
+ * useRetailOrderPageProps.js. Retail's online-payment session creation flows through the same
+ * shared useCheckoutSubmission.js branch Simple uses.
  */
 export function RetailOrderPage({
   canAddPinnedLocation = false,
@@ -72,7 +85,15 @@ export function RetailOrderPage({
   onCheckout,
   onImageError,
   onSelectAddress,
+  onConfirmQrphTestPayment,
+  onPaymentElectionChange,
+  onPaymentTypeChange,
   orderMethod = 'delivery',
+  paymentElection = 'full',
+  paymentType = 'cash',
+  qrphPaymentSession = null,
+  qrphPaymentStatusLoading = false,
+  resetQrphPaymentSession,
   promoDiscountSummaryRow = null,
   voucherDiscountSummaryRow = null,
   pinLocationError = '',
@@ -102,9 +123,19 @@ export function RetailOrderPage({
   const [scheduleMode, setScheduleMode] = useState('asap');
   const [scheduledFor, setScheduledFor] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
-  const [paymentType, setPaymentType] = useState('cash');
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
+
+  // Phase 142 (#823): unlike Simple (simpleOrderStep is hoisted into StorefrontApp.jsx so its
+  // own PayMongo-return handler can jump it directly), Retail's `step` is local to this
+  // component -- so the resume-after-redirect signal is qrphPaymentSession itself (set by
+  // StorefrontApp.jsx's return-URL effect) rather than a step number pushed down from above. A
+  // customer already on step 3 who creates a session mid-flow is a no-op here (step is already
+  // 3); this only actually moves the step on the PayMongo-return rehydration path.
+  useEffect(() => {
+    if (qrphPaymentSession?.payment_session_id && step !== 3) setStep(3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrphPaymentSession?.payment_session_id]);
 
   const isDeliveryOrder = orderMethod === 'delivery';
   const storefrontClosedNotice = storefrontClosedByHours
@@ -114,12 +145,27 @@ export function RetailOrderPage({
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
     && guestCheckoutOtpVerified;
   useEffect(() => {
-    if (step > 1 && !retailCustomerStepComplete) {
+    // guestCheckoutOtpVerified (folded into retailCustomerStepComplete) is in-memory React state
+    // (useGuestCheckoutOtp.js), not persisted -- a customer returning from a full-page PayMongo
+    // redirect remounts with it reset to false, which would otherwise bounce them straight back to
+    // step 1 immediately after the qrphPaymentSession effect above just moved them to step 3. Guard
+    // against undoing that rehydration: a live payment session pins the step regardless.
+    if (step > 1 && !retailCustomerStepComplete && !qrphPaymentSession?.payment_session_id) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Return to the required identity step when guest verification becomes invalid.
       setStep(1);
     }
-  }, [retailCustomerStepComplete, step]);
+  }, [retailCustomerStepComplete, step, qrphPaymentSession?.payment_session_id]);
   const totals = totalsForDisplay;
+  // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- the ADR
+  // amendment states "pay the full order total online", and customer_choice "does not add a
+  // third customer-facing option". Cash stays hidden regardless of election at this store, not
+  // only once a downpayment is actually active.
+  const retailPaymentOptions = buildStorefrontCheckoutPaymentOptions(
+    selectedStore?.payment_capabilities,
+    { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) }
+  );
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()
     : 'NOW';
@@ -293,7 +339,10 @@ export function RetailOrderPage({
               cartImageErrors={cartImageErrors}
               checkoutError={checkoutError}
               checkoutLoading={checkoutLoading}
+              downpaymentDisplay={downpaymentDisplay}
               guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+              isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
+              isDeliveryOrder={isDeliveryOrder}
               isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
               money={money}
@@ -301,8 +350,35 @@ export function RetailOrderPage({
               onBackToAccount={() => setStep(1)}
               onCheckout={onCheckout}
               onImageError={onImageError}
-              onPaymentTypeChange={setPaymentType}
+              onPaymentElectionChange={onPaymentElectionChange}
+              paymentElection={paymentElection}
+              onPaymentTypeChange={onPaymentTypeChange}
+              paymentOptions={retailPaymentOptions}
               paymentType={paymentType}
+              onlinePaymentPanel={isStorefrontOnlinePaymentType(paymentType) ? (
+                <StorefrontOnlinePaymentPanel
+                  amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
+                  amountDueLabel="Downpayment due"
+                  balanceNote={downpaymentDisplay.active
+                    ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                    : null}
+                  cashFallbackAllowed={!downpaymentDisplay.active}
+                  onConfirmTestPayment={import.meta.env.DEV
+                    && paymentType === 'qrph'
+                    && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
+                    ? onConfirmQrphTestPayment
+                    : null}
+                  onUseCash={() => {
+                    resetQrphPaymentSession?.();
+                    if (!downpaymentDisplay.active) onPaymentTypeChange('cash');
+                  }}
+                  paymentSession={qrphPaymentSession}
+                  paymentEnvironment={selectedStore?.payment_capabilities?.[paymentType]?.environment}
+                  paymentType={paymentType}
+                  qrAmountNote={downpaymentDisplay.active ? 'This QR contains your downpayment amount.' : null}
+                  refreshing={qrphPaymentStatusLoading}
+                />
+              ) : null}
               servicesBodyFont={servicesBodyFont}
               storefrontClosedNotice={storefrontClosedNotice}
               withAssetOrigin={withAssetOrigin}

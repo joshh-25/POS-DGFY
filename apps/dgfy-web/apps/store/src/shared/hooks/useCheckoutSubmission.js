@@ -8,6 +8,12 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): this is the widened extraction (carries amount_paid/balance_due through, not
+// just total_amount) into a shared model both this hook and useFnbCheckoutSubmission.js consume.
+// #857 separately restored a plain, un-widened inline copy of this same RF-1 fix directly on
+// `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
+// copy supersedes that inline one; no functional loss, since this is a strict superset.
+import { resolveTrackedTotals } from '../model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 
 /**
@@ -56,6 +62,7 @@ export function useCheckoutSubmission({
   hasServiceCart,
   isDgfyCustomerSignedIn,
   isFnbMode,
+  isRetailMode,
   isServicesMode,
   isSimpleMode,
   missingCustomerInformation,
@@ -82,6 +89,10 @@ export function useCheckoutSubmission({
   serviceCartLines,
   serviceCartValidationIssues,
   serviceDraftQuantity,
+  serviceOrderMethod,
+  servicesLocalSimulationEnabled,
+  isServicesLocalSimulationMethod,
+  createServicesLocalSimulation,
   servicePaymentTiming,
   serviceIntakeResponses,
   setCart,
@@ -192,19 +203,26 @@ export function useCheckoutSubmission({
       toast.error(storefrontClosedToastMessage);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
-      const message = 'Please click Quote first before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && (checkoutBlockReason === 'missing_quote' || checkoutBlockReason === 'stale_quote')) {
+      // Phase 142 (#823): this shared hook (unlike useFnbCheckoutSubmission.js's own copy of these
+      // two reason codes) now also serves Simple/Retail, neither of which has an explicit "Quote"
+      // button -- their totals quote automatically in the background on cart change. The block
+      // itself is correct (a downpayment store's split is server-only and must be known before
+      // Place Order), just rare and self-resolving; the message says so instead of directing the
+      // shopper to a button that doesn't exist on those two modes.
+      const message = 'Updating your order total -- please wait a moment and try again.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'stale_quote') {
-      const message = 'Your cart changed. Please refresh Quote before checkout.';
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'downpayment_zero_total') {
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code -- see that file's comment.
+      const message = 'This order total is fully covered by your discount -- contact the store to place it.';
       setCheckoutError(message);
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
+    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
@@ -234,6 +252,48 @@ export function useCheckoutSubmission({
       const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
+      return;
+    }
+    // Restored 2026-08-22 (#857) -- Services local-simulation preview, reverted by #853's develop
+    // reconciliation while StorefrontApp.jsx kept passing this branch's own params unchanged
+    // (servicesLocalSimulationEnabled/isServicesLocalSimulationMethod/createServicesLocalSimulation),
+    // leaving them silently dead-wired.
+    const shouldCreateLocalServicesSimulation = isServicesMode
+      && servicesLocalSimulationEnabled
+      && typeof isServicesLocalSimulationMethod === 'function'
+      && isServicesLocalSimulationMethod(serviceOrderMethod);
+    if (shouldCreateLocalServicesSimulation) {
+      const localSimulation = createServicesLocalSimulation({
+        customerAddress,
+        customerEmail,
+        customerName,
+        customerPhone,
+        fallbackAmount: totalsForDisplay?.total_amount,
+        routeSlug,
+        selectedStore,
+        serviceAppointmentAt,
+        serviceBookingLine,
+        serviceCartLines,
+        serviceOrderMethod
+      });
+      setCart([]);
+      setSelectedServiceCartLineId('');
+      setCheckoutResult(null);
+      setTrackingPinInput(localSimulation.tracking_pin);
+      setSelectedTrackingPin(localSimulation.tracking_pin);
+      writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, localSimulation.tracking_pin);
+      setServiceAppointmentAt('');
+      setServiceDraftQuantity(1);
+      setServiceDraftNotes('');
+      setServiceIntakeResponses({});
+      setServicePaymentPreviewMethod('qr');
+      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+      setServicePaymentPreviewReceiptName('');
+      setShowOrderSuccessAnimation(false);
+      setCheckoutTab('track');
+      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: serviceOrderMethod });
+      clearCheckoutAuthResumeDraft();
+      toast.success('Local Services preview created. No backend booking was submitted.');
       return;
     }
     const cartSnapshot = cart.map((line) => ({ ...line }));
@@ -275,6 +335,7 @@ export function useCheckoutSubmission({
           bookingPageIntakeFields,
           customerAddress,
           bookingFieldPlan,
+          serviceAppointmentAt,
           createIdempotencyKey: createStorefrontIdempotencyKey
         });
         if (!servicesSubmitContract.compatible) {
@@ -291,7 +352,10 @@ export function useCheckoutSubmission({
           }
         };
       }
-      if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
+      // Phase 142 (#823): Retail now shares this online-session branch -- previously Simple-only,
+      // Retail's payment step was a cash-only placeholder with no path to create a payment
+      // session at all.
+      if (!wantsServicesSubmission && (isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
           const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
@@ -346,7 +410,11 @@ export function useCheckoutSubmission({
         storeSlug: selectedStore.slug,
         authToken,
         body: {
-          ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
+          // Restored 2026-08-22 (#857) -- #853's develop reconciliation passed a second positional
+          // arg here, but buildPayload (useFnbCheckoutQuote.js) takes a single options object; the
+          // override was silently discarded and a mixed product+service cart submitted its service
+          // lines into the product order.
+          ...checkoutPayload({ cartOverride: hasMixedCart ? productCartLines : undefined }),
           idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
           guest_checkout_proof: guestCheckoutProofValue,
           payment_type: fnbPaymentType
@@ -383,7 +451,7 @@ export function useCheckoutSubmission({
           setCheckoutResult({
             ...productData,
             cart_lines: productCartLines,
-            totals: totalsForDisplay
+            totals: resolveTrackedTotals(productData?.order, totalsForDisplay)
           });
           if (productData?.tracking_pin) {
             setTrackingPinInput(productData.tracking_pin);
@@ -395,7 +463,11 @@ export function useCheckoutSubmission({
               order_method: productData?.order?.order_method || orderMethod,
               order: productData?.order || null,
               order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
-              total_amount: totalsForDisplay?.total_amount ?? 0
+              // #747: prefer the server-persisted total over the client's pre-submission snapshot
+              // -- the client value doesn't reflect a just-applied voucher discount, and
+              // retailTrackingPayload.js's own `??` chain would otherwise let this poisoned
+              // top-level field shadow the correct nested order.total_amount.
+              total_amount: productData?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
             }, productData.tracking_pin);
           }
           setQuoteResult(null);
@@ -423,7 +495,7 @@ export function useCheckoutSubmission({
         cart_lines: hasServiceCart && !hasMixedCart
           ? serviceCartLines
           : cartSnapshot,
-        totals: totalsForDisplay
+        totals: resolveTrackedTotals(data?.order, totalsForDisplay)
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
@@ -447,15 +519,26 @@ export function useCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.variantName || cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0
+          // #747: see the partial-booking-failure branch above for why -- same fix, same reasoning.
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, data.tracking_pin);
         if (!isSimpleMode) {
           setCheckoutTab('track');
         }
       }
-      if (data?.booking?.public_reference) {
-        setTrackingPinInput(data.booking.public_reference);
-        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
+      const serviceBookingReferences = isServicesMode
+        ? [
+          data?.booking?.public_reference,
+          ...(Array.isArray(data?.bookings) ? data.bookings.map((booking) => booking?.public_reference) : [])
+        ]
+          .map((reference) => String(reference || '').trim().toUpperCase())
+          .filter(Boolean)
+        : [];
+      const submittedServiceTrackingPin = serviceBookingReferences[0] || '';
+      if (submittedServiceTrackingPin) {
+        setTrackingPinInput(submittedServiceTrackingPin);
+        setSelectedTrackingPin(submittedServiceTrackingPin);
+        writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, submittedServiceTrackingPin);
       }
       setCart([]);
       if (hasServiceCart) {
@@ -475,14 +558,18 @@ export function useCheckoutSubmission({
         void handleLoadAccountPanel();
       }
       const submittedTrackingPin = String(data?.tracking_pin || '').trim().toUpperCase();
-      if (submittedTrackingPin && !hasServiceCart) {
+      const trackingPinToOpen = isServicesMode ? submittedServiceTrackingPin : submittedTrackingPin;
+      if ((isServicesMode && submittedServiceTrackingPin) || (submittedTrackingPin && !hasServiceCart)) {
         setShowOrderSuccessAnimation(false);
         if (orderSuccessAnimationTimerRef.current) {
           window.clearTimeout(orderSuccessAnimationTimerRef.current);
           orderSuccessAnimationTimerRef.current = null;
         }
         setCheckoutResult(null);
-        goStoreTrackPage({ pin: submittedTrackingPin });
+        goStoreTrackPage({
+          pin: trackingPinToOpen,
+          serviceHandoff: isServicesMode ? serviceOrderMethod : ''
+        });
       } else {
         setFnbOrderStep(4);
         if (isSimpleMode) {

@@ -10,8 +10,10 @@ import {
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+// Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
+// see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
+import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
-
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -77,6 +79,9 @@ export function useFnbCheckoutSubmission({
       access_mode: 'This storefront is not accepting online checkout right now.',
       missing_quote: 'Please click Quote first before checkout.',
       stale_quote: 'Your cart changed. Please refresh Quote before checkout.',
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
+      // fully discounts a downpayment-required order to zero -- see that file's comment.
+      downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody
@@ -174,7 +179,7 @@ export function useFnbCheckoutSubmission({
         },
       });
 
-      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: totalsForDisplay });
+      setCheckoutResult({ ...data, cart_lines: cartSnapshot, totals: resolveTrackedTotals(data?.order, totalsForDisplay) });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
           firstName: resolvedCustomerFirstName,
@@ -199,7 +204,9 @@ export function useFnbCheckoutSubmission({
           order_method: data?.order?.order_method || orderMethod,
           order: data?.order || null,
           order_name: cartSnapshot[0]?.name || '',
-          total_amount: totalsForDisplay?.total_amount ?? 0,
+          // #747: prefer the server-persisted total over the client's pre-submission snapshot --
+          // see useCheckoutSubmission.js's own note for the full reasoning (same bug, ported here).
+          total_amount: data?.order?.total_amount ?? totalsForDisplay?.total_amount ?? 0,
         }, trackingPin);
       }
 

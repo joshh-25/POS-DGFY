@@ -95,9 +95,11 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time.
   @.agents/skills/promoter/SKILL.md
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
-  files → Worker fixes → fast-track Reviewer → Promoter redeploys). Carries a narrow, phrase-gated
+  files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
+  `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
   override to merge a hotfix into `main` during an open incident; every other case keeps "never
-  merge `main`" absolute. Only runs when explicitly authorized to start an incident session.
+  merge `main`" absolute. Only runs when explicitly authorized — either an active incident session,
+  or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
   @.agents/skills/incident-responder/SKILL.md
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
@@ -127,9 +129,12 @@ framing *only* for that role, *only* mid-incident, *only* on Pat's explicit real
 allowlist has no Agent tool (`pr-reviewer`'s is `Read, Grep, Glob, Bash`) — it cannot itself invoke
 `promoter`. "Reviewer invokes Deploy/Release as the next step" is implemented as the acting session
 running each role's procedure in sequence, not one role programmatically calling another. This is
-also why `promoter` and `incident-responder` are Claude Code **skills**
-(`.claude/skills/<role>/SKILL.md`, auto-invoked in the main session) rather than isolated subagents
-like `pr-reviewer`/`observer`/`verifier`.
+also why `promoter` and `incident-responder` are Claude Code **skills that run inline in the main
+session**, rather than isolated subagents like `pr-reviewer`/`observer`/`verifier` — those three
+also have a `.claude/skills/<role>/SKILL.md` entry (#868, for a typed `/name` command), but it's a
+thin `context: fork` dispatch wrapper that spawns the isolated subagent rather than running inline
+itself. The distinction that matters is *where the work executes* (inline vs. forked/isolated), not
+which `.claude/` file exists — after #868, file location alone no longer tells them apart.
 
 **PM is callable by any role, mid-task, not just as the flow's entry point.** Worker, Reviewer, or
 Promoter — any role that finds work outside its own current scope (a correction, a bug, a gap) hands

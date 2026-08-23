@@ -2915,7 +2915,7 @@ request, or Z-reading change.
 | `status` | string | `completed` or `voided` |
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
-| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
+| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `partially_paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
 | `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
 | `order_source` | string | `in_store`, `online_store` |
 | `date_from` | ISO date | Inclusive start date filter |
@@ -3135,6 +3135,27 @@ Update online order fulfillment status from POS terminal operations.
    - `data.idempotency` (`key`, `request_fingerprint`, `outcome`, `idempotent_replay`)
 5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
 6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
+7. `reason` is **required** when `fulfillment_status` is `rejected` (3-255 characters); optional
+   otherwise.
+
+**Payment Side Effects** (Phase 144, #824 -- previously undocumented)
+
+Reaching `completed`, `rejected`, or `cancelled` on an order backed by a commerce payment session
+runs the payment lifecycle after the status change commits, and the result is returned as
+`data.payment_lifecycle`:
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session exists for the order (a plain cash/COD order). |
+| `settlement_pending` | `completed` -- the order is released to the settlement workflow, nothing is refunded. |
+| `refunded` / `refund_pending` / `refund_failed` | `rejected` or `cancelled` -- one idempotent refund of the **captured** amount is submitted to PayMongo. For a downpayment order that is the downpayment, never the order total (ADR 0069 clause 1b). |
+| `forfeited` | Only reachable from the customer self-service cancel endpoint below, never from this one -- see its own Refund and Forfeiture section. |
+
+A store-initiated terminal state — `rejected`, or `cancelled` set through **this** endpoint —
+**always refunds**, even at a tenant whose `downpayment_refundable` is `false`. The store's
+inability to fulfil is not the customer's forfeiture (ADR 0070, 2026-08-22 amendment). Payment
+lifecycle failures never fail the status update itself: the status is already committed and the
+failure surfaces as `payment_action: 'refund_failed'` for administrator review.
 
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
@@ -3593,6 +3614,20 @@ Catalog rows include:
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
+**Response Envelope (Phase 142, #823; `customer_choice` added Phase 150, #866)**
+- The catalog response includes a top-level `payment_mode` field, sibling to `payment_capabilities`
+  (`'full_payment'` | `'downpayment_required'` | `'customer_choice'`) -- always present, defaulting
+  to `'full_payment'` for any tenant without downpayment settings configured, and fail-closed to
+  `'full_payment'` if the settings read itself fails (a catalog request never 500s over this).
+  `'customer_choice'` means the storefront must render the pay-in-full-vs-downpayment election
+  control (see the Downpayment Contract below); it never appears in a resolved quote/checkout
+  response, only on the catalog.
+- `payment_mode` is advisory/presentational for the storefront client (hide the cash payment
+  option, force a quote before the payment step); it is not itself an enforcement point -- the
+  actual capture guards live on the quote/checkout endpoints (see Phase 141's own contract below).
+  It is subject to the same 45s public cache above, so a tenant that just flipped its downpayment
+  setting may see up to ~45s of stale UI; the checkout/session-create guards remain the backstop.
+
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when `storefront_visible=true`.
 - Storefront-visible follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when the new Storefront override table is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`. A missing row in an existing Storefront override table does not inherit POS state.
@@ -3855,25 +3890,45 @@ Route mapping note:
   - `service_fee_amount = round4(subtotal_amount * 0.01)`
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
-**Downpayment Contract** (Phase 140, #821, ADR 0069/0070)
-- Response also includes, computed server-side from the tenant's `tenant_downpayment_settings` row
-  (Phase 138, #820) -- never accepted from the request body:
-  - `payment_mode` (`full_payment` or `downpayment_required`)
+**Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
+added Phase 150, #866)
+- Request body accepts an optional `payment_election` field (`'full'` | `'downpayment'`, default
+  `'full'`) -- the customer's checkout-time pay-in-full-vs-downpayment choice. Only consulted when
+  the tenant's resolved `payment_mode` is `customer_choice`; ignored (and irrelevant) for
+  `full_payment` (always full) and `downpayment_required` (always split -- the merchant decided,
+  not the customer). Absent or unrecognized input defaults to `'full'` -- under-collecting is the
+  dangerous direction for a merchant expecting a downpayment, so an unresolved election fails
+  toward the safer, unambiguous shape rather than guessing a split.
+- Response includes, computed server-side from the tenant's `tenant_downpayment_settings` row
+  (Phase 138, #820) and, for a `customer_choice` tenant, the request's `payment_election` -- never
+  otherwise accepted from the request body:
+  - `payment_mode` (`full_payment` or `downpayment_required` -- **never** `customer_choice` in a
+    resolved quote/checkout response; that value only ever describes a tenant's settings/catalog,
+    never a resolved order)
   - `downpayment_amount`, `balance_due_amount`, `downpayment_refundable` -- all `null` when
     `payment_mode` is `full_payment` (never `0` or the total, so a `null` cannot be mistaken for "no
     downpayment configured")
 - Downpayment formula, applied to the already promo/voucher-discounted `total_amount`:
   - `percentage` type: `downpayment_amount = round(total_amount_centavos * downpayment_rate_bps / 10000)`
   - `fixed` type: `downpayment_amount = downpayment_fixed_centavos`
-  - Floored to `min_downpayment_centavos`, then clamped to `total_amount` (never more than the order
-    is worth; `balance_due_amount` is never negative).
+  - Floored to `min_downpayment_centavos` -- **percentage type only** (Phase 150, #865); a `fixed`
+    row's minimum is not enforced at resolution time, matching the write-time rule that only
+    requires it for `percentage` -- then clamped to `total_amount` (never more than the order is
+    worth; `balance_due_amount` is never negative).
 - Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
   restriction.
 - **(Phase 141, #822)** A `downpayment_required` order is, by construction, cash-on-delivery for the
-  balance -- `payment_mode` never means "pay everything online" (that's the separate, unbuilt
-  `customer_choice` mode). The customer's only online payment choice is which method pays the
-  downpayment leg (`POST /store/checkout/payment-sessions`, below); the balance is always collected
-  in person (ADR 0069 clause 2 `[binding]`).
+  balance -- `payment_mode` never means "pay everything online". The customer's only online payment
+  choice is which method pays the downpayment leg (`POST /store/checkout/payment-sessions`, below);
+  the balance is always collected in person (ADR 0069 clause 2 `[binding]`).
+- **(Phase 150, #866)** A `customer_choice` tenant offers exactly two outcomes, both resolved from
+  the same `payment_election` field: `'full'` resolves to `payment_mode: 'full_payment'`, paid in
+  full online (cash/COD is hidden from the payment-method list at this store regardless of
+  election -- storefront-side `hideCash`, RF-3); `'downpayment'` resolves to `payment_mode:
+  'downpayment_required'` (online downpayment leg, balance COD, identical to a merchant-forced
+  `downpayment_required` store). Plain COD-with-no-deposit is not offered under `customer_choice`
+  at all -- that outcome is already expressible as a plain `full_payment` store with a cash
+  capability.
 
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
@@ -3914,6 +3969,11 @@ Route mapping note:
   with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
   ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
   order.
+- **(Phase 142, #823)** `amount_paid`/`balance_due` -- persisted since Phase 141 as described above
+  -- are now also serialized on every order-shaped response that reaches a storefront client
+  (`/store/checkout`'s own `order`, `/store/track/:tracking_pin`, `/store/orders` history, and the
+  claim-by-pin response), all sharing the same base order serializer. `null` for any order that
+  isn't `partially_paid`.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
@@ -3946,6 +4006,13 @@ Create a PayMongo online payment session for Storefront online checkout. This is
   for Phase 144/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
   tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
   the request must never silently fall through to authorizing the full total.
+- **(Phase 142, #823)** The session response (both this endpoint and `GET
+  /store/checkout/payment-sessions/:payment_session_id` below, which shares the same serializer)
+  now additionally returns `capture_kind` (`'full'` | `'downpayment'`), `order_total_amount` (the
+  full order value, pesos), `balance_due_amount` (pesos), and `downpayment_refundable` -- the four
+  fields above were persisted on the session row since Phase 141 but never reached the client. All
+  four are `'full'`/`null`/`null`/`null` for a `capture_kind='full'` (i.e. `full_payment`) session,
+  same present-and-null convention as the quote response's own downpayment fields.
 
 **Response (201)**
 ```json
@@ -4142,6 +4209,48 @@ Track online-store order status for public users.
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
+
+### PATCH /store/orders/:tracking_pin/cancel
+Customer self-service cancellation of their own online-store order.
+
+**Auth**: Store customer session, **or** a signed `cancel_proof` for a guest order
+**Tenant Context**: Required (`x-store-slug`)
+**Rate Limit Contract**: Store tracking mutation limiter (stricter than the tracking read above)
+
+**Request Body**
+```json
+{
+  "cancel_proof": "<signed token, guest orders only>"
+}
+```
+
+**Eligibility**
+1. A logged-in customer must own the order (`store_customer_id` match), else `403`.
+2. A guest order requires a `cancel_proof` bound to tenant + order id + tracking PIN, else `401`/`403`.
+3. Only `placed` and `confirmed` orders may be cancelled — anything from `preparing` onward returns
+   `409` ("Order can only be cancelled before preparing.").
+
+**Refund and Forfeiture** (Phase 144, #824)
+
+Cancelling releases the inventory reservation, then — **after the cancellation commits** — runs the
+payment lifecycle and returns the outcome as `data.payment_lifecycle`. This is the **only** endpoint
+whose cancellations can forfeit; a POS-initiated cancel always refunds.
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session backs the order. |
+| `refunded` / `refund_pending` / `refund_failed` | The default. One idempotent refund of the captured amount. |
+| `forfeited` | The session captured a downpayment **and** its `downpayment_refundable` policy snapshot is explicitly `false`. No PayMongo call is made, no `commerce_payment_refunds` row is created, and the order's `payment_status`/`amount_paid`/`balance_due` are unchanged — nothing was reversed. Response also carries `forfeited_amount_centavos`. |
+
+The decision reads the **session snapshot** taken at capture time, never the tenant's live settings,
+so a merchant changing the toggle after payment cannot retroactively change the customer's terms. A
+null/unknown snapshot refunds. Both outcomes write a tenant-side `pos_order_payments` row (`kind`
+`'refund'` or `'forfeiture'`) linked to the original `'downpayment'` row; refund rows are written
+`pending` and promoted to `successful`/`failed` when the PayMongo refund webhook confirms. A payment
+lifecycle failure never fails the cancellation — it surfaces as `payment_action: 'refund_failed'`.
+
+Governance: ADR 0069 clause 8 `[default]` (carried by ADR 0070, 2026-08-22 amendment) and ADR 0052
+clause 14 (2026-08-22 amendment).
 
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`

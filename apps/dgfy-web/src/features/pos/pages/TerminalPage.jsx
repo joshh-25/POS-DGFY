@@ -21,6 +21,7 @@ import {
   recordCashDrawerEvent,
   collectCashPickupOrder,
   collectCashDeliveryOrder,
+  recordOrderBalancePayment,
   assignDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus
@@ -628,6 +629,15 @@ export default function TerminalPage() {
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
   const [cashReceivedInput, setCashReceivedInput] = useState('');
   const [cashCollectionSaving, setCashCollectionSaving] = useState(false);
+  // Phase 148 (#825): balance settlement keeps its own state rather than sharing the cash-
+  // collection state above -- the two dialogs can never be open at once, but sharing would couple
+  // the live COD path to every future change here for no benefit.
+  const [balanceSettlementOrder, setBalanceSettlementOrder] = useState(null);
+  const [balanceSettlementMethod, setBalanceSettlementMethod] = useState('cash');
+  const [balanceSettlementCashInput, setBalanceSettlementCashInput] = useState('');
+  const [balanceSettlementReference, setBalanceSettlementReference] = useState('');
+  const [balanceSettlementConfirmed, setBalanceSettlementConfirmed] = useState(false);
+  const [balanceSettlementSaving, setBalanceSettlementSaving] = useState(false);
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
@@ -4759,6 +4769,12 @@ export default function TerminalPage() {
         toast.success('Order rejected. The PayMongo refund is being processed.');
       } else if (paymentLifecycle?.payment_action === 'refund_failed') {
         toast.error('Order rejected, but the automatic refund needs admin review.');
+      } else if (paymentLifecycle?.payment_action === 'forfeited') {
+        // Phase 144 (#824). Not reachable from this handler today -- only the storefront's own
+        // self-service cancel can forfeit, and a store-side reject/cancel always refunds. Mapped
+        // anyway so the outcome never degrades into the generic "status updated" message if that
+        // origin rule is ever widened.
+        toast.success('Order cancelled. The downpayment was non-refundable and has been retained.');
       } else {
         toast.success('Online order status updated.');
       }
@@ -4902,6 +4918,73 @@ export default function TerminalPage() {
       toast.error(error?.response?.data?.message || 'Failed to collect cash for the order.');
     } finally {
       setCashCollectionSaving(false);
+    }
+  };
+
+  // Phase 148 (#825): the balance-settlement twin of handleOpenCashCollection /
+  // handleCollectCash above. Prefills the cash field with the exact balance due (not the order
+  // total, which is what the COD dialog prefills) and resets the attestation every time the dialog
+  // opens, so a previous order's confirmation can never carry over into a new one.
+  const handleOpenBalanceSettlement = (order) => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before recording a balance payment.');
+      return;
+    }
+    setBalanceSettlementOrder(order || null);
+    setBalanceSettlementMethod('cash');
+    setBalanceSettlementCashInput(order?.balance_due == null ? '' : String(order.balance_due));
+    setBalanceSettlementReference('');
+    setBalanceSettlementConfirmed(false);
+  };
+
+  const handleSettleBalance = async () => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before recording a balance payment.');
+      return;
+    }
+    const orderId = Number.parseInt(balanceSettlementOrder?.pos_transaction_id, 10);
+    const balanceDue = Number(balanceSettlementOrder?.balance_due || 0);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (!Number.isInteger(orderId) || orderId <= 0 || !(balanceDue > 0) || !terminalId) {
+      toast.error('This order has no outstanding balance to settle on an active terminal.');
+      return;
+    }
+    const isCashSettlement = balanceSettlementMethod === 'cash';
+    const cashReceived = Number(balanceSettlementCashInput);
+    if (isCashSettlement && (!Number.isFinite(cashReceived) || cashReceived < balanceDue)) {
+      toast.error('Cash received must cover the remaining balance.');
+      return;
+    }
+    // ADR 0063 clause 6 [binding], client half: a merchant-owned method cannot be submitted
+    // without the explicit attestation. The server enforces this independently.
+    if (!isCashSettlement && balanceSettlementConfirmed !== true) {
+      toast.error('Confirm the store received this payment before recording it.');
+      return;
+    }
+    setBalanceSettlementSaving(true);
+    try {
+      const reference = String(balanceSettlementReference || '').trim();
+      await recordOrderBalancePayment(orderId, {
+        terminal_id: terminalId,
+        payment_method: balanceSettlementMethod,
+        ...(isCashSettlement
+          ? { cash_received: cashReceived }
+          : { amount: balanceDue, manual_payment_received: true }),
+        ...(reference ? { payment_reference: reference } : {}),
+        idempotency_key: createIdempotencyKey('pos-order-balance')
+      });
+      try {
+        await printOnlineOrderReceiptById(orderId, { automatic: true });
+      } catch (printError) {
+        toast.message(printError?.response?.data?.message || 'Balance recorded, but the online order receipt still needs printing.');
+      }
+      toast.success('Balance recorded. You can now complete this order.');
+      setBalanceSettlementOrder(null);
+      await refreshIncomingOrders({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to record the balance payment for this order.');
+    } finally {
+      setBalanceSettlementSaving(false);
     }
   };
 
@@ -5505,7 +5588,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -5514,6 +5597,12 @@ function PosRestorationLoadingScreen() {
               adminReauthContext,
               adminReauthForm,
               adminReauthUnlock,
+              balanceSettlementCashInput,
+              balanceSettlementConfirmed,
+              balanceSettlementMethod,
+              balanceSettlementOrder,
+              balanceSettlementReference,
+              balanceSettlementSaving,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -5538,6 +5627,7 @@ function PosRestorationLoadingScreen() {
               handleCashierResumeSubmit,
               handleCloseDay,
               handleCollectCash,
+              handleSettleBalance,
               handleCompleteLegacyLink,
               handleCompleteTenantSetup,
               handleConfirmCloseShift,
@@ -5578,6 +5668,11 @@ function PosRestorationLoadingScreen() {
               resumeTenantSetupFlow,
               saveMyDayClosePin,
               setAdminReauthForm,
+              setBalanceSettlementCashInput,
+              setBalanceSettlementConfirmed,
+              setBalanceSettlementMethod,
+              setBalanceSettlementOrder,
+              setBalanceSettlementReference,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -5740,6 +5835,7 @@ function PosRestorationLoadingScreen() {
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
           handleOpenCashCollection={handleOpenCashCollection}
+          handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}

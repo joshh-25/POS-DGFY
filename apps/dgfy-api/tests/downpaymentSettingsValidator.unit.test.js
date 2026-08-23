@@ -56,7 +56,9 @@ describe('downpaymentSettingsValidator', () => {
         expect(res.status).toHaveBeenCalledWith(422);
     });
 
-    it('accepts customer_choice at the schema layer (rejection happens in the use case, not here)', () => {
+    // Phase 150 (#866): customer_choice is now a fully supported payment_mode end to end -- this
+    // schema-layer acceptance is no longer paired with a use-case-layer rejection.
+    it('accepts customer_choice at the schema layer', () => {
         const req = { body: { payment_mode: 'customer_choice' } };
         const res = createRes();
         const next = jest.fn();

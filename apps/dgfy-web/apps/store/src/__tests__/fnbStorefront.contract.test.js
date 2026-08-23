@@ -244,6 +244,15 @@ describe('Food & Beverage storefront contract', () => {
     expect(storefrontAppSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
   });
 
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its
+  // options capture online, matching ADR 0070's amendment. Cash must stay hidden even under
+  // election='full', where downpaymentDisplay.active alone would be false.
+  it('hides cash for a customer_choice store regardless of the current election', () => {
+    const checkoutRouteContainer = checkoutRouteContainerSource();
+
+    expect(checkoutRouteContainer).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
+  });
+
   it('provides a development-only PayMongo sandbox confirmation control', () => {
     const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
     const checkout = readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');

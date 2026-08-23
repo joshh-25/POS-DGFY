@@ -1863,7 +1863,7 @@ inside the same transaction that creates the order, when called with the
 `capturedPayment` sibling argument the PayMongo webhook finalizer
 (`finalizePaidCommerceSession.js`) supplies after a downpayment is confirmed
 paid. `kind: 'balance'`/`'refund'`/`'forfeiture'` rows remain unwritten until
-Phase 144/145 (#824/#825).
+Phase 144/148 (#824/#825).
 
 ### tenant_downpayment_settings (Phase 138)
 
@@ -1890,17 +1890,23 @@ CREATE TABLE tenant_downpayment_settings (
 );
 ```
 
-`payment_mode` includes `customer_choice` in the schema now so a future phase
-that actually builds it needs no further migration, but the admin API
+`payment_mode` includes `customer_choice` in the schema (Phase 138, #820) and, as
+of Phase 150 (#866), the admin API
 (`apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`)
-rejects any attempt to set it (`422`, `PAYMENT_MODE_NOT_SUPPORTED`) — v1 is
-binary: `full_payment` or `downpayment_required`. `allowed_capture_methods`
+accepts it — a tenant can let the customer choose full payment vs. a downpayment
+at checkout, rather than the merchant fixing one or the other. `allowed_capture_methods`
 `NULL` means "inherit the business-wide capture-method allow-list from #816"
 (not yet built). Downpayment is authorized for every workflow mode (ADR 0070,
 2026-08-21, supersedes ADR 0069's earlier Retail-only gate) — the settings
 write path no longer performs any vertical check; it only re-validates the
-effective (merged) row for internal consistency (type/rate/min required
-together). Phase 140 (#821) is the first reader: `resolveCheckoutContext`
+effective (merged) row for internal consistency. `downpayment_required` and
+`customer_choice` both require `downpayment_type` + its matching amount field
+(`downpayment_rate_bps` for `percentage`, `downpayment_fixed_centavos` for
+`fixed`); `min_downpayment_centavos > 0` is additionally required, but only when
+`downpayment_type = 'percentage'` (Phase 150, #865) — a `fixed` row's minimum is
+optional and, if left over from before this change, is not enforced at
+resolution time either (`resolveDownpaymentForTotal` scopes the same floor to
+`percentage` only). Phase 140 (#821) is the first reader: `resolveCheckoutContext`
 (`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`, the shared resolver behind
 `/cart/quote`, `/store/checkout`, and the QRPh payment-session path) reads this row via an injected
 `downpaymentSettingsRepository` dependency and computes the split

@@ -189,3 +189,150 @@ describe('commerce payment refund use-cases', () => {
     }));
   });
 });
+
+// --- Phase 144 (#824): tenant-side pos_order_payments mirroring -------------------------------
+//
+// A refund is recorded landlord-side in commerce_payment_refunds. For a DOWNPAYMENT order it must
+// also appear in the tenant's own per-order ledger, next to the kind:'downpayment' capture row
+// Phase 141 wrote — otherwise the tenant's ledger shows money coming in and never going back out.
+
+const downpaymentSession = {
+  ...baseSession,
+  session_id: 11,
+  public_reference: 'CPS-DOWN123456',
+  pos_transaction_id: 903,
+  capture_kind: 'downpayment',
+  capture_payment_method: 'gcash',
+  order_total_centavos: 100000,
+  total_amount_centavos: 20000,
+  downpayment_refundable: true
+};
+
+describe('tenant order-payment ledger mirroring (Phase 144, #824)', () => {
+  it('records a pending refund row when the provider has not confirmed yet', async () => {
+    const repository = buildRepository({
+      findSessionByPublicReference: jest.fn().mockResolvedValue(downpaymentSession),
+      findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
+    });
+    const writeOrderPaymentLedgerEntry = jest.fn().mockResolvedValue({ written: true, entryId: 71 });
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository: repository,
+      paymongoService: {
+        createRefund: jest.fn().mockResolvedValue({ id: 'ref_pending', attributes: { status: 'pending' } })
+      },
+      writeOrderPaymentLedgerEntry
+    });
+
+    const result = await useCase({
+      paymentSessionId: downpaymentSession.public_reference,
+      payload: { amount_centavos: 20000, refund_strategy: 'proportional' },
+      actor: 'pos_user:8'
+    });
+
+    expect(result.success).toBe(true);
+    expect(writeOrderPaymentLedgerEntry).toHaveBeenCalledTimes(1);
+    expect(writeOrderPaymentLedgerEntry).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'refund',
+      status: 'pending',
+      amountCentavos: 20000,
+      paymentMethod: 'gcash',
+      idempotencyKey: expect.stringMatching(/^CRF-[0-9A-F]{10}$/)
+    }));
+  });
+
+  it('records a failed refund row when the provider rejects outright', async () => {
+    const repository = buildRepository({
+      findSessionByPublicReference: jest.fn().mockResolvedValue(downpaymentSession),
+      findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
+    });
+    const writeOrderPaymentLedgerEntry = jest.fn().mockResolvedValue({ written: true, entryId: 72 });
+    const providerError = new Error('rejected');
+    providerError.response = { status: 400, data: { errors: [{ detail: 'Refund not allowed' }] } };
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository: repository,
+      paymongoService: { createRefund: jest.fn().mockRejectedValue(providerError) },
+      writeOrderPaymentLedgerEntry
+    });
+
+    const result = await useCase({
+      paymentSessionId: downpaymentSession.public_reference,
+      payload: { amount_centavos: 20000, refund_strategy: 'proportional' },
+      actor: 'pos_user:8'
+    });
+
+    expect(result.success).toBe(true);
+    expect(writeOrderPaymentLedgerEntry).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'refund',
+      status: 'failed'
+    }));
+  });
+
+  // The async half: PayMongo confirms later, and the pending row must be promoted rather than a
+  // second row appended.
+  it('promotes the tenant ledger row when the refund webhook confirms success', async () => {
+    const repository = buildRepository({
+      findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
+    });
+    const updateOrderPaymentLedgerEntryStatus = jest.fn().mockResolvedValue({ updated: true, entryId: 71 });
+    const webhook = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository: repository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
+      recordSucceededRevenueRefund: jest.fn().mockResolvedValue({ success: true, data: {} }),
+      updateOrderPaymentLedgerEntryStatus
+    });
+
+    const result = await webhook({
+      headers: { 'paymongo-signature': 'sig' },
+      rawBody: '{}',
+      body: {
+        data: {
+          id: 'evt_refund_1',
+          attributes: {
+            type: 'payment.refunded',
+            data: { id: 'ref_test', type: 'refund', attributes: { status: 'succeeded' } }
+          }
+        }
+      }
+    });
+
+    expect(result.data).toEqual(expect.objectContaining({ handled: true, status: 'refund_updated' }));
+    expect(updateOrderPaymentLedgerEntryStatus).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: 'CRF-ABC123DEF4',
+      status: 'successful',
+      providerEventId: 'evt_refund_1'
+    }));
+  });
+
+  // Best-effort by contract: a tenant database that cannot be reached must never make PayMongo
+  // retry a money event.
+  it('still acknowledges the refund webhook when the tenant ledger update fails', async () => {
+    const repository = buildRepository({
+      findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
+    });
+    const webhook = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository: repository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
+      recordSucceededRevenueRefund: jest.fn().mockResolvedValue({ success: true, data: {} }),
+      updateOrderPaymentLedgerEntryStatus: jest.fn().mockResolvedValue({ updated: false, reason: 'tenant_unreachable' })
+    });
+
+    const result = await webhook({
+      headers: { 'paymongo-signature': 'sig' },
+      rawBody: '{}',
+      body: {
+        data: {
+          id: 'evt_refund_2',
+          attributes: {
+            type: 'payment.refunded',
+            data: { id: 'ref_test', type: 'refund', attributes: { status: 'succeeded' } }
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining({ handled: true, status: 'refund_updated' }));
+  });
+});
