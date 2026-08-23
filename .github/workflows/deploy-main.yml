@@ -144,7 +144,15 @@ jobs:
   # refuses to deploy when any job in the chain failed.
   frontend-pos-prod:
     needs: frontend-ims-prod
-    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos'
+    # !cancelled() (matching publish's own idiom below): a plain `if:` here
+    # meant a components: dgfy-pos-only dispatch skipped frontend-ims-prod
+    # (its own if fails), which then skipped this job too since GHA
+    # auto-skips a job whose `needs` was itself skipped -- a components:
+    # dgfy-pos/dgfy-storefront PROD dispatch finished green having built and
+    # deployed nothing. Caught in review (RF-1, PR #513).
+    if: >-
+      !cancelled() && needs.frontend-ims-prod.result != 'failure' &&
+      (inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos')
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-pos
@@ -159,7 +167,12 @@ jobs:
 
   frontend-storefront-prod:
     needs: frontend-pos-prod
-    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront'
+    # Same fix as frontend-pos-prod above (RF-1, PR #513) -- a
+    # dgfy-storefront-only dispatch skipped frontend-pos-prod, which skipped
+    # this job too.
+    if: >-
+      !cancelled() && needs.frontend-pos-prod.result != 'failure' &&
+      (inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront')
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-storefront
