@@ -7569,7 +7569,7 @@ numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments nee
 - `docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md` (new)
 - Issues #865, #866
 
-## Phase 151 - Frontend App Split (issue #322)
+## Phase 152 - Frontend App Split (issue #322)
 
 ### Initiative and Release
 
@@ -7665,7 +7665,7 @@ numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments nee
 
 ### Completion Record (2026-08-15)
 
-- Phase 151 is complete. Phase 152 is the next eligible repository phase and
+- Phase 152 is complete. Phase 153 is the next eligible repository phase and
   requires separate approval.
 
 ---
@@ -7686,13 +7686,36 @@ verbatim and renumbering this branch's unmerged entry, and moving it to the end 
 | Phase | Owner | Disposition |
 |---:|---|---|
 | 89 | `develop`'s POS Items Gallery / IMS CSV Import Foundation | unchanged — prior reservation, already merged to `develop` |
-| 151 | This branch's Frontend App Split (issue #322) | **moved from 89** |
+| 151 | This branch's Frontend App Split (issue #322) | **moved from 89**, then moved again — see the 2026-08-23 addendum below |
 
 No code changes accompany this renumber — the phase's own implementation was already complete and
 merge-independent; only the ledger heading, its own "Completion Record" trailer, and the ADR 0071
 cross-reference above needed edits. The three `// ... Phase 89` source comments in
 `apps/dgfy-api/**` (`fulfillmentProfiles.contract.test.js`, `ServiceBookingStatusEvent.js`,
 `serviceUseCases.js`) refer to `develop`'s Phase 89 and are correct as absorbed — left untouched.
+
+**Addendum, 2026-08-23 — the same collision fired a second time, same day, on the number this note
+itself just assigned.** `develop` independently claimed `## Phase 151 - Customer-Facing Downpayment
+Surfaces` (#826, commit `6519e39c`, 2026-08-22 21:11) about 1.5 hours after this branch's own
+renumber above (commit `18e11cb6`, 19:37) — so this branch was chronologically first, but by the
+time of the next absorb cycle (2026-08-23) develop's Phase 151 was already merged and externally
+cited (its own issue, PR, and compliance declaration all reference "Phase 151"). Neither side was
+careless: each checked against the highest number visible in the ledger it could see, and this
+branch's own reservation is invisible to `develop`'s authors by construction — it lives on an
+unmerged branch. Resolved the same way as the first collision: the unmerged absorbing branch
+renumbers again.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | `develop`'s Customer-Facing Downpayment Surfaces (#826) | unchanged — already merged to `develop` |
+| 152 | This branch's Frontend App Split (issue #322) | **moved from 151, which was itself moved from 89** |
+
+This is the fourth ADR/phase-number collision across two absorb cycles (see
+`docs/architecture/backend-absorption.md:300` for the earlier ADR-number precedent this pattern
+follows). The root cause is structural, not a process gap on either side: as long as this branch's
+own ledger entry stays unmerged, every `develop` author choosing "the next free phase number" is
+choosing against a ledger that doesn't yet contain this branch's reservation. It will keep recurring
+each absorb cycle until PR #513 merges.
 `docs/architecture/backend-absorption.md`'s 2026-08-16 dated log entry, which narrates this
 branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
 true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
