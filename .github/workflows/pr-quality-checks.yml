@@ -19,7 +19,7 @@ on:
           are the two heaviest jobs in the repo.
         required: false
         type: string
-        default: '["self-hosted", "sieitz-lg"]'
+        default: '["sieitz-lg"]'
   workflow_dispatch:
     inputs: *runner_labels_input
 

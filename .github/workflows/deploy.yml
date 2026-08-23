@@ -78,7 +78,7 @@ permissions:
 
 jobs:
   resolve-environment:
-    runs-on: ['self-hosted', 'sieitz-runner']  # #923: generic, either box
+    runs-on: ['sieitz-runner']  # #923: generic, either box
     timeout-minutes: 2
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
@@ -116,7 +116,7 @@ jobs:
       vpn_required: false
       build_api: ${{ inputs.components == 'all' || inputs.components == 'backend' }}
       build_frontend: ${{ inputs.components == 'all' || inputs.components == 'frontend' }}
-      runner_labels_json: '["self-hosted", "sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
+      runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
     secrets: inherit
     permissions:
       contents: read

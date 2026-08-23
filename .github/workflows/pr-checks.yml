@@ -33,8 +33,8 @@ env:
   # is still a one-line revert if/when hosted runners come back (swap the
   # value, not the anchor name -- see scripts/check-pr-quality-workflow.js,
   # which asserts *runner_heavy).
-  RUNNER_LIGHT_JSON: &runner_light '["self-hosted", "sieitz-runner"]'
-  RUNNER_HEAVY_JSON: &runner_heavy '["self-hosted", "sieitz-lg"]'
+  RUNNER_LIGHT_JSON: &runner_light '["sieitz-runner"]'
+  RUNNER_HEAVY_JSON: &runner_heavy '["sieitz-lg"]'
   # Empty on self-hosted: the Actions cache service serves these runners at 49-69 KB/s, so
   # importing the layer cache costs ~21x the build it skips (#726). Revert to type=gha when
   # hosted runners are back -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md.
