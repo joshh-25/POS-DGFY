@@ -7719,6 +7719,101 @@ unshipped reservation.
 
 ---
 
+## Phase 149 - Hardening + Documentation Closure
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815 / #273). Issue #827. Final phase of
+  the epic -- depends on all prior phases (136-144, 147, 148, 150, 151; 145-146 are unrelated
+  already-completed POS work per the renumber note above).
+- Release: `develop`, via PR (branch `feature/827-downpayment-hardening-closure`), cut from fresh
+  `origin/develop` at `178255e95` (Phase 148's merge commit).
+- Audit + documentation phase, not new feature code -- per
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s Implementation Hardening Contract, required
+  before any cross-boundary payment/checkout workflow is considered done.
+
+### Objective and Scope
+
+- **#827's own body was re-verified fresh, not trusted as written.** Its ledger-backfill checkbox
+  (asking for entries for Phases 136-144/147-148) was already satisfied before this phase started --
+  every one of those entries already existed, in detail, with governance notes and acceptance
+  evidence. Not redone; stated as already-satisfied in the PR instead of silently reproduced.
+- New governed feature doc `docs/features/DOWNPAYMENT.md` -- the one real documentation-closure gap
+  (hardening item 10), since none existed. Summarizes the flow, the three payment modes and how
+  `customer_choice` collapses to the other two (Phase 150), the ledger row shape, the full 10-item
+  hardening-contract verdict table, residual risks, and references -- linking to each phase's own
+  ledger entry rather than restating it.
+- **#668 (QRPh voucher-redemption race), named in #827's own body as a residual risk, was found
+  already closed** (2026-08-20, `COMPLETED`) during this phase's fresh verification -- not silently
+  copied from the issue's stale framing. The race is accepted-as-is (not eliminated; reserving
+  earlier was considered and rejected for lack of a session-expiry release mechanism) and made
+  reconcilable via a `VOUCHER_REDEMPTION_UNAVAILABLE` finalization tag routed to the existing
+  `paid_manual_resolution_required` operator queue. `DOWNPAYMENT.md` documents the corrected status.
+- Two genuinely still-open residual risks carried into the new doc: the fiscal/BIR deferral (ADR
+  0069 clause 9 `[default]`, carried by ADR 0070) and the platform-fee-on-balance-leg question
+  (#817, open).
+- Hardening items 7 (frontend negative proof) and 8 (rendered UI proof) were the two items with no
+  recorded evidence anywhere in the epic. Item 7 was found already covered by an existing test
+  (`terminalBalanceSettlement.behavior.test.jsx`'s first two cases, Phase 148) on closer reading --
+  no new test needed, cited instead of duplicated. Item 8 was closed by a live walkthrough this
+  phase (see Acceptance and Validation Evidence).
+- **STAGING is not currently reachable for #827's literal "Verify -- end to end, on STAGING" ask.**
+  `origin/staging` (`6a06a1e6`, 2026-08-20) is behind `develop` and does not yet carry Phases 148,
+  150, or 151. Substituted the local-test Docker stack (`do-not-commit/local-test/`), rebuilt from
+  this branch (== current `develop`), with the substitution disclosed rather than silently
+  presented as a staging pass. A real staging E2E should be re-run on the next `develop -> staging`
+  promotion.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on every prior downpayment phase (136-144, 147, 148, 150, 151), all `completed`.
+- **No ADR change.** Nothing here revisits a Decision clause -- evidentiary closure of decisions
+  already made. Classification: `within-existing-boundary`.
+- **No compliance impact declaration.** Confirmed via `npm run check:compliance` ("No
+  compliance-sensitive changes detected") -- this phase touches only `docs/features/`, not
+  `apps/dgfy-api/src/modules/pos/`, `apps/dgfy-api/src/routes/pos.js`, or
+  `apps/dgfy-web/src/features/pos/`.
+- **No migration.** No schema or code change of any kind.
+
+### Acceptance and Validation Evidence
+
+- `npm run lint:docs` -- OK (28 governed docs validated, including the new `DOWNPAYMENT.md`).
+- `npm run check:adr --strict` -- OK (77 ADRs validated).
+- `npm run check:compliance` -- confirmed no sensitive-path match, as expected for a docs-only diff.
+- Live walkthrough against the local-test Docker stack (`docker context ch`,
+  `dgfy-pos.nicenature.space` / `dgfy-store.nicenature.space`), rebuilt (`--no-cache`) from this
+  branch (== `develop` @ `178255e95` plus this phase's docs-only diff) -- **PASS**. Full detail in
+  `DOWNPAYMENT.md` section 5; summary: a downpayment order (PHP 1200 total, PHP 1000 fixed
+  downpayment) captured via a properly HMAC-signed simulated `payment.paid` webhook (not an
+  unsigned bypass -- this stack runs `NODE_ENV=production`, which correctly refuses one), accepted,
+  progressed to Out for Delivery, settled its PHP 212.00 balance in cash with the Settle Balance
+  dialog (Collect Cash never rendered alongside it -- item 7's negative proof, live), and completed
+  only once `balance_due` reached zero. Final state: two `pos_order_payments` rows, correctly
+  linked and amounted. A second order was rejected instead, confirming the refund request scoped to
+  exactly the PHP 1000.00 downpayment, never the untouched PHP 212.00 balance -- the automatic
+  refund itself fell to manual review only because the simulated payment id has no real
+  PayMongo-side counterpart, the designed fallback firing correctly. No console errors surfaced.
+  Desktop-viewport coverage only -- a mobile-viewport pass was attempted but the browser resize
+  didn't take effect in this environment; disclosed as an open gap rather than claimed.
+- **#668, cited in #827's own body as a residual risk, was found already closed** (2026-08-20,
+  `COMPLETED`) on fresh verification -- see Objective and Scope above and `DOWNPAYMENT.md` section
+  6 for the corrected status.
+
+### Implementation Links
+
+- Issue: #827. Epic: #815 / #273.
+- Docs: `docs/features/DOWNPAYMENT.md` (new).
+- ADRs referenced (none amended): `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md`,
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (the #668 amendment, cited for the residual-risk correction).
+- This is the epic's terminating phase -- no next eligible phase.
+
+---
+
 ## Phase 150 - Downpayment Settings Clarity + The `customer_choice` Payment Mode
 
 ### Initiative and Release
