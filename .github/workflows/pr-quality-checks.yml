@@ -272,9 +272,9 @@ jobs:
         working-directory: apps/dgfy-storefront
         run: npm run lint
 
-      - name: Run storefront F&B contract test
+      - name: Run storefront vitest suite
         working-directory: apps/dgfy-storefront
-        run: npx vitest run src/__tests__/storefrontErrorMessages.test.js
+        run: npx vitest run
 
       - name: Build dgfy-storefront
         working-directory: apps/dgfy-storefront
