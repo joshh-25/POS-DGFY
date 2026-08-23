@@ -67,7 +67,7 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
-    image: dgfy-local-test-migration-runner:latest
+    image: dgfy-local-test-dgfy-migration-runner:latest
     restart: "no"
     env_file: .env.compose
     environment:
@@ -86,7 +86,7 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
-    image: dgfy-local-test-api:latest
+    image: dgfy-local-test-dgfy-api:latest
     restart: unless-stopped
     # .env.compose is .env with literal `$` doubled to `$$` — compose
     # interpolates `$VAR` syntax found inside env_file contents, and

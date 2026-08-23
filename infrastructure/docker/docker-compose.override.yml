@@ -13,13 +13,13 @@
 
 services:
   dgfy-migration-runner:
-    image: dgfy-platform-migration-runner:dev
+    image: dgfy-migration-runner:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
 
   dgfy-api:
-    image: dgfy-platform-api:dev
+    image: dgfy-api:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
@@ -27,7 +27,7 @@ services:
       - "5100:5100"
 
   dgfy-ims:
-    image: dgfy-platform-dgfy-ims:dev
+    image: dgfy-ims:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-ims/Dockerfile
@@ -36,7 +36,7 @@ services:
         VITE_SENTRY_ENABLED: "false"
 
   dgfy-pos:
-    image: dgfy-platform-dgfy-pos:dev
+    image: dgfy-pos:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-pos/Dockerfile
@@ -45,7 +45,7 @@ services:
         VITE_SENTRY_ENABLED: "false"
 
   dgfy-storefront:
-    image: dgfy-platform-dgfy-storefront:dev
+    image: dgfy-storefront:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-storefront/Dockerfile
