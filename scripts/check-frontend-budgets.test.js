@@ -20,8 +20,16 @@ function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-budget-gate-'));
 }
 
+// Matches REQUIRED_APP_ASSET_DIRS in check-frontend-budgets.js (issue #322
+// Phase 6 -- each app builds inside its own standalone package now).
+const APP_DIR = {
+  skupervisor: 'apps/dgfy-ims',
+  pos: 'apps/dgfy-pos',
+  store: 'apps/dgfy-storefront',
+};
+
 function writeAsset(projectRoot, app, name, sizeBytes, mtime = new Date()) {
-  const dir = path.join(projectRoot, 'dist-apps', app, 'assets');
+  const dir = path.join(projectRoot, APP_DIR[app], 'dist', 'assets');
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, Buffer.alloc(sizeBytes, 1));

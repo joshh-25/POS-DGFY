@@ -67,9 +67,15 @@ on:
         type: boolean
         default: false
     outputs:
-      frontend:
-        description: '"true" when this range touches anything the frontend image is built from'
-        value: ${{ jobs.detect.outputs.frontend }}
+      frontend_ims:
+        description: '"true" when this range touches anything the dgfy-ims image is built from'
+        value: ${{ jobs.detect.outputs.frontend_ims }}
+      frontend_pos:
+        description: '"true" when this range touches anything the dgfy-pos image is built from'
+        value: ${{ jobs.detect.outputs.frontend_pos }}
+      frontend_storefront:
+        description: '"true" when this range touches anything the dgfy-storefront image is built from'
+        value: ${{ jobs.detect.outputs.frontend_storefront }}
       dgfy_api:
         description: '"true" when this range touches anything the dgfy-api image is built from'
         value: ${{ jobs.detect.outputs.dgfy_api }}
@@ -85,7 +91,9 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 5
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
+      frontend_ims: ${{ steps.filter.outputs.frontend_ims }}
+      frontend_pos: ${{ steps.filter.outputs.frontend_pos }}
+      frontend_storefront: ${{ steps.filter.outputs.frontend_storefront }}
       dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
       migration_runner: ${{ steps.filter.outputs.migration_runner }}
       android: ${{ steps.filter.outputs.android }}
@@ -123,7 +131,9 @@ jobs:
 
           if [ -n "${REASON}" ]; then
             FILES="(unavailable: ${REASON})"
-            FRONTEND=true
+            FRONTEND_IMS=true
+            FRONTEND_POS=true
+            FRONTEND_STOREFRONT=true
             DGFY_API=true
             MIGRATION_RUNNER=true
             ANDROID=true
@@ -139,18 +149,30 @@ jobs:
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
             # conventional-commits check shouldn't force every Docker build.
-            FRONTEND=false
+            #
+            # Each frontend app depends on packages/web-core (the shared trunk)
+            # and packages/shared-constants; dgfy-ims/dgfy-pos additionally
+            # depend on packages/pos-receipt (dgfy-storefront doesn't -- see
+            # its package.json). All three share the reusable deploy-frontend.yml
+            # workflow, so a change there invalidates all three, not just one.
+            FRONTEND_IMS=false
+            FRONTEND_POS=false
+            FRONTEND_STOREFRONT=false
             DGFY_API=false
             MIGRATION_RUNNER=false
             ANDROID=false
-            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND=true || true
+            matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
+            matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
+            matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
             matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
             matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
-            echo "frontend=${FRONTEND}"
+            echo "frontend_ims=${FRONTEND_IMS}"
+            echo "frontend_pos=${FRONTEND_POS}"
+            echo "frontend_storefront=${FRONTEND_STOREFRONT}"
             echo "dgfy_api=${DGFY_API}"
             echo "migration_runner=${MIGRATION_RUNNER}"
             echo "android=${ANDROID}"
@@ -165,7 +187,9 @@ jobs:
             fi
             echo "| Image build | Needed |"
             echo "|-------------|--------|"
-            echo "| Frontend | ${FRONTEND} |"
+            echo "| dgfy-ims | ${FRONTEND_IMS} |"
+            echo "| dgfy-pos | ${FRONTEND_POS} |"
+            echo "| dgfy-storefront | ${FRONTEND_STOREFRONT} |"
             echo "| DGFY API | ${DGFY_API} |"
             echo "| Migration Runner | ${MIGRATION_RUNNER} |"
             echo "| Android | ${ANDROID} |"

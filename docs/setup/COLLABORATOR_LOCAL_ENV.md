@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: setup
-last_reviewed: 2026-05-04
+last_reviewed: 2026-08-14
 applies_to: local_development
 topic: collaborator_environment_setup
 ---
@@ -50,9 +50,15 @@ npm run install:all
 This installs dependencies for:
 
 - Repository root
+- `apps/dgfy-ims`
+- `apps/dgfy-pos`
+- `apps/dgfy-storefront`
 - `apps/dgfy-api`
-- `apps/dgfy-web`
 - `apps/dgfy-migration-runner`
+
+`packages/web-core` is a source-only shared package consumed by the three
+frontend apps through `file:../../packages/web-core`. It has no build step and
+no dependencies of its own to install.
 
 ### 3. Create Environment Files
 
@@ -63,10 +69,11 @@ cd apps/dgfy-api
 cp .env.example .env
 ```
 
-Frontend:
+Frontend (IMS/SKUpervisor ships the committed example; POS and Storefront use a
+local-only `.env.local`):
 
 ```bash
-cd ../apps/dgfy-web
+cd ../dgfy-ims
 cp .env.example .env
 ```
 
@@ -281,13 +288,22 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Frontend Environment
 
-Create `apps/dgfy-web/.env` from the `apps/dgfy-web` folder:
+There are three frontend apps, each with its own env file:
+
+- `apps/dgfy-ims/.env` (IMS/SKUpervisor, port `5173`) — created from the
+  committed `apps/dgfy-ims/.env.example`
+- `apps/dgfy-pos/.env.local` (POS, port `5174`)
+- `apps/dgfy-storefront/.env.local` (Storefront, port `5175`)
+
+For IMS:
 
 ```bash
+cd apps/dgfy-ims
 cp .env.example .env
 ```
 
-Use this local development configuration:
+Use this local development configuration (the same `VITE_*` values apply to all
+three apps; only the storefront needs `VITE_STORE_BASE_PATH`):
 
 ```env
 VITE_API_URL=/api/v1
@@ -300,11 +316,11 @@ VITE_PROXY_TARGET=http://127.0.0.1:5000
 VITE_PAYMENTS_ENABLED=false
 VITE_SUBSCRIPTIONS_ENABLED=false
 
-# Store app base path. Keep "/" locally.
+# Storefront app base path. Keep "/" locally.
 # VITE_STORE_BASE_PATH=/
 ```
 
-`apps/dgfy-web/.env.development` currently only needs:
+`apps/dgfy-ims/.env.development` currently only needs:
 
 ```env
 VITE_API_URL=/api/v1
@@ -440,24 +456,40 @@ Use the profile-specific examples when testing deployment behavior:
 
 - `apps/dgfy-api/.env.shared.example` for shared hosting without Redis.
 - `apps/dgfy-api/.env.vps.example` for Redis-capable VPS deployments.
-- `apps/dgfy-web/.env.shared.example` and `apps/dgfy-web/.env.vps.example` for matching frontend builds.
+- `apps/dgfy-ims/.env.shared.example` and `apps/dgfy-ims/.env.vps.example` for matching frontend builds. POS and Storefront take the same `VITE_*` values; they have no committed profile examples of their own.
 
 Shared hosting intentionally omits Redis and uses fail-open blacklist behavior. VPS mode expects Redis and fail-closed blacklist behavior.
 
 ## Docker Option
 
-From the repository root:
+The compose file lives in `infrastructure/docker/`:
 
 ```bash
-docker-compose up -d
+cd infrastructure/docker
+docker compose up -d
 ```
 
-The current Docker compose file starts:
+It starts:
 
-- MySQL 8.0 on `localhost:3306`
-- Redis 7 on `localhost:6379`
-- Backend on `localhost:5000`
-- Frontend on `localhost:80`
+- MySQL 8.0
+- Redis 7
+- `dgfy-migration-runner` (one-shot migrations, then exits)
+- `dgfy-api` (backend)
+- `dgfy-ims` (port `8081` inside the container network)
+- `dgfy-pos` (port `8082` inside the container network)
+- `dgfy-storefront` (port `8083` inside the container network)
+- `nginx` on `80`/`443`, routing each domain to the matching frontend container
+
+The three frontend containers are separate images
+(`ghcr.io/sieitzz/dgfy-platform/dgfy-ims`, `.../dgfy-pos`,
+`.../dgfy-storefront`) and are only reachable through the `nginx` service. For
+plain-HTTP local access on `5173`/`5174`/`5175` instead of domains, add the
+opt-in overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f docker-compose.local-ports.yml up -d nginx
+```
 
 Docker database credentials:
 
@@ -499,7 +531,7 @@ npm run smoke:pos-local
 
 - Keep `DB_AUTO_SYNC=false` for shared/local development.
 - Use migrations for schema changes.
-- Do not commit `apps/dgfy-api/.env`, `apps/dgfy-web/.env`, `.env.qa.local`, or `.env.prod.local`.
+- Do not commit `apps/dgfy-api/.env`, `apps/dgfy-ims/.env`, `apps/dgfy-pos/.env.local`, `apps/dgfy-storefront/.env.local`, `.env.qa.local`, or `.env.prod.local`.
 - `apps/dgfy-api/uploads` is runtime-generated. Only `apps/dgfy-api/uploads/.gitkeep` is source-controlled.
 - Vite must proxy both `/api` and `/uploads` to the backend for uploaded images to render in local frontend surfaces.
 
@@ -554,9 +586,9 @@ docker start sku-redis
 Check:
 
 - Backend is running on `http://localhost:5000`.
-- `apps/dgfy-web/.env` has `VITE_API_URL=/api/v1`.
+- The affected app's env file (`apps/dgfy-ims/.env`, `apps/dgfy-pos/.env.local`, or `apps/dgfy-storefront/.env.local`) has `VITE_API_URL=/api/v1`.
 - `VITE_PROXY_TARGET=http://127.0.0.1:5000` is set if proxy behavior is needed.
-- Restart the frontend after changing `.env`.
+- Restart that app's dev server after changing its env file.
 
 ### Uploaded Images Do Not Render
 

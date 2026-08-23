@@ -17,8 +17,13 @@
 # see the flags below.
 #
 # Usage:
-#   scripts/deploy-local.sh --env DEV --components all|backend|frontend \
+#   scripts/deploy-local.sh --env DEV \
+#     --components all|backend|frontend|dgfy-ims|dgfy-pos|dgfy-storefront \
 #     [--push] [--deploy] [--ssh-target user@host] [--docker-dir /opt/dgfy-platform]
+#
+# `frontend` builds all three frontend apps (issue #322 Phase 6 split the
+# single frontend image into dgfy-ims/dgfy-pos/dgfy-storefront); pass one of
+# the three app names directly to build just that one.
 #
 # --push requires `docker login ghcr.io` already done locally (your own PAT
 #         or `gh auth token | docker login ghcr.io -u <you> --password-stdin`).
@@ -90,8 +95,16 @@ build_backend() {
     --label "org.opencontainers.image.revision=$REVISION" .
 }
 
-build_frontend() {
-  echo "-- building frontend (tag: $TAG, sha-${REVISION:0:7}) --"
+# One image per frontend app now (issue #322 Phase 6 -- previously one
+# `npm run build:all` image serving all 3 SPAs). Same generic "fetch every
+# non-secret var for this environment" approach as before: unlike
+# deploy-frontend.yml's CI case-statement (which scopes build args per app
+# for the container-registry provenance record), this script doesn't bother
+# scoping -- Docker silently ignores an unused --build-arg, and this is a
+# local dev/test build, not the shipped artifact.
+build_frontend_app() {
+  local app="$1"
+  echo "-- building ${app} (tag: $TAG, sha-${REVISION:0:7}) --"
   if ! command -v gh >/dev/null; then
     echo "::error:: gh CLI required to fetch this environment's VITE_* build vars." >&2
     exit 1
@@ -107,17 +120,24 @@ build_frontend() {
   else
     echo "No local SENTRY_AUTH_TOKEN -- building without sourcemap upload (fine for a local test build)."
   fi
-  docker build -f infrastructure/docker/frontend/Dockerfile \
-    -t "$REGISTRY/frontend:$TAG" -t "$REGISTRY/frontend:sha-${REVISION:0:7}" \
+  docker build -f "infrastructure/docker/${app}/Dockerfile" \
+    -t "$REGISTRY/${app}:$TAG" -t "$REGISTRY/${app}:sha-${REVISION:0:7}" \
     --label "org.opencontainers.image.revision=$REVISION" \
     "${BUILD_ARGS[@]}" .
+}
+
+build_frontend() {
+  build_frontend_app dgfy-ims
+  build_frontend_app dgfy-pos
+  build_frontend_app dgfy-storefront
 }
 
 case "$COMPONENTS" in
   all) build_backend; build_frontend ;;
   backend) build_backend ;;
   frontend) build_frontend ;;
-  *) echo "::error:: --components must be all, backend, or frontend (got '$COMPONENTS')." >&2; exit 1 ;;
+  dgfy-ims|dgfy-pos|dgfy-storefront) build_frontend_app "$COMPONENTS" ;;
+  *) echo "::error:: --components must be all, backend, frontend, dgfy-ims, dgfy-pos, or dgfy-storefront (got '$COMPONENTS')." >&2; exit 1 ;;
 esac
 
 if $DO_PUSH; then
@@ -129,8 +149,13 @@ if $DO_PUSH; then
     docker push "$REGISTRY/migration-runner:sha-${REVISION:0:7}"
   fi
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "frontend" ]; then
-    docker push "$REGISTRY/frontend:$TAG"
-    docker push "$REGISTRY/frontend:sha-${REVISION:0:7}"
+    for app in dgfy-ims dgfy-pos dgfy-storefront; do
+      docker push "$REGISTRY/${app}:$TAG"
+      docker push "$REGISTRY/${app}:sha-${REVISION:0:7}"
+    done
+  elif [ "$COMPONENTS" = "dgfy-ims" ] || [ "$COMPONENTS" = "dgfy-pos" ] || [ "$COMPONENTS" = "dgfy-storefront" ]; then
+    docker push "$REGISTRY/${COMPONENTS}:$TAG"
+    docker push "$REGISTRY/${COMPONENTS}:sha-${REVISION:0:7}"
   fi
 fi
 

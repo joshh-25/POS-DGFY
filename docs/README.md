@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-29
+last_reviewed: 2026-08-15
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -40,9 +40,14 @@ Start here for all planning and implementation work:
 - `docs/archive`: historical artifacts only (including archived exploratory testing packets)
 
 ## Current Product Surfaces
-- `apps/dgfy-web/apps/skupervisor`: tenant/admin IMS workflows
-- `apps/dgfy-web/apps/pos`: POS terminal and operations
-- `apps/dgfy-web/apps/store`: public storefront, quote, checkout, and tracking
+- `apps/dgfy-ims`: tenant/admin IMS workflows (SKUpervisor)
+- `apps/dgfy-pos`: POS terminal and operations (plus the Electron shell at `apps/dgfy-pos/desktop/pos-electron`)
+- `apps/dgfy-storefront`: public storefront, quote, checkout, and tracking
+- `packages/web-core` (`@sieitzz/web-core`): the shared frontend trunk (`src/`, `Components/`, the DGFY-auth `Pages/`, and the shared Vite helpers) consumed by all three apps
+
+Each app is an independent Vite package with its own `package.json`, lockfile, dev port
+(5173 IMS / 5174 POS / 5175 Storefront), and container image. See ADR 0071
+(`docs/architecture/adr/0071-frontend-split-into-three-apps.md`).
 
 ## Default-On Runtime Contracts
 - Customer Access Modes and Inventory Display controls are default-on public Storefront contracts. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants while rollback is active. Current behavior, platform-admin ceiling controls, tenant-requested mode copy, rollback constraints, public API metadata, Settings runtime status, and validation evidence are tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.
@@ -64,10 +69,10 @@ Start here for all planning and implementation work:
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
-- `apps/dgfy-web/`: multi-surface Vite workspace (legacy and `apps/*` surfaces coexist during migration)
-- `packages/`: shared/internal packages used by app surfaces
+- `apps/dgfy-ims/`, `apps/dgfy-pos/`, `apps/dgfy-storefront/`: three independent Vite frontend apps, one per product surface
+- `packages/`: shared/internal packages used by app surfaces, including `packages/web-core` (`@sieitzz/web-core`), the shared frontend trunk each app links with `file:../../packages/web-core`
 - `scripts/`: repo-level automation and governance scripts
-- `dist-apps/`, `apps/dgfy-web/dist/`: generated build output (non-source)
+- `apps/dgfy-ims/dist/`, `apps/dgfy-pos/dist/`, `apps/dgfy-storefront/dist/`: generated per-app build output (non-source)
 
 ## Documentation Scope
 - Governed implementation and architecture docs live under `docs/`.
@@ -120,7 +125,7 @@ Start here for all planning and implementation work:
 35. Storefront mode presentation is template-driven. Services Mode uses service-specific view-model grouping, availability/hold-backed booking drafts, batch booking, and per-booking confirmation/payment rendering; F&B uses restaurant/menu grouping, default modifier selection, allergen presentation, and a reservation entry point; simple/MSME keeps a lightweight product storefront. The May 14, 2026 local production candidate passed 74 storefront app tests and a tenant-store build with a fresh vendor chunk, replacing the previously reported failing `vendor-BGNbcnYt.js` runtime path.
 36. Account-phone rollout is now explicit and staged. New company/user registration and invite acceptance require phone numbers, existing users can correct numbers in Settings > Profile, admins can isolate missing-phone accounts in User Management, and backend enforcement defaults to `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` outside tests. Operators can pilot clean tenants through `tenant_allowlist`, inspect unresolved users with `npm --prefix backend run verify:phone-rollout:users`, prove current config safety with `npm --prefix backend run verify:phone-rollout:config-safe`, and only switch to global `all` mode after `npm --prefix backend run verify:phone-rollout:complete` passes.
 37. Account passwords require only a minimum of 8 characters across tenant user registration, invitation acceptance, company founder registration, and authenticated Settings > Profile password changes. The frontend password generator is optional convenience UI, defaults to a readable 16-character password, and fills matching confirmation fields where present.
-38. Frontend release hardening includes a governed self-contained route-chunk budget gate. `npm run check:frontend-budgets` owns `npm --prefix apps/dgfy-web run build:all` by default, requires fresh `dist-apps/skupervisor`, `dist-apps/pos`, and `dist-apps/store` assets, writes JSON budget reports, enforces login/POS/terminal/sales route ceilings, treats lazy `vendor-maplibre-*` as a separately capped map dependency, and still reports unrelated vendor growth as actionable.
+38. Frontend release hardening includes a governed self-contained route-chunk budget gate. `npm run check:frontend-budgets` owns the three per-app builds (`npm --prefix apps/dgfy-ims run build`, `npm --prefix apps/dgfy-pos run build`, `npm --prefix apps/dgfy-storefront run build`) by default, requires fresh `apps/dgfy-ims/dist/assets`, `apps/dgfy-pos/dist/assets`, and `apps/dgfy-storefront/dist/assets` output, writes JSON budget reports, enforces login/POS/terminal/sales route ceilings, treats lazy `vendor-maplibre-*` as a separately capped map dependency, and still reports unrelated vendor growth as actionable.
 39. Compliance-sensitive delivery work now has two paired branch gates: `npm run check:compliance` requires a declaration file for sensitive paths and enforces computed minimum classification plus strict `major|regulatory` preflight metadata, while the bundled API-contract check fails when compliance-sensitive runtime fields drift from `docs/api/specification.md`.
 40. Dependency audits are release gates. `npm run audit:dependencies:prod` and `npm run audit:dependencies` cover root, backend, and frontend package scopes, run in CI, and are included in `npm run gate:release:local`. The June 2, 2026 audit package records dependency vulnerabilities as resolved with zero current npm advisories in locked dependency trees.
 41. No-staging production promotion requires exact QA deploy parity. `qa_deploy_summary.txt` must show the same `deployed_head` as `RELEASE_TARGET_SHA`; stale QA evidence is a hard release failure unless an explicit emergency bypass is recorded. The local deploy wrapper now tries to promote the pushed target SHA to QA before the production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`, but refuses that promotion if QA points at the same production host and app directory.
@@ -132,7 +137,7 @@ Start here for all planning and implementation work:
 46. Latest behavior-bearing production runtime evidence available in this workspace records SHA `17bb4cd1bc0abf283b224e30c02f625884e8ffae` as deployed. The June 29, 2026 proof refresh used production remote checkout `/var/www/skupervisor`, production `HEAD`, production `.deploy-state/last_deployed_commit`, live `/api/v1/health`, and live Storefront tracking API smoke, all matching or proving the deployed target. Live `/api/v1/health` reports `services.observability.runtime_sha=17bb4cd1bc0abf283b224e30c02f625884e8ffae`; runtime schema/index checks, billing telemetry, observability, database, and Redis are healthy. Tenant pool capacity is at 20 of 20 and remains an operational warning. Live `GET https://dgfy.ph/api/v1/store/track/SK-2MIBVL` with `x-store-slug: eatery-ni-doe-2e561d` returned `200`, `status=placed`, and `status_label=Order placed`. `origin/staging` contains the production SHA while preserving staging-only release-governance commits through merge commit `b3e23ef3e0e2abcb8637bc59fca4ac12d1e4e9de`; check the moving branch head with `git ls-remote origin staging`.
 47. DGFY signup OTP requests are now landlord-global for `dgfy_account_verification`: they do not require a company token, ignore stale tenant context, and match the global `/api/v1/dgfy/auth/register` verifier. Live production proof on 2026-06-11 showed the no-company-token request reaches normal validation instead of `TENANT_TOKEN_REQUIRED`.
 48. Controlled production DGFY mutation UAT passed on 2026-06-13 with dedicated QA data retained for audit cleanup. Evidence file `.tmp/production-uat/dgfy-production-uat.json` recorded OTP delivery, fresh DGFY account registration, automatic company activation, tenant-session handoff into IMS, onboarding item creation, DGFY-authenticated Storefront checkout, POS completion, inventory decrement from `10` to `9`, and completed-order visibility in the DGFY customer account. Honest readiness ratings recorded by that gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`.
-49. Tenant-visible platform capability messaging is source-current and included in the deployed commit chain. `apps/dgfy-web/src/utils/tenantCapabilityMessages.js` centralizes IMS, POS, and Storefront access-mode copy; `Layout.jsx` can surface tenant-wide IMS/status banners after user/settings hydration or blocked-action events; POS terminal layouts show POS-specific disabled-state copy; Storefront helpers reuse the same access-mode messages for catalog/checkout/action blocks; and Tenant Manager confirmation modals preview the customer/tenant impact before writing capability changes.
+49. Tenant-visible platform capability messaging is source-current and included in the deployed commit chain. `packages/web-core/src/utils/tenantCapabilityMessages.js` centralizes IMS, POS, and Storefront access-mode copy; `Layout.jsx` can surface tenant-wide IMS/status banners after user/settings hydration or blocked-action events; POS terminal layouts show POS-specific disabled-state copy; Storefront helpers reuse the same access-mode messages for catalog/checkout/action blocks; and Tenant Manager confirmation modals preview the customer/tenant impact before writing capability changes.
 50. POS terminal unlock tenant-context hardening is included in the deployed commit chain. Standalone POS resolves the tenant with `/api/v1/auth/lookup` before `/api/v1/auth/login`, reuses the current browser company token only when lookup confirms it belongs to the submitted email, and classifies missing mappings, multiple tenants, invalid credentials, POS capability/permission blocks, rate limiting, and optional device-bridge `503` separately.
    - POS terminal first-use shift identity is included in the deployed commit chain. Warn-mode tenants with no registry and no stored terminal resolve `COUNTER-01` before terminal state is stored or shift operations run; backend shift-open validation still requires `terminal_id`, and enforce-mode tenants must configure a registered active terminal in Settings > POS Setup > Terminal Registry.
 51. POS config/compliance metadata changes are included in the deployed commit chain: tenant admins submit receipt metadata edits for platform-admin approval, platform admin owns DGFY POS software name/version/serial number through Tenant Manager POS Metadata, and POS metadata audit rows use `tenant_admin_audit_logs.action = pos_metadata_update`.

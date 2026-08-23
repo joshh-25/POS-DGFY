@@ -29,5 +29,9 @@ services:
     depends_on:
       dgfy-api:
         condition: service_healthy
-      frontend:
+      dgfy-ims:
+        condition: service_healthy
+      dgfy-pos:
+        condition: service_healthy
+      dgfy-storefront:
         condition: service_healthy

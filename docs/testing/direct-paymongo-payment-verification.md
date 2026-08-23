@@ -76,7 +76,7 @@ npm run check:architecture
 npm run check:compliance
 npm run check:compat-seams
 npm run audit:dependencies:prod
-npm --prefix apps/dgfy-web run build:store
+npm --prefix apps/dgfy-storefront run build
 ```
 
 Confirm the local services respond:
@@ -107,7 +107,7 @@ npm --prefix apps/dgfy-api test -- --runInBand tests/paymongoDirectGcash.test.js
 Run the Storefront payment contracts:
 
 ```powershell
-npm --prefix apps/dgfy-web test -- apps/store/src/__tests__/simpleCheckoutOnlinePayments.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js
+npm --prefix apps/dgfy-storefront test -- src/__tests__/simpleCheckoutOnlinePayments.contract.test.js src/__tests__/fnbStorefront.contract.test.js
 ```
 
 These tests prove branch routing, payload contracts, card retry behavior,
@@ -300,7 +300,7 @@ CVCs, authorization URLs, or personal data:
 | --- | --- |
 | Direct card local canary | PayMongo test Payment Intent authorization completed without Hosted Checkout; signed webhook handling returned HTTP 200 and the session reached `finalized`. Session reference: `CPS-VFDYFEC2C3`. |
 | Card tracking result | One tracking PIN was created: `SK-7MF6DF`. No duplicate order was created during the retry run. |
-| Local artifact | `apps/dgfy-web/.tmp/card-flow-diagnostic/card-flow-retry-final.png` and the matching local Playwright trace archive. These artifacts are local-only and must not be treated as production evidence. |
+| Local artifact | `apps/dgfy-storefront/.tmp/card-flow-diagnostic/card-flow-retry-final.png` and the matching local Playwright trace archive. These artifacts are local-only and must not be treated as production evidence. |
 | GCash and Maya | Direct method contract tests and local UI routing are present. Durable provider-backed evidence rows remain open until a redacted sandbox event record is captured for each method. |
 | Card 3-D Secure | The frontend/API contract and automatic redirect branch are tested. A real PayMongo sandbox 3-D Secure authorization remains open. |
 | Signed webhook and replay safety | Focused backend tests pass for signature rejection, stale timestamps, amount/currency/livemode mismatch holds, and finalized-session replay idempotency. |

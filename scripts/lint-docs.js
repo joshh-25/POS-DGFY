@@ -151,7 +151,7 @@ const validateDgfyChecklist = (errors) => {
     const hasTestOrDocumentaryEvidence = pathRefs.some((ref) => (
       /^apps\/dgfy-api\/tests\//.test(ref)
       || /^backend\/tests\//.test(ref)
-      || /^apps\/dgfy-web\/src\/.*__tests__\//.test(ref)
+      || /^(apps\/dgfy-(ims|pos|storefront)|packages\/web-core)\/.*__tests__\//.test(ref)
       || /^docs\/compliance\/(evidence|submission)\//.test(ref)
       || ref === 'docs/api/specification.md'
       || ref === 'docs/database/schema.md'

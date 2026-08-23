@@ -19,25 +19,39 @@ Planning and validation for PWA behavior must start with:
 4. ADR references:
    - `docs/architecture/adr/0006-skupervisor-expansion-program-boundaries.md`
    - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
+   - `docs/architecture/adr/0071-frontend-split-into-three-apps.md`
 5. Domain references:
    - `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`
    - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
 ## Current PWA Surfaces
 
-| Surface | Source root | Manifest | Service worker | Build output |
-|---|---|---|---|---|
-| SKUpervisor admin shell | `apps/dgfy-web/` | `apps/dgfy-web/public/manifest.webmanifest` | `apps/dgfy-web/public/sw.js` | `apps/dgfy-web/dist/` |
-| SKUpervisor app build | `apps/dgfy-web/apps/skupervisor/` | `apps/dgfy-web/apps/skupervisor/public/manifest.webmanifest` | `apps/dgfy-web/apps/skupervisor/public/sw.js` | `dist-apps/skupervisor/` |
-| POS | `apps/dgfy-web/apps/pos/` | `apps/dgfy-web/apps/pos/manifest.webmanifest` | `apps/dgfy-web/apps/pos/public/sw.js` | `dist-apps/pos/` |
-| Storefront | `apps/dgfy-web/apps/store/` | `apps/dgfy-web/apps/store/public/manifest.json` | `apps/dgfy-web/apps/store/public/sw.js` | `dist-apps/store/` |
+Each surface is now its own independent Vite app (ADR 0071). There is no longer a shared
+admin shell package with a second nested SKUpervisor build — SKUpervisor/IMS owns exactly one
+manifest and one service worker.
+
+| Surface | App root | Manifest | Service worker | Build output | Build command |
+|---|---|---|---|---|---|
+| SKUpervisor / IMS | `apps/dgfy-ims/` | `apps/dgfy-ims/public/manifest.webmanifest` | `apps/dgfy-ims/public/sw.js` | `apps/dgfy-ims/dist/` | `npm run build:skupervisor` |
+| POS | `apps/dgfy-pos/` | `apps/dgfy-pos/manifest.webmanifest` | `apps/dgfy-pos/public/sw.js` | `apps/dgfy-pos/dist/` | `npm run build:pos` |
+| Storefront | `apps/dgfy-storefront/` | `apps/dgfy-storefront/public/manifest.json` | `apps/dgfy-storefront/public/sw.js` | `apps/dgfy-storefront/dist/` | `npm run build:store` |
+
+Known discrepancy worth verifying before rating Storefront PWA readiness: `apps/dgfy-storefront/
+index.html` links `/manifest.webmanifest`, but the file that actually ships to
+`apps/dgfy-storefront/dist/` is `manifest.json` (a stray `apps/dgfy-storefront/manifest.webmanifest`
+exists at the app root but is outside `public/` and is not copied). Confirm which one the built
+storefront serves before claiming install eligibility.
+
+Shared frontend code used by all three surfaces lives in `packages/web-core`
+(`@sieitzz/web-core`). `packages/web-core` has no build step and owns no manifest or service
+worker of its own — PWA assets are per-app and stay per-app.
 
 ## Admin/SKUpervisor Contract
 
 The admin/SKUpervisor PWA is installable and uses conservative caching:
 
 1. `index.html` includes manifest, theme color, Apple mobile-web-app metadata, and touch icon metadata.
-2. `apps/dgfy-web/src/main.jsx` registers the admin service worker in production only.
+2. `apps/dgfy-ims/src/main.jsx` registers the admin service worker in production only.
 3. Service-worker registration probes `sw.js` first and requires a script-like content type before registration.
 4. Static shell resources are cacheable.
 5. Navigation requests use network-first behavior with cached fallback when available.
@@ -59,19 +73,20 @@ POS and Storefront retain their existing service-worker entrypoints.
 
 Run before rating PWA readiness as user-ready:
 
-1. `npm --prefix apps/dgfy-web run build`
-2. `npm --prefix apps/dgfy-web run build:skupervisor`
-3. `npm --prefix apps/dgfy-web run build:all`
-4. `node --check apps/dgfy-web/public/sw.js`
-5. `node --check apps/dgfy-web/apps/skupervisor/public/sw.js`
+Run only the app(s) actually affected; there is no aggregate `build:all` script.
+
+1. `npm run build:skupervisor` (equivalently `npm --prefix apps/dgfy-ims run build`)
+2. `npm run build:pos` (equivalently `npm --prefix apps/dgfy-pos run build`)
+3. `npm run build:store` (equivalently `npm --prefix apps/dgfy-storefront run build`)
+4. `node --check apps/dgfy-ims/public/sw.js`
+5. `node --check apps/dgfy-pos/public/sw.js` and `node --check apps/dgfy-storefront/public/sw.js`
 6. Parse all manifest JSON files.
 7. Confirm production build output contains:
-   - `apps/dgfy-web/dist/manifest.webmanifest`
-   - `apps/dgfy-web/dist/sw.js`
-   - `dist-apps/skupervisor/manifest.webmanifest`
-   - `dist-apps/skupervisor/sw.js`
-   - `dist-apps/pos/sw.js`
-   - `dist-apps/store/sw.js`
+   - `apps/dgfy-ims/dist/manifest.webmanifest`
+   - `apps/dgfy-ims/dist/sw.js`
+   - `apps/dgfy-pos/dist/sw.js`
+   - `apps/dgfy-storefront/dist/manifest.json`
+   - `apps/dgfy-storefront/dist/sw.js`
 8. In a real browser or device, verify:
    - install prompt/add-to-home-screen eligibility
    - installed window title/icon
@@ -98,7 +113,9 @@ Remaining work before a `10/10` rating:
 
 Generated PWA/build outputs are disposable:
 
-1. `apps/dgfy-web/dist/`
-2. `dist-apps/`
+1. `apps/dgfy-ims/dist/`
+2. `apps/dgfy-pos/dist/`
+3. `apps/dgfy-storefront/dist/`
 
-Do not delete source PWA files under `apps/dgfy-web/public/` or `apps/dgfy-web/apps/*/public/`.
+Do not delete source PWA files under `apps/dgfy-ims/public/`, `apps/dgfy-pos/public/`,
+`apps/dgfy-pos/manifest.webmanifest`, or `apps/dgfy-storefront/public/`.

@@ -10,7 +10,7 @@ describe('sale price fallback source contract', () => {
             'apps/dgfy-api/src/modules/pos/usecases/posUseCases.js',
             'apps/dgfy-api/src/modules/store/usecases/storeUseCases.js',
             'apps/dgfy-api/src/services/dispatchOrderService.js',
-        'apps/dgfy-web/src/features/pos/hooks/usePosCartWorkflow.js'
+            'packages/web-core/src/features/pos/hooks/usePosCartWorkflow.js'
         ].map((file) => ({
             file,
             text: read(file)
@@ -24,6 +24,6 @@ describe('sale price fallback source contract', () => {
         expect(read('apps/dgfy-api/src/modules/pos/usecases/posUseCases.js')).toContain('requireExplicitSalePrice(item, \'POS checkout\')');
         expect(read('apps/dgfy-api/src/modules/store/usecases/storeUseCases.js')).toContain('requireExplicitSalePrice(item, \'Storefront checkout\')');
         expect(read('apps/dgfy-api/src/services/dispatchOrderService.js')).toContain('resolveDispatchSalePrice(line, item)');
-        expect(read('apps/dgfy-web/src/features/pos/hooks/usePosCartWorkflow.js')).toContain('Number(item.default_sale_price ?? 0)');
+        expect(read('packages/web-core/src/features/pos/hooks/usePosCartWorkflow.js')).toContain('Number(item.default_sale_price ?? 0)');
     });
 });

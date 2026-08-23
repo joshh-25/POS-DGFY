@@ -142,8 +142,8 @@ services:
       retries: 5
       start_period: 30s
 
-  frontend:
-    image: ghcr.io/sieitzz/dgfy-platform/frontend:${IMAGE_TAG:-latest}
+  dgfy-ims:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # No host port: reachable only via dgfy_internal, through the nginx
     # service below.
@@ -154,14 +154,34 @@ services:
       timeout: 5s
       retries: 5
 
+  dgfy-pos:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN /
-  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`frontend` by
-  # Host header. Stock image, not custom-built -- nginx.conf.template is
-  # bind-mounted and rendered via the official image's built-in envsubst
-  # entrypoint step using the environment vars below. See
-  # nginx/nginx.conf.template and nginx/init-letsencrypt.sh (one-time HTTPS
-  # bootstrap, run once manually after the first `docker compose up -d` on
-  # a fresh server).
+  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`dgfy-ims`/
+  # `dgfy-pos`/`dgfy-storefront` by Host header. Stock image, not
+  # custom-built -- nginx.conf.template is bind-mounted and rendered via the
+  # official image's built-in envsubst entrypoint step using the environment
+  # vars below. See nginx/nginx.conf.template and nginx/init-letsencrypt.sh
+  # (one-time HTTPS bootstrap, run once manually after the first
+  # `docker compose up -d` on a fresh server).
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -194,7 +214,11 @@ services:
     depends_on:
       dgfy-api:
         condition: service_healthy
-      frontend:
+      dgfy-ims:
+        condition: service_healthy
+      dgfy-pos:
+        condition: service_healthy
+      dgfy-storefront:
         condition: service_healthy
     networks: [dgfy_internal]
 

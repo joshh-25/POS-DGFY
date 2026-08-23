@@ -57,7 +57,7 @@ This guide is a general bootstrap reference plus project-specific guardrails. Fo
 
 Current project-specific development notes:
 - Hosting profiles are env-selected from one codebase: `shared` and `vps` are documented in `docs/ops/HOSTING_PROFILES.md`.
-- Use `backend/.env.example` for local development, `backend/.env.shared.example` for shared hosting, and `backend/.env.vps.example` for Redis-capable hosting. Frontend hosting templates live under `apps/dgfy-web/.env.shared.example` and `apps/dgfy-web/.env.vps.example`.
+- Use `backend/.env.example` for local development, `backend/.env.shared.example` for shared hosting, and `backend/.env.vps.example` for Redis-capable hosting. Frontend hosting templates live under `apps/dgfy-ims/.env.shared.example` and `apps/dgfy-ims/.env.vps.example`; the other two frontend apps (`apps/dgfy-pos`, `apps/dgfy-storefront`) do not ship hosting-profile templates of their own.
 - Public company registration is mandatory manual review. Submission creates a pending application and applicant status route; only Platform Admin approval may provision and activate the tenant.
 - Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` strict because public registration writes landlord review state and queues later provisioning.
 - Payments remain disabled by default with `PAYMENTS_ENABLED=false`; premium/subscription registration and payment routes must keep returning the disabled contract unless payments are intentionally re-enabled.
@@ -744,8 +744,8 @@ This project's current env templates:
 - [backend/.env.example](../../backend/.env.example)
 - [backend/.env.shared.example](../../backend/.env.shared.example)
 - [backend/.env.vps.example](../../backend/.env.vps.example)
-- [apps/dgfy-web/.env.shared.example](../../apps/dgfy-web/.env.shared.example)
-- [apps/dgfy-web/.env.vps.example](../../apps/dgfy-web/.env.vps.example)
+- [apps/dgfy-ims/.env.shared.example](../../apps/dgfy-ims/.env.shared.example)
+- [apps/dgfy-ims/.env.vps.example](../../apps/dgfy-ims/.env.vps.example)
 
 Current registration and hosting controls to keep synchronized with docs:
 ```bash
@@ -2063,8 +2063,11 @@ contact_links:
 # Default owners for everything
 * @default-reviewer
 
-# Frontend owners
-/apps/dgfy-web/ @frontend-team
+# Frontend owners (three apps + the shared web-core package)
+/apps/dgfy-ims/ @frontend-team
+/apps/dgfy-pos/ @frontend-team
+/apps/dgfy-storefront/ @frontend-team
+/packages/web-core/ @frontend-team
 
 # Backend owners
 /backend/ @backend-team

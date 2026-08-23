@@ -48,52 +48,52 @@ const steps = [
   {
     label: 'Frontend F&B kitchen queue display contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'kitchenQueueDisplay.test.js']
+    args: ['--prefix', 'apps/dgfy-ims', 'test', '--', 'kitchenQueueDisplay.test.js']
   },
   {
     label: 'Frontend POS terminal mode contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'terminalViewModeContracts.test.js']
+    args: ['--prefix', 'apps/dgfy-ims', 'test', '--', 'terminalViewModeContracts.test.js']
   },
   {
     label: 'Frontend Storefront error-message contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'storefrontErrorMessages.test.js']
+    args: ['--prefix', 'apps/dgfy-storefront', 'test', '--', 'storefrontErrorMessages.test.js']
   },
   {
     label: 'Frontend F&B mode contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'fnbMode.contract.test.js']
+    args: ['--prefix', 'apps/dgfy-ims', 'test', '--', 'fnbMode.contract.test.js']
   },
   {
     label: 'Frontend POS edit-session contracts',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'FnbModifierPickerDialog.test.jsx', 'posFnbModifierManager.session.test.jsx', 'serviceOptionsModal.contract.test.jsx']
+    args: ['--prefix', 'apps/dgfy-ims', 'test', '--', 'FnbModifierPickerDialog.test.jsx', 'posFnbModifierManager.session.test.jsx', 'serviceOptionsModal.contract.test.jsx']
   },
   {
     label: 'Frontend POS folder modifier assignment contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'PosFnbModifiersWorkspace.test.jsx']
+    args: ['--prefix', 'apps/dgfy-ims', 'test', '--', 'PosFnbModifiersWorkspace.test.jsx']
   },
   {
     label: 'Frontend F&B deterministic browser contract',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'run', 'test:e2e:fnb-contract']
+    args: ['--prefix', 'apps/dgfy-storefront', 'run', 'test:e2e:fnb-contract']
   },
   {
     label: 'Skupervisor production build',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:skupervisor']
+    args: ['run', 'build:skupervisor']
   },
   {
     label: 'POS production build',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:pos']
+    args: ['run', 'build:pos']
   },
   {
     label: 'Storefront production build',
     command: npmCommand,
-    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:store']
+    args: ['run', 'build:store']
   },
   {
     label: 'Architecture gate',

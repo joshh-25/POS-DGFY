@@ -5,10 +5,12 @@ const { spawnSync } = require('child_process');
 
 const DEFAULT_REPORT_PATH = path.join('.tmp', 'frontend-budgets', 'frontend_budget_report.json');
 
+// Each app now builds inside its own standalone package (issue #322 Phase 6)
+// instead of a shared top-level dist-apps/<app> output dir.
 const REQUIRED_APP_ASSET_DIRS = [
-  { app: 'skupervisor', dirParts: ['dist-apps', 'skupervisor', 'assets'] },
-  { app: 'pos', dirParts: ['dist-apps', 'pos', 'assets'] },
-  { app: 'store', dirParts: ['dist-apps', 'store', 'assets'] },
+  { app: 'skupervisor', dirParts: ['apps', 'dgfy-ims', 'dist', 'assets'] },
+  { app: 'pos', dirParts: ['apps', 'dgfy-pos', 'dist', 'assets'] },
+  { app: 'store', dirParts: ['apps', 'dgfy-storefront', 'dist', 'assets'] },
 ];
 
 const ROUTE_BUDGETS = [
@@ -136,31 +138,37 @@ function resolveRequiredAssetDirs(projectRoot) {
   }));
 }
 
+const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront'];
+
 function runFrontendBuild(projectRoot, logger = console) {
   // Two-second floor absorbs filesystem timestamp precision differences.
   const buildStartedAtMs = Date.now() - 2000;
   logger.log('[frontend-budgets] Building frontend apps before budget check');
-  const buildCommand = 'npm --prefix apps/dgfy-web run build:all';
-  const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
-  const args = process.platform === 'win32'
-    ? ['/d', '/s', '/c', buildCommand]
-    : ['--prefix', 'apps/dgfy-web', 'run', 'build:all'];
-  const result = spawnSync(command, args, {
-    cwd: projectRoot,
-    stdio: 'inherit',
-    env: process.env,
-  });
 
-  if (result.error) {
-    throw new BudgetGateError(`Failed to launch frontend build: ${result.error.message}`, {
-      code: 'BUILD_LAUNCH_FAILED',
+  for (const appDir of FRONTEND_BUILD_APP_DIRS) {
+    const buildCommand = `npm --prefix ${appDir} run build`;
+    const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+    const args = process.platform === 'win32'
+      ? ['/d', '/s', '/c', buildCommand]
+      : ['--prefix', appDir, 'run', 'build'];
+    const result = spawnSync(command, args, {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      env: process.env,
     });
+
+    if (result.error) {
+      throw new BudgetGateError(`Failed to launch frontend build (${appDir}): ${result.error.message}`, {
+        code: 'BUILD_LAUNCH_FAILED',
+      });
+    }
+    if (result.status !== 0) {
+      throw new BudgetGateError(`Frontend build failed before budget calculation (${appDir}).`, {
+        code: 'BUILD_FAILED',
+      });
+    }
   }
-  if (result.status !== 0) {
-    throw new BudgetGateError('Frontend build failed before budget calculation.', {
-      code: 'BUILD_FAILED',
-    });
-  }
+
   return buildStartedAtMs;
 }
 
@@ -339,7 +347,7 @@ function checkFrontendBudgets(options = {}) {
       status,
       mode,
       project_root: projectRoot,
-      build_command: options.skipBuild ? null : 'npm --prefix apps/dgfy-web run build:all',
+      build_command: options.skipBuild ? null : FRONTEND_BUILD_APP_DIRS.map((appDir) => `npm --prefix ${appDir} run build`).join(' && '),
       freshness_floor: freshnessFloorMs === null ? null : new Date(freshnessFloorMs).toISOString(),
       required_asset_dirs: requiredDirs.map(({ app, dir }) => ({ app, path: path.relative(projectRoot, dir) })),
       budgets: budgetResults,

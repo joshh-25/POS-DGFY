@@ -15,9 +15,12 @@
 #
 # Unlike the earlier custom-baked nginx image (infrastructure/docker/nginx/
 # conf.d/*.conf, now removed), this outer layer does the /api, /uploads,
-# and /openfreemap proxying itself -- the `frontend` service behind it is
-# pure static-file serving on 3 internal ports (8081/8082/8083), one image
-# for all three SPAs (see infrastructure/docker/frontend/Dockerfile).
+# and /openfreemap proxying itself -- each of `dgfy-ims`/`dgfy-pos`/
+# `dgfy-storefront` behind it is pure static-file serving on its own
+# internal port (8081/8082/8083 respectively), one image per app (issue
+# #322 Phase 6 -- see infrastructure/docker/dgfy-{ims,pos,storefront}/Dockerfile;
+# previously one shared image, infrastructure/docker/frontend/Dockerfile,
+# now removed).
 #
 # TLS is provided by Let's Encrypt via the `certbot` service in
 # docker-compose.yml. See init-letsencrypt.sh for the one-time bootstrap
@@ -26,19 +29,21 @@
 # Every proxy_pass target below uses `set $var host:port; proxy_pass
 # http://$var;` instead of a bare `proxy_pass http://host:port;`. This is
 # NOT cosmetic: a bare proxy_pass resolves the hostname ONCE per nginx
-# worker (at startup/reload) and never again, but `dgfy-api`/`frontend`
-# get a NEW internal IP every time docker-compose recreates them (e.g. on
-# every deploy). Without this, nginx keeps proxying to the old, dead IP
-# after every deploy until it happens to be reloaded/restarted for some
-# other reason -- a "502 Bad Gateway" that only a manual `nginx -s reload`
-# fixes. Routing through a variable forces nginx to actually consult the
-# `resolver` directive (Docker's embedded DNS) on each connection.
+# worker (at startup/reload) and never again, but `dgfy-api`/`dgfy-ims`/
+# `dgfy-pos`/`dgfy-storefront` get a NEW internal IP every time
+# docker-compose recreates them (e.g. on every deploy). Without this, nginx
+# keeps proxying to the old, dead IP after every deploy until it happens to
+# be reloaded/restarted for some other reason -- a "502 Bad Gateway" that
+# only a manual `nginx -s reload` fixes. Routing through a variable forces
+# nginx to actually consult the `resolver` directive (Docker's embedded
+# DNS) on each connection.
 #
 # Beta retired (#329, 2026-08-23): the beta domain group below is redirect-only
 # -- three bare `return 301` blocks with no upstream, terminating TLS on the
 # still-live beta cert lineage so previously-generated absolute URLs (printed
 # QR codes, bookmarks) land on the equivalent prod resource. The PRODUCTION
-# domain group further down still proxies to `frontend` + the shared `dgfy-api`.
+# domain group further down still proxies to `dgfy-{ims,pos,storefront}` +
+# the shared `dgfy-api`.
 
 # ipv6=off: this resolver also serves the runtime-resolved external
 # upstreams below (PostHog /ingest/, OpenFreeMap /openfreemap/). Docker's
@@ -144,9 +149,10 @@ server {
 
 # ============================================================================
 # PRODUCTION domain group (dgfy.ph / skupervisor.dgfy.ph / pos.dgfy.ph).
-# Serves the PROD frontend container (`frontend`, prod VITE_* baked in) via
-# the separate ${CERT_DOMAIN_PROD} certificate. /api + /uploads proxy to the
-# SAME shared `dgfy-api:5100` the beta redirects above also terminated on.
+# Serves the PROD `dgfy-{ims,pos,storefront}` containers (prod VITE_* baked
+# in) via the separate ${CERT_DOMAIN_PROD} certificate. /api + /uploads
+# proxy to the SAME shared `dgfy-api:5100` the beta redirects above also
+# terminated on.
 # ============================================================================
 
 server {
@@ -204,7 +210,7 @@ server {
     }
 
     # Same-origin PostHog (EU cloud) proxy -- see
-    # frontend/src/observability/analyticsClient.js and
+    # packages/web-core/src/observability/analyticsClient.js and
     # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
     # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. Same three
     # locations as the beta skupervisor/POS/storefront server blocks above.
@@ -257,7 +263,7 @@ server {
     }
 
     location / {
-        set $frontend_upstream frontend:8081;
+        set $frontend_upstream dgfy-ims:8081;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -325,7 +331,7 @@ server {
     }
 
     # Same-origin PostHog (EU cloud) proxy -- see
-    # frontend/src/observability/analyticsClient.js and
+    # packages/web-core/src/observability/analyticsClient.js and
     # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
     # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. Same three
     # locations as the beta skupervisor/POS/storefront server blocks above.
@@ -368,7 +374,7 @@ server {
     # POS intentionally has no /openfreemap proxy -- mirrors the beta pos block.
 
     location / {
-        set $frontend_upstream frontend:8082;
+        set $frontend_upstream dgfy-pos:8082;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -436,7 +442,7 @@ server {
     }
 
     # Same-origin PostHog (EU cloud) proxy -- see
-    # frontend/src/observability/analyticsClient.js and
+    # packages/web-core/src/observability/analyticsClient.js and
     # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
     # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. This is the
     # block that was missing in production, causing DGFY-STORE-1
@@ -495,7 +501,7 @@ server {
     }
 
     location /tenant-store/ {
-        set $frontend_upstream frontend:8083;
+        set $frontend_upstream dgfy-storefront:8083;
         rewrite ^/tenant-store/(.*)$ /$1 break;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
@@ -509,7 +515,7 @@ server {
     }
 
     location / {
-        set $frontend_upstream frontend:8083;
+        set $frontend_upstream dgfy-storefront:8083;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

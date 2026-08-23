@@ -8,15 +8,28 @@ node_modules/
 /apps/dgfy-api/coverage/
 
 # Playwright local artifacts and secrets
-/apps/dgfy-web/playwright-report/
-/apps/dgfy-web/test-results/
+/apps/dgfy-ims/playwright-report/
+/apps/dgfy-ims/test-results/
+/apps/dgfy-ims/playwright/.auth/
+/apps/dgfy-ims/.env.e2e
+/apps/dgfy-storefront/playwright-report/
+/apps/dgfy-storefront/test-results/
+/apps/dgfy-storefront/playwright/.auth/
+/apps/dgfy-storefront/.env.e2e
+/apps/dgfy-pos/playwright-report/
+/apps/dgfy-pos/test-results/
+/apps/dgfy-pos/playwright/.auth/
+/apps/dgfy-pos/.env.e2e
+/tests/frontend-cross-app/playwright-report/
+/tests/frontend-cross-app/test-results/
+/tests/frontend-cross-app/playwright/.auth/
+/tests/frontend-cross-app/.env.e2e
 /test-results/
-/apps/dgfy-web/playwright/.auth/
-/apps/dgfy-web/.env.e2e
 
 # Legacy frontend local artifacts and secrets. The maintained Playwright
-# workspace lives under apps/dgfy-web, but local compatibility runs may still
-# write the same sensitive/generated files under frontend/.
+# workspace lives under apps/dgfy-ims (formerly apps/dgfy-web, retired in
+# issue #322 Phase 5), but local compatibility runs may still write the same
+# sensitive/generated files under frontend/.
 /frontend/dist/
 /frontend/playwright-report/
 /frontend/test-results/
@@ -30,7 +43,7 @@ node_modules/
 # Production
 /build
 /dist
-apps/dgfy-web/dist/
+apps/dgfy-ims/dist/
 
 # Environment variables
 .env
@@ -95,10 +108,11 @@ htdocs/.htaccess
 # Build outputs
 .vite/
 .deploy-state/
-/dist-apps/
-/apps/dgfy-web/desktop-dist/
-/apps/dgfy-web/apps/store/src/scratch/
-/apps/dgfy-web/apps/store/.tmp-store-build/
+/apps/dgfy-storefront/src/scratch/
+/apps/dgfy-storefront/.tmp-store-build/
+/apps/dgfy-storefront/dist/
+/apps/dgfy-pos/dist/
+/apps/dgfy-pos/desktop-dist/
 
 nul
 
@@ -136,7 +150,7 @@ bun.lock
 
 # Verification and test reports (generated locally, environment-specific)
 /reports/
-/apps/dgfy-web/.lighthouseci/
+/tests/frontend-cross-app/.lighthouseci/
 
 # GSD (Get Stuff Done) local planning scaffolding — not tracked
 /.planning/

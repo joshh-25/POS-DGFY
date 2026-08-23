@@ -48,20 +48,20 @@ function baseManifest(overrides = {}) {
         intent: 'Adopt the new dashboard while preserving existing order tracking.',
         master_behaviors_preserved: ['Track buttons remain available.'],
         proof: {
-          required_files_present: ['apps/dgfy-web/apps/store/src/StorefrontApp.jsx'],
+          required_files_present: ['apps/dgfy-storefront/src/StorefrontApp.jsx'],
           required_strings_present: [
             {
-              file: 'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
+              file: 'apps/dgfy-storefront/src/StorefrontApp.jsx',
               text: 'Grow your business',
             },
           ],
           required_strings_absent: [
             {
-              file: 'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
+              file: 'apps/dgfy-storefront/src/StorefrontApp.jsx',
               text: 'Company token:',
             },
           ],
-          tests: ['npm --prefix apps/dgfy-web test -- --run apps/store/src/__tests__/profileLauncher.integration.test.jsx'],
+          tests: ['npm --prefix apps/dgfy-storefront test -- --run src/__tests__/profileLauncher.integration.test.jsx'],
         },
       },
     ],
@@ -81,7 +81,7 @@ test('passes when required files and string evidence are present', () => {
   try {
     writeFile(
       projectRoot,
-      'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
+      'apps/dgfy-storefront/src/StorefrontApp.jsx',
       'const title = "Grow your business"; const action = "Track Order";'
     );
     const manifestPath = writeManifest(projectRoot, baseManifest());
@@ -98,7 +98,7 @@ test('fails when old or unsafe UI strings remain', () => {
   try {
     writeFile(
       projectRoot,
-      'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
+      'apps/dgfy-storefront/src/StorefrontApp.jsx',
       'const title = "Grow your business"; const leak = "Company token:";'
     );
     const manifestPath = writeManifest(projectRoot, baseManifest());
@@ -145,7 +145,7 @@ test('writes a report artifact for release evidence', () => {
   try {
     writeFile(
       projectRoot,
-      'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
+      'apps/dgfy-storefront/src/StorefrontApp.jsx',
       'const title = "Grow your business";'
     );
     const manifestPath = writeManifest(projectRoot, baseManifest());
