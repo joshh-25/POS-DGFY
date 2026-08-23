@@ -2914,7 +2914,7 @@ export default function Settings() {
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-slate-900">Map publication is disabled for this store.</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Saved locations are preserved. Turn off "This Store Has No Location" to edit pins or publish a primary storefront location.
+                    Saved locations are preserved. Turn off &quot;This Store Has No Location&quot; to edit pins or publish a primary storefront location.
                   </p>
                 </div>
               ) : (
