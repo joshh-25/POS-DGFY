@@ -9526,6 +9526,10 @@ export default function TerminalOperationsWorkspace({
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
   handleOpenCashCollection = () => {},
+  // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
+  // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it
+  // passes through TerminalPageLayout.jsx and this component first.
+  handleOpenBalanceSettlement = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
   refreshIncomingOrders = () => {},
@@ -9566,6 +9570,7 @@ export default function TerminalOperationsWorkspace({
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
           handleOpenCashCollection={handleOpenCashCollection}
+          handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
@@ -9821,6 +9826,9 @@ export default function TerminalOperationsWorkspace({
     handleDeliveryJobStatusChange,
     handleAssignDeliveryPersonnel,
     deliveryPersonnelState,
+    // handleOpenCashCollection is already a dep further down this array (next to
+    // handleOpenIncomingOrderReceipt) -- only handleOpenBalanceSettlement is new here.
+    handleOpenBalanceSettlement,
     cashEventForm,
     closeShiftForm,
     handleCloseShift,

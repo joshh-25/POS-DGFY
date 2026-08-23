@@ -156,3 +156,31 @@ See the `verification_evidence` frontmatter key for the full command-level list.
    order-level completion already contributes.
 4. **Platform fee is unchanged** and remains computed on the captured downpayment only (ADR 0069
    clause 10 `[default]`); #817 tracks whether the balance leg should generate a fee separately.
+
+## Amendment, 2026-08-23 (same-day fix, live-verified)
+
+A live check against the local-test stack (tunneled to https://dgfy-pos.nicenature.space) found
+tapping Settle Balance did nothing -- no dialog, no console error, no network call. Root cause:
+`handleOpenBalanceSettlement` was defined in `TerminalPage.jsx` and consumed correctly in
+`TerminalOperationsPanels.jsx`, but the component tree has two intermediate layers
+(`TerminalPageLayout.jsx`, `TerminalOperationsWorkspace.jsx`) that were never given the prop, so it
+optional-chained into nothing at the call site. Fixed by mirroring `handleOpenCashCollection`'s own
+already-correct plumbing through both layers. No new guard, no new endpoint, no behavior change
+beyond making the already-implemented action reachable -- classification and surfaces are
+unaffected.
+
+**Affected surfaces, added:**
+`apps/dgfy-web/src/features/pos/components/TerminalPageLayout.jsx`,
+`apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
+
+**Verification:** live end-to-end on the local-test stack -- dialog opens with the correct balance
+basis, `POST /pos/orders/:id/record-payment` returns 200, order flips to `paid`, button disappears,
+"Collected by Admin" attribution appears on the card. Full `apps/dgfy-web` POS suite still green
+(152 files / 773 tests) -- unchanged, because no existing test exercises prop pass-through across
+the full `TerminalPage -> TerminalPageLayout -> TerminalOperationsWorkspace ->
+TerminalOperationsPanels` tree; every `*.behavior.test.jsx` in this directory renders leaf components
+directly, which is precisely why this gap was invisible to the suite. Named as a residual test-gap
+below rather than silently left uncovered.
+
+**Residual risk added:** no test in this codebase currently catches a missing prop across this
+specific four-level component tree; building that coverage is out of scope for this fix.
