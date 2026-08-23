@@ -481,7 +481,7 @@ It starts:
 - `nginx` on `80`/`443`, routing each domain to the matching frontend container
 
 The three frontend containers are separate images
-(`ghcr.io/sieitzz/dgfy-platform/dgfy-ims`, `.../dgfy-pos`,
+(`ghcr.io/sieitzz/dgfy-ims`, `.../dgfy-pos`,
 `.../dgfy-storefront`) and are only reachable through the `nginx` service. For
 plain-HTTP local access on `5173`/`5174`/`5175` instead of domains, add the
 opt-in overlay:
