@@ -7,7 +7,9 @@ import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHead
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   getStorefrontOnlinePaymentLabel,
   isStorefrontOnlinePaymentType
@@ -22,12 +24,16 @@ export function SimpleCheckoutRoutePage({
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
   deliverySavedLocations = [],
   DropdownComponent,
   fnbPaymentType = 'cash',
+  paymentElection = 'full',
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
@@ -80,6 +86,7 @@ export function SimpleCheckoutRoutePage({
   onImageError,
   onOpenExpandedMap,
   onOrderMethodChange,
+  onPaymentElectionChange,
   onPaymentTypeChange,
   onConfirmQrphTestPayment,
   onPinChange,
@@ -90,6 +97,7 @@ export function SimpleCheckoutRoutePage({
   onSelectAddress,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
+  onSignInToCheckout,
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
@@ -109,11 +117,15 @@ export function SimpleCheckoutRoutePage({
     : 'NOW';
   const isOnlinePayment = isStorefrontOnlinePaymentType(fnbPaymentType);
   const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
-  const paymentSubmitLabel = fnbPaymentType === 'qrph'
-    ? 'Generate QR Ph'
-    : isOnlinePayment
-      ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
-      : 'Place Order';
+  // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totals });
+  const paymentSubmitLabel = downpaymentDisplay.active
+    ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})`
+    : fnbPaymentType === 'qrph'
+      ? 'Generate QR Ph'
+      : isOnlinePayment
+        ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}`
+        : 'Place Order';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
@@ -259,26 +271,47 @@ export function SimpleCheckoutRoutePage({
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
+            isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
             isMobileViewport={isMobileViewport}
+            isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             money={money}
             onImageError={onImageError}
+            onPaymentElectionChange={onPaymentElectionChange}
+            paymentElection={paymentElection}
             paymentType={fnbPaymentType}
-            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
+            isDownpaymentActive={downpaymentDisplay.active}
+            downpaymentCallout={(
+              <DownpaymentPaymentCallout
+                accentColor="#176B3A"
+                bodyFont={servicesBodyFont}
+                display={downpaymentDisplay}
+                money={money}
+                orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
+              />
+            )}
             onlinePaymentPanel={isOnlinePayment ? (
               <StorefrontOnlinePaymentPanel
+                amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
+                amountDueLabel="Downpayment due"
+                balanceNote={downpaymentDisplay.active
+                  ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                  : null}
+                billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                 onConfirmTestPayment={import.meta.env.DEV
                   && fnbPaymentType === 'qrph'
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                   ? onConfirmQrphTestPayment
                   : null}
-                onUseCash={() => {
+                onChooseAnotherPaymentMethod={() => {
                   resetQrphPaymentSession?.();
-                  onPaymentTypeChange('cash');
                 }}
                 paymentSession={qrphPaymentSession}
                 paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
                 paymentType={fnbPaymentType}
+                qrAmountNote={downpaymentDisplay.active ? 'This QR contains your downpayment amount.' : null}
                 refreshing={qrphPaymentStatusLoading}
               />
             ) : null}
@@ -288,6 +321,7 @@ export function SimpleCheckoutRoutePage({
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
+            onSignInToCheckout={onSignInToCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
           />
           {!isMobileViewport && (

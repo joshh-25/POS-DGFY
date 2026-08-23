@@ -61,6 +61,15 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
+    // Phase 138 (#820): the per-tenant downpayment/payment-mode config surface. Deliberately added
+    // here rather than left uncovered -- this is substantively a payment/checkout config surface
+    // (ADR 0069's own Hardening Contract names "payment, checkout" as a trigger domain regardless
+    // of folder), same floor as its `payments`/`commercePayments` neighbors.
+    pattern: /^apps\/dgfy-api\/src\/modules\/downpayment\//,
+    surfaces: ['payments'],
+    minimumClassification: 'major'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/modules\/settings\//,
     surfaces: ['settings'],
     minimumClassification: 'major'

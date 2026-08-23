@@ -186,6 +186,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentSalePaneHeightClassName,
         currentViewMode,
         customerPaymentAmountInput,
+        customerPaymentAmountAutoFilled,
         customerPaymentChange,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
@@ -352,6 +353,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
         setCustomerPaymentAmountInput,
+        setCustomerPaymentAmountAutoFilled,
         setDiscountDraft,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,
@@ -746,7 +748,7 @@ return (
                                 configuredLargeSrc: largePosImageSrc,
                                 src: posImageSrc
                             } = imageSources;
-                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
+                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(String(item.item_id));
                             const cartQuantityForItem = safeCart
                                 .filter((line) => line.item_id === item.item_id)
                                 .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
@@ -803,13 +805,21 @@ return (
                                                     if (advanceAssetImageFallback(event, [largePosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
-                                                        next.add(item.item_id);
+                                                        next.add(String(item.item_id));
                                                         return next;
                                                     });
                                                 }}
                                             />
                                         ) : (
-                                            <div className="flex h-full w-full items-center justify-center text-center">
+                                            <div
+                                                className="flex h-full w-full items-center justify-center bg-slate-100 text-center"
+                                                style={imageSources.placeholderSrc ? {
+                                                    backgroundImage: `url(${imageSources.placeholderSrc})`,
+                                                    backgroundPosition: 'center',
+                                                    backgroundRepeat: 'no-repeat',
+                                                    backgroundSize: 'cover'
+                                                } : undefined}
+                                            >
                                                 {isLoadingServiceOptions ? (
                                                     <span className="px-2 text-xs font-semibold text-[#64748B]">Loading options…</span>
                                                 ) : null}
@@ -2113,6 +2123,8 @@ return (
                                                 onChange={(event) => {
                                                     setPaymentType(event.target.value);
                                                     resetEmployeeCredit();
+                                                    setCustomerPaymentAmountInput(money(cartTotal));
+                                                    setCustomerPaymentAmountAutoFilled(true);
                                                 }}
                                                 disabled={posActionsBlocked || checkoutLoading}
                                                 className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
@@ -2272,11 +2284,26 @@ return (
                                 </label>
                                 {isCashPayment && (
                                     <div className="grid grid-cols-3 gap-2" data-testid="pos-cash-payment-suggestions">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setCustomerPaymentAmountInput(money(cartTotal));
+                                                setCustomerPaymentAmountAutoFilled(true);
+                                            }}
+                                            disabled={checkoutLoading}
+                                            className="col-span-3 h-8 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-extrabold text-emerald-700 transition-colors hover:border-emerald-500 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                            data-testid="pos-cash-payment-exact"
+                                        >
+                                            Exact Amount · PHP {money(cartTotal)}
+                                        </button>
                                         {CASH_PAYMENT_SUGGESTIONS.map((amount) => (
                                             <button
                                                 key={amount}
                                                 type="button"
-                                                onClick={() => setCustomerPaymentAmountInput(String(amount))}
+                                                onClick={() => {
+                                                    setCustomerPaymentAmountInput(String(amount));
+                                                    setCustomerPaymentAmountAutoFilled(false);
+                                                }}
                                                 disabled={checkoutLoading}
                                                 className="h-8 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-extrabold text-[#1A4E8D] transition-colors hover:border-[#1A4E8D] hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                                                 data-testid={`pos-cash-payment-suggestion-${amount}`}
@@ -2292,9 +2319,15 @@ return (
                                     min="0"
                                     step="0.01"
                                     value={customerPaymentAmountInput}
-                                    onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
-                                    onFocus={(event) => {
-                                        if (event.currentTarget.value === '0') setCustomerPaymentAmountInput('');
+                                    onChange={(event) => {
+                                        setCustomerPaymentAmountInput(event.target.value);
+                                        setCustomerPaymentAmountAutoFilled(false);
+                                    }}
+                                    onFocus={() => {
+                                        if (customerPaymentAmountAutoFilled) {
+                                            setCustomerPaymentAmountInput('');
+                                            setCustomerPaymentAmountAutoFilled(false);
+                                        }
                                     }}
                                     placeholder="0.00"
                                     className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"

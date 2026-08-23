@@ -11,6 +11,15 @@ const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'skupervisor';
+const securityHeaders = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+const devSecurityHeaders = {
+  ...securityHeaders,
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"
+};
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
@@ -75,12 +84,14 @@ export default defineConfig({
     host: true,
     port: 5173,
     allowedHosts,
+    headers: devSecurityHeaders,
     proxy: proxyTargets
   },
   preview: {
     host: true,
     port: 5173,
     allowedHosts,
+    headers: securityHeaders,
     proxy: proxyTargets
   },
   build: {

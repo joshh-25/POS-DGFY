@@ -9,6 +9,11 @@ import {
   recordSucceededTenantRevenueRefundUseCase
 } from '../../tenantRevenue/index.js';
 import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
+import {
+  buildRefundLedgerIdempotencyKey,
+  mapRefundStatusToLedgerStatus,
+  updateTenantOrderPaymentEntryStatus
+} from '../repositories/tenantOrderPaymentLedgerRepository.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -117,7 +122,10 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   logger,
   recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase,
   raiseOperationalAlert = async () => {},
-  processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null
+  processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null,
+  // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
+  // matching how commerceOrderLifecycleUseCase takes its own writer.
+  updateOrderPaymentLedgerEntryStatus = updateTenantOrderPaymentEntryStatus
 }) => {
   const processVerifiedPaidCommerceSession = processVerifiedPaidCommerceSessionOverride
     || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository });
@@ -195,6 +203,21 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       failure_code: status === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
       failure_reason: status === 'failed' ? (attrs.failed_message || 'PayMongo reported refund failure.') : null
     });
+    // Phase 144 (#824): promote the tenant-side `pos_order_payments` refund row this refund was
+    // submitted with (written pending by createCommercePaymentRefundUseCase) to its terminal
+    // status. This is the async half of a PayMongo refund -- the reason that ledger row carries a
+    // status enum at all rather than only ever being written on success.
+    //
+    // The helper never throws (see repositories/tenantOrderPaymentLedgerRepository.js): an unreachable tenant
+    // database must not fail webhook acknowledgement, or PayMongo retries a money event.
+    await updateOrderPaymentLedgerEntryStatus({
+      commercePaymentRepository,
+      session,
+      idempotencyKey: buildRefundLedgerIdempotencyKey(refund.public_reference),
+      status: mapRefundStatusToLedgerStatus(status),
+      providerEventId
+    });
+
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
     if (status === 'succeeded') {
       const revenueResult = await recordSucceededRevenueRefund({
@@ -361,6 +384,26 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           outcome: 'ignored',
           status: 'session_not_found'
         });
+        // #476: a paid event with no local session is money collected with no order record.
+        // Scoped to the money-bearing event types only -- refunds/account-lifecycle events
+        // already logger.warn and return the same way, and alerting on every ignored event
+        // type would bury this signal in noise.
+        if (eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid') {
+          await Promise.resolve(raiseOperationalAlert({
+            key: 'paymongo.commerce_webhook_unknown_session_paid',
+            level: 'error',
+            message: 'PayMongo reported a paid payment for an unknown commerce payment session.',
+            context: {
+              event_type: eventType,
+              provider_event_id: providerEventId,
+              provider_payment_id: getPaymentId(paymentResource),
+              payment_intent_id: getPaymentIntentId(paymentResource),
+              session_reference: getSessionReference(resource)
+            }
+          })).catch((alertError) => {
+            logger?.warn?.('PayMongo commerce webhook unknown-session alert failed', { error: alertError?.message });
+          });
+        }
         return ok({ handled: false, reason: 'session_not_found' });
       }
 

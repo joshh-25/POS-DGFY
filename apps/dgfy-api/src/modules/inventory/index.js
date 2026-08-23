@@ -55,12 +55,16 @@ import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogI
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 import * as cacheService from '../../services/cacheService.js';
 import * as stockCommandService from './commands/stockCommandService.js';
+import { inventoryReservationService } from './services/inventoryReservationService.js';
 import { resolveInventoryAuthority } from '../shared/utils/inventoryAuthoritySettingsCache.js';
 import { buildLookupDelegatedInventoryLevelUseCase } from './usecases/lookupDelegatedInventoryLevelUseCase.js';
 import { manualDelegatedInventoryProvider } from './integrations/manualDelegatedInventoryProvider.js';
 
 
-export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
+export const getItemsUseCase = buildGetItemsUseCase({
+  itemRepository,
+  resolveLocationScope: resolveMovementLocation
+});
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
 export const createItemUseCase = buildCreateItemUseCase({
   itemRepository,
@@ -148,6 +152,7 @@ export const importExternalProductImageUseCase = buildImportExternalProductImage
 export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
 export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });
 export const inventoryStockCommandService = stockCommandService;
+export { inventoryReservationService };
 // Phase 9: read-side port for a tenant's delegated external IMS - see
 // docs/features/INVENTORY_TRACKING_MODES.md's external_ims section and
 // lookupDelegatedInventoryLevelUseCase.js for the resilience shape (mirrors

@@ -53,7 +53,12 @@ const storeQuoteSchema = Joi.object({
     delivery_latitude: Joi.number().min(-90).max(90).allow(null).optional(),
     delivery_longitude: Joi.number().min(-180).max(180).allow(null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
-    special_instructions: Joi.string().trim().max(2000).allow('', null).optional()
+    special_instructions: Joi.string().trim().max(2000).allow('', null).optional(),
+    // Phase 150 (#866): the customer's checkout-time pay-in-full-vs-downpayment choice, meaningful
+    // only at a payment_mode='customer_choice' store -- ignored otherwise (see
+    // downpaymentPolicy.js's resolveDownpaymentForTotal). Named payment_election, not payment_mode,
+    // to avoid colliding with the settings-level enum this schema does not otherwise carry.
+    payment_election: Joi.string().trim().lowercase().valid('full', 'downpayment').default('full')
 });
 
 const storeCheckoutSchema = storeQuoteSchema.keys({

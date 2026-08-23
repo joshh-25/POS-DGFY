@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import TerminalLockDrawer from '../components/TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from '../components/TerminalWorkspaceSidebar.jsx';
 
@@ -89,6 +89,17 @@ describe('TerminalLockDrawer contract', () => {
 
     expect(screen.queryByRole('button', { name: 'Login as Cashier' })).toBeNull();
     expect(screen.getByText('Legacy access until June 17, 2027')).toBeTruthy();
+  });
+
+  it('keeps the display control outside the login form', () => {
+    const onSubmit = vi.fn();
+    render(<TerminalLockDrawer {...buildProps({ onSubmit })} />);
+
+    const textSizeControl = screen.getByRole('combobox', { name: 'POS text size' });
+    expect(textSizeControl.closest('form')).toBeNull();
+
+    fireEvent.change(textSizeControl, { target: { value: 'large' } });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('offers a clean account switch after DGFY authentication', () => {

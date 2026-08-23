@@ -36,6 +36,8 @@ import {
   deleteInventoryFolder
 } from '@/src/features/inventory';
 import { getCurrentUser } from '@/services/userService.js';
+import { useLocations } from '@/src/hooks/useLocations.js';
+import { resolveStockScope, getBranchZeroStockHint, buildItemsListParams } from '../utils/branchScopedStock.js';
 import { PLACEHOLDER_ITEM_TAXONOMY_MODES } from '@/src/features/settings/modeItemTaxonomy.js';
 import { toast } from 'sonner';
 import { cn } from "@/lib/utils.js";
@@ -126,7 +128,23 @@ const parseStorefrontImageGallery = (value) => {
 
 export default function Items() {
   const navigate = useNavigate();
-  const { items, loading, error, refetch } = useInventoryItems({ limit: 1000 });
+  // #682: branch stock scope. Deliberately NOT persisted to localStorage like the other filters
+  // below (categoryFilter etc.) -- always reopening on "All Locations" is what keeps this honest:
+  // a stale remembered branch selection from a prior session is exactly the kind of silent
+  // misleading-context bug this page is being fixed to avoid.
+  const [selectedLocationId, setSelectedLocationId] = useState('all');
+  const { locations: allLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(allLocations) ? allLocations.filter((loc) => loc?.is_active !== false) : []),
+    [allLocations]
+  );
+  const {
+    items,
+    loading,
+    error,
+    refetch,
+    locationScope
+  } = useInventoryItems(buildItemsListParams({ limit: 1000, selectedLocationId }));
   const { items: skuSeedItems = [] } = useInventoryItems({ fields: 'dropdown', limit: 10000 });
   const { createItem } = useInventoryCreateItem();
   const { updateItem } = useInventoryUpdateItem();
@@ -144,6 +162,20 @@ export default function Items() {
   } = usePermission();
   const { workflowMode } = useWorkflowMode();
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
+
+  // #682: what the stock numbers on this page currently mean (see stockScopeLabel.js for the
+  // decision logic, kept as a pure/unit-testable function rather than inlined here).
+  const selectedLocationName = useMemo(
+    () => activeLocations.find((loc) => String(loc.location_id) === String(selectedLocationId))?.name || '',
+    [activeLocations, selectedLocationId]
+  );
+  const stockScope = useMemo(() => resolveStockScope({
+    selectedLocationId,
+    selectedLocationName,
+    locationScopeResolved: locationScope?.resolved
+  }), [selectedLocationId, selectedLocationName, locationScope]);
+  const branchZeroStockHint = getBranchZeroStockHint(stockScope);
+
   const skuSuggestionItems = useMemo(() => {
     const mergedById = new Map();
     [...items, ...skuSeedItems].forEach((item) => {
@@ -2092,6 +2124,23 @@ export default function Items() {
             </div>
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Branch</span>
+                <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="All Locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {activeLocations.map((loc) => (
+                      <SelectItem key={loc.location_id} value={String(loc.location_id)}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-slate-500">Category</span>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-40">
@@ -2265,6 +2314,7 @@ export default function Items() {
                       workflowMode={workflowMode}
                       isSelected={selectedIds.has(item.item_id || item.id)}
                       onSelect={toggleSelection}
+                      branchZeroStockHint={branchZeroStockHint}
                     />
                   );
                 })}
@@ -2306,6 +2356,7 @@ export default function Items() {
                     workflowMode={workflowMode}
                     isSelected={selectedIds.has(item.item_id || item.id)}
                     onSelect={toggleSelection}
+                    branchZeroStockHint={branchZeroStockHint}
                   />
                 );
               })}
@@ -2320,7 +2371,17 @@ export default function Items() {
                   <th className="text-left p-4 font-medium text-slate-600">Category</th>
                   <th className="text-left p-4 font-medium text-slate-600">FIFO</th>
                   <th className="text-left p-4 font-medium text-slate-600">Next Expiry</th>
-                  <th className="text-left p-4 font-medium text-slate-600">Stock Level</th>
+                  <th className="text-left p-4 font-medium text-slate-600">
+                    <div className="flex flex-col gap-0.5">
+                      <span>Stock Level</span>
+                      <span className={cn(
+                        'text-[11px] font-normal normal-case',
+                        stockScope.isFallbackWarning ? 'text-amber-700' : 'text-slate-400'
+                      )}>
+                        {stockScope.label}
+                      </span>
+                    </div>
+                  </th>
                   <th className="text-left p-4 font-medium text-slate-600">Status</th>
                   <th className="text-left p-4 font-medium text-slate-600">POS Visible</th>
                   {canConfigureStorefrontCatalog && (
@@ -2399,6 +2460,9 @@ export default function Items() {
                         <span className="font-medium text-slate-900">
                           {parseFloat(item.current_stock || 0)} / {parseFloat(item.max_capacity || 0)} {item.unit_of_measure}
                         </span>
+                        {branchZeroStockHint && Number(item.current_stock || 0) === 0 && (
+                          <div className="mt-0.5 text-xs text-amber-700">{branchZeroStockHint}</div>
+                        )}
                       </td>
                       <td className="p-4">
                         <span className={cn("px-2 py-1 rounded-full text-xs font-medium", statusColors[status])}>

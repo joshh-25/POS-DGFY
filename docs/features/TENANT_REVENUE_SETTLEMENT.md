@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product_engineering
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-21
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_settlement
 ---
@@ -84,7 +84,10 @@ Financial migrations are additive and intentionally do not delete posted history
 ## Workflow
 
 1. A verified successful PayMongo payment creates one transaction snapshot and
-   idempotent ledger entries.
+   idempotent ledger entries. Enforced at the commerce webhook layer since #476
+   (2026-08-21) by a row-locked session claim plus a unique index and locked
+   lookup on `provider_event_id`, not state checks alone — see ADR 0052's
+   2026-08-21 amendment for the mechanism.
 2. Missing or inconsistent provider financial data creates a blocking
    reconciliation exception.
 3. Reconciled transactions become eligible after the policy's 15/30-day cycle.

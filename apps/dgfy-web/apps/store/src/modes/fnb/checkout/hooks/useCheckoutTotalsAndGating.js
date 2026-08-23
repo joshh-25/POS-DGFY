@@ -31,6 +31,9 @@ export function useCheckoutTotalsAndGating({
   isSimpleMode,
   money,
   orderMethod,
+  // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
+  // payment_mode='customer_choice' store.
+  paymentElection,
   quoteError,
   quoteNeedsRefresh,
   quoteResult,
@@ -65,7 +68,15 @@ export function useCheckoutTotalsAndGating({
       vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
       vat_exempt_sales: quoteResult?.vat_exempt_sales != null ? Number(quoteResult.vat_exempt_sales) : 0,
       zero_rated_sales: quoteResult?.zero_rated_sales != null ? Number(quoteResult.zero_rated_sales) : 0,
-      total_amount: totalAmount
+      total_amount: totalAmount,
+      // Phase 142 (#823): server-authoritative only -- never derived client-side like the fields
+      // above. Passed straight through from the quote response (null when absent, matching the
+      // quote's own present-and-null convention -- see storeUseCases.js's Phase 140 comment on
+      // why null, never 0 or the total, is load-bearing here).
+      payment_mode: quoteResult?.payment_mode ?? null,
+      downpayment_amount: quoteResult?.downpayment_amount ?? null,
+      balance_due_amount: quoteResult?.balance_due_amount ?? null,
+      downpayment_refundable: quoteResult?.downpayment_refundable ?? null
     };
   }, [quoteResult, cartTotal]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
@@ -103,7 +114,19 @@ export function useCheckoutTotalsAndGating({
     : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
   const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
-  const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode && !isRetailMode;
+  // Phase 142 (#823): fnb/simple/retail's product checkout normally never requires a quote (each
+  // has its own client-computable totals fallback) -- but a downpayment-required store's payment
+  // split is server-only, so those three modes DO require the quote in that one case. Reads the
+  // catalog-resolved payment_mode directly (not totalsForDisplay.payment_mode, which is quote-
+  // sourced and therefore not yet known before the first quote lands -- the exact thing this gate
+  // exists to force).
+  // Phase 150 (#866): a customer_choice store's split is server-only too, but ONLY once the
+  // customer has actually elected "downpayment" -- an election of "full" needs no quote-forcing,
+  // exactly like a plain full_payment store.
+  const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required'
+    || (selectedStore?.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
+  const requireQuoteForCheckout = !hasServiceCart
+    && (isDownpaymentStore || (!isFnbMode && !isSimpleMode && !isRetailMode));
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -113,7 +136,8 @@ export function useCheckoutTotalsAndGating({
     accessCapabilities,
     quoteResult,
     quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
+    requireQuote: requireQuoteForCheckout,
+    paymentElection
   });
   const serviceCartValidationIssues = useMemo(
     () => buildServiceCartValidationIssues(serviceCartLines),
@@ -128,7 +152,8 @@ export function useCheckoutTotalsAndGating({
     accessCapabilities,
     quoteResult,
     quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
+    requireQuote: requireQuoteForCheckout,
+    paymentElection
   }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,

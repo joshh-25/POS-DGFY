@@ -214,6 +214,23 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers online inventory reservation tables in dependency order', () => {
+    const reservationTables = ['inventory_reservations', 'inventory_reservation_lines'];
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    const positions = reservationTables.map((table) => declared.indexOf(table));
+
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const table of reservationTables) {
+      expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty(table);
+    }
+
+    const repairs = buildTenantSchemaTableRepairSql(reservationTables);
+    expect(repairs[0].sql).toContain('CREATE TABLE `inventory_reservations`');
+    expect(repairs[0].sql).toContain('UNIQUE KEY `uq_inventory_reservations_source`');
+    expect(repairs[1].sql).toContain('CREATE TABLE `inventory_reservation_lines`');
+    expect(repairs[1].sql).toContain('FOREIGN KEY (`inventory_reservation_id`)');
+  });
+
   it('registers the four voucher tables in foreign-key dependency order', () => {
     const voucherTables = [
       'vouchers',
@@ -464,6 +481,40 @@ describe('tenant schema sync script contracts', () => {
 
     expect(repair.sql).toContain("'grab_pay'");
     expect(repair.sql).toContain("'shopeepay'");
+  });
+
+  // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).
+  it('registers the partially_paid payment_status enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.payment_status;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['partially_paid']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transactions', column: 'payment_status', missing_values: ['partially_paid'] }
+    ]);
+
+    expect(repair.sql).toContain("'partially_paid'");
+  });
+
+  it('registers pos_transactions.amount_paid and balance_due column repairs', () => {
+    const repairs = buildTenantSchemaRepairSql([
+      { table: 'pos_transactions', column: 'amount_paid' },
+      { table: 'pos_transactions', column: 'balance_due' }
+    ]);
+
+    expect(repairs).toHaveLength(2);
+    expect(repairs[0].sql).toContain('ADD COLUMN `amount_paid` DECIMAL(14,4) NOT NULL DEFAULT 0');
+    expect(repairs[1].sql).toContain('ADD COLUMN `balance_due` DECIMAL(14,4) NOT NULL DEFAULT 0');
+  });
+
+  it('registers pos_order_payments as a whole-table backfill target', () => {
+    expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('pos_order_payments');
+
+    const [repair] = buildTenantSchemaTableRepairSql(['pos_order_payments']);
+    expect(repair.sql).toContain('CREATE TABLE `pos_order_payments`');
+    expect(repair.sql).toContain("`kind` enum('downpayment','balance','refund','forfeiture')");
+    expect(repair.sql).toContain(
+      'CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`)'
+    );
   });
 
   it('registers Phase 20 F&B modifier columns and conditional-group index', () => {

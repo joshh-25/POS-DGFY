@@ -2,6 +2,7 @@ import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import {
     inventoryStockCommandService,
+    inventoryReservationService,
     itemRepository,
     createItemUseCase,
     updateItemUseCase,
@@ -66,6 +67,7 @@ import {
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
+    buildRecordOrderBalancePaymentUseCase,
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
@@ -232,11 +234,13 @@ export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonn
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const recordOrderBalancePaymentUseCase = buildRecordOrderBalancePaymentUseCase({ posRepository });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
+    inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
 export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({

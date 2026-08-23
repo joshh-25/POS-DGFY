@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
+import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -36,6 +37,14 @@ export function SimpleCheckoutMobileSummaryPanel({
   withAssetOrigin,
 }) {
   const totalFeeAndTaxes = (totals.service_fee_amount || 0) + (totals.vat_amount || 0);
+  // Phase 142 (#823): independent copy of SimpleCheckoutSummaryContent's own downpayment rows --
+  // this panel is a separate desktop/mobile presentation, not a shared render path (per the
+  // file's own doc comment above).
+  const downpaymentRows = buildDownpaymentTotalsRows({
+    display: resolveDownpaymentDisplay({ quoteResult: totals }),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+  });
   const isPrimaryDisabled = orderStep === 1
     ? !customerStepComplete
     : orderStep === 3
@@ -114,6 +123,9 @@ export function SimpleCheckoutMobileSummaryPanel({
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
                 </div>
+                {downpaymentRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
               </div>
             </div>
           </div>

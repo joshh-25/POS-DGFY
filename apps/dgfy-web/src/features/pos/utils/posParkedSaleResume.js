@@ -8,6 +8,7 @@ const toPositiveNumber = (value) => {
     return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
 };
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
+const normalizeItemIdentity = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 export { formatParkedSaleDisplayName } from './posParkedSaleDisplay.js';
 
@@ -22,6 +23,57 @@ const lineLabel = (line, item) => String(
     || line?.item_name
     || `Item #${line?.item_id || 'unknown'}`
 ).trim();
+
+const addUniqueCatalogIdentity = (index, key, item) => {
+    if (!key) return;
+    if (!index.has(key)) {
+        index.set(key, item);
+        return;
+    }
+    if (index.get(key) !== item) index.set(key, null);
+};
+
+const buildCatalogIndexes = (catalog = []) => {
+    const byId = new Map();
+    const bySku = new Map();
+    const byName = new Map();
+
+    toArray(catalog).forEach((item) => {
+        const itemId = Number(item?.item_id);
+        if (!Number.isInteger(itemId) || itemId <= 0) return;
+        byId.set(itemId, item);
+        addUniqueCatalogIdentity(bySku, normalizeItemIdentity(item?.sku_code), item);
+        addUniqueCatalogIdentity(byName, normalizeItemIdentity(item?.name), item);
+    });
+
+    return { byId, bySku, byName };
+};
+
+const resolveCatalogItemForLine = (line, indexes) => {
+    const itemId = Number(line?.item_id);
+    if (Number.isInteger(itemId) && itemId > 0) {
+        const itemById = indexes.byId.get(itemId);
+        if (itemById) return { item: itemById, resolution: 'item_id' };
+    }
+
+    const sku = normalizeItemIdentity(line?.sku_code || line?.item_sku || line?.sku);
+    if (sku && indexes.bySku.has(sku)) {
+        const itemBySku = indexes.bySku.get(sku);
+        return itemBySku
+            ? { item: itemBySku, resolution: 'sku_code' }
+            : { item: null, reason: 'ambiguous_sku' };
+    }
+
+    const name = normalizeItemIdentity(line?.item_name || line?.name);
+    if (name && indexes.byName.has(name)) {
+        const itemByName = indexes.byName.get(name);
+        return itemByName
+            ? { item: itemByName, resolution: 'name' }
+            : { item: null, reason: 'ambiguous_name' };
+    }
+
+    return { item: null, reason: 'missing' };
+};
 
 export const getParkedSaleSnapshotLines = (parkedSale = {}) => (
     toArray(parkedSale?.snapshot?.lines)
@@ -40,11 +92,7 @@ export const validateParkedSaleResume = ({
         ? parkedSale.snapshot
         : {};
     const lines = getParkedSaleSnapshotLines(parkedSale);
-    const catalogById = new Map(
-        toArray(catalog)
-            .map((item) => [Number(item?.item_id), item])
-            .filter(([itemId]) => Number.isInteger(itemId) && itemId > 0)
-    );
+    const catalogIndexes = buildCatalogIndexes(catalog);
     const conflicts = [];
 
     if (lines.length === 0) {
@@ -86,11 +134,13 @@ export const validateParkedSaleResume = ({
     }
 
     lines.forEach((line) => {
-        const itemId = Number(line?.item_id);
-        const item = catalogById.get(itemId);
+        const resolved = resolveCatalogItemForLine(line, catalogIndexes);
+        const item = resolved.item;
         const label = lineLabel(line, item);
         if (!item) {
-            conflicts.push(`${label} is no longer available in the current POS catalog.`);
+            conflicts.push(resolved.reason === 'ambiguous_name' || resolved.reason === 'ambiguous_sku'
+                ? `${label} matches multiple current POS catalog items and must be reviewed.`
+                : `${label} is no longer available in the current POS catalog.`);
             return;
         }
 
@@ -135,19 +185,16 @@ export const validateParkedSaleResume = ({
 };
 
 export const buildResumedCartLines = ({ parkedSale, catalog = [] } = {}) => {
-    const catalogById = new Map(
-        toArray(catalog)
-            .map((item) => [Number(item?.item_id), item])
-            .filter(([itemId]) => Number.isInteger(itemId) && itemId > 0)
-    );
+    const catalogIndexes = buildCatalogIndexes(catalog);
     return getParkedSaleSnapshotLines(parkedSale).map((line, index) => {
-        const item = catalogById.get(Number(line?.item_id)) || {};
+        const item = resolveCatalogItemForLine(line, catalogIndexes).item || {};
         const currentGroups = Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : [];
         return {
             ...line,
             line_key: line?.line_key || `resumed-line-${line?.item_id || index + 1}-${Date.now()}`,
-            item_id: Number(line?.item_id),
+            item_id: Number(item?.item_id ?? line?.item_id),
             item_name: item.name || line?.item_name || `Item #${line?.item_id || index + 1}`,
+            sku_code: item.sku_code || line?.sku_code || null,
             quantity: Number(line?.quantity || 0),
             base_sale_price: Number(line?.base_sale_price ?? item.default_sale_price ?? 0),
             sale_price: Number(line?.sale_price ?? item.default_sale_price ?? 0),

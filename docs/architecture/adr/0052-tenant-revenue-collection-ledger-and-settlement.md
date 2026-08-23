@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-22
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -159,3 +159,92 @@ Cards and all other Storefront methods continue using Hosted Checkout. Maya
 falls back to Hosted Checkout when direct mode is disabled. The signed provider
 webhook remains authoritative and the existing amount, currency, livemode,
 idempotency, settlement, and refund rules are unchanged.
+
+### 2026-08-21: Commerce webhook event-level idempotency hardening (#476)
+
+The "idempotent session state before finalization" invariant this ADR already
+states (2026-08-18 amendments, above) was enforced only by a read-then-act
+session-status check with no database lock -- two concurrent or retried
+`payment.paid` deliveries for the same session could both pass the check before
+either write committed. This is a hardening fix closing that gap, not a change
+to the invariant itself:
+
+1. `processVerifiedPaidCommerceSession` now re-reads the session with
+   `SELECT ... FOR UPDATE` inside a transaction and performs the state check and
+   the `status: 'paid'` claim write there, so a second concurrent delivery
+   blocked on the row lock sees a consistent, committed state once it unblocks
+   instead of racing the same read-then-write. A session already `finalized` or
+   `paid_manual_resolution_required` (or carrying a `pos_transaction_id`/
+   `tracking_pin`) short-circuits as an idempotent replay; a session merely
+   `paid` does not -- that status is reachable both mid-flight and after a
+   crashed/failed prior attempt, and treating it as terminal would silently
+   swallow a legitimate retry before revenue posting or finalization ever ran.
+   `postPaidTenantRevenueTransactionUseCase` and `finalizePaidCommerceSession`
+   remain outside that transaction, unchanged -- this ADR's "post-commit,
+   cross-database workflow" boundary (Architecture Boundaries, above) is not
+   altered; the claim transaction only spans the landlord-side status write.
+   Both downstream calls already carry their own idempotency (a locked
+   `findRevenueTransactionBySession` check before insert, and finalization's
+   existing `pos_transaction_id`/`tracking_pin`/`finalized` short-circuit plus
+   `storeCheckoutUseCase`'s `idempotency_key` dedup), so re-entering a merely-
+   `paid` session on retry is safe rather than risky.
+2. `commerce_payment_sessions.provider_event_id` gained a unique index
+   (`uq_commerce_payment_sessions_provider_event`), and a locked
+   `findSessionByProviderEventId` pre-check rejects a provider event already
+   recorded against a *different* session (`PAYMENT_PROVIDER_EVENT_REPLAY`,
+   HTTP 409) -- the same pattern POS split payments already uses
+   (`pos_payment_allocations.provider_event_id`).
+3. An unknown-session `payment.paid`/`checkout_session.payment.paid` (money
+   collected with no local session to attach it to) now raises an operational
+   alert in addition to the existing warning log. The `200
+   {handled:false, reason:'session_not_found'}` response contract is unchanged.
+
+No fee policy, settlement, or payment-acceptance decision changes. Full context:
+issue #476, `docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md`.
+
+### 2026-08-22: Downpayment forfeiture is a terminal outcome with no provider refund (#824)
+
+Clause 14 states that rejecting or cancelling a paid Storefront order "submits
+one idempotent full-refund request to PayMongo." That is unconditional, and for
+a partially-captured (downpayment) order it is now too narrow: ADR 0069 clause 8
+`[default]`, carried forward by ADR 0070, makes refund-vs-forfeiture a per-store
+toggle, and a forfeiture makes **no provider call at all**. Clause 14 is untagged
+(plain numbered list), so per ADR 0039 this is a dated amendment, not a
+supersession.
+
+Clause 14 is amended to read: rejecting or cancelling a paid Storefront order
+records the terminal fulfillment state first, then resolves one of two outcomes.
+
+1. **Refund** — the default, and the only outcome for a fully-captured order.
+   Unchanged from clause 14 as written: one idempotent refund request to
+   PayMongo, successful refund webhooks post immutable refund and proportional
+   DGFY-fee reversal entries, a failed refund never reopens settlement
+   eligibility and is surfaced for administrator reconciliation. For a
+   downpayment order the "full" refund is the full *captured* amount, which ADR
+   0069 clause 1b `[binding]` already fixes at the downpayment, never the order
+   total.
+2. **Forfeiture** — only when a **customer** self-service cancellation meets a
+   session whose `downpayment_refundable` snapshot is explicitly `false` (see
+   ADR 0070's companion amendment of the same date for the actor scoping). No
+   PayMongo call is made, no `commerce_payment_refunds` row is created, and the
+   session's own status is unchanged: the money was neither reversed nor put in
+   flight. The order's `payment_status`, `amount_paid`, and `balance_due` are
+   likewise left untouched, because nothing was reversed — this ADR's clause 4
+   requires corrections to be expressed as ledger entries, never as edits to the
+   original figures.
+
+Both outcomes now write a tenant-side `pos_order_payments` row (`kind` `'refund'`
+or `'forfeiture'`, linked to the original `'downpayment'` row via
+`related_pos_order_payment_id`), satisfying ADR 0069 clause 8's requirement that
+"the schema from clause 4 must represent a forfeited-vs-applied distinction on
+the ledger regardless of the toggle's setting." Refund rows carry the provider's
+own lifecycle in their `status` column (`pending` on submission, promoted to
+`successful`/`failed` when the refund webhook confirms), so a refund in flight is
+visible tenant-side rather than appearing only once terminal. That write is
+best-effort and never fails the money operation or the webhook acknowledgement,
+consistent with this ADR's Architecture Boundaries rule that a cross-database
+failure cannot roll back a decision already committed.
+
+No fee policy, settlement-hold, or payment-acceptance decision changes. Full
+context: issue #824,
+`docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md`.

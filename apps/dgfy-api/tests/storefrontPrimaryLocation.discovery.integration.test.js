@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import { DataTypes, Sequelize } from 'sequelize';
@@ -124,6 +125,11 @@ describe('storefront primary location integration', () => {
         await ensureDiscoveryIndexColumn('storefront_follow_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
         await ensureDiscoveryIndexColumn('storefront_share_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
         await ensureDiscoveryIndexColumn('storefront_review_summary', { type: DataTypes.JSON, allowNull: true });
+        // The discovery index is landlord-scoped, while this test provisions an
+        // isolated tenant database. Keep the landlord test table aligned with
+        // the model and migration so a persisted snapshot exercises the current
+        // schema instead of failing on a missing column.
+        await ensureDiscoveryIndexColumn('storefront_vouchers', { type: DataTypes.JSON, allowNull: true });
         await ensureDiscoveryIndexColumn('customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });
         await ensureDiscoveryIndexColumn('effective_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'transaction' });
         await ensureDiscoveryIndexColumn('max_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });

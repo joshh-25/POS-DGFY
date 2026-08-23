@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 
-export async function signIn(page, credentials) {
+export async function signIn(page, credentials, options = {}) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Terminal Login Required' })).toBeVisible();
   await page.getByLabel('DGFY or Cashier Email').fill(credentials.email);
@@ -9,7 +9,7 @@ export async function signIn(page, credentials) {
   await page.getByRole('button', { name: /^sign in$/i }).click();
   const companySelect = page.getByLabel('Company');
   await expect(companySelect).toBeVisible();
-  const requestedCompany = process.env.E2E_TEST_COMPANY_NAME?.trim();
+  const requestedCompany = options.companyName?.trim() || process.env.E2E_TEST_COMPANY_NAME?.trim();
   if (requestedCompany) {
     await companySelect.selectOption({ label: requestedCompany });
   } else {

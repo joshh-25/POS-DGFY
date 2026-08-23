@@ -10,6 +10,16 @@ export const ADMIN_FINANCIAL_ROLES = Object.freeze({
 });
 const ALLOWED_ADMIN_FINANCIAL_ROLES = new Set(Object.values(ADMIN_FINANCIAL_ROLES));
 
+const isProductionRuntime = () => String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+
+const assertProductionAdminCredentials = ({ passwordHash, source }) => {
+  if (!isProductionRuntime()) return;
+
+  if (passwordHash === DEFAULT_ADMIN_PASSWORD_HASH) {
+    throw new Error(`Production admin credentials from ${source} must not use the documented default password hash`);
+  }
+};
+
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -62,6 +72,10 @@ export const getAdminAccounts = () => {
       throw new Error('ADMIN_ACCOUNTS_JSON must contain at least one admin account');
     }
     const accounts = parsed.map(validateAdminAccount);
+    accounts.forEach((account) => assertProductionAdminCredentials({
+      ...account,
+      source: 'ADMIN_ACCOUNTS_JSON'
+    }));
     const normalizedUsernames = accounts.map(({ username }) => username.toLowerCase());
     if (new Set(normalizedUsernames).size !== normalizedUsernames.length) {
       throw new Error('ADMIN_ACCOUNTS_JSON admin usernames must be unique');
@@ -69,8 +83,14 @@ export const getAdminAccounts = () => {
     return accounts;
   }
 
-  const username = String(process.env.ADMIN_USERNAME || DEFAULT_ADMIN_USERNAME).trim();
-  const passwordHash = String(process.env.ADMIN_PASSWORD_HASH || DEFAULT_ADMIN_PASSWORD_HASH).trim();
+  const configuredUsername = String(process.env.ADMIN_USERNAME || '').trim();
+  const configuredPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
+  if (isProductionRuntime() && (!configuredUsername || !configuredPasswordHash)) {
+    throw new Error('Production requires ADMIN_USERNAME and ADMIN_PASSWORD_HASH or ADMIN_ACCOUNTS_JSON');
+  }
+
+  const username = configuredUsername || DEFAULT_ADMIN_USERNAME;
+  const passwordHash = configuredPasswordHash || DEFAULT_ADMIN_PASSWORD_HASH;
 
   if (!username) {
     throw new Error('ADMIN_USERNAME must not be empty');
@@ -79,6 +99,8 @@ export const getAdminAccounts = () => {
   if (!BCRYPT_HASH_PATTERN.test(passwordHash)) {
     throw new Error('ADMIN_PASSWORD_HASH must be a valid bcrypt hash');
   }
+
+  assertProductionAdminCredentials({ username, passwordHash, source: 'ADMIN_USERNAME/ADMIN_PASSWORD_HASH' });
 
   return [{
     username,

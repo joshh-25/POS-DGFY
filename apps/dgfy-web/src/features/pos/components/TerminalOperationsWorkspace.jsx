@@ -153,6 +153,7 @@ import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
+import DownpaymentSettingsPanel from './DownpaymentSettingsPanel.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5416,6 +5417,12 @@ function SettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
   const canManageEmployees = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
+  // Phase 143 (#848): separate view/manage gate for the Payments tab -- downpayment:view
+  // sees it, downpayment:settings can save it, mirroring the same two-tier split
+  // downpaymentSettings.js already enforces server-side.
+  const canViewDownpayment = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('downpayment:view')
+    || resolveUserPermissionList(terminalUser).includes('downpayment:settings');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -5642,6 +5649,11 @@ function SettingsWorkspace({
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
     { id: 'storefront', label: 'Storefront', icon: Store },
+    // Phase 143 (#848): downpayment policy config -- gated on downpayment:view/downpayment:settings,
+    // not on any of the other tabs' permissions.
+    ...(canViewDownpayment
+      ? [{ id: 'payments', label: 'Payments', icon: Banknote }]
+      : []),
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
       : [])
@@ -7590,7 +7602,7 @@ function SettingsWorkspace({
               </div>
               <div className="min-w-0 flex-1">
                 <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
-                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you're ready to accept voucher codes at the counter.</span>
+                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you&apos;re ready to accept voucher codes at the counter.</span>
               </div>
               <input
                 type="checkbox"
@@ -9218,6 +9230,15 @@ function SettingsWorkspace({
     }
     if (renderedTab === 'profile') return renderProfilePane();
     if (renderedTab === 'storefront') return renderStorefrontPane();
+    if (renderedTab === 'payments' && canViewDownpayment) {
+      return (
+        <DownpaymentSettingsPanel
+          terminalUser={terminalUser}
+          locked={locked}
+          sectionId={sectionId}
+        />
+      );
+    }
     if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
       return renderEmployeesPane();
     }
@@ -9505,15 +9526,16 @@ export default function TerminalOperationsWorkspace({
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
   handleOpenCashCollection = () => {},
+  // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
+  // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it
+  // passes through TerminalPageLayout.jsx and this component first.
+  handleOpenBalanceSettlement = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
   refreshIncomingOrders = () => {},
   refreshOrderHistory = () => {},
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
-  queuedTerminalOperations = [],
-  queueStatusFilter = 'all',
-  setQueueStatusFilter = () => {},
   queueSummary = {},
   replayingQueuedTerminalOperations = false,
   handleReplayQueuedTerminalOperations = () => {},
@@ -9521,7 +9543,7 @@ export default function TerminalOperationsWorkspace({
   handleResolveQueuedOperation = () => {},
   sectionIds = {}
 }) {
-  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
+  const restrictedMsmeModes = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
     ? 'shift_controls'
     : viewMode;
@@ -9548,6 +9570,7 @@ export default function TerminalOperationsWorkspace({
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
           handleOpenCashCollection={handleOpenCashCollection}
+          handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
@@ -9803,6 +9826,9 @@ export default function TerminalOperationsWorkspace({
     handleDeliveryJobStatusChange,
     handleAssignDeliveryPersonnel,
     deliveryPersonnelState,
+    // handleOpenCashCollection is already a dep further down this array (next to
+    // handleOpenIncomingOrderReceipt) -- only handleOpenBalanceSettlement is new here.
+    handleOpenBalanceSettlement,
     cashEventForm,
     closeShiftForm,
     handleCloseShift,
@@ -9825,8 +9851,6 @@ export default function TerminalOperationsWorkspace({
     isOnline,
     locationsState,
     locked,
-    queuedTerminalOperations,
-    queueStatusFilter,
     queueSummary,
     replayingQueuedTerminalOperations,
     handleReplayQueuedTerminalOperations,
@@ -9837,7 +9861,6 @@ export default function TerminalOperationsWorkspace({
     onSelectAdminTerminal,
     onStorefrontSetupSaved,
     onlineOrderSoundEnabled,
-    setQueueStatusFilter,
     operatingLocationId,
     openShiftForm,
     queueLocationScopeId,

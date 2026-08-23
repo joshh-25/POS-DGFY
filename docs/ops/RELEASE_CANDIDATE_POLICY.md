@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-22
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -221,3 +221,41 @@ promised a follow-up, closed by #675.
 This does not change anything about who may merge `main` (`AGENTS.md`'s Merge Safety rule, and every
 role's own "never merge `main`" boundary, are unaffected) — it only closes the gap on what happens
 *after* an authorized `main` merge, so the fix doesn't get lost going the other direction.
+
+### 2026-08-22: Compliance verification ladder (#884)
+
+Resolves the question of *where* the heavier, live-credential-dependent verification steps belong
+in this flow — the compliance runtime preflight, and the PayMongo-dependent parts of the
+downpayment/refund/forfeiture work — none of which are, or should be, a `develop`-merge
+precondition.
+
+**The governing split is merge gates vs. release verification.** A merge gate is a precondition on
+letting a PR land; it must be satisfiable without a deployed environment, or every leg that needs
+one becomes circular ("can't verify until deployed, can't deploy until verified"). Release
+verification runs *after* a merge or a deploy, against whatever environment actually exists by
+then, with a defined response if it fails — it is never a precondition on the merge that produced
+it.
+
+Applying that split to what this repo actually has:
+
+| Stage | Gate type | What runs | Environment needed |
+|---|---|---|---|
+| `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
+| `develop → staging` promotion | merge gate for the promotion PR, plus a **preflight sweep** | `npm run gate:release:local` (the 25-min test-matrix gate, per `docs/testing/release-go-no-go-checklist.md`) **and** a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices — see the protocol doc) for every `NOT-EXECUTED-*` declaration in the batch, reconciling each declaration's front matter via its own small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before the promotion branch is cut. `.agents/skills/promoter/SKILL.md` owns the executable form of this step | DEV (or STAGING) — not production |
+| `staging → main` | merge gate | `gate:release:local` on the release SHA, tenant-schema sync checked against **production** tenant databases, the go/no-go checklist's remaining non-technical blockers. **No `NOT-EXECUTED-*` declaration may reach this leg** — the promotion-time sweep above must already have cleared it | none beyond what's already required |
+| post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (BETA+PROD infra health), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), a BETA frontend canary, and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
+
+This resolves the apparent circularity for the compliance preflight specifically: the endpoint
+evaluates a **change proposal** against the policy engine, not the deployed code itself, so it does
+not need to run against production or even against the environment the change will eventually ship
+to — a deployed non-production host is sufficient, and the one worked example in this repo
+(`docs/compliance/impact-declarations/2026-08-07-pos-sentry-independent-debugging.md`) ran it
+against the dev host. There is therefore no stage in this flow where the preflight is genuinely
+blocked on production; the `NOT-EXECUTED-*` pattern seen across the downpayment epic (#822, #824,
+#848, #859, #865, #866, #877) was a process gap — nothing swept the placeholders before promotion —
+not a structural one.
+
+This does not reopen the compliance-guardrail CI question from the "What actually gates a release
+into `main` today" section above — `enforce_compliance_declarations` stays `false` in
+`pr-checks.yml`; this amendment adds a real preflight *sweep* at promotion time, it does not attempt
+to make the per-PR guardrail itself call the live endpoint.

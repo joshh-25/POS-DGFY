@@ -6314,3 +6314,1727 @@ after this update: **135**.
 - `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
 - `apps/dgfy-web/src/features/pos/components/VoucherManagementPanel.jsx`
 - `apps/dgfy-web/apps/store/src/modes/fnb/promos/model/fnbPromoModel.js`
+
+## Phase 136 - Governance: ADR 0069 Supersedes ADR 0068 for Retail Downpayment Capture
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #818, Phase 136 of the
+  epic's phase sequence, continuing this ledger's numbering from its prior highest entry, 135.
+- Release: single `develop`-targeted PR (`docs/818-adr-0069-downpayment-capture-methods`).
+
+### Objective and Scope
+
+- Docs-only. ADR 0068 (accepted 2026-08-21, the same day) capped Retail downpayment capture to
+  PayMongo QRPh only, `[binding]`. The product owner reversed that constraint hours later during
+  the #273 planning session: capture should support any online method the store enables,
+  configurable per store and optionally narrowed for downpayment specifically (#816), with card
+  once constructible (#477). Changing a `[binding]` clause has exactly one lawful path under ADR
+  0039 — a new superseding ADR plus tech-lead approval; amendment was already ruled out for this
+  ADR specifically (a prior fix to clause 2 removed "or amending decision" language for the same
+  reason), and the `review_by`-decay exception does not apply (2027-02-21, six months out).
+- ADR 0069 authored, fully restating ADR 0068's clauses 2-9 with three changes: clause 1 rewritten
+  and split (1a widens the capture-method authorization, 1b carries over the capped-amount rule
+  unchanged, still `[binding]`); clause 8 changed from a fixed `[snapshot]` forfeiture policy to a
+  per-store refundable/non-refundable `[default]` toggle; new clause 10 (`[default]`) recording the
+  platform-fee basis for a partial capture as the captured amount, pending revisit (#817). Clause 6
+  (Retail-only scope) is unchanged -- this ADR does not widen authorization to Services (#812
+  remains its own authorizing decision).
+- ADR 0068 flipped to `status: superseded`, `authority_level: historical`,
+  `superseded_by: 0069-...md`; its `## Status` section rewritten to point at ADR 0069. Both ADRs
+  share the same `date: 2026-08-21` deliberately -- the reversal happened same-day, and superseding
+  (rather than editing 0068 in place, which the governance system has no path for on an `accepted`
+  ADR) preserves that record instead of erasing it.
+- `docs/architecture/adr/INDEX.md` regenerated (`npm run generate:adr-index`); diff is exactly the
+  0068 row (`accepted` -> `superseded`) and a new 0069 row.
+- No compliance impact declaration required or added -- every rule in
+  `scripts/check-compliance-impact.js` is anchored to `apps/dgfy-api/` or `apps/dgfy-web/`; a
+  docs-only change under `docs/` matches none of them and the script exits 0.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Gates every subsequent phase of epic #815 (#819-#827) -- none may proceed until this ADR is in
+  force, since they all cite ADR 0068/0069 clause numbers as their authorization.
+- Classification: this is the `[binding]`-clause supersession path per
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s Mandatory Process step 3 and ADR 0039's tier
+  table -- it therefore requires tech-lead approval as a separate obligation from authoring the ADR
+  itself. Drafting and opening the implementing PR does not constitute that approval; merging the
+  PR is what enacts the decision, and that approval gate is held by Pat, not by the Worker role.
+- Depends on ADR 0068 (commit `8f69e4d0c`, PR #787, closing #703) having landed first, same day.
+
+### Acceptance and Validation Evidence
+
+- `npm run check:adr` -- `[adr-lint] OK. Validated 76 ADRs.`
+- `npm run test:adr` -- `check-adr.js` regression suite, unchanged pass.
+- `npm run lint:docs` -- chains `lint-docs.js` + `check:adr`.
+- `npm run check:compliance` -- `No compliance-sensitive changes detected.`
+- Manual cross-check: every in-body "ADR 00NN" reference in both 0068 and 0069 resolves to the
+  correct number -- two of the three prior supersession precedents in this repo (0027->0052,
+  0061->0065) shipped with the wrong ADR number in their Status prose; this one was checked
+  specifically to not repeat that.
+- No live-database or runtime test applies -- no code changed.
+
+### Implementation Links
+
+- `docs/architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md` (new)
+- `docs/architecture/adr/0068-retail-downpayment-payment-capture-authorization.md` (status flip)
+- `docs/architecture/adr/INDEX.md`
+
+## Phase 137 - Data Model + Migration: Partial-Payment Vocabulary (retroactive entry)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #819, Phase 137 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 136.
+- Release: `develop`-targeted PR #829, plus follow-up PR #830 addressing `pr-reviewer`'s findings
+  from #829's review.
+- **This entry is added retroactively, in the Phase 138 (#820) session** — the #819 session closed
+  out PR #829/#830 without ever adding a ledger entry, a gap AGENTS.md's Continuous Phase Numbering
+  rules make this ledger authoritative against. Not caught by either PR's review.
+
+### Objective and Scope
+
+- Added the partial-payment data-model vocabulary `PosTransaction` and checkout lacked, per ADR
+  0069 clause 4 (carried over verbatim from ADR 0068 clause 4, unchanged by the Phase 136
+  supersession): `amount_paid`/`balance_due` peso `DECIMAL(14,4)` columns on `pos_transactions`
+  (clause 4a), a `partially_paid` `payment_status` ENUM value, and a new tenant-local
+  `pos_order_payments` per-order ledger table (clause 4b) — one row per
+  downpayment/balance/refund/forfeiture event, structurally modeled on `pos_payment_allocations`,
+  not `platform_invoice_payments`. No `payment_timing` value added (clause 4c). No behavior change
+  — nothing outside the migration's own backfill reads or writes these columns/table yet.
+- Three migrations: `20260821000002-add-pos-transaction-partial-payment-columns.cjs` (nullable-add
+  → backfill → NOT NULL, same shape as `20260807000002-add-pos-payment-timing.cjs`),
+  `20260821000003-expand-pos-transaction-payment-status-partially-paid.cjs` (tenant-fan-out ENUM
+  widening, same shape as `20260817000001-expand-storefront-paymongo-payment-methods.cjs`), and
+  `20260821000004-create-pos-order-payments.cjs` (new tenant-local table).
+- `PosTransaction.js` extended; new `PosOrderPayment.js` model added and registered in
+  `models/index.js`. `sync-tenant-schemas.js` registrations added for all three surfaces
+  (`REQUIRED_TENANT_SCHEMA_COLUMNS`, `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS`,
+  `REQUIRED_TENANT_SCHEMA_TABLES`); `TENANT_SCHEMA_CAPABILITY_VERSION` bumped to `2026-08-21.1`.
+- **This is a checkpoint phase** (migrations under `apps/dgfy-migration-runner/migrations/`) — the
+  full design was presented to Pat before any file was committed, per Pat's "just go straight to
+  PR" go-ahead.
+- No compliance impact declaration required — none of the changed paths (`src/models/`,
+  `apps/dgfy-migration-runner/migrations/`, `scripts/sync-tenant-schemas.js`, `tests/`) match any
+  `COMPLIANCE_SENSITIVE_RULES` pattern.
+- `pr-reviewer`'s review of PR #829 (verdict `COMMENT`, no blockers) raised three should-fix
+  findings, all addressed in follow-up PR #830: RF-1 (the backfill conflated
+  refunded/partial-refunded/refund-pending with unpaid — corrected so those three statuses backfill
+  `balance_due = 0`, since they're resolved, not outstanding), RF-2 (a stale "before merge" comment
+  on the `REQUIRED_TENANT_SCHEMA_TABLES` DDL, corrected to record that the DDL was independently
+  verified by the review rather than still pending), RF-3 (`docs/database/schema.md` was never
+  updated — added).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 136 (ADR 0069) being in force — cites clause 4 throughout.
+- Gates the phases that build on this vocabulary: Phase 140 (quote/checkout resolution), Phase 141
+  (capture), Phase 144 (refund/forfeiture), Phase 148 (balance settlement). (Corrected 2026-08-22,
+  #848: this line's own phase numbers had already drifted from what those phases actually became
+  before the renumbering below — Phase 139 turned out to be the ADR 0070 governance correction, not
+  quote/checkout resolution. Re-corrected 2026-08-22 for the #853/#578-precedent renumber: #825
+  moved from Phase 145 to Phase 148 — see the dated note at the end of this file.)
+- Board: #819 was set `Done` automatically by the project's own workflow when PR #829 merged with
+  `Closes #819`. Flagged back to `For QA` in the Phase 138 (#820) session (Housekeeping, this
+  session) since no deployed-environment verification (Verifier/QA role) has actually run yet —
+  `Done` was a merge-time artifact, not a completed verification.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed file — clean.
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` — 26/26 passing (3 new cases: column
+  repair, enum repair, whole-table repair, mirroring existing precedent).
+- `npm run check:compliance` — clean, both before and after the RF-1/2/3 follow-up.
+- **Open gap, carried forward honestly, not silently closed**: the migrations' `up()`/`down()` were
+  never run against a live/scratch MySQL database in either session (#819 or the #830 follow-up) —
+  no local DB was available. RF-1's corrected backfill CASE logic is therefore still unverified
+  against real data. Flag this before Phase 139+ relies on `amount_paid`/`balance_due` being
+  correctly backfilled in a real deployed environment.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000002-add-pos-transaction-partial-payment-columns.cjs`
+- `apps/dgfy-migration-runner/migrations/20260821000003-expand-pos-transaction-payment-status-partially-paid.cjs`
+- `apps/dgfy-migration-runner/migrations/20260821000004-create-pos-order-payments.cjs`
+- `apps/dgfy-api/src/models/PosTransaction.js`, `apps/dgfy-api/src/models/PosOrderPayment.js`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js`
+- `docs/database/schema.md` (`### pos_transactions: partial-payment columns (Phase 137)`,
+  `### pos_order_payments (Phase 137)`)
+- PR #829, PR #830
+
+## Phase 138 - Config Surface: Per-Store Payment Mode + Downpayment Policy (Backend)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #820, Phase 138 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 137.
+- Release: single `develop`-targeted PR (`feat/820-downpayment-config-surface`).
+
+### Objective and Scope
+
+- Per-tenant config surface ADR 0069 clause 5 (`[default]`, config-surface steer) and clause 7
+  (`[binding]`, non-Retail rejection) authorize: `payment_mode`
+  (`full_payment`/`downpayment_required`/`customer_choice`), downpayment amount/type
+  (`percentage`/`fixed`, basis-points/centavos), refundability, and an `allowed_capture_methods`
+  override.
+- New **landlord** table `tenant_downpayment_settings` (one row per tenant), modeled on
+  `TenantAffiliateSettings.js` per clause 5's explicit steer — migration
+  `20260821000005-create-tenant-downpayment-settings.cjs`. New model
+  `apps/dgfy-api/src/models/Landlord/TenantDownpaymentSettings.js`, registered in `models/index.js`.
+- New module `apps/dgfy-api/src/modules/downpayment/` (repository, use cases, controllers) — a
+  genuinely new bounded domain this epic's later phases (capture, refund/forfeiture, balance
+  settlement) will keep extending, not folded into `modules/dgfy/` (the affiliate settings'
+  precedent) or `modules/store/`.
+- **Deliberately registered as a compliance-sensitive surface**: `scripts/check-compliance-impact.js`'s
+  `COMPLIANCE_SENSITIVE_RULES` gained a `^apps/dgfy-api/src/modules/downpayment/` entry
+  (`major`, `surfaces: payments`), mirrored into `docs/compliance/compliance-classification-matrix.md`
+  — this is substantively a payment/checkout config surface regardless of which module folder it
+  lands in (ADR 0069's own Hardening Contract names "payment, checkout" as a trigger domain), so
+  leaving it outside the existing pattern list would have silently dodged the guardrail rather than
+  correctly tripping it. This is the first phase in the epic to actually trigger a compliance
+  declaration — Phase 136/137 both confirmed clean of any match.
+- Joi validators (`apps/dgfy-api/src/validators/downpaymentSettingsValidator.js`) own shape/bounds;
+  the use-case layer (`downpaymentSettingsUseCases.js`) owns the two DB-dependent business rules Joi
+  can't express: **ADR clause 7's non-Retail rejection** (a `payment_mode = downpayment_required`
+  update is rejected, `422 WORKFLOW_MODE_NOT_RETAIL`, unless the tenant's `ops_workflow_mode`
+  resolves to Retail — `resolveStorefrontPaymentCapabilities` has no `workflow_mode` concept and
+  doesn't catch this on its own) and **`customer_choice` rejection** (`422
+  PAYMENT_MODE_NOT_SUPPORTED` — schema-authorized so no future migration is needed when it ships,
+  but not actually settable in v1). Every write re-validates the full *effective* (merged)
+  settings row, not just the fields the request touches, so a partial update can never leave the
+  row internally inconsistent.
+- New `PERMISSIONS.DOWNPAYMENT` block (`VIEW_DOWNPAYMENT_SETTINGS`/`MANAGE_DOWNPAYMENT_SETTINGS`);
+  `GET`/`PUT /api/v1/downpayment/settings`, mounted in `server.js` mirroring `affiliateAdminRoutes`'s
+  convention exactly (same prefix shape, room for this epic's later admin endpoints as siblings).
+- New `packages/shared-constants/src/downpaymentDefaults.js` per-vertical-defaults registry,
+  mirroring `posDefaultsAndTerminology.js`'s pattern (per #820's own explicit ask) — every entry's
+  value is intentionally identical today (nothing in ADR 0069 or #820 specifies real per-vertical
+  divergence, and clause 6 scopes actual usage to Retail only regardless); future-ready plumbing,
+  not invented business logic. Not wired into the repository's own `DEFAULT_SETTINGS` fallback,
+  which stays flat/non-vertical-aware (no tenant-DB `workflow_mode` visibility from the landlord
+  repository without extra plumbing this phase doesn't need).
+- Compliance impact declaration:
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md` (`major`,
+  `surfaces: payments`) — states plainly that the live `POST /api/v1/compliance/preflight` endpoint
+  was **not** executed against a live environment this session (none available), following the
+  established honest-caveat shape from `2026-07-29-pos-batch-menu-import.md`.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 136 (ADR 0069, clauses 5 and 7) and Phase 137 (the `payment_status`/`amount_paid`
+  vocabulary this config surface's later consumers will read).
+- Gates Phase 139 (server-authoritative downpayment resolution at quote/checkout) — that phase is
+  the first actual *reader* of `tenant_downpayment_settings`; this phase is config-surface only.
+- This phase has **two** checkpoints (`.agents/skills/implement/SKILL.md`'s checkpoint table): the
+  migration under `apps/dgfy-migration-runner/migrations/`, and the compliance declaration this
+  phase's own `modules/downpayment/` registration triggers. Both resolved at one combined stop
+  point before commit, per Pat's confirmation.
+- Board: #818 and #819 (Phases 136/137) were also flipped `Done` → `For QA` in this session
+  (Housekeeping), independent of #820's own code — see Phase 137's entry above.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed `.js`/`.cjs` file — clean.
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` (14 cases, including the issue's
+  named-required non-Retail-rejection case and the `customer_choice` rejection case),
+  `downpaymentSettingsRepository.unit.test.js` (3 cases), `downpaymentSettingsValidator.unit.test.js`
+  (6 cases) — 23/23 passing.
+- `npm run check:compliance` — confirmed it correctly *requires* a declaration once
+  `modules/downpayment/` existed without one, then accepts it once the declaration file was added.
+- `npm run check:architecture` — `[ArchitectureGuardrails] OK.` / `[ControllerBoundary] OK.` — new
+  module passes module-structure and controller-boundary checks.
+- **Open gap, carried forward honestly, not silently closed**: the migration's `up()`/`down()` was
+  never run against a live/scratch MySQL database (none available this session — same gap as Phase
+  137), and the live `POST /api/v1/compliance/preflight` call was not executed (see the compliance
+  declaration's own Verification Evidence section for what a reviewer with a live environment must
+  do before merge).
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000005-create-tenant-downpayment-settings.cjs`
+- `apps/dgfy-api/src/models/Landlord/TenantDownpaymentSettings.js`
+- `apps/dgfy-api/src/modules/downpayment/` (`index.js`, `README.md`, `repositories/`, `usecases/`,
+  `controllers/`)
+- `apps/dgfy-api/src/validators/downpaymentSettingsValidator.js`
+- `apps/dgfy-api/src/config/permissions.js` (`DOWNPAYMENT` block)
+- `apps/dgfy-api/src/routes/downpaymentSettings.js`, `apps/dgfy-api/src/server.js` (mount)
+- `packages/shared-constants/src/downpaymentDefaults.js`,
+  `apps/dgfy-api/src/modules/shared/constants/downpaymentDefaults.js`
+- `scripts/check-compliance-impact.js`, `docs/compliance/compliance-classification-matrix.md`
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md`
+- `docs/database/schema.md` (`### tenant_downpayment_settings (Phase 138)`)
+
+## Phase 139 - Governance Correction: Downpayment Authorization Across All Workflow Modes
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #833, Phase 139 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 138.
+- Release: single `develop`-targeted PR (`fix/821-downpayment-authorization-all-verticals`).
+
+### Objective and Scope
+
+- Corrects a scope error introduced in ADR 0068 (superseded), restated unexamined in ADR 0069, and
+  shipped as live code in Phase 138 (#820, PR #832): downpayment authorization was gated to Retail
+  only (`422 WORKFLOW_MODE_NOT_RETAIL` in `downpaymentSettingsUseCases.js`). Pat's actual planning
+  intent, confirmed directly 2026-08-21: Retail/Surebiz is the priority and reference
+  implementation, not the authorization boundary — "it DOES NOT MEAN that it's only for retail, and
+  other industries don't support it now... I personally rather allow downpayments to any industry
+  as soon as now."
+- New ADR 0070 supersedes ADR 0069. Carries clauses 1-5 and 8-10 forward verbatim (unchanged
+  mechanics: capture cap, balance settlement, DB surface, config-surface steer, refund/forfeiture
+  toggle, fiscal deferral, fee basis). Replaces clause 6 (Retail-scoped authorization) with
+  `[default]` authorization for every workflow mode, and reframes clause 7's enforcement from
+  *vertical-scope* to *reachability*: a downpayment configuration must never be honored by a
+  checkout flow not wired to compute/capture it (today: the shared storefront checkout only —
+  Services bookings and Hospitality reservations remain unwired, tracked separately at #812, not
+  authorization-blocked).
+- Confirmed cheap to correct: `storefront` is a universal capability module
+  (`packages/shared-constants/src/capabilityModules.js`), not per-vertical — every workflow mode
+  selling through the online store already shares the identical `resolveCheckoutContext`
+  (`storeUseCases.js`). Widening cost exactly one deleted vertical check, its now-unused
+  workflow-mode-resolution plumbing (`resolveTenantWorkflowMode`, the `resolveWorkflowMode`
+  injectable dependency, three now-unused imports), and its test.
+- Confirmed the fence's own history before rewriting it: ADR 0068's Context justified excluding
+  Services (ADR 0057 clause 3, `[binding]`) and Hospitality (ADR 0041) specifically — both real,
+  unrelated gates on those verticals' own checkout/booking surfaces. F&B carried no such gate (ADR
+  0019 has no payment-collection deferral at all) and was included by generalization, not by its
+  own cited reason.
+- Scanned the epic's remaining phase bodies (#822/#824/#826/#827, soon retitled 141/142/144/145)
+  for inherited Retail-only assumptions before deciding whether a full epic replan was needed — none
+  found; their mechanics were already vertical-neutral, only the authorization gate above them was
+  wrong. #823 (checkout UI wiring, retitled 143) legitimately stays Retail-specific: it wires the
+  *existing* Retail storefront frontend components, not an authorization boundary — other
+  verticals' UI is separate, not-yet-requested follow-up work, not a mistranslation.
+- Filed #834 (separate, Iteration 3) to audit Hospitality's broader framing as a DGFY-native peer
+  niche across ADRs/docs, given the platform's own `WORKFLOW_MODE_ENGINE` classification already
+  marks it `'transitional'` (planned sister-app engine, "Sync Core"). Explicitly out of this ADR's
+  scope — ADR 0070 treats Hospitality only as "not yet wired," the same treatment already applied to
+  Services, without taking a position on its longer-term platform placement.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on and corrects Phase 136 (ADR 0069/formerly 0068) and Phase 138 (#820, the code that
+  shipped the gate this phase removes).
+- Gates Phase 140 (formerly #821, server-authoritative downpayment resolution at quote/checkout,
+  retitled per this phase) — that phase's implementation is simpler under ADR 0070: no vertical
+  family check needs to be written at all.
+- **Checkpoint**: ADR 0069 clause 6 was `[binding]`; per ADR 0039 and `ARCHITECTURE_GOVERNANCE.md`
+  step 3, the only lawful path to change it is a new superseding ADR plus tech-lead approval — an
+  `## Amendments` block was not available. Pat's plan approval in this session is that tech-lead
+  approval, named and dated in ADR 0070's own Context.
+- Board: #820 was still `For Review` despite PR #832 having merged (`Refs #820`) — flipped to
+  `For QA` in this session, matching #818/#819. #833 (this phase's own issue) set `In progress` at
+  branch time. #821-#827 retitled Phases 140-146; #815's Definition of done and #821's `## Verify`
+  section amended to match ADR 0070.
+
+### Acceptance and Validation Evidence
+
+- `node --check` on every new/changed `.js` file — clean.
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` — rewritten: the non-Retail-
+  rejection test replaced by its inverse ("accepts downpayment_required for a non-Retail tenant
+  (ADR 0070)"); every other case (customer_choice rejection, type/rate/min-required validation, the
+  effective-merged-state test, allowed_capture_methods handling) unchanged and still passing.
+  22/22 passing across all three Phase 138 suites (`downpaymentSettingsUseCases`,
+  `downpaymentSettingsRepository`, `downpaymentSettingsValidator`).
+- `grep -rn "WORKFLOW_MODE_NOT_RETAIL" apps/ docs/` — zero hits outside ADR 0069's own superseded
+  historical text and ADR 0070's Context narrative.
+- `npm run lint:docs` / `npm run check:adr` / `npm run check:compliance` / `npm run
+  check:architecture` — see this phase's PR for full output; the compliance declaration's precondition
+  #2 was amended (dated note, not rewritten history) rather than left asserting a guarantee the code
+  no longer makes.
+
+### Implementation Links
+
+- `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (new)
+- `docs/architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md`
+  (flipped to `status: superseded` / `authority_level: historical`)
+- `apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js` (gate removed)
+- `apps/dgfy-api/tests/downpaymentSettingsUseCases.unit.test.js` (rewritten)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md` (precondition #2
+  amended)
+- Issues #833 (this phase), #834 (Hospitality-framing audit, Iteration 3, out of this ADR's scope)
+
+## Phase 140 - Server-Authoritative Downpayment Resolution at Quote/Checkout
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #821, Phase 140 of the
+  epic's phase sequence (retitled from a pre-Phase-139-renumbering "139" per Phase 139's own
+  correction), continuing this ledger's numbering from Phase 139.
+- Release: single `develop`-targeted PR
+  (`feat/821-downpayment-quote-checkout-resolution`).
+
+### Objective and Scope
+
+- First reader of `tenant_downpayment_settings` (Phase 138, #820) — nothing computed or exposed a
+  downpayment split before this phase. Compute the split server-side, after the promo/voucher fold,
+  and never trust a client-sent figure.
+- New pure module `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js`
+  (`resolveDownpaymentForTotal`): percentage/fixed math, `min_downpayment_centavos` floor, clamp to
+  the order total (never negative balance, never more than the order is worth), fails closed to
+  `full_payment` on a `null`/malformed settings row. Same bps-rounding convention as
+  `affiliateCommissionAccrual.js`/`affiliatePricingPolicy.js`
+  (`Math.round(baseCentavos * bps / 10000)`).
+- `resolveCheckoutContext` (`storeUseCases.js`, the shared resolver behind `/cart/quote`,
+  `/store/checkout`, and the QRPh payment-session path) gains an **injected, non-defaulted**
+  `downpaymentSettingsRepository` dependency — deliberately not a hard module-level import like the
+  existing `dgfyAffiliateRepository` precedent in the same file, because every order needs this
+  lookup (unlike the affiliate lookup, gated behind an optional `attribution_enrollment_id`); a hard
+  import would have made it an unconditional, unmockable live landlord-DB call on every existing
+  store unit test — confirmed by an initial hard-import attempt that broke `buildStoreCheckoutUseCase`
+  callers (which pass an explicit `tenantId`, unlike quote/payment-session) before being corrected to
+  the `tenantRevenueRepository`-style injected pattern. `undefined` (every pre-Phase-140 caller)
+  resolves via `?.` guards to "no settings, full_payment" — zero test edits needed for ~30 existing
+  call sites across 6 test files.
+- Exposes `payment_mode`/`downpayment_amount`/`balance_due_amount`/`downpayment_refundable` on both
+  `/cart/quote`'s response and `/store/checkout`'s `totals`. Deliberately not added to
+  `storeQuoteSchema`/`storeCheckoutSchema` (request-body validators with `stripUnknown: true`) — a
+  correction from #821's original scope text, which wrongly named those validators as the target;
+  response fields belong in the use-case response objects instead.
+- Two new fail-closed `422 DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` guards, temporary by design (updated by
+  Phase 141/#822 once capture is wired — see that phase's entry): `buildStoreCheckoutUseCase` (ADR
+  0070 clause 7 `[binding]` — capture isn't wired yet on this path, so an order claiming "downpayment
+  required" that collected nothing is the exact bogus-order case this feature exists to prevent;
+  `amount_paid`/`balance_due` themselves already exist as of Phase 137/#819, this guard is about
+  nothing being collected, not about missing schema) and `buildStoreCheckoutPaymentSessionUseCase`
+  (ADR 0069 clause 1b `[binding]` — that path authorizes `resolved.totalAmount` in full; letting a
+  `downpayment_required` order through would authorize the whole order total online, never the
+  downpayment amount only).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the config surface this phase reads) and Phase 139 (#833, ADR 0070 —
+  authorization spans every workflow mode, so this phase's read path performs no vertical check at
+  all).
+- Gates Phase 141 (#822, capture + webhook finalization) — that phase removes both fail-closed
+  guards added here once real PayMongo capture is wired to the downpayment amount specifically.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table (no migration, no `main`
+  base, no deploy dispatch) — proceeded through commit/push/PR per the standing preference recorded
+  in the Worker skip-checkpoint-confirmation memory.
+- Board: #821 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- 22 new unit tests, all passing, no database required: `downpaymentPolicy.unit.test.js` (14 —
+  percentage/fixed math, rounding, floor, clamp-to-total, zero/negative total, malformed-row
+  fail-closed, refundable flag) and `storeCheckoutDownpaymentResolution.unit.test.js` (8 — quote
+  exposure for both `downpayment_required` and `full_payment`, no-injected-repository regression, no
+  ambient-tenant regression, both `422` guards firing with no order/session created, a full_payment
+  checkout still succeeding with the null downpayment shape).
+- Full `apps/dgfy-api` store-prefixed test suite re-run after every code change: 419 passed, 2
+  pre-existing failures confirmed via `git stash` to fail identically on unmodified `develop`
+  (`storefrontPrimaryLocation.discovery.integration.test.js`,
+  `storeRouteTenantContext.integration.test.js`, both requiring a live database, unrelated to this
+  change). Zero edits to any pre-existing test file.
+- `npm run check:architecture` — `ArchitectureGuardrails OK` (505 files), `ControllerBoundary OK`.
+- `npm run check:compliance` — confirmed to **fail** first (missing declaration, proving the
+  guardrail actually fires on this diff), then pass once
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md` was
+  added (`major`/`payments`).
+- `node --check` on every new/changed `.js` file — clean.
+- Named gaps, not glossed over: no live DB or deployed environment this session, so neither the
+  landlord read nor the `422` guards are exercised end-to-end (unit coverage only); `POST
+  /api/v1/compliance/preflight` not executed against a live environment (same disclosure shape as
+  Phase 138's declaration).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js` (new)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (`resolveCheckoutContext` +
+  the three builders + two fail-closed guards)
+- `apps/dgfy-api/src/modules/store/index.js` (wires the real `downpaymentSettingsRepository`)
+- `apps/dgfy-api/tests/downpaymentPolicy.unit.test.js` (new),
+  `apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js` (new)
+- `docs/api/specification.md` (`/store/cart/quote`, `/store/checkout`,
+  `/store/checkout/payment-sessions`)
+- `docs/database/schema.md` (`tenant_downpayment_settings` reader note corrected)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md` (new)
+- Issue #821 (this phase)
+
+## Phase 141 - Capture: Downpayment Payment Session + Webhook Finalization
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #822, Phase 141 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 140.
+- Release: single `develop`-targeted PR
+  (`feat/822-downpayment-capture-webhook-finalization`).
+
+### Objective and Scope
+
+- **Model correction, made during planning (2026-08-21, Pat's call), before any code was
+  written.** #822's own text assumed a downpayment order is "an online order that charges less."
+  That is wrong: at a `downpayment_required` store the order is **cash-on-delivery, gated by a
+  mandatory online downpayment** — ADR 0069 clause 2 `[binding]` (carried forward by ADR 0070)
+  requires the balance to always be collected out-of-band with no second automatic PayMongo charge,
+  so every such order is inherently COD-for-the-balance. "Pay the full order online" is the
+  separate, deliberately unbuilt `customer_choice` mode. The customer's only online choice is which
+  rail pays the downpayment leg. This reframing is what drove the design below; #822's own issue
+  text needs a PM correction (handed off, not done in this phase — see Dependencies).
+- `buildStoreCheckoutPaymentSessionUseCase` (`storeUseCases.js`): the Phase 140 fail-closed guard is
+  replaced with the real capture computation. For a `downpayment_required` tenant, the amount
+  authorized/captured online — `total_amount_centavos`, the PayMongo `amount`,
+  `platform_fee_centavos` — becomes the downpayment amount, never the order total (ADR 0069 clause
+  1b `[binding]`). A new `422 DOWNPAYMENT_POLICY_UNRESOLVED` guard fails closed when the tenant's
+  stored setting says `downpayment_required` but the resolved policy doesn't — corrects a Phase 140
+  direction error where `downpaymentPolicy.js`'s own fail-closed-to-`full_payment` design (correct
+  when nothing could capture) would otherwise let a malformed settings row silently authorize the
+  *full* order online with no downpayment gate at all.
+- New landlord migration `20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs`:
+  four additive columns on `commerce_payment_sessions` — `capture_kind`
+  (`ENUM('full','downpayment') DEFAULT 'full'`, so every pre-existing row is correct by
+  construction), `order_total_centavos` (backfilled from `total_amount_centavos` for pre-existing
+  rows), `capture_payment_method`, `downpayment_refundable`. `total_amount_centavos` itself is
+  unchanged and now means "the captured amount" — this single reinterpretation is what makes the
+  platform-fee guard, the webhook's exact-amount-equality check, and the reject-refund path (#822's
+  own "should fall out correctly" list) all work with zero further code change.
+- `finalizePaidCommerceSession.js`: derives the order's own `payment_type` to `'cash'` for a
+  downpayment capture (COD for the balance is what the order *is*) and builds a new
+  `capturedPayment` server-internal sibling argument (never a payload field — `storeCheckoutUseCase`'s
+  other caller, `storeHandlers.js`, never passes it) into `storeCheckoutUseCase`.
+- `resolveStorefrontPaymentSnapshot` (`storeUseCases.js`) gains a `capturedPayment` branch:
+  `payment_status: 'partially_paid'` (or `paid`, if the captured amount happens to equal the order
+  total) with `amount_paid`/`balance_due` — the one centavos-to-peso conversion boundary for this
+  feature (ADR 0069 clause 4b).
+- `buildStoreCheckoutUseCase`'s Phase 140 guard is made **conditional**, not deleted: with
+  `capturedPayment` present (the webhook finalizer, after real money was captured) it proceeds and
+  writes ledger row 1 (`kind: 'downpayment'`, via the new `storeRepository.createOrderPaymentEntry`,
+  inside the same transaction that creates the order); without it (the direct HTTP path — a
+  customer picking plain `cash`, collecting nothing) it still fails closed with `422
+  DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` (ADR 0070 clause 7 `[binding]`) — deleting this guard outright
+  was identified as the failure mode to avoid.
+- No change to `processVerifiedPaidCommerceSession.js`'s exact-amount-equality check, #476's
+  idempotency claim/row-lock, or the provider-event-replay guard — all inherited unchanged and
+  pinned with new tests rather than re-derived.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 140 (#821, the resolution this phase captures against) and, transitively, Phase
+  137's (#819) tenant schema (`pos_transactions.amount_paid`/`balance_due`, the `partially_paid`
+  enum value, `pos_order_payments`) — all first written by this phase.
+- Gates Phase 142 (#823, storefront UI), Phase 144 (#824, accept/reject/refund — the reject-refund
+  path this phase makes refund the correct, downpayment-only amount), and Phase 148 (#825, balance
+  settlement, the second ledger-row writer). (#824/#825 renumbered 2026-08-22, #848; #825 moved
+  again 145→148 on 2026-08-22 for the #853/#578-precedent renumber — see the dated note at the end
+  of this file.)
+- **Governance wrinkle identified, not resolved here:** ADR 0070 carries ADR 0069's clauses 1-5/8-10
+  forward *by reference* rather than restating them, so those live, load-bearing clauses physically
+  sit in a document marked `status: superseded`/`authority_level: historical` — which `AGENTS.md`
+  forbids citing for new decisions. Works today; breaks the moment one of those clauses needs a
+  dated amendment (#817 explicitly anticipates one on clause 10). Handed to PM to file, not fixed in
+  this phase.
+- Two items handed to PM during this phase, both filed:
+  - **#838** — courier cash remittance/reconciliation for COD deliveries (Retail downpayment + F&B):
+    once a courier collects the balance in cash, nothing models that money's path back into the
+    business's own records. Raised, not solved, during design discussion.
+  - **#839** — `sync-tenant-schemas.js` backfills `amount_paid`/`balance_due` incorrectly (flat
+    `DEFAULT 0`, no `CASE WHEN payment_status='paid'` logic the Sequelize migration itself uses),
+    discovered and reproduced against a restored production snapshot while verifying Phase 137's
+    backfill per this phase's own plan requirement — see Acceptance and Validation Evidence.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table beyond the migration
+  itself, which is why its `up`/`down`/`up` cycle was run against a real database this session (see
+  below) rather than deferred — proceeded through commit/push/PR per the standing preference
+  recorded in the Worker skip-checkpoint-confirmation memory.
+- Board: #822 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- 20 new/changed unit tests across three files, all passing, no database required for the unit
+  layer (fakes throughout): `storeCheckoutDownpaymentResolution.unit.test.js` (11, rewritten from
+  Phase 140's 8 — 1 kept, recontextualized as the surviving offline-path guard; the
+  payment-session describe block fully rewritten into 4 tests covering the real capture, the fee
+  guard on the captured amount, `DOWNPAYMENT_POLICY_UNRESOLVED`, and — added post-review, RF-2 —
+  a legitimate zero-total order not being misclassified as a malformed settings row);
+  `downpaymentWebhookFinalization.unit.test.js`
+  (5, new — the amount-equality check passing for a downpayment session despite `order_total_centavos`
+  differing, the same check still catching a genuine mismatch, the order landing `partially_paid`
+  with correct `amount_paid`/`balance_due`, the ledger row written inside the order-creation
+  transaction, a replayed webhook delivery being a no-op); `storePaymentTruth.unit.test.js` (2, new
+  — `resolveStorefrontPaymentSnapshot`'s `capturedPayment` branch in isolation). Pre-existing
+  `processVerifiedPaidCommerceSession.usecase.test.js` (7) and `finalizePaidCommerceSession.usecase.test.js`
+  (18) suites pass unmodified, confirming no regression to #476's idempotency fix.
+- Full `apps/dgfy-api` store-prefixed test suite: 388 passed, the same 2 pre-existing
+  DB-dependent integration failures Phase 140 already identified
+  (`storefrontPrimaryLocation.discovery.integration.test.js`, `storeRouteTenantContext.integration.test.js`).
+- **Reviewer feedback (PR #840, `pr-reviewer`, verdict COMMENT, no blockers) addressed**: RF-1 —
+  `createOrderPaymentEntry` now records `payment_reference` (the actual PayMongo charge ID), not
+  just `provider_event_id` (the webhook delivery ID); needed by Phase 144/#824's refund-vs-forfeiture
+  logic to trace a ledger row back to its charge. RF-2 — the `DOWNPAYMENT_POLICY_UNRESOLVED` guard
+  now excludes a legitimate zero-total order (gated on `resolved.totalAmount > 0`), which previously
+  misclassified that case instead of falling through to the pre-existing, more accurate
+  `totalAmountCentavos <= 0` guard. RF-3/RF-4 (nits) — deleted a stale test-file cross-reference to a
+  file that was never created; reconciled the test-count discrepancy across the PR body, the
+  compliance declaration, and this entry (388, not 452/387 — the PR body's 452 was simply wrong;
+  387 was correct pre-fix, both are now 388 after RF-2's added test). Both should-fix items and both
+  nits are fixed, not deferred.
+- `npm run check:architecture` — `ArchitectureGuardrails OK` (505 files), `ControllerBoundary OK`.
+- `npm run check:compliance` — confirmed to **fail** first (missing declaration), then pass once
+  `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` was
+  added (`major`/`payments`).
+- `npm run lint:docs` — OK, 27 governed docs + 77 ADRs validated.
+- `node --check` on every new/changed `.js` file — clean.
+- **Migration run against a real database — the gap Phases 137/138/140 each carried forward is
+  closed for this phase's own migration, and Phase 137's backfill was independently re-verified in
+  the process.** Using `do-not-commit/local-test/` on docker context `ch` (restored production
+  landlord + tenant MySQL 8.0 snapshots): the new landlord migration ran `up → down → up` cleanly —
+  all four columns present with correct types/defaults after `up`, all four cleanly absent after
+  `down`, correctly restored after the second `up`. Separately, rebuilding the stack's `dgfy-api`
+  image (previously 27 hours stale, predating Phase 137) and running
+  `npm run check:tenant-schema`/the tenant additive-repair path surfaced that Phase 137's
+  `amount_paid`/`balance_due` backfill does **not** land correctly through the real tenant-provisioning
+  mechanism (`sync-tenant-schemas.js`, distinct from the Sequelize migration file) — reproduced
+  concretely against tenant `sku_tenant_bullduckresto_15a50c4f`'s `pos_transaction_id=1`
+  (`payment_status='paid'`, `amount_paid` landed at `0` instead of the order's `total_amount`).
+  Root-caused (the tenant-repair DDL registry uses a flat `DEFAULT 0`, not the migration's
+  `CASE WHEN payment_status='paid'` logic) and filed as #839 rather than fixed here — out of this
+  phase's own scope (a different subsystem than anything Phase 141 touches).
+- **Not verifiable this session, disclosed rather than glossed:** no live PayMongo sandbox capture
+  end to end; `POST /api/v1/compliance/preflight` not executed against a live environment (same
+  disclosure shape as the Phase 138/140 declarations).
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs` (new)
+- `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js` (four new columns)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (capture computation, policy-unresolved
+  guard, `resolveStorefrontPaymentSnapshot`'s `capturedPayment` branch, conditional checkout guard,
+  ledger write)
+- `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/contracts/storeRepository.contract.js` (new
+  `createOrderPaymentEntry`)
+- `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (derives
+  `payment_type: 'cash'`, builds `capturedPayment`)
+- `apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js` (rewritten),
+  `apps/dgfy-api/tests/downpaymentWebhookFinalization.unit.test.js` (new),
+  `apps/dgfy-api/tests/storePaymentTruth.unit.test.js` (extended)
+- `docs/api/specification.md` (`/store/cart/quote`, `/store/checkout`,
+  `/store/checkout/payment-sessions`)
+- `docs/database/schema.md` (`commerce_payment_sessions`, `pos_order_payments`,
+  `tenant_downpayment_settings` reader notes corrected/extended)
+- `docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md` (new)
+- Issue #822 (this phase); #838, #839 (handed to PM during this phase)
+
+## Phase 142 - Storefront Checkout UI for Downpayment
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #823, Phase 142 of the
+  epic's phase sequence, continuing this ledger's numbering from Phase 141.
+- Release: two `develop`-targeted PRs — PR #841 (prerequisite fix, #613), then the Phase 142 PR
+  stacked on it (`feature/823-downpayment-checkout-ui`).
+
+### Objective and Scope
+
+- **Prerequisite fixed first, its own PR (#613).** Retail and Simple MSME guest checkout was
+  blocked at Place Order even after successful OTP verification — `StorefrontApp.jsx` never passed
+  `guestCheckoutIntentId`/`guestCheckoutOtpVerified`/`guestCheckoutProof` into the shared
+  `useCheckoutSubmission` call site, a pure wiring omission (the sibling F&B call a few lines above
+  it already had them). Guest checkout is broken without this fix and Surebiz (the epic's driving
+  customer) is Retail guest-heavy. Also fixed `guestCheckoutDraft.js`'s stale payment-type
+  allow-list (missing `grab_pay`/`shopeepay`, silently coercing a restored draft to `cash`).
+- **The frontend had zero downpayment awareness before this phase** — greenfield on the client.
+  Implements the corrected model from Phase 141/PR #840: at a `downpayment_required` store the
+  customer's only choice is which online rail pays the downpayment; no plain-cash option (the
+  backend already 422s `DOWNPAYMENT_CAPTURE_NOT_AVAILABLE`), no full-online option (the separate,
+  unbuilt `customer_choice` mode), no payment-mode toggle.
+- **Backend, additive-only, no capture logic touched:**
+  `buildListStoreCatalogUseCase` gains a top-level `payment_mode` field on the public
+  `GET /store/catalog` response (`'full_payment'` default, fail-closed on any settings-read
+  error) — lets the storefront hide cash and force a quote before the payment step, since Simple/
+  Retail previously never quoted at all without a discount code applied.
+  `serializePaymentSession` gains `capture_kind`/`order_total_amount`/`balance_due_amount`/
+  `downpayment_refundable` (persisted since Phase 141, never serialized before).
+  `serializeOrderBase` gains `amount_paid`/`balance_due` (same gap). All four new session/order
+  fields are `null`/`'full'` for a `full_payment` order, present-and-null per Phase 140's own
+  convention.
+- **Frontend, one shared presentation model
+  (`shared/model/storefrontDownpaymentPresentation.js`) every surface reads from:** normalizes
+  order/session/quote (in that precedence — presence of a higher-precedence source always wins,
+  even when it says "no downpayment here") into one `{active, downpaymentAmount,
+  balanceDueAmount, orderTotalAmount, refundable}` shape. Threaded through: a third mode-agnostic
+  auto-quote arm in `StorefrontApp.jsx` (forces the quote Simple/Retail previously skipped);
+  `requireQuoteForCheckout` in `useCheckoutTotalsAndGating.js` (blocks Place Order until that
+  quote lands); downpayment/balance rows on every checkout summary (Simple/F&B/Retail, desktop +
+  mobile); a downpayment-aware payment-step label/callout and hidden cash option
+  (`buildStorefrontCheckoutPaymentOptions`'s new `hideCash` option); a downpayment-aware pending-
+  payment panel (amount due, balance note, "Try a different payment method" instead of a
+  cash-fallback dead end); downpayment-aware confirmation-screen and tracking-page rows; a
+  dedicated `downpayment_zero_total` block reason for the voucher-discounts-order-to-zero edge
+  case (named risk in planning, not discovered live).
+- **Retail wired to online payment for the first time** (subsumes #626 gap 2). Its payment step
+  was a hardcoded cash-only placeholder with an inert "coming soon" card and its own disconnected
+  local `paymentType` state. Now shares `fnbPaymentType`/`handlePaymentTypeChange` with F&B/MSME
+  (threaded through `useRetailOrderPageProps.js`'s existing big-prop-object pattern — the
+  intermediate prop-forwarding layers needed no changes, since they already pass that object
+  through opaquely), and the online-session-creation branch in `useCheckoutSubmission.js`
+  (previously Simple-only) also serves Retail. Retail's own step state is local to
+  `RetailOrderPage.jsx` (not hoisted like Simple's), so it self-resumes to its payment step after a
+  PayMongo redirect by watching `qrphPaymentSession` rather than needing a pushed-down step
+  number. #626 gap 1 (per-store cash/COD disable for card-only full_payment stores) stays deferred.
+- `resolveTrackedTotals`, previously duplicated verbatim in `useCheckoutSubmission.js` and
+  `useFnbCheckoutSubmission.js`, extracted to `shared/model/trackedTotals.js` and widened to
+  overlay `amount_paid`/`balance_due` (previously silently discarded alongside the pre-existing
+  `total_amount` fix, RF-1/PR #753).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 141 (#822, the capture backend this phase's UI drives) and, for the guest
+  checkout prerequisite, #613 (fixed first, PR #841).
+- Gates nothing downstream directly, but is the storefront-visible half of what Phase 144 (#824,
+  accept/reject/refund) and Phase 148 (#825, balance settlement) will build on — the
+  `downpayment_refundable` seam (`buildDownpaymentRefundableNote`) exists now for Phase 144 but
+  ships no reviewed legal copy (blocked on #280). (#824/#825 renumbered 2026-08-22, #848 — Phase
+  143 is now the POS admin config UI, #848 (corrected from an earlier "skupervisor" framing during
+  #848's own planning). #825 renumbered again 145→148 on 2026-08-22 for the #853/#578-precedent
+  collision — see the dated note at the end of this file.)
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table — no migration, no
+  compliance-declaration ambiguity (declared major/payments per the existing `modules/store/**`
+  floor), no `staging`/`main` base — proceeded through commit/push/PR per the standing
+  skip-checkpoint-confirmation preference.
+- Board: #613 → `For Review` at PR #841's open. #823 → `In progress` at branch time, `For Review`
+  at PR-open time.
+- **Hand-off to PM, not resolved here:** #822 and #823 both still carry the stale "online order
+  that charges less" framing in their own issue text; #823 additionally cites superseded ADR 0069
+  clause 7 as its rationale (ADR 0070 clause 7 is the live successor). The admin UI gap this note
+  originally flagged (no way to configure downpayment for a real tenant except a raw authenticated
+  `PUT /api/v1/downpayment/settings` call) is now filed, scheduled, and shipped as its own Phase
+  143 ledger entry: #848, a POS Settings tab (not skupervisor, per that phase's own premise
+  correction), which prompted the #824/#825 renumbering to 144/145 above and a further 145→148
+  renumber since — see Phase 143's own entry and the dated note at the end of this file.
+
+### Acceptance and Validation Evidence
+
+- PR #841 (#613): a source-text contract test scoped to the `useCheckoutSubmission` call-site
+  block specifically (not the whole file — the three identifiers were already referenced
+  elsewhere via `useGuestCheckoutOtp`/`useFnbCheckoutSubmission`, so a blanket file-content check
+  would have passed even with the bug present) — verified to fail on the pre-fix code and pass
+  after. `grab_pay`/`shopeepay` regression cases added to `guestCheckoutDraft.test.js`. Full store
+  vitest suite: 453 passed, 1 pre-existing unrelated failure (confirmed identical on unmodified
+  `develop`). `npm run build:store` passed.
+- Backend: 15 tests in `storeCheckoutDownpaymentResolution.unit.test.js` (13 pre-existing + 2 new
+  — the client-facing session serializer's downpayment case and its additive-only pin), 7 in
+  `downpaymentWebhookFinalization.unit.test.js` (5 pre-existing + 2 new — the client-facing order
+  serializer's `amount_paid`/`balance_due` case and its additive-only pin), 5 new in
+  `storeCatalogPaymentMode.unit.test.js` (including the settings-read-failure and
+  no-repository-injected fallbacks). `npm run check:architecture` OK.
+  `GITHUB_BASE_REF=develop npm run check:compliance` confirmed to fail first (missing
+  declaration), then pass with
+  `docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md`. Full
+  `apps/dgfy-api` store-scoped suite: 392/397, the 3 failures (2 DB-dependent integration suites +
+  1 missing-workspace-module migration test) confirmed identical on unmodified `develop`.
+- Frontend: new/extended test coverage across every changed surface —
+  `storefrontDownpaymentPresentation.test.js` (the shared model, 18 cases including precedence and
+  the `buildPaymentModeStorePatch` patch builder), `retailCheckoutOnlinePayments.contract.test.js`
+  (new, mirrors the Simple contract test), extended
+  `simpleCheckoutOnlinePayments.contract.test.js`, `simpleCheckoutSuccessStep.test.jsx`, new
+  `fnbCheckoutConfirmation.test.jsx`, extended `simpleTrackingPresentation.test.js` (Simple/
+  Retail/F&B tracking balance-due wiring), new `trackedTotals.test.js`, `checkoutRules.test.js`
+  (the `downpayment_zero_total` reason and `requireQuote` behavior), and a `renderHook`-based
+  `useCheckoutTotalsAndGating.downpayment.test.js`. A first attempt at testing
+  `useStoreCatalogLoader.js`'s `payment_mode` patch through the full hook via `renderHook` crashed
+  the vitest worker on an effect-triggered infinite loop (an over-simplified `requestJson` mock
+  returning the same response for every call site) — fixed by extracting the pure
+  `buildPaymentModeStorePatch` function instead of testing through the hook, not by working around
+  the crash. Full store vitest suite: 495 passed, the same 1 pre-existing unrelated failure.
+  `npm run build:store` (tier-0) passed after every batch, not just once at the end.
+- **Not verifiable this session, disclosed rather than glossed:** no end-to-end verification
+  against a live PayMongo sandbox or a real tenant flipped to `downpayment_required` — unit/
+  contract coverage only. `POST /api/v1/compliance/preflight` not executed against a live
+  environment (same disclosure shape as every prior downpayment-epic declaration).
+
+### Implementation Links
+
+- PR #841: `apps/dgfy-web/apps/store/src/StorefrontApp.jsx`,
+  `apps/dgfy-web/apps/store/src/checkout/guestCheckoutDraft.js`
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/store/index.js` (catalog `payment_mode`, session/order serializer
+  widenings)
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js` (`hideCash`),
+  `apps/dgfy-web/apps/store/src/shared/model/trackedTotals.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/checkoutRules.js` (`downpayment_zero_total`)
+- `apps/dgfy-web/apps/store/src/shared/components/checkout/DownpaymentPaymentCallout.jsx` (new),
+  `PaymentMethodSelectorBlock.jsx`, `StorefrontOnlinePaymentPanel.jsx`,
+  `StorefrontCheckoutSummaryContainer.jsx`
+- `apps/dgfy-web/apps/store/src/shared/hooks/useStoreCatalogLoader.js`,
+  `apps/dgfy-web/apps/store/src/shared/hooks/useCheckoutSubmission.js`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/**`,
+  `apps/dgfy-web/apps/store/src/modes/fnb/checkout/**` (summary rows, payment step, confirmation)
+- `apps/dgfy-web/apps/store/src/modes/retail/checkout/pages/RetailOrderPage.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/retail/checkout/components/RetailOrderPaymentStep.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/retail/checkout/hooks/useRetailOrderPageProps.js` (Retail
+  wiring)
+- `apps/dgfy-web/apps/store/src/modes/{simple,retail,fnb}/tracking/model/*TrackingPayload.js`,
+  `.../components/*ActiveView.jsx`, `.../components/*CompletedView.jsx` (balance-due tracking rows)
+- `docs/api/specification.md`
+  (`docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md`, new)
+- Issue #823 (this phase); #613 (prerequisite, PR #841); #626 gap 2 subsumed, gap 1 deferred
+
+## Phase 143 - Downpayment Settings UI in the POS App
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #848, Phase 143 of the
+  epic's phase sequence, continuing this ledger's numbering. Built in parallel to Phase 142 (#823) --
+  cut from a fresh `origin/develop` worktree rather than #823's branch, sharing no files with it.
+  Phase 142 merged into `develop` 2026-08-22 (PR #844), ahead of this phase's own merge.
+- Release: single `develop`-targeted PR (`feature/848-downpayment-settings-ui`).
+
+### Objective and Scope
+
+- **#848's own premise was corrected during planning, before implementation.** The issue as filed
+  said the POS app has no settings surface and needs "its own route, page shell, and nav entry
+  point." That's wrong — `TerminalOperationsWorkspace.jsx`'s `SettingsWorkspace` already ships a
+  full tab strip (Profile Setting / POS Setup / Storefront / Employees), reached from the terminal's
+  existing Settings entry. POS also has essentially one React route; every settings/reports/items
+  surface is a `?view=` view mode inside `TerminalPage`, not a `<Route>`. Corrected the issue body
+  to match before opening the PR (surface: a new **Payments** tab in the existing tab strip, not a
+  new route). The destination #848 asked for — the POS app, deliberately not the back-office app
+  whose extract/freeze/deprecate future is unresolved per #358 — is unchanged; only the "from
+  scratch" framing was wrong.
+- New self-contained `DownpaymentSettingsPanel.jsx`, modelled directly on
+  `AffiliatesWorkspacePanel.jsx` (the closest existing analogue: tenant-scoped settings, bps/centavos
+  fields, its own permission gate, its own fetch/save cycle). Reads/writes the already-shipped Phase
+  138 (#820) `GET`/`PUT /api/v1/downpayment/settings` — no backend change.
+- Two-tier permission gate that genuinely splits: `downpayment:view` shows the tab, and
+  `downpayment:settings` is required to save (`admin`/`is_master_admin` get both, `manager` is
+  view-only, `staff`/`cashier` see nothing). A view-only user sees a disabled Save button with an
+  amber explanatory note, following the `Pages/Settings.jsx` convention of disabling rather than
+  hiding.
+- New pure module `downpaymentSettingsForm.js` (no React, no I/O): wire-unit ↔ form-string mapping
+  (`_bps`/`_centavos` on the wire, `_percentage`/`_pesos` on the form — naming convention from
+  `tenantRevenuePolicyForm.js`), client-side validation mirroring the backend's own effective-row
+  rules in `downpaymentSettingsUseCases.js` (type required, matching amount field required,
+  `min_downpayment_centavos > 0` when mode is `downpayment_required`), and a live split preview
+  mirroring `downpaymentPolicy.js`'s `resolveDownpaymentForTotal` math exactly (rounding, min floor,
+  clamp to total) — pinned to that file the same way `affiliatePricingPolicy.js` pins itself to
+  `affiliateCommissionAccrual.js`'s rounding.
+- **`customer_choice` is deliberately never offered** in the mode selector — the backend 422s any
+  write that resolves to it as the effective mode, and a tenant somehow stored in that state is
+  bricked (every later PUT 422s regardless of payload, since the rejection keys on the *effective*
+  mode). The UI cannot create that state.
+- **Save always PUTs the full six-field set, never a single dirty field.** Not a style choice: the
+  backend re-validates the whole merged (effective) row on every write, so flipping only
+  `downpayment_refundable` on an incompletely-configured `downpayment_required` row 422s
+  (`downpaymentSettingsUseCases.js`'s own "deliberate fail-closed choice"). Verified in the panel's
+  behavior test.
+- **Real INT-column bug defended against, not just documented.** The Joi validator on
+  `downpaymentSettingsValidator.js` allows amount fields up to `999999999999`, but the migration's
+  columns are `Sequelize.INTEGER` (MySQL `INT`, max `2147483647`) — a value between those bounds
+  passes validation and then fails or truncates at the database. `MAX_SAFE_CENTAVOS` in
+  `downpaymentSettingsForm.js` clamps both amount inputs client-side so this UI can never trigger
+  that path. Unit-tested.
+- **Standalone pre-existing defect fixed on the way, in scope because this PR is the first UI
+  consumer of the permission group it affects:** `apps/dgfy-web/src/config/permissions_frontend.js`
+  never mirrored the `DOWNPAYMENT` permission group Phase 138 (#820) added backend-side.
+  `permissionsFrontendParity.test.js` has been red on `develop` since (confirmed: "frontend is
+  missing group DOWNPAYMENT", 2 failed / 15 passed before this PR). Fixed by adding the group,
+  verbatim-mirrored from `apps/dgfy-api/src/config/permissions.js` — test now 17/17. (The same fix
+  landed independently on `develop` via PR #853's release batch before this PR's own merge into
+  `develop`; this PR's copy of the fix is a byte-identical no-op, kept only for its comment,
+  resolved during the post-#853 conflict merge.)
+- Three-line addition inside `SettingsWorkspace` (`TerminalOperationsWorkspace.jsx`): an import, a
+  `canViewDownpayment` permission derivation feeding a conditional `SETTINGS_TABS` entry, and a
+  `renderPane` branch. No existing tab, permission derivation, or save path changed —
+  `hydrateSettingsWorkspace` and the shared `handleSave` used by the other four tabs are untouched,
+  since the new panel self-fetches and self-saves independently.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the settings API this UI reads/writes). ADR 0070 (`accepted`) clause 6
+  `[default]` authorizes downpayment for every workflow mode, so this UI needs no per-vertical gate;
+  the Retail-only `422 WORKFLOW_MODE_NOT_RETAIL` gate Phase 139 removed from
+  `downpaymentSettingsUseCases.js` is already gone on `develop`.
+- Does not gate or depend on Phase 142 (#823) — different app (POS settings vs. storefront
+  checkout), different files, cut from a separate `origin/develop` worktree. Both phases merged
+  independently and required no coordination between their PRs.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table — no migration, no
+  compliance-declaration ambiguity (the `pos, terminal` surface floor was already clear), no
+  `staging`/`main` base, no deploy dispatch, no force-push. Proceeded through commit/push/PR per the
+  standing preference recorded in the Worker skip-checkpoint-confirmation memory.
+- Board: #848 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsForm.test.js` (new, 18 tests) — unit
+  mapping round-trips, all four effective-row validation rules, the INT clamp, and the split-preview
+  math checked directly against `downpaymentPolicy.unit.test.js`'s own backend cases.
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsPanel.behavior.test.jsx` (new, 6
+  tests) — view-gate denial, load-and-hydrate against a seeded row, `full_payment` hides the amount
+  fields, client-side save-block on an incomplete row (never calls the API), a valid save's exact
+  six-field payload shape, and the manager view-only disabled state.
+- `apps/dgfy-web/src/config/__tests__/permissionsFrontendParity.test.js` — 15/17 (red, pre-existing)
+  → 17/17.
+- Full `apps/dgfy-web` `src/features/pos/__tests__/` suite: 533 passed, 3 pre-existing failures in
+  `receiptContractConformance.contract.test.js` confirmed identical on a clean `origin/develop`
+  checkout (stashed this PR's diff, re-ran, same 3 failures) — unrelated to receipts/fiscal
+  printing, not a regression.
+- `npm run build:pos` — real Vite build (the only affected app), succeeded.
+- `npm run lint` on every new/changed file — 0 problems (two `react/no-unescaped-entities` findings
+  in the new panel fixed; one pre-existing unrelated finding elsewhere in
+  `TerminalOperationsWorkspace.jsx`, at a line this PR does not touch, left as-is).
+- `npm run check:compliance` — confirmed to require a declaration for the `pos, terminal` surface;
+  `docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md` added
+  (`major`/`pos,terminal`).
+- **Not verifiable this session, disclosed rather than glossed:** no live end-to-end verification
+  against a deployed environment — unit/behavior coverage only. `POST /api/v1/compliance/preflight`
+  not executed against a live environment (same disclosure shape as prior downpayment-epic
+  declarations). The local Docker stack (`do-not-commit/local-test/`) has tenant *Pat Marketing*
+  already seeded `downpayment_required` (20%, PHP 50.00 minimum) from an earlier session and is the
+  intended manual verification target before this PR is marked ready for review.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/DownpaymentSettingsPanel.jsx` (new)
+- `apps/dgfy-web/src/features/pos/services/downpaymentSettingsService.js` (new)
+- `apps/dgfy-web/src/features/pos/utils/downpaymentSettingsForm.js` (new)
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx` (`SettingsWorkspace`:
+  import, `canViewDownpayment`, `SETTINGS_TABS` entry, `renderPane` branch)
+- `apps/dgfy-web/src/config/permissions_frontend.js` (`DOWNPAYMENT` group added)
+- `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsForm.test.js` (new),
+  `apps/dgfy-web/src/features/pos/__tests__/downpaymentSettingsPanel.behavior.test.jsx` (new)
+- `docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md` (new)
+- Issue #848 (this phase)
+
+## Phase 144 - Accept/Reject, Refund, and Forfeiture for Downpayment Orders
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815 / #273). Issue #824, Phase 144 of
+  the epic's phase sequence -- this number is #824's own long-standing reservation, recorded in the
+  issue title and in the 2026-08-22 renumber note at the end of this file. Built after Phase 150
+  (#865/#866) merged, so it is numerically out of order relative to when it was written; the
+  reservation is preserved rather than renumbered, per rule 5.
+- Release: single `develop`-targeted PR (`feature/824-downpayment-refund-and-forfeiture`).
+
+### Objective and Scope
+
+- **The defect this phase exists to close:** Phase 138 (#820) shipped a per-store
+  `downpayment_refundable` toggle and Phase 141 (#822) snapshotted it onto every capture, with a
+  code comment saying it was there "for Phase 144's refund-vs-forfeiture decision." **Nothing read
+  it.** `commerceOrderLifecycleUseCase.js` treated `rejected` and `cancelled` identically and
+  refunded unconditionally. The toggle was dead config, and two of epic #815's Definition-of-done
+  lines were unmet.
+- **A second, larger hole found during planning, not named in #824:**
+  `buildCancelStoreOrderUseCase` -- the customer self-service cancel endpoint
+  `PATCH /store/orders/:tracking_pin/cancel` -- flipped `fulfillment_status`, released the
+  inventory reservation, and **never touched payments at all**. A customer who paid a downpayment
+  online could self-cancel and the money was neither refunded, forfeited, nor recorded anywhere.
+  #824's own scope assumed a customer-cancellation path with payment semantics; it did not exist.
+  Wiring it is what makes the toggle reachable at all.
+- **Origin-based forfeiture (Pat's call, 2026-08-22), resolving an ambiguity ADR 0069 clause 8 left
+  open.** Clause 8 says *whether* a cancellation may forfeit but never defines what counts as a
+  *customer* cancellation, and `cancelled` is reachable from two actors. Settled: a store-initiated
+  terminal state -- `rejected`, or `cancelled` set by staff through POS -- **always refunds**,
+  regardless of the toggle, because the store's inability to fulfil is not the customer's
+  forfeiture. Only the storefront self-service cancel may forfeit. `initiatedBy` defaults to
+  `'store'`, so a caller that omits it fails toward returning the money. Accepted limitation, stated
+  rather than hidden: a customer who phones the store and has staff cancel is refunded; attributing
+  that intent needs an explicit origin field on the POS payload and is not built.
+- **The `#824` checkbox that was already true but unpinned:** reject refunds exactly the captured
+  downpayment, never the order total. True by construction since Phase 141 redefined
+  `session.total_amount_centavos` as the captured amount -- this phase adds the regression test that
+  stops a future edit from silently refunding money that was never collected.
+- New `tenantOrderPaymentLedgerRepository.js` writes the reversal half of the ledger
+  (`kind: 'refund'` / `'forfeiture'`), which no code had ever written. Reaches the tenant database
+  explicitly via `TenantConnector`/`getTenantModels` rather than `dbStore`, because the PayMongo
+  webhook path is landlord-scoped with no tenant request context -- copying
+  `updateTenantPaymentStatus`'s existing cross-database pattern rather than inventing a second one.
+  Refund rows are written `pending` on submission and promoted when the refund webhook confirms,
+  using the `status` enum `pos_order_payments` has carried unused since Phase 137.
+- **POS visibility, added on Pat's call after planning surfaced it:** `amount_paid`/`balance_due`
+  had **zero** references anywhere in `apps/dgfy-web`. The incoming-order card rendered
+  `Payment: Cash on delivery` and `Payment Status: partially paid` and nothing else, so staff
+  handing over goods could not see how much cash to collect. The card now shows the split, and the
+  reject dialog names the real downpayment amount instead of asserting an unconditional "full
+  refund". Both read data already on the wire -- no backend change.
+- **No migration.** `pos_order_payments.kind` has been
+  `ENUM('downpayment','balance','refund','forfeiture')` with `related_pos_order_payment_id` since
+  Phase 137 (#819); `capture_kind`/`downpayment_refundable` on the session since Phase 141 (#822).
+  This phase is the first reader and first writer of the reversal half.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 137 (#819, the ledger table), Phase 138 (#820, the toggle), and Phase 141 (#822,
+  the capture and the policy snapshot this phase reads).
+- **Two dated ADR amendments, both `[default]`/untagged, both in this PR** (AGENTS.md rule 4 /
+  ADR 0039 -- no superseding ADR, no tech-lead approval):
+  - **ADR 0052** clause 14 stated that rejecting or cancelling a paid order "submits one idempotent
+    full-refund request to PayMongo" -- unconditional, and silent on a forfeiture that makes no
+    provider call at all. Clause 14 is untagged (plain numbered list), so a dated amendment is the
+    correct route. Amended to describe both outcomes explicitly.
+  - **ADR 0070** carries the origin-based refinement of ADR 0069 clause 8. Recorded on 0070, not on
+    0069, because 0069 is `status: superseded`/`authority_level: historical` and AGENTS.md forbids
+    citing it for a new decision -- the same governance wrinkle Phase 141 flagged and handed to PM.
+- **Architecture guardrail caught a real layering mistake mid-implementation.** The ledger module was
+  first written to `commercePayments/services/`, which tripped `usecaseLayerLeak` on all three
+  importing use cases (`LEGACY_SERVICE_IMPORT_PATTERN` matches any `/services` path). Resolved by
+  moving it to `repositories/` -- where data access belongs -- rather than adding a brand-new file to
+  the `usecaseLegacyServiceImports` allowlist, which would have introduced an exception with no
+  removal plan (AGENTS.md's own validation rule).
+- **A real module cycle was found and worked around, not ignored.**
+  `commercePayments/usecases/finalizePaidCommerceSession.js` statically imports `store/index.js`, so
+  a top-level import in the other direction would leave one side observing `undefined` at
+  module-evaluation time. `store/index.js` resolves the lifecycle use case with a call-time dynamic
+  import, the pattern already used for cross-module cycles in `settings/` and `compliance/`.
+  (`pos/index.js` can import it statically because POS is not part of that cycle.)
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table -- no migration, no
+  compliance-declaration ambiguity (the `payments` + `pos, terminal` floors were unambiguous), no
+  `staging`/`main` base, no deploy dispatch, no force-push.
+- Board: #824 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/commerceOrderLifecycle.usecase.test.js` -- 11 passed (was 3). Includes the
+  #815 Definition-of-done pin (a session with `total_amount_centavos: 20000` against
+  `order_total_centavos: 100000` refunds exactly `20000`, asserted explicitly *not* `100000`),
+  store-reject refunding a non-refundable downpayment anyway, POS-cancel doing the same via the
+  `'store'` default, customer-cancel forfeiting with zero provider calls, customer-cancel refunding
+  when refundable, a **null** snapshot refunding rather than forfeiting, a full-payment session
+  being unaffected by the new parameter, and the pre-existing succeeded-refund idempotency
+  short-circuit still winning over the forfeiture branch.
+- `apps/dgfy-api/tests/tenantOrderPaymentLedgerRepository.unit.test.js` -- 16 passed (new): the
+  `capture_kind` gate, the `related_pos_order_payment_id` back-link (and still recording when the
+  original row is missing), deterministic non-colliding idempotency keys, the already-recorded
+  short-circuit instead of a UNIQUE-index throw, `confirmed_at` null for a pending row,
+  centavos-to-peso conversion, and both never-throw failure paths.
+- `apps/dgfy-api/tests/storeCancelDownpaymentLifecycle.unit.test.js` -- 6 passed (new): customer
+  origin attribution for logged-in and guest cancels (the guest case signs a real `cancel_proof`
+  with `generateStoreCancelProof` rather than asserting conditionally), post-commit ordering, and
+  survival of both a returned failure and a thrown error.
+- `apps/dgfy-api/tests/commercePaymentRefunds.usecases.test.js` -- 8 passed (was 4): pending and
+  failed tenant ledger rows on submission, webhook promotion to `successful`, and the webhook still
+  acknowledging when the tenant ledger update fails.
+- **Backend regression sweep** (`tests/store tests/commerce tests/pos tests/downpayment`): 950
+  passed / 29 failed, against a baseline of 932 passed / 29 failed measured by running the identical
+  command with this PR's diff `git stash`ed. **Identical failure count, +18 passing** -- the 29 are
+  DB-backed integration suites with no local database, plus the known
+  `DIRECT_PAYMENT_NOT_READY`/`DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE` drift Phase 150 already
+  documented.
+- `apps/dgfy-web/src/features/pos/__tests__/terminalDownpaymentVisibility.behavior.test.jsx` -- 6
+  passed (new). Full POS suite: 114 files, 581 tests, all passing, including
+  `terminalViewModeContracts.test.js`, which string-matches source text from the exact component
+  this phase edits.
+- Storefront change is **comment-only** (a stale `Phase 143 (#824)` label corrected to `Phase 144`,
+  plus a restated #280 block), verified by diffing out every comment line;
+  `storefrontDownpaymentPresentation.test.js` 19 passed.
+- `npm run build:pos` -- real Vite build, succeeded. `npx eslint` on every new/changed file -- 0
+  errors (one pre-existing `max-lines` warning on `TerminalPage.jsx`, at a line this phase does not
+  touch). `npm run check:architecture` -- OK, 50 modules / 508 files, no allowlist exception added.
+  `npm run check:compliance` -- confirmed to **fail** first with 9 sensitive files, then pass.
+  `npm run lint:docs` -- OK, 28 governed docs + 77 ADRs.
+- **Not verifiable this session, disclosed rather than glossed:** no live PayMongo sandbox refund end
+  to end, and no live exercise of the forfeiture path against a `downpayment_refundable = false`
+  tenant -- unit/behavioral coverage only. This is the most consequential gap in this phase
+  specifically, because forfeiture is the one path whose failure mode is *keeping a customer's money
+  that should have been returned*. `POST /api/v1/compliance/preflight` also not executed against a
+  live environment (same disclosure shape as #822/#848/#865/#866).
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/commercePayments/repositories/tenantOrderPaymentLedgerRepository.js` (new)
+- `apps/dgfy-api/src/modules/commercePayments/usecases/commerceOrderLifecycleUseCase.js`
+  (`initiatedBy`, the forfeiture branch),
+  `apps/dgfy-api/src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js` (refund
+  ledger mirroring),
+  `apps/dgfy-api/src/modules/commercePayments/usecases/handlePayMongoCommerceWebhookUseCase.js`
+  (webhook promotion)
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (`buildCancelStoreOrderUseCase`
+  post-commit lifecycle), `apps/dgfy-api/src/modules/store/index.js` (cycle-safe lazy wiring)
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsPanels.jsx` (card split, reject
+  dialog copy), `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx` (`forfeited` toast)
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js` (comment only)
+- `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md` (amended),
+  `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (amended)
+- `docs/api/specification.md` (`PATCH /pos/orders/:id/status` payment side effects -- previously
+  undocumented; `PATCH /store/orders/:tracking_pin/cancel` -- previously unspecified entirely;
+  `partially_paid` added to the POS `payment_status` vocabulary it had been missing from)
+- `docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md` (new)
+- Issue #824 (this phase)
+
+## Phase 145 - MSME POS Online Order Queue Visibility
+
+### Initiative and Release
+
+- Initiative: MSME online-order operations visibility.
+- Release: POS workflow presentation and Store Profile correction.
+
+### Objective and Scope
+
+- Allow MSME POS tenants with effective `pos` and `storefront` capabilities to
+  see and load the shared Incoming Online Queue.
+- Repair stale persisted Store Profiles that still contain the historical
+  `show_online_queue: false` default.
+- Preserve Services isolation and all existing POS permission, active-shift,
+  location-scope, connectivity, API, order, payment, and inventory behavior.
+
+### Status
+
+- `completed`
+- User approval received on 2026-08-22.
+- Completed on 2026-08-22.
+
+### Dependencies and Governance Note
+
+- [ADR 0008](../architecture/adr/0008-tenant-workflow-mode-msme-simplification.md),
+  amended 2026-08-22.
+- [ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md)
+  for the customer-facing Online Ordering Mode boundary.
+- [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md)
+  for Storefront/POS ownership boundaries.
+- [ADR 0070](../architecture/adr/0070-downpayment-authorization-across-workflow-modes.md)
+  for the shared Storefront checkout path serving MSME.
+- Phase 79 Services navigation and online-queue isolation.
+- Phase 143 is the downpayment admin configuration UI (#848) and Phase 144 is
+  downpayment accept/reject/refund (#824) — both part of the downpayment epic (#815),
+  not the PWA canary roadmap this note originally (and incorrectly) named. This
+  initiative uses Phase 145 because it was the next number free of any prior
+  reservation at the time it was authored; the downpayment epic's own Phase
+  145 slot (balance settlement, #825) was moved to Phase 148 on 2026-08-22 to
+  avoid colliding with this already-completed phase — see the dated note at
+  the end of this file. The PWA canary roadmap (`docs/features/PWA-Phases.md`)
+  remains unregistered in this ledger entirely; tracked separately, not by a
+  phase-number reservation here.
+- Classification: `within-existing-boundary` with an amendment to ADR 0008's
+  untagged/default MSME presentation rule. No new ADR, migration, API route,
+  permission, or exception allowlist is required.
+
+### Acceptance and Validation Evidence
+
+- [x] MSME profile defaults `show_online_queue` to `true`.
+- [x] Stale persisted MSME profiles rebuild to the current profile before POS
+  navigation and polling consume the profile.
+- [x] MSME queue visibility and Services isolation regression tests pass.
+- [x] Local authenticated Playwright verification passes: `Tindahan Ko`
+  (`workflow_mode=msme`) renders `Orders (0)`, while `Laundry`
+  (`workflow_mode=services`) does not render Orders; both sessions had no page
+  errors, console errors, or HTTP 5xx responses.
+- [x] Store Profile equivalence and MSME golden snapshot tests pass.
+- [x] Architecture checks pass before final validation.
+- [x] No tenant data, order, payment, inventory, shift, or database record was
+  created, modified, migrated, or deleted.
+
+### Implementation Links
+
+- `packages/shared-constants/src/posDefaultsAndTerminology.js`
+- `apps/dgfy-web/src/features/settings/WorkflowModeContext.jsx`
+- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posOperationalVisibility.test.js`
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js`
+- `apps/dgfy-api/tests/__snapshots__/storeProfile.equivalence.contract.test.js.snap`
+- `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
+
+## Phase 146 - POS Maintainability Closure
+
+### Initiative and Release
+
+- Initiative: POS terminal presentation maintainability cleanup, bundled into PR #853's release
+  batch (originating PR #845, superseded — see Phase 147 below).
+- Release: `develop`, via PR #853 (merged `d02dc70a6`, 2026-08-22).
+
+### Objective and Scope
+
+- Remove dead terminal queue presentation state (`queuedTerminalOperations`, `queueStatusFilter`,
+  `setQueueStatusFilter`) from `TerminalOperationsWorkspace.jsx` — queue replay/summary services are
+  the actual source of truth, per the declaration's precondition 3.
+- Replace a synchronous UI-only payment auto-fill update with a derived value.
+- Split the terminal presentation chunk out of the POS route bundle to stay under the
+  frontend-budgets chunk-size limit.
+- No change to authorization rules, payment methods, fiscal calculations, database schemas, or
+  transaction persistence (declaration's own classification: `major` on the `pos,terminal` surface
+  floor, not on content — this is presentation-layer only).
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Backfilled into this ledger 2026-08-22 (#848 session) — the compliance impact declaration below
+  shipped via PR #853 with no corresponding ledger entry, a rule-7 gap ("every ledger entry must
+  include...") discovered while resolving the #853/#578-precedent phase-number collision. Not
+  authored by this session's own work; recorded here for the first time from existing evidence.
+- This phase number (146) was one of the two #853 grabbed without checking the downpayment epic's
+  prior reservation (#815/#848); unlike #853's own Phase 142/145 claims (moved to Phase 147/148
+  below), Phase 146 for *this* content is kept as-is because #827 (the downpayment epic's original
+  Phase 146 claimant, "Hardening + documentation closure") had not shipped anything under that
+  number yet — #827 moves to Phase 149 instead. See the dated note at the end of this file.
+
+### Acceptance and Validation Evidence
+
+- `npm run lint:docs` — PASS.
+- `npm run check:architecture` — PASS.
+- POS tests — PASS (148 files, 721 tests).
+- Changed-file POS lint — PASS with zero errors.
+- `npm run build:pos` — PASS.
+- `npm run check:frontend-budgets` — PASS after lazy-loading the terminal presentation boundary;
+  POS route chunk 133.43 KB against the 190 KB limit.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/posCheckoutTerminalShell.contract.test.js`
+- `docs/compliance/impact-declarations/2026-08-21-pos-maintainability-phase-146.md`
+- Commits `835440c0e`/`c99961d0c` ("remove dead terminal queue state"),
+  `15bee98da`/`1d7238635` ("split terminal presentation chunk")
+
+## Phase 147 - PR #853 POS Release Batch Rebuild (supersedes #845)
+
+### Initiative and Release
+
+- Initiative: POS release-batch reconciliation and release-readiness closure.
+- Release: `develop`, via PR #853 (merged `d02dc70a6`, 2026-08-22) — the clean replacement for the
+  earlier draft PR #845, which is superseded and stays unmerged.
+
+### Objective and Scope
+
+- Rebuild from the current `develop` head, then reapply only the intended POS, storefront,
+  inventory-reservation, payment, PWA, and audit changes from the prior PR branch.
+- Preserve newer `develop` checkout, voucher, payment, schema-registry, and phase-ledger contracts
+  when cherry-pick conflicts occur.
+- Keep React Router security work and compliance-script enforcement in separate follow-up PRs
+  (tracked as draft PRs #854/#855).
+
+### Status
+
+- `completed`
+- Renumbered from Phase 142 to Phase 147 on 2026-08-22 (#848 session) — Phase 142 was already the
+  downpayment epic's reservation for #823 (storefront checkout UI, PR #844) per #849's 2026-08-22
+  renumber, which predates this phase's own PR by hours; #853's branch did not contain that renumber
+  when authored. See the dated note at the end of this file for the full resolution and the #578
+  precedent applied.
+
+### Dependencies and Governance Note
+
+- Depended on the `develop` head at authoring time and the PR conventions in `docs/ai/PR.md`.
+- Required fresh-schema and upgrade migration checks, architecture/compliance/docs gates, and
+  targeted POS/storefront payment and inventory tests before completion — all passed per PR #853's
+  own Testing Evidence section.
+- Three findings from this phase's reconciliation were later confirmed as unintended reverts, not
+  intentional scope (`resolveTrackedTotals`/#747, services local-simulation dead-wiring, and a
+  mixed-cart `checkoutPayload` argument-shape regression) — tracked and restored separately under
+  #857, not part of this phase's own acceptance evidence below.
+
+### Acceptance and Validation Evidence
+
+- Reconciliation base: `0e2d329f483c8bf7b94a9941f80fb9c690eef379`.
+- Old PR state preserved in local branch `backup/pr-845-before-rebuild`.
+- Focused inventory/RBAC tests: 6 suites, 41 tests passing; tenant migration and registry contracts
+  pass; architecture/compliance/docs hooks passed on the final commits.
+- Merged as PR #853, `mergeStateStatus: CLEAN`, `d23a65c9`-lineage build checks green.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`
+- `apps/dgfy-api/src/modules/shared/utils/onlineInventoryEffects.js`
+- `apps/dgfy-migration-runner/migrations/20260822000001-create-inventory-reservations.cjs`
+- Issue #843 and PR #853 (replacement for draft PR #845)
+
+---
+
+**Dated note, 2026-08-22 (#848 session) — Phase-number collision between PR #853 and the
+downpayment epic (#815), resolved per the #578 precedent ("the prior reservation wins; the side
+that grabbed a number without checking renumbers"):**
+
+PR #853's branch was cut before #849 (2026-08-22) renumbered the downpayment epic's Phase
+143/144→144/145 to keep #848 at 143, and #853's branch never merged that renumber before landing its
+own `## Phase 142` and `## Phase 145` ledger entries — confirmed: `62cd75c0b` (#849's merge) is not
+an ancestor of `f22fd51fb` (#853's own merge of `develop`). Resolution, decided by Pat 2026-08-22:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 142 | #823 storefront checkout UI (PR #844) | unchanged — prior reservation |
+| 143 | #848 POS settings UI (PR #859) | unchanged — prior reservation |
+| 144 | #824 accept/reject/refund | unchanged — prior reservation |
+| 145 | MSME POS Online Order Queue Visibility | unchanged — already `completed`, no prior reservation existed for 145 at authoring time (only 143/144 were reserved) |
+| 146 | POS Maintainability Closure | unchanged — backfilled above; #827's Phase 146 claim moves instead, since #827 has not shipped |
+| 147 | PR #853 POS release batch rebuild | **moved from 142** |
+| 148 | #825 balance settlement | **moved from 145** |
+| 149 | #827 hardening + documentation closure | **moved from 146** |
+
+No code changes accompany this renumber — PR #844 and PR #859 both keep their existing phase
+numbers unchanged, so none of their in-code `Phase 142`/`Phase 143` comments needed edits.
+
+**Addendum, 2026-08-22 (#826/Phase 151 planning session) — the above table's own "no prior
+reservation existed for 145" claim was itself incomplete.** #826's issue title read
+*"Phase 145: Customer-facing surfaces"* at authoring time, predating the collision resolved above,
+and was never checked against it — the same class of miss the table itself exists to fix, one level
+up. Caught while planning #826's implementation, not by a second collision landing in code (#826 had
+shipped no PR yet). Resolution, decided by Pat 2026-08-22, same #578 precedent: **#826 → Phase 151**,
+extending the table above:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | #826 customer-facing downpayment surfaces | **moved from 145** (own row, this addendum — not part of the #853 collision the table above resolves) |
+
+150 was the ledger's highest entry at authoring time; 148/149 remain reserved (not yet implemented)
+by #825/#827 per the table above, so 151 is the next free number. #827 keeps 149 rather than moving
+again — its number now reads before the phase it closes (149 before 151), which is cosmetic
+(sequence position is not itself a governed property) and cheaper than a third renumber of an
+unshipped reservation.
+
+---
+
+## Phase 148 - Balance Settlement at Delivery/Pickup (Staff-Recorded)
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815 / #273). Issue #825.
+- Release: `develop`, via PR (branch `feature/825-downpayment-balance-settlement`).
+- Phase number 148 is the slot this issue was already reserved under by the 2026-08-22 renumber note
+  above (#825 moved from its original "Phase 145" title under the #578 precedent). No new collision
+  and nothing to reconcile — AGENTS.md's Continuous Phase Numbering rule 10 satisfied by using the
+  existing reservation rather than appending a new highest number.
+
+### Objective and Scope
+
+- Close the middle of the downpayment flow. Phase 141 (#822) captures a downpayment online and
+  leaves the order `partially_paid`; Phase 144 (#824) shows POS staff how much is still owed;
+  Phase 151 (#826) shows the customer the same split. Nothing could *record* the balance actually
+  being paid, so such an order could never reach `paid` and never complete.
+- New use case + endpoint `POST /pos/orders/:id/record-payment`, extending — never loosening — the
+  existing Collect Cash flow. `collect-cash` keeps both of its guards (`payment_status === 'unpaid'`,
+  `cash_received >= total_amount`) untouched; the two endpoints' domains are disjoint by
+  construction (`unpaid` vs. `partially_paid`).
+- Settlement methods are ADR 0063 clause 4 `[binding]`'s merchant-owned V1 set — `cash`, `gcash`,
+  `maya`, `card` (a store-owned terminal, never PayMongo card), `bank_transfer`. This **widens
+  #825's own written scope**, which named only "cash + manually-recorded gcash"; decided by Pat
+  2026-08-23 on the grounds that clauses 5 and 6 already govern all four digital methods
+  identically, so nothing per-method had to be invented. Issue body updated to record the change.
+- Writes `amount_paid`/`balance_due`, flips to `paid` at zero balance, and writes ledger row 2
+  (`pos_order_payments.kind = 'balance'`) in the same transaction, linked to the Phase 141
+  `downpayment` row via `related_pos_order_payment_id`.
+- Both completion paths become balance-aware: `assertDeliveryCompletionReadiness` and the pickup
+  branch of `buildUpdateOnlineOrderStatusUseCase` now require a zero balance, not merely
+  `payment_status === 'paid'`.
+- Terminal UI: a separate `Settle Balance` button and dialog beside the untouched Collect Cash pair,
+  with the explicit merchant-owned confirmation ADR 0063 clause 6 requires.
+- v1 settles the full remaining balance in one action; the ledger supports N rows, so instalments
+  stay a later UI concern.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 137 (#819, the `partially_paid` vocabulary, `amount_paid`/`balance_due` columns,
+  and the `pos_order_payments` table including its `'balance'` enum value) and Phase 141 (#822, the
+  capture that produces a partially-paid order and writes ledger row 1). Both `completed`.
+- **No ADR change.** Every decision was already written: ADR 0069 clause 2 `[binding]` (balance is
+  staff-recorded, never a second automatic charge, and must carry its own single-use confirmation
+  guard) and clause 4b `[default]` (ledger row shape), both carried forward verbatim by ADR 0070
+  (`authoritative`) and cited through it; ADR 0063 clauses 4, 5, 6, and 12 `[binding]` (method set,
+  what an attestation must persist and must never claim, explicit confirmation failing closed, and
+  no PayMongo involvement). Classification: `within-existing-boundary`.
+- **ADR 0069 clause 9 `[default]` — VAT/BIR/fiscal treatment of a balance-settlement event remains
+  deferred.** Stated, not invented. A settlement produces no fiscal event.
+- **ADR 0069 clause 10 `[default]` — platform fee unchanged**, still computed on the captured
+  downpayment only; #817 tracks whether the balance leg should generate one separately.
+- **Compliance impact declaration required and filed**:
+  `docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md`,
+  classification `major`, surfaces `pos,terminal,payments`. The gate was confirmed to fail first
+  with eleven sensitive files listed, then pass.
+- **No migration.** First writer of an enum value and columns that have existed since Phase 137.
+
+### Acceptance and Validation Evidence
+
+- `apps/dgfy-api/tests/posOrderBalanceSettlement.usecase.test.js` (new) — cash settlement with
+  change computed off `balance_due`; all four merchant-owned methods at exact amount; fail-closed
+  without `manual_payment_received`; duplicate submit writes exactly one ledger row (#825's own
+  verification condition); the ledger records the balance settled and never the cash tendered;
+  `payment_provider` is `merchant_owned` and never `paymongo`; `unpaid` and `paid` orders rejected.
+- `apps/dgfy-api/tests/posOnlineOrderCompletionBalanceGate.usecase.test.js` (new) — completion
+  blocked at a nonzero balance on both paths with distinct reason codes; allowed at zero for both a
+  cash and a merchant-owned settlement; **a plain COD delivery with `amount_paid: 0` still requires
+  the original cash evidence** (the discriminator pin).
+- `apps/dgfy-web/src/features/pos/__tests__/terminalBalanceSettlement.behavior.test.jsx` (new) —
+  button mutual-exclusivity with Collect Cash, dialog based on `balance_due` not `total_amount`,
+  fail-closed submit for merchant-owned methods, and the store-attested-not-DGFY-verified copy.
+- Regression: `posPickupCashCollection`, `posDeliveryCashCollection`, and
+  `posDeliveryCompletionGuard` pass unchanged — the evidence that the live COD path was not
+  loosened. Full `apps/dgfy-web` POS suite green.
+- `npm run build:pos` (real Vite build), `node --check` on every changed backend file,
+  `npm run check:compliance` (failing then passing), `npm run check:architecture`,
+  `npm run lint:docs`.
+
+### Implementation Links
+
+- Issue: #825. Epic: #815 / #273.
+- ADRs: `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md`
+  (authoritative carrier for ADR 0069 clauses 2 and 4b),
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+  (clauses 4, 5, 6, 12).
+- Compliance: `docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md`.
+- Backend: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/controllers/posController.js`,
+  `apps/dgfy-api/src/routes/pos.js`, `apps/dgfy-api/src/validators/posValidator.js`.
+- Frontend: `apps/dgfy-web/src/features/pos/components/BalanceSettlementDialog.jsx` (new),
+  `TerminalOperationsPanels.jsx`, `TerminalPageDialogLayer.jsx`, `pages/TerminalPage.jsx`,
+  `services/posService.js`.
+- Next eligible phase: **149** (#827, hardening + documentation closure — the epic's final phase,
+  which depends on this one).
+
+---
+
+## Phase 149 - Hardening + Documentation Closure
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815 / #273). Issue #827. Final phase of
+  the epic -- depends on all prior phases (136-144, 147, 148, 150, 151; 145-146 are unrelated
+  already-completed POS work per the renumber note above).
+- Release: `develop`, via PR (branch `feature/827-downpayment-hardening-closure`), cut from fresh
+  `origin/develop` at `178255e95` (Phase 148's merge commit).
+- Audit + documentation phase, not new feature code -- per
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s Implementation Hardening Contract, required
+  before any cross-boundary payment/checkout workflow is considered done.
+
+### Objective and Scope
+
+- **#827's own body was re-verified fresh, not trusted as written.** Its ledger-backfill checkbox
+  (asking for entries for Phases 136-144/147-148) was already satisfied before this phase started --
+  every one of those entries already existed, in detail, with governance notes and acceptance
+  evidence. Not redone; stated as already-satisfied in the PR instead of silently reproduced.
+- New governed feature doc `docs/features/DOWNPAYMENT.md` -- the one real documentation-closure gap
+  (hardening item 10), since none existed. Summarizes the flow, the three payment modes and how
+  `customer_choice` collapses to the other two (Phase 150), the ledger row shape, the full 10-item
+  hardening-contract verdict table, residual risks, and references -- linking to each phase's own
+  ledger entry rather than restating it.
+- **#668 (QRPh voucher-redemption race), named in #827's own body as a residual risk, was found
+  already closed** (2026-08-20, `COMPLETED`) during this phase's fresh verification -- not silently
+  copied from the issue's stale framing. The race is accepted-as-is (not eliminated; reserving
+  earlier was considered and rejected for lack of a session-expiry release mechanism) and made
+  reconcilable via a `VOUCHER_REDEMPTION_UNAVAILABLE` finalization tag routed to the existing
+  `paid_manual_resolution_required` operator queue. `DOWNPAYMENT.md` documents the corrected status.
+- Two genuinely still-open residual risks carried into the new doc: the fiscal/BIR deferral (ADR
+  0069 clause 9 `[default]`, carried by ADR 0070) and the platform-fee-on-balance-leg question
+  (#817, open).
+- Hardening items 7 (frontend negative proof) and 8 (rendered UI proof) were the two items with no
+  recorded evidence anywhere in the epic. Item 7 was found already covered by an existing test
+  (`terminalBalanceSettlement.behavior.test.jsx`'s first two cases, Phase 148) on closer reading --
+  no new test needed, cited instead of duplicated. Item 8 was closed by a live walkthrough this
+  phase (see Acceptance and Validation Evidence).
+- **STAGING is not currently reachable for #827's literal "Verify -- end to end, on STAGING" ask.**
+  `origin/staging` (`6a06a1e6`, 2026-08-20) is behind `develop` and does not yet carry Phases 148,
+  150, or 151. Substituted the local-test Docker stack (`do-not-commit/local-test/`), rebuilt from
+  this branch (== current `develop`), with the substitution disclosed rather than silently
+  presented as a staging pass. A real staging E2E should be re-run on the next `develop -> staging`
+  promotion.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on every prior downpayment phase (136-144, 147, 148, 150, 151), all `completed`.
+- **No ADR change.** Nothing here revisits a Decision clause -- evidentiary closure of decisions
+  already made. Classification: `within-existing-boundary`.
+- **No compliance impact declaration.** Confirmed via `npm run check:compliance` ("No
+  compliance-sensitive changes detected") -- this phase touches only `docs/features/`, not
+  `apps/dgfy-api/src/modules/pos/`, `apps/dgfy-api/src/routes/pos.js`, or
+  `apps/dgfy-web/src/features/pos/`.
+- **No migration.** No schema or code change of any kind.
+
+### Acceptance and Validation Evidence
+
+- `npm run lint:docs` -- OK (28 governed docs validated, including the new `DOWNPAYMENT.md`).
+- `npm run check:adr --strict` -- OK (77 ADRs validated).
+- `npm run check:compliance` -- confirmed no sensitive-path match, as expected for a docs-only diff.
+- Live walkthrough against the local-test Docker stack (`docker context ch`,
+  `dgfy-pos.nicenature.space` / `dgfy-store.nicenature.space`), rebuilt (`--no-cache`) from this
+  branch (== `develop` @ `178255e95` plus this phase's docs-only diff) -- **PASS**. Full detail in
+  `DOWNPAYMENT.md` section 5; summary: a downpayment order (PHP 1200 total, PHP 1000 fixed
+  downpayment) captured via a properly HMAC-signed simulated `payment.paid` webhook (not an
+  unsigned bypass -- this stack runs `NODE_ENV=production`, which correctly refuses one), accepted,
+  progressed to Out for Delivery, settled its PHP 212.00 balance in cash with the Settle Balance
+  dialog (Collect Cash never rendered alongside it -- item 7's negative proof, live), and completed
+  only once `balance_due` reached zero. Final state: two `pos_order_payments` rows, correctly
+  linked and amounted. A second order was rejected instead, confirming the refund request scoped to
+  exactly the PHP 1000.00 downpayment, never the untouched PHP 212.00 balance -- the automatic
+  refund itself fell to manual review only because the simulated payment id has no real
+  PayMongo-side counterpart, the designed fallback firing correctly. No console errors surfaced.
+  Desktop-viewport coverage only -- a mobile-viewport pass was attempted but the browser resize
+  didn't take effect in this environment; disclosed as an open gap rather than claimed.
+- **#668, cited in #827's own body as a residual risk, was found already closed** (2026-08-20,
+  `COMPLETED`) on fresh verification -- see Objective and Scope above and `DOWNPAYMENT.md` section
+  6 for the corrected status.
+
+### Implementation Links
+
+- Issue: #827. Epic: #815 / #273.
+- Docs: `docs/features/DOWNPAYMENT.md` (new).
+- ADRs referenced (none amended): `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md`,
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (the #668 amendment, cited for the residual-risk correction).
+- This is the epic's terminating phase -- no next eligible phase.
+
+---
+
+## Phase 150 - Downpayment Settings Clarity + The `customer_choice` Payment Mode
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issues #865 and #866, filed
+  2026-08-22 from hands-on feedback on the Phase 143 (#848) POS Payments tab. Highest existing entry
+  in this ledger at authoring time was 147; 148/149 are reserved (not yet implemented) by the #853
+  renumber note immediately above, so 150 is the next free number.
+- Release: single `develop`-targeted PR, cut from `origin/feature/848-downpayment-settings-ui`
+  (PR #859's own branch, still open/unmerged at authoring time) rather than fresh `origin/develop`
+  -- both new files this phase extends (`DownpaymentSettingsPanel.jsx`,
+  `downpaymentSettingsForm.js`) exist only on that branch, not yet on `develop`. This PR's diff
+  against `develop` will therefore shrink to its own true scope automatically once #859 merges and
+  this PR's base is retargeted -- a deliberate, disclosed consequence of stacking, not an error.
+
+### Objective and Scope
+
+- **#865 — settings-form clarity.** The Minimum downpayment field was required in `fixed` type mode
+  yet could only be a no-op or a silent override of the fixed amount the merchant just typed (both
+  are constants, so the effective downpayment collapses to `max(fixed, min)` permanently). Resolved
+  by scoping the requirement to `percentage` type only, both server-side
+  (`downpaymentSettingsUseCases.js`'s effective-row validation) and client-side
+  (`downpaymentSettingsForm.js`'s `validateDownpaymentForm`/`formToPayload`, which now zeroes the
+  field for any non-percentage type rather than resubmitting a stale value). The panel hides the
+  field entirely outside `percentage` mode and adds helper text to all three amount fields
+  (Percentage, Fixed, Minimum) -- previously only Minimum had any.
+- **#866 — build the reserved `customer_choice` payment mode.** Reserved since Phase 138 (#820,
+  "Schema `customer_choice` now; server rejects it as unsupported in v1") and carried forward as an
+  explicit deferral by ADR 0069 and ADR 0070's Consequences. Lifted via a dated `## Amendments`
+  block on ADR 0070 (this PR, `[default]` tier per ADR 0039 -- the amended clause is an untagged
+  Consequences item, not a `[binding]` Decision clause). A `customer_choice`-configured store now
+  presents the customer, at checkout, with exactly two options: pay the full total online, or pay a
+  downpayment online with the balance settled on delivery/pickup (COD) -- mirroring the fact,
+  confirmed in code (`storeUseCases.js`), that a downpayment capture already forces the order's
+  `payment_type` to `'cash'` (COD for the balance). Plain COD with no downpayment remains
+  expressible as `full_payment` + a cash capability; `customer_choice` does not add a third option.
+- **Key simplification: no new order semantics.** `resolveDownpaymentForTotal`
+  (`downpaymentPolicy.js`) still returns only `full_payment` or `downpayment_required` -- never
+  `customer_choice` itself. The customer's checkout-time election (`payment_election`, a new
+  `'full'` | `'downpayment'` request field, default `'full'` -- under-collecting is the safer
+  failure direction) collapses `customer_choice`'s settings-level value into whichever of the two
+  existing shapes applies. Every downstream consumer (`capture_kind`, the order-placement gate,
+  `serializePaymentSession`, `storefrontDownpaymentPresentation.js`'s `resolveDownpaymentDisplay`)
+  needed **zero** changes, since all of them key off the *resolved* shape, which was already
+  correct.
+- **Storefront wiring, not just settings.** `payment_election` threads from a new pure model
+  (`storefrontPaymentElection.js`) through `StorefrontApp.jsx`'s state (self-healing back to
+  `'full'` the instant a store stops being `customer_choice`), the shared checkout-payload builder
+  (`buildFnbCheckoutPayload.js`, used by all three modes' quote and real-checkout paths alike), and
+  a new presentational control (`PaymentElectionSelector.jsx`) rendered only at a `customer_choice`
+  store, in each of the three checkout page containers (Retail/F&B/Simple). An election change
+  invalidates the quote via the same master effect that already reacts to cart/order-method/promo
+  changes -- getting this wrong would show a stale split against the new election.
+- Extended (not just widened) two existing guards to be election-aware rather than merely
+  mode-aware: the `downpayment_zero_total` checkout-block reason (`checkoutRules.js`) and the
+  `DOWNPAYMENT_POLICY_UNRESOLVED` fail-closed guard (`storeUseCases.js`) both now key on "did the
+  customer actually elect a downpayment," not just "is this store `customer_choice`" -- an election
+  of `'full'` at a `customer_choice` store must never trip either guard, since the quote correctly
+  resolving to `full_payment` there is by design, not a malformed-row symptom.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 138 (#820, the settings API) and Phase 143 (#848/PR #859, the POS settings panel
+  this phase extends in place rather than duplicating).
+- ADR 0070 amended (dated `## Amendments` block, `status: amended`) rather than superseded --
+  `[default]` tier per ADR 0039, since the lifted clause is an untagged Consequences item.
+- Compliance declaration: `docs/compliance/impact-declarations/
+  2026-08-22-downpayment-choice-and-settings-clarity.md` (`major`, `pos,terminal,payments`).
+  Storefront checkout code (`apps/dgfy-web/apps/store/`) is touched but is not a recognized
+  compliance surface in `check-compliance-impact.js`'s current rule set -- named in the declaration
+  for visibility, not silently omitted.
+- No checkpoint triggers from `.agents/skills/implement/SKILL.md`'s table -- no migration
+  (`customer_choice` was already a schema-authorized ENUM value), no compliance-declaration
+  ambiguity, no `staging`/`main` base, no deploy dispatch, no force-push.
+- Board: #865/#866 set `In progress` at branch time, `For Review` at PR-open time.
+
+### Acceptance and Validation Evidence
+
+- Backend: `downpaymentPolicy.unit.test.js` (21 passed, new `customer_choice` election matrix --
+  splits/doesn't-split, defaults to `'full'` when absent or garbage, never returns
+  `payment_mode: 'customer_choice'` itself, ignored for the other two modes),
+  `downpaymentSettingsUseCases.unit.test.js` (16 passed, `customer_choice` accepted with the same
+  effective-row rules as `downpayment_required`, `fixed`-type minimum no longer required),
+  `downpaymentSettingsValidator.unit.test.js` (6 passed), `storeCheckoutDownpaymentResolution.unit.test.js`
+  (23 passed, election threading through the quote and both checkout paths, plus the extended
+  `DOWNPAYMENT_POLICY_UNRESOLVED` guard verified in both directions -- trips on election=
+  `'downpayment'` against a malformed row, does NOT trip on election=`'full'` against the same row).
+- Backend regression sweep: every other test file importing the touched functions
+  (`downpaymentWebhookFinalization`, `storeCheckoutAffiliatePricing`,
+  `storeCartQuotePreviewNoContactRequired`, `storeCheckoutInventoryReservation`,
+  `storeCheckoutVoucherPromoStacking`, `storeCatalogPaymentMode`) -- all green. Two pre-existing,
+  unrelated failures (`storeDirectGcash.usecase.test.js`, `storeUsecases.applicationResult.test.js`,
+  a `DIRECT_PAYMENT_NOT_READY`/`DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE` drift) confirmed identical
+  on the unmodified baseline via `git stash` before/after -- not a regression.
+- Frontend (POS): `downpaymentSettingsForm.test.js` (23 passed, was 18) and
+  `downpaymentSettingsPanel.behavior.test.jsx` (11 passed, was 6) -- new coverage for the third
+  radio option, the hidden Minimum field in fixed mode, and the relaxed fixed-mode save path.
+- Frontend (storefront): full `apps/dgfy-web/apps/store/src/` suite, 723 passed across 136 files,
+  including the pre-existing `retailCheckoutOnlinePayments`/`simpleCheckoutOnlinePayments`/
+  `fnbStorefront` contract tests, which render the exact three checkout containers this phase wires
+  the election control through end to end.
+- `npm run build:pos` and `npm run build:store` -- real Vite builds, both succeeded. Full
+  `dgfy-web` workspace: 2381 passed across 421 files. `npm run lint`: 0 problems on every
+  new/changed file. `npm run check:architecture`: clean. `npm run check:compliance`: PASS (6
+  sensitive files, correctly scoped to this phase's own changes in local-worktree mode).
+- **Not verifiable this session, disclosed rather than glossed:** no live E2E of the storefront
+  election control against a deployed `customer_choice`-configured tenant (unit/contract coverage
+  only), and `POST /api/v1/compliance/preflight` not executed against a live environment -- same
+  disclosure shape as #859's own declaration.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`,
+  `apps/dgfy-api/src/modules/shared/utils/downpaymentPolicy.js`,
+  `apps/dgfy-api/src/validators/storeValidator.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`
+- `apps/dgfy-web/src/features/pos/components/DownpaymentSettingsPanel.jsx`,
+  `apps/dgfy-web/src/features/pos/utils/downpaymentSettingsForm.js`
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontPaymentElection.js` (new),
+  `apps/dgfy-web/apps/store/src/shared/components/checkout/PaymentElectionSelector.jsx` (new),
+  `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`,
+  `apps/dgfy-web/apps/store/src/shared/model/checkoutRules.js`,
+  `apps/dgfy-web/apps/store/src/StorefrontApp.jsx`, and the three checkout route
+  containers/props-hooks (Retail, F&B, Simple)
+- `docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md` (amended)
+- `docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md` (new)
+- Issues #865, #866
+
+## Phase 151 - Customer-Facing Downpayment Surfaces
+
+### Initiative and Release
+
+- Initiative: Downpayment & partial payment checkout (epic #815). Issue #826, retitled from a
+  collided "Phase 145" claim to Phase 151 — see the dated addendum on the #853/#578-precedent
+  renumber note above.
+- Release: single `develop`-targeted PR, cut from fresh `origin/develop`.
+
+### Objective and Scope
+
+- Order tracking and confirmation screens show the downpayment paid, not only the balance due.
+  `serializeOrderBase` (Phase 142, #823) already returns `amount_paid`/`balance_due` on both the
+  customer and public-tracking order payloads, and all three tracking payload models
+  (Retail/F&B/Simple) already carry `amountPaid`/`balanceDue` into their view state — but every
+  tracking UI rendered only `balanceDue`. `amountPaid` was parsed and carried and never displayed.
+- Consolidate five hand-rolled inline copies of the same row (Retail/F&B active + completed views,
+  Simple's route page) and two hand-rolled balance-label ternaries (Simple/F&B confirmation
+  screens) onto `shared/model/storefrontDownpaymentPresentation.js` — the module every *checkout*
+  surface already used, which the *tracking* surfaces had drifted away from.
+- The order-confirmation email (#532) is explicitly descoped — greenfield work with no existing
+  customer/order-facing email in `emailService.js`, large enough to be its own phase. #532 gained
+  an acceptance line requiring the downpayment split when it's eventually built. #826 links with
+  `Refs`, not `Closes`, and stays open for that reason.
+- Deliberately out of scope, named rather than silently omitted: the tracked-orders drawer
+  (`tracking/storage.js`'s `normalizeTrackedOrderEntry` persists no payment split, so its four
+  `*TrackingDrawerTotals.jsx` consumers can't show one) and the downloadable receipt image
+  (`shared/utils/storefrontTicketImage.js` prints raw `payment_status` with no amounts).
+- Fiscal/BIR treatment of a downpayment or balance-settlement event stays deferred per ADR 0069
+  clause 9 `[default]` — stated explicitly in the new shared component's own comment, not silently
+  omitted.
+
+### Status
+
+- `completed`
+- Completed 2026-08-22.
+
+### Dependencies and Governance Note
+
+- [ADR 0069](../architecture/adr/0069-retail-downpayment-multi-method-capture-and-refund-policy.md)
+  clause 9 `[default]` (fiscal/BIR deferral), carried forward by ADR 0070 (`status: superseded` /
+  `historical` on ADR 0069 itself — not cited as authority for any new decision here).
+- Phase 142 (#823) — built the backend serialization and payload-model threading this phase
+  displays; no backend change accompanies this phase.
+- Phase 144 (#824) — the refund/forfeiture mechanism this epic's customer-facing side reports on.
+- **No ADR amendment.** Presentation-only: displays fields the API already serializes, introduces
+  no new decision. Classification `within-existing-boundary`.
+- **No compliance declaration.** Confirmed against `scripts/check-compliance-impact.js`: its
+  `dgfy-web` rules cover only `src/features/pos/`, `src/features/compliance/`,
+  `src/pages/Settings`, and three named service files — `apps/dgfy-web/apps/store/**` matches none
+  of them, and no `apps/dgfy-api/**` file is touched. `npm run check:compliance` confirmed
+  "No compliance-sensitive changes detected" rather than assumed.
+
+### Acceptance and Validation Evidence
+
+- [x] `__tests__/storefrontDownpaymentPresentation.test.js` extended for the new
+  `resolveTrackingDownpaymentDisplay` adapter — active split, inactive when `paymentStatus` isn't
+  `partially_paid`, inactive when `amountPaid` is null, undefined input returns `NULL_DISPLAY`.
+- [x] New `__tests__/downpaymentTrackingSummary.test.jsx` — both amounts render for a downpayment
+  order, nothing renders for a fully-paid order or missing `trackingResult`, the balance label
+  follows delivery vs. pickup.
+- [x] `__tests__/simpleTrackingPresentation.test.js` — its three Phase 142 assertions
+  string-matched the literal inline block being consolidated away; rewritten to assert each of the
+  five tracking views imports and renders `DownpaymentTrackingSummary` (not deleted — the only
+  guard that the split stays wired at all).
+- [x] Full `apps/dgfy-web/apps/store/src` suite: 734 passed across 137 files (was 723/136 at Phase
+  150's measurement).
+- [x] `npm run build:store` — real Vite build, succeeded.
+- [x] `npx eslint` on every new/changed file — 0 problems.
+- [x] `npm run check:architecture` — OK, 50 modules/508 files.
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected", confirming no
+  declaration was required rather than assuming it.
+- [x] `npm run lint:docs` (chains `check:adr --strict`) — OK, 28 governed docs / 77 ADRs.
+- No order, payment, inventory, or database record was created, modified, migrated, or deleted —
+  presentation-only diff.
+
+### Implementation Links
+
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontDownpaymentPresentation.js`
+  (`resolveTrackingDownpaymentDisplay`, new)
+- `apps/dgfy-web/apps/store/src/shared/components/tracking/DownpaymentTrackingSummary.jsx` (new)
+- `apps/dgfy-web/apps/store/src/modes/retail/tracking/components/RetailTrackingActiveView.jsx`,
+  `RetailTrackingCompletedView.jsx`
+- `apps/dgfy-web/apps/store/src/modes/fnb/tracking/components/FnbTrackingActiveView.jsx`,
+  `FnbTrackingCompletedView.jsx`
+- `apps/dgfy-web/apps/store/src/modes/simple/tracking/components/SimpleTrackingRoutePage.jsx`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/components/SimpleCheckoutSuccessStep.jsx`,
+  `apps/dgfy-web/apps/store/src/modes/fnb/checkout/components/FnbCheckoutConfirmation.jsx`
+- `apps/dgfy-web/apps/store/src/__tests__/downpaymentTrackingSummary.test.jsx` (new),
+  `storefrontDownpaymentPresentation.test.js`, `simpleTrackingPresentation.test.js`
+- Issue #826 (`Refs`, stays open for #532's descoped email work), Issue #532 (gained an acceptance
+  line)

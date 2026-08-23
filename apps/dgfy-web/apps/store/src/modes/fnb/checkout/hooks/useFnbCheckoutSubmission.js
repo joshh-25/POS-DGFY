@@ -4,22 +4,16 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 import {
   createStorefrontOnlinePaymentSession,
   getStorefrontOnlinePaymentLabel,
+  isStorefrontDirectCardPaymentSession,
   isStorefrontDirectPaymentSession,
   isStorefrontHostedPaymentType,
   isStorefrontOnlinePaymentType,
   startStorefrontDirectPayment
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
-
-// RF-1 (PR #753 review): same fix as useCheckoutSubmission.js's own copy -- this object's
-// `totals.total_amount` is what FnbCheckoutRouteContainer.jsx's order-confirmation screen reads,
-// and it was still being set from the client's pre-submission totalsForDisplay, not the
-// server-persisted order.
-const resolveTrackedTotals = (order, fallbackTotals) => {
-  const serverTotal = Number(order?.total_amount);
-  return Number.isFinite(serverTotal)
-    ? { ...fallbackTotals, total_amount: serverTotal }
-    : fallbackTotals;
-};
+// Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
+// see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
+import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
+import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -85,6 +79,9 @@ export function useFnbCheckoutSubmission({
       access_mode: 'This storefront is not accepting online checkout right now.',
       missing_quote: 'Please click Quote first before checkout.',
       stale_quote: 'Your cart changed. Please refresh Quote before checkout.',
+      // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
+      // fully discounts a downpayment-required order to zero -- see that file's comment.
+      downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody
@@ -98,7 +95,7 @@ export function useFnbCheckoutSubmission({
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
-      const message = 'Verify the email code before placing this guest order.';
+      const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -119,7 +116,7 @@ export function useFnbCheckoutSubmission({
         : readStoreAuthToken();
       if (isStorefrontOnlinePaymentType(fnbPaymentType)) {
         if (qrphPaymentSession?.payment_session_id) {
-          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose another payment method after it finishes.';
           setCheckoutError(message);
           toast.error(message);
           return;
@@ -137,6 +134,11 @@ export function useFnbCheckoutSubmission({
           storeSlug: selectedStore.slug
         });
         if (isStorefrontDirectPaymentSession(paymentSession)) {
+          if (isStorefrontDirectCardPaymentSession(paymentSession)) {
+            setQrphPaymentSession(paymentSession);
+            toast.info('Enter your card details to continue securely with PayMongo.');
+            return;
+          }
           const directPayment = await startStorefrontDirectPayment({
             billing: {
               name: customerName,

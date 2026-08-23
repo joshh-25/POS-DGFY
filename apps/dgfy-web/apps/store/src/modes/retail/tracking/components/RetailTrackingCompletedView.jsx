@@ -10,6 +10,7 @@ import {
   Star,
   Store,
 } from 'lucide-react';
+import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
 
 export function RetailTrackingCompletedView({ actions, formatters, isMobileViewport, viewModel }) {
   const {
@@ -185,6 +186,7 @@ export function RetailTrackingCompletedView({ actions, formatters, isMobileViewp
                             <span style={{ fontSize: 15, fontWeight: 900, color: '#0f172a' }}>Total Amount</span>
                             <span style={{ fontSize: 18, fontWeight: 900, color: dgfyPrimary }}>{money(trackingResult.totalAmount || 0)}</span>
                           </div>
+                          <DownpaymentTrackingSummary trackingResult={trackingResult} money={money} orderMethod={isPickup ? 'pickup' : 'delivery'} />
                         </div>
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Order Again CTA ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}

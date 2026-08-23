@@ -22,6 +22,8 @@ const REQUIRED_METHODS = Object.freeze([
     'isTrackingPinTaken',
     'nextInvoiceNumber',
     'createOnlineTransactionWithLines',
+    // Phase 141 (#822): ledger row 1 (kind: 'downpayment') for a webhook-finalized downpayment order.
+    'createOrderPaymentEntry',
     'getOrderByTrackingPin',
     'updateOrderByTrackingPin',
     'listOrdersByCustomer',

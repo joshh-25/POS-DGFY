@@ -231,6 +231,7 @@ jobs:
           src/features/pos/__tests__/FnbModifierPickerDialog.test.jsx
           src/features/pos/__tests__/posFnbModifierManager.session.test.jsx
           src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
+          src/config/__tests__/permissionsFrontendParity.test.js
 
       - name: Build all frontend applications
         working-directory: apps/dgfy-web

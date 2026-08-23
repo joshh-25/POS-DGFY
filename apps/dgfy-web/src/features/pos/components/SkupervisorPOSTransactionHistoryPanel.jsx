@@ -98,10 +98,8 @@ export default function POSTransactionHistoryPanel({
                             <th scope="col" className="text-left py-2">Cashier</th>
                             <th scope="col" className="text-left py-2">Payment</th>
                             <th scope="col" className="text-left py-2">Discount</th>
-                            <th scope="col" className="text-right py-2">Fee</th>
-                            <th scope="col" className="text-right py-2">Restaurant Charge</th>
-                            <th scope="col" className="text-right py-2">Vatable</th>
-                            <th scope="col" className="text-right py-2">VAT</th>
+                            <th scope="col" className="text-right py-2">VATable Sales</th>
+                            <th scope="col" className="text-right py-2">VAT Amount (12%)</th>
                             <th scope="col" className="text-right py-2">Total</th>
                             <th scope="col" className="w-[5.75rem] py-2 text-center">Action</th>
                         </tr>
@@ -109,7 +107,7 @@ export default function POSTransactionHistoryPanel({
                     <tbody>
                         {historyLoading ? (
                             <tr>
-                                <td colSpan={12} className="py-4 text-center text-slate-500" aria-live="polite">Loading transactions...</td>
+                                <td colSpan={10} className="py-4 text-center text-slate-500" aria-live="polite">Loading transactions...</td>
                             </tr>
                         ) : (
                             <>
@@ -129,8 +127,6 @@ export default function POSTransactionHistoryPanel({
                                         <td className="py-2 text-slate-600">
                                             {formatDiscountDisplay(row.discount_amount)}
                                         </td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.restaurant_service_charge_amount)}</td>
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
                                         <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
@@ -161,7 +157,7 @@ export default function POSTransactionHistoryPanel({
                                 ))}
                                 {historyRows.length === 0 && (
                                     <tr>
-                                        <td colSpan={12} className="py-6 text-center text-slate-500">No transactions found.</td>
+                                        <td colSpan={10} className="py-6 text-center text-slate-500">No transactions found.</td>
                                     </tr>
                                 )}
                             </>

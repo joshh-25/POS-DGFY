@@ -32,8 +32,12 @@ describe('Storefront guest checkout OTP contract', () => {
     const sharedSubmissionSource = readAppSource('shared/hooks/useCheckoutSubmission.js');
     const checkoutRouteContainerSource = readAppSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
     const simpleCustomerStepSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx');
+    const simpleRoutePropsSource = readAppSource('modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js');
     const serviceValidatorSource = readRepoSource('apps/dgfy-api/src/validators/serviceValidator.js');
     const serviceUseCaseSource = readRepoSource('apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js');
+    const submissionCallStart = appSource.indexOf('} = useCheckoutSubmission({');
+    const submissionCallEnd = appSource.indexOf('\n  });', submissionCallStart);
+    const submissionCallSource = appSource.slice(submissionCallStart, submissionCallEnd);
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
     expect(hookSource).toContain('idempotency_key');
@@ -51,7 +55,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(fnbComponentSource).toContain('badgeLabel="Recommended"');
     expect(fnbComponentSource).toContain('resendLabel="Send code again"');
     expect(retailComponentSource).toContain('Verify your email');
-    expect(simpleComponentSource).toContain('Verify your email');
+    expect(simpleComponentSource).toContain('Verify this guest checkout email');
     expect(serviceComponentSource).toContain('badgeLabel="Required"');
     expect(serviceComponentSource).toContain('resendLabel="Send verification code"');
     expect(appSource).not.toContain('shared/components/checkout/GuestEmailVerification.jsx');
@@ -61,12 +65,34 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(submissionSource).toContain('guestCheckoutIntentId');
     expect(appSource).toContain("import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';");
     expect(appSource).toContain('} = useGuestCheckoutOtp({');
+    expect(submissionCallSource).toContain('guestCheckoutIntentId');
+    expect(submissionCallSource).toContain('guestCheckoutOtpVerified');
+    expect(submissionCallSource).toContain('guestCheckoutProof');
     expect(appSource).not.toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');
-    expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');
+    expect(sharedSubmissionSource).toContain('GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE');
+    expect(modelSource).toContain('Guest checkout needs a separate 6-digit email code.');
     expect(simpleCustomerStepSource).toContain('SimpleCheckoutGuestEmailVerification');
+    expect(simpleRoutePropsSource).toContain('onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp');
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
+  });
+
+  // #613: guestCheckoutIntentId/guestCheckoutOtpVerified/guestCheckoutProof are referenced
+  // elsewhere in StorefrontApp.jsx (e.g. the useGuestCheckoutOtp destructure, the
+  // useFnbCheckoutSubmission call), so a blanket `appSource.toContain(...)` check would have
+  // passed even while the shared `useCheckoutSubmission` call site -- the one Retail and Simple
+  // MSME checkout actually submit through -- was silently missing all three, which is exactly
+  // how #613 shipped undetected. Assert on the call-site block itself, not just the file.
+  it('passes the verified guest checkout proof into the shared useCheckoutSubmission call (#613)', () => {
+    const appSource = readAppSource('StorefrontApp.jsx');
+    const callSiteMatch = appSource.match(/=\s*useCheckoutSubmission\(\{[\s\S]*?\}\);/);
+
+    expect(callSiteMatch).not.toBeNull();
+    const callSite = callSiteMatch[0];
+    expect(callSite).toContain('guestCheckoutIntentId');
+    expect(callSite).toContain('guestCheckoutOtpVerified');
+    expect(callSite).toContain('guestCheckoutProof');
   });
 });

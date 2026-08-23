@@ -159,10 +159,20 @@ export const finalizePaidCommerceSession = async ({
     // paid session must use that exact value so the tenant order idempotency
     // hash remains identical to the original checkout request.
     const storedPaymentType = String(storedCheckoutPayload.payment_type || '').trim().toLowerCase() || 'qrph';
+
+    // Phase 141 (#822, ADR 0069 clause 2 [binding], carried forward by ADR 0070): a downpayment
+    // capture is cash-on-delivery for the balance -- the order's OWN payment method is 'cash', not
+    // the online rail that paid the downpayment leg. This deterministically overrides
+    // storedPaymentType on every call (including a webhook retry), so the tenant order idempotency
+    // hash (computed from the order-facing payload's own payment_type -- see storeUseCases.js's
+    // hashPayload call) stays identical across retries, same guarantee the comment above already
+    // relied on for the pre-Phase-141 case.
+    const isDownpaymentCapture = plainSession.capture_kind === 'downpayment';
+    const orderPaymentType = isDownpaymentCapture ? 'cash' : storedPaymentType;
     const checkoutPayload = {
       ...storedCheckoutPayload,
       idempotency_key: plainSession.idempotency_key,
-      payment_type: storedPaymentType,
+      payment_type: orderPaymentType,
       payment_status: 'paid',
       payment_provider: 'paymongo',
       payment_reference: getPaymentIdFromPayMongoResource(resource) || plainSession.provider_payment_id || plainSession.provider_payment_intent_id,
@@ -171,11 +181,27 @@ export const finalizePaidCommerceSession = async ({
       payment_webhook_confirmed: true
     };
 
+    // Server-internal sibling argument, never a payload field -- storeCheckoutUseCase's other
+    // caller (storeHandlers.js, the direct HTTP path) never passes this, which is what keeps the
+    // downpayment guard it gates server-authoritative. Present only when real money was actually
+    // captured for this session.
+    const capturedPayment = isDownpaymentCapture ? {
+      kind: 'downpayment',
+      captured_centavos: plainSession.total_amount_centavos,
+      order_total_centavos: plainSession.order_total_centavos,
+      method: plainSession.capture_payment_method || storedPaymentType,
+      provider_payment_id: getPaymentIdFromPayMongoResource(resource) || plainSession.provider_payment_id || null,
+      provider_event_id: providerEventId || plainSession.provider_event_id || null,
+      session_reference: plainSession.public_reference,
+      refundable: plainSession.downpayment_refundable
+    } : null;
+
     const result = await dbStore.run(context, () => storeCheckoutUseCase({
       tenantId: tenant.id,
       payload: checkoutPayload,
       storeCustomer: verifiedStoreCustomer,
-      allowExpiredGuestCheckoutProof: true
+      allowExpiredGuestCheckoutProof: true,
+      capturedPayment
     }));
 
     if (!result.success) {

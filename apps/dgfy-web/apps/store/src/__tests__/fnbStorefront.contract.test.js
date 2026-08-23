@@ -230,15 +230,27 @@ describe('Food & Beverage storefront contract', () => {
     expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
     expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
-    expect(storefrontAppSource()).toContain("handleRefreshQrphPaymentSession({ silent: true })");
-    expect(storefrontAppSource()).toContain('pollPaymentStatus();');
-    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)");
+    expect(storefrontAppSource()).toContain("qrphPaymentRefreshRef.current?.({ silent: true })");
+    expect(storefrontAppSource()).toContain('createCompletionTrackingScheduler');
+    expect(storefrontAppSource()).toContain('resolveTrackingRetryDelayMs');
+    expect(storefrontAppSource()).toContain('qrphPaymentRefreshRef.current');
+    expect(storefrontAppSource()).not.toContain('window.setInterval(pollPaymentStatus');
+    expect(storefrontAppSource()).toContain("['awaiting_payment', 'paid'].includes(paymentStatus)");
     expect(storefrontAppSource()).toContain('setFnbOrderStep(4)');
     expect(storefrontAppSource()).toContain('setSimpleOrderStep(3)');
     expect(storefrontAppSource()).toContain("setCheckoutTab('checkout')");
     expect(storefrontAppSource()).toContain('paymentReturnSessionRef.current === paymentSessionId');
     expect(storefrontAppSource()).toContain("paymentSession?.status === 'finalized' && paymentSession?.tracking_pin");
     expect(storefrontAppSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
+  });
+
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its
+  // options capture online, matching ADR 0070's amendment. Cash must stay hidden even under
+  // election='full', where downpaymentDisplay.active alone would be false.
+  it('hides cash for a customer_choice store regardless of the current election', () => {
+    const checkoutRouteContainer = checkoutRouteContainerSource();
+
+    expect(checkoutRouteContainer).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
   });
 
   it('provides a development-only PayMongo sandbox confirmation control', () => {

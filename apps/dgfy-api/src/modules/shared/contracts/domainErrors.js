@@ -46,6 +46,13 @@ export class DomainError extends Error {
         this.statusCode = Number.isInteger(options.statusCode)
             ? options.statusCode
             : resolveDomainErrorStatus(this.code);
+        // Internal observability classification only -- deliberately NOT part of `details`.
+        // `details` is serialized straight into the HTTP error payload by
+        // useCaseResponder.js's resolveDomainFailure (`errors: failure.details` in every
+        // controller's default error payload), so anything placed there becomes a response-body
+        // API-contract change. This field never is -- no code path reads it when building a
+        // response. See isExpectedDomainFailure below.
+        this.observabilityReasonCode = options.observabilityReasonCode || null;
     }
 }
 
@@ -58,3 +65,27 @@ export const isDomainError = (value) => (
         && typeof value.message === 'string'
     )
 );
+
+// Precondition failures that are modeled as SERVICE_UNAVAILABLE (503) for the HTTP contract --
+// "this optional integration isn't configured/enabled" -- but that are expected client/environment
+// state, not a fault. Kept narrow and explicit on purpose: only SERVICE_UNAVAILABLE errors with a
+// reason code on this list are treated as non-reportable, so an unrecognized future 503 (or a
+// genuine INTERNAL_ERROR/STORE_CATALOG_RUNTIME_ERROR) still reports normally. See #508.
+const EXPECTED_UNAVAILABLE_REASON_CODES = new Set([
+    'NO_PRINTER_CONFIGURED',           // clientManagedDeviceDriver.js -- no printer/cash drawer configured
+    'POS_HARDWARE_DISABLED',           // disabledDeviceDriver.js -- hardware administratively disabled
+    'POS_PRINTING_DISABLED',           // disabledDeviceDriver.js -- printing administratively disabled
+    'ROUTE_CALCULATOR_NOT_CONFIGURED'  // routeCalculatorUseCases.js -- ROUTE_CALCULATOR_ENDPOINT unset
+]);
+
+// Reads two sources, deliberately: `observabilityReasonCode` is the preferred path for any new
+// throw site (never serialized into a response) -- `details.reason_code` is read as a fallback
+// only because the three POS driver codes above already carried it there before #508, and their
+// response payloads already included it (pre-existing, not a new exposure). Don't add a new
+// reason_code to `details` to satisfy this fallback -- use `observabilityReasonCode` instead, or
+// the resulting response body silently changes (see PR #791 review, RF-1).
+export const isExpectedDomainFailure = (error) => {
+    if (!error || error.code !== DomainErrorCode.SERVICE_UNAVAILABLE) return false;
+    const reasonCode = error.observabilityReasonCode || error.details?.reason_code;
+    return Boolean(reasonCode) && EXPECTED_UNAVAILABLE_REASON_CODES.has(reasonCode);
+};

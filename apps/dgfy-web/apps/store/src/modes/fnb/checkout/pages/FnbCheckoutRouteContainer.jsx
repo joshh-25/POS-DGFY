@@ -13,6 +13,9 @@ import { DeliveryPinMap } from '../../../../features/locations/components/Delive
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
+import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
+import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
+import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import {
   MOBILE_DROPDOWN_MENU_STYLE,
   MOBILE_DROPDOWN_OPTION_STYLE,
@@ -71,6 +74,9 @@ export function FnbCheckoutRouteContainer({
   checkoutLoading,
   checkoutResult,
   checkoutTab,
+  customerEmail,
+  customerName,
+  customerPhone,
   customerPin,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
@@ -114,6 +120,7 @@ export function FnbCheckoutRouteContainer({
   handleCheckout,
   handleDownloadCheckoutImage,
   handleGuestCheckoutOtpCodeChange,
+  onPaymentElectionChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
@@ -131,6 +138,7 @@ export function FnbCheckoutRouteContainer({
   isMobileViewport,
   money,
   orderMethod,
+  paymentElection = 'full',
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
@@ -176,6 +184,8 @@ export function FnbCheckoutRouteContainer({
   totalsForDisplay,
   withAssetOrigin,
 }) {
+  // Phase 142 (#823): quote-sourced (this container renders before a payment session exists).
+  const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -688,34 +698,56 @@ export function FnbCheckoutRouteContainer({
             onSubmit={handleCheckout}
             paymentControl={(
               <div style={{ display: 'grid', gap: 12 }}>
+                <PaymentElectionSelector
+                  accentColor={fnbOrderBrand}
+                  active={isCustomerChoiceStore(selectedStore)}
+                  bodyFont={servicesBodyFont}
+                  onChange={onPaymentElectionChange}
+                  value={paymentElection}
+                />
                 <PaymentMethodSelectorBlock
-                  label="Payment Type"
+                  label={downpaymentDisplay.active ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
-                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
+                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
                   DropdownComponent={StorefrontDropdown}
                   triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
                   optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
                   selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
-                  showCashInfo={fnbPaymentType === 'cash'}
+                  showCashInfo={!downpaymentDisplay.active && fnbPaymentType === 'cash'}
                   cashInfoAccent={fnbOrderBrand}
                   bodyFont={servicesBodyFont}
+                  downpaymentCallout={(
+                    <DownpaymentPaymentCallout
+                      accentColor={fnbOrderBrand}
+                      bodyFont={servicesBodyFont}
+                      display={downpaymentDisplay}
+                      money={money}
+                      orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
+                    />
+                  )}
                 />
                 {isStorefrontOnlinePaymentType(fnbPaymentType) ? (
                   <FnbQrphPaymentPanel
+                    amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
+                    amountDueLabel="Downpayment due"
+                    balanceNote={downpaymentDisplay.active
+                      ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                      : null}
+                    billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                     onConfirmTestPayment={import.meta.env.DEV
                       && fnbPaymentType === 'qrph'
                       && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                       ? handleConfirmQrphTestPayment
                       : null}
-                    onUseCash={() => {
+                    onChooseAnotherPaymentMethod={() => {
                       resetQrphPaymentSession();
-                      handlePaymentTypeChange('cash');
                     }}
                     paymentSession={qrphPaymentSession}
                     paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
                     paymentType={fnbPaymentType}
+                    qrAmountNote={downpaymentDisplay.active ? 'This QR contains your downpayment amount.' : null}
                     refreshing={qrphPaymentStatusLoading}
                   />
                 ) : null}
@@ -723,7 +755,9 @@ export function FnbCheckoutRouteContainer({
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
-            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}` : 'Place Order'}
+            submitLabel={downpaymentDisplay.active
+              ? `Pay downpayment (${money(downpaymentDisplay.downpaymentAmount)})`
+              : fnbPaymentType === 'qrph' ? 'Generate QR Ph' : isStorefrontHostedPaymentType(fnbPaymentType) ? `Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}` : 'Place Order'}
             withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>

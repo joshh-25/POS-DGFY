@@ -33,6 +33,11 @@ export const updateEmployeeCreditEmployeeAccount = async (employeeId, payload = 
     return response.data?.data || null;
 };
 
+export const enableEmployeeCreditForActiveEmployees = async () => {
+    const response = await api.post('/pos/employee-credit/employee-accounts/enable-active');
+    return response.data?.data || null;
+};
+
 export const recordEmployeeCreditRepayment = async (accountId, payload = {}) => {
     const response = await api.post(`/pos/employee-credit/accounts/${accountId}/repay`, payload);
     return response.data?.data || null;
