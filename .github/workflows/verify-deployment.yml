@@ -20,9 +20,10 @@ name: Verify Deployment Health
 # Every remote command below is READ-ONLY (`docker compose ps`, `docker inspect`, an in-container
 # `curl` against dgfy-api's own health endpoint) -- unlike publish-platform.yml's `docker compose
 # up -d`, nothing here mutates server state. Reuses that same workflow's established
-# SSH_PRIVATE_KEY/SSH_TARGET-per-GitHub-Environment secret pattern for the same 4 environments
-# (DEV/STAGING/BETA/PROD); see docs/ops/RELEASE_CANDIDATE_POLICY.md for the current release-flow
-# authority governing that secret-handling pattern.
+# SSH_PRIVATE_KEY/SSH_TARGET-per-GitHub-Environment secret pattern for the same 3 environments
+# (DEV/STAGING/PROD -- BETA retired 2026-08-23, #329/#895); see
+# docs/ops/RELEASE_CANDIDATE_POLICY.md for the current release-flow authority governing that
+# secret-handling pattern.
 #
 # `dgfy-api` has no host port published (compose: `networks: [dgfy_internal]` only), so `/health`
 # is polled via `docker compose exec` into the container itself, exactly like the container's own
@@ -51,7 +52,6 @@ on:
         options:
           - DEV
           - STAGING
-          - BETA
           - PROD
         required: true
       poll_minutes:

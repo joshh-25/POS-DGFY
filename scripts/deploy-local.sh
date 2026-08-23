@@ -55,15 +55,18 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$ENVIRONMENT" ]; then
-  echo "::error:: --env is required (DEV, STAGING, or BETA)." >&2
+  echo "::error:: --env is required (DEV or STAGING)." >&2
   exit 1
 fi
 
 case "$ENVIRONMENT" in
   DEV) TAG="develop" ;;
   STAGING) TAG="staging" ;;
-  BETA) TAG="beta" ;;
-  *) echo "::error:: --env must be DEV, STAGING, or BETA (got '$ENVIRONMENT')." >&2; exit 1 ;;
+  # BETA removed 2026-08-23 (#329/#895) -- beta.dgfy.ph now redirects to
+  # prod, so there is no BETA deploy target left to build/push for. PROD
+  # deploys go through deploy-main.yml, not this script -- see its own
+  # header comment.
+  *) echo "::error:: --env must be DEV or STAGING (got '$ENVIRONMENT')." >&2; exit 1 ;;
 esac
 
 REGISTRY="ghcr.io/sieitzz/dgfy-platform"

@@ -1,4 +1,4 @@
-name: Deploy Main (BETA + PROD dual-deploy)
+name: Deploy Main (PROD)
 
 # Renamed from "Build Images (main)"/build-main.yml 2026-08-14 as part of
 # removing every auto-build/auto-deploy trigger repo-wide (see deploy.yml's
@@ -31,39 +31,43 @@ permissions:
   contents: read
   packages: write
 
-# DUAL-DEPLOY (2026-07-20): dgfy.ph went live in production alongside
-# beta.dgfy.ph, both domain groups sharing ONE backend/MySQL/Redis on the same
-# server. Dispatching this with components:all (the default) builds BOTH
-# frontends and deploys them together:
+# PROD-ONLY (2026-08-23, #329/#895): beta.dgfy.ph retired -- nginx now
+# redirects every *.beta.dgfy.ph host straight to its *.dgfy.ph equivalent
+# (#894/#896), so the `frontend-beta` image/container this workflow used to
+# build and deploy no longer has anything to serve. Dispatching this with
+# components:all (the default) now builds and deploys a single frontend:
 #
-#   * frontend:beta    -- built against the BETA GitHub Environment's VITE_*
-#                         (beta.dgfy.ph auth/handoff URLs). Served by the
-#                         `frontend-beta` container -> *.beta.dgfy.ph.
 #   * frontend:latest  -- built against the PROD GitHub Environment's VITE_*
-#                         (dgfy.ph auth/handoff URLs). Served by the `frontend`
-#                         container -> the *.dgfy.ph production domains.
-#   * api:beta         -- built ONCE and shared (from apps/dgfy-api, plus a
-#                         paired migration-runner:beta image). The api image
-#                         is environment-agnostic (deploy-api.yml passes no
-#                         per-env build args; its runtime config is the
-#                         server's hand-maintained .env), so there is no
-#                         separate prod api build.
+#                         (dgfy.ph auth/handoff URLs). Served by the
+#                         `frontend` container -> the *.dgfy.ph production
+#                         domains AND, via the nginx redirect, every
+#                         *.beta.dgfy.ph request too.
+#   * api / migration-runner -- built ONCE (from apps/dgfy-api, plus a paired
+#                         migration-runner image). Both jobs now build against
+#                         the PROD GitHub Environment -- this was already a
+#                         functional no-op even under the old dual-deploy
+#                         setup (deploy-api.yml reads no `vars.*`, only
+#                         `secrets.GITHUB_TOKEN`) since flipping it just
+#                         retires the now-meaningless BETA distinction for
+#                         these two jobs. The image TAG stays `beta` for now
+#                         (see below) -- this comment is about the
+#                         `environment:` input, a separate thing from the tag.
 #
-# After all three images are pushed, a SINGLE publish job SSH-deploys once
+# `image_tags: "beta"` is kept deliberately, NOT renamed here: the server's
+# .env still sets `IMAGE_TAG=beta`, and renaming it needs a coordinated
+# server .env edit + api/migration-runner restart -- exactly the downtime
+# this cutover was designed to avoid. Tracked as its own follow-up (#329
+# Phase G), not part of this cleanup.
+#
+# After the image(s) are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
-# refreshes frontend-beta:beta, frontend:latest and backend:beta in one go.
-# The deploy is resolved from the PROD Environment's SSH secrets (validated in
-# the 2026-07-20 cutover); BETA and PROD carry the same deploy secrets since it
-# is one server.
+# refreshes frontend:latest and backend:beta in one go. The deploy is
+# resolved from the PROD Environment's SSH secrets (validated in the
+# 2026-07-20 cutover).
 #
 # NOTE (shared api, no gate): a components:all/backend dispatch restarts the
-# shared dgfy-api (+ dgfy-migration-runner) that BOTH beta and prod now
-# depend on, with no approval gate beyond whoever has dispatch access. This
-# is the accepted interim behaviour for the dual-deploy window.
-#
-# Future cleanup (Option B, out of scope here): make PROD the sole deploy
-# owner and reduce BETA to frontend-only vars. See the cutover runbook:
-# docs/deployment/2026-07-20-dgfy-ph-production-cutover-runbook.md
+# shared dgfy-api (+ dgfy-migration-runner), with no approval gate beyond
+# whoever has dispatch access. This is unchanged from the dual-deploy window.
 
 jobs:
   # Shared dgfy-api image (environment-agnostic; built once, tagged beta to
@@ -75,7 +79,7 @@ jobs:
     if: inputs.components == 'all' || inputs.components == 'backend'
     uses: ./.github/workflows/deploy-api.yml
     with:
-      environment: BETA
+      environment: PROD
       image_tags: "beta"
       # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
@@ -90,7 +94,7 @@ jobs:
     if: inputs.components == 'all' || inputs.components == 'backend'
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
-      environment: BETA
+      environment: PROD
       image_tags: "beta"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
       runner_labels_json: '["self-hosted"]'
@@ -99,40 +103,12 @@ jobs:
       contents: read
       packages: write
 
-  # Beta frontend image (beta.dgfy.ph VITE_* baked in).
-  frontend-beta:
-    if: inputs.components == 'all' || inputs.components == 'frontend'
-    uses: ./.github/workflows/deploy-frontend.yml
-    with:
-      environment: BETA
-      image_tags: "beta"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["self-hosted"]'
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: write
-
-  # Prod frontend image (dgfy.ph VITE_* baked in).
-  #
-  # `needs: frontend-beta` added 2026-08-14 (#427): this job and
-  # frontend-beta both push a large image to GHCR, and running them in
-  # parallel is what tripped GHCR's secondary rate limit in run
-  # 31728787346 (frontend-prod's push got a 403 mid-deploy while
-  # frontend-beta, started slightly earlier, succeeded). Serializing them
-  # costs ~4-5 extra minutes of wall-clock on this workflow only.
-  #
-  # Side effect worth knowing: `needs` on a job whose `if:` does not
-  # reference success()/always()/failure()/cancelled() keeps GitHub's
-  # default implicit gate -- frontend-prod now only runs if frontend-beta
-  # actually succeeded, where before they were independent attempts. If
-  # frontend-beta fails, frontend-prod is skipped (not attempted), and the
-  # publish job below correctly refuses to deploy either -- its `if`
-  # requires BOTH frontend-beta.result != 'failure' AND
-  # frontend-prod.result != 'failure', so a beta failure blocks prod's
-  # deploy too even though frontend-prod itself never ran.
+  # Prod frontend image (dgfy.ph VITE_* baked in). Now the only frontend this
+  # workflow builds -- frontend-beta was removed 2026-08-23 (#329/#895), and
+  # with it the #427 serialization that used to make this job `needs:
+  # frontend-beta` (a beta build failure can no longer block the prod
+  # deploy).
   frontend-prod:
-    needs: frontend-beta
     if: inputs.components == 'all' || inputs.components == 'frontend'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
@@ -145,20 +121,19 @@ jobs:
       contents: read
       packages: write
 
-  # Single SSH deploy that refreshes all three images on the server in one
+  # Single SSH deploy that refreshes all images on the server in one
   # `docker compose pull && up -d`. Runs unless any image build actually
   # failed or was cancelled - a `skipped` result (e.g. once a changed-paths
   # gate is added here) must still allow publish to proceed with whichever
   # images did build, matching deployment-orchestrator.yml's publish gate.
   publish:
-    needs: [ dgfy-api, dgfy-migration-runner, frontend-beta, frontend-prod ]
+    needs: [ dgfy-api, dgfy-migration-runner, frontend-prod ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
-      needs.frontend-beta.result != 'failure' &&
       needs.frontend-prod.result != 'failure' &&
-      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend-beta.result == 'success' || needs.frontend-prod.result == 'success')
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend-prod.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
