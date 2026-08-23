@@ -382,8 +382,8 @@ class WebPosActivity : AppCompatActivity() {
     // Vite dev server by default (AppConfig.useLivePosOrigin), which made it
     // impossible to point a tablet AVD (no physical Android tablet available)
     // at the real dev/staging origin without a rebuild. Never enabled on a
-    // prod/beta build regardless of build type, so a production terminal
-    // can't be repointed by a long-press.
+    // prod build regardless of build type, so a production terminal can't
+    // be repointed by a long-press.
     private fun originSwitcherEnabled(): Boolean {
         return BuildConfig.DEBUG || BuildConfig.FLAVOR == "dev" || BuildConfig.FLAVOR == "staging"
     }
