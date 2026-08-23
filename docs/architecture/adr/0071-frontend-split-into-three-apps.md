@@ -132,6 +132,21 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   — only the beta half of the build matrix and the resulting job count changed.
 - PR: #513 (issue #322).
 
+### 2026-08-23 — the cutover runbook now has a home
+
+- Clause amended: **Consequences item 4** (untagged, `default` tier per ADR 0039) — the sentence
+  reading *"requires a manual runbook sequence (documented in the issue #322 rollout PR)."*
+- Change: that runbook is now a committed file,
+  `docs/deployment/2026-08-23-frontend-split-cutover-runbook.md`, rather than living solely in the
+  PR #513 description. It documents live topology per environment (DEV/STAGING/PROD), the pre-flight
+  GHCR-permissions and no-rollback-mechanism (#495) checklist, and the per-environment cutover
+  sequence; the literal paste-in compose diffs it points at were added as a second, dated section to
+  each of `infrastructure/docker/env/{prod,dev,stage}.compose-fragment.yml`, the same files this
+  Consequences item already named.
+- What's unchanged: nothing about the decision itself — this is a citation update pointing future
+  readers at where the runbook actually lives, not a change to what it says to do.
+- PR: #513 (issue #915, `Refs #322`).
+
 ## Future Direction
 
 Per-app dependency pruning (removing packages a given app doesn't actually use, rather than

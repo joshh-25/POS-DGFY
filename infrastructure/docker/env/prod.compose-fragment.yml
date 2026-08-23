@@ -154,3 +154,98 @@ services:
 #   docker compose up -d --remove-orphans
 #   docker compose restart nginx       # NOT reload -- template only re-renders
 #                                       # through envsubst on restart, not reload
+
+# =============================================================================
+# Cutover fragment 2 -- frontend split (ADR 0071 / PR #513 / issue #915)
+# =============================================================================
+# A SEPARATE, LATER cutover from the one above -- this one retires `frontend:`
+# (the single three-surface image) in favor of three independent images:
+# `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`. Full narrative and sequencing:
+# docs/deployment/2026-08-23-frontend-split-cutover-runbook.md -- this section
+# is just the literal paste-in diff that runbook's step 3 uses.
+#
+# Captured from the live server 2026-08-23. `frontend-beta` was already
+# retired on prod hours before this fragment was written (separate epic
+# #329/#895/#896, unrelated) -- prod's starting point here is `frontend`
+# alone, not `frontend` + `frontend-beta`.
+#
+# DELETE the existing `frontend:` service block and PASTE the three services
+# below in its place. `mysql:`, `redis:`, `dgfy-api`/`dgfy-migration-runner`
+# (from cutover fragment 1 above), `certbot:`, and the top-level `networks:`
+# block stay untouched.
+#
+# IMPORTANT -- image tag override: unlike the repo's own
+# infrastructure/docker/docker-compose.yml (which uses ${IMAGE_TAG:-latest}
+# for these three services), PROD MUST use ${FRONTEND_PROD_IMAGE_TAG:-latest}
+# instead. Prod's IMAGE_TAG=beta is scoped to the backend images only;
+# deploy-main.yml never pushes a dgfy-ims/dgfy-pos/dgfy-storefront image
+# tagged "beta", only "latest" -- copying ${IMAGE_TAG:-latest} verbatim would
+# try to pull a tag that doesn't exist. FRONTEND_PROD_IMAGE_TAG already exists
+# in prod's .env (added by the 2026-07-20 backend/frontend-beta cutover) and
+# is already set to "latest" -- no .env change needed for this fragment.
+
+services:
+  dgfy-ims:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    # No host port: reachable only via dgfy_internal, through the nginx
+    # service below.
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-pos:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+# =============================================================================
+# nginx service patch (prod only) -- depends_on
+# =============================================================================
+# In the SAME file's existing `nginx:` service, replace the `frontend`
+# (and, if not already done via cutover fragment 1's own edit, `dgfy-api`)
+# depends_on entries:
+#
+#   nginx:
+#     depends_on:
+#       dgfy-api:
+#         condition: service_healthy
+#       dgfy-ims:              # <-- was: frontend
+#         condition: service_healthy
+#       dgfy-pos:               # <-- new
+#         condition: service_healthy
+#       dgfy-storefront:        # <-- new
+#         condition: service_healthy
+#
+# Known, unrelated drift, NOT addressed by this fragment: the repo's own
+# nginx: service also mounts ./data/nginx/custom-storefronts:/etc/nginx/
+# custom-storefronts:ro (custom-storefront-domain feature). Prod's live
+# compose does not currently have this mount. Predates and is unrelated to
+# the frontend split -- do not bundle it into this cutover.
+#
+# --- Apply (after the compose edit above and the nginx/ directory copy
+#     described in the runbook's step 4) ---
+#
+#   cd /opt/dgfy-platform
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   docker compose up -d --remove-orphans   # also retires the orphaned
+#                                            # `frontend` container
+#   docker compose restart nginx       # NOT reload -- see cutover fragment 1
