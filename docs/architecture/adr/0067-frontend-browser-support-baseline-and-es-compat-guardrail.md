@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-23
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -200,3 +200,37 @@ here rather than by silently rewriting the decision's own prose:
   for a denylist hit" (the same path `structuredClone` took originally) and removed from Layer 2's
   deny list accordingly — see `packages/web-core/src/compat/chrome80Runtime.js` and
   `packages/web-core/vite/esCompatGuardPlugin.js`'s own header comments for the full account.
+
+### 2026-08-23 — Layer 3's "no config on POS/storefront" bullet is now false; the real gap is web-core
+
+Issue #917's fix (`af9e73c9` and follow-up commits) added `apps/dgfy-pos/.eslintrc.json` and
+`apps/dgfy-storefront/.eslintrc.json` — byte-faithful restorations of the pre-split
+`apps/dgfy-web/.eslintrc.json` (same `env`/`extends`/`parserOptions`/`plugins`/`rules` block,
+differing only in the per-app `overrides` entries the pre-split config also carried: POS keeps the
+`vitePosOfflinePrecachePlugin.js` Node-tooling carve-out, storefront keeps the `StorefrontApp.jsx`
+carve-out). The 2026-08-22 amendment above's claim that "POS, storefront, and `packages/web-core`
+itself currently have no ESLint config of their own" is now correct only for the last third of that
+sentence:
+
+- **Layer 3 now enforces on all three apps** (`apps/dgfy-ims`, `apps/dgfy-pos`,
+  `apps/dgfy-storefront`), each with its own `.eslintrc.json`, no rule downgraded from the pre-split
+  baseline.
+- **`packages/web-core` still has none, and it is the larger gap** — measured this session at 691
+  unlinted source files (579 of which are the exact files `develop`'s `eslint src apps` used to
+  lint, before the split moved them). No app's lint script reaches into `packages/web-core`; the two
+  apps whose `src/` is smallest (`apps/dgfy-ims`, `apps/dgfy-pos`) each have exactly one file in
+  `src/` (`main.jsx`), so their lint jobs validate almost nothing of the code they actually ship.
+  Diagnostic sweep found ~22 real non-test errors, including 3 genuine `react-hooks/rules-of-hooks`
+  violations (`Components/ai/ActionResultCard.jsx`, `Components/jo/JODetailsModal.jsx`) — filed as
+  issue #918, tracking numbers included.
+- **`eslint-plugin-react-hooks` is now pinned to the exact `7.0.1`** in all three apps'
+  `package.json` (was `^7.0.1`, resolving to a drifted `7.1.1` on this branch — issue #917's other
+  root cause). This restores exact parity with `develop`'s resolved lockfile (confirmed identical
+  integrity hash), not an arbitrary freeze — but the pin's only in-repo rationale lives here now,
+  since a `package.json` dependency line can't carry a comment. It currently masks ~25 React
+  Compiler diagnostics that `7.1.1` was surfacing on `apps/dgfy-ims` alone before the pin; issue
+  #918 tracks re-evaluating those once `packages/web-core` has real coverage to also apply the pin's
+  effect to.
+
+Tracked as an open gap via issue #918, same as before — this amendment updates the *description* of
+the gap, not its status.
