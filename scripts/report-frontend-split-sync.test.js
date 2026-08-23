@@ -7,8 +7,10 @@ const {
   classifyDiff,
   formatReport,
   formatPostMergeReport,
+  formatFixReport,
   hasActionRequired,
   parseArgs,
+  RETIRED_ROOT_PREFIXES,
 } = require('./report-frontend-split-sync');
 
 function makeManifest(overrides = {}) {
@@ -134,4 +136,30 @@ test('parseArgs reads flags and defaults', () => {
   assert.equal(options.strict, true);
   assert.equal(options.postMerge, true);
   assert.equal(options.head, 'origin/develop');
+  assert.equal(options.fix, false);
+});
+
+test('parseArgs reads --fix', () => {
+  const options = parseArgs(['--post-merge', '--fix']);
+  assert.equal(options.postMerge, true);
+  assert.equal(options.fix, true);
+});
+
+test('RETIRED_ROOT_PREFIXES covers all three retired frontend/backend roots (issue #914)', () => {
+  assert.deepEqual(RETIRED_ROOT_PREFIXES, ['apps/dgfy-web/', 'frontend/', 'backend/']);
+});
+
+test('formatFixReport reports nothing-to-fix when both lists are empty', () => {
+  assert.match(formatFixReport({ moved: [], skipped: [] }), /nothing to fix/);
+});
+
+test('formatFixReport lists moved files with their destination and skipped files with a manual-placement note', () => {
+  const report = formatFixReport({
+    moved: [{ path: 'apps/dgfy-web/src/services/api.js', mappedTo: 'packages/web-core/src/services/api.js' }],
+    skipped: [{ path: 'frontend/src/weird/Thing.js', mappedTo: null }],
+  });
+  assert.match(report, /moved {2}apps\/dgfy-web\/src\/services\/api\.js/);
+  assert.match(report, /packages\/web-core\/src\/services\/api\.js/);
+  assert.match(report, /SKIP {3}frontend\/src\/weird\/Thing\.js \(no mapping - place by hand\)/);
+  assert.match(report, /1 moved, 1 needs manual placement/);
 });

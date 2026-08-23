@@ -7,6 +7,13 @@ const path = require('path');
 const DEFAULT_MANIFEST_PATH = 'scripts/frontend-split-path-map.json';
 const DEFAULT_HEAD = 'origin/develop';
 const LEGACY_ROOT_PREFIX = 'apps/dgfy-web/';
+// Retired roots the post-merge resurrection check guards. apps/dgfy-web/ is this
+// script's own split (issue #322); frontend/ and backend/ predate it (the earlier
+// backend/frontend/android -> apps/* refactor, PR #55/ADR 0032/0059) but are folded
+// in here too (issue #914) rather than duplicating a second checker, since the same
+// silent-reappearance failure mode applies to all three and they share one guard in
+// CI/husky.
+const RETIRED_ROOT_PREFIXES = [LEGACY_ROOT_PREFIX, 'frontend/', 'backend/'];
 
 class FrontendSplitSyncError extends Error {
   constructor(message, options = {}) {
@@ -98,7 +105,7 @@ function classifyDiff(entries, manifest) {
 }
 
 function getTrackedUnderRetiredPrefixes(projectRoot, manifest) {
-  const prefixes = [LEGACY_ROOT_PREFIX, ...manifest.retired];
+  const prefixes = [...RETIRED_ROOT_PREFIXES, ...manifest.retired];
   const results = [];
   for (const prefix of prefixes) {
     const output = runGit(['ls-files', '--', prefix.endsWith('/') ? `${prefix}**` : prefix], projectRoot);
@@ -137,6 +144,49 @@ function formatReport(grouped) {
   return lines.join('\n');
 }
 
+function isWorkingTreeDirty(projectRoot) {
+  const output = runGit(['status', '--porcelain'], projectRoot);
+  return output.trim().length > 0;
+}
+
+// Moves each resurrected file to its manifest-mapped destination. mkdir -p's the
+// parent first: git mv does NOT create missing destination directories (bit this
+// branch for real, backend-absorption.md's 2026-08-10 changelog row) -- without
+// this a mkdir-less git mv fails with "No such file or directory" the first time a
+// file's mapped destination is a brand-new directory. Never invents a destination
+// for a file with no manifest mapping -- those are reported for manual placement,
+// same as the plain (non---fix) post-merge report already does.
+function fixResurrected(projectRoot, resurrected) {
+  const moved = [];
+  const skipped = [];
+  for (const item of resurrected) {
+    if (!item.mappedTo) {
+      skipped.push(item);
+      continue;
+    }
+    const destAbs = path.join(projectRoot, item.mappedTo);
+    fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+    runGit(['mv', item.path, item.mappedTo], projectRoot);
+    moved.push(item);
+  }
+  return { moved, skipped };
+}
+
+function formatFixReport({ moved, skipped }) {
+  if (moved.length === 0 && skipped.length === 0) {
+    return 'post-merge --fix: nothing to fix - no tracked files under retired frontend-split paths.';
+  }
+  const lines = [];
+  for (const item of moved) {
+    lines.push(`  moved  ${item.path}\n      -> ${item.mappedTo}`);
+  }
+  for (const item of skipped) {
+    lines.push(`  SKIP   ${item.path} (no mapping - place by hand)`);
+  }
+  lines.push(`\n${moved.length} moved, ${skipped.length} needs manual placement`);
+  return lines.join('\n');
+}
+
 function formatPostMergeReport(resurrected) {
   if (resurrected.length === 0) {
     return 'post-merge: clean - no tracked files under retired frontend-split paths.';
@@ -161,6 +211,7 @@ function parseArgs(argv) {
     head: DEFAULT_HEAD,
     strict: false,
     postMerge: false,
+    fix: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -180,6 +231,8 @@ function parseArgs(argv) {
       options.strict = true;
     } else if (arg === '--post-merge') {
       options.postMerge = true;
+    } else if (arg === '--fix') {
+      options.fix = true;
     }
   }
   return options;
@@ -192,8 +245,30 @@ function main() {
     : path.join(options.projectRoot, options.manifestPath);
   const manifest = loadManifest(manifestPath);
 
+  if (options.fix && !options.postMerge) {
+    throw new FrontendSplitSyncError('--fix only applies alongside --post-merge', { code: 'FIX_REQUIRES_POST_MERGE' });
+  }
+
   if (options.postMerge) {
     const resurrected = getTrackedUnderRetiredPrefixes(options.projectRoot, manifest);
+    if (options.fix) {
+      if (resurrected.length === 0) {
+        console.log(formatPostMergeReport(resurrected));
+        return;
+      }
+      if (isWorkingTreeDirty(options.projectRoot)) {
+        throw new FrontendSplitSyncError(
+          '--fix refuses to run on a dirty working tree - commit or stash first',
+          { code: 'DIRTY_WORKING_TREE' }
+        );
+      }
+      const result = fixResurrected(options.projectRoot, resurrected);
+      console.log(formatFixReport(result));
+      if (options.strict && result.skipped.length > 0) {
+        process.exit(1);
+      }
+      return;
+    }
     console.log(formatPostMergeReport(resurrected));
     if (options.strict && resurrected.length > 0) {
       process.exit(1);
@@ -231,8 +306,12 @@ module.exports = {
   classifyDiff,
   getDiffEntries,
   getTrackedUnderRetiredPrefixes,
+  isWorkingTreeDirty,
+  fixResurrected,
   formatReport,
   formatPostMergeReport,
+  formatFixReport,
   hasActionRequired,
   parseArgs,
+  RETIRED_ROOT_PREFIXES,
 };
