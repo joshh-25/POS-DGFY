@@ -74,7 +74,7 @@ case "$ENVIRONMENT" in
   *) echo "::error:: --env must be DEV or STAGING (got '$ENVIRONMENT')." >&2; exit 1 ;;
 esac
 
-REGISTRY="ghcr.io/sieitzz/dgfy-platform"
+REGISTRY="ghcr.io/sieitzz"
 REVISION="$(git rev-parse HEAD)"
 
 echo "== deploy-local: environment=$ENVIRONMENT tag=$TAG components=$COMPONENTS revision=$REVISION =="
@@ -82,7 +82,7 @@ echo "== deploy-local: environment=$ENVIRONMENT tag=$TAG components=$COMPONENTS 
 build_backend() {
   echo "-- building api (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7)) --"
   docker build -f infrastructure/docker/dgfy-api/Dockerfile \
-    -t "$REGISTRY/api:$TAG" -t "$REGISTRY/api:sha-${REVISION:0:7}" \
+    -t "$REGISTRY/dgfy-api:$TAG" -t "$REGISTRY/dgfy-api:sha-${REVISION:0:7}" \
     --label "org.opencontainers.image.revision=$REVISION" .
 
   echo "-- building migration-runner (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7)) --"
@@ -91,7 +91,7 @@ build_backend() {
   # add --platform linux/amd64,linux/arm64 yourself once buildx has a
   # multi-platform builder configured (docker buildx create --use).
   docker build -f infrastructure/docker/dgfy-migration-runner/Dockerfile \
-    -t "$REGISTRY/migration-runner:$TAG" -t "$REGISTRY/migration-runner:sha-${REVISION:0:7}" \
+    -t "$REGISTRY/dgfy-migration-runner:$TAG" -t "$REGISTRY/dgfy-migration-runner:sha-${REVISION:0:7}" \
     --label "org.opencontainers.image.revision=$REVISION" .
 }
 
@@ -143,10 +143,10 @@ esac
 if $DO_PUSH; then
   echo "== pushing (requires docker login ghcr.io already done locally) =="
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "backend" ]; then
-    docker push "$REGISTRY/api:$TAG"
-    docker push "$REGISTRY/api:sha-${REVISION:0:7}"
-    docker push "$REGISTRY/migration-runner:$TAG"
-    docker push "$REGISTRY/migration-runner:sha-${REVISION:0:7}"
+    docker push "$REGISTRY/dgfy-api:$TAG"
+    docker push "$REGISTRY/dgfy-api:sha-${REVISION:0:7}"
+    docker push "$REGISTRY/dgfy-migration-runner:$TAG"
+    docker push "$REGISTRY/dgfy-migration-runner:sha-${REVISION:0:7}"
   fi
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "frontend" ]; then
     for app in dgfy-ims dgfy-pos dgfy-storefront; do
@@ -172,7 +172,7 @@ if $DO_DEPLOY; then
   ssh -o StrictHostKeyChecking=yes "$SSH_TARGET" \
     "cd $DOCKER_DIR && \
      COMPOSE_IMAGES=\$(docker compose config --images) && \
-     { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo '::error:: compose is stale, refusing to deploy.' >&2; exit 1; } && \
+     { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo '::error:: compose is stale, refusing to deploy.' >&2; exit 1; } && \
      docker compose pull && docker compose up -d --remove-orphans"
 fi
 

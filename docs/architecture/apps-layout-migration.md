@@ -125,7 +125,7 @@ disk.** Where this section and any earlier section of this document disagree, th
 | `sentryViteConfig.js` | `packages/web-core/vite/sentryViteConfig.js` |
 | `dist-apps/skupervisor`, `dist-apps/pos`, `dist-apps/store` | `apps/dgfy-ims/dist`, `apps/dgfy-pos/dist`, `apps/dgfy-storefront/dist` |
 | `infrastructure/docker/frontend/Dockerfile` (one image, three surfaces) | `infrastructure/docker/dgfy-ims/Dockerfile`, `.../dgfy-pos/Dockerfile`, `.../dgfy-storefront/Dockerfile` |
-| image `ghcr.io/sieitzz/dgfy-platform/frontend` | `…/dgfy-ims`, `…/dgfy-pos`, `…/dgfy-storefront` |
+| image `ghcr.io/sieitzz/dgfy-platform/frontend` | `ghcr.io/sieitzz/dgfy-ims`, `ghcr.io/sieitzz/dgfy-pos`, `ghcr.io/sieitzz/dgfy-storefront` |
 
 Container ports are unchanged: **8081** = IMS, **8082** = POS, **8083** = Storefront. Only the
 number of containers changed — one nginx serving three roots became three single-purpose images.

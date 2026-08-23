@@ -40,7 +40,7 @@ what each variable does.
 
 ## Deploy
 
-Own image `ghcr.io/sieitzz/dgfy-platform/dgfy-ims`, own Dockerfile
+Own image `ghcr.io/sieitzz/dgfy-ims`, own Dockerfile
 (`infrastructure/docker/dgfy-ims/Dockerfile`), own CI path filter
 (`frontend_ims` in `.github/workflows/shared-changed-paths.yml`). Container port **8081**.
 

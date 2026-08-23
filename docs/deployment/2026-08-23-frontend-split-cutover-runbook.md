@@ -2,7 +2,7 @@
 status: planned
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-24
 applies_to: frontend_split_cutover,infrastructure,deployment,dev,staging,prod,ci
 topic: frontend_split_cutover_runbook
 ---
@@ -20,6 +20,14 @@ definitions, Dockerfiles, nginx template, every CI workflow) is already complete
 and pushes the three images correctly — confirmed live this session. What's missing is applying the
 equivalent change to each server's hand-maintained compose file, which this document exists to
 close, per ADR 0071's Consequences section naming this exact gap.
+
+**Folded in, 2026-08-24 (issue #928, ADR 0072):** every GHCR image path this cutover touches is also
+flattened in the same server edit — `ghcr.io/sieitzz/dgfy-platform/<name>` becomes
+`ghcr.io/sieitzz/<name>` — for all five images, not just the three new frontend ones. That means the
+existing `dgfy-api`/`dgfy-migration-runner` services also get their `image:` line updated in this
+same pass, even though those two services already exist from the earlier PR #55 cutover and aren't
+otherwise part of this split. One edit and one restart per environment covers both changes together,
+rather than a fourth independent hand-edit of the same server compose file.
 
 ## Why the repo compose/nginx are not the source of truth for the live servers
 
@@ -54,7 +62,7 @@ container already publishes today — see below):
 
 ```yaml
   dgfy-ims:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]   # dgfy_dev / dgfy_stage on those environments
     healthcheck:
@@ -64,7 +72,7 @@ container already publishes today — see below):
       retries: 5
 
   dgfy-pos:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:
@@ -74,7 +82,7 @@ container already publishes today — see below):
       retries: 5
 
   dgfy-storefront:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:
@@ -162,18 +170,32 @@ with this cutover's own diff, not addressed by this runbook.
    `.env`) before starting the PROD leg — see "Prerequisite: issue #913" above for why, the exact
    check to run, and the documented fallback if #913 genuinely can't land first. DEV and STAGING have
    no such dependency and can proceed without this check.
-1. **GHCR org package permissions.** The first "push-only" dispatch (step 2 below) auto-creates the
-   `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` GHCR packages. Immediately after that dispatch completes,
-   go to each package's Settings in the GitHub org and match its visibility/Actions-access to the
-   existing `api`/`frontend` packages' current settings, **before** dispatching the actual deploy
-   (step 5). Left on the auto-created default, the first real pull will 403 in production. This is a
-   manual, GitHub-UI step — not automated by this runbook or any script in this repo.
+1. **GHCR org package permissions — now covers all five renamed packages, not just the frontend
+   three.** Issue #928 flattened every image path (`ghcr.io/sieitzz/dgfy-platform/<name>` ->
+   `ghcr.io/sieitzz/<name>`), so `dgfy-api` and `dgfy-migration-runner` are brand-new package names
+   too, on top of `dgfy-ims`/`dgfy-pos`/`dgfy-storefront`. The first "push-only" dispatch (step 1
+   below) auto-creates all five. Immediately after that dispatch completes, verify each of the five
+   new packages' Settings in the GitHub org shows the repo linked and inherit-access-from-repository
+   on, matching the existing (now-superseded) `api`/`migration-runner`/`frontend` packages' settings
+   — **before** dispatching the actual deploy (step 5). A `GITHUB_TOKEN` push is normally
+   auto-linked by provenance (the same mechanism that already makes today's private packages
+   pullable), so this is a verification gate, not a guaranteed-required manual grant — but confirm
+   it rather than assume it, since org-level package-creation policy is the one thing that can still
+   403 at push time itself, before anything reaches a server. `docker manifest inspect
+   ghcr.io/sieitzz/dgfy-api:<tag>` (same token used server-side) is a cheap proof if the Settings
+   page is ambiguous.
 2. **No rollback mechanism exists for this deploy path** (#495, open). This runbook's rollback plan
    (below) is a manual compensating step, not a tooling guarantee — read it before starting, not
    after something goes wrong.
 3. Confirm the target server's compose file matches the "Live topology today" table above
    (`docker compose ps`) — if it's drifted further, reconcile before applying the fragment rather
    than assuming this document is still current.
+4. **Delete the superseded `dgfy-platform/dgfy-{ims,pos,storefront}` GHCR packages before starting**
+   (confirmed never deployed to any environment — issue #928's own inventory). This is optional
+   safety, not a hard requirement, but it converts a possible mistake in step 3 below (a stray old
+   path left in the pasted compose block) from a silent stale-image pull into a loud `manifest
+   unknown` at `docker compose pull` — strictly better than the alternative. Do this once, for the
+   whole cutover, not per environment.
 
 ## Per-environment sequence
 
@@ -181,26 +203,39 @@ Run DEV first as the dry run, then STAGING, then PROD. **Stop and get an explici
 the PROD leg** — a `deploy-main.yml`/PROD dispatch is never unattended, matching the standing rule
 already in `.agents/skills/promoter/SKILL.md`.
 
-1. **Push-only dispatch.** `deploy.yml` (DEV/STAGING) or `deploy-main.yml` (PROD) with
-   `components: frontend`, `deploy: false`. Pushes the three new images to GHCR; touches nothing
-   live. This is also what first creates the GHCR packages — do this before the pre-flight
-   permissions step above, not after.
+1. **Push-only dispatch, `components: all` — not `frontend`.** `deploy.yml` (DEV/STAGING) or
+   `deploy-main.yml` (PROD) with `components: all`, `deploy: false`. Issue #928's rename means
+   `dgfy-api`/`dgfy-migration-runner` are new package names too, same as the three frontend images
+   — a `components: frontend`-scoped dispatch here would build and push only three of the five,
+   leaving the backend pair to be discovered missing only when the guard in step 5 fails against a
+   server whose compose already names the new backend paths. Pushes all five new images to GHCR;
+   touches nothing live. This is also what first creates the GHCR packages — do this before the
+   pre-flight permissions step above, not after.
 2. **Grant GHCR permissions** per pre-flight item 1, now that the packages exist.
-3. **SSH in and hand-edit the server's `docker-compose.yml`.** Delete the `frontend:` service block;
-   paste in the three new service blocks from the matching
-   `infrastructure/docker/env/<env>.compose-fragment.yml`'s frontend-cutover section (already
-   carries the correct network name, host-port publish, and — on prod — the
-   `FRONTEND_PROD_IMAGE_TAG` override). On prod, also apply the `nginx:` `depends_on` edit from that
-   same fragment file. Validate with `docker compose config >/dev/null` before proceeding.
+3. **SSH in and hand-edit the server's `docker-compose.yml`.** Two things land in this same pass,
+   not two separate edits: (a) delete the `frontend:` service block and paste in the three new
+   service blocks from the matching `infrastructure/docker/env/<env>.compose-fragment.yml`'s
+   frontend-cutover section (already carries the correct network name, host-port publish, and — on
+   prod — the `FRONTEND_PROD_IMAGE_TAG` override); (b) update the existing `dgfy-api` and
+   `dgfy-migration-runner` services' `image:` lines to their flattened paths
+   (`ghcr.io/sieitzz/dgfy-api:...`, `ghcr.io/sieitzz/dgfy-migration-runner:...` — those two services
+   already exist from the earlier PR #55 cutover, only the registry path changes). On prod, also
+   apply the `nginx:` `depends_on` edit from that same fragment file. Validate with `docker compose
+   config >/dev/null` before proceeding — it should show all five images resolving to
+   `ghcr.io/sieitzz/dgfy-*` paths with no remaining `dgfy-platform/` segment anywhere.
 4. **Prod only: copy the nginx template.** `scp` this repo's `infrastructure/docker/nginx/` directory
    onto the server, replacing what's there. Then `docker compose restart nginx` — **restart, not
    reload**; the envsubst-on-templates step only re-runs at container start, matching the same note
    already in `prod.compose-fragment.yml`'s data-move section.
-5. **Deploy dispatch.** Re-run `deploy.yml`/`deploy-main.yml` with `components: frontend`,
-   `deploy: true` (or the default `all`, which is harmless — it just also refreshes images that
-   didn't change). This pulls the three new images and runs `docker compose up -d --remove-orphans`,
-   which **also stops and removes the now-orphaned `frontend` container automatically**, since its
-   service was deleted from the compose file in step 3.
+5. **Deploy dispatch, `components: all`.** Re-run `deploy.yml`/`deploy-main.yml` with
+   `components: all`, `deploy: true` — same reasoning as step 1: the backend pair changed names too,
+   so a `frontend`-scoped dispatch alone leaves `dgfy-api`/`dgfy-migration-runner` unbuilt under
+   their new paths. `publish-platform.yml`'s staleness guard (now checking `sieitzz/dgfy-api` and
+   `sieitzz/dgfy-migration-runner` — landed alongside issue #928's rename PR, not a separate
+   follow-up) fails loudly here if step 3's compose edit is incomplete, before anything is pulled.
+   Once the guard passes, this pulls all five new images and runs `docker compose up -d
+   --remove-orphans`, which **also stops and removes the now-orphaned `frontend` container
+   automatically**, since its service was deleted from the compose file in step 3.
 6. **Verify.** Dispatch `verify-deployment.yml` (after the `SERVICES` fix landing alongside this
    runbook — see below) and manually `curl` all three domains for that environment as a smoke test.
 7. **Bake, then finalize.** See Rollback below for how long to wait before treating the cutover as
@@ -222,13 +257,21 @@ Per #495, there is no automated rollback for this deploy path. The compensating 
 
 ## Post-cutover hardening — do this last, only after all three environments are cut over
 
-`publish-platform.yml`'s staleness guard today only checks that `docker compose config --images`
-contains `dgfy-platform/api` + `dgfy-platform/migration-runner` (the backend rename from PR #55),
-refusing to deploy otherwise. The same protection is worth adding for the frontend rename — a
-publish dispatched against a server whose compose still only has `frontend:` would otherwise
-silently no-op the frontend half of the deploy (nothing to pull for a service not in the file, `up
--d` leaves the stale container running) rather than failing loudly, mirroring exactly the backend
-failure mode that guard already exists to catch.
+`publish-platform.yml`'s staleness guard checks that `docker compose config --images` contains
+`sieitzz/dgfy-api` + `sieitzz/dgfy-migration-runner` — updated to these flattened, **anchored**
+paths alongside issue #928's rename (landed in that same PR, not a separate follow-up; the anchor
+on `sieitzz/` rather than a bare `dgfy-api` matters — see the anchoring note below). The same
+protection is worth adding for the frontend split — a publish dispatched against a server whose
+compose still only has `frontend:` would otherwise silently no-op the frontend half of the deploy
+(nothing to pull for a service not in the file, `up -d` leaves the stale container running) rather
+than failing loudly, mirroring exactly the backend failure mode that guard already exists to catch.
+
+**Anchoring matters, don't grep on the bare app name.** `grep -q 'dgfy-ims'` would also match
+`ghcr.io/sieitzz/dgfy-platform/dgfy-ims:staging` as a substring — an **un-migrated** server would
+pass a naively-written guard, pull the still-existing old package, and go green with a pre-rename
+artifact. That is strictly worse than the guard failing loudly, which is the entire point of it
+existing. Anchor on `sieitzz/dgfy-ims` (i.e. include the registry-owner segment), same pattern the
+backend pair already uses above.
 
 **Deliberately not added in the same PR as this runbook.** Landing it before all three environments
 are actually cut over would make it fail *every* deploy to whichever environment hasn't been cut
@@ -239,8 +282,8 @@ step 5-6 above and are confirmed serving from the three new images:
 ```bash
 # In publish-platform.yml's "Pull and restart platform containers" step, alongside the existing
 # backend check:
-{ echo "$COMPOSE_IMAGES" | grep -q 'dgfy-platform/api' && echo "$COMPOSE_IMAGES" | grep -q 'dgfy-platform/migration-runner'; } || { echo "::error::... server compose is stale, refusing to deploy." >&2; exit 1; } && \
-{ echo "$COMPOSE_IMAGES" | grep -q 'dgfy-platform/dgfy-ims' && echo "$COMPOSE_IMAGES" | grep -q 'dgfy-platform/dgfy-pos' && echo "$COMPOSE_IMAGES" | grep -q 'dgfy-platform/dgfy-storefront'; } || { echo "::error::... server compose has no dgfy-ims/dgfy-pos/dgfy-storefront image reference -- server compose is stale, refusing to deploy." >&2; exit 1; } && \
+{ echo "$COMPOSE_IMAGES" | grep -q 'sieitzz/dgfy-api' && echo "$COMPOSE_IMAGES" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo "::error::... server compose is stale, refusing to deploy." >&2; exit 1; } && \
+{ echo "$COMPOSE_IMAGES" | grep -q 'sieitzz/dgfy-ims' && echo "$COMPOSE_IMAGES" | grep -q 'sieitzz/dgfy-pos' && echo "$COMPOSE_IMAGES" | grep -q 'sieitzz/dgfy-storefront'; } || { echo "::error::... server compose has no dgfy-ims/dgfy-pos/dgfy-storefront image reference -- server compose is stale, refusing to deploy." >&2; exit 1; } && \
 ```
 
 File this as a small, separate, fast-follow PR once the checklist above is fully checked off for all
@@ -259,3 +302,6 @@ three environments — not bundled into this runbook's own PR.
   `latest` and retires `FRONTEND_PROD_IMAGE_TAG`; must land before this runbook's PROD leg for the
   fragment below to use the plain, unconditional `${IMAGE_TAG:-latest}` form.
 - Issue #915.
+- ADR 0072 (`docs/architecture/adr/0072-ghcr-container-image-naming.md`) and issue #928 — the GHCR
+  image-path flattening folded into this cutover's steps 1, 3, and 5 above, and into the pre-flight
+  checklist's package-permissions and staleness-guard items.

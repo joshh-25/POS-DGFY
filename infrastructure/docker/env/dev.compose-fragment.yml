@@ -47,7 +47,7 @@ services:
   # out of backend/ into apps/dgfy-migration-runner. dgfy-api below depends
   # on this completing successfully instead of migrating itself on boot.
   dgfy-migration-runner:
-    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
     restart: "no"
     env_file: .env
     environment:
@@ -63,7 +63,7 @@ services:
   # the image, service name, internal port (5000 -> 5100), and data-volume
   # paths (data/backend/* -> data/dgfy-api/*) change.
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -136,7 +136,7 @@ services:
 
 services:
   dgfy-ims:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_dev]
     ports:
@@ -148,7 +148,7 @@ services:
       retries: 5
 
   dgfy-pos:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_dev]
     ports:
@@ -160,7 +160,7 @@ services:
       retries: 5
 
   dgfy-storefront:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_dev]
     ports:

@@ -54,7 +54,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
-| 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
+| 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `amended` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
@@ -93,7 +93,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
 | 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
-| 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 5 |
+| 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
+| 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
 
 ## Renumbered (collision stubs)
 

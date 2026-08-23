@@ -8144,6 +8144,113 @@ unshipped reservation.
 
 ---
 
+## Phase 153 - GHCR Container Image Naming Flattened (issue #928)
+
+### Initiative and Release
+
+- Initiative: flatten every GHCR container package name from
+  `ghcr.io/sieitzz/dgfy-platform/<name>` to `ghcr.io/sieitzz/<name>`, per issue
+  Sieitzz/dgfy-platform#928.
+- Release: `chore/928-flatten-ghcr-image-names` targeting `develop`.
+
+### Objective and Scope
+
+- Reconcile the naming inconsistency between the backend split (PR #55:
+  `dgfy-platform/api`, `dgfy-platform/migration-runner` — dropped the `dgfy-`
+  prefix) and ADR 0071's frontend split (`dgfy-platform/dgfy-{ims,pos,
+  storefront}` — kept a redundant `dgfy-` prefix under a namespace that
+  already says `dgfy-platform`). GHCR's org package listing renders only the
+  last path segment, so the old backend names displayed as a bare `api`,
+  collision-prone once other Sieitzz repositories publish their own
+  containers.
+- One naming rule: `ghcr.io/sieitzz/<apps-directory-name>` — `dgfy-api`,
+  `dgfy-migration-runner`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`.
+- Fan out every reference: the three build workflows' `IMAGE_NAME`
+  (`deploy-api.yml`, `deploy-migration-runner.yml`, `deploy-frontend.yml`),
+  `publish-platform.yml`'s staleness guard and its `scripts/deploy-local.sh`
+  mirror, every compose file that pins an image tag
+  (`infrastructure/docker/docker-compose.yml`,
+  `infrastructure/docker/docker-compose.override.yml`,
+  `infrastructure/docker/local-test/docker-compose.yml`, and the three
+  hand-apply `infrastructure/docker/env/{dev,stage,prod}.compose-fragment.yml`
+  + `prod.sops-cutover-fragment.yml`), the live-cutover runbook, setup docs,
+  and the three frontend apps' READMEs.
+- Document the decision (new ADR 0072, superseding-in-part ADR 0071 Decision
+  3 and amending ADR 0032's Consequences), and open the closing PR against
+  `develop`.
+- Deliberately **not** in scope for this repo-only phase: the legacy
+  monolith `ghcr.io/sieitzz/dgfy-platform/frontend` image (has no `apps/*`
+  directory, already scheduled for retirement by the frontend-split
+  cutover, not renamed); the three live servers' hand-maintained
+  `docker-compose.yml` files (folded into that same already-scheduled
+  cutover instead of a separate SSH pass); and GHCR package deletion
+  (tracked as this issue's own follow-up, gated on the cutover baking).
+
+### Status
+
+- `completed` (repo half only — see Dependencies and Governance Note)
+- Completed on 2026-08-24.
+
+### Dependencies and Governance Note
+
+- ADR 0072 GHCR Container Image Naming Convention
+  (`docs/architecture/adr/0072-ghcr-container-image-naming.md`),
+  `supersedes_in_part` ADR 0071 Decision 3's image-path clause.
+- Dated `## Amendments` blocks added to ADR 0071 (`last_reviewed` refreshed)
+  and ADR 0032 (`status: accepted` -> `amended`, `last_reviewed` refreshed).
+- This phase covers the repository/CI half of issue #928 only. The PR uses
+  `Refs #928`, not `Closes #928` — the issue stays open through the live
+  per-environment cutover (folded into the frontend-split cutover runbook)
+  and the GHCR package cleanup that follows it, neither of which is part of
+  this phase's completion.
+- No compliance impact declaration required: `npm run check:compliance`
+  reports no compliance-sensitive changes for this diff (touches only
+  `.github/workflows/**`, `infrastructure/**`, `scripts/**`, `docs/**`,
+  `apps/*/README.md` — none of `check-compliance-impact.js`'s trigger
+  paths).
+
+### Acceptance and Validation Evidence
+
+- [x] `docker compose -f infrastructure/docker/docker-compose.yml config
+  --images` resolves the five flattened names.
+- [x] `npm run check:adr` (79 ADRs) and `npm run lint:docs` (28 governed
+  docs) pass with ADR 0072 and the ADR 0071/0032 amendments.
+- [x] `npm run check:compliance` reports no compliance-sensitive changes.
+- [x] YAML parse of the four edited workflows and shell syntax check
+  (`bash -n scripts/deploy-local.sh`) pass.
+- [x] Repo-wide sweep confirms no remaining `dgfy-platform/api`,
+  `dgfy-platform/migration-runner`, or `dgfy-platform/dgfy-{ims,pos,
+  storefront}` reference outside the deliberately-untouched historical
+  docs (ADR 0059, `backend-absorption.md`, the 2026-07-20 cutover runbook,
+  ops incident docs, compliance impact declarations,
+  `.agents/skills/promoter/SKILL.md`).
+- [ ] Per-environment live cutover verification (`docker compose config
+  --images` on each server, `verify-deployment.yml` PASS) — deferred to the
+  live cutover, folded into the frontend-split cutover runbook; not part of
+  this phase's own completion.
+- [ ] GHCR org inventory shows the superseded packages deleted — deferred
+  to the follow-up cleanup pass; not part of this phase's own completion.
+
+### Implementation Links
+
+- `.github/workflows/deploy-api.yml`, `deploy-migration-runner.yml`,
+  `deploy-frontend.yml`, `publish-platform.yml`
+- `scripts/deploy-local.sh`
+- `infrastructure/docker/docker-compose.yml`,
+  `infrastructure/docker/env/{dev,stage,prod}.compose-fragment.yml`,
+  `infrastructure/docker/env/prod.sops-cutover-fragment.yml`
+- `docs/architecture/adr/0072-ghcr-container-image-naming.md`
+- `docs/architecture/adr/0071-frontend-split-into-three-apps.md` (amended)
+- `docs/architecture/adr/0032-standalone-dgfy-api-service.md` (amended)
+- [Issue #928 - GHCR package naming convention is inconsistent](https://github.com/Sieitzz/dgfy-platform/issues/928)
+
+### Completion Record (2026-08-24)
+
+- Phase 153 is complete (repo half). Phase 154 is the next eligible
+  repository phase and requires separate approval.
+
+---
+
 **Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
 the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
 renumbers"):**

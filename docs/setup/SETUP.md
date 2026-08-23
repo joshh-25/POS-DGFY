@@ -32,7 +32,7 @@ docker compose down
 ```
 
 The three frontend surfaces are three separate images
-(`ghcr.io/sieitzz/dgfy-platform/dgfy-ims`, `.../dgfy-pos`,
+(`ghcr.io/sieitzz/dgfy-ims`, `.../dgfy-pos`,
 `.../dgfy-storefront`, built from `infrastructure/docker/<app>/Dockerfile`),
 listening on `8081`, `8082`, and `8083` respectively inside the compose network
 and reached through the bundled `nginx` service on `80`/`443`.

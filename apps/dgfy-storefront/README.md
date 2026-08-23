@@ -39,7 +39,7 @@ what it pulls from `packages/web-core` actually read (ADR 0071 clause 3) — do 
 
 ## Deploy
 
-Own image `ghcr.io/sieitzz/dgfy-platform/dgfy-storefront`, own Dockerfile
+Own image `ghcr.io/sieitzz/dgfy-storefront`, own Dockerfile
 (`infrastructure/docker/dgfy-storefront/Dockerfile`), own CI path filter
 (`frontend_storefront` in `.github/workflows/shared-changed-paths.yml`). Container port **8083**.
 

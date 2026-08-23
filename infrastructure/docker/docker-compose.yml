@@ -86,7 +86,7 @@ services:
   # then exits. dgfy-api below depends on this completing successfully instead
   # of migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
   dgfy-migration-runner:
-    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
     restart: "no"
     env_file: .env
     environment:
@@ -103,7 +103,7 @@ services:
   # runs separately in dgfy-migration-runner above, so dgfy-api no longer runs
   # db:migrate itself.
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -143,7 +143,7 @@ services:
       start_period: 30s
 
   dgfy-ims:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # No host port: reachable only via dgfy_internal, through the nginx
     # service below.
@@ -155,7 +155,7 @@ services:
       retries: 5
 
   dgfy-pos:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:
@@ -165,7 +165,7 @@ services:
       retries: 5
 
   dgfy-storefront:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:
