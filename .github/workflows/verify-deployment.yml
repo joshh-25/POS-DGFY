@@ -134,7 +134,15 @@ jobs:
           # this specific server's docker-compose.yml actually defines (frontend today, dgfy-ims/
           # dgfy-pos/dgfy-storefront once the cutover runbook runs; nginx only where it's actually
           # defined) is exactly what gets health-checked.
-          SERVICES="$(docker compose config --services)"
+          #
+          # dgfy-migration-runner is excluded: it's a one-shot (restart: "no",
+          # infrastructure/docker/docker-compose.yml) that has already exited by the time
+          # verification runs. `docker compose ps -q` lists running containers only, so leaving it
+          # in SERVICES turned every dispatch into a false FAIL ("no container at poll start")
+          # regardless of actual health -- caught in review (RF-2, PR #513). If a second one-shot
+          # service is ever added, extend this filter rather than re-deriving it from restart
+          # policy -- that needs jq, which nothing else in this remote script currently depends on.
+          SERVICES="$(docker compose config --services | grep -vx dgfy-migration-runner)"
 
           POLLS=$(( POLL_MINUTES * 3 ))  # ~20s apart
           FAIL=0
