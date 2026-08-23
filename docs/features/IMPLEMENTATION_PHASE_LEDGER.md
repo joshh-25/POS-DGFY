@@ -7998,6 +7998,10 @@ unshipped reservation.
   `src/pages/Settings`, and three named service files — `apps/dgfy-web/apps/store/**` matches none
   of them, and no `apps/dgfy-api/**` file is touched. `npm run check:compliance` confirmed
   "No compliance-sensitive changes detected" rather than assumed.
+  [Post-merge note (#322, 2026-08-23): after this branch's frontend-split absorb, those rules read
+  `packages/web-core/src/features/pos/`, `packages/web-core/src/features/compliance/`,
+  `packages/web-core/src/pages/Settings`, and `apps/dgfy-ims/Pages/Settings.jsx`. The conclusion is
+  unchanged — `apps/dgfy-storefront/**` still matches none of them.]
 
 ### Acceptance and Validation Evidence
 
