@@ -147,8 +147,6 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   readers at where the runbook actually lives, not a change to what it says to do.
 - PR: #513 (issue #915, `Refs #322`).
 
-## Future Direction
-
 ### 2026-08-24 — image registry path flattened, superseded to ADR 0072
 
 - Clause amended: **Decision 3** (`[binding]`) — the image path
