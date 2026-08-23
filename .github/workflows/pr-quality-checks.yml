@@ -12,10 +12,14 @@ on:
   workflow_call:
     inputs: &runner_labels_input
       runner_labels_json:
-        description: JSON array passed to runs-on for quality jobs
+        description: >-
+          JSON array passed to runs-on for quality jobs. Pinned to sieitz-lg
+          (#923) -- dgfy-api-quality (2 service containers, 4GB heap) and
+          frontend-quality (3 sequential vite builds + playwright chromium)
+          are the two heaviest jobs in the repo.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-lg"]'
   workflow_dispatch:
     inputs: *runner_labels_input
 

@@ -42,7 +42,7 @@ on:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
       validate_pr_metadata:
         description: >-
           Also validate PR title/body format and check for a missing
