@@ -122,10 +122,13 @@ lockfile:
 | POS | `apps/dgfy-pos` | 5174 | `npm run dev:pos` | `npm run build:pos` |
 | Storefront | `apps/dgfy-storefront` | 5175 | `npm run dev:store` | `npm run build:store` |
 
-All three consume shared source from `packages/web-core` (`@sieitzz/web-core`)
-via `file:../../packages/web-core` plus a `@sieitzz/web-core/*` Vite alias. That
-package has no build step, no `node_modules`, and no lockfile of its own — there
-is nothing to install for it.
+All three consume shared source from `packages/web-core` (`@sieitzz/web-core`) via
+`file:../../packages/web-core`, resolved through retargeted `@/...` Vite aliases (the
+`@/components`/`@/hooks`/`@/lib`/`@/services`/`@/src` keys are unchanged from before the
+split; only their targets moved) plus deep relative imports — see
+`packages/web-core/README.md`'s "Import convention" for the full picture. That package has
+no build step, no `node_modules`, and no lockfile of its own — there is nothing to install
+for it.
 
 1. **Navigate to the app you're working on**
    ```bash
@@ -264,7 +267,8 @@ See `docs/api/specification.md` for complete API documentation.
   `package-lock.json` — each app has its own, and regenerating it pulls in
   unrelated version drift)
 - Clear Vite cache: `rm -rf node_modules/.vite`
-- Unresolved `@sieitzz/web-core/...` imports usually mean the `file:` dependency
+- Unresolved `@/components`, `@/hooks`, `@/lib`, `@/services`, or `@/src` imports (or a
+  `@sieitzz/web-core/...` specifier, which also resolves) usually mean the `file:` dependency
   is not linked — rerun `npm install` in that app
 
 ## Database Management

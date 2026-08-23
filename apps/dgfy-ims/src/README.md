@@ -1,5 +1,5 @@
-SKUpervisor app entry code lives here.
+SKUpervisor (IMS) app entry code lives here.
 
-- Keep SKUpervisor-only bootstrapping and app-level composition in this folder.
-- Shared domain logic remains under `frontend/src`.
+- Keep IMS-only bootstrapping and app-level composition in this folder.
+- Shared domain logic lives under `packages/web-core/src`.
 - POS standalone shell ownership lives under `apps/dgfy-pos/src`.

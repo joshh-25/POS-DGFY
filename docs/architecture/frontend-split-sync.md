@@ -97,9 +97,57 @@ hundreds of expected files as "resurrected" -- the plain `report:frontend-split-
 scoped to the manifest's actual `prefixMap`/`retired` entries rather than the whole legacy root.
 Now that `apps/dgfy-web/` no longer exists, any hit here means a develop merge resurrected a file
 at that dead path -- treat it the same as any other unmapped/resurrected file: `git mv` it to its
-mapped destination per the manifest (or place it by hand if unmapped) and re-run the check.
+mapped destination per the manifest (or place it by hand if unmapped) and re-run the check --
+or just run `--post-merge --fix` (below), which does the `git mv` for you.
+
+**`--post-merge` also checks `frontend/` and `backend/` (issue #914),** not just
+`apps/dgfy-web/`. Those two predate this branch's own split (they're PR #55's
+`backend/`/`frontend/`/`android/` -> `apps/*` relocation) but share the exact same
+silent-reappearance risk, so one guard covers all three rather than needing a second script.
 
 Commit any absorbed fixes as `chore: absorb develop into frontend split`.
+
+### `--fix` — relocate stranded files automatically
+
+`npm run report:frontend-split-sync:post-merge -- --fix` (or
+`node scripts/report-frontend-split-sync.js --post-merge --fix` directly) `git mv`s every
+resurrected file it can resolve via the manifest, `mkdir -p`-ing the destination directory first
+(`git mv` does not create missing parent directories on its own -- this bit this branch for real,
+logged in `backend-absorption.md`'s 2026-08-10 changelog row). Anything the manifest has no
+mapping for is printed for manual placement rather than guessed at.
+
+- **Refuses to run on a dirty working tree** -- commit or stash first.
+- **Never implied by `--post-merge` or `--strict` alone** -- it only runs when `--fix` is passed
+  explicitly, so a routine CI/pre-commit invocation of `--post-merge --strict` never mutates
+  anything.
+- This is the tool an outside developer's in-flight branch (see
+  [`apps-layout-migration.md`'s in-flight-branch section](apps-layout-migration.md#for-developers-with-an-in-flight-branch))
+  should reach for instead of hand-applying the manifest's 31 `prefixMap` rules one at a time.
+
+### Other flags, undocumented until now
+
+These have existed since the script's introduction but were never written down:
+
+- `--project-root <path>` -- `cwd` for every git call this script makes (default:
+  `process.cwd()`). Lets you run this branch's script against a checkout that isn't this one.
+- `--manifest <path>` -- path to the path-map JSON (default:
+  `scripts/frontend-split-path-map.json`, relative to `--project-root` unless absolute).
+- `--base <ref>` -- skips the `git merge-base` computation and diffs from this ref directly.
+- `--head <ref>` -- diffs to this ref instead of `origin/develop` (default mode only; ignored
+  under `--post-merge`, which always inspects the current working tree's tracked files).
+
+Together, `--project-root` + `--manifest` let you point this script at **your own clone**, with
+**your own branch checked out**, using this repo's manifest, without copying any files:
+
+```sh
+node /path/to/dgfy-platform-refactor/scripts/report-frontend-split-sync.js \
+  --project-root /path/to/your/clone \
+  --manifest /path/to/dgfy-platform-refactor/scripts/frontend-split-path-map.json \
+  --base <your-merge-base> --head HEAD
+```
+
+`--post-merge` (with or without `--fix`) only reads `git ls-files`, so it works the same way and
+is direction-agnostic -- it doesn't matter whose branch it's running against.
 
 **Cadence:** after every merge from develop, and at least weekly regardless. Merge cadence
 should tighten immediately after a phase that does a bulk `git mv` (aim for within a day) — that

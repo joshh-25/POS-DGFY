@@ -2,6 +2,24 @@
 
 These instructions are for any AI agent, IDE assistant, or extension operating in this repository.
 
+## Repository layout
+
+There is no `backend/`, `frontend/`, `android/`, or `apps/dgfy-web/` directory — all four were
+relocated. If a search hit, a doc, or your own training data references one of those paths, it's
+stale; the real code lives under:
+
+- `apps/dgfy-api` — backend
+- `apps/dgfy-migration-runner` — migrations/seeders (split out of the API)
+- `apps/dgfy-android-bridge` — Android
+- `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront` — the three frontend apps (issue #322)
+- `packages/web-core` — the shared frontend trunk all three of the above consume via a `file:`
+  dependency; it has no build step, no `node_modules`, and no lockfile of its own
+
+Full path maps, before/after commands, and in-flight-branch merge guidance:
+`docs/architecture/apps-layout-migration.md`. Do not "fix" old paths in ADRs, compliance
+declarations, or other dated/historical records — see that doc's "note for AI agents" for the
+full leave-alone list.
+
 ## MANDATORY: Pull Request Conventions
 
 Before creating, updating, or describing any pull request in this repository, **read and follow `docs/ai/PR.md` in full**. This is not optional. It governs:
