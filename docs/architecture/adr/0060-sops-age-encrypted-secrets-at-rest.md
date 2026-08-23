@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-13
+last_reviewed: 2026-08-23
 review_by: 2027-02-13
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_age_encrypted_secrets_at_rest
@@ -181,3 +181,18 @@ the plan is discovered — expected, since Decision 2's exact 18/75 split and
 Decision 4's repository name are working assumptions to be confirmed at
 execution time, not verified against the live server's full 93-variable set
 in this session.
+
+### 2026-08-23 — beta.dgfy.ph retired
+
+The Context section's framing of production as "`dgfy.ph` + `beta.dgfy.ph`, one Linode VPS" is now
+stale: `beta.dgfy.ph` was retired (#329/#894/#896) and its three hostnames now `301`-redirect
+straight to their `dgfy.ph` equivalents at the nginx layer — there is no longer a second
+domain-group serving its own frontend or its own secrets. This is a scope correction only, not a
+substantive change to this ADR's decisions: it was always one server, one `.env`, one set of
+backend secrets shared across whatever domains nginx routed to it — retiring beta narrows that
+routing, it doesn't change the secrets-management shape this ADR governs. No `binding` clause is
+affected; the single-file/scoped-`environment:` decisions and the threat model both hold unchanged.
+`docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` and `infrastructure/docker/env/prod.sops-cutover-fragment.yml`
+should be read against the current (post-retirement) `docker-compose.yml`/`.env` shape when the
+real cutover executes, not against the four-domain-group state this ADR was originally written
+against.

@@ -48,7 +48,13 @@ const ROUTE_BUDGETS = [
   // Rebased 2026-08-16 after terminal recovery, cross-cashier shift resume,
   // admin audit authorization, and shared parked-sale ownership checks added
   // route-level orchestration while their rendered workspaces remain lazy.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 121 },
+  // Raised 121 -> 128 on 2026-08-23 after the downpayment epic's terminal-facing
+  // work (#822/#824/#825, #865/#866 -- split display, Settle Balance action,
+  // customer_choice controls) tipped the route controller to 121.6KB, tripping
+  // the near-zero-headroom gate #392 already flagged. #392 tracks the larger
+  // decision of whether to keep rebasing vs. split TerminalPage.jsx; this is
+  // just the rebase half with real headroom restored, not a resolution of it.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 128 },
   // Rebased 2026-06-30 to the current sales route candidate.
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 49 },
 ];

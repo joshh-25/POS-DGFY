@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/posOrderBalanceSettlement.usecase.tes
 rollback_note: Revert this PR's diff. No migration and no schema change -- pos_order_payments.kind has been ENUM('downpayment','balance','refund','forfeiture') and PosTransaction.amount_paid/balance_due have existed since Phase 137 (#819); this PR is the table's first 'balance' writer, not a schema change. Reverting restores the pre-existing behaviour exactly: a partially-paid downpayment order has no way to settle its balance and stays stuck at partially_paid (the pre-existing state, not a new failure mode this PR introduces), the collect-cash endpoints and both completion paths return to their pre-PR guards, and no 'balance' ledger rows are written. Rows already written by this PR remain valid and readable -- they are additive evidence rows, not state other code branches on. No full_payment or plain-COD order is affected in either direction, since every new guard is gated on payment_status === 'partially_paid' or (for the completion-gate discriminator) amount_paid > 0.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-23T00:30:00+08:00
-preflight_request_ref: NOT-EXECUTED-825-DOWNPAYMENT-BALANCE-SETTLEMENT
+preflight_run_at: 2026-08-23T11:24:58+08:00
+preflight_request_ref: PROMOTER-825-2026-08-23
 ---
 
 # Staff-recorded balance settlement at delivery/pickup (#825)
@@ -184,3 +184,13 @@ below rather than silently left uncovered.
 
 **Residual risk added:** no test in this codebase currently catches a missing prop across this
 specific four-level component tree; building that coverage is out of scope for this fix.
+
+## Preflight Reconciliation
+
+~~`POST /api/v1/compliance/preflight` has not been executed against a live environment~~ --
+**reconciled 2026-08-23** by the `develop -> staging` promotion-time sweep (#884,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment). Run against the DEV tenant
+(`Loandry`, `dev.dgfy.ph`) with `request_name: "PR #892 downpayment balance settlement (#825)"`;
+the endpoint returned `result: no_breach`, `reason_code: ALLOWED`, matching the values this
+declaration had provisionally recorded. Front matter above now carries the real run timestamp and
+`preflight_request_ref: PROMOTER-825-2026-08-23` in place of the `NOT-EXECUTED-` placeholder.

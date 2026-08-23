@@ -42,7 +42,7 @@ Behavior:
 
 **`SENTRY_ENVIRONMENT` fallback — set it explicitly, do not rely on the default.** The
 backend Docker image hard-sets `NODE_ENV=production` on every environment (dev,
-staging, beta and prod alike — see `infrastructure/docker/dgfy-api/Dockerfile`), so an
+staging and prod alike — see `infrastructure/docker/dgfy-api/Dockerfile`), so an
 unset `SENTRY_ENVIRONMENT` does **not** fall back to a meaningful per-box value. The
 resolver (`resolveSentryEnvironment` in `apps/dgfy-api/src/config/sentry.js`) is:
 
@@ -255,21 +255,24 @@ Leave `SENTRY_UPLOAD_SOURCEMAPS=false` for ordinary local-test runs.
 
 ## GitHub Environment Checklist
 
-Four GitHub Environments exist and build/deploy on every push to their branch:
-`DEV` (`develop` → `dev.dgfy.ph`), `STAGING` (`staging` → `stage.dgfy.ph`), `BETA`
-(`main` → `beta.dgfy.ph`), `PROD` (`main` → `dgfy.ph`). The `VITE_SENTRY_ENVIRONMENT`
-value each one actually uses is the environment name itself, uppercase — `DEV`,
-`STAGING`, `BETA`, `PROD` — matching what STAGING and PROD already have configured
-live. (Earlier revisions of this doc suggested lowercase names like `beta` or
-`local-test` for GitHub Environment builds; those don't match what's actually set.
-`local-test` is still correct for the local-test compose file below, which is a
-separate, unrelated environment name.)
+Three GitHub Environments exist and build/deploy on every push to their branch:
+`DEV` (`develop` → `dev.dgfy.ph`), `STAGING` (`staging` → `stage.dgfy.ph`), `PROD`
+(`main` → `dgfy.ph`). (A fourth, `BETA` → `beta.dgfy.ph`, was retired 2026-08-23,
+#329/#895 — beta.dgfy.ph now redirects to prod and no longer builds/deploys its own
+frontend or backend images.) The `VITE_SENTRY_ENVIRONMENT` value each one actually
+uses is the environment name itself, uppercase — `DEV`, `STAGING`, `PROD` —
+matching what STAGING and PROD already have configured live. (Earlier revisions of
+this doc suggested lowercase names like `beta` or `local-test` for GitHub
+Environment builds; those don't match what's actually set. `local-test` is still
+correct for the local-test compose file below, which is a separate, unrelated
+environment name.)
 
 As of 2026-08-03, **DEV**, **STAGING** and **PROD** all have `VITE_SENTRY_*`/`SENTRY_*`
 vars configured and are reporting. **`dgfy-skupervisor` is wired on all three** —
 `VITE_SENTRY_DSN_SKUPERVISOR`/`SENTRY_PROJECT_SKUPERVISOR` were previously unset
 everywhere (#168); the SPA now uploads sourcemaps and reports on every environment
-that builds. **BETA has none set** — it still reports nothing from any surface.
+that builds. (BETA, which never had any of these set, was retired 2026-08-23 —
+#329/#895 — so this is no longer a gap to close.)
 
 Before DEV was turned on, each project's default "high priority issues" alert rule
 (Settings → Alerts) was scoped from `environment: null` (fires on every environment)
@@ -289,7 +292,7 @@ is no longer strictly required to avoid PROD pollution — after the
 `"production"` — but an explicit value is still correct so DEV events are actually
 filterable as DEV rather than landing under a visibly-wrong placeholder.
 
-For any environment's frontend image build (DEV/STAGING/BETA/PROD share the same
+For any environment's frontend image build (DEV/STAGING/PROD share the same
 `deploy-frontend.yml` build-args block — see workflow source, not per-environment
 duplication), set:
 

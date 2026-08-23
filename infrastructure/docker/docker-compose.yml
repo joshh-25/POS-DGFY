@@ -192,6 +192,17 @@ services:
       STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
       DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
       CERT_DOMAIN: ${CERT_DOMAIN}
+      # PROD domain group -- added 2026-08-23 (#329/#401) so this file matches the
+      # live server, which has carried these since the 2026-07-20 dgfy.ph cutover
+      # (see infrastructure/docker/env/prod.compose-fragment.yml, captured from the
+      # server, and docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md's now
+      # -resolved drift finding). Required by nginx.conf.template's PRODUCTION
+      # server blocks AND by the beta group's redirect targets.
+      SKUPERVISOR_DOMAIN_PROD: ${SKUPERVISOR_DOMAIN_PROD}
+      POS_DOMAIN_PROD: ${POS_DOMAIN_PROD}
+      STOREFRONT_DOMAIN_PROD: ${STOREFRONT_DOMAIN_PROD}
+      STOREFRONT_ALT_DOMAIN_PROD: ${STOREFRONT_ALT_DOMAIN_PROD:-}
+      CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
     ports:
       - "80:80"
       - "443:443"

@@ -82,7 +82,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
 | 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
 | 0059 | [Frontend Relocation to `apps/dgfy-web`](0059-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
-| 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `accepted` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
+| 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `amended` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
 | 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `superseded` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |

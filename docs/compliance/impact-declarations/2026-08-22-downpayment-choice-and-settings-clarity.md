@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-23
 related_adr: docs/architecture/adr/0070-downpayment-authorization-across-workflow-modes.md
 declaration_id: 2026-08-22-downpayment-choice-and-settings-clarity
 classification: major
@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/downpaymentPolicy.unit.test.js (21 pa
 rollback_note: Revert this PR's diff. No migration, no new database column or table -- customer_choice was already a schema-authorized ENUM value (Phase 138/#820), this PR only lifts the use-case-layer 422 that rejected it and relaxes the min_downpayment_centavos requirement to be type-scoped. Reverting removes the third settings option, the storefront election control, and the payment_election field from the checkout payload; every existing full_payment/downpayment_required tenant is unaffected either way, since resolveDownpaymentForTotal's behavior for those two modes is byte-identical to before this PR (only the new customer_choice branch and the fixed-mode minimum relaxation are new code paths).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-22T16:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-865-866-DOWNPAYMENT-CHOICE
+preflight_run_at: 2026-08-23T11:24:56+08:00
+preflight_request_ref: PROMOTER-865-866-2026-08-23
 ---
 
 # Downpayment settings clarity (#865) + the `customer_choice` payment mode (#866)
@@ -123,18 +123,14 @@ new/changed file: 0 problems, 0 new warnings. `npm run check:architecture`: clea
 
 Outstanding before merge:
 
-- `POST /api/v1/compliance/preflight` has **not** been executed against a live environment --
-  same disclosure shape as prior downpayment-epic declarations (see #859's own
-  `2026-08-22-downpayment-settings-pos-ui.md`). The front-matter `preflight_run_at` above records
-  this declaration's own authored/classification time, not a live API call -- it is a placeholder
-  in the format the guardrail's shape check requires
-  (`docs/compliance/request-time-preflight-protocol.md`'s own "What the guardrail does and does
-  not verify" section: the check validates field *shape* only and cannot distinguish a recorded
-  real preflight from a typed one), not evidence that the endpoint ran.
-  `preflight_request_ref` is deliberately prefixed `NOT-EXECUTED-` for the same reason -- so
-  nothing reading front matter mechanically can mistake it for a real request reference. A
-  reviewer with a live environment should run the endpoint and reconcile both fields against the
-  real result before merge.
+- ~~`POST /api/v1/compliance/preflight` has not been executed against a live environment~~ --
+  **reconciled 2026-08-23** by the `develop -> staging` promotion-time sweep (#884,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment). Run against the DEV tenant
+  (`Loandry`, `dev.dgfy.ph`) with `request_name: "PR #867 downpayment choice + settings clarity
+  (#865, #866)"`; the endpoint returned `result: no_breach`, `reason_code: ALLOWED`, matching the
+  values this declaration had provisionally recorded. Front matter above now carries the real run
+  timestamp and `preflight_request_ref: PROMOTER-865-866-2026-08-23` in place of the
+  `NOT-EXECUTED-` placeholder.
 - Live E2E of the storefront election control itself (picking "pay in full" vs. "pay a
   downpayment" against a real `customer_choice`-configured tenant, confirming the quote refreshes
   and the correct payment method set renders) has not been performed -- unit/contract coverage
