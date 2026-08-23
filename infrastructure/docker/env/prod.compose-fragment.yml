@@ -174,19 +174,31 @@ services:
 # (from cutover fragment 1 above), `certbot:`, and the top-level `networks:`
 # block stay untouched.
 #
-# IMPORTANT -- image tag override: unlike the repo's own
-# infrastructure/docker/docker-compose.yml (which uses ${IMAGE_TAG:-latest}
-# for these three services), PROD MUST use ${FRONTEND_PROD_IMAGE_TAG:-latest}
-# instead. Prod's IMAGE_TAG=beta is scoped to the backend images only;
-# deploy-main.yml never pushes a dgfy-ims/dgfy-pos/dgfy-storefront image
-# tagged "beta", only "latest" -- copying ${IMAGE_TAG:-latest} verbatim would
-# try to pull a tag that doesn't exist. FRONTEND_PROD_IMAGE_TAG already exists
-# in prod's .env (added by the 2026-07-20 backend/frontend-beta cutover) and
-# is already set to "latest" -- no .env change needed for this fragment.
+# PREREQUISITE -- issue #913 must land first: this fragment uses plain
+# ${IMAGE_TAG:-latest}, IDENTICAL to the repo's own
+# infrastructure/docker/docker-compose.yml, dev.compose-fragment.yml, and
+# stage.compose-fragment.yml. That's only correct once prod's IMAGE_TAG has
+# been renamed off "beta" to "latest" per issue #913 -- while IMAGE_TAG=beta
+# still stands (its current, historical value, scoped to the backend images
+# only), ${IMAGE_TAG:-latest} on these three NEW services would try to pull
+# a dgfy-ims:beta/dgfy-pos:beta/dgfy-storefront:beta tag that deploy-main.yml
+# never pushes -- only "latest". See docs/deployment/2026-08-23-frontend-
+# split-cutover-runbook.md's "Prerequisite: issue #913" section for the
+# `ssh dgfy 'grep ^IMAGE_TAG= /opt/dgfy-platform/.env'` check to run first.
+#
+# FALLBACK, only if #913 genuinely has not shipped yet and this cutover
+# can't wait for it: replace ${IMAGE_TAG:-latest} below with
+# ${FRONTEND_PROD_IMAGE_TAG:-latest} on all three services instead -- that
+# variable already exists in prod's .env (added by the 2026-07-20 backend/
+# frontend-beta cutover for exactly this kind of beta/prod disambiguation)
+# and is already set to "latest" there today, so it works correctly either
+# way. Once #913 lands, FRONTEND_PROD_IMAGE_TAG becomes vestigial and should
+# be deleted from .env as part of #913's own coordinated restart, not left
+# behind for a later cleanup.
 
 services:
   dgfy-ims:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # No host port: reachable only via dgfy_internal, through the nginx
     # service below.
@@ -198,7 +210,7 @@ services:
       retries: 5
 
   dgfy-pos:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-pos:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:
@@ -208,7 +220,7 @@ services:
       retries: 5
 
   dgfy-storefront:
-    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${FRONTEND_PROD_IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-platform/dgfy-storefront:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [dgfy_internal]
     healthcheck:

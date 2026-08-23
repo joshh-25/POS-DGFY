@@ -114,18 +114,34 @@ Exact per-environment diffs (with the required prod image-tag override, see belo
 those exact files — this document is the narrative and sequencing; those files are the literal
 paste-in diff.
 
-### The one required edit: prod's image tag variable
+### Prerequisite: issue #913 (rename `IMAGE_TAG` off `beta`) must land on prod first
 
 The repo's reference compose above uses `${IMAGE_TAG:-latest}` for all three new services. **That is
 correct on DEV and STAGING** (`IMAGE_TAG=develop` / `IMAGE_TAG=staging` respectively, matching what
-`deploy.yml` actually pushes for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` there). **It is wrong on
-PROD**: prod's `IMAGE_TAG=beta` is scoped to the backend images only (`dgfy-api`, `dgfy-migration-
-runner`); `deploy-main.yml` never pushes a `dgfy-ims:beta`/`dgfy-pos:beta`/`dgfy-storefront:beta` tag
-— only `"latest"`. Copying `${IMAGE_TAG:-latest}` verbatim onto prod's three new services would try
-to pull a tag that doesn't exist. Prod must instead use `${FRONTEND_PROD_IMAGE_TAG:-latest}` on all
-three — the variable the 2026-07-20 backend/frontend-beta cutover already added to prod's `.env` for
-exactly this beta/prod disambiguation, already set to `latest` there today. No `.env` change needed
-on prod for this — the variable already exists and already has the right value.
+`deploy.yml` actually pushes for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` there). **On PROD, this
+depends on issue #913 having shipped first.** Today, prod's `IMAGE_TAG=beta` is a leftover from the
+now-retired beta/prod frontend split — a name that predates and is unrelated to this ADR-0071 split,
+scoped to the backend images only (`dgfy-api`, `dgfy-migration-runner`). Copying `${IMAGE_TAG:-
+latest}` verbatim onto prod's three new services while `IMAGE_TAG` still says `beta` would try to
+pull a `dgfy-ims:beta`/`dgfy-pos:beta`/`dgfy-storefront:beta` tag that `deploy-main.yml` never
+pushes — only `"latest"`.
+
+**This runbook's PROD leg assumes #913 has already landed and prod's `IMAGE_TAG` is `latest`.**
+Per Pat's direction (2026-08-23), #913 is sequenced *before* this runbook's PROD leg specifically so
+the fragment below can use plain `${IMAGE_TAG:-latest}` — identical to DEV/STAGING and to the repo's
+own reference compose, with no prod-only special case. Confirm before starting the PROD leg:
+
+```
+ssh dgfy 'grep ^IMAGE_TAG= /opt/dgfy-platform/.env'   # must read IMAGE_TAG=latest, not beta
+```
+
+**Fallback, only if #913 has not shipped yet and the frontend cutover can't wait**: use
+`${FRONTEND_PROD_IMAGE_TAG:-latest}` instead of `${IMAGE_TAG:-latest}` on all three new services —
+the variable the 2026-07-20 backend/frontend-beta cutover added to prod's `.env` for exactly this
+kind of beta/prod disambiguation, already set to `latest` there today, so it works correctly either
+way. Once #913 does land, `FRONTEND_PROD_IMAGE_TAG` becomes fully vestigial (per the recommendation
+on #913) and should be removed from `.env` as part of that issue's own coordinated restart, not
+carried forward here.
 
 ### Nginx template — already correct in-repo, just needs copying
 
@@ -142,6 +158,10 @@ with this cutover's own diff, not addressed by this runbook.
 
 ## Pre-flight checklist
 
+0. **PROD only: confirm issue #913 has landed** (`IMAGE_TAG` renamed off `beta` to `latest` on prod's
+   `.env`) before starting the PROD leg — see "Prerequisite: issue #913" above for why, the exact
+   check to run, and the documented fallback if #913 genuinely can't land first. DEV and STAGING have
+   no such dependency and can proceed without this check.
 1. **GHCR org package permissions.** The first "push-only" dispatch (step 2 below) auto-creates the
    `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` GHCR packages. Immediately after that dispatch completes,
    go to each package's Settings in the GitHub org and match its visibility/Actions-access to the
@@ -235,4 +255,7 @@ three environments — not bundled into this runbook's own PR.
   paste-in diffs this runbook's step 3 uses.
 - `docs/deployment/2026-07-20-dgfy-ph-production-cutover-runbook.md` — the precedent this document's
   shape and the "hand-maintained, not a git checkout" framing are drawn from.
+- Issue #913 — **PROD-leg prerequisite**, see above. Renames prod's `IMAGE_TAG` off `beta` to
+  `latest` and retires `FRONTEND_PROD_IMAGE_TAG`; must land before this runbook's PROD leg for the
+  fragment below to use the plain, unconditional `${IMAGE_TAG:-latest}` form.
 - Issue #915.
