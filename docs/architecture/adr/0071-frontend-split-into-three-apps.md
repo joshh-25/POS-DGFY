@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-15
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-24
 review_by: 2027-02-15
 applies_to: repository_layout
 topic: frontend_split_into_three_apps
@@ -146,6 +146,25 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
 - What's unchanged: nothing about the decision itself — this is a citation update pointing future
   readers at where the runbook actually lives, not a change to what it says to do.
 - PR: #513 (issue #915, `Refs #322`).
+
+## Future Direction
+
+### 2026-08-24 — image registry path flattened, superseded to ADR 0072
+
+- Clause amended: **Decision 3** (`[binding]`) — the image path
+  `ghcr.io/sieitzz/dgfy-platform/dgfy-{ims,pos,storefront}`.
+- Change: `docs/architecture/adr/0072-ghcr-container-image-naming.md` supersedes-in-part this
+  clause, flattening every GHCR package in the repo (including these three) to
+  `ghcr.io/sieitzz/<apps-directory-name>` — i.e. `ghcr.io/sieitzz/dgfy-{ims,pos,storefront}`,
+  dropping the `dgfy-platform/` path segment. Reason: GHCR's org package listing renders only the
+  last path segment, so the old path displayed as a bare, collision-prone name once other Sieitzz
+  repositories start publishing their own containers (issue #928).
+- What's unchanged: the rest of Decision 3 — one image per app, own Dockerfile per app under
+  `infrastructure/docker/dgfy-{ims,pos,storefront}/`, the single `frontend` image and its compose
+  service retired. Only the registry path segment moves; per ADR 0072 Decision 4, the legacy
+  `frontend` image itself is deliberately not renamed since it has no `apps/*` directory and is
+  already scheduled for deletion once this same cutover bakes.
+- PR: (this PR, issue #928).
 
 ## Future Direction
 
