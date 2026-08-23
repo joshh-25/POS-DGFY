@@ -211,7 +211,8 @@ export class PayMongoService {
         description,
         paymentMethodAllowed = ['qrph'],
         metadata = {},
-        splitPayment = null
+        splitPayment = null,
+        paymentMethodOptions = null
     }) {
         try {
             const attributes = {
@@ -224,6 +225,10 @@ export class PayMongoService {
 
             if (splitPayment) {
                 attributes.split_payment = splitPayment;
+            }
+
+            if (paymentMethodOptions) {
+                attributes.payment_method_options = paymentMethodOptions;
             }
 
             const response = await axios.post(`${this.baseUrl}/payment_intents`, {
