@@ -24,7 +24,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/api
+  IMAGE_NAME: ghcr.io/sieitzz/dgfy-api
 
 jobs:
   build-and-push:
