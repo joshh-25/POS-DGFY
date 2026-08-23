@@ -5,6 +5,66 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-08-23 — the two runners are labeled by size and routed by measurement (#923)
+
+Both self-hosted runners previously carried only the generic `self-hosted` label, so every
+`runs-on`/`runner_labels_json` targeted either box interchangeably even though they're very
+unevenly resourced and both dual-purposed, not dedicated CI boxes:
+
+| SSH alias | GH runner name | Runner ID | Cores | RAM | Disk free | Also running |
+|---|---|---|---|---|---|---|
+| `ssh ch-openproject-runner` | `vm-openproject` | 23 | 4 | 3.8Gi (340Mi free, 1.9G swapped) | 3.9G / 29G | The OpenProject app, 3 buildx builders, cloudflared, yopass |
+| `ssh ch-dgfy-runner` | `vm-sieitzstaging` | 25 | 8 | 15Gi (11Gi available) | 11G / 39G | **The live DEV + STAGING docker-compose stacks** |
+
+**Labels** (applied live via the GitHub REST API, no SSH/re-registration needed —
+`gh api --method POST repos/Sieitzz/dgfy-platform/actions/runners/<id>/labels -f "labels[]=<label>"`):
+
+- `sieitz-sm` — runner 23 (`vm-openproject`) only. Descriptive; nothing currently forces onto it.
+- `sieitz-lg` — runner 25 (`vm-sieitzstaging`) only. Used where a job genuinely needs the bigger box.
+- `sieitz-runner` — both runners. The generic "don't care which box" label, replacing bare
+  `self-hosted` for everything that doesn't specifically need the large box.
+
+**The split was measured from GHA history (206 runs / 852 job records), not guessed:**
+
+| Job | vm-openproject (sm) | vm-sieitzstaging (lg) | sm/lg ratio |
+|---|---|---|---|
+| `frontend-build-check` | n=39 med 3.7m | n=36 med 2.4m | 1.51x — slower on small |
+| `dgfy-api-build-check` | n=32 med 2.8m | n=51 med 3.4m | 0.81x — faster on small |
+| `dgfy-migration-runner-build-check` | n=14 med 1.4m | n=27 med 1.8m | 0.76x — faster on small |
+
+Only `frontend-build-check` (its Dockerfile runs `npm run build:all:parallel`, 3 concurrent vite
+builds in one container — the documented exit-137 OOM case, #662) showed a real size signal.
+`dgfy-api-build-check` and `dgfy-migration-runner-build-check` are `npm ci --omit=dev` + COPY with
+no compile step and are measurably *faster* on the small box, so `pr-checks.yml`'s
+`RUNNER_HEAVY_JSON`/`RUNNER_LIGHT_JSON` anchors were re-split accordingly: only
+`frontend-build-check` stays on `*runner_heavy` (→ `sieitz-lg`); `dgfy-api-build-check` and
+`dgfy-migration-runner-build-check` moved to `*runner_light` (→ `sieitz-runner`).
+`pr-quality-checks.yml`'s default is pinned to `sieitz-lg` on the merits (`dgfy-api-quality`: 2
+service containers, `--max-old-space-size=4096`, 45-min timeout; `frontend-quality`: 3 sequential
+vite builds + `playwright install chromium`, 35-min timeout — the two heaviest jobs in the repo).
+Everything else (deploy/publish path, `shared-changed-paths.yml`, PR build-check defaults) went to
+the generic `sieitz-runner` — see `pr-checks.yml`, `pr-quality-checks.yml`, and the other edited
+workflow files' inline `#923` comments for the exact site-by-site reasoning.
+
+**Correction to a since-superseded framing:** #923's own issue body raised a concern that
+defaulting the DEV/STAGING deploy path (`deploy.yml`) to the generic label instead of pinning it to
+`sieitz-lg` could silently reintroduce the OpenVPN hop #599 removed. That concern predates this
+doc's own "Status as of 2026-08-18" section below, which already established that `vm-openproject`
+reaches the DEV/STAGING host directly over the internal LAN and that `vpn_required` is a hardcoded
+`false` at `deploy.yml`'s call into the orchestrator, gating the only three OpenVPN steps
+independent of which runner picks up the job. A DEV/STAGING publish landing on either box brings up
+no tunnel either way — so `deploy.yml`'s `runner_labels_json` went to the generic `sieitz-runner`,
+not `sieitz-lg`. The label's real forward-looking purpose, per the "Deliberately not done in this
+pass" note below (#599 item 2), is as the prerequisite for a future "skip SSH-to-self, run
+`docker compose` locally when the runner *is* the deploy target" optimization — `sieitz-lg` now
+exists and positively identifies that box, satisfying that prerequisite, but nothing consumes it yet.
+
+**Separately found, not fixed by this pass:** the `dgfy-api-quality` timeouts that originally
+motivated #923 are not a resource problem. `tests/token_refresh_race.test.js`'s `beforeAll` hook
+hangs on `sequelize.authenticate()` and blows Jest's 120s hook timeout — confirmed failing the same
+4 tests, with the same signature, on both the 8-core box (chunk TIMEOUT at 600s) and the 4-core box
+(chunk FAIL at 524s). Routing this job to the large box does not make it green; tracked separately.
+
 ## Status as of 2026-08-19 — cache backend added as a third flippable anchor (#726)
 
 Measured: the `type=gha` Docker layer cache costs ~21x the build it's meant to skip on the current
