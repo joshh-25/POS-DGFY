@@ -7,7 +7,7 @@ on:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["self-hosted", "sieitz-runner"]'  # #923: generic, either box
       cache_from:
         description: >-
           Cache backend for cache-from, e.g. "type=gha". Empty disables the
