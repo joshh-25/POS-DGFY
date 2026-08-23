@@ -178,7 +178,12 @@ either direction — the nginx vhost is an inert tracked file until someone appl
 
 Two follow-ups this declaration does not resolve, both recorded so they are not lost:
 
-1. The `__sentryTestError` exposure on `beta.dgfy.ph` (precondition 5) needs an explicit accept
-   before the `staging -> main` promotion merges.
+1. ~~The `__sentryTestError` exposure on `beta.dgfy.ph` (precondition 5) needs an explicit accept
+   before the `staging -> main` promotion merges.~~ **Resolved 2026-08-23 (#329/#894/#896/#895):**
+   `beta.dgfy.ph` was retired — nginx now redirects every `*.beta.dgfy.ph` request straight to its
+   `*.dgfy.ph` equivalent, and `deploy-main.yml` no longer builds or deploys a `frontend-beta`
+   image at all. There is no longer a `beta.dgfy.ph`-served surface for `window.__sentryTestError()`
+   to be reachable on, so the exposure this precondition warned about no longer exists — not
+   because the accept was ever explicitly given, but because the surface it applied to is gone.
 2. Stage and production nginx vhosts still have no tracked copy, so the header-correlation workflow
    in the runbook is dev-only in practice.
