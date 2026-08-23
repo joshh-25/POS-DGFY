@@ -10,7 +10,7 @@
     "build": "vite build",
     "build:desktop": "npm run build && electron-builder --config desktop/pos-electron/electron-builder.json",
     "preview": "vite preview",
-    "lint": "eslint src --ext .js,.jsx",
+    "lint": "eslint src vitePosOfflinePrecachePlugin.js --ext .js,.jsx",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
