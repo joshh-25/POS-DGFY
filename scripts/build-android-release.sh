@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 
 # Builds a release APK of the iMin Android wrapper against the requested
-# product flavor (dev/staging/beta/prod) and copies it into
+# product flavor (dev/staging/prod) and copies it into
 # releases/android/ with a checksum.
 #
 # Usage:
-#   bash scripts/build-android-release.sh <dev|staging|beta|prod> [--clean] [--pos-origin URL]
+#   bash scripts/build-android-release.sh <dev|staging|prod> [--clean] [--pos-origin URL]
 #
-# All four release build types currently reuse the debug signing config
+# All three release build types currently reuse the debug signing config
 # (see apps/dgfy-android-bridge/imin-wrapper/app/build.gradle.kts), so the resulting APK is
 # already signed and installable without a separate keystore.
+#
+# The `beta` flavor (and this script's back-compat shim,
+# build-android-beta-release.sh) was removed 2026-08-23 (#329/#897) --
+# beta.dgfy.ph now redirects to prod, and a WebView origin allowlist does
+# not follow a cross-origin redirect, so a beta-flavored build would ship
+# broken.
 #
 # --pos-origin overrides the flavor's default POS origin at build time
 # (forwarded as -Pdgfy.<flavor>.posOrigin=<URL> to Gradle) -- useful when a
@@ -23,12 +29,12 @@ ANDROID_DIR="$PROJECT_ROOT/apps/dgfy-android-bridge/imin-wrapper"
 OUTPUT_DIR="$PROJECT_ROOT/releases/android"
 
 usage() {
-    echo "Usage: bash scripts/build-android-release.sh <dev|staging|beta|prod> [--clean] [--pos-origin URL]" >&2
+    echo "Usage: bash scripts/build-android-release.sh <dev|staging|prod> [--clean] [--pos-origin URL]" >&2
 }
 
 FLAVOR="${1:-}"
 case "$FLAVOR" in
-    dev|staging|beta|prod)
+    dev|staging|prod)
         shift
         ;;
     ""|-h|--help)
