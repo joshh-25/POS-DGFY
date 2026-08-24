@@ -2,6 +2,7 @@ import React from 'react';
 import { CustomerIdentityCard } from '../../../shared/components/checkout/CustomerIdentityCard.jsx';
 import { GuestIdentityForm } from '../components/GuestIdentityForm.jsx';
 import { SavedCustomerDetailsPanel } from '../../../shared/components/checkout/SavedCustomerDetailsPanel.jsx';
+import { CheckoutBillingEmailPrompt } from '../../../shared/components/checkout/CheckoutBillingEmailPrompt.jsx';
 
 export function createCustomerIdentityRenderers({
   hasSavedCustomerDetails,
@@ -225,9 +226,23 @@ export function createCustomerIdentityRenderers({
       />
   );
 
+  // #963: the card billing-email input, rendered into whichever payment step needs it. Lives here
+  // with the other identity renderers because it edits the same customerEmail state -- notably the
+  // signed-in path, whose identity summary above is read-only and so offers no other way in.
+  const renderBillingEmailPrompt = ({ invalid = false } = {}) => (
+    <CheckoutBillingEmailPrompt
+      value={customerEmail}
+      onChange={setCustomerEmail}
+      invalid={invalid}
+      accentColor={checkoutAccent}
+      bodyFont={servicesBodyFont}
+    />
+  );
+
   return {
     renderGuestIdentityFields,
     renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
+    renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt
   };
 }

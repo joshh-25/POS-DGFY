@@ -8251,6 +8251,81 @@ unshipped reservation.
 
 ---
 
+## Phase 154 - Shared Backend Image Tag Renamed Off `beta` (issue #913)
+
+### Initiative and Release
+
+- Initiative: rename the shared `dgfy-api`/`dgfy-migration-runner` GHCR image
+  tag from `beta` to `latest`, per issue Sieitzz/dgfy-platform#913.
+- Release: `chore/913-shared-backend-image-tag` targeting `develop`, riding
+  the same `develop -> staging -> main` promotion train as the frontend-split
+  cutover's PROD leg.
+
+### Objective and Scope
+
+- `beta` was a leftover from the retired beta/prod frontend split
+  (#329/#895/#896) — a name that outlived its own meaning once
+  `beta.dgfy.ph` was retired, and one that would have forced a prod-only
+  `${FRONTEND_PROD_IMAGE_TAG:-latest}` special case into the frontend-split
+  cutover's `prod.compose-fragment.yml` had it stayed.
+- Repo-side only in this phase: `deploy-main.yml`'s `dgfy-api` and
+  `dgfy-migration-runner` jobs' `image_tags` input, `"beta"` -> `"latest"`;
+  the now-dead fallback paragraphs in `prod.compose-fragment.yml` and the
+  frontend-split cutover runbook's "Prerequisite: issue #913" section,
+  rewritten to reflect the rename as landed.
+- Deliberately **not** in scope for this phase: the server-side `.env` edit
+  (`IMAGE_TAG=beta` -> `latest`) and the `dgfy-api`/`dgfy-migration-runner`
+  restart it requires. Landing that alone would be a second, avoidable prod
+  downtime window; instead it's folded into the frontend-split cutover
+  runbook's own PROD-leg step 3/7, so one server edit and one restart covers
+  both changes. Issue #913 stays open until that server-side half lands.
+
+### Status
+
+- `completed` (repo half only — see Dependencies and Governance Note)
+- Completed on 2026-08-25.
+
+### Dependencies and Governance Note
+
+- Depends on Phase 153 (#928 GHCR flatten) having already landed —
+  `deploy-main.yml`'s image references are the flattened `sieitzz/<name>`
+  paths this phase's tag rename applies to.
+- Blocks the frontend-split cutover runbook's PROD leg (`docs/deployment/
+  2026-08-23-frontend-split-cutover-runbook.md`) — that runbook's own
+  `${IMAGE_TAG:-latest}` fragment for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront`
+  is only correct once this phase's `deploy-main.yml` change has shipped.
+- The PR uses `Refs #913`, not `Closes #913` — the issue stays open through
+  the server-side `.env` edit, which is part of the frontend-split cutover's
+  own completion, not this phase's.
+- No compliance impact declaration required: touches only
+  `.github/workflows/deploy-main.yml`, `infrastructure/docker/env/
+  prod.compose-fragment.yml`, and `docs/**` — none of
+  `check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` paths.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run lint:docs` (chains `check:adr`) passes with the runbook edit.
+- [x] `npm run check:compliance` reports no compliance-sensitive changes.
+- [x] Repo sweep confirms `image_tags: "beta"` no longer appears in
+  `deploy-main.yml`.
+- [ ] Server-side `.env` `IMAGE_TAG=latest` confirmed on `/opt/dgfy-platform`
+  — deferred to the frontend-split cutover runbook's PROD-leg step 3/7; not
+  part of this phase's own completion.
+
+### Implementation Links
+
+- `.github/workflows/deploy-main.yml`
+- `infrastructure/docker/env/prod.compose-fragment.yml`
+- `docs/deployment/2026-08-23-frontend-split-cutover-runbook.md`
+- [Issue #913 - rename the shared backend image tag off IMAGE_TAG=beta](https://github.com/Sieitzz/dgfy-platform/issues/913)
+
+### Completion Record (2026-08-25)
+
+- Phase 154 is complete (repo half). Phase 155 is the next eligible
+  repository phase and requires separate approval.
+
+---
+
 **Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
 the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
 renumbers"):**

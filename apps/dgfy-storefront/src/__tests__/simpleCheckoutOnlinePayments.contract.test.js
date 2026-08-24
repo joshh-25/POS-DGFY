@@ -255,6 +255,15 @@ describe('Simple Storefront online payment contract', () => {
       expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
         body: expect.stringContaining('"card_number":"4343434343434345"')
       }));
+      // #963: PayMongo 422s a card create with no billing email ("billing email required"), and
+      // that message reached customers verbatim. Nothing asserted the billing block reached the
+      // payload at all, which is how Retail shipped omitting the `billing` prop entirely.
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        body: expect.stringContaining('"email":"customer@example.com"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        body: expect.stringContaining('"phone":"+639171234567"')
+      }));
       expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.paymongo.com/v1/payment_intents/pi_test_card/attach', expect.objectContaining({
         method: 'POST',
         body: expect.stringContaining('"client_key":"pi_test_card_client_key"')

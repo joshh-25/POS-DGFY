@@ -38,3 +38,16 @@ export const isCustomerStepComplete = ({
     usePinnedAddress
   })
 );
+
+// #963: PayMongo's payment_methods create rejects a card without a billing email
+// ("billing email required"), and that message reaches the customer verbatim. Guests always have
+// one -- the guest OTP flow (shared/checkout/hooks/useGuestCheckoutOtp.js) can't complete without
+// it -- but a signed-in customer can hold a phone-only account
+// (dgfyCustomerUseCases.js: "A recovery email or phone is required"), and hasPrimaryContact above
+// accepts either. Scoped to `card` on purpose: it's the only rail PayMongo demands an email for,
+// and the direct-wallet path already receives real billing values from useCheckoutSubmission.js.
+export const isValidCheckoutEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
+export const requiresBillingEmail = ({ paymentType = '', customerEmail = '' } = {}) => (
+  paymentType === 'card' && !isValidCheckoutEmail(customerEmail)
+);

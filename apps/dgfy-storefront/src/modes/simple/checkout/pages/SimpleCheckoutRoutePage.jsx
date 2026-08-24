@@ -56,6 +56,7 @@ export function SimpleCheckoutRoutePage({
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
   renderAccountOwnedIdentitySummary,
+  renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
@@ -271,6 +272,8 @@ export function SimpleCheckoutRoutePage({
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
+            customerEmail={customerEmail}
+            renderBillingEmailPrompt={renderBillingEmailPrompt}
             guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             DropdownComponent={DropdownComponent}
             isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}

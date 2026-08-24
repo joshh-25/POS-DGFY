@@ -22,7 +22,12 @@ export function PaymentMethodSelectorBlock({
   // callout + refundable seam. Kept generic (any node, not a fixed shape) so this shared block
   // doesn't need to know about downpayment presentation at all; each mode builds its own callout
   // from shared/model/storefrontDownpaymentPresentation.js and passes it in.
-  downpaymentCallout = null
+  downpaymentCallout = null,
+  // #963: a second generic node slot, same contract as downpaymentCallout above -- rendered under
+  // the dropdown, shape unknown to this block. Today every mode passes the card billing-email
+  // prompt through it; keeping it generic is what stops this shared block from learning yet
+  // another domain concept.
+  notice = null
 }) {
   if (typeof DropdownComponent !== 'function') return null;
 
@@ -41,6 +46,7 @@ export function PaymentMethodSelectorBlock({
         />
       </label>
       {downpaymentCallout}
+      {notice}
       {showCashInfo ? (
         <div style={{ border: `1px solid ${cashInfoBorder}`, borderRadius: 16, background: cashInfoBackground, padding: '14px 16px', display: 'grid', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>

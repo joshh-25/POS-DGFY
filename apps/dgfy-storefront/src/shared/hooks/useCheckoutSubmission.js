@@ -15,6 +15,7 @@ import {
 // copy supersedes that inline one; no functional loss, since this is a strict superset.
 import { resolveTrackedTotals } from '../model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
+import { requiresBillingEmail } from '../../checkout/checkoutValidation.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -250,6 +251,16 @@ export function useCheckoutSubmission({
     }
     if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
       const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    // #963: backstop for the card billing-email requirement. Each mode's payment step already
+    // blocks submit and offers the input, but this is the one choke point every online-session
+    // creation passes through -- without it a stale UI gate lands the customer on PayMongo's own
+    // "billing email required" instead of a message they can act on.
+    if (requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail })) {
+      const message = 'Add an email address before paying by card. Your card issuer needs it to authorize the payment.';
       setCheckoutError(message);
       toast.error(message);
       return;

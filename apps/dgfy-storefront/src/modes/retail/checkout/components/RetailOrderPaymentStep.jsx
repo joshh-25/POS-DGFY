@@ -4,6 +4,7 @@ import { PaymentMethodSelectorBlock } from '../../../../shared/components/checko
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
+import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 import { RetailOrderReviewItemsList } from './RetailOrderReviewItemsList.jsx';
 
 /**
@@ -21,6 +22,7 @@ export function RetailOrderPaymentStep({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
+  customerEmail = '',
   downpaymentDisplay = { active: false },
   guestCheckoutOtpVerified = false,
   isCustomerChoiceStore = false,
@@ -38,6 +40,7 @@ export function RetailOrderPaymentStep({
   paymentElection = 'full',
   paymentOptions = [],
   paymentType = 'cash',
+  renderBillingEmailPrompt,
   servicesBodyFont,
   storefrontClosedNotice = null,
   withAssetOrigin
@@ -48,6 +51,9 @@ export function RetailOrderPaymentStep({
     : 'Place Order';
   const submitLoadingLabel = isDownpaymentActive ? 'Creating payment...' : 'Placing Order...';
   const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
+  // #963: same gating shape as guestCheckoutVerificationRequired above -- block submit, but also
+  // render the input, since a signed-in phone-only account has no other way to supply an email.
+  const billingEmailRequired = requiresBillingEmail({ paymentType, customerEmail });
   const displayedCheckoutError = guestCheckoutOtpVerified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE
     ? ''
     : checkoutError || (
@@ -84,6 +90,9 @@ export function RetailOrderPaymentStep({
             orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
           />
         )}
+        notice={billingEmailRequired && typeof renderBillingEmailPrompt === 'function'
+          ? renderBillingEmailPrompt({ invalid: Boolean(String(customerEmail || '').trim()) })
+          : null}
       />
       {onlinePaymentPanel}
       <RetailOrderReviewItemsList
@@ -114,8 +123,8 @@ export function RetailOrderPaymentStep({
           <button
             type="button"
             onClick={onCheckout}
-            disabled={checkoutLoading || guestCheckoutVerificationRequired}
-            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : guestCheckoutVerificationRequired ? '#cbd5e1' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : guestCheckoutVerificationRequired ? 'not-allowed' : 'pointer' }}
+            disabled={checkoutLoading || guestCheckoutVerificationRequired || billingEmailRequired}
+            style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : (guestCheckoutVerificationRequired || billingEmailRequired) ? '#cbd5e1' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : (guestCheckoutVerificationRequired || billingEmailRequired) ? 'not-allowed' : 'pointer' }}
           >
             {checkoutLoading ? submitLoadingLabel : submitLabel}
           </button>
