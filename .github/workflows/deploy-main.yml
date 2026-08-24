@@ -58,11 +58,13 @@ permissions:
 #                         (see below) -- this comment is about the
 #                         `environment:` input, a separate thing from the tag.
 #
-# `image_tags: "beta"` is kept deliberately, NOT renamed here: the server's
-# .env still sets `IMAGE_TAG=beta`, and renaming it needs a coordinated
-# server .env edit + api/migration-runner restart -- exactly the downtime
-# this cutover was designed to avoid. Tracked as its own follow-up (#329
-# Phase G), not part of this cleanup.
+# `image_tags: "latest"` (#913, 2026-08-25): the shared backend was tagged
+# `beta` from the retired beta/prod split, a name that outlived its own
+# meaning once #329/#895/#896 retired beta.dgfy.ph. Renamed here alongside
+# the frontend-split cutover's own coordinated server restart (docs/
+# deployment/2026-08-23-frontend-split-cutover-runbook.md), rather than as a
+# separate downtime window -- the server's `.env` `IMAGE_TAG=beta` -> `latest`
+# edit lands in that same `docker compose up -d`, not on its own.
 #
 # After all four images are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
@@ -85,7 +87,7 @@ jobs:
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: PROD
-      image_tags: "beta"
+      image_tags: "latest"
       # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
@@ -100,7 +102,7 @@ jobs:
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: PROD
-      image_tags: "beta"
+      image_tags: "latest"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
