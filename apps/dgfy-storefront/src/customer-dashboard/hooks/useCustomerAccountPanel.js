@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { mapCustomerBusinessCompanies } from '../model/customerBusinessAssets.js';
+import { getTrackingRetryAfterSeconds } from '../../tracking/customerTrackingRefresh.js';
 
 export function useCustomerAccountPanel({
   EMPTY_ACCOUNT_PANEL,
@@ -131,6 +132,14 @@ export function useCustomerAccountPanel({
         setDgfySessionAccount(null);
       }
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
+      // Surface retryAfterSeconds (never thrown further -- this function
+      // always resolves) so a caller polling on an interval, e.g.
+      // useCustomerDashboardLiveSync, can back off instead of retrying at
+      // its normal cadence into a limiter that's already rejecting it.
+      // #958/#509.
+      if (error?.status === 429) {
+        return { retryAfterSeconds: getTrackingRetryAfterSeconds(error) };
+      }
     }
   }, [
     EMPTY_ACCOUNT_PANEL,
