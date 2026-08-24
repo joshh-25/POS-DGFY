@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-24
 declaration_id: 2026-08-23-ims-settings-lint-entity-escape
 classification: major
 surfaces: settings
@@ -11,8 +11,8 @@ verification_evidence: npm run lint (apps/dgfy-ims),npm run build:skupervisor,np
 rollback_note: Revert this commit. The only source change is two HTML entity escapes inside static JSX copy on the "This Store Has No Location" empty-state banner; no settings field, persisted value, form handler, or API call changed, so rollback carries no data or compliance-state risk.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-23T20:18:48+08:00
-preflight_request_ref: NOT-EXECUTED-917-IMS-SETTINGS-LINT-ESCAPE
+preflight_run_at: 2026-08-24T16:12:04+08:00
+preflight_request_ref: PROMOTER-917-SETTINGS-2026-08-24
 ---
 
 # IMS Settings Lint Entity Escape
@@ -64,3 +64,14 @@ touched.
 ## Changed Files
 
 - `apps/dgfy-ims/Pages/Settings.jsx`
+
+## Preflight Reconciliation
+
+~~`preflight_request_ref: NOT-EXECUTED-917-IMS-SETTINGS-LINT-ESCAPE`~~ — **reconciled 2026-08-24**
+by the `develop -> staging` promotion-time sweep (#884,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment). Run against the DEV tenant
+(`Loandry`, `dev.dgfy.ph`) with `request_name: "PR #513 ims settings lint entity escape (#917)"`;
+the endpoint returned `result: no_breach`, `reason_code: ALLOWED`, matching the values this
+declaration had provisionally recorded. Front matter above now carries the real run timestamp and
+`preflight_request_ref: PROMOTER-917-SETTINGS-2026-08-24` in place of the `NOT-EXECUTED-`
+placeholder.
