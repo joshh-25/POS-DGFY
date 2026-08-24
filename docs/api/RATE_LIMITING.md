@@ -72,7 +72,7 @@ key — see [#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
 
 | Limiter | Budget (prod) | Window | Key | Mount |
 |---|---|---|---|---|
-| `authLimiter` | 5 | 5 min | `auth:<login\|register>:<ip>:<email>` | `/auth/{login,register}`, DGFY auth routes |
+| `authLimiter` | 5 | 5 min | `auth:<login\|register>:<ip>:<email>` | `/auth/{login,register}` plus ~18 other DGFY auth/account/affiliate routes -- see note below |
 | `emailOtpLimiter` | 3 | 10 min | `email_otp:<purpose>:<tenant>:<ip>:<email\|invite-token>` | `/auth/email-otp/request`, `/users/me/email-otp/request` |
 | `adminAuthLimiter` | 5 | 15 min | `admin_auth:<ip>:<username>` | `/admin/login` |
 | `storeAuthLimiter` | 10 | 15 min | `store_auth:<login\|register>:<ip>:<email>` | `/store/auth/{login,register}` |
@@ -80,10 +80,28 @@ key — see [#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
 | `dgfyTenantSessionLimiter` | 10 | 15 min | `dgfy_tenant_session:<ip>:<account>:<tenant>` | `/dgfy/auth/tenant-session` (post-auth) |
 | `dgfyAccountSearchLimiter` | 30 | 1 min | `dgfy_account_search:<tenant>:<user>:<ip>:<query>` | `/dgfy/accounts/search` |
 
-**`authLimiter` only counts failed attempts as of the #958 fix**
-(`skipSuccessfulRequests: true`) — previously, 5 *successful* logins in the window locked out
-everyone else sharing the same `ip+email` bucket (a shared cashier/office account on one network).
-Brute force is about failures; a successful login should never consume the same budget as one.
+**`authLimiter` is shared across ~20 mount points, not just login/register** —
+`routes/auth.js` (`/register`, `/login`) and `routes/dgfy.js` (`/auth/register`, `/auth/login`,
+`/auth/register/preflight`, `/auth/password-reset/{request,complete}`,
+`/auth/handoff/exchange`, `/auth/email-verification/{request,verify}`,
+`/account/business-step-up/request`, `/account/companies/:id/{switch,transfer-ownership,
+pos-session,pos-day-close-pin}`, `/legacy-link/*`, `/customer/tracking-recovery/*`,
+`/affiliate/attribution/capture`, `/affiliate/invites/:token`). The key's `login`/`register`
+scope tag is a fixed two-value label derived from whether the path contains `/register`
+(`keyGenerator`'s own `scope` check) — it does **not** identify which of the ~20 routes was
+actually hit. If you're debugging a 429 here, use the `path` field on the
+`logger.warn('Rate limit exceeded', ...)` log line, not the key's scope tag, to disambiguate.
+
+**`authLimiter` only counts failed attempts on the actual `/login` and `/register` endpoints**,
+as of the #958 fix (`skipSuccessfulRequests: true` with a `requestWasSuccessful` override that
+only returns true when the path ends in `/login` or `/register`) — 5 *successful* logins in the
+window used to lock out everyone else sharing the same `ip+email` bucket (a shared
+cashier/office account on one network). Brute force is about failures; a successful login should
+never consume the same budget as one. **The skip is deliberately scoped this narrowly**: several
+of the other ~18 mount points (`password-reset/request`, `email-verification/request`,
+`tracking-recovery/request`, `legacy-link/request-email-otp`) deliberately return a uniform 2xx
+regardless of whether the target exists — for those, `authLimiter` is the *only* throttle in
+front of the endpoint, and an unscoped skip would have made it silently unlimited.
 
 ## Storefront / customer-facing browse limiters
 
