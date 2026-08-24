@@ -35,6 +35,8 @@ When to use:
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
 14. `docs/features/FUNDING_AND_DISCOUNT_STACKING.md`
 - Code-grounded reference for how DGFY earns money per transaction, voucher/promo/affiliate/statutory-discount computation and stacking rules, and the current stacking matrix across storefront and POS.
+15. `docs/features/FUNDING_AND_DISCOUNT_STACKING_STAKEHOLDER_BRIEF.md`
+- Plain-language, print-ready companion to the doc above for non-engineering stakeholder/CEO/legal review — no issue numbers, ADR names, or file citations.
 
 ## Usage Notes
 
