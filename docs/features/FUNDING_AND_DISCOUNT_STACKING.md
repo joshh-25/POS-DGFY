@@ -66,51 +66,171 @@ Separately from DGFY's own fee, the payment processor (PayMongo) charges its own
 **By default, that fee is passed on to the merchant in full** — DGFY does not currently absorb it.
 See [§7](#7-fee-computation-both-regimes).
 
+### Fee regime — at a glance
+
+```mermaid
+flowchart TD
+    A["Order checkout begins"] --> B{"TENANT_REVENUE_SHARING_ENABLED?"}
+    B -->|"OFF — current default"| C["Regime A: Convenience Fee"]
+    B -->|"ON"| D["Regime B: Tenant Revenue Sharing"]
+
+    C --> C1{"Sales channel?"}
+    C1 -->|"Storefront (online)"| C2["Fee = round4(subtotal × 1%)<br/>charged to the BUYER"]
+    C1 -->|"POS (in-store cashier)"| C3["Fee = ₱0"]
+    C2 --> C4["Collected via PayMongo split,<br/>paid straight to DGFY's merchant account"]
+    C4 --> C5["NOT posted to DGFY's own<br/>tenant-revenue ledger"]
+
+    D --> D1["Fee = round(gross × dgfy_rate_bps ÷ 10,000)<br/>deducted from the MERCHANT's payout"]
+    D1 --> D2["DGFY collects the full payment"]
+    D2 --> D3["Ledger entry: dgfy_platform_revenue"]
+    D3 --> D4["Merchant settled 15/30 days later,<br/>only after fulfillment is confirmed"]
+```
+
 ## 2. Worked examples
 
-All figures are illustrative, using the rates actually hardcoded/defaulted in the codebase today.
+All figures are illustrative, using the rates actually hardcoded/defaulted in the codebase today,
+formatted as a receipt would show them.
 
-**A. Plain online sale, ₱1,000 cart, Regime A (current default):**
-- Convenience fee: `₱1,000 × 1% = ₱10.00`, charged to the buyer
-- Buyer pays: `₱1,000 + delivery fee + ₱10.00`
-- DGFY's ₱10 is not recorded in DGFY's ledger — see [§1](#1-how-dgfy-earns-money)
+**A. Plain online sale, Regime A (current default):**
+```text
+  DGFY STOREFRONT — ONLINE ORDER  (Regime A, current default)
+  --------------------------------------------------------
+  Cart subtotal                                 ₱ 1,000.00
+  + Delivery fee                                  (varies)
+  + DGFY convenience fee (1% of subtotal)       ₱    10.00
+  --------------------------------------------------------
+  TOTAL CHARGED TO BUYER          ₱ 1,010.00  + delivery
+  ==========================================================
+  DGFY's ₱10.00 fee is NOT posted to DGFY's own ledger —
+  it moves only through the PayMongo split payment. (§1)
+```
 
-**B. Same sale, in-store at POS cashier:**
-- Convenience fee: **₱0** — POS cashier sales never carry this fee
-- Buyer pays exactly the cart total, no DGFY fee at all
+**B. Same sale, in-store at a POS cashier:**
+```text
+  DGFY POS — IN-STORE SALE
+  --------------------------------------------------------
+  Cart subtotal                                 ₱ 1,000.00
+  + DGFY convenience fee (POS = always ₱0)      ₱     0.00
+  --------------------------------------------------------
+  TOTAL CHARGED TO BUYER                        ₱ 1,000.00
+```
 
-**C. Same sale, Regime B (if switched on):**
-- DGFY platform fee: `₱1,000 × 1% = ₱10.00`, deducted from what DGFY pays the merchant
-- Buyer pays: `₱1,000 + delivery fee`, nothing extra
-- Merchant receives: `₱1,000 − ₱10.00 (DGFY fee) − processor fee share`, 15/30 days later
+**C. Same sale, Regime B (built, not currently active):**
+```text
+  DGFY STOREFRONT — ONLINE ORDER  (Regime B, if enabled)
+  --------------------------------------------------------
+  Cart subtotal                                 ₱ 1,000.00
+  + Delivery fee                                  (varies)
+  --------------------------------------------------------
+  TOTAL CHARGED TO BUYER          ₱ 1,000.00  + delivery
+  ==========================================================
+  MERCHANT SETTLEMENT  (15/30 days later, post-fulfillment)
+  Gross collected                               ₱ 1,000.00
+  − DGFY platform fee (1% of gross)             ₱    10.00
+  − Merchant's share of processor fee             (varies)
+  --------------------------------------------------------
+  MERCHANT RECEIVES                  ₱ 990.00 − processor fee
+```
 
-**D. Downpayment order, ₱1,000 order, 20% (₱200) downpayment, Regime B:**
-- DGFY's fee is charged **only on the ₱200 downpayment**: `₱200 × 1% = ₱2.00`
-- The remaining ₱800 balance, collected later (typically cash on delivery/pickup), generates
-  **zero additional DGFY fee** — there is no code path that charges a fee on the balance leg today.
-- **Net effect: DGFY earns ~0.2% of this order's total value, not 1%.** This is the current de-facto
-  answer to open issue **#817** ("what fee basis should apply to a downpayment order") — the answer
-  today is "downpayment only," not by deliberate policy decision but because that's what the code
-  does. See [§7](#7-fee-computation-both-regimes).
+**D. Downpayment order, 20% downpayment, Regime B — de-facto answer to #817:**
+```text
+  DGFY — DOWNPAYMENT ORDER  (Regime B)
+  --------------------------------------------------------
+  Order total                                   ₱ 1,000.00
+  Downpayment required (20%)                    ₱   200.00
+  Balance (collected later, e.g. COD)           ₱   800.00
+  --------------------------------------------------------
+  DGFY fee on downpayment (1% of ₱200)          ₱     2.00
+  DGFY fee on balance leg          ₱     0.00  ← no code path charges this
+  ==========================================================
+  DGFY earns ₱2.00 on this ₱1,000 order — about 0.2%,
+  not the ~1% the headline rate implies. (§7)
+```
 
-**E. Voucher sale, ₱1,000 cart, ₱200 voucher discount:**
-- Buyer pays `₱800` for the goods
-- In Regime A, the convenience fee is still `₱1,000 × 1% = ₱10.00` — computed on the **pre-discount**
-  amount, not the ₱800 the buyer actually pays for goods
-- Affiliate commission (if this order also has an affiliate), and DGFY's Regime B fee (if active),
-  are both computed on the **post-discount** ₱800
+**E. Voucher sale, ₱200 voucher discount, Regime A:**
+```text
+  DGFY STOREFRONT — VOUCHER SALE  (Regime A)
+  --------------------------------------------------------
+  Cart subtotal                                 ₱ 1,000.00
+  − Voucher discount                            ₱  (200.00)
+  --------------------------------------------------------
+  Amount buyer pays for the goods                ₱   800.00
+  + DGFY convenience fee            ₱    10.00  ← 1% of the ₱1,000
+                                                    SUBTOTAL, not the
+                                                    ₱800 actually paid
+  --------------------------------------------------------
+  TOTAL CHARGED TO BUYER                        ₱   810.00
+```
 
-**F. PWD/Senior Citizen sale (in-store only — see §3), ₱112 item, VAT-inclusive:**
-- VAT is backed out first: `₱112 ÷ 1.12 = ₱100.00` (VAT-exempt base)
-- 20% statutory discount: `₱100.00 × 20% = ₱20.00`
-- Buyer pays: `₱80.00`
-- This matches the standard Philippine PWD/Senior Citizen computation. See
-  [§11](#11-statutory-discount-and-vat-arithmetic).
+**F. PWD/Senior Citizen sale (in-store only — see §3), VAT-inclusive item:**
+```text
+  DGFY POS — SENIOR / PWD DISCOUNT  (in-store only)
+  --------------------------------------------------------
+  Item price (VAT-inclusive)                    ₱   112.00
+  − VAT removed (112.00 ÷ 1.12 → net ₱100)      ₱    12.00
+  --------------------------------------------------------
+  VAT-exempt base                               ₱   100.00
+  − Statutory discount (20% of VAT-exempt base) ₱    20.00
+  --------------------------------------------------------
+  BUYER PAYS                                    ₱    80.00
+```
+This matches the standard Philippine PWD/Senior Citizen computation. See
+[§11](#11-statutory-discount-and-vat-arithmetic).
 
 ## 3. The stacking matrix
 
 This is the core of the legal-clarity question: **what combinations of discounts and fees can occur
 on the same order, and does the system actually allow or block each one?**
+
+### How POS decides — the single discount slot
+
+```mermaid
+flowchart TD
+    Start["POS checkout — cashier applies a discount"] --> Type{"Discount type"}
+    Type -->|"Voucher code"| V["Redeem voucher"]
+    Type -->|"Promo code"| P["Apply commercial promo"]
+    Type -->|"Senior / PWD"| S["Apply statutory 20% discount"]
+    Type -->|"Employee"| E["Apply employee discount"]
+    Type -->|"Manual / Other"| M["Apply manager-authorized discount"]
+
+    V --> Slot["governed_discount — ONE slot per transaction"]
+    P --> Slot
+    S --> Slot
+    E --> Slot
+    M --> Slot
+
+    Slot --> Guard{"Slot already occupied?"}
+    Guard -->|"Yes"| Blocked["Checkout blocked — 409 conflict"]
+    Guard -->|"No"| PIN{"PIN verified by an active<br/>authorized approver?"}
+    PIN -->|"No"| Reject["Checkout blocked — 422/403"]
+    PIN -->|"Yes"| Applied["Discount applied to the order"]
+
+    Applied --> Note["Per-item discounts (promo/manual) can still<br/>stack UNDERNEATH this slot — unguarded,<br/>they reduce the base before the slot's discount runs"]
+```
+
+### How Storefront decides — voucher, promo, and affiliate composition
+
+```mermaid
+flowchart TD
+    Start["Storefront checkout"] --> Aff{"Active affiliate attribution<br/>on this order?"}
+    Aff -->|"Yes"| AffRule["Affiliate price rule rewrites<br/>every line's unit price"]
+    Aff -->|"No"| Sub["Subtotal = catalog prices"]
+    AffRule --> Sub2["Subtotal = affiliate-adjusted prices"]
+
+    Sub --> Code{"Code entered?"}
+    Sub2 --> Code
+    Code -->|"None"| Total["Total = subtotal + delivery + fee"]
+    Code -->|"Promo code"| PromoApply["Apply promo discount — NO cap"]
+    Code -->|"Voucher code"| VClass{"Voucher benefit class"}
+
+    VClass -->|"percent_off / amount_off"| VApply["Discount the subtotal<br/>(capped by max_discount_centavos)"]
+    VClass -->|"fixed_price"| FixedCheck{"Affiliate pricing<br/>also active?"}
+    FixedCheck -->|"Yes"| Refused["Checkout BLOCKED —<br/>VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT"]
+    FixedCheck -->|"No"| VApply
+
+    PromoApply --> Total
+    VApply --> Total
+```
 
 | Combination | Storefront (online) | POS (in-store) | How it's enforced |
 |---|---|---|---|
@@ -168,24 +288,17 @@ a code defect this audit surfaced (filed as its own issue, not fixed as part of 
 | #605 | Should a fixed-price voucher be allowed with a statutory discount? | Currently blocked by the single-discount-slot rule (§3), same as any other combination |
 | #782 | Should voucher-to-voucher stacking (e.g. a free-delivery voucher category) ever be allowed? | Currently impossible — one voucher per order (§3) |
 
-**Code defects surfaced by this audit — filed separately, not fixed here:**
+**Code defects surfaced by this audit — each filed as its own issue, not fixed here:**
 
-1. Combining a per-item discount with a voucher on POS can **over-discount** the order — the
-   voucher's price base and the amount it's subtracted from are computed inconsistently.
-2. Affiliate commission is calculated differently online vs. in-store when a voucher is also
-   applied — the same sale would yield a different commission depending on channel.
-3. A storefront fallback calculation can, in one specific failure path, add together two discounts
-   that the main system deliberately never allows to combine.
-4. The official BIR discount report can, in one case, print a **customer's phone number** in the
-   field meant for their Senior Citizen/PWD ID number.
-5. A per-item statutory discount doesn't correctly flag the item as VAT-exempt in official sales
-   reports, which can cause VAT to be counted twice on the same sale.
-6. A database field meant to let a voucher explicitly be marked "combinable with statutory
-   discounts" exists but is not actually read or enforced anywhere — it looks configurable but is
-   not.
-7. Affiliate volume-tier bonuses and a safety check for conflicting settlement policy are only
-   evaluated in a preview screen for the business owner — they never actually run during real
-   checkout.
+| # | Defect | Issue |
+|---|---|---|
+| 1 | Combining a per-item discount with a voucher on POS can **over-discount** the order — the voucher's price base and the amount it's subtracted from are computed inconsistently. | #937 |
+| 2 | Affiliate commission is calculated differently online vs. in-store when a voucher is also applied — the same sale yields a different commission depending on channel. | #938 |
+| 3 | A storefront fallback calculation can, in one specific failure path, add together two discounts that the main system deliberately never allows to combine. | #939 |
+| 4 | The official BIR discount report can, in one case, print a **customer's phone number** in the field meant for their Senior Citizen/PWD ID number. | #940 |
+| 5 | A per-item statutory discount doesn't correctly flag the item as VAT-exempt in official sales reports, which can cause VAT to be counted twice on the same sale. | #941 |
+| 6 | A database field meant to let a voucher explicitly be marked "combinable with statutory discounts" is still accepted by the API and not enforced anywhere, even after the merchant-facing form control for it was deliberately removed (#734). | #942 |
+| 7 | The backend's own affiliate volume-tier bonus and settlement-policy safety check have **no production caller at all** — not checkout, not even the owner preview, which calls a separate re-implementation that explicitly omits them. | #943 |
 
 **Not implemented at all today**, worth stating for completeness on a legal-clarity document: the
 statutory 5% basic-necessities discount (RA 9994/RA 11861) and the Solo Parent discount are not
@@ -346,6 +459,31 @@ charge (F&B only) on the **net post-discount** total → order total. VAT is der
 **Confirmed divergence**: storefront computes VAT before discounts, POS computes it after. Both are
 internally consistent with their own arithmetic but are not directly comparable across channels.
 
+### Pipeline, side by side
+
+```mermaid
+flowchart TD
+    subgraph SF["Storefront pipeline"]
+        direction TB
+        SF1["Affiliate price rule rewrites<br/>each line's unit price (if active)"] --> SF2["Subtotal formed"]
+        SF2 --> SF3["VAT derived from<br/>PRE-discount line subtotals"]
+        SF2 --> SF4["Promo OR voucher discount<br/>(never both)"]
+        SF4 --> SF5["+ delivery fee (not discounted)"]
+        SF5 --> SF6["+ convenience fee, on the<br/>PRE-discount subtotal (not discounted)"]
+        SF6 --> SF7["= Total"]
+    end
+
+    subgraph POS["POS pipeline"]
+        direction TB
+        P1["Subtotal formed"] --> P2["Per-item discounts reduce<br/>each line's base"]
+        P2 --> P3["ONE governed order-level discount<br/>(promo/voucher/senior/pwd/employee/manual)<br/>applied against the item-discounted base"]
+        P3 --> P4["Service fee on the GROSS<br/>pre-discount subtotal (always ₱0 today)"]
+        P4 --> P5["+ Restaurant service charge (F and B only),<br/>on the NET post-discount total"]
+        P5 --> P6["= Total"]
+        P3 --> P7["VAT derived from<br/>POST-discount line amounts"]
+    end
+```
+
 ## 9. Voucher benefit resolution, caps, and per-line allocation
 
 Voucher discount types: `percent_off`, `amount_off`, `fixed_price`
@@ -420,7 +558,7 @@ Applied at `storeUseCases.js:929-985`, stamping the line `price_override_reason:
 **POS never applies an affiliate price rule** — affiliate codes on POS affect commission only.
 
 **Commission** — a separate calculation, at checkout time (not the reference `calculateAffiliateSale`
-engine, which is preview-only — see [§13](#13-known-posstorefront-divergences)).
+engine, which has **no production caller at all** — see [§13](#13-known-posstorefront-divergences)).
 
 Storefront (`storeUseCases.js:3293-3337`):
 ```js
@@ -524,9 +662,13 @@ persisted as DGFY's actual revenue.
 5. **A storefront frontend fallback path can sum promo + voucher discounts** — a state the backend's
    own guard makes impossible — when the backend's quote result isn't available and the frontend
    recomputes locally.
-6. **The reference affiliate calculation engine (`calculateAffiliateSale`), including its volume-tier
-   bonus and settlement-policy conflict check, is only used in the owner-facing preview screen.**
-   Live checkout re-derives commission inline and does not run either check.
+6. **The backend's own reference affiliate calculation engine (`calculateAffiliateSale`,
+   `affiliatePricingPolicy.js:121`) has no production caller at all — only its own unit tests call
+   it.** The owner-facing preview panel (`AffiliatesWorkspacePanel.jsx:126`) calls a *same-named but
+   separate* frontend re-implementation (`affiliatePricingPreview.js`) that its own file header says
+   deliberately **omits volume tiers**. So the backend engine's volume-tier bonus and
+   `UNRESOLVED_SETTLEMENT_POLICY` fail-closed guard run **nowhere** — not at checkout, not in the
+   preview — making it dead code with live-looking test coverage. Filed as #943.
 
 ---
 
@@ -549,4 +691,5 @@ persisted as DGFY's actual revenue.
   Regime B ledger and settlement contract
 - [ADR 0066](../architecture/adr/0066-voucher-sale-time-price-resolution.md) — voucher resolution,
   the single-discount-slot rule, and the fixed-price/affiliate refusal
-- Open issues: #817, #814, #872, #605, #782
+- Open policy decisions: #817, #814, #872, #605, #782
+- Code defects filed from this audit: #937, #938, #939, #940, #941, #942, #943
