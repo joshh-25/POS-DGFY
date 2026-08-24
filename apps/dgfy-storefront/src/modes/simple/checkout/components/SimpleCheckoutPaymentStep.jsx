@@ -2,6 +2,7 @@ import { PaymentMethodSelectorBlock } from '../../../../shared/components/checko
 import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
 import { SimpleCheckoutPaymentActions } from './SimpleCheckoutPaymentActions.jsx';
 import { SimpleCheckoutReviewItemsList } from './SimpleCheckoutReviewItemsList.jsx';
+import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 
 export function SimpleCheckoutPaymentStep({
   bodyFont,
@@ -9,6 +10,7 @@ export function SimpleCheckoutPaymentStep({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
+  customerEmail = '',
   downpaymentCallout = null,
   DropdownComponent,
   guestCheckoutOtpVerified = false,
@@ -22,6 +24,7 @@ export function SimpleCheckoutPaymentStep({
   paymentType = 'cash',
   paymentOptions = [],
   onlinePaymentPanel = null,
+  renderBillingEmailPrompt,
   simpleCheckoutAllowed = false,
   submitLabel = 'Place Order',
   storefrontClosedNotice = null,
@@ -33,6 +36,8 @@ export function SimpleCheckoutPaymentStep({
   onPaymentTypeChange
 }) {
   const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
+  // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
+  const billingEmailRequired = requiresBillingEmail({ paymentType, customerEmail });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
@@ -56,6 +61,9 @@ export function SimpleCheckoutPaymentStep({
         cashInfoAccent="#176B3A"
         bodyFont={bodyFont}
         downpaymentCallout={downpaymentCallout}
+        notice={billingEmailRequired && typeof renderBillingEmailPrompt === 'function'
+          ? renderBillingEmailPrompt({ invalid: Boolean(String(customerEmail || '').trim()) })
+          : null}
       />
       {onlinePaymentPanel}
       <SimpleCheckoutReviewItemsList
@@ -71,7 +79,7 @@ export function SimpleCheckoutPaymentStep({
         checkoutLoading={checkoutLoading}
         guestCheckoutVerificationRequired={guestCheckoutVerificationRequired}
         isMobileViewport={isMobileViewport}
-        simpleCheckoutAllowed={simpleCheckoutAllowed && !guestCheckoutVerificationRequired}
+        simpleCheckoutAllowed={simpleCheckoutAllowed && !guestCheckoutVerificationRequired && !billingEmailRequired}
         submitLabel={submitLabel}
         storefrontClosedNotice={storefrontClosedNotice}
         onBack={onBack}

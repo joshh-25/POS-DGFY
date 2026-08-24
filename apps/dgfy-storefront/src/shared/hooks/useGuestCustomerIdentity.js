@@ -183,7 +183,8 @@ export function useGuestCustomerIdentity({
   const {
     renderGuestIdentityFields,
     renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
+    renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt
   } = useMemo(() => createCustomerIdentityRenderers({
     hasSavedCustomerDetails,
     savedCustomerDetails,
@@ -274,7 +275,8 @@ export function useGuestCustomerIdentity({
     clearSavedCustomerDetailsForDevice,
     renderGuestIdentityFields,
     renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
+    renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt
   };
 }
 
