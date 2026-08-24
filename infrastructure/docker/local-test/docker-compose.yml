@@ -67,7 +67,7 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
-    image: dgfy-local-test-migration-runner:latest
+    image: dgfy-local-test-dgfy-migration-runner:latest
     restart: "no"
     env_file: .env.compose
     environment:
@@ -86,7 +86,7 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
-    image: dgfy-local-test-api:latest
+    image: dgfy-local-test-dgfy-api:latest
     restart: unless-stopped
     # .env.compose is .env with literal `$` doubled to `$$` — compose
     # interpolates `$VAR` syntax found inside env_file contents, and
@@ -154,13 +154,12 @@ services:
       retries: 5
       start_period: 20s
 
-  frontend:
+  dgfy-ims:
     build:
       context: ../../..
-      dockerfile: infrastructure/docker/frontend/Dockerfile
+      dockerfile: infrastructure/docker/dgfy-ims/Dockerfile
       args:
         VITE_API_URL: /api/v1
-        VITE_STORE_BASE_PATH: /
         # Cloudflare tunnel domains (dgfy-ims./dgfy-pos./dgfy. prefixes)
         # don't match the skupervisor./pos./store. naming convention that
         # businessRegistrationUrl.js / skupervisorHandoff.js / dgfyRouteHelpers.js
@@ -175,8 +174,6 @@ services:
         VITE_POS_TERMINAL_URL: https://dgfy-pos.nicenature.space/terminal
         VITE_SENTRY_ENABLED: ${VITE_SENTRY_ENABLED:-false}
         VITE_SENTRY_DSN_SKUPERVISOR: ${VITE_SENTRY_DSN_SKUPERVISOR:-}
-        VITE_SENTRY_DSN_POS: ${VITE_SENTRY_DSN_POS:-}
-        VITE_SENTRY_DSN_STORE: ${VITE_SENTRY_DSN_STORE:-}
         VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-local-test}
         VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-local-test}
         VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
@@ -186,14 +183,79 @@ services:
         SENTRY_UPLOAD_SOURCEMAPS: ${SENTRY_UPLOAD_SOURCEMAPS:-false}
         SENTRY_ORG: ${SENTRY_ORG:-}
         SENTRY_PROJECT_SKUPERVISOR: ${SENTRY_PROJECT_SKUPERVISOR:-}
-        SENTRY_PROJECT_POS: ${SENTRY_PROJECT_POS:-}
-        SENTRY_PROJECT_STORE: ${SENTRY_PROJECT_STORE:-}
         SENTRY_URL: ${SENTRY_URL:-}
-    image: dgfy-local-test-frontend:latest
+    image: dgfy-local-test-dgfy-ims:latest
     restart: unless-stopped
     networks: [dgfy_local_test]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-pos:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/dgfy-pos/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_DGFY_AUTH_URL: https://dgfy-ims.nicenature.space/dgfy/auth
+        VITE_SKUPERVISOR_REGISTRATION_URL: https://dgfy-ims.nicenature.space/register-company
+        VITE_DGFY_RESET_URL: https://dgfy-ims.nicenature.space/dgfy/reset-password
+        VITE_SKUPERVISOR_BASE_URL: https://dgfy-ims.nicenature.space
+        VITE_STOREFRONT_ACCOUNT_URL: https://dgfy-store.nicenature.space/map-dgfy/account
+        VITE_POS_TERMINAL_URL: https://dgfy-pos.nicenature.space/terminal
+        VITE_SENTRY_ENABLED: ${VITE_SENTRY_ENABLED:-false}
+        VITE_SENTRY_DSN_POS: ${VITE_SENTRY_DSN_POS:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-local-test}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-local-test}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE:-0}
+        VITE_SENTRY_TRACE_PROPAGATION_TARGETS: ${VITE_SENTRY_TRACE_PROPAGATION_TARGETS:-}
+        SENTRY_UPLOAD_SOURCEMAPS: ${SENTRY_UPLOAD_SOURCEMAPS:-false}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT_POS: ${SENTRY_PROJECT_POS:-}
+        SENTRY_URL: ${SENTRY_URL:-}
+    image: dgfy-local-test-dgfy-pos:latest
+    restart: unless-stopped
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/dgfy-storefront/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_STORE_BASE_PATH: /
+        VITE_DGFY_AUTH_URL: https://dgfy-ims.nicenature.space/dgfy/auth
+        VITE_SKUPERVISOR_REGISTRATION_URL: https://dgfy-ims.nicenature.space/register-company
+        VITE_DGFY_RESET_URL: https://dgfy-ims.nicenature.space/dgfy/reset-password
+        VITE_SKUPERVISOR_BASE_URL: https://dgfy-ims.nicenature.space
+        VITE_STOREFRONT_ACCOUNT_URL: https://dgfy-store.nicenature.space/map-dgfy/account
+        VITE_POS_TERMINAL_URL: https://dgfy-pos.nicenature.space/terminal
+        VITE_SENTRY_ENABLED: ${VITE_SENTRY_ENABLED:-false}
+        VITE_SENTRY_DSN_STORE: ${VITE_SENTRY_DSN_STORE:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-local-test}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-local-test}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE:-0}
+        VITE_SENTRY_TRACE_PROPAGATION_TARGETS: ${VITE_SENTRY_TRACE_PROPAGATION_TARGETS:-}
+        SENTRY_UPLOAD_SOURCEMAPS: ${SENTRY_UPLOAD_SOURCEMAPS:-false}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT_STORE: ${SENTRY_PROJECT_STORE:-}
+        SENTRY_URL: ${SENTRY_URL:-}
+    image: dgfy-local-test-dgfy-storefront:latest
+    restart: unless-stopped
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -214,7 +276,11 @@ services:
     depends_on:
       dgfy-api:
         condition: service_healthy
-      frontend:
+      dgfy-ims:
+        condition: service_healthy
+      dgfy-pos:
+        condition: service_healthy
+      dgfy-storefront:
         condition: service_healthy
     networks: [dgfy_local_test]
     healthcheck:

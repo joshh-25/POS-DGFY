@@ -50,7 +50,7 @@ on:
         description: JSON array passed to runs-on for the publish job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
 
 permissions:
   contents: read
@@ -144,7 +144,7 @@ jobs:
             "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
-             { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
+             { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
              SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"

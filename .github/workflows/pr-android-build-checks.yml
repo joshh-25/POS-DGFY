@@ -41,8 +41,8 @@ jobs:
       # app/src/{dev,staging}/res/xml/network_security_config.xml resource
       # sets merge cleanly (an XML comment or config typo here is a class of
       # bug a plain XML-syntax check won't catch, since it only fails inside
-      # AAPT2's resource merge, not generic parsing -- see #254). beta/prod
-      # carry no network security config of their own and share the same
+      # AAPT2's resource merge, not generic parsing -- see #254). prod
+      # carries no network security config of its own and shares the same
       # app/src/main sources compiled by these two, so they don't need their
       # own build here. This deliberately only proves the app *builds*, same
       # scope as pr-frontend-build-checks.yml/pr-backend-build-checks.yml --

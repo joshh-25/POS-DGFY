@@ -12,6 +12,7 @@ import {
 } from '../config/adminAuthConfig.js';
 import { isAdminLikeRole } from '../config/userRoles.js';
 import logger from '../config/logger.js';
+import { resolveDegradedTenantContextFailure, sendTenantContextError } from './tenantHandler.js';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -159,58 +160,72 @@ export const authenticate = async (req, res, next) => {
     // Cache key includes the company token so tenants with the same numeric user_id
     // don't cross-contaminate each other (user_id=1 is very common across tenants).
     const tenantContext = dbStore.getStore();
-    if (!tenantContext || tenantContext.tenantId === 'default') {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        message: 'Valid tenant context is required for authenticated requests.',
-        error_code: 'TENANT_CONTEXT_REQUIRED',
-        timestamp: new Date().toISOString()
-      });
-    }
-
     const contextTenantId = String(req?.tenant?.id || tenantContext?.tenantId || '').trim();
     const tokenTenantId = String(decoded?.tenant_id || '').trim();
 
-    if (!tokenTenantId) {
-      return res.status(401).json({
-        success: false,
-        data: null,
-        message: 'Token is missing tenant binding.',
-        error_code: 'TENANT_BINDING_REQUIRED',
-        timestamp: new Date().toISOString()
-      });
+    // Binding checks run first, ahead of the tenant-context-availability gate below.
+    // They're decidable from the JWT claims plus req.tenant -- set by tenantHandler as
+    // soon as a company token resolves to a tenant, *before* it attempts the per-tenant
+    // DB connection -- so none of the three needs dbStore's context to actually be
+    // live. Gating them behind a live tenant DB connection (issue #916) meant a tenant
+    // DB outage masked a real binding-required / binding-mismatch / stale-cookie
+    // rejection behind one generic 400, instead of the 401 / 403 / 409 the caller
+    // actually needs in order to know whether to re-authenticate, switch company, or
+    // retry. A request with no tenant resolved at all (req.tenant unset -- no company
+    // token was ever provided) has nothing to bind against; it falls through
+    // unconditionally to the context-availability gate below, same as before.
+    if (req?.tenant?.id) {
+      if (!tokenTenantId) {
+        return res.status(401).json({
+          success: false,
+          data: null,
+          message: 'Token is missing tenant binding.',
+          error_code: 'TENANT_BINDING_REQUIRED',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (tokenTenantId !== contextTenantId) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          message: 'Token tenant binding does not match request tenant context.',
+          error_code: 'TENANT_BINDING_MISMATCH',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const activeBrowserCompanyToken = String(
+        getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+      ).trim();
+      const requestCompanyToken = String(
+        req?.tenant?.company_token || req.headers['x-company-token'] || ''
+      ).trim();
+
+      if (
+        activeBrowserCompanyToken
+        && requestCompanyToken
+        && activeBrowserCompanyToken !== requestCompanyToken
+      ) {
+        return res.status(409).json({
+          success: false,
+          data: null,
+          message: 'The active company changed. Refresh the POS and retry.',
+          error_code: 'TENANT_SESSION_CONTEXT_MISMATCH',
+          timestamp: new Date().toISOString()
+        });
+      }
     }
 
-    if (!contextTenantId || tokenTenantId !== contextTenantId) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        message: 'Token tenant binding does not match request tenant context.',
-        error_code: 'TENANT_BINDING_MISMATCH',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    const activeBrowserCompanyToken = String(
-      getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
-    ).trim();
-    const requestCompanyToken = String(
-      req?.tenant?.company_token || req.headers['x-company-token'] || ''
-    ).trim();
-
-    if (
-      activeBrowserCompanyToken
-      && requestCompanyToken
-      && activeBrowserCompanyToken !== requestCompanyToken
-    ) {
-      return res.status(409).json({
-        success: false,
-        data: null,
-        message: 'The active company changed. Refresh the POS and retry.',
-        error_code: 'TENANT_SESSION_CONTEXT_MISMATCH',
-        timestamp: new Date().toISOString()
-      });
+    // Tenant-context availability gate. A degraded context (tenantId === 'default')
+    // can mean several different things -- no company token at all, an invalid one, a
+    // lookup failure, or the tenant DB itself being unreachable -- and each warrants a
+    // different status code, not one flat 400 (issue #916). Delegates to the same
+    // mapping tenantHandler.js already applies to strict-auth and storefront routes,
+    // rather than a second, divergent implementation of the same decision.
+    if (!tenantContext || tenantContext.tenantId === 'default') {
+      const failure = resolveDegradedTenantContextFailure(tenantContext);
+      return sendTenantContextError(res, failure.statusCode, failure.message, failure.errorCode);
     }
 
     const cacheKey = `${contextTenantId}:${decoded.user_id}`;

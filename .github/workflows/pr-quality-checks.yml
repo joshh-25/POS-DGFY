@@ -12,10 +12,14 @@ on:
   workflow_call:
     inputs: &runner_labels_input
       runner_labels_json:
-        description: JSON array passed to runs-on for quality jobs
+        description: >-
+          JSON array passed to runs-on for quality jobs. Pinned to sieitz-lg
+          (#923) -- dgfy-api-quality (2 service containers, 4GB heap) and
+          frontend-quality (3 sequential vite builds + playwright chromium)
+          are the two heaviest jobs in the repo.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-lg"]'
   workflow_dispatch:
     inputs: *runner_labels_input
 
@@ -54,7 +58,6 @@ jobs:
           cache-dependency-path: |
             apps/dgfy-api/package-lock.json
             apps/dgfy-migration-runner/package-lock.json
-            apps/dgfy-web/package-lock.json
 
       - name: Install API dependencies
         working-directory: apps/dgfy-api
@@ -62,15 +65,6 @@ jobs:
 
       - name: Install migration-runner dependencies
         working-directory: apps/dgfy-migration-runner
-        run: npm ci
-
-      # dgfy-api's cross-layer contract tests (tests/*.crossLayer.contract.test.js,
-      # tests/modeItemTaxonomy.contract.test.js) import apps/dgfy-web source directly to
-      # prove backend and frontend stay byte-identical on shared vocabulary. Those imports
-      # resolve @sieitzz/shared-constants relative to dgfy-web, so dgfy-web's own
-      # node_modules has to exist here too.
-      - name: Install dgfy-web dependencies
-        working-directory: apps/dgfy-web
         run: npm ci
 
       - name: Prepare test schema
@@ -199,9 +193,17 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-  frontend-quality:
+  # Split into one job per app (issue #322 Phase 6 -- previously one
+  # frontend-quality job against the monolith apps/dgfy-web). The F&B
+  # contract vitest list below is split by where each test actually lives
+  # now: 6 of the original 7 are in packages/web-core (mounted by both
+  # dgfy-ims and dgfy-pos, but vitest only ever runs from dgfy-ims -- see
+  # dgfy-ims/vite.config.js's test.include -- to keep web-core dependency-
+  # and node_modules-free); the 7th, storefrontErrorMessages.test.js, is
+  # storefront's own local test.
+  frontend-ims-quality:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -210,39 +212,84 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: apps/dgfy-web/package-lock.json
+          cache-dependency-path: apps/dgfy-ims/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: apps/dgfy-web
+      - name: Install dgfy-ims dependencies
+        working-directory: apps/dgfy-ims
         run: npm ci
 
-      - name: Run frontend lint
-        working-directory: apps/dgfy-web
+      - name: Run dgfy-ims lint
+        working-directory: apps/dgfy-ims
         run: npm run lint
 
-      - name: Run frontend F&B contract tests
-        working-directory: apps/dgfy-web
+      - name: Run shared F&B contract tests
+        working-directory: apps/dgfy-ims
         run: >-
           npx vitest run
-          src/features/fnb/__tests__/kitchenQueueDisplay.test.js
-          src/features/fnb/__tests__/fnbMode.contract.test.js
-          src/features/pos/__tests__/terminalViewModeContracts.test.js
-          apps/store/src/__tests__/storefrontErrorMessages.test.js
-          src/features/pos/__tests__/FnbModifierPickerDialog.test.jsx
-          src/features/pos/__tests__/posFnbModifierManager.session.test.jsx
-          src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
-          src/config/__tests__/permissionsFrontendParity.test.js
+          ../../packages/web-core/src/features/fnb/__tests__/kitchenQueueDisplay.test.js
+          ../../packages/web-core/src/features/fnb/__tests__/fnbMode.contract.test.js
+          ../../packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js
+          ../../packages/web-core/src/features/pos/__tests__/FnbModifierPickerDialog.test.jsx
+          ../../packages/web-core/src/features/pos/__tests__/posFnbModifierManager.session.test.jsx
+          ../../packages/web-core/src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
+          ../../packages/web-core/src/config/__tests__/permissionsFrontendParity.test.js
 
-      - name: Build all frontend applications
-        working-directory: apps/dgfy-web
-        run: npm run build:all
+  frontend-pos-quality:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-pos/package-lock.json
+
+      - name: Install dgfy-pos dependencies
+        working-directory: apps/dgfy-pos
+        run: npm ci
+
+      - name: Run dgfy-pos lint
+        working-directory: apps/dgfy-pos
+        run: npm run lint
+
+  frontend-storefront-quality:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-storefront/package-lock.json
+
+      - name: Install dgfy-storefront dependencies
+        working-directory: apps/dgfy-storefront
+        run: npm ci
+
+      - name: Run dgfy-storefront lint
+        working-directory: apps/dgfy-storefront
+        run: npm run lint
+
+      - name: Run storefront vitest suite
+        working-directory: apps/dgfy-storefront
+        run: npx vitest run
+
+      - name: Build dgfy-storefront
+        working-directory: apps/dgfy-storefront
+        run: npm run build
 
       - name: Install Playwright Chromium
-        working-directory: apps/dgfy-web
+        working-directory: apps/dgfy-storefront
         run: npx playwright install --with-deps chromium
 
       - name: Run deterministic F&B browser contract
-        working-directory: apps/dgfy-web
+        working-directory: apps/dgfy-storefront
         run: npm run test:e2e:fnb-contract
 
       - name: Upload F&B browser evidence
@@ -251,8 +298,8 @@ jobs:
         with:
           name: fnb-playwright-contract-${{ github.sha }}
           path: |
-            apps/dgfy-web/playwright-report/fnb-contract/**
-            apps/dgfy-web/test-results/fnb-contract/**
+            apps/dgfy-storefront/playwright-report/fnb-contract/**
+            apps/dgfy-storefront/test-results/fnb-contract/**
           if-no-files-found: ignore
           retention-days: 5
 
@@ -282,6 +329,16 @@ jobs:
 
       - name: Run compatibility-seam contract gate
         run: npm run check:compat-seams
+
+      # Guards the retired backend/frontend/android/apps-dgfy-web paths (issue
+      # #914): a develop-based in-flight branch's PR could otherwise silently
+      # reintroduce one of these -- git's directory-rename detection has no
+      # signal for a brand-new subdirectory with no base counterpart (the
+      # "silent reappearance" failure mode, documented five times in
+      # docs/architecture/backend-absorption.md's changelog). --strict fails
+      # this step, not just warns.
+      - name: Check retired-path resurrection
+        run: npm run report:frontend-split-sync:post-merge
 
       # PR-context only: github.event.pull_request.{base,head}.sha don't
       # exist under a plain workflow_dispatch run (this workflow is no

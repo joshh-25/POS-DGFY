@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-13
-review_by: 2027-02-13
+last_reviewed: 2026-08-15
+review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
 ---
@@ -7998,6 +7998,10 @@ unshipped reservation.
   `src/pages/Settings`, and three named service files — `apps/dgfy-web/apps/store/**` matches none
   of them, and no `apps/dgfy-api/**` file is touched. `npm run check:compliance` confirmed
   "No compliance-sensitive changes detected" rather than assumed.
+  [Post-merge note (#322, 2026-08-23): after this branch's frontend-split absorb, those rules read
+  `packages/web-core/src/features/pos/`, `packages/web-core/src/features/compliance/`,
+  `packages/web-core/src/pages/Settings`, and `apps/dgfy-ims/Pages/Settings.jsx`. The conclusion is
+  unchanged — `apps/dgfy-storefront/**` still matches none of them.]
 
 ### Acceptance and Validation Evidence
 
@@ -8038,3 +8042,262 @@ unshipped reservation.
   `storefrontDownpaymentPresentation.test.js`, `simpleTrackingPresentation.test.js`
 - Issue #826 (`Refs`, stays open for #532's descoped email work), Issue #532 (gained an acceptance
   line)
+
+## Phase 152 - Frontend App Split (issue #322)
+
+### Initiative and Release
+
+- Initiative: split the single `apps/dgfy-web` frontend package into three
+  independently deployable apps plus a shared package, per issue
+  Sieitzz/dgfy-platform#322.
+- Release: `refactor/322-frontend-app-split` targeting `develop`.
+
+### Objective and Scope
+
+- Extract the ~1,400-file shared trunk (`src/`, `Components/`, `Pages/`'s
+  DGFY-auth pages, `sentryViteConfig.js`) into `packages/web-core`
+  (`@sieitzz/web-core`) — no build step, no `node_modules`, no lockfile of
+  its own.
+- Split the three former `apps/dgfy-web/apps/{skupervisor,pos,store}` shells
+  into standalone apps: `apps/dgfy-ims`, `apps/dgfy-pos` (with its Electron
+  shell), `apps/dgfy-storefront` — each with its own `package.json`,
+  lockfile, Vite config, and test config.
+- Retire `apps/dgfy-web` entirely once the three apps and web-core cover its
+  full contents.
+- Fan out every consumer of the old single-package/single-image assumption:
+  Docker (one image per app), Docker Compose, nginx upstreams, CI workflows
+  (`shared-changed-paths`, `deploy-frontend`, `deployment-orchestrator`,
+  `deploy`, `deploy-main`, `pr-checks`, `pr-quality-checks`), `deploy.sh` /
+  `deploy-local.sh`, PM2 (`ecosystem.config.cjs`), root `package.json`
+  scripts, the `scripts/` path-check sweep, and
+  `security/audit-allowlist.json`.
+- Document the decision (ADR 0071), sweep the docs and agent-surface files
+  that described the old layout, and open the closing PR against `develop`.
+
+### Status
+
+- `completed`
+- Completed on 2026-08-15. Absorbed `origin/develop` a second time on 2026-08-22 (442 commits,
+  951 files since the prior absorb at `f8e56c71`) to keep this branch current ahead of merge;
+  the acceptance evidence below is this phase's own frontend-split work and predates that second
+  absorb, which is recorded separately in `docs/architecture/backend-absorption.md`.
+
+### Dependencies and Governance Note
+
+- ADR 0071 Frontend Split into Three Apps (`docs/architecture/adr/0071-frontend-split-into-three-apps.md`),
+  `supersedes_in_part` ADR 0059 Frontend Relocation to `apps/dgfy-web`.
+- `docs/architecture/frontend-split-sync.md` — the develop-merge absorption
+  workflow used throughout this initiative
+  (`scripts/frontend-split-path-map.json` +
+  `scripts/report-frontend-split-sync.js`).
+- No compliance impact declaration required: `npm run check:compliance`
+  reports no compliance-sensitive changes for this diff.
+- Absorbed `origin/develop`'s Phase 87 (ADR 0064, services handoff legs governance) and Phase 88
+  (services handoff-leg schema) in the same merge that lands this phase. Phase 88 is `in_progress`
+  as absorbed — its migration dry-run acceptance box is unchecked pending DB credentials — and
+  stays that way; this phase does not complete it.
+
+### Acceptance and Validation Evidence
+
+- [x] `apps/dgfy-web` fully retired — `git ls-files apps/dgfy-web` empty;
+  `node scripts/report-frontend-split-sync.js --post-merge --strict` reports
+  clean (no tracked files under retired frontend-split paths).
+- [x] All three apps build standalone: `npm run build:skupervisor`,
+  `build:pos`, `build:store`.
+- [x] `apps/dgfy-ims` vitest suite (which also runs `packages/web-core`'s
+  suite, since web-core has no runner of its own): 232 test files, 1,356
+  tests, all passing.
+- [x] `apps/dgfy-storefront` vitest suite: 89 test files, 451 tests, all
+  passing.
+- [x] `scripts/` Node test suite: 164 tests, all passing.
+- [x] All three Docker images build clean:
+  `infrastructure/docker/dgfy-{ims,pos,storefront}/Dockerfile`.
+- [x] `docker compose config --quiet` passes across all four compose
+  combinations (base, +override, +local-ports, local-test).
+- [x] `npm run check:adr` (72 ADRs), `npm run lint:docs` (27 governed docs),
+  `npm run check:compliance`, `npm run check:agent-surfaces` (5 roles, 4
+  shims), `npm run check:architecture` (47 modules / 467 files, 86
+  controllers), `npm run check:frontend-budgets` all pass.
+- [x] `origin/develop` fully absorbed (merge commit `1c9066a8`, absorbing
+  `f8e56c71`; confirmed no further drift via `git fetch origin develop`
+  before closeout).
+
+### Implementation Links
+
+- `packages/web-core/package.json`
+- `apps/dgfy-ims/package.json`, `apps/dgfy-pos/package.json`,
+  `apps/dgfy-storefront/package.json`
+- `infrastructure/docker/dgfy-ims/Dockerfile`,
+  `infrastructure/docker/dgfy-pos/Dockerfile`,
+  `infrastructure/docker/dgfy-storefront/Dockerfile`
+- `.github/workflows/deploy-frontend.yml`,
+  `.github/workflows/deployment-orchestrator.yml`,
+  `.github/workflows/deploy-main.yml`
+- `scripts/deploy.sh`, `scripts/deploy-local.sh`, `ecosystem.config.cjs`
+- `docs/architecture/adr/0071-frontend-split-into-three-apps.md`
+- [Issue #322 - Split apps/dgfy-web into independently deployable apps](https://github.com/Sieitzz/dgfy-platform/issues/322)
+
+### Completion Record (2026-08-15)
+
+- Phase 152 is complete. Phase 153 is the next eligible repository phase and
+  requires separate approval.
+
+---
+
+## Phase 153 - GHCR Container Image Naming Flattened (issue #928)
+
+### Initiative and Release
+
+- Initiative: flatten every GHCR container package name from
+  `ghcr.io/sieitzz/dgfy-platform/<name>` to `ghcr.io/sieitzz/<name>`, per issue
+  Sieitzz/dgfy-platform#928.
+- Release: `chore/928-flatten-ghcr-image-names` targeting `develop`.
+
+### Objective and Scope
+
+- Reconcile the naming inconsistency between the backend split (PR #55:
+  `dgfy-platform/api`, `dgfy-platform/migration-runner` — dropped the `dgfy-`
+  prefix) and ADR 0071's frontend split (`dgfy-platform/dgfy-{ims,pos,
+  storefront}` — kept a redundant `dgfy-` prefix under a namespace that
+  already says `dgfy-platform`). GHCR's org package listing renders only the
+  last path segment, so the old backend names displayed as a bare `api`,
+  collision-prone once other Sieitzz repositories publish their own
+  containers.
+- One naming rule: `ghcr.io/sieitzz/<apps-directory-name>` — `dgfy-api`,
+  `dgfy-migration-runner`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`.
+- Fan out every reference: the three build workflows' `IMAGE_NAME`
+  (`deploy-api.yml`, `deploy-migration-runner.yml`, `deploy-frontend.yml`),
+  `publish-platform.yml`'s staleness guard and its `scripts/deploy-local.sh`
+  mirror, every compose file that pins an image tag
+  (`infrastructure/docker/docker-compose.yml`,
+  `infrastructure/docker/docker-compose.override.yml`,
+  `infrastructure/docker/local-test/docker-compose.yml`, and the three
+  hand-apply `infrastructure/docker/env/{dev,stage,prod}.compose-fragment.yml`
+  + `prod.sops-cutover-fragment.yml`), the live-cutover runbook, setup docs,
+  and the three frontend apps' READMEs.
+- Document the decision (new ADR 0072, superseding-in-part ADR 0071 Decision
+  3 and amending ADR 0032's Consequences), and open the closing PR against
+  `develop`.
+- Deliberately **not** in scope for this repo-only phase: the legacy
+  monolith `ghcr.io/sieitzz/dgfy-platform/frontend` image (has no `apps/*`
+  directory, already scheduled for retirement by the frontend-split
+  cutover, not renamed); the three live servers' hand-maintained
+  `docker-compose.yml` files (folded into that same already-scheduled
+  cutover instead of a separate SSH pass); and GHCR package deletion
+  (tracked as this issue's own follow-up, gated on the cutover baking).
+
+### Status
+
+- `completed` (repo half only — see Dependencies and Governance Note)
+- Completed on 2026-08-24.
+
+### Dependencies and Governance Note
+
+- ADR 0072 GHCR Container Image Naming Convention
+  (`docs/architecture/adr/0072-ghcr-container-image-naming.md`),
+  `supersedes_in_part` ADR 0071 Decision 3's image-path clause.
+- Dated `## Amendments` blocks added to ADR 0071 (`last_reviewed` refreshed)
+  and ADR 0032 (`status: accepted` -> `amended`, `last_reviewed` refreshed).
+- This phase covers the repository/CI half of issue #928 only. The PR uses
+  `Refs #928`, not `Closes #928` — the issue stays open through the live
+  per-environment cutover (folded into the frontend-split cutover runbook)
+  and the GHCR package cleanup that follows it, neither of which is part of
+  this phase's completion.
+- No compliance impact declaration required: `npm run check:compliance`
+  reports no compliance-sensitive changes for this diff (touches only
+  `.github/workflows/**`, `infrastructure/**`, `scripts/**`, `docs/**`,
+  `apps/*/README.md` — none of `check-compliance-impact.js`'s trigger
+  paths).
+
+### Acceptance and Validation Evidence
+
+- [x] `docker compose -f infrastructure/docker/docker-compose.yml config
+  --images` resolves the five flattened names.
+- [x] `npm run check:adr` (79 ADRs) and `npm run lint:docs` (28 governed
+  docs) pass with ADR 0072 and the ADR 0071/0032 amendments.
+- [x] `npm run check:compliance` reports no compliance-sensitive changes.
+- [x] YAML parse of the four edited workflows and shell syntax check
+  (`bash -n scripts/deploy-local.sh`) pass.
+- [x] Repo-wide sweep confirms no remaining `dgfy-platform/api`,
+  `dgfy-platform/migration-runner`, or `dgfy-platform/dgfy-{ims,pos,
+  storefront}` reference outside the deliberately-untouched historical
+  docs (ADR 0059, `backend-absorption.md`, the 2026-07-20 cutover runbook,
+  ops incident docs, compliance impact declarations,
+  `.agents/skills/promoter/SKILL.md`).
+- [ ] Per-environment live cutover verification (`docker compose config
+  --images` on each server, `verify-deployment.yml` PASS) — deferred to the
+  live cutover, folded into the frontend-split cutover runbook; not part of
+  this phase's own completion.
+- [ ] GHCR org inventory shows the superseded packages deleted — deferred
+  to the follow-up cleanup pass; not part of this phase's own completion.
+
+### Implementation Links
+
+- `.github/workflows/deploy-api.yml`, `deploy-migration-runner.yml`,
+  `deploy-frontend.yml`, `publish-platform.yml`
+- `scripts/deploy-local.sh`
+- `infrastructure/docker/docker-compose.yml`,
+  `infrastructure/docker/env/{dev,stage,prod}.compose-fragment.yml`,
+  `infrastructure/docker/env/prod.sops-cutover-fragment.yml`
+- `docs/architecture/adr/0072-ghcr-container-image-naming.md`
+- `docs/architecture/adr/0071-frontend-split-into-three-apps.md` (amended)
+- `docs/architecture/adr/0032-standalone-dgfy-api-service.md` (amended)
+- [Issue #928 - GHCR package naming convention is inconsistent](https://github.com/Sieitzz/dgfy-platform/issues/928)
+
+### Completion Record (2026-08-24)
+
+- Phase 153 is complete (repo half). Phase 154 is the next eligible
+  repository phase and requires separate approval.
+
+---
+
+**Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
+the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
+renumbers"):**
+
+This branch's own Phase entry for the frontend split (issue #322) originally claimed **Phase 89**,
+assigned during the prior absorb cycle (`f8e56c71`, 2026-08-16) against `develop`'s state at that
+time. Since then `develop` independently landed its own, different **Phase 89** (*POS Items
+Gallery and IMS CSV Import Foundation*) and continued on through **Phase 150**. Neither side had
+the other's Phase 89 as an ancestor when each claimed the number, so this is a genuine collision,
+not a missed rebase — resolved by absorbing `develop` (the larger, already-merged body of work)
+verbatim and renumbering this branch's unmerged entry, and moving it to the end of the ledger
+(after develop's own Phase 150) rather than leaving it spliced between develop's Phase 88 and 89:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 89 | `develop`'s POS Items Gallery / IMS CSV Import Foundation | unchanged — prior reservation, already merged to `develop` |
+| 151 | This branch's Frontend App Split (issue #322) | **moved from 89**, then moved again — see the 2026-08-23 addendum below |
+
+No code changes accompany this renumber — the phase's own implementation was already complete and
+merge-independent; only the ledger heading, its own "Completion Record" trailer, and the ADR 0071
+cross-reference above needed edits. The three `// ... Phase 89` source comments in
+`apps/dgfy-api/**` (`fulfillmentProfiles.contract.test.js`, `ServiceBookingStatusEvent.js`,
+`serviceUseCases.js`) refer to `develop`'s Phase 89 and are correct as absorbed — left untouched.
+
+**Addendum, 2026-08-23 — the same collision fired a second time, same day, on the number this note
+itself just assigned.** `develop` independently claimed `## Phase 151 - Customer-Facing Downpayment
+Surfaces` (#826, commit `6519e39c`, 2026-08-22 21:11) about 1.5 hours after this branch's own
+renumber above (commit `18e11cb6`, 19:37) — so this branch was chronologically first, but by the
+time of the next absorb cycle (2026-08-23) develop's Phase 151 was already merged and externally
+cited (its own issue, PR, and compliance declaration all reference "Phase 151"). Neither side was
+careless: each checked against the highest number visible in the ledger it could see, and this
+branch's own reservation is invisible to `develop`'s authors by construction — it lives on an
+unmerged branch. Resolved the same way as the first collision: the unmerged absorbing branch
+renumbers again.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | `develop`'s Customer-Facing Downpayment Surfaces (#826) | unchanged — already merged to `develop` |
+| 152 | This branch's Frontend App Split (issue #322) | **moved from 151, which was itself moved from 89** |
+
+This is the fourth ADR/phase-number collision across two absorb cycles (see
+`docs/architecture/backend-absorption.md:300` for the earlier ADR-number precedent this pattern
+follows). The root cause is structural, not a process gap on either side: as long as this branch's
+own ledger entry stays unmerged, every `develop` author choosing "the next free phase number" is
+choosing against a ledger that doesn't yet contain this branch's reservation. It will keep recurring
+each absorb cycle until PR #513 merges.
+`docs/architecture/backend-absorption.md`'s 2026-08-16 dated log entry, which narrates this
+branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
+true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
+is not a live reference and is not updated by this note.

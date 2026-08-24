@@ -211,7 +211,8 @@ export class PayMongoService {
         description,
         paymentMethodAllowed = ['qrph'],
         metadata = {},
-        splitPayment = null
+        splitPayment = null,
+        paymentMethodOptions = null
     }) {
         try {
             const attributes = {
@@ -224,6 +225,10 @@ export class PayMongoService {
 
             if (splitPayment) {
                 attributes.split_payment = splitPayment;
+            }
+
+            if (paymentMethodOptions) {
+                attributes.payment_method_options = paymentMethodOptions;
             }
 
             const response = await axios.post(`${this.baseUrl}/payment_intents`, {
@@ -352,6 +357,9 @@ export class PayMongoService {
         description,
         lineItems = [],
         paymentMethodTypes = [],
+        billing,
+        showDescription,
+        showLineItems,
         successUrl,
         cancelUrl,
         referenceNumber,
@@ -374,6 +382,17 @@ export class PayMongoService {
                 quantity: 1
             }];
         }
+        // Forwarded only when the caller actually supplies them -- the one
+        // production caller today (storeUseCases.js) passes none of these
+        // three, and PayMongo's own checkout-session defaults (show its
+        // built-in billing form, show the description/line-item summary)
+        // are exactly what that caller already relies on implicitly. Only
+        // set when explicitly provided so that path is unaffected.
+        if (billing && typeof billing === 'object' && Object.keys(billing).length > 0) {
+            attributes.billing = billing;
+        }
+        if (typeof showDescription === 'boolean') attributes.show_description = showDescription;
+        if (typeof showLineItems === 'boolean') attributes.show_line_items = showLineItems;
 
         try {
             const response = await axios.post(`${this.accountsBaseUrl}/checkout_sessions`, {

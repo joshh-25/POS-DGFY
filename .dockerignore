@@ -1,6 +1,6 @@
 # Docker only reads <build context>/.dockerignore, and every image here
-# builds with `context: .` (repo root) -- apps/dgfy-api/.dockerignore and
-# apps/dgfy-web/.dockerignore are never actually consulted. This supersedes them.
+# builds with `context: .` (repo root) -- apps/dgfy-api/.dockerignore is
+# never actually consulted. This supersedes it.
 
 # VCS / editor / agent tooling
 /.git
@@ -25,6 +25,7 @@
 /packages/*
 !/packages/pos-receipt
 !/packages/shared-constants
+!/packages/web-core
 /artifacts
 /nginx
 /skills
@@ -33,14 +34,14 @@
 #
 # node_modules/.env/.env.* need the explicit **/ prefix -- unlike .gitignore,
 # .dockerignore patterns are root-anchored by default, so the bare forms below
-# matched only the repo-root copies. apps/dgfy-web/node_modules (~1GB) and
-# apps/dgfy-api/node_modules (~330MB) were slipping into the build context,
-# which is also a correctness bug: the frontend Dockerfile's
-# `COPY apps/dgfy-web/ ./` (after `npm ci`) would overwrite the image's Linux
-# node_modules with the host's macOS one if it weren't excluded.
+# matched only the repo-root copies. Each apps/dgfy-{ims,pos,storefront}/
+# node_modules (~1GB combined) and apps/dgfy-api/node_modules (~330MB) were
+# slipping into the build context, which is also a correctness bug: each
+# per-app Dockerfile's `COPY apps/dgfy-<x>/ ./` (after `npm ci`) would
+# overwrite the image's Linux node_modules with the host's macOS one if it
+# weren't excluded.
 **/node_modules
-dist
-dist-apps
+**/dist
 desktop-dist
 coverage
 npm-debug.log*

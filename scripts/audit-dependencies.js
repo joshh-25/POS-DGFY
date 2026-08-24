@@ -32,8 +32,14 @@ const ALLOWLIST_PATH = path.join(ROOT, 'security', 'audit-allowlist.json');
 const TREES = [
   { name: 'root', dir: '.' },
   { name: 'apps/dgfy-api', dir: 'apps/dgfy-api' },
-  { name: 'apps/dgfy-web', dir: 'apps/dgfy-web' },
+  { name: 'apps/dgfy-ims', dir: 'apps/dgfy-ims' },
+  { name: 'apps/dgfy-pos', dir: 'apps/dgfy-pos' },
+  { name: 'apps/dgfy-storefront', dir: 'apps/dgfy-storefront' },
   { name: 'apps/dgfy-migration-runner', dir: 'apps/dgfy-migration-runner' },
+  // Cross-app e2e/k6 package (issue #322 Phase 5) -- owns @lhci/cli now that
+  // it moved out of the frontend apps (see the audit-allowlist.json entries
+  // this tree name lines up with).
+  { name: 'tests/frontend-cross-app', dir: 'tests/frontend-cross-app' },
 ];
 
 const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'info'];

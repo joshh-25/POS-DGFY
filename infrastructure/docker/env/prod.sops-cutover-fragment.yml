@@ -74,7 +74,7 @@
 # =============================================================================
 #
 #   dgfy-migration-runner:
-#     image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+#     image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
 #     restart: "no"
 #     # WAS: env_file: .env  (blanket -- every one of 93 vars, whether used or not)
 #     # NOW: only the 6 vars this service actually touches.
@@ -97,7 +97,7 @@
 # =============================================================================
 #
 #   dgfy-api:
-#     image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+#     image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
 #     restart: unless-stopped
 #     # WAS: env_file: .env  (blanket)
 #     # NOW: no env_file line. Non-secret config below comes from .env's

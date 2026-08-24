@@ -2,11 +2,13 @@
 
 This guide covers setting up the development environment for the SKU Inventory Manager project.
 
-Current frontend surfaces:
+Current frontend surfaces — three independent apps plus a shared package since issue #322's split
+(ADR 0071, `docs/architecture/adr/0071-frontend-split-into-three-apps.md`):
 
-- `skupervisor` for tenant/admin workflows
-- `pos` for cashier and terminal operations
-- `store` for public storefront and guest checkout
+- `apps/dgfy-ims` (`skupervisor`) for tenant/admin workflows
+- `apps/dgfy-pos` (`pos`) for cashier and terminal operations
+- `apps/dgfy-storefront` (`store`) for public storefront and guest checkout
+- `packages/web-core` — shared trunk all three depend on, no build step of its own
 
 ---
 
@@ -315,8 +317,9 @@ redis-cli ping
 
 ### Docker Compose
 
-A full compose stack (mysql, redis, dgfy-api, dgfy-migration-runner, frontend) already exists at
-`infrastructure/docker/docker-compose.yml` — use that instead of hand-authoring a minimal one.
+A full compose stack (mysql, redis, dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos,
+dgfy-storefront) already exists at `infrastructure/docker/docker-compose.yml` — use that instead
+of hand-authoring a minimal one.
 
 ```bash
 cd infrastructure/docker

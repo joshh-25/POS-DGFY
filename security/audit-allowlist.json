@@ -5,7 +5,9 @@
     "",
     "Fields:",
     "  tree      - one of the trees audited by audit-dependencies.js:",
-    "              'root' | 'apps/dgfy-api' | 'apps/dgfy-web' | 'apps/dgfy-migration-runner'",
+    "              'root' | 'apps/dgfy-api' | 'apps/dgfy-ims' | 'apps/dgfy-pos' |",
+    "              'apps/dgfy-storefront' | 'apps/dgfy-migration-runner' |",
+    "              'tests/frontend-cross-app'",
     "  package   - the top-level package name as reported by `npm audit --json`",
     "              (the key under `vulnerabilities`, not necessarily the vulnerable",
     "              leaf package if the finding is transitive)",
@@ -22,70 +24,70 @@
   "version": 1,
   "entries": [
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "@lhci/cli",
       "severity": "high",
-      "reason": "DevDependency-only (Lighthouse CI, never ships). Installed version is already latest (0.15.1); `npm audit fix` suggests downgrading to 0.1.0, which is npm's resolver finding an old, unrelated dependency graph rather than a real fix -- @lhci/cli has not yet updated its own puppeteer/lighthouse chain upstream.",
+      "reason": "DevDependency-only (Lighthouse CI, never ships). Installed version is already latest (0.15.1); `npm audit fix` suggests downgrading to 0.1.0, which is npm's resolver finding an old, unrelated dependency graph rather than a real fix -- @lhci/cli has not yet updated its own puppeteer/lighthouse chain upstream. Moved here from apps/dgfy-web in issue #322 Phase 5, when @lhci/cli moved to tests/frontend-cross-app.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "@lhci/utils",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "@puppeteer/browsers",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "puppeteer-core",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "lighthouse",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "extract-zip",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "tmp",
       "severity": "high",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "uuid",
       "severity": "moderate",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "inquirer",
       "severity": "low",
       "reason": "Transitive via @lhci/cli; see that entry.",
       "reviewBy": "2026-09-15"
     },
     {
-      "tree": "apps/dgfy-web",
+      "tree": "tests/frontend-cross-app",
       "package": "external-editor",
       "severity": "low",
       "reason": "Transitive via @lhci/cli; see that entry.",

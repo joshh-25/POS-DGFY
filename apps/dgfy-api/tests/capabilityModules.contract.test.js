@@ -88,7 +88,7 @@ describe('capability module catalog contracts', () => {
     // issue #178 final-touch hardening: pins which registration-offered
     // modes intentionally lack a canonical preset. Mirrors the registration
     // UI's set (frontend's WORKFLOW_MODE_SELECT_VALUES) via the alias
-    // exclusion, which apps/dgfy-web/src/features/settings/__tests__/
+    // exclusion, which packages/web-core/src/features/settings/__tests__/
     // workflowMode.services.test.js pins on the frontend side.
     it('has a canonical published preset for every offered mode except the intentionally bare ones', () => {
         const offeredModes = WORKFLOW_MODE_VALUES.filter((mode) => !(mode in WORKFLOW_MODE_ALIASES));

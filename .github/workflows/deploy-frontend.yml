@@ -3,6 +3,10 @@ name: Deploy Frontend Image
 on:
   workflow_call:
     inputs:
+      app:
+        description: One of dgfy-ims, dgfy-pos, dgfy-storefront
+        required: true
+        type: string
       environment:
         required: true
         type: string
@@ -14,7 +18,7 @@ on:
         description: JSON array passed to runs-on for this build job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -23,9 +27,6 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/frontend
-
 jobs:
   build-and-push:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
@@ -33,6 +34,8 @@ jobs:
     environment: ${{ inputs.environment }}
     outputs:
       sha_tag: ${{ steps.meta.outputs.sha_tag }}
+    env:
+      IMAGE_NAME: ghcr.io/sieitzz/${{ inputs.app }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,93 +63,150 @@ jobs:
       # Ephemeral runners get a fresh builder every run, so the layer cache has
       # to travel through the GitHub Actions cache instead of living on a
       # retained local builder (that only worked on the old persistent
-      # self-hosted runners; see git history for that approach). This is the
-      # canonical `frontend` cache scope -- deploy-frontend.yml is the only
-      # writer, so PR builds (pr-frontend-build-checks.yml) read from it via
+      # self-hosted runners; see git history for that approach). Cache scope
+      # is per-app now (issue #322 Phase 6) -- this workflow is called once
+      # per (app, environment) pair, so a scope shared across apps would
+      # evict itself the same way the pre-split single `frontend` scope used
+      # to evict itself across environments (see #428). PR builds
+      # (pr-frontend-build-checks.yml) read from each app's scope via
       # cache-from without ever writing back to it.
       - uses: docker/setup-buildx-action@v3
 
-      # Single image builds all 3 SPAs (skupervisor/pos/storefront) via
-      # `npm run build:all` -- one nginx serves them on 3 internal ports.
-      # VITE_API_BASE_URL/VITE_ASSET_BASE_URL are deliberately NOT set here:
-      # this one image serves 3 different public hostnames, and both fall
-      # back cleanly to relative/same-origin behavior when unset (see
-      # frontend/src/utils/runtimeConfig.js resolveApiBaseUrl/
+      # Each app now builds and pushes its own image (issue #322 Phase 6 --
+      # previously one image built all 3 SPAs via `npm run build:all`). The
+      # cross-app URL args (VITE_DGFY_AUTH_URL et al.) are passed to every
+      # app regardless: not strictly required for correctness --
+      # businessRegistrationUrl.js/skupervisorHandoff.js already derive the
+      # right sibling domain from window.location.origin at runtime when
+      # unset -- but set explicitly anyway as a deliberate belt-and-suspenders
+      # layer, independent of that runtime heuristic. VITE_API_URL is the
+      # only URL var actually required; the others fall back cleanly to
+      # relative/same-origin behavior (see
+      # packages/web-core/src/utils/runtimeConfig.js resolveApiBaseUrl/
       # resolveAssetOrigin).
-      #
-      # VITE_DGFY_AUTH_URL/VITE_SKUPERVISOR_REGISTRATION_URL/
-      # VITE_DGFY_RESET_URL/VITE_SKUPERVISOR_BASE_URL/
-      # VITE_STOREFRONT_ACCOUNT_URL are NOT strictly required for
-      # correctness -- businessRegistrationUrl.js and skupervisorHandoff.js
-      # already derive the right cross-app URL from window.location.origin
-      # at runtime when these are unset, which is what makes one shared
-      # image serve multiple domains (beta.dgfy.ph, eventually dgfy.ph)
-      # correctly without a rebuild. Set explicitly anyway as a deliberate
-      # belt-and-suspenders layer, independent of that runtime heuristic.
+      - name: Compute build args
+        id: build_args
+        shell: bash
+        env:
+          APP: ${{ inputs.app }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_STORE_BASE_PATH: ${{ vars.VITE_STORE_BASE_PATH }}
+          VITE_TENANT_STORE_BASE_PATH: ${{ vars.VITE_TENANT_STORE_BASE_PATH }}
+          VITE_ROOT_TENANT_SLUGS: ${{ vars.VITE_ROOT_TENANT_SLUGS }}
+          VITE_PAYMENTS_ENABLED: ${{ vars.VITE_PAYMENTS_ENABLED }}
+          VITE_STOREFRONT_SANDBOX_QRPH_ENABLED: ${{ vars.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED }}
+          VITE_MENU_PDF_IMPORT_ENABLED: ${{ vars.VITE_MENU_PDF_IMPORT_ENABLED }}
+          VITE_MENU_IMPORT_BATCH_ENABLED: ${{ vars.VITE_MENU_IMPORT_BATCH_ENABLED }}
+          VITE_BUILD_STAMP: ${{ github.sha }}
+          VITE_DGFY_AUTH_URL: ${{ vars.VITE_DGFY_AUTH_URL }}
+          VITE_SKUPERVISOR_REGISTRATION_URL: ${{ vars.VITE_SKUPERVISOR_REGISTRATION_URL }}
+          VITE_DGFY_RESET_URL: ${{ vars.VITE_DGFY_RESET_URL }}
+          VITE_SKUPERVISOR_BASE_URL: ${{ vars.VITE_SKUPERVISOR_BASE_URL }}
+          VITE_STOREFRONT_ACCOUNT_URL: ${{ vars.VITE_STOREFRONT_ACCOUNT_URL }}
+          VITE_POS_TERMINAL_URL: ${{ vars.VITE_POS_TERMINAL_URL }}
+          VITE_SENTRY_ENABLED: ${{ vars.VITE_SENTRY_ENABLED }}
+          VITE_SENTRY_DSN_SKUPERVISOR: ${{ vars.VITE_SENTRY_DSN_SKUPERVISOR }}
+          VITE_SENTRY_DSN_POS: ${{ vars.VITE_SENTRY_DSN_POS }}
+          VITE_SENTRY_DSN_STORE: ${{ vars.VITE_SENTRY_DSN_STORE }}
+          VITE_SENTRY_ENVIRONMENT: ${{ vars.VITE_SENTRY_ENVIRONMENT }}
+          VITE_SENTRY_RELEASE: ${{ github.sha }}
+          VITE_SENTRY_TRACES_SAMPLE_RATE: ${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
+          VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${{ vars.VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE }}
+          VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: ${{ vars.VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE }}
+          VITE_SENTRY_TRACE_PROPAGATION_TARGETS: ${{ vars.VITE_SENTRY_TRACE_PROPAGATION_TARGETS }}
+          VITE_SENTRY_TRACE_PROPAGATION_ENABLED: ${{ vars.VITE_SENTRY_TRACE_PROPAGATION_ENABLED }}
+          VITE_POSTHOG_ENABLED: ${{ vars.VITE_POSTHOG_ENABLED }}
+          VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST }}
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_ENVIRONMENT: ${{ vars.VITE_POSTHOG_ENVIRONMENT }}
+          VITE_POSTHOG_SESSION_REPLAY_STORE: ${{ vars.VITE_POSTHOG_SESSION_REPLAY_STORE }}
+          VITE_POSTHOG_SESSION_REPLAY_POS: ${{ vars.VITE_POSTHOG_SESSION_REPLAY_POS }}
+          SENTRY_UPLOAD_SOURCEMAPS: ${{ vars.SENTRY_UPLOAD_SOURCEMAPS }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_SKUPERVISOR: ${{ vars.SENTRY_PROJECT_SKUPERVISOR }}
+          SENTRY_PROJECT_POS: ${{ vars.SENTRY_PROJECT_POS }}
+          SENTRY_PROJECT_STORE: ${{ vars.SENTRY_PROJECT_STORE }}
+          SENTRY_URL: ${{ vars.SENTRY_URL }}
+        run: |
+          set -euo pipefail
+
+          COMMON="VITE_API_URL=${VITE_API_URL}
+          VITE_BUILD_STAMP=${VITE_BUILD_STAMP}
+          VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL}
+          VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL}
+          VITE_DGFY_RESET_URL=${VITE_DGFY_RESET_URL}
+          VITE_SKUPERVISOR_BASE_URL=${VITE_SKUPERVISOR_BASE_URL}
+          VITE_STOREFRONT_ACCOUNT_URL=${VITE_STOREFRONT_ACCOUNT_URL}
+          VITE_POS_TERMINAL_URL=${VITE_POS_TERMINAL_URL}
+          VITE_SENTRY_ENABLED=${VITE_SENTRY_ENABLED}
+          VITE_SENTRY_ENVIRONMENT=${VITE_SENTRY_ENVIRONMENT}
+          VITE_SENTRY_RELEASE=${VITE_SENTRY_RELEASE}
+          VITE_SENTRY_TRACES_SAMPLE_RATE=${VITE_SENTRY_TRACES_SAMPLE_RATE}
+          VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE}
+          VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE}
+          VITE_SENTRY_TRACE_PROPAGATION_TARGETS=${VITE_SENTRY_TRACE_PROPAGATION_TARGETS}
+          VITE_SENTRY_TRACE_PROPAGATION_ENABLED=${VITE_SENTRY_TRACE_PROPAGATION_ENABLED}
+          VITE_POSTHOG_ENABLED=${VITE_POSTHOG_ENABLED}
+          VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST}
+          VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY}
+          VITE_POSTHOG_ENVIRONMENT=${VITE_POSTHOG_ENVIRONMENT}
+          SENTRY_UPLOAD_SOURCEMAPS=${SENTRY_UPLOAD_SOURCEMAPS}
+          SENTRY_ORG=${SENTRY_ORG}
+          SENTRY_URL=${SENTRY_URL}"
+
+          case "${APP}" in
+            dgfy-ims)
+              PER_APP="VITE_MENU_PDF_IMPORT_ENABLED=${VITE_MENU_PDF_IMPORT_ENABLED}
+          VITE_MENU_IMPORT_BATCH_ENABLED=${VITE_MENU_IMPORT_BATCH_ENABLED}
+          VITE_SENTRY_DSN_SKUPERVISOR=${VITE_SENTRY_DSN_SKUPERVISOR}
+          SENTRY_PROJECT_SKUPERVISOR=${SENTRY_PROJECT_SKUPERVISOR}"
+              ;;
+            dgfy-pos)
+              PER_APP="VITE_MENU_PDF_IMPORT_ENABLED=${VITE_MENU_PDF_IMPORT_ENABLED}
+          VITE_MENU_IMPORT_BATCH_ENABLED=${VITE_MENU_IMPORT_BATCH_ENABLED}
+          VITE_SENTRY_DSN_POS=${VITE_SENTRY_DSN_POS}
+          VITE_POSTHOG_SESSION_REPLAY_POS=${VITE_POSTHOG_SESSION_REPLAY_POS}
+          SENTRY_PROJECT_POS=${SENTRY_PROJECT_POS}"
+              ;;
+            dgfy-storefront)
+              PER_APP="VITE_STORE_BASE_PATH=${VITE_STORE_BASE_PATH}
+          VITE_TENANT_STORE_BASE_PATH=${VITE_TENANT_STORE_BASE_PATH}
+          VITE_ROOT_TENANT_SLUGS=${VITE_ROOT_TENANT_SLUGS}
+          VITE_PAYMENTS_ENABLED=${VITE_PAYMENTS_ENABLED}
+          VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=${VITE_STOREFRONT_SANDBOX_QRPH_ENABLED}
+          VITE_SENTRY_DSN_STORE=${VITE_SENTRY_DSN_STORE}
+          VITE_POSTHOG_SESSION_REPLAY_STORE=${VITE_POSTHOG_SESSION_REPLAY_STORE}
+          SENTRY_PROJECT_STORE=${SENTRY_PROJECT_STORE}"
+              ;;
+            *)
+              echo "::error::unknown app '${APP}' -- expected dgfy-ims, dgfy-pos, or dgfy-storefront"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "args<<EOF"
+            printf '%s\n' "${COMMON}"
+            printf '%s\n' "${PER_APP}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: infrastructure/docker/frontend/Dockerfile
+          file: infrastructure/docker/${{ inputs.app }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
-          # was added in #415 as "reachable from either runner type," a
-          # reason that stopped applying once #386 recorded self-hosted as
-          # the only CI tier (type=gha is already reachable from
-          # self-hosted). It was actively harmful for this job specifically:
-          # this workflow is called once per environment (DEV/STAGING/BETA/
-          # PROD) with ~37 differing VITE_* build-args each time, but writes
-          # ONE registry ref (${{ env.IMAGE_NAME }}:buildcache) shared by all
-          # four -- each environment's build evicted the previous one's
-          # cache, so it was rarely a hit (see #428). It also doubled this
-          # job's GHCR push volume on every build, which is what actually
-          # tripped GHCR's secondary rate limit in run 31728787346
-          # (deploy-main.yml's frontend-prod, 2026-08-13). type=gha,scope=
-          # frontend is unaffected and stays as the only cache.
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-          build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL }}
-            VITE_STORE_BASE_PATH=${{ vars.VITE_STORE_BASE_PATH }}
-            VITE_TENANT_STORE_BASE_PATH=${{ vars.VITE_TENANT_STORE_BASE_PATH }}
-            VITE_ROOT_TENANT_SLUGS=${{ vars.VITE_ROOT_TENANT_SLUGS }}
-            VITE_PAYMENTS_ENABLED=${{ vars.VITE_PAYMENTS_ENABLED }}
-            VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=${{ vars.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED }}
-            VITE_MENU_PDF_IMPORT_ENABLED=${{ vars.VITE_MENU_PDF_IMPORT_ENABLED }}
-            VITE_MENU_IMPORT_BATCH_ENABLED=${{ vars.VITE_MENU_IMPORT_BATCH_ENABLED }}
-            VITE_BUILD_STAMP=${{ github.sha }}
-            VITE_DGFY_AUTH_URL=${{ vars.VITE_DGFY_AUTH_URL }}
-            VITE_SKUPERVISOR_REGISTRATION_URL=${{ vars.VITE_SKUPERVISOR_REGISTRATION_URL }}
-            VITE_DGFY_RESET_URL=${{ vars.VITE_DGFY_RESET_URL }}
-            VITE_SKUPERVISOR_BASE_URL=${{ vars.VITE_SKUPERVISOR_BASE_URL }}
-            VITE_STOREFRONT_ACCOUNT_URL=${{ vars.VITE_STOREFRONT_ACCOUNT_URL }}
-            VITE_SENTRY_ENABLED=${{ vars.VITE_SENTRY_ENABLED }}
-            VITE_SENTRY_DSN_SKUPERVISOR=${{ vars.VITE_SENTRY_DSN_SKUPERVISOR }}
-            VITE_SENTRY_DSN_POS=${{ vars.VITE_SENTRY_DSN_POS }}
-            VITE_SENTRY_DSN_STORE=${{ vars.VITE_SENTRY_DSN_STORE }}
-            VITE_SENTRY_ENVIRONMENT=${{ vars.VITE_SENTRY_ENVIRONMENT }}
-            VITE_SENTRY_RELEASE=${{ github.sha }}
-            VITE_SENTRY_TRACES_SAMPLE_RATE=${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
-            VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${{ vars.VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE }}
-            VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${{ vars.VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE }}
-            VITE_SENTRY_TRACE_PROPAGATION_TARGETS=${{ vars.VITE_SENTRY_TRACE_PROPAGATION_TARGETS }}
-            VITE_SENTRY_TRACE_PROPAGATION_ENABLED=${{ vars.VITE_SENTRY_TRACE_PROPAGATION_ENABLED }}
-            VITE_POSTHOG_ENABLED=${{ vars.VITE_POSTHOG_ENABLED }}
-            VITE_POSTHOG_HOST=${{ vars.VITE_POSTHOG_HOST }}
-            VITE_POSTHOG_KEY=${{ vars.VITE_POSTHOG_KEY }}
-            VITE_POSTHOG_ENVIRONMENT=${{ vars.VITE_POSTHOG_ENVIRONMENT }}
-            VITE_POSTHOG_SESSION_REPLAY_STORE=${{ vars.VITE_POSTHOG_SESSION_REPLAY_STORE }}
-            VITE_POSTHOG_SESSION_REPLAY_POS=${{ vars.VITE_POSTHOG_SESSION_REPLAY_POS }}
-            SENTRY_UPLOAD_SOURCEMAPS=${{ vars.SENTRY_UPLOAD_SOURCEMAPS }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT_SKUPERVISOR=${{ vars.SENTRY_PROJECT_SKUPERVISOR }}
-            SENTRY_PROJECT_POS=${{ vars.SENTRY_PROJECT_POS }}
-            SENTRY_PROJECT_STORE=${{ vars.SENTRY_PROJECT_STORE }}
-            SENTRY_URL=${{ vars.SENTRY_URL }}
+          # Registry cache (type=registry) removed 2026-08-14 (#427) -- see
+          # the setup-buildx-action step comment above for why type=gha,
+          # scoped per app, is the only cache now.
+          cache-from: type=gha,scope=${{ inputs.app }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.app }}
+          build-args: ${{ steps.build_args.outputs.args }}
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 

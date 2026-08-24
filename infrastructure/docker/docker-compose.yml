@@ -86,7 +86,7 @@ services:
   # then exits. dgfy-api below depends on this completing successfully instead
   # of migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
   dgfy-migration-runner:
-    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
     restart: "no"
     env_file: .env
     environment:
@@ -103,7 +103,7 @@ services:
   # runs separately in dgfy-migration-runner above, so dgfy-api no longer runs
   # db:migrate itself.
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -142,8 +142,8 @@ services:
       retries: 5
       start_period: 30s
 
-  frontend:
-    image: ghcr.io/sieitzz/dgfy-platform/frontend:${IMAGE_TAG:-latest}
+  dgfy-ims:
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # No host port: reachable only via dgfy_internal, through the nginx
     # service below.
@@ -154,14 +154,34 @@ services:
       timeout: 5s
       retries: 5
 
+  dgfy-pos:
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN /
-  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`frontend` by
-  # Host header. Stock image, not custom-built -- nginx.conf.template is
-  # bind-mounted and rendered via the official image's built-in envsubst
-  # entrypoint step using the environment vars below. See
-  # nginx/nginx.conf.template and nginx/init-letsencrypt.sh (one-time HTTPS
-  # bootstrap, run once manually after the first `docker compose up -d` on
-  # a fresh server).
+  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`dgfy-ims`/
+  # `dgfy-pos`/`dgfy-storefront` by Host header. Stock image, not
+  # custom-built -- nginx.conf.template is bind-mounted and rendered via the
+  # official image's built-in envsubst entrypoint step using the environment
+  # vars below. See nginx/nginx.conf.template and nginx/init-letsencrypt.sh
+  # (one-time HTTPS bootstrap, run once manually after the first
+  # `docker compose up -d` on a fresh server).
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -172,6 +192,17 @@ services:
       STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
       DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
       CERT_DOMAIN: ${CERT_DOMAIN}
+      # PROD domain group -- added 2026-08-23 (#329/#401) so this file matches the
+      # live server, which has carried these since the 2026-07-20 dgfy.ph cutover
+      # (see infrastructure/docker/env/prod.compose-fragment.yml, captured from the
+      # server, and docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md's now
+      # -resolved drift finding). Required by nginx.conf.template's PRODUCTION
+      # server blocks AND by the beta group's redirect targets.
+      SKUPERVISOR_DOMAIN_PROD: ${SKUPERVISOR_DOMAIN_PROD}
+      POS_DOMAIN_PROD: ${POS_DOMAIN_PROD}
+      STOREFRONT_DOMAIN_PROD: ${STOREFRONT_DOMAIN_PROD}
+      STOREFRONT_ALT_DOMAIN_PROD: ${STOREFRONT_ALT_DOMAIN_PROD:-}
+      CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
     ports:
       - "80:80"
       - "443:443"
@@ -183,7 +214,11 @@ services:
     depends_on:
       dgfy-api:
         condition: service_healthy
-      frontend:
+      dgfy-ims:
+        condition: service_healthy
+      dgfy-pos:
+        condition: service_healthy
+      dgfy-storefront:
         condition: service_healthy
     networks: [dgfy_internal]
 

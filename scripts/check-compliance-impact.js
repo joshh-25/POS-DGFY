@@ -151,43 +151,46 @@ const COMPLIANCE_SENSITIVE_RULES = [
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
+  // Shared trunk extracted to packages/web-core (issue #322); Pages/ (root, capital-P) moved
+  // to apps/dgfy-ims/Pages/ in Phase 5, not to packages/web-core -- see
+  // docs/architecture/frontend-split-sync.md.
   {
-    pattern: /^apps\/dgfy-web\/src\/features\/pos\//,
+    pattern: /^packages\/web-core\/src\/features\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/features\/compliance\//,
+    pattern: /^packages\/web-core\/src\/features\/compliance\//,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/pages\/Settings(?:\/|\.|$)/,
+    pattern: /^packages\/web-core\/src\/pages\/Settings(?:\/|\.|$)/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/Pages\/Settings\.jsx$/,
+    pattern: /^apps\/dgfy-ims\/Pages\/Settings\.jsx$/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/paymentService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/paymentService\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/complianceService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/complianceService\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/adminService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/adminService\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/Pages\/admin\/TenantManager\.jsx$/,
+    pattern: /^apps\/dgfy-ims\/Pages\/admin\/TenantManager\.jsx$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   }

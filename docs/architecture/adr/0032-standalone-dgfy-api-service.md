@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-08
-last_reviewed: 2026-07-08
+last_reviewed: 2026-08-24
 review_by: 2027-01-08
 applies_to: architecture_decision
 topic: standalone_dgfy_api_service
@@ -52,6 +52,22 @@ Option 2 was implemented first and then reverted: it required `backend`'s existi
 - `npm run check:architecture` now also runs `check:architecture:dgfy-api`, which re-points `backend/scripts/check-architecture-guardrails.js` and `check-controller-boundaries.js` at `apps/dgfy-api/src/modules` via their existing `ARCH_GUARDRAIL_MODULES_ROOT`/`CONTROLLER_BOUNDARY_TARGETS` env-var overrides — no guardrail logic duplicated. `.github/workflows/ci.yml` gained a `test-dgfy-api` job; `.husky/pre-commit` runs the same guardrail check when `apps/dgfy-api/src/modules/**` is staged.
 - **Deferred:** an nginx server block routing `api.dgfy.ph` to this service. `infrastructure/docker/nginx/nginx.conf.template` is shared across every environment (dev/qa/prod/beta) from one file — adding a domain-based server block before the domain/cert are actually provisioned everywhere risks breaking nginx config parsing for deployments that haven't set the new `DGFY_API_DOMAIN` env var yet. The compose `dgfy-api` service and nginx's `depends_on: dgfy-api: condition: service_healthy` are already wired; only the server block itself is deferred until the service's health is proven internally in each environment, per this ADR's own validation gates.
 - Deferred: no automatic reconciliation between `apps/dgfy-api`'s and `backend`'s copies beyond the parity test — if a future phase needs more OTP purposes or session behavior on the mobile side, extend both deliberately, don't let the parity suite silently expand scope.
+
+## Amendments
+
+### 2026-08-24 — image registry path flattened
+
+- Clause amended: **Consequences** (untagged, `default` tier per ADR 0039) — the sentence naming
+  `infrastructure/docker/dgfy-api/Dockerfile`'s image as `ghcr.io/sieitzz/dgfy-platform/api`.
+- Change: `docs/architecture/adr/0072-ghcr-container-image-naming.md` flattens every GHCR package
+  in the repo to `ghcr.io/sieitzz/<apps-directory-name>` — this service's image becomes
+  `ghcr.io/sieitzz/dgfy-api`, dropping the `dgfy-platform/` path segment. Reason: GHCR's org package
+  listing renders only the last path segment, so the old path displayed as a bare `api`,
+  collision-prone once other Sieitzz repositories publish their own containers (issue #928).
+- What's unchanged: everything else this bullet and this ADR describe — own container, `EXPOSE
+  5100`, own healthcheck, wiring into `docker-compose.yml`/`docker-compose.override.yml`/
+  `local-dev`/`local-test`. Only the registry path segment moves.
+- PR: (this PR, issue #928).
 
 ## Future Direction
 

@@ -340,11 +340,11 @@ Follow the existing frontend standard:
 
 ## Suggested source layout
 
-Use the existing `apps/dgfy-web/apps/store/src/modes/services` ownership. Do
+Use the existing `apps/dgfy-storefront/src/modes/services` ownership. Do
 not place Services behavior inside F&B or generic product checkout files.
 
 ```text
-apps/dgfy-web/apps/store/src/modes/services/
+apps/dgfy-storefront/src/modes/services/
   storefront/
     components/
     model/

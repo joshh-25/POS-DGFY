@@ -21,7 +21,7 @@ cd ..
 
 ### 3. Frontend Dependencies
 ```bash
-cd apps/dgfy-web
-npm install
-cd ../..
+cd apps/dgfy-ims && npm install && cd ../..
+cd apps/dgfy-pos && npm install && cd ../..
+cd apps/dgfy-storefront && npm install && cd ../..
 ```

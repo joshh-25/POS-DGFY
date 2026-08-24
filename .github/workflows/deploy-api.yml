@@ -14,7 +14,7 @@ on:
         description: JSON array passed to runs-on for this build job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -24,7 +24,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/api
+  IMAGE_NAME: ghcr.io/sieitzz/dgfy-api
 
 jobs:
   build-and-push:

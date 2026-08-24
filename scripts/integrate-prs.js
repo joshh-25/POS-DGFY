@@ -41,9 +41,19 @@ const TEST_COMMANDS = [
 // same boolean outputs that workflow does.
 const COMPONENTS = [
     {
-        name: 'frontend',
-        pathRegex: /^(apps\/dgfy-web\/|packages\/pos-receipt\/|packages\/shared-constants\/|infrastructure\/docker\/frontend\/)/,
-        dockerfile: 'infrastructure/docker/frontend/Dockerfile',
+        name: 'dgfy-ims',
+        pathRegex: /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-ims\/)/,
+        dockerfile: 'infrastructure/docker/dgfy-ims/Dockerfile',
+    },
+    {
+        name: 'dgfy-pos',
+        pathRegex: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/)/,
+        dockerfile: 'infrastructure/docker/dgfy-pos/Dockerfile',
+    },
+    {
+        name: 'dgfy-storefront',
+        pathRegex: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/)/,
+        dockerfile: 'infrastructure/docker/dgfy-storefront/Dockerfile',
     },
     {
         name: 'dgfy-api',

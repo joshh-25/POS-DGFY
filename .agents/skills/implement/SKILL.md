@@ -57,10 +57,12 @@ of these triggers actually firing (or correctly not firing) in practice.
    **Tier 0 — required, before opening the PR:**
    - **The code builds / does not break.** What this means differs by app, because only the
      frontend has a real compiler:
-     - `apps/dgfy-web` changed → `npm run build:<affected-app>` (`build:skupervisor` /
-       `build:pos` / `build:store` — only the app(s) actually touched, not `build:all`, unless
-       more than one is genuinely affected). This is a real Vite/esbuild build: it catches syntax
-       errors, unresolved imports, and JSX errors.
+     - `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, or `packages/web-core` changed →
+       `npm run build:<affected-app>` (`build:skupervisor` / `build:pos` / `build:store`) for each
+       app actually touched — a `packages/web-core` change can affect more than one app, since it's
+       the shared trunk all three depend on; there is no single `build:all` command, run the build
+       for each affected app. This is a real Vite/esbuild build: it catches syntax errors,
+       unresolved imports, and JSX errors.
      - `apps/dgfy-api` or `apps/dgfy-migration-runner` changed → neither app has a real build step
        (`apps/dgfy-api`'s own `build` script is a literal no-op: `echo 'No backend build
        required'`). The equivalent minimum check is `node --check <each changed .js file>` —
@@ -68,8 +70,10 @@ of these triggers actually firing (or correctly not firing) in practice.
        a missing export; that level of confidence is Tier 1/2 (lint, tests), not Tier 0.
    - **`package-lock.json` is in sync**, only if a `package.json` was touched. This repo has
      **per-app lockfiles**, not one root lockfile — check the one matching whatever changed
-     (`package-lock.json`, `apps/dgfy-web/package-lock.json`, `apps/dgfy-api/package-lock.json`,
-     `apps/dgfy-migration-runner/package-lock.json`). Run `npm install` in that workspace
+     (`package-lock.json`, `apps/dgfy-ims/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
+     `apps/dgfy-storefront/package-lock.json`, `apps/dgfy-api/package-lock.json`,
+     `apps/dgfy-migration-runner/package-lock.json` — `packages/web-core` has no lockfile of its
+     own, it's plain-ESM with no `node_modules`). Run `npm install` in that workspace
      (**never** `rm` the lockfile first — that regenerates unrelated version drift, not just the
      intended change; this happened for real earlier tonight and had to be undone), then confirm
      `git diff --exit-code -- <that lockfile>` is clean before including it in the commit.
