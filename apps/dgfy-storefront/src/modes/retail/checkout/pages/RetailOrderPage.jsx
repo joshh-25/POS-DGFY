@@ -362,15 +362,14 @@ export function RetailOrderPage({
                   balanceNote={downpaymentDisplay.active
                     ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
                     : null}
-                  cashFallbackAllowed={!downpaymentDisplay.active}
+                  billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                   onConfirmTestPayment={import.meta.env.DEV
                     && paymentType === 'qrph'
                     && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                     ? onConfirmQrphTestPayment
                     : null}
-                  onUseCash={() => {
+                  onChooseAnotherPaymentMethod={() => {
                     resetQrphPaymentSession?.();
-                    if (!downpaymentDisplay.active) onPaymentTypeChange('cash');
                   }}
                   paymentSession={qrphPaymentSession}
                   paymentEnvironment={selectedStore?.payment_capabilities?.[paymentType]?.environment}
