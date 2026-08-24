@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import logger from '../config/logger.js';
 import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { MOBILE_SYNC_LIMIT_PER_DAY } from '../modules/pos/usecases/mobilePosUseCases.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 
 // Get rate limit configuration from environment variables.
 // In development, use more lenient limits to account for React StrictMode double renders.
@@ -266,15 +267,33 @@ const decodeJwtPayloadUnsafe = (token) => {
   }
 };
 
-const userKeyFromAuthHeader = (authHeader) => {
-  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return '';
-  const token = authHeader.slice(7).trim();
-  if (!token) return '';
+const userKeyFromToken = (token) => {
+  if (typeof token !== 'string' || !token) return '';
   const payload = decodeJwtPayloadUnsafe(token);
   if (!payload) return '';
-  const userIdCandidate = payload.user_id ?? payload.sub ?? payload.id ?? '';
+  const userIdCandidate = payload.dgfy_account_id ?? payload.user_id ?? payload.sub ?? payload.id ?? '';
   return String(userIdCandidate || '').trim();
 };
+
+const userKeyFromAuthHeader = (authHeader) => {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return '';
+  return userKeyFromToken(authHeader.slice(7).trim());
+};
+
+// #958: generalLimiter mounts before authentication runs, and its only user
+// identity signal used to be an Authorization bearer header. The DGFY
+// customer dashboard authenticates via the sku_dgfy_session cookie instead
+// (dgfyAuth.js's getDgfyToken() accepts either) -- so every cookie-only
+// request keyed as "anonymous", collapsing every signed-in customer on one
+// network into a single shared bucket. Decoded without signature
+// verification, same as userKeyFromAuthHeader above: this only needs to
+// bucket requests correctly, not authenticate them -- a forged cookie value
+// just buys the forger their own separate bucket, no worse than the
+// existing X-Forwarded-For spoofing gap tracked in #973.
+const userKeyFromRequest = (req) => (
+  userKeyFromAuthHeader(req.headers.authorization)
+  || userKeyFromToken(getCookie(req, SESSION_COOKIE_NAMES.dgfy))
+);
 
 const getScopeFromRequest = (req, fallbackScope) => {
   const path = req.path || '';
@@ -447,12 +466,33 @@ export class DynamicStore {
 
   async decrement(key) {
     const store = this.getStore();
-    return store.decrement(key);
+    try {
+      return await store.decrement(key);
+    } catch (e) {
+      // #958: skipSuccessfulRequests (authLimiter) calls decrement() on every
+      // successful request -- previously unguarded and unexercised, unlike
+      // increment()'s existing fallback. A Redis error here must not become
+      // an unhandled rejection on what is otherwise a normal, successful
+      // request.
+      if (store === this.redisStore && this.memoryStore) {
+        logger.warn(`[RateLimiter] Redis decrement failed for ${key}, falling back to memory`);
+        return this.memoryStore.decrement(key);
+      }
+      throw e;
+    }
   }
 
   async resetKey(key) {
     const store = this.getStore();
-    return store.resetKey(key);
+    try {
+      return await store.resetKey(key);
+    } catch (e) {
+      if (store === this.redisStore && this.memoryStore) {
+        logger.warn(`[RateLimiter] Redis resetKey failed for ${key}, falling back to memory`);
+        return this.memoryStore.resetKey(key);
+      }
+      throw e;
+    }
   }
 }
 
@@ -480,7 +520,9 @@ export const generalLimiter = rateLimit({
     const host = normalizeHostHeader(req.hostname || req.headers.host || '');
     const companyToken = normalizeCompanyTokenHeader(req.headers['x-company-token'])
       || companyTokenFromValidatePath(req.path || req.originalUrl || '');
-    const userKey = userKeyFromAuthHeader(req.headers.authorization);
+    // #958: also checks the DGFY session cookie, not just the bearer header
+    // -- see userKeyFromRequest's own comment for why.
+    const userKey = userKeyFromRequest(req);
     if (host || companyToken || userKey) {
       return `general:${host || 'unknown-host'}:${companyToken || 'default'}:${userKey || 'anonymous'}:${ip}`;
     }
@@ -521,6 +563,27 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  // #958: brute force is about failed attempts, not successful ones -- without
+  // this, 5 *successful* logins in the window locks out everyone else sharing
+  // the same ip+email bucket (a shared cashier/office account on one network).
+  //
+  // authLimiter is shared across ~20 mount points beyond login/register
+  // (routes/auth.js, routes/dgfy.js) -- password-reset/request,
+  // email-verification/request, tracking-recovery/request,
+  // legacy-link/request-email-otp, company switch/transfer-ownership, etc.
+  // A bare `skipSuccessfulRequests: true` would exempt every one of those
+  // routes' successful (<400) responses too, not just login/register.
+  // Several of them (password-reset/request in particular) deliberately
+  // return a uniform 2xx regardless of whether the target exists -- for
+  // those, this limiter is the ONLY throttle in front of the endpoint, and
+  // an unscoped skip would make it silently unlimited: a new abuse vector
+  // introduced by a change whose whole point is abuse control. Scope the
+  // skip to the two routes it's actually justified for.
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => {
+    const isLoginOrRegister = /\/(login|register)$/.test(req.path || '');
+    return isLoginOrRegister && res.statusCode < 400;
+  },
   store: new DynamicStore('auth'),
   keyGenerator: (req) => {
     const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
