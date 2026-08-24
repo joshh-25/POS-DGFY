@@ -51,6 +51,10 @@ const buildRepository = (seed = {}) => {
                 status: 'open'
             };
         },
+        async updateOrderById(_id, payload) {
+            Object.assign(order, payload);
+            return { ...order };
+        },
         async updateDeliveryJobByOrderId(_id, payload) {
             Object.assign(deliveryJob, payload);
             Object.assign(order.deliveryJob, payload);
@@ -95,6 +99,7 @@ describe('POS manual delivery job status', () => {
 
         expect(first.success).toBe(true);
         expect(first.data.delivery_job).toMatchObject({ status: 'picked_up' });
+        expect(first.data.order).toMatchObject({ shift_id: 9 });
         expect(first.data.status_transition).toMatchObject({
             current_status: 'assigned',
             requested_status: 'picked_up',
