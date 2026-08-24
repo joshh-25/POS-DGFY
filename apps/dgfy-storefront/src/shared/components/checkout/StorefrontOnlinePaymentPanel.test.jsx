@@ -76,4 +76,26 @@ describe('StorefrontOnlinePaymentPanel card states', () => {
 
     resolvePayment({ status: 'awaiting_next_action', redirectUrl: null });
   });
+
+  // #963: the panel is the only thing standing between a caller's `billing` prop and PayMongo.
+  // Retail omitted the prop entirely and nothing caught it, so assert the forwarding directly.
+  it('forwards the caller billing contact into the card payment call', () => {
+    let resolvePayment;
+    startStorefrontDirectCardPayment.mockReturnValue(new Promise((resolve) => {
+      resolvePayment = resolve;
+    }));
+
+    renderPanel();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Cardholder name' }), { target: { value: 'Test Customer' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Card number' }), { target: { value: '4242 4242 4242 4242' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Expiry (MM/YY)' }), { target: { value: '12/30' } });
+    fireEvent.change(screen.getByLabelText('CVC'), { target: { value: '123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue securely with card' }));
+
+    expect(startStorefrontDirectCardPayment).toHaveBeenCalledWith(expect.objectContaining({
+      billing: { email: 'customer@example.com' }
+    }));
+
+    resolvePayment({ status: 'awaiting_next_action', redirectUrl: null });
+  });
 });
