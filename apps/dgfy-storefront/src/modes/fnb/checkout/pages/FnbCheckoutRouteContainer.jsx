@@ -16,6 +16,7 @@ import { PaymentMethodSelectorBlock } from '../../../../shared/components/checko
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 import {
   MOBILE_DROPDOWN_MENU_STYLE,
   MOBILE_DROPDOWN_OPTION_STYLE,
@@ -147,6 +148,7 @@ export function FnbCheckoutRouteContainer({
   qrphPaymentStatusLoading,
   quoteError,
   renderAccountOwnedIdentitySummary,
+  renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
@@ -186,6 +188,8 @@ export function FnbCheckoutRouteContainer({
 }) {
   // Phase 142 (#823): quote-sourced (this container renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
+  // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
+  const fnbBillingEmailRequired = requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -681,7 +685,7 @@ export function FnbCheckoutRouteContainer({
         >
           <FnbCheckoutPaymentStep
             brandColor={fnbOrderBrand}
-            canSubmit={checkoutAllowed && !qrphPaymentSession}
+            canSubmit={checkoutAllowed && !qrphPaymentSession && !fnbBillingEmailRequired}
             cart={cart}
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
@@ -727,6 +731,9 @@ export function FnbCheckoutRouteContainer({
                       orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
                     />
                   )}
+                  notice={fnbBillingEmailRequired && typeof renderBillingEmailPrompt === 'function'
+                    ? renderBillingEmailPrompt({ invalid: Boolean(String(customerEmail || '').trim()) })
+                    : null}
                 />
                 {isStorefrontOnlinePaymentType(fnbPaymentType) ? (
                   <FnbQrphPaymentPanel

@@ -1348,7 +1348,8 @@ export default function StorefrontApp() {
     clearSavedCustomerDetailsForDevice,
     renderGuestIdentityFields,
     renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
+    renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt
   } = useGuestCustomerIdentity({
     accountIdentityRawName,
     accountIdentityRawPhone,
@@ -3136,6 +3137,7 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
@@ -3257,6 +3259,7 @@ export default function StorefrontApp() {
     qrphPaymentStatusLoading,
     quoteError,
     renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
@@ -3521,6 +3524,7 @@ export default function StorefrontApp() {
     qrphPaymentSession,
     qrphPaymentStatusLoading,
     renderAccountOwnedIdentitySummary,
+    renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,

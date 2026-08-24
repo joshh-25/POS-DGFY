@@ -99,6 +99,7 @@ export function RetailOrderPage({
   pinLocationError = '',
   pinLocationLoading = false,
   renderAccountOwnedIdentitySummary,
+  renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
@@ -339,6 +340,7 @@ export function RetailOrderPage({
               cartImageErrors={cartImageErrors}
               checkoutError={checkoutError}
               checkoutLoading={checkoutLoading}
+              customerEmail={customerEmail}
               downpaymentDisplay={downpaymentDisplay}
               guestCheckoutOtpVerified={guestCheckoutOtpVerified}
               isCustomerChoiceStore={isCustomerChoiceStore(selectedStore)}
@@ -355,6 +357,7 @@ export function RetailOrderPage({
               onPaymentTypeChange={onPaymentTypeChange}
               paymentOptions={retailPaymentOptions}
               paymentType={paymentType}
+              renderBillingEmailPrompt={renderBillingEmailPrompt}
               onlinePaymentPanel={isStorefrontOnlinePaymentType(paymentType) ? (
                 <StorefrontOnlinePaymentPanel
                   amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
