@@ -4,6 +4,12 @@ const { validateProductionEnv } = require('../apps/dgfy-api/src/config/productio
 
 const strongSecret = (label) => `${label}_${'a'.repeat(48)}`;
 
+// Fixture-only bcrypt-shaped placeholder ($2b$12$ + 53 [./A-Za-z0-9] chars, matching
+// productionEnvValidation.cjs's BCRYPT_HASH_PATTERN) -- not a real hash of anything, and
+// deliberately distinct from DEFAULT_ADMIN_PASSWORD_HASH so the "must not use the documented
+// default" check doesn't trip.
+const FIXTURE_ADMIN_PASSWORD_HASH = '$2b$12$fixtureOnlyHashfixtureOnlyHashfixtureOnlyHashfixtureO';
+
 const baseEnv = {
   NODE_ENV: 'production',
   HOSTING_INSTANCE_COUNT: '1',
@@ -19,7 +25,14 @@ const baseEnv = {
   RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
   RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
   PAYMENTS_ENABLED: 'false',
-  TENANT_REGISTRATION_APPROVAL_MODE: 'auto_standard'
+  TENANT_REGISTRATION_APPROVAL_MODE: 'auto_standard',
+  // #913-adjacent gap found 2026-08-25: validateProductionAdminCredentials (cba06a57, "fail closed
+  // production auth controls") added these two as required, but this fixture file was never
+  // updated to match -- every fixture below has been failing check:production-env since, pre-dating
+  // this promotion. Confirmed the real PROD .env already sets both (2 vars present), so there was
+  // no actual production risk; this closes the stale-fixture gap the gate surfaced.
+  ADMIN_USERNAME: 'fixture-admin',
+  ADMIN_PASSWORD_HASH: FIXTURE_ADMIN_PASSWORD_HASH
 };
 
 const fixtures = [
