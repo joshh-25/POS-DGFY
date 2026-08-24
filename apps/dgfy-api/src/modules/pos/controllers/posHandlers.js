@@ -11,6 +11,10 @@ import {
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
+    cashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase,
     generateESalesReportUseCase,
     listESalesReportsUseCase,
     verifyFiscalEventLedgerUseCase,
@@ -34,6 +38,7 @@ import {
     loginPosCashierUseCase,
     switchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase,
+    getCashierShiftHistoryUseCase,
     recordCashDrawerEventUseCase,
     closeTerminalShiftUseCase,
     forceCloseStaleTerminalShiftUseCase,
@@ -44,6 +49,7 @@ import {
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    recordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
@@ -51,6 +57,7 @@ import {
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
     printPosZReadingUseCase,
+    authorizePosDrawerUseCase,
     openPosDrawerUseCase,
     getPairedPosTerminalUseCase,
     createPosParkedSaleUseCase,
@@ -76,13 +83,46 @@ import {
     setTenantSessionCookies
 } from '../../../utils/browserSessionCookies.js';
 import { publishCatalogChange, subscribeCatalogChanges } from '../../shared/services/catalogChangeEventBus.js';
+import dbStore from '../../../utils/dbStore.js';
 
 const timestamp = () => new Date().toISOString();
-const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const requestId = (req, res) => req?.requestId || res?.locals?.requestId || null;
 const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
     const tenantId = req.user?.tenant_id || req.tenant?.id;
     if (!tenantId) return;
     await publishCatalogChange({ tenantId, reason, itemIds });
+};
+
+const persistPosSessionAudit = async (req, result, eventType) => {
+    if (!result?.success) return;
+    try {
+        const AuditLog = dbStore.get('AuditLog');
+        if (!AuditLog) return;
+        const payload = result.data || {};
+        const terminalId = String(
+            req.headers?.['x-pos-terminal-id']
+            || req.body?.terminal_id
+            || ''
+        ).trim().toUpperCase() || null;
+        await AuditLog.create({
+            user_id: Number.parseInt(payload.user_id, 10) || null,
+            entity_type: 'pos_terminal_session',
+            entity_id: Number.parseInt(payload.user_id, 10) || null,
+            action: eventType === 'terminal_login' ? 'CREATE' : 'UPDATE',
+            event_type: eventType,
+            actor_username: String(payload.username || payload.email || req.body?.identifier || '').trim().slice(0, 120) || null,
+            terminal_id: terminalId,
+            request_id: requestId(req),
+            changes: {
+                event: eventType,
+                terminal_id: terminalId,
+                actor_email: String(payload.email || '').trim() || null,
+                request_id: requestId(req)
+            }
+        });
+    } catch {
+        // Session audit must not prevent a valid cashier login response.
+    }
 };
 
 const defaultErrorPayload = (req, res, failure) => ({
@@ -209,6 +249,7 @@ export const loginCashier = async (req, res, next) => {
                 refreshToken: result.data?.refreshToken,
                 tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
             });
+            await persistPosSessionAudit(req, result, 'terminal_login');
         }
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -787,9 +828,19 @@ export const recordFiscalPrintEvent = async (req, res, next) => {
 
 export const voidTransaction = async (req, res, next) => {
     try {
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
         const result = await voidPosTransactionUseCase({
             posTransactionId: req.validatedParams?.id || req.params.id,
-            payload: req.validatedData || req.body || {},
+            payload: serverScopedPayload,
             user: req.user
         });
         return sendUseCaseResult(res, result, {
@@ -798,6 +849,202 @@ export const voidTransaction = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS transaction voided',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cashRefundTransaction = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
+        const result = await cashRefundPosTransactionUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: serverScopedPayload,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_cash_refund_completed',
+            surface: 'pos_terminal',
+            action: 'cash_refund',
+            result,
+            successMetadataResolver: (data) => ({
+                pos_transaction_id: data?.transaction?.pos_transaction_id || null,
+                shift_id: data?.cash_drawer_event?.pos_terminal_shift_id || null,
+                cash_drawer_event_id: data?.cash_drawer_event?.pos_cash_drawer_event_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.idempotent_replay
+                    ? 'POS cash refund replayed'
+                    : 'POS cash refund recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const externalRefundTransaction = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
+        const result = await externalRefundPosTransactionUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: serverScopedPayload,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: result.data?.financial_outcome?.refund_state === 'completed'
+                ? 'pos_external_refund_completed'
+                : 'pos_external_refund_pending',
+            surface: 'pos_terminal',
+            action: 'external_refund',
+            result,
+            successMetadataResolver: (data) => ({
+                pos_transaction_id: data?.transaction?.pos_transaction_id || null,
+                adjustment_id: data?.adjustment?.pos_transaction_adjustment_id || null,
+                external_reference: data?.adjustment?.external_reference || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.financial_outcome?.refund_state === 'completed'
+                    ? 'External reversal confirmed'
+                    : 'External reversal evidence recorded and pending confirmation',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const providerRefundTransaction = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
+        const result = await providerRefundPosTransactionUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: serverScopedPayload,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: result.data?.financial_outcome?.refund_state === 'completed'
+                ? 'pos_provider_refund_completed'
+                : 'pos_provider_refund_pending',
+            surface: 'pos_terminal',
+            action: 'provider_refund',
+            result,
+            successMetadataResolver: (data) => ({
+                pos_transaction_id: data?.transaction?.pos_transaction_id || null,
+                adjustment_id: data?.adjustment?.pos_transaction_adjustment_id || null,
+                provider_refund_id: data?.provider_verification?.provider_refund_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.financial_outcome?.refund_state === 'completed'
+                    ? 'Provider refund confirmed'
+                    : 'Provider refund is pending provider confirmation',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const splitAllocationReversal = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
+        const result = await splitAllocationReversalUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            allocationId: req.validatedParams?.allocation_id || req.params.allocation_id,
+            payload: serverScopedPayload,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: result.data?.financial_outcome?.refund_state === 'completed'
+                ? 'pos_split_allocation_refund_completed'
+                : 'pos_split_allocation_refund_pending',
+            surface: 'pos_terminal',
+            action: 'split_allocation_reversal',
+            result,
+            successMetadataResolver: (data) => ({
+                pos_transaction_id: data?.transaction?.pos_transaction_id || null,
+                allocation_id: data?.allocation?.pos_payment_allocation_id || null,
+                adjustment_id: data?.adjustment?.pos_transaction_adjustment_id || null,
+                cash_drawer_event_id: data?.cash_drawer_event?.pos_cash_drawer_event_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.financial_outcome?.refund_state === 'completed'
+                    ? 'Split allocation reversal completed'
+                    : 'Split allocation reversal evidence recorded and pending confirmation',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -934,6 +1181,26 @@ export const verifyFiscalEventLedger = async (req, res, next) => {
 export const getCurrentTerminalShift = async (req, res, next) => {
     try {
         const result = await getCurrentTerminalShiftUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getCashierShiftHistory = async (req, res, next) => {
+    try {
+        const result = await getCashierShiftHistoryUseCase({
             query: req.validatedQuery || req.query,
             user: req.user
         });
@@ -1356,6 +1623,36 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
     }
 };
 
+// Phase 148 (#825): the balance-settlement sibling of collectCashPickupOrder /
+// collectCashDeliveryOrder above. One handler for both order methods -- the use case derives the
+// required handover state from the order's own order_method, so there is no reason to split this
+// into a pickup and a delivery variant the way the collect-cash pair is split.
+export const recordOrderBalancePayment = async (req, res, next) => {
+    try {
+        const result = await recordOrderBalancePaymentUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Remaining balance recorded for this order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const assignDeliveryPersonnel = async (req, res, next) => {
     try {
         const result = await assignDeliveryPersonnelUseCase({
@@ -1530,6 +1827,28 @@ export const openDeviceDrawer = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS cash drawer open request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const authorizeDeviceDrawer = async (req, res, next) => {
+    try {
+        const result = await authorizePosDrawerUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS cash drawer authorization verified',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -1911,9 +2230,13 @@ export default {
     uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
+    getCashierShiftHistory,
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,
+    cashRefundTransaction,
+    externalRefundTransaction,
+    providerRefundTransaction,
     closeTerminalShift,
     forceCloseStaleTerminalShift,
     getTerminalTodayDashboard,
@@ -1925,5 +2248,6 @@ export default {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 };

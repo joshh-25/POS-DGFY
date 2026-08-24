@@ -45,4 +45,10 @@ export const normalizePosPaymentBreakdown = (entries = []) => {
     }));
 };
 
+export const getPosCashPaymentAmount = (entries = []) => {
+    const cashEntry = normalizePosPaymentBreakdown(entries)
+        .find((entry) => entry.payment_type === 'cash');
+    return round4(cashEntry?.amount);
+};
+
 export const POS_PAYMENT_METHOD_DEFINITIONS = PAYMENT_METHOD_DEFINITIONS;

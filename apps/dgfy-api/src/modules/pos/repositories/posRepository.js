@@ -19,9 +19,15 @@ import {
     isBarcodeScopeAllowedForSurface,
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
-import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
+import {
+    loadItemLocationStockMap,
+    applyItemLocationStockMap
+} from '../../shared/repositories/itemLocationStockOverlay.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const normalizeBusinessDateValue = (value) => {
@@ -75,6 +81,55 @@ const stableStringify = (value) => {
     return JSON.stringify(value);
 };
 const hashFiscalEventPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+
+const getHistoryModelValue = (row, field) => {
+    if (row && typeof row.get === 'function') return row.get(field);
+    return row?.[field];
+};
+
+const findHistoryUserIds = async (User, value) => {
+    if (!User?.findAll || !value) return [];
+
+    const like = `%${String(value).trim()}%`;
+    const rows = await User.findAll({
+        where: {
+            [Op.or]: [
+                { username: { [Op.like]: like } },
+                { email: { [Op.like]: like } }
+            ]
+        },
+        attributes: ['user_id'],
+        raw: true
+    });
+
+    return rows
+        .map((row) => Number.parseInt(getHistoryModelValue(row, 'user_id'), 10))
+        .filter((userId) => Number.isInteger(userId) && userId > 0);
+};
+
+const findHistoryDiscountTransactionIds = async (PosTransactionDiscount, value, approvedUserIds = []) => {
+    if (!PosTransactionDiscount?.findAll || !value) return [];
+
+    const like = `%${String(value).trim()}%`;
+    const rows = await PosTransactionDiscount.findAll({
+        where: {
+            [Op.or]: [
+                { discount_type: { [Op.like]: like } },
+                { employee_name: { [Op.like]: like } },
+                { employee_id: { [Op.like]: like } },
+                { customer_name: { [Op.like]: like } },
+                { promo_code: { [Op.like]: like } },
+                { manager_approval_id: { [Op.in]: approvedUserIds } }
+            ]
+        },
+        attributes: ['transaction_id'],
+        raw: true
+    });
+
+    return rows
+        .map((row) => Number.parseInt(getHistoryModelValue(row, 'transaction_id'), 10))
+        .filter((transactionId) => Number.isInteger(transactionId) && transactionId > 0);
+};
 const normalizeTerminalRegistry = (rawValue) => {
     const parsed = parseJsonLoosely(rawValue);
     if (!Array.isArray(parsed)) return [];
@@ -201,25 +256,6 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('storefront_catalog_overrides');
 };
 
-const isMissingItemLocationStockSchemaError = (error) => {
-    if (!error) return false;
-    const code = error.original?.code || error.parent?.code || error.code;
-    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    const normalizedMessage = message.toLowerCase();
-    if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
-        return true;
-    }
-    if (code === 'ER_BAD_FIELD_ERROR' && (
-        normalizedMessage.includes('item_location_stocks')
-        || normalizedMessage.includes('quantity_on_hand')
-        || normalizedMessage.includes('location_id')
-        || normalizedMessage.includes('item_id')
-    )) {
-        return true;
-    }
-    return false;
-};
-
 const withLegacyVatFallback = (rows) => rows.map((row) => {
     if (!row) return row;
     if (typeof row.get === 'function' && typeof row.setDataValue === 'function') {
@@ -239,6 +275,23 @@ const toPlain = (row) => (
         ? row.toJSON()
         : row
 );
+
+const isDiscountAuthorizer = (row) => {
+    const plain = toPlain(row) || {};
+    const role = String(plain.role || '').trim().toLowerCase();
+    return plain.is_master_admin === true
+        || ['admin', 'manager'].includes(role)
+        || hasEffectivePermission(plain, PERMISSIONS.POS.actions.AUTHORIZE_DISCOUNTS);
+};
+
+const serializeDiscountAuthorizer = (row) => {
+    const plain = toPlain(row);
+    if (!plain) return null;
+    return {
+        ...plain,
+        can_authorize_discounts: isDiscountAuthorizer(plain)
+    };
+};
 
 const toPlainPaymentSession = (row) => {
     const session = toPlain(row);
@@ -593,69 +646,6 @@ const applyCatalogOverrides = async (items, options = {}) => {
         .filter((item) => item.pos_visible !== false);
 };
 
-const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
-    const normalizedLocationId = Number.parseInt(locationId, 10);
-    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: false
-        };
-    }
-    if (!Array.isArray(itemIds) || itemIds.length === 0) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: true
-        };
-    }
-
-    const ItemLocationStock = dbStore.get('ItemLocationStock');
-    if (!ItemLocationStock) {
-        return {
-            stockMap: new Map(),
-            locationScopeResolved: false
-        };
-    }
-    try {
-        const rows = await ItemLocationStock.findAll({
-            where: {
-                location_id: normalizedLocationId,
-                item_id: { [Op.in]: itemIds }
-            },
-            attributes: ['item_id', 'quantity_on_hand'],
-            transaction: options.transaction
-        });
-
-        return {
-            stockMap: new Map(rows.map((row) => {
-                const payload = toPlain(row);
-                return [Number(payload.item_id), Number(payload.quantity_on_hand || 0)];
-            })),
-            locationScopeResolved: true
-        };
-    } catch (error) {
-        if (isMissingItemLocationStockSchemaError(error)) {
-            return {
-                stockMap: new Map(),
-                locationScopeResolved: false
-            };
-        }
-        throw error;
-    }
-};
-
-const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
-    (Array.isArray(items) ? items : []).map((item) => {
-        const payload = toPlain(item);
-        const isServiceItem = isStockExemptServiceItem(payload);
-        const mappedStock = locationStockMap.get(Number(payload.item_id));
-        const stockValue = Number.isFinite(mappedStock) ? Math.max(0, mappedStock) : 0;
-        return {
-            ...payload,
-            current_stock: isServiceItem ? 0 : stockValue
-        };
-    })
-);
-
 const computeTransactionTotalCost = (lines = []) => round4(
     (Array.isArray(lines) ? lines : []).reduce((sum, line) => (
         sum + (Number(line?.quantity || 0) * Number(line?.cost_snapshot || 0))
@@ -752,6 +742,28 @@ const buildTerminalScopedVoidWhere = ({
     };
 };
 
+const buildPostCloseVoidWhere = ({
+    closedAt,
+    shiftId = null,
+    terminalId = null,
+    locationId = null
+} = {}) => {
+    const normalizedClosedAt = closedAt instanceof Date ? closedAt : new Date(closedAt || '');
+    if (Number.isNaN(normalizedClosedAt.getTime())) return null;
+
+    const where = {
+        status: 'voided',
+        voided_at: {
+            [Op.gte]: normalizedClosedAt,
+            [Op.lte]: new Date()
+        }
+    };
+    if (shiftId) where.shift_id = shiftId;
+    if (terminalId) where.terminal_id = terminalId;
+    if (locationId) where.location_id = locationId;
+    return where;
+};
+
 const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
@@ -768,7 +780,10 @@ const buildTransactionInclude = () => ([
         model: dbStore.get('PosTransactionDiscount'),
         as: 'discount',
         required: false,
-        include: [{ model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false }]
+        include: [
+            { model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false },
+            { model: dbStore.get('User'), as: 'approvedBy', attributes: ['user_id', 'username', 'role'], required: false }
+        ]
     },
     {
         model: dbStore.get('TenantLocation'),
@@ -910,6 +925,12 @@ const REPORT_SOURCE_LABELS = Object.freeze({
 });
 
 const REFUND_PAYMENT_STATUSES = new Set(['refund_pending', 'partial_refunded', 'refunded']);
+const REPORT_ADJUSTMENT_TYPES = new Set([
+    'cash_refund',
+    'external_refund',
+    'provider_refund',
+    'employee_credit_reversal'
+]);
 
 const sumBy = (rows = [], selector = () => 0) => round4((Array.isArray(rows) ? rows : []).reduce((sum, row) => (
     sum + Number(selector(row) || 0)
@@ -1398,8 +1419,285 @@ const buildCashierSummary = (rows = []) => {
         cashier_id: cashierId === 'unassigned' ? null : Number(cashierId),
         cashier_name: entries[0]?.cashier_name || entries[0]?.accepted_by_name || 'Unassigned',
         shift_ids: Array.from(new Set(entries.map((entry) => entry.shift_id).filter(Boolean))),
-        summary: serializeReportSummary(entries)
+        summary: serializeReportSummary(entries),
+        shift_money: null
     })).sort((left, right) => Number(right.summary.net_sales || 0) - Number(left.summary.net_sales || 0));
+};
+
+const REPORT_CASH_EVENT_EFFECT = Object.freeze({
+    cash_in: 1,
+    opening_adjustment: 1,
+    cash_out: -1,
+    closing_adjustment: -1
+});
+
+const getCashPaymentAmount = (transaction = {}) => {
+    const paymentBreakdown = parseJsonLoosely(transaction.payment_breakdown);
+    if (Array.isArray(paymentBreakdown) && paymentBreakdown.length > 0) {
+        return getPosCashPaymentAmount(paymentBreakdown);
+    }
+
+    return String(transaction.payment_type || '').trim().toLowerCase() === 'cash'
+        ? round4(transaction.total_amount)
+        : 0;
+};
+
+const summarizeReportCashEvents = (events = []) => {
+    const summary = {
+        cash_in_total: 0,
+        cash_out_total: 0,
+        opening_adjustment_total: 0,
+        closing_adjustment_total: 0,
+        net_events_total: 0
+    };
+
+    (Array.isArray(events) ? events : []).forEach((event) => {
+        const eventType = String(event?.event_type || '').trim();
+        const effect = REPORT_CASH_EVENT_EFFECT[eventType];
+        if (!effect) return;
+
+        const amount = round4(event?.amount);
+        const summaryKey = `${eventType}_total`;
+        summary[summaryKey] = round4((summary[summaryKey] || 0) + amount);
+        summary.net_events_total = round4(summary.net_events_total + (amount * effect));
+    });
+
+    return summary;
+};
+
+const buildReportShiftMoney = ({ shift = {}, transactions = [] } = {}) => {
+    const eventSummary = summarizeReportCashEvents(shift.cashEvents);
+    const openingFloatAmount = round4(shift.opening_float_amount);
+    const cashSalesAmount = round4((Array.isArray(transactions) ? transactions : []).reduce(
+        (total, transaction) => total + getCashPaymentAmount(transaction),
+        0
+    ));
+    const derivedExpectedCashAmount = round4(
+        openingFloatAmount + eventSummary.net_events_total + cashSalesAmount
+    );
+    const expectedCashAmount = shift.expected_cash_amount == null
+        ? derivedExpectedCashAmount
+        : round4(shift.expected_cash_amount);
+    const closingCashAmount = shift.closing_cash_amount == null
+        ? null
+        : round4(shift.closing_cash_amount);
+    const cashVarianceAmount = shift.cash_variance_amount == null
+        ? (closingCashAmount == null ? null : round4(closingCashAmount - expectedCashAmount))
+        : round4(shift.cash_variance_amount);
+
+    return {
+        shift_count: 1,
+        closed_shift_count: String(shift.status || '').trim().toLowerCase() === 'closed' ? 1 : 0,
+        opening_float_amount: openingFloatAmount,
+        cash_sales_amount: cashSalesAmount,
+        cash_in_total: eventSummary.cash_in_total,
+        cash_out_total: eventSummary.cash_out_total,
+        opening_adjustment_total: eventSummary.opening_adjustment_total,
+        closing_adjustment_total: eventSummary.closing_adjustment_total,
+        net_events_total: eventSummary.net_events_total,
+        expected_cash_amount: expectedCashAmount,
+        closing_cash_amount: closingCashAmount,
+        cash_variance_amount: cashVarianceAmount
+    };
+};
+
+const mergeCashierShiftMoney = (cashierSummary = [], reconciliation = new Map()) => {
+    const merged = new Map();
+
+    (Array.isArray(cashierSummary) ? cashierSummary : []).forEach((entry) => {
+        const key = String(entry.cashier_id || 'unassigned');
+        merged.set(key, {
+            ...entry,
+            shift_money: reconciliation.get(key) || null
+        });
+    });
+
+    reconciliation.forEach((shiftMoney, key) => {
+        if (merged.has(key)) return;
+        merged.set(key, {
+            cashier_id: shiftMoney.cashier_id,
+            cashier_name: shiftMoney.cashier_name || `Cashier #${shiftMoney.cashier_id}`,
+            shift_ids: shiftMoney.shift_ids || [],
+            summary: serializeReportSummary([]),
+            shift_money: shiftMoney
+        });
+    });
+
+    return Array.from(merged.values()).sort((left, right) => (
+        Number(right.summary?.net_sales || 0) - Number(left.summary?.net_sales || 0)
+    ));
+};
+
+const buildReportTransactionRows = (transactions = [], normalizedLines = []) => {
+    const matchingTransactionIds = new Set(normalizedLines.map((row) => String(row.transaction_id)));
+    const lineSummaryByTransaction = new Map();
+
+    normalizedLines.forEach((row) => {
+        const key = String(row.transaction_id);
+        const current = lineSummaryByTransaction.get(key) || {
+            gross_sales: 0,
+            net_sales: 0,
+            discount_amount: 0,
+            refund_amount: 0
+        };
+        current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
+        current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
+        current.discount_amount = round4(current.discount_amount + Number(row.discount_amount || 0));
+        current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
+        lineSummaryByTransaction.set(key, current);
+    });
+
+    return (Array.isArray(transactions) ? transactions : [])
+        .filter((transaction) => matchingTransactionIds.has(String(transaction?.pos_transaction_id)))
+        .map((transaction) => {
+            const summary = lineSummaryByTransaction.get(String(transaction.pos_transaction_id)) || {};
+            return {
+                pos_transaction_id: transaction.pos_transaction_id,
+                invoice_number: transaction.invoice_number || null,
+                created_at: transaction.created_at || null,
+                status: transaction.status || null,
+                cashier_id: transaction.cashier?.user_id || transaction.cashier_id || transaction.accepted_by || null,
+                cashier_name: transaction.cashier?.username || transaction.acceptedByUser?.username || null,
+                payment_type: transaction.payment_type || null,
+                payment_status: transaction.payment_status || null,
+                order_source: transaction.order_source || null,
+                order_method: transaction.order_method || null,
+                total_amount: round4(transaction.total_amount),
+                gross_sales: round4(summary.gross_sales),
+                net_sales: round4(summary.net_sales),
+                discount_amount: round4(summary.discount_amount),
+                refund_amount: round4(summary.refund_amount)
+            };
+        });
+};
+
+const loadReportCashierReconciliation = async ({ transactions = [], filters = {}, options = {} } = {}) => {
+    const PosTerminalShift = dbStore.get('PosTerminalShift');
+    const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
+    if (!PosTerminalShift || typeof PosTerminalShift.findAll !== 'function' || !PosCashDrawerEvent) {
+        return new Map();
+    }
+
+    const where = {};
+    const dateFrom = normalizeBusinessDateValue(filters.date_from);
+    const dateTo = normalizeBusinessDateValue(filters.date_to);
+    if (dateFrom || dateTo) {
+        where.business_date = {};
+        if (dateFrom) where.business_date[Op.gte] = dateFrom;
+        if (dateTo) where.business_date[Op.lte] = dateTo;
+    }
+
+    const cashierId = toPositiveInt(filters.cashier_id);
+    if (cashierId) where.cashier_id = cashierId;
+
+    const locationId = toPositiveInt(filters.location_id);
+    if (locationId) where.location_id = locationId;
+
+    const terminalId = String(filters.terminal_id || '').trim();
+    if (terminalId) where.terminal_id = terminalId;
+
+    const shifts = await PosTerminalShift.findAll({
+        where,
+        include: [
+            {
+                model: dbStore.get('User'),
+                as: 'cashier',
+                attributes: ['user_id', 'username'],
+                required: false
+            },
+            {
+                model: PosCashDrawerEvent,
+                as: 'cashEvents',
+                attributes: ['pos_cash_drawer_event_id', 'event_type', 'amount'],
+                required: false,
+                separate: true,
+                order: [['created_at', 'ASC']]
+            }
+        ],
+        order: [['business_date', 'ASC'], ['opened_at', 'ASC'], ['pos_terminal_shift_id', 'ASC']],
+        transaction: options.transaction
+    });
+
+    const transactionsByShift = new Map();
+    (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
+        const shiftId = toPositiveInt(transaction?.shift?.pos_terminal_shift_id || transaction?.shift_id);
+        if (!shiftId) return;
+        const rows = transactionsByShift.get(shiftId) || [];
+        rows.push(transaction);
+        transactionsByShift.set(shiftId, rows);
+    });
+
+    const grouped = new Map();
+    (Array.isArray(shifts) ? shifts : []).forEach((row) => {
+        const shift = toPlain(row);
+        const shiftId = toPositiveInt(shift.pos_terminal_shift_id);
+        const cashierIdValue = toPositiveInt(shift.cashier_id || shift.cashier?.user_id);
+        if (!shiftId || !cashierIdValue) return;
+
+        const shiftMoney = buildReportShiftMoney({
+            shift,
+            transactions: transactionsByShift.get(shiftId) || []
+        });
+        const key = String(cashierIdValue);
+        const current = grouped.get(key) || {
+            cashier_id: cashierIdValue,
+            cashier_name: shift.cashier?.username || `Cashier #${cashierIdValue}`,
+            shift_ids: [],
+            shift_count: 0,
+            closed_shift_count: 0,
+            opening_float_amount: 0,
+            cash_sales_amount: 0,
+            cash_in_total: 0,
+            cash_out_total: 0,
+            opening_adjustment_total: 0,
+            closing_adjustment_total: 0,
+            net_events_total: 0,
+            expected_cash_amount: 0,
+            closing_cash_amount: 0,
+            cash_variance_amount: 0,
+            has_closing_cash: false,
+            has_cash_variance: false
+        };
+
+        current.shift_ids.push(shiftId);
+        current.shift_count += shiftMoney.shift_count;
+        current.closed_shift_count += shiftMoney.closed_shift_count;
+        current.opening_float_amount = round4(current.opening_float_amount + shiftMoney.opening_float_amount);
+        current.cash_sales_amount = round4(current.cash_sales_amount + shiftMoney.cash_sales_amount);
+        current.cash_in_total = round4(current.cash_in_total + shiftMoney.cash_in_total);
+        current.cash_out_total = round4(current.cash_out_total + shiftMoney.cash_out_total);
+        current.opening_adjustment_total = round4(current.opening_adjustment_total + shiftMoney.opening_adjustment_total);
+        current.closing_adjustment_total = round4(current.closing_adjustment_total + shiftMoney.closing_adjustment_total);
+        current.net_events_total = round4(current.net_events_total + shiftMoney.net_events_total);
+        current.expected_cash_amount = round4(current.expected_cash_amount + shiftMoney.expected_cash_amount);
+        if (shiftMoney.closing_cash_amount != null) {
+            current.has_closing_cash = true;
+            current.closing_cash_amount = round4(current.closing_cash_amount + shiftMoney.closing_cash_amount);
+        }
+        if (shiftMoney.cash_variance_amount != null) {
+            current.has_cash_variance = true;
+            current.cash_variance_amount = round4(current.cash_variance_amount + shiftMoney.cash_variance_amount);
+        }
+        grouped.set(key, current);
+    });
+
+    return new Map(Array.from(grouped.entries()).map(([key, value]) => [key, {
+        cashier_id: value.cashier_id,
+        cashier_name: value.cashier_name,
+        shift_ids: value.shift_ids,
+        shift_count: value.shift_count,
+        closed_shift_count: value.closed_shift_count,
+        opening_float_amount: value.opening_float_amount,
+        cash_sales_amount: value.cash_sales_amount,
+        cash_in_total: value.cash_in_total,
+        cash_out_total: value.cash_out_total,
+        opening_adjustment_total: value.opening_adjustment_total,
+        closing_adjustment_total: value.closing_adjustment_total,
+        net_events_total: value.net_events_total,
+        expected_cash_amount: value.expected_cash_amount,
+        closing_cash_amount: value.has_closing_cash ? value.closing_cash_amount : null,
+        cash_variance_amount: value.has_cash_variance ? value.cash_variance_amount : null
+    }]));
 };
 
 const buildShiftSummary = (rows = []) => {
@@ -1567,8 +1865,102 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     return rows;
 };
 
-const buildReportPayloadFromTransactions = (transactions = [], filters = {}, categoryOptions = []) => {
+const resolveAdjustmentEventAt = (adjustment = {}) => (
+    adjustment?.completed_at
+    || adjustment?.failed_at
+    || adjustment?.cancelled_at
+    || adjustment?.created_at
+    || null
+);
+
+const normalizeReportAdjustmentRows = (adjustments = []) => (
+    (Array.isArray(adjustments) ? adjustments : [])
+        .filter((adjustment) => REPORT_ADJUSTMENT_TYPES.has(String(adjustment?.adjustment_type || '').trim().toLowerCase()))
+        .map((adjustment) => {
+            const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
+                ? adjustment.metadata
+                : {};
+            return {
+                pos_transaction_adjustment_id: toPositiveInt(adjustment?.pos_transaction_adjustment_id),
+                adjustment_reference: adjustment?.adjustment_reference || null,
+                pos_transaction_id: toPositiveInt(adjustment?.pos_transaction_id),
+                invoice_number: adjustment?.transaction?.invoice_number || null,
+                event_at: resolveAdjustmentEventAt(adjustment),
+                adjustment_type: adjustment?.adjustment_type || null,
+                tender_type: adjustment?.tender_type || null,
+                amount: round4(adjustment?.amount),
+                currency: adjustment?.currency || 'PHP',
+                status: adjustment?.status || null,
+                reason: adjustment?.reason || null,
+                original_cashier_id: toPositiveInt(adjustment?.original_cashier_id),
+                original_cashier_name: adjustment?.originalCashier?.username || null,
+                original_shift_id: toPositiveInt(adjustment?.original_shift_id),
+                original_terminal_id: adjustment?.original_terminal_id || null,
+                original_location_id: toPositiveInt(adjustment?.original_location_id),
+                actor_user_id: toPositiveInt(adjustment?.actor_user_id),
+                actor_name: adjustment?.actorUser?.username || null,
+                actor_shift_id: toPositiveInt(adjustment?.actor_shift_id),
+                actor_terminal_id: adjustment?.actor_terminal_id || null,
+                actor_location_id: toPositiveInt(adjustment?.actor_location_id),
+                external_reference: adjustment?.external_reference || null,
+                provider: adjustment?.provider || null,
+                provider_reference: adjustment?.provider_reference || null,
+                cash_drawer_event_id: toPositiveInt(adjustment?.cash_drawer_event_id),
+                failure_code: adjustment?.failure_code || null,
+                failure_reason: adjustment?.failure_reason || null,
+                financial_outcome: metadata.financial_outcome || null
+            };
+        })
+        .sort((left, right) => {
+            const eventDelta = new Date(left.event_at || 0).getTime() - new Date(right.event_at || 0).getTime();
+            return eventDelta || Number(left.pos_transaction_adjustment_id || 0) - Number(right.pos_transaction_adjustment_id || 0);
+        })
+);
+
+const summarizeReportAdjustments = (rows = []) => {
+    const summary = {
+        adjustment_count: rows.length,
+        succeeded_count: 0,
+        pending_count: 0,
+        manual_review_count: 0,
+        failed_count: 0,
+        succeeded_amount: 0,
+        pending_amount: 0,
+        manual_review_amount: 0,
+        failed_amount: 0,
+        net_sales_impact: 0,
+        mutates_prior_z_reading: false
+    };
+    rows.forEach((row) => {
+        const amount = round4(row?.amount);
+        const status = String(row?.status || '').trim().toLowerCase();
+        if (status === 'succeeded') {
+            summary.succeeded_count += 1;
+            summary.succeeded_amount = round4(summary.succeeded_amount + amount);
+        } else if (status === 'pending') {
+            summary.pending_count += 1;
+            summary.pending_amount = round4(summary.pending_amount + amount);
+        } else if (status === 'manual_review_required') {
+            summary.manual_review_count += 1;
+            summary.manual_review_amount = round4(summary.manual_review_amount + amount);
+        } else if (status === 'failed') {
+            summary.failed_count += 1;
+            summary.failed_amount = round4(summary.failed_amount + amount);
+        }
+    });
+    return summary;
+};
+
+const buildReportPayloadFromTransactions = (
+    transactions = [],
+    filters = {},
+    categoryOptions = [],
+    cashierReconciliation = new Map(),
+    adjustments = []
+) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
+    const adjustmentRows = normalizeReportAdjustmentRows(adjustments);
+    const adjustmentSummary = summarizeReportAdjustments(adjustmentRows);
     const summary = serializeReportSummary(normalizedLines);
     const dailySeries = buildTimeSeries(normalizedLines, 'daily');
     const monthlySeries = buildTimeSeries(normalizedLines, 'monthly');
@@ -1614,6 +2006,11 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}, cat
         };
     });
 
+    const cashierSummary = mergeCashierShiftMoney(
+        buildCashierSummary(normalizedLines),
+        cashierReconciliation
+    );
+
     return {
         applied_filters: {
             ...resolveReportDateRange(filters),
@@ -1635,11 +2032,15 @@ const buildReportPayloadFromTransactions = (transactions = [], filters = {}, cat
         },
         daily_report: {
             summary,
+            adjustment_summary: adjustmentSummary,
+            adjustment_rows: adjustmentRows,
             discount_breakdown: buildDiscountBreakdown(normalizedLines),
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
-            cashier_summary: buildCashierSummary(normalizedLines),
+            cashier_summary: cashierSummary,
+            cash_reconciliation: Array.from(cashierReconciliation.values()),
             shift_summary: buildShiftSummary(normalizedLines),
+            transaction_rows: buildReportTransactionRows(transactions, normalizedLines),
             top_items: topItems,
             trend: dailySeries
         },
@@ -1774,6 +2175,55 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
             round4(entry.pos_profit_loss)
         ]);
     });
+    rows.push([]);
+    rows.push(['Cashier', 'Shift Count', 'Closed Shifts', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance']);
+    (payload?.daily_report?.cashier_summary || []).forEach((entry) => {
+        const cash = entry?.shift_money || {};
+        rows.push([
+            entry.cashier_name,
+            cash.shift_count || 0,
+            cash.closed_shift_count || 0,
+            round4(cash.opening_float_amount),
+            round4(cash.cash_sales_amount),
+            round4(cash.cash_in_total),
+            round4(cash.cash_out_total),
+            round4(cash.expected_cash_amount),
+            cash.closing_cash_amount == null ? '' : round4(cash.closing_cash_amount),
+            cash.cash_variance_amount == null ? '' : round4(cash.cash_variance_amount)
+        ]);
+    });
+    rows.push([]);
+    rows.push(['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales']);
+    (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
+        rows.push([
+            entry.invoice_number || entry.pos_transaction_id,
+            entry.created_at || '',
+            entry.cashier_name || '',
+            entry.payment_type || '',
+            entry.status || '',
+            round4(entry.total_amount),
+            round4(entry.net_sales)
+        ]);
+    });
+    rows.push([]);
+    rows.push(['Refund/Adjustment Events']);
+    rows.push(['Reference', 'Event Datetime', 'Invoice', 'Type', 'Tender', 'Status', 'Amount', 'Original Cashier', 'Original Shift', 'Actioned By', 'Actor Shift', 'Reason']);
+    (payload?.daily_report?.adjustment_rows || []).forEach((entry) => {
+        rows.push([
+            entry.adjustment_reference || entry.pos_transaction_adjustment_id,
+            entry.event_at || '',
+            entry.invoice_number || entry.pos_transaction_id,
+            entry.adjustment_type || '',
+            entry.tender_type || '',
+            entry.status || '',
+            round4(entry.amount),
+            entry.original_cashier_name || entry.original_cashier_id || '',
+            entry.original_shift_id || '',
+            entry.actor_name || entry.actor_user_id || '',
+            entry.actor_shift_id || '',
+            entry.reason || ''
+        ]);
+    });
     return rows;
 };
 
@@ -1803,22 +2253,40 @@ export const posRepository = {
         const User = dbStore.get('User');
         const rows = await User.findAll({
             where: buildVisibleWhere({
-                is_active: true,
-                role: { [Op.in]: ['admin', 'manager'] },
-                pos_approval_pin_hash: { [Op.ne]: '' }
+                is_active: true
             }),
-            attributes: ['user_id', 'username', 'role', 'is_master_admin'],
+            attributes: ['user_id', 'username', 'role', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
             order: [['username', 'ASC']],
             transaction: options.transaction
         });
-        return rows.map(toPlain);
+        return rows
+            .map(serializeDiscountAuthorizer)
+            .filter((row) => row?.can_authorize_discounts === true)
+            .map((row) => ({
+                user_id: row.user_id,
+                username: row.username,
+                role: row.role,
+                is_master_admin: row.is_master_admin,
+                can_authorize_discounts: true,
+                pos_approval_pin_configured: Boolean(String(row.pos_approval_pin_hash || '').trim())
+            }));
     },
 
     async findActiveDiscountApproverById(userId, options = {}) {
         const User = dbStore.get('User');
         const row = await User.findOne({
             where: buildVisibleWhere({ user_id: userId, is_active: true }),
-            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
+            transaction: options.transaction
+        });
+        return serializeDiscountAuthorizer(row);
+    },
+
+    async findActivePosDrawerOperatorById(userId, options = {}) {
+        const User = dbStore.get('User');
+        const row = await User.findOne({
+            where: buildVisibleWhere({ user_id: userId, is_active: true }),
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'pos_approval_pin_hash'],
             transaction: options.transaction
         });
         return toPlain(row);
@@ -1934,13 +2402,13 @@ export const posRepository = {
 
         try {
             const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), options);
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 normalizedLocationId,
                 options
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
@@ -1951,13 +2419,13 @@ export const posRepository = {
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })), options);
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 normalizedLocationId,
                 options
             );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         }
     },
@@ -2362,7 +2830,7 @@ export const posRepository = {
         const ingredientIds = [...new Set(payload
             .map((row) => Number.parseInt(row?.ingredient_id, 10))
             .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
-        const locationStock = await loadLocationStockMap(ingredientIds, normalizedLocationId, options);
+        const locationStock = await loadItemLocationStockMap(ingredientIds, normalizedLocationId, options);
         if (!(
             Number.isInteger(normalizedLocationId)
             && normalizedLocationId > 0
@@ -2416,6 +2884,7 @@ export const posRepository = {
         const transaction = options.transaction;
         const posTransactionId = toPositiveInt(payload.pos_transaction_id);
         if (!posTransactionId) return null;
+        const orderNotes = String(payload.order_notes || '').trim() || null;
 
         let checkId = toPositiveInt(payload.check_id);
         const usesExistingCheck = Boolean(checkId);
@@ -2452,7 +2921,7 @@ export const posRepository = {
                     : 'dine_in',
                 status: 'sent_to_kitchen',
                 pos_transaction_id: posTransactionId,
-                notes: 'POS checkout kitchen order'
+                notes: orderNotes
             }, { transaction });
             checkId = Number(check.check_id);
             await PosTransaction.update(
@@ -2518,7 +2987,9 @@ export const posRepository = {
                     }
                 );
             }
-            await check.update({ status: 'sent_to_kitchen', pos_transaction_id: posTransactionId }, { transaction });
+            const checkUpdate = { status: 'sent_to_kitchen', pos_transaction_id: posTransactionId };
+            if (orderNotes !== null) checkUpdate.notes = orderNotes;
+            await check.update(checkUpdate, { transaction });
         }
 
         const ticket = await FnbKitchenTicket.create({
@@ -2584,20 +3055,54 @@ export const posRepository = {
         const offset = (page - 1) * limit;
 
         const where = {};
+        const whereAnd = [];
         const cashierId = Number.parseInt(filters.cashier_id, 10);
         if (Number.isInteger(cashierId) && cashierId > 0) {
-            where[Op.or] = [
+            whereAnd.push({
+                [Op.or]: [
                 { cashier_id: cashierId },
                 { accepted_by: cashierId }
-            ];
+                ]
+            });
+        }
+        const cashierName = String(filters.cashier_name || '').trim();
+        if (cashierName) {
+            const cashierIds = await findHistoryUserIds(dbStore.get('User'), cashierName);
+            whereAnd.push({
+                [Op.or]: [
+                    { cashier_id: { [Op.in]: cashierIds } },
+                    { accepted_by: { [Op.in]: cashierIds } }
+                ]
+            });
         }
         if (filters.payment_type) where.payment_type = filters.payment_type;
         if (filters.payment_status) where.payment_status = filters.payment_status;
         if (filters.order_method) where.order_method = filters.order_method;
         if (filters.order_source) where.order_source = filters.order_source;
         if (filters.status) where.status = filters.status;
-        if (filters.search) {
-            where.invoice_number = { [Op.like]: `%${String(filters.search).trim()}%` };
+        const searchConditions = buildPosTransactionHistorySearchConditions({
+            sequelize: PosTransaction.sequelize,
+            search: filters.search
+        });
+        const searchText = String(filters.search || '').trim();
+        if (searchText) {
+            const matchingUserIds = await findHistoryUserIds(dbStore.get('User'), searchText);
+            const matchingDiscountTransactionIds = await findHistoryDiscountTransactionIds(
+                dbStore.get('PosTransactionDiscount'),
+                searchText,
+                matchingUserIds
+            );
+            searchConditions.push(
+                { cashier_id: { [Op.in]: matchingUserIds } },
+                { accepted_by: { [Op.in]: matchingUserIds } },
+                { pos_transaction_id: { [Op.in]: matchingDiscountTransactionIds } }
+            );
+        }
+        if (searchConditions.length > 0) {
+            whereAnd.push({ [Op.or]: searchConditions });
+        }
+        if (whereAnd.length > 0) {
+            where[Op.and] = whereAnd;
         }
         const locationId = Number.parseInt(filters.location_id, 10);
         if (Number.isInteger(locationId) && locationId > 0) {
@@ -2616,12 +3121,20 @@ export const posRepository = {
                 {
                     model: dbStore.get('User'),
                     as: 'cashier',
-                    attributes: ['user_id', 'username']
+                    attributes: ['user_id', 'username'],
+                    required: false
                 },
                 {
                     model: dbStore.get('User'),
                     as: 'acceptedByUser',
-                    attributes: ['user_id', 'username']
+                    attributes: ['user_id', 'username'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('User'),
+                    as: 'voidedByUser',
+                    attributes: ['user_id', 'username'],
+                    required: false
                 },
                 {
                     model: dbStore.get('PosTerminalShift'),
@@ -2632,6 +3145,17 @@ export const posRepository = {
                     model: dbStore.get('PosTransactionLine'),
                     as: 'lines',
                     attributes: ['line_id', 'pos_transaction_id', 'quantity', 'cost_snapshot']
+                },
+                {
+                    model: dbStore.get('PosTransactionDiscount'),
+                    as: 'discount',
+                    required: false,
+                    include: [{
+                        model: dbStore.get('User'),
+                        as: 'approvedBy',
+                        attributes: ['user_id', 'username', 'role'],
+                        required: false
+                    }]
                 }
             ],
             distinct: true,
@@ -2670,6 +3194,78 @@ export const posRepository = {
         return rows.map(toPlain);
     },
 
+    async listReportTransactionAdjustments(filters = {}, options = {}) {
+        const PosTransactionAdjustment = safeGetModel('PosTransactionAdjustment');
+        if (!PosTransactionAdjustment) return [];
+
+        const { startAt, endAtExclusive } = resolveReportDateRange(filters);
+        const scopeConditions = [];
+        const cashierId = toPositiveInt(filters.cashier_id);
+        const locationId = toPositiveInt(filters.location_id);
+        const terminalId = String(filters.terminal_id || '').trim();
+        const paymentType = String(filters.payment_type || '').trim();
+        if (cashierId) scopeConditions.push({ original_cashier_id: cashierId });
+        if (locationId) {
+            scopeConditions.push({
+                [Op.or]: [
+                    { original_location_id: locationId },
+                    { actor_location_id: locationId }
+                ]
+            });
+        }
+        if (terminalId) {
+            scopeConditions.push({
+                [Op.or]: [
+                    { original_terminal_id: terminalId },
+                    { actor_terminal_id: terminalId }
+                ]
+            });
+        }
+        if (paymentType) scopeConditions.push({ tender_type: paymentType });
+
+        const User = safeGetModel('User');
+        const PosTransaction = safeGetModel('PosTransaction');
+        const include = [];
+        if (PosTransaction) include.push({ model: PosTransaction, as: 'transaction', attributes: ['pos_transaction_id', 'invoice_number'], required: false });
+        if (User) {
+            include.push({ model: User, as: 'originalCashier', attributes: ['user_id', 'username'], required: false });
+            include.push({ model: User, as: 'actorUser', attributes: ['user_id', 'username'], required: false });
+        }
+
+        const rows = await PosTransactionAdjustment.findAll({
+            where: {
+                adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_TYPES) },
+                [Op.and]: [
+                    {
+                        [Op.or]: [
+                            { completed_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive } },
+                            {
+                                completed_at: null,
+                                failed_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+                            },
+                            {
+                                completed_at: null,
+                                failed_at: null,
+                                cancelled_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+                            },
+                            {
+                                completed_at: null,
+                                failed_at: null,
+                                cancelled_at: null,
+                                created_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+                            }
+                        ]
+                    },
+                    ...scopeConditions
+                ]
+            },
+            include,
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
     async listActiveReportCategories(options = {}) {
         const ItemFolder = dbStore.get('ItemFolder');
         if (!ItemFolder) return [];
@@ -2687,11 +3283,23 @@ export const posRepository = {
     },
 
     async getReportsOverview(filters = {}, options = {}) {
-        const [transactions, categoryOptions] = await Promise.all([
+        const [transactions, categoryOptions, adjustments] = await Promise.all([
             this.listReportTransactions(filters, options),
-            this.listActiveReportCategories(options)
+            this.listActiveReportCategories(options),
+            this.listReportTransactionAdjustments(filters, options)
         ]);
-        return buildReportPayloadFromTransactions(transactions, filters, categoryOptions);
+        const cashierReconciliation = await loadReportCashierReconciliation({
+            transactions,
+            filters,
+            options
+        });
+        return buildReportPayloadFromTransactions(
+            transactions,
+            filters,
+            categoryOptions,
+            cashierReconciliation,
+            adjustments
+        );
     },
 
     async exportReports(filters = {}, options = {}) {
@@ -3048,6 +3656,129 @@ export const posRepository = {
         };
     },
 
+    async getPostCloseVoidSummaryForShift({
+        shiftId,
+        closedAt,
+        terminalId = null,
+        locationId = null
+    } = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const where = buildPostCloseVoidWhere({
+            closedAt,
+            shiftId: toPositiveInt(shiftId),
+            terminalId,
+            locationId: toPositiveInt(locationId)
+        });
+        if (!where) {
+            return {
+                post_close_void_transaction_count: 0,
+                post_close_void_amount: 0,
+                post_close_voided_item_count: 0
+            };
+        }
+
+        const [summaryRow] = await PosTransaction.findAll({
+            where,
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.col('pos_transaction_id')), 'post_close_void_transaction_count'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'post_close_void_amount']
+            ],
+            raw: true,
+            transaction: options.transaction
+        });
+        const lineSummaryRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where
+                }],
+                attributes: [
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'post_close_voided_item_count']
+                ],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+
+        return {
+            post_close_void_transaction_count: Number.parseInt(summaryRow?.post_close_void_transaction_count || 0, 10),
+            post_close_void_amount: round4(summaryRow?.post_close_void_amount),
+            post_close_voided_item_count: round4(lineSummaryRows[0]?.post_close_voided_item_count)
+        };
+    },
+
+    async getPostCloseAdjustmentSummaryForShift({
+        shiftId,
+        closedAt,
+        terminalId = null,
+        locationId = null
+    } = {}, options = {}) {
+        const PosTransactionAdjustment = safeGetModel('PosTransactionAdjustment');
+        const normalizedShiftId = toPositiveInt(shiftId);
+        const normalizedClosedAt = new Date(closedAt || '');
+        if (!PosTransactionAdjustment || !normalizedShiftId || !Number.isFinite(normalizedClosedAt.getTime())) {
+            return {
+                post_close_adjustment_count: 0,
+                post_close_refund_amount: 0,
+                post_close_pending_amount: 0,
+                post_close_manual_review_amount: 0,
+                post_close_adjustments: []
+            };
+        }
+
+        const where = {
+            original_shift_id: normalizedShiftId,
+            adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_TYPES) },
+            [Op.or]: [
+                { completed_at: { [Op.gte]: normalizedClosedAt } },
+                {
+                    completed_at: null,
+                    failed_at: { [Op.gte]: normalizedClosedAt }
+                },
+                {
+                    completed_at: null,
+                    failed_at: null,
+                    cancelled_at: { [Op.gte]: normalizedClosedAt }
+                },
+                {
+                    completed_at: null,
+                    failed_at: null,
+                    cancelled_at: null,
+                    created_at: { [Op.gte]: normalizedClosedAt }
+                }
+            ]
+        };
+        if (terminalId) where.original_terminal_id = String(terminalId).trim();
+        const normalizedLocationId = toPositiveInt(locationId);
+        if (normalizedLocationId) where.original_location_id = normalizedLocationId;
+
+        const User = safeGetModel('User');
+        const include = User ? [
+            { model: User, as: 'originalCashier', attributes: ['user_id', 'username'], required: false },
+            { model: User, as: 'actorUser', attributes: ['user_id', 'username'], required: false }
+        ] : [];
+        const rows = await PosTransactionAdjustment.findAll({
+            where,
+            include,
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            transaction: options.transaction
+        });
+        const adjustments = normalizeReportAdjustmentRows(rows.map(toPlain));
+        const summary = summarizeReportAdjustments(adjustments);
+        return {
+            post_close_adjustment_count: summary.adjustment_count,
+            post_close_refund_amount: summary.succeeded_amount,
+            post_close_pending_amount: summary.pending_amount,
+            post_close_manual_review_amount: summary.manual_review_amount,
+            post_close_adjustments: adjustments
+        };
+    },
+
     async createZReadingSnapshot(payload = {}, options = {}) {
         const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
         const created = await PosZReadingSnapshot.create(payload, {
@@ -3345,9 +4076,9 @@ export const posRepository = {
 
         const overrideMap = await loadCatalogOverridesMap([itemPayload.item_id]);
         const override = overrideMap.get(itemPayload.item_id);
-        const stockMap = await loadLocationStockMap([itemPayload.item_id], location_id);
+        const stockMap = await loadItemLocationStockMap([itemPayload.item_id], location_id);
         const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
-            ? applyLocationStockMap([itemPayload], stockMap.stockMap)
+            ? applyItemLocationStockMap([itemPayload], stockMap.stockMap)
             : [itemPayload];
         const posVisible = resolveCatalogVisibility({ item: itemWithLocationStock, override, surface: 'pos' });
         const readiness = buildPosReadiness({ item: itemWithLocationStock, override });
@@ -3418,13 +4149,13 @@ export const posRepository = {
 
         try {
             const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true });
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
@@ -3435,13 +4166,13 @@ export const posRepository = {
                 ...queryOptions,
                 attributes: BASE_POS_ITEM_ATTRIBUTES
             })), { includePrimaryBarcode: true });
-            const stockMap = await loadLocationStockMap(
+            const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
-                ? applyLocationStockMap(catalogItems, stockMap.stockMap)
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
         }
     },
@@ -3756,18 +4487,21 @@ export const posRepository = {
     },
 
     async listParkedSales({
-        shiftId,
-        cashierId,
+        shiftId = null,
+        cashierId = null,
         locationId = null,
+        sharedLocation = false,
         statuses = ['parked', 'claimed'],
         limit = 100
     } = {}, options = {}) {
         const PosParkedSale = dbStore.get('PosParkedSale');
         const where = {
-            shift_id: toPositiveInt(shiftId),
-            cashier_id: toPositiveInt(cashierId),
             status: { [Op.in]: Array.isArray(statuses) && statuses.length > 0 ? statuses : ['parked', 'claimed'] }
         };
+        if (!sharedLocation) {
+            where.shift_id = toPositiveInt(shiftId);
+            where.cashier_id = toPositiveInt(cashierId);
+        }
         const normalizedLocationId = toPositiveInt(locationId);
         if (normalizedLocationId) where.location_id = normalizedLocationId;
 
@@ -3811,7 +4545,10 @@ export const posRepository = {
         return PosParkedSale.count({
             where: {
                 shift_id: toPositiveInt(shiftId),
-                status: { [Op.in]: ['parked', 'claimed'] }
+                // An unclaimed cart is branch-shared handoff work and may outlive
+                // the shift that originally parked it. Only an actively claimed
+                // cart remains an unresolved obligation of this shift.
+                status: 'claimed'
             },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
@@ -3828,6 +4565,20 @@ export const posRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         }).then(toPlainPaymentSession);
+    },
+
+    async findPosPaymentSessionByCompletedTransactionId(transactionId, options = {}) {
+        const PosPaymentSession = dbStore.get('PosPaymentSession');
+        const normalizedId = toPositiveInt(transactionId);
+        if (!normalizedId) return null;
+
+        const row = await PosPaymentSession.findOne({
+            where: { completed_transaction_id: normalizedId },
+            order: [['completed_at', 'DESC'], ['pos_payment_session_id', 'DESC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlainPaymentSession(row);
     },
 
     async findActivePosPaymentSessionForScope(scope = {}, options = {}) {
@@ -4011,6 +4762,126 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async listPosTransactionAdjustmentsForTransaction(transactionId, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedTransactionId = toPositiveInt(transactionId);
+        if (!normalizedTransactionId) return [];
+
+        const User = safeGetModel('User');
+        const include = User ? [
+            { model: User, as: 'originalCashier', attributes: ['user_id', 'username'], required: false },
+            { model: User, as: 'actorUser', attributes: ['user_id', 'username'], required: false },
+            { model: User, as: 'approvedByUser', attributes: ['user_id', 'username'], required: false }
+        ] : [];
+        const rows = await PosTransactionAdjustment.findAll({
+            where: { pos_transaction_id: normalizedTransactionId },
+            include,
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async listPosTransactionAdjustmentsForAllocation(allocationId, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedId = toPositiveInt(allocationId);
+        if (!normalizedId) return [];
+
+        const rows = await PosTransactionAdjustment.findAll({
+            where: { pos_payment_allocation_id: normalizedId },
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async findPosTransactionAdjustmentByIdempotencyKey(transactionId, idempotencyKey, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedTransactionId = toPositiveInt(transactionId);
+        const normalizedKey = String(idempotencyKey || '').trim();
+        if (!normalizedTransactionId || !normalizedKey) return null;
+
+        const row = await PosTransactionAdjustment.findOne({
+            where: { pos_transaction_id: normalizedTransactionId, idempotency_key: normalizedKey },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async findPosTransactionAdjustmentByReference(adjustmentReference, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedReference = String(adjustmentReference || '').trim();
+        if (!normalizedReference) return null;
+
+        const row = await PosTransactionAdjustment.findOne({
+            where: { adjustment_reference: normalizedReference },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async findPosTransactionAdjustmentByProviderEventId(providerEventId, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedEventId = String(providerEventId || '').trim();
+        if (!normalizedEventId) return null;
+
+        const row = await PosTransactionAdjustment.findOne({
+            where: { provider_event_id: normalizedEventId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async createPosTransactionAdjustment(payload = {}, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        if (!PosTransactionAdjustment) throw new Error('PosTransactionAdjustment model is unavailable');
+
+        try {
+            const created = await PosTransactionAdjustment.create(payload, { transaction: options.transaction });
+            return toPlain(created);
+        } catch (error) {
+            if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
+            const existing = await this.findPosTransactionAdjustmentByIdempotencyKey(
+                payload.pos_transaction_id,
+                payload.idempotency_key,
+                options
+            );
+            if (existing) return existing;
+            throw error;
+        }
+    },
+
+    async updatePosTransactionAdjustment(adjustmentId, payload = {}, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedId = toPositiveInt(adjustmentId);
+        if (!PosTransactionAdjustment || !normalizedId) return null;
+
+        const row = await PosTransactionAdjustment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async getPosTransactionAdjustmentById(adjustmentId, options = {}) {
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const normalizedId = toPositiveInt(adjustmentId);
+        if (!normalizedId) return null;
+
+        const row = await PosTransactionAdjustment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
     async findOpenTerminalShift({ terminalId = null, cashierId = null, locationId = null } = {}, options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         const where = { status: 'open' };
@@ -4041,6 +4912,81 @@ export const posRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
+    },
+
+    async listCashierShiftHistory({
+        cashierId,
+        locationId = null,
+        dateFrom = null,
+        dateTo = null,
+        status = 'all',
+        page = 1,
+        limit = 20
+    } = {}, options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+        const normalizedLimit = Math.min(50, Math.max(1, Number.parseInt(limit, 10) || 20));
+        const where = {
+            cashier_id: toPositiveInt(cashierId)
+        };
+
+        const normalizedLocationId = toPositiveInt(locationId);
+        if (normalizedLocationId) where.location_id = normalizedLocationId;
+
+        const normalizedStatus = String(status || 'all').trim().toLowerCase();
+        if (normalizedStatus !== 'all') where.status = normalizedStatus;
+
+        const normalizedDateFrom = normalizeBusinessDateValue(dateFrom);
+        const normalizedDateTo = normalizeBusinessDateValue(dateTo);
+        if (normalizedDateFrom || normalizedDateTo) {
+            where.business_date = {};
+            if (normalizedDateFrom) where.business_date[Op.gte] = normalizedDateFrom;
+            if (normalizedDateTo) where.business_date[Op.lte] = normalizedDateTo;
+        }
+
+        const { rows, count } = await PosTerminalShift.findAndCountAll({
+            where,
+            include: [
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
+                    attributes: ['location_id', 'name'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('PosCashDrawerEvent'),
+                    as: 'cashEvents',
+                    required: false,
+                    separate: true,
+                    order: [['created_at', 'ASC']]
+                }
+            ],
+            order: [
+                ['business_date', 'DESC'],
+                ['opened_at', 'DESC'],
+                ['pos_terminal_shift_id', 'DESC']
+            ],
+            limit: normalizedLimit,
+            offset: (normalizedPage - 1) * normalizedLimit,
+            distinct: true,
+            transaction: options.transaction
+        });
+
+        return {
+            rows: rows.map(toPlain),
+            pagination: {
+                page: normalizedPage,
+                limit: normalizedLimit,
+                total: count,
+                totalPages: Math.max(1, Math.ceil(count / normalizedLimit))
+            }
+        };
     },
 
     async listOpenTerminalShiftsForLocation({ locationId } = {}, options = {}) {
@@ -4117,13 +5063,46 @@ export const posRepository = {
         return PosCashDrawerEvent.create(payload, { transaction: options.transaction });
     },
 
+    async getCashDrawerEventById(eventId, options = {}) {
+        const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
+        const normalizedId = toPositiveInt(eventId);
+        if (!normalizedId) return null;
+
+        const row = await PosCashDrawerEvent.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
     async createAuditLog(payload = {}, options = {}) {
         const AuditLog = dbStore.get('AuditLog');
         if (!AuditLog) {
             throw new Error('AuditLog model is unavailable');
         }
 
-        const created = await AuditLog.create(payload, {
+        const changes = payload?.changes && typeof payload.changes === 'object'
+            ? payload.changes
+            : {};
+        const eventType = String(
+            payload.event_type
+            || changes.event
+            || changes.event_type
+            || changes.operation
+            || `${payload.entity_type || 'unknown'}.${String(payload.action || 'VIEW').toLowerCase()}`
+        ).trim().slice(0, 100);
+        const normalizedPayload = {
+            ...payload,
+            event_type: eventType || null,
+            actor_username: payload.actor_username || changes.actor_username || null,
+            terminal_id: payload.terminal_id || changes.terminal_id || null,
+            shift_id: payload.shift_id || changes.shift_id || null,
+            location_id: payload.location_id || changes.location_id || null,
+            reason: payload.reason || changes.reason || changes.void_reason || changes.cancel_reason || null,
+            request_id: payload.request_id || changes.request_id || null
+        };
+
+        const created = await AuditLog.create(normalizedPayload, {
             transaction: options.transaction
         });
         return toPlain(created);
@@ -4377,6 +5356,62 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    // Phase 148 (#825): the POS side of the `pos_order_payments` ledger. Phase 141 (#822) writes
+    // row 1 (`kind: 'downpayment'`) from storeRepository.createOrderPaymentEntry on the storefront
+    // checkout path; this is row 2 (`kind: 'balance'`), written when staff record the remaining
+    // balance at handover. Deliberately a mirror of that method rather than an import of it -- the
+    // POS module must not reach into the store module's repository, and both resolve the same
+    // tenant-scoped model through dbStore anyway.
+    //
+    // Not to be confused with commercePayments/repositories/tenantOrderPaymentLedgerRepository.js
+    // (Phase 144, #824), which writes the REVERSAL kinds from the landlord-scoped PayMongo webhook
+    // path and therefore has to reach the tenant DB explicitly. This path is an ordinary
+    // tenant-scoped POS request, so dbStore is in scope and the explicit connector is unnecessary.
+    async createOrderPaymentEntry({
+        posTransactionId,
+        kind,
+        status = 'successful',
+        amount,
+        paymentMethod,
+        paymentProvider = null,
+        providerEventId = null,
+        paymentReference = null,
+        idempotencyKey,
+        relatedPosOrderPaymentId = null,
+        recordedBy = null
+    }, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const created = await PosOrderPayment.create({
+            pos_transaction_id: posTransactionId,
+            kind,
+            status,
+            amount,
+            payment_method: paymentMethod,
+            payment_provider: paymentProvider,
+            provider_event_id: providerEventId,
+            payment_reference: paymentReference,
+            idempotency_key: idempotencyKey,
+            related_pos_order_payment_id: relatedPosOrderPaymentId,
+            recorded_by: recordedBy,
+            confirmed_at: new Date()
+        }, { transaction: options.transaction });
+        return created.pos_order_payment_id;
+    },
+
+    // Oldest row of a given kind for an order. Used to resolve the `downpayment` row a `balance`
+    // row links back to via related_pos_order_payment_id (ADR 0069 clause 4b, carried forward by
+    // ADR 0070) -- the same back-link convention tenantOrderPaymentLedgerRepository.js already
+    // uses for refund/forfeiture rows.
+    async findOrderPaymentEntryByKind(posTransactionId, kind, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const row = await PosOrderPayment.findOne({
+            where: { pos_transaction_id: posTransactionId, kind },
+            order: [['pos_order_payment_id', 'ASC']],
+            transaction: options.transaction
+        });
         return toPlain(row);
     },
 

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { PosHeader } from '../components/PosHeader';
+import { PosText as Text, PosTextInput as TextInput } from '../components/PosTextScale';
 
 export const ShiftOpenScreen = ({
     cashierName,

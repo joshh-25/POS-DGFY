@@ -4,7 +4,7 @@ import * as employeeCreditController from '../modules/employeeCredit/controllers
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
-import { posLimiter } from '../middleware/rateLimiter.js';
+import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
@@ -40,6 +40,7 @@ import {
     validateXReadingQuery,
     validateGovernedResetBody,
     validateTerminalCurrentShiftQuery,
+    validateTerminalShiftHistoryQuery,
     validateTerminalDashboardTodayQuery,
     validateIncomingOnlineOrdersQuery,
     validateOnlineOrderHistoryQuery,
@@ -47,6 +48,7 @@ import {
     validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
+    validateRecordOrderBalancePayment,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -60,8 +62,13 @@ import {
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
     validatePosDeviceDrawerOpen,
+    validatePosDrawerAuthorization,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
+    validateCashRefundPosTransaction,
+    validateExternalRefundPosTransaction,
+    validateProviderRefundPosTransaction,
+    validateSplitAllocationReversal,
     validateGenerateESalesReport,
     validateUpdateESalesReportStatus,
     validateFiscalTerminalRegistration,
@@ -154,6 +161,7 @@ router.get(
 router.post('/employees', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeCreate, employeeController.createEmployee);
 router.patch('/employees/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeParam, validateEmployeeUpdate, employeeController.updateEmployee);
 router.get('/employee-credit/accounts', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), employeeCreditController.listEmployeeCreditAccounts);
+router.post('/employee-credit/employee-accounts/enable-active', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), employeeCreditController.enableEmployeeCreditForActiveEmployees);
 router.patch('/employee-credit/accounts/:userId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditUserParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditAccount);
 router.patch('/employee-credit/employee-accounts/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditEmployeeAccount);
 router.post('/employee-credit/accounts/:accountId/repay', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditAccountParam, validateEmployeeCreditRepayment, employeeCreditController.recordEmployeeCreditRepayment);
@@ -166,6 +174,7 @@ router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.action
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
 router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
+router.get('/terminal/shifts/history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalShiftHistoryQuery, posController.getCashierShiftHistory);
 router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
 router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), posController.requirePairedTerminal, validateShiftIdParam, validateSwitchTerminalShiftLocation, posController.switchTerminalShiftLocation);
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
@@ -184,8 +193,16 @@ router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REP
 router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
 router.post('/z-reading/:date/print', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateZReadingDateParam, validatePosDeviceZReadingPrint, posController.printZReading);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
+router.post('/device/authorize-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, posDrawerAuthorizationLimiter, validatePosDrawerAuthorization, posController.authorizeDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
+router.post('/transactions/:id/cash-refund', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCashRefundPosTransaction, posController.cashRefundTransaction);
+router.post('/transactions/:id/external-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateExternalRefundPosTransaction, posController.externalRefundTransaction);
+router.post('/transactions/:id/provider-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateProviderRefundPosTransaction, posController.providerRefundTransaction);
+router.post('/transactions/:id/split-allocations/:allocation_id/reversal', checkAnyPermission([
+    PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
+    PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER
+]), posController.requirePairedTerminal, validateSplitPaymentAllocationIdParam, validateSplitAllocationReversal, posController.splitAllocationReversal);
 router.get('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listFiscalTerminalRegistrations);
 router.put('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS), validateFiscalTerminalRegistration, posController.upsertFiscalTerminalRegistration);
 router.get('/esales-reports', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listESalesReports);
@@ -198,6 +215,11 @@ router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_P
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.collectCashDeliveryOrder);
+// Phase 148 (#825): balance settlement for a partially-paid downpayment order. Same permission,
+// pairing, and param-validation chain as the two collect-cash routes above -- it is the same class
+// of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2
+// [binding], carried forward by ADR 0070: staff-recorded, never a second automatic charge).
+router.post('/orders/:id/record-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateRecordOrderBalancePayment, posController.recordOrderBalancePayment);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);

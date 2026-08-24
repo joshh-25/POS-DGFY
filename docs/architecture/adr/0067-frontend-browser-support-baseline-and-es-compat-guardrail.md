@@ -1,0 +1,236 @@
+---
+status: amended
+authority_level: authoritative
+owner: pos
+date: 2026-08-18
+last_reviewed: 2026-08-23
+review_by: 2027-02-18
+applies_to: architecture_decision
+topic: frontend_browser_support_baseline_and_es_compat_guardrail
+---
+
+# ADR 0067: Frontend Browser-Support Baseline and ES-Compat Guardrail
+
+## Status
+
+Accepted (2026-08-18).
+
+## Context
+
+> **Strictness tiers (ADR 0039).** Clauses below are tagged `[binding]`, `[default]`,
+> or `[snapshot]`. `binding` needs a superseding ADR to change; `default` needs an
+> amendment block in the implementing PR; `snapshot` is documentation and may be
+> updated by ordinary work. Untagged clauses elsewhere in this document are `default`.
+
+The iMin POS terminal fleet runs a fixed Android WebView pinned to Chrome 80-84, with no field
+update path. Two production outages have now shipped a modern JS runtime method to that fleet:
+
+- #271 (2026-08-08) — `String.prototype.replaceAll` (ES2021, Chrome 85+)
+- #664 (2026-08-18) — `Array.prototype.at` (ES2022, Chrome 92+), fixed on `main` by PR #665
+
+Both times the fix was a targeted swap of the one crashing call site. #271 also added an ESLint
+`no-restricted-syntax` rule, but its selector matched only `replaceAll` — it never generalized, and
+#664's line entered via an evil merge (`7047b297`) that appeared in neither merge parent, so it never
+surfaced in a reviewable PR diff.
+
+A confirmed, load-bearing fact from investigating #664: `build.target: ['chrome80', 'edge88',
+'firefox78', 'safari14']` (set on all four Vite configs — `apps/dgfy-web/vite.config.js` and the
+`pos`/`store`/`skupervisor` per-app configs) downlevels **syntax** only. It does not, and per Vite's
+own docs cannot, polyfill missing **runtime prototype methods**. No `browserslist`,
+`@vitejs/plugin-legacy`, `core-js`, `eslint-plugin-compat`, or `eslint-plugin-es-x` existed in this
+repo before this ADR.
+
+Separately confirmed: **ESLint runs nowhere automatically today.** `pr-quality-checks.yml` — the only
+workflow that ever ran `npm run lint` — was unwired from `pr-checks.yml` on 2026-08-14 (#416).
+`.husky/pre-commit` never invokes the frontend lint either. The only automatic PR gate is
+`pr-frontend-build-checks.yml`, which runs `docker build` → `apps/dgfy-web`'s
+`npm run build:all:parallel` (a real `vite build` for each of the three apps). A lint-only guardrail
+therefore cannot run against the merged tree on every PR — only a build-time mechanism can.
+
+## Decision
+
+1. **Chrome 80 is the binding floor for `apps/dgfy-web`'s three deployed surfaces** (`pos`, `store`,
+   `skupervisor`) for as long as the iMin fleet is in production use with no update path. Lowering
+   this floor is a decision for a superseding ADR, not ordinary work. `[binding]`
+2. **Four layers implement the guardrail, each catching a distinct failure mode:**
+
+   - **Layer 1 — runtime polyfill** (`apps/dgfy-web/src/compat/chrome80Runtime.js`). Feature-tested,
+     zero-dependency shims for `Array.prototype.at`, `String.prototype.at`, `Object.hasOwn`,
+     `String.prototype.replaceAll`, `Array.prototype.findLast`/`findLastIndex`, installed
+     non-enumerably, imported as the first statement of every app entry (`apps/pos/src/main.jsx`,
+     `apps/store/src/main.jsx`, `src/main.jsx` — `apps/skupervisor/src/main.jsx` inherits it
+     transitively, since its only line re-exports `src/main.jsx`). This is the **only** layer that
+     can reach a third-party dependency's own bundled code — `maplibre-gl` calls `Object.hasOwn` five
+     times internally and is lazily reachable from the POS location/tenant-setup map screens; no lint
+     rule or build check can edit `node_modules`. `[default]`
+   - **Layer 2 — build-time gate** (`apps/dgfy-web/build/esCompatGuardPlugin.js`, a Vite
+     `generateBundle` plugin registered in all four configs). Fails the build if an emitted chunk
+     contains a Chrome-80-incompatible method *not* covered by Layer 1: `structuredClone`,
+     `Object.groupBy`/`Map.groupBy`, `.toSorted`/`.toReversed`/`.toSpliced`, `AbortSignal.timeout`,
+     `Array.fromAsync`, `Promise.withResolvers`. This is the layer that actually runs in CI today,
+     because it executes inside `npm run build:all:parallel`, which `pr-frontend-build-checks.yml`
+     already runs on every PR's merged tree — no CI workflow change was needed. It is also what would
+     have caught #664's evil-merge vector, since it scans the built output regardless of how the
+     source line arrived. `.with()` is deliberately excluded from the deny list — collision-prone
+     against ordinary user-defined `.with()` methods in minified output; would need an AST-based
+     check, not built here. A reviewed, empty-by-default `ALLOWLIST` exists in the same file for a
+     future confirmed-safe exception. `[default]`
+   - **Layer 3 — source hygiene** (`apps/dgfy-web/.eslintrc.json`'s `no-restricted-syntax`,
+     generalized from #271's single `replaceAll` selector to the ten-method family the issue named:
+     `at`, `findLast`, `findLastIndex`, `Object.hasOwn`, `structuredClone`, `toSorted`, `toReversed`,
+     `toSpliced`, `Object.groupBy`/`Map.groupBy`, `AbortSignal.timeout`). Fast local/editor feedback,
+     but not CI-enforced (see the "Known gap" below) and cannot see `node_modules`. Exempted for
+     `**/__tests__/**`/`**/*.test.js(x)` (Node test runner, not the WebView) and existing
+     `*.config.js` Node tooling. `[default]`
+   - **Layer 4 — the specific first-party call sites** found in #666's sweep and fixed in this same
+     PR: `apps/dgfy-web/apps/store/src/modes/fnb/storefront/components/FnbItemReviewModal.jsx`,
+     `apps/dgfy-web/Pages/admin/InvoiceManager.jsx` (×2), `apps/dgfy-api/src/modules/pos/domain/
+     posDiscountCalculator.js` (Node-only, zero runtime risk — fixed for symmetry with its frontend
+     twin), and the POS shift-summary print CSS (see clause 4). `[snapshot]`
+
+3. **Layer 1's coverage boundary is explicit, not implied total.** It protects code reached through
+   an app's ES module import graph. It does **not** cover a `<script>` tag executed before that graph,
+   or the POS offline-precache service worker (`apps/pos/vitePosOfflinePrecachePlugin.js` patches
+   `sw.js` at build time; `sw.js` itself runs in its own worker context, outside this import). Neither
+   currently uses a shimmed method — confirmed during this investigation — but that is a property to
+   re-check on future changes to either surface, not a permanent guarantee. `[default]`
+4. **CSS `:has()` (Chrome 105+) is resolved per-site, not blanket-banned.** The POS shift-summary
+   print rule (`src/index.css`, gating `.pos-shift-summary-print-shell`) was a functional bug on
+   Chrome 80 — the selector simply doesn't match, and the whole app prints instead of just the
+   summary — fixed by replacing it with a `body.pos-shift-summary-printing` class toggled by
+   `ShiftCloseSummaryPrintView.jsx`'s mount/unmount effect, mirroring the existing
+   `pos-online-order-receipt-print-mode` pattern already used one block above it in the same file for
+   `OnlineOrderReceiptModal.jsx`. The store app's 8 `:has()` selectors in `apps/store/src/index.css`
+   (decorative maplibre popup styling) are **accepted as-is** — they degrade to "rule doesn't match"
+   on old browsers, not a functional break, and are lower priority than a POS crash class. `[default]`
+5. **Known gap, not solved by this ADR:** `npm run lint`'s own scope (`eslint src apps --ext
+   .js,.jsx`) excludes `Components/`, `Pages/`, and root `Layout.jsx` — confirmed live: the generalized
+   Layer 3 rule did not catch `Pages/admin/InvoiceManager.jsx`'s two `.at(-1)` call sites; they were
+   only found by the manual sweep and Layer 2's build scan (skupervisor bundles all of `Components/`/
+   `Pages/` and is covered there). Widening `npm run lint`'s scope is separate cleanup — those
+   directories currently carry 27 pre-existing ESLint errors unrelated to this guardrail — and is not
+   undertaken here. `[snapshot]`
+6. **Known gap, not solved by this ADR:** re-wiring `pr-quality-checks.yml` (and therefore `eslint`)
+   back into the automatic PR pipeline is out of scope — #416 removed it deliberately for GHA-minutes
+   reasons, and Layer 2 already provides the CI-enforced backstop this issue's acceptance criteria
+   asked for. `[snapshot]`
+
+## Consequences
+
+- The `.at()` failure class (and its four documented siblings) is structurally difficult to ship to
+  the POS/store/skupervisor surfaces going forward: Layer 1 makes the currently-known third-party
+  hazard (`maplibre-gl`) safe outright; Layer 2 fails the build on the merged tree for anything else,
+  including an evil merge; Layer 3 gives fast local feedback for first-party source.
+  - `apps/dgfy-web/src/features/pos/__tests__` and `apps/dgfy-web/src/compat/__tests__` (new)
+- A future ES-version method not yet in either the shim list or the deny list can still ship silently
+  until someone extends both lists by hand — this ADR does not adopt `eslint-plugin-es-x` or an
+  equivalent maintained-list plugin; see "Alternatives considered."
+- `apps/dgfy-web`'s bundle size grows by roughly 1KB (the polyfill) per app entry —
+  `check:frontend-budgets`' existing per-chunk ceilings were re-checked, not raised, as part of
+  shipping this ADR.
+
+## Alternatives considered
+
+- **`eslint-plugin-es-x` / `eslint-plugin-compat`** (the issue's own option 2): a maintained,
+  auto-updating method list beats a hand-maintained one long-term, but neither plugin can reach
+  `node_modules` or run in the one CI gate that actually executes on every PR today — it would have
+  solved this ADR's clause 2's Layer 3 concern only, leaving clauses about `maplibre-gl` and the evil
+  merge vector unresolved. Revisit if/when `pr-quality-checks.yml` is re-wired into CI (clause 6).
+- **`@vitejs/plugin-legacy`'s `modernPolyfills`** (via `core-js`) instead of a hand-written Layer 1:
+  spec-exact and auto-maintained, but adds two new devDependencies (`@vitejs/plugin-legacy`,
+  `terser`) and a larger entry chunk against `check:frontend-budgets`' existing ceilings, for five
+  methods that are simple enough to shim correctly by hand. Revisit if the shim list grows
+  significantly.
+
+## Validation
+
+1. `apps/dgfy-web/src/compat/__tests__/chrome80Runtime.test.js` — deletes each native method, asserts
+   spec-matching shim behavior (negative indices, out-of-range, inherited-vs-own properties,
+   non-enumerability) and a no-op path when natives already exist.
+2. `npm run build:pos`/`build:store`/`build:skupervisor` — Layer 2 proven to actually fail: a
+   denylisted token was temporarily added to POS source during this PR's own verification and
+   confirmed to break the build, naming the chunk, before being reverted.
+3. `npx eslint src apps --ext .js,.jsx` in `apps/dgfy-web` — 0 errors after Layer 4's fixes; confirmed
+   the new selectors fire on a deliberately reintroduced `.at(-1)` in a non-test source file and stay
+   silent in a `*.test.js` file.
+4. `npm run check:frontend-budgets` — POS/store/skupervisor chunk budgets re-confirmed against the
+   Layer 1 polyfill's added weight.
+5. Not yet done — needs a human with the physical device (tracked separately, #580): open the POS
+   location picker on a real iMin terminal (previously a guaranteed `Object.hasOwn` crash) and print a
+   shift-close summary (previously printed the whole app).
+
+## References
+
+- `docs/architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md`
+- `docs/compliance/impact-declarations/2026-08-05-pos-webview-replaceall-crash.md`
+- `docs/compliance/impact-declarations/2026-08-18-pos-webview-array-at-crash.md`
+- `docs/compliance/impact-declarations/2026-08-18-pos-es-compat-guardrail.md`
+- `packages/web-core/src/compat/chrome80Runtime.js`
+- `packages/web-core/vite/esCompatGuardPlugin.js`
+- `apps/dgfy-ims/.eslintrc.json`
+
+## Amendments (2026-08-22)
+
+### Frontend split (issue #322, ADR 0071) repoints every layer's file path
+
+This ADR's decision body above (Layers 1-4) and its narrative evidence describe the codebase as it
+stood on 2026-08-18, under the single `apps/dgfy-web` package — left as originally written per this
+repo's "historical docs record what was true at the time" convention, same as every other
+pre-split ADR. The split moved every file this ADR names to a new location; that move is tracked
+here rather than by silently rewriting the decision's own prose:
+
+- **Layer 1** (`apps/dgfy-web/src/compat/chrome80Runtime.js`) → `packages/web-core/src/compat/chrome80Runtime.js`.
+  Import wiring moved from a same-directory `./compat/chrome80Runtime.js` in each app's `main.jsx`
+  to a cross-package `../../../packages/web-core/src/compat/chrome80Runtime.js`, still the first
+  statement in all three apps' entrypoints (`apps/dgfy-ims/src/main.jsx`, `apps/dgfy-pos/src/main.jsx`,
+  `apps/dgfy-storefront/src/main.jsx`).
+- **Layer 2** (`apps/dgfy-web/build/esCompatGuardPlugin.js`) → `packages/web-core/vite/esCompatGuardPlugin.js`,
+  following the same precedent as `packages/web-core/vite/sentryViteConfig.js`. Still registered in
+  all three apps' `vite.config.js`, immediately after `react()`.
+- **Layer 3** (`apps/dgfy-web/.eslintrc.json`) → `apps/dgfy-ims/.eslintrc.json` **only** — the branch's
+  sole surviving `.eslintrc.json`. POS, storefront, and `packages/web-core` itself currently have no
+  ESLint config of their own, so this layer's `no-restricted-syntax` rule enforces on IMS alone; it
+  does not reach POS/storefront source or the shared `packages/web-core` code all three apps actually
+  ship, which is exactly where a real find already landed (see below). Tracked as an open gap, not
+  fixed by this amendment.
+- **Layer 2's own first live catch against the fully absorbed codebase** (2026-08-22 develop-absorb
+  cycle, 442 commits): `Array.prototype.toSorted`, reachable via `@radix-ui/react-collection`
+  (transitively bundled through `@radix-ui/react-accordion`/`@radix-ui/react-scroll-area`, reachable
+  from IMS's Items page). Promoted into Layer 1's shim list per this ADR's own "intended lifecycle
+  for a denylist hit" (the same path `structuredClone` took originally) and removed from Layer 2's
+  deny list accordingly — see `packages/web-core/src/compat/chrome80Runtime.js` and
+  `packages/web-core/vite/esCompatGuardPlugin.js`'s own header comments for the full account.
+
+### 2026-08-23 — Layer 3's "no config on POS/storefront" bullet is now false; the real gap is web-core
+
+Issue #917's fix (`af9e73c9` and follow-up commits) added `apps/dgfy-pos/.eslintrc.json` and
+`apps/dgfy-storefront/.eslintrc.json` — byte-faithful restorations of the pre-split
+`apps/dgfy-web/.eslintrc.json` (same `env`/`extends`/`parserOptions`/`plugins`/`rules` block,
+differing only in the per-app `overrides` entries the pre-split config also carried: POS keeps the
+`vitePosOfflinePrecachePlugin.js` Node-tooling carve-out, storefront keeps the `StorefrontApp.jsx`
+carve-out). The 2026-08-22 amendment above's claim that "POS, storefront, and `packages/web-core`
+itself currently have no ESLint config of their own" is now correct only for the last third of that
+sentence:
+
+- **Layer 3 now enforces on all three apps** (`apps/dgfy-ims`, `apps/dgfy-pos`,
+  `apps/dgfy-storefront`), each with its own `.eslintrc.json`, no rule downgraded from the pre-split
+  baseline.
+- **`packages/web-core` still has none, and it is the larger gap** — measured this session at 691
+  unlinted source files (579 of which are the exact files `develop`'s `eslint src apps` used to
+  lint, before the split moved them). No app's lint script reaches into `packages/web-core`; the two
+  apps whose `src/` is smallest (`apps/dgfy-ims`, `apps/dgfy-pos`) each have exactly one file in
+  `src/` (`main.jsx`), so their lint jobs validate almost nothing of the code they actually ship.
+  Diagnostic sweep found ~22 real non-test errors, including 3 genuine `react-hooks/rules-of-hooks`
+  violations (`Components/ai/ActionResultCard.jsx`, `Components/jo/JODetailsModal.jsx`) — filed as
+  issue #918, tracking numbers included.
+- **`eslint-plugin-react-hooks` is now pinned to the exact `7.0.1`** in all three apps'
+  `package.json` (was `^7.0.1`, resolving to a drifted `7.1.1` on this branch — issue #917's other
+  root cause). This restores exact parity with `develop`'s resolved lockfile (confirmed identical
+  integrity hash), not an arbitrary freeze — but the pin's only in-repo rationale lives here now,
+  since a `package.json` dependency line can't carry a comment. It currently masks ~25 React
+  Compiler diagnostics that `7.1.1` was surfacing on `apps/dgfy-ims` alone before the pin; issue
+  #918 tracks re-evaluating those once `packages/web-core` has real coverage to also apply the pin's
+  effect to.
+
+Tracked as an open gap via issue #918, same as before — this amendment updates the *description* of
+the gap, not its status.

@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-05-06
+last_reviewed: 2026-08-21
 review_by: 2026-11-06
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
@@ -48,6 +48,12 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 - Temporary generic permission fallback must have a removal plan. Operators should disable `MODE_RBAC_GENERIC_FALLBACK_ENABLED` only after users are remapped and Services/F&B access tests pass with mode-native permissions.
 - Future workflow modes cannot be called production-ready until their role presets, permission groups, sensitive actions, route guards, location-scope rules, tenant provisioning graph, and schema-clone validation are added to the catalog/docs and tested.
 - No architecture allowlist exception is introduced.
+
+## Amendments
+
+### 2026-08-21 — Production fallback is fail-closed
+
+Production now defaults `MODE_RBAC_GENERIC_FALLBACK_ENABLED` to `false`, and the production environment validator rejects an explicit truthy value. Non-production runtimes retain the compatibility default while tenant users are remapped. This amendment narrows the original compatibility default for hosted production without changing the mode-native permission contract.
 
 ## Validation
 

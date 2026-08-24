@@ -13,24 +13,42 @@
 
 services:
   dgfy-migration-runner:
-    image: dgfy-platform-migration-runner:dev
+    image: dgfy-migration-runner:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
 
   dgfy-api:
-    image: dgfy-platform-api:dev
+    image: dgfy-api:dev
     build:
       context: ../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
     ports:
       - "5100:5100"
 
-  frontend:
-    image: dgfy-platform-frontend:dev
+  dgfy-ims:
+    image: dgfy-ims:dev
     build:
       context: ../..
-      dockerfile: infrastructure/docker/frontend/Dockerfile
+      dockerfile: infrastructure/docker/dgfy-ims/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_SENTRY_ENABLED: "false"
+
+  dgfy-pos:
+    image: dgfy-pos:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/dgfy-pos/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_SENTRY_ENABLED: "false"
+
+  dgfy-storefront:
+    image: dgfy-storefront:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/dgfy-storefront/Dockerfile
       args:
         VITE_API_URL: /api/v1
         VITE_STORE_BASE_PATH: /

@@ -37,6 +37,15 @@ const normalizeLocation = (entry) => {
         is_primary_storefront: plain.is_primary_storefront === true
             || plain.is_primary_storefront === 1
             || plain.is_primary_storefront === '1',
+        supports_delivery: plain.supports_delivery === true
+            || plain.supports_delivery === 1
+            || plain.supports_delivery === '1',
+        supports_pickup: plain.supports_pickup === true
+            || plain.supports_pickup === 1
+            || plain.supports_pickup === '1',
+        supports_dine_in: plain.supports_dine_in === true
+            || plain.supports_dine_in === 1
+            || plain.supports_dine_in === '1',
         latitude: toNumberOrNull(plain.latitude),
         longitude: toNumberOrNull(plain.longitude)
     };
@@ -146,6 +155,14 @@ const inspectTenant = async ({
         && location.is_active === true
         && hasFiniteCoordinates(location)
     )) || null;
+    const activeCustomerFulfillmentLocation = locations.find((location) => (
+        location.is_active === true
+        && (
+            location.supports_delivery === true
+            || location.supports_pickup === true
+            || location.supports_dine_in === true
+        )
+    )) || null;
 
     if (repairedMissingSetting) {
         addIssue(
@@ -205,6 +222,15 @@ const inspectTenant = async ({
             'critical',
             'no_location_store_indexed_with_coordinates',
             'Tenant is marked as no-location but discovery index still publishes a map location'
+        );
+    }
+
+    if (settingValue === true && noLocationSettingValue === true && activeCustomerFulfillmentLocation) {
+        addIssue(
+            issues,
+            'critical',
+            'no_location_flag_conflicts_with_active_fulfillment_location',
+            'Tenant is marked as no-location while an active location still advertises customer fulfillment'
         );
     }
 

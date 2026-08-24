@@ -39,6 +39,14 @@ const PosParkedSale = sequelize.define('PosParkedSale', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    origin_cashier_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    origin_shift_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     terminal_id: {
         type: DataTypes.STRING(100),
         allowNull: false
@@ -113,6 +121,8 @@ const PosParkedSale = sequelize.define('PosParkedSale', {
         { fields: ['shift_id', 'status'] },
         { fields: ['cashier_id', 'status'] },
         { fields: ['location_id', 'status'] },
+        { fields: ['origin_cashier_id', 'status'] },
+        { fields: ['origin_shift_id', 'status'] },
         { fields: ['created_at'] },
         { fields: ['claimed_by', 'status'] }
     ]

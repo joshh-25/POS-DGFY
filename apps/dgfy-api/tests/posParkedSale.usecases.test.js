@@ -59,7 +59,8 @@ const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) 
             ...(parkedSale || { pos_parked_sale_id: id, shift_id: 41, cashier_id: 15, location_id: 3, status: 'parked' }),
             ...payload
         })),
-        listParkedSales: jest.fn().mockResolvedValue(parkedSales)
+        listParkedSales: jest.fn().mockResolvedValue(parkedSales),
+        createAuditLog: jest.fn().mockResolvedValue(undefined)
     };
     const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
     return { posRepository, sequelize, transaction };
@@ -144,6 +145,33 @@ describe('parked sale use cases', () => {
         }));
     });
 
+    it('lists the shared location queue for another cashier', async () => {
+        const harness = buildHarness({
+            parkedSales: [{
+                pos_parked_sale_id: 101,
+                status: 'parked',
+                shift_id: 41,
+                cashier_id: 15,
+                location_id: 3,
+                snapshot: JSON.stringify({ lines: [{ item_id: 7, quantity: 1 }] })
+            }]
+        });
+        const useCase = buildListPosParkedSalesUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            query: { shift_id: 41, location_id: 3 },
+            user: { user_id: 22 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.parked_sales).toHaveLength(1);
+        expect(harness.posRepository.listParkedSales).toHaveBeenCalledWith(expect.objectContaining({
+            locationId: 3,
+            sharedLocation: true,
+            statuses: ['parked', 'claimed']
+        }));
+    });
+
     it('returns parsed MariaDB JSON text after claiming a parked sale', async () => {
         const snapshot = {
             lines: [{ item_id: 9, item_name: 'Chicken Frankie Roll', quantity: 1, sale_price: 150 }]
@@ -189,8 +217,8 @@ describe('parked sale use cases', () => {
         expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
     });
 
-    it('denies a cashier from claiming another cashier\'s parked sale', async () => {
-        const harness = buildHarness({ shift: { cashier_id: 22 }, parkedSale: {
+    it('denies a cashier from another location from claiming a parked sale', async () => {
+        const harness = buildHarness({ shift: { cashier_id: 22, location_id: 9 }, parkedSale: {
             pos_parked_sale_id: 101,
             status: 'parked',
             shift_id: 41,
@@ -207,7 +235,54 @@ describe('parked sale use cases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('AUTHORIZATION_FAILED');
+        expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_LOCATION_MISMATCH' }));
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+    });
+
+    it('allows another cashier in the same location to resume and own a parked sale', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'parked',
+            shift_id: 41,
+            cashier_id: 15,
+            origin_shift_id: 41,
+            origin_cashier_id: 15,
+            location_id: 3,
+            terminal_id: 'COUNTER-01'
+        };
+        const harness = buildHarness({
+            shift: {
+                cashier_id: 22,
+                pos_terminal_shift_id: 42,
+                terminal_id: 'COUNTER-02'
+            },
+            parkedSale
+        });
+        const useCase = buildClaimPosParkedSaleUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload: { shift_id: 42, terminal_id: 'COUNTER-02', location_id: 3 },
+            user: { user_id: 22 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            status: 'claimed',
+            cashier_id: 22,
+            shift_id: 42,
+            terminal_id: 'COUNTER-02',
+            origin_cashier_id: 15,
+            origin_shift_id: 41,
+            claimed_by: 22
+        }));
+        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
+            cashier_id: 22,
+            shift_id: 42,
+            terminal_id: 'COUNTER-02',
+            claimed_by: 22,
+            status: 'claimed'
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
     });
 
     it('cancels a parked sale with an auditable reason', async () => {
@@ -330,5 +405,29 @@ describe('parked sale use cases', () => {
             status: 'completed',
             completed_transaction_id: 9001
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+    });
+
+    it('keeps cancellation restricted to the current parked-sale owner', async () => {
+        const harness = buildHarness({
+            shift: { cashier_id: 22, pos_terminal_shift_id: 42 },
+            parkedSale: {
+                pos_parked_sale_id: 101,
+                status: 'parked',
+                shift_id: 41,
+                cashier_id: 15,
+                location_id: 3
+            }
+        });
+        const useCase = buildCancelPosParkedSaleUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload: { shift_id: 42, terminal_id: 'COUNTER-01', location_id: 3, reason: 'Customer cancelled order' },
+            user: { user_id: 22 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_SCOPE_DENIED' }));
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 });

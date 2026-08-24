@@ -15,26 +15,37 @@ Before you begin, ensure you have the following installed:
 
 If you have Docker installed, this is the easiest way to run the entire stack:
 
+The compose file lives in `infrastructure/docker/`:
+
 ```bash
-# Start all services (MySQL, Redis, Backend, Frontend)
-docker-compose up -d
+cd infrastructure/docker
+
+# Start all services (MySQL, Redis, migration runner, API,
+# dgfy-ims, dgfy-pos, dgfy-storefront, nginx)
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop all services
-docker-compose down
+docker compose down
 ```
 
-The application will be available at:
-- Frontend: http://localhost:80
-- Backend API: http://localhost:5000/api/v1
+The three frontend surfaces are three separate images
+(`ghcr.io/sieitzz/dgfy-ims`, `.../dgfy-pos`,
+`.../dgfy-storefront`, built from `infrastructure/docker/<app>/Dockerfile`),
+listening on `8081`, `8082`, and `8083` respectively inside the compose network
+and reached through the bundled `nginx` service on `80`/`443`.
 
 > There is no `backend/`, `frontend/`, or `android/` directory at the repo root — the
-> project moved to an `apps/` layout (`apps/dgfy-api`, `apps/dgfy-web`,
-> `apps/dgfy-migration-runner`, `apps/dgfy-android-bridge`). See
+> project moved to an `apps/` layout (`apps/dgfy-api`, `apps/dgfy-migration-runner`,
+> `apps/dgfy-android-bridge`, plus the three frontend apps `apps/dgfy-ims`,
+> `apps/dgfy-pos`, `apps/dgfy-storefront`). See
 > [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md)
-> for the full path map. `npm run install:all` from the repo root installs all four.
+> for the full path map, and
+> [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md) for the
+> frontend split that replaced the single `apps/dgfy-web` package.
+> `npm run install:all` from the repo root installs all of them.
 
 ## Manual Setup (Option 2: Local Development)
 
@@ -102,9 +113,26 @@ The application will be available at:
 
 ### Step 3: Frontend Setup
 
-1. **Navigate to the frontend package**
+There are three frontend apps, each an independent npm package with its own
+lockfile:
+
+| App | Directory | Dev port | Root dev script | Root build script |
+|---|---|---:|---|---|
+| IMS/SKUpervisor | `apps/dgfy-ims` | 5173 | `npm run dev:skupervisor` | `npm run build:skupervisor` |
+| POS | `apps/dgfy-pos` | 5174 | `npm run dev:pos` | `npm run build:pos` |
+| Storefront | `apps/dgfy-storefront` | 5175 | `npm run dev:store` | `npm run build:store` |
+
+All three consume shared source from `packages/web-core` (`@sieitzz/web-core`) via
+`file:../../packages/web-core`, resolved through retargeted `@/...` Vite aliases (the
+`@/components`/`@/hooks`/`@/lib`/`@/services`/`@/src` keys are unchanged from before the
+split; only their targets moved) plus deep relative imports — see
+`packages/web-core/README.md`'s "Import convention" for the full picture. That package has
+no build step, no `node_modules`, and no lockfile of its own — there is nothing to install
+for it.
+
+1. **Navigate to the app you're working on**
    ```bash
-   cd apps/dgfy-web
+   cd apps/dgfy-ims          # or apps/dgfy-pos, apps/dgfy-storefront
    ```
 
 2. **Install dependencies**
@@ -113,13 +141,14 @@ The application will be available at:
    ```
 
 3. **Set up environment variables (Optional)**
-   
-   Copy the example environment file:
+
+   IMS ships a committed example; POS and Storefront use a local-only
+   `.env.local`:
    ```bash
-   cp .env.example .env
+   cp .env.example .env      # apps/dgfy-ims only
    ```
-   
-   Edit the `.env` file if needed (defaults work for local development):
+
+   Edit the env file if needed (defaults work for local development):
    ```env
    VITE_API_URL=http://localhost:5000/api/v1
    ```
@@ -128,7 +157,7 @@ The application will be available at:
    ```bash
    npm run dev
    ```
-   The frontend will start on `http://localhost:5173`
+   IMS starts on `http://localhost:5173`, POS on `5174`, Storefront on `5175`.
 
 ## Running the Application
 
@@ -140,15 +169,20 @@ cd apps/dgfy-api
 npm run dev
 ```
 
-**Terminal 2 - Frontend:**
+**Terminal 2 - Frontend (one terminal per app you need):**
 ```bash
-cd apps/dgfy-web
+cd apps/dgfy-ims          # or apps/dgfy-pos, apps/dgfy-storefront
 npm run dev
 ```
 
-Or, from the repo root, run both (plus the device-bridge) together:
+Or, from the repo root, run the backend, device bridge, and IMS together:
 ```bash
 npm run dev
+```
+
+Or the full stack including POS and Storefront:
+```bash
+npm run dev:local-pos-stack
 ```
 
 ### Production Mode
@@ -159,18 +193,23 @@ cd apps/dgfy-api
 npm start
 ```
 
-**Frontend:**
+**Frontend** — build each app separately; there is no `build:all` script:
 ```bash
-cd apps/dgfy-web
-npm run build
-npm run preview
+cd apps/dgfy-ims && npm run build && npm run preview
+cd apps/dgfy-pos && npm run build && npm run preview
+cd apps/dgfy-storefront && npm run build && npm run preview
 ```
+
+Each app builds into its own `apps/<app>/dist/`. Build only the apps a change
+actually affects; a change under `packages/web-core` affects all three.
 
 ## Accessing the Application
 
 Once both servers are running:
 
-- **Frontend**: http://localhost:5173
+- **IMS/SKUpervisor**: http://localhost:5173
+- **POS**: http://localhost:5174
+- **Storefront**: http://localhost:5175
 - **Backend API**: http://localhost:5000/api/v1
 - **Health Check**: http://localhost:5000/health (includes database and Redis status)
 
@@ -217,12 +256,20 @@ See `docs/api/specification.md` for complete API documentation.
 
 **API Connection Error:**
 - Verify backend is running on port 5000
-- Check `VITE_API_URL` in `apps/dgfy-web/.env` matches the backend URL
+- Check `VITE_API_URL` in the affected app's env file (`apps/dgfy-ims/.env`,
+  `apps/dgfy-pos/.env.local`, or `apps/dgfy-storefront/.env.local`) matches the
+  backend URL
 - Check browser console for CORS errors
 
 **Build Errors:**
-- Delete `node_modules` and reinstall: `rm -rf node_modules && npm install`
+- From inside the affected app directory, delete `node_modules` and reinstall:
+  `rm -rf node_modules && npm install` (never delete the app's
+  `package-lock.json` — each app has its own, and regenerating it pulls in
+  unrelated version drift)
 - Clear Vite cache: `rm -rf node_modules/.vite`
+- Unresolved `@/components`, `@/hooks`, `@/lib`, `@/services`, or `@/src` imports (or a
+  `@sieitzz/web-core/...` specifier, which also resolves) usually mean the `file:` dependency
+  is not linked — rerun `npm install` in that app
 
 ## Database Management
 
@@ -284,13 +331,26 @@ SKU-Inventory-Manager/
 │   │   ├── migrations/
 │   │   ├── src/seeders/
 │   │   └── package.json
-│   └── dgfy-web/                 # Frontend (React/Vite; skupervisor, pos, store)
+│   ├── dgfy-ims/                 # IMS/SKUpervisor frontend (React/Vite)
+│   │   ├── src/main.jsx          # Entry point
+│   │   ├── Pages/                # IMS-only pages
+│   │   └── package.json
+│   ├── dgfy-pos/                 # POS frontend (React/Vite)
+│   │   ├── src/main.jsx          # Entry point
+│   │   ├── desktop/pos-electron/ # Electron shell
+│   │   └── package.json
+│   └── dgfy-storefront/          # Public storefront frontend (React/Vite)
+│       ├── src/main.jsx          # Entry point
+│       └── package.json
+├── packages/
+│   └── web-core/                 # @sieitzz/web-core - shared, source-only
 │       ├── src/
 │       │   ├── services/         # API service layer
 │       │   ├── hooks/            # React hooks
-│       │   ├── store/            # State management (Zustand)
-│       │   └── main.jsx          # Entry point
-│       └── package.json
+│       │   └── store/            # State management (Zustand)
+│       ├── Components/           # Shared components
+│       ├── Pages/                # DGFY-auth pages shared by all three apps
+│       └── vite/                 # Shared Vite config helpers
 └── package.json
 ```
 

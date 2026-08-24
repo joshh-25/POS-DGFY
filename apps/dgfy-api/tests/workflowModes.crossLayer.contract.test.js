@@ -35,7 +35,7 @@ import {
     resolveEffectiveCapabilities as resolveFrontendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveFrontendWorkflowModeFamily,
     resolveWorkflowTemplateMode as resolveFrontendWorkflowTemplateMode
-} from '../../dgfy-web/src/features/settings/workflowMode.js';
+} from '../../../packages/web-core/src/features/settings/workflowMode.js';
 
 describe('workflow mode cross-layer contracts', () => {
     it('keeps backend and frontend workflow mode value set aligned', () => {

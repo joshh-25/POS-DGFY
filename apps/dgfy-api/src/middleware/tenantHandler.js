@@ -30,7 +30,7 @@ const runDefaultTenantContext = (next, context = {}) => dbStore.run({
     ...context
 }, next);
 
-const sendTenantContextError = (res, statusCode, message, errorCode) => (
+export const sendTenantContextError = (res, statusCode, message, errorCode) => (
     res.status(statusCode).json({
         success: false,
         data: null,
@@ -79,6 +79,49 @@ const resolveTenantTokenFromBearerToken = async (req) => {
         logger.warn(`[TenantHandler] Bearer-token tenant context recovery failed: ${error.message}`);
         return '';
     }
+};
+
+// Maps a *degraded* dbStore context (tenantId === 'default', set by
+// runDefaultTenantContext above) to a status code + error_code that reflects why it
+// degraded, instead of a flat 400 for every cause. Shared by authenticate() (auth.js)
+// and requireTenantContext.js -- both previously reported every degraded-context
+// cause, including a genuine tenant-DB outage, as a 400 client error (issue #916).
+// See docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md for why that
+// mislabelling matters: a 400 tells the caller "your request is wrong," a 503 tells it
+// "retry later" -- conflating them makes an infra outage look like a client bug.
+export const resolveDegradedTenantContextFailure = (store, options = {}) => {
+    const failure = String(store?.tenantContextFailure || '').trim().toLowerCase();
+
+    if (failure === 'invalid_token') {
+        return {
+            statusCode: 404,
+            message: 'Invalid company token.',
+            errorCode: 'TENANT_TOKEN_INVALID'
+        };
+    }
+
+    if (failure === 'lookup_error') {
+        return {
+            statusCode: 503,
+            message: 'Tenant lookup is currently unavailable. Please try again.',
+            errorCode: 'TENANT_LOOKUP_UNAVAILABLE'
+        };
+    }
+
+    if (failure === 'db_unavailable') {
+        return resolveStrictAuthDbFailure(store?.resolvedTenantStatus);
+    }
+
+    // 'missing_token' (no company token at all) or unrecognized -- the original,
+    // still-correct behavior for a request that never supplied a working tenant
+    // context in the first place. Each call site keeps its own pre-existing wording
+    // here via `options`, since this was never the part of their behavior that #916
+    // found wrong.
+    return {
+        statusCode: 400,
+        message: options.defaultMessage || 'Valid tenant context is required for authenticated requests.',
+        errorCode: options.defaultErrorCode || 'TENANT_CONTEXT_REQUIRED'
+    };
 };
 
 const resolveStrictAuthDbFailure = (tenantStatus) => {

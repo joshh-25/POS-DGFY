@@ -56,6 +56,7 @@ export class PayMongoService {
         this.publicKey = RESOLVED_PUBLIC_KEY;
         this.secretKey = RESOLVED_SECRET_KEY;
         this.webhookSecret = RESOLVED_WEBHOOK_SECRET;
+        this.paymentMethodCapabilitiesCache = null;
     }
 
     /**
@@ -210,7 +211,8 @@ export class PayMongoService {
         description,
         paymentMethodAllowed = ['qrph'],
         metadata = {},
-        splitPayment = null
+        splitPayment = null,
+        paymentMethodOptions = null
     }) {
         try {
             const attributes = {
@@ -225,6 +227,10 @@ export class PayMongoService {
                 attributes.split_payment = splitPayment;
             }
 
+            if (paymentMethodOptions) {
+                attributes.payment_method_options = paymentMethodOptions;
+            }
+
             const response = await axios.post(`${this.baseUrl}/payment_intents`, {
                 data: { attributes }
             }, {
@@ -235,6 +241,169 @@ export class PayMongoService {
             return response.data.data;
         } catch (error) {
             logger.error('PayMongo Create Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    getPublicKey() {
+        return this.publicKey || null;
+    }
+
+    async createDirectWalletPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        metadata = {},
+        returnUrl = null,
+        paymentMethod,
+        paymentFlow,
+        paymentMethodLabel
+    }) {
+        const publicKey = this.getPublicKey();
+        if (!publicKey) {
+            throw new Error('PAYMONGO_PUBLIC_KEY is not configured');
+        }
+
+        const allowedPaymentMethods = new Set(['gcash', 'paymaya', 'card']);
+        if (!allowedPaymentMethods.has(paymentMethod)) {
+            throw new Error('Direct PayMongo payment method is not supported');
+        }
+
+        const paymentIntent = await this.createPaymentIntent({
+            amount,
+            currency,
+            description,
+            paymentMethodAllowed: [paymentMethod],
+            metadata,
+            paymentMethodOptions: paymentMethod === 'card'
+                ? { card: { request_three_d_secure: 'automatic' } }
+                : null
+        });
+        const clientKey = String(paymentIntent?.attributes?.client_key || '').trim();
+        if (!paymentIntent?.id || !clientKey) {
+            throw new Error(`PayMongo did not return a usable ${paymentMethodLabel} Payment Intent client key`);
+        }
+
+        return {
+            paymentFlow,
+            paymentIntent,
+            publicKey,
+            returnUrl
+        };
+    }
+
+    async createDirectGcashPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'gcash',
+            paymentFlow: 'direct_gcash',
+            paymentMethodLabel: 'GCash'
+        });
+    }
+
+    async createDirectMayaPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'paymaya',
+            paymentFlow: 'direct_maya',
+            paymentMethodLabel: 'Maya'
+        });
+    }
+
+    async createDirectPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent(params);
+    }
+
+    async createDirectCardPaymentIntent(params = {}) {
+        return this.createDirectWalletPaymentIntent({
+            ...params,
+            paymentMethod: 'card',
+            paymentFlow: 'direct_card',
+            paymentMethodLabel: 'Card'
+        });
+    }
+
+    async getPaymentMethodCapabilities({ cacheTtlMs = 15_000 } = {}) {
+        const now = Date.now();
+        if (this.paymentMethodCapabilitiesCache && this.paymentMethodCapabilitiesCache.expiresAt > now) {
+            return this.paymentMethodCapabilitiesCache.methods;
+        }
+
+        try {
+            const response = await axios.get(`${this.baseUrl}/merchants/capabilities/payment_methods`, {
+                headers: this.getAuthHeader()
+            });
+            const payload = Array.isArray(response.data) ? response.data : response.data?.data;
+            const methods = Array.isArray(payload)
+                ? payload
+                : (Array.isArray(payload?.attributes?.payment_methods)
+                    ? payload.attributes.payment_methods
+                    : (Array.isArray(response.data?.payment_methods) ? response.data.payment_methods : []));
+            const normalized = [...new Set(methods.map((method) => String(method || '').trim().toLowerCase()).filter(Boolean))];
+            this.paymentMethodCapabilitiesCache = {
+                methods: normalized,
+                expiresAt: now + Math.max(0, Number(cacheTtlMs) || 0)
+            };
+            return normalized;
+        } catch (error) {
+            logger.warn('PayMongo payment method capability lookup failed:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createHostedCheckoutSession({
+        amount,
+        currency = 'PHP',
+        description,
+        lineItems = [],
+        paymentMethodTypes = [],
+        billing,
+        showDescription,
+        showLineItems,
+        successUrl,
+        cancelUrl,
+        referenceNumber,
+        metadata = {}
+    }) {
+        const attributes = {
+            line_items: lineItems,
+            payment_method_types: paymentMethodTypes,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            reference_number: referenceNumber,
+            metadata
+        };
+        if (description) attributes.description = description;
+        if (lineItems.length === 0 && Number.isFinite(Number(amount)) && Number(amount) > 0) {
+            attributes.line_items = [{
+                name: description || 'DGFY storefront order',
+                amount: Math.round(Number(amount)),
+                currency,
+                quantity: 1
+            }];
+        }
+        // Forwarded only when the caller actually supplies them -- the one
+        // production caller today (storeUseCases.js) passes none of these
+        // three, and PayMongo's own checkout-session defaults (show its
+        // built-in billing form, show the description/line-item summary)
+        // are exactly what that caller already relies on implicitly. Only
+        // set when explicitly provided so that path is unaffected.
+        if (billing && typeof billing === 'object' && Object.keys(billing).length > 0) {
+            attributes.billing = billing;
+        }
+        if (typeof showDescription === 'boolean') attributes.show_description = showDescription;
+        if (typeof showLineItems === 'boolean') attributes.show_line_items = showLineItems;
+
+        try {
+            const response = await axios.post(`${this.accountsBaseUrl}/checkout_sessions`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+            logger.info(`PayMongo Hosted Checkout session created: ${response.data?.data?.id || referenceNumber}`);
+            return response.data?.data || null;
+        } catch (error) {
+            logger.error('PayMongo Hosted Checkout session creation failed:', error.response?.data || error.message);
             throw error;
         }
     }

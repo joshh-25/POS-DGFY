@@ -10,22 +10,42 @@ on:
       - opened
       - synchronize
       - reopened
-      - edited
+      - ready_for_review
 
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# `edited` (title/body edits) used to be in `types:` above. On a single-
+# concurrency self-hosted runner that's pure queue waste: a prose-only edit
+# cancels an in-flight run and requeues both Docker build-checks behind it
+# for zero code-signal (see #412, and #194's older billing-era version of the
+# same finding). Dropped. `ready_for_review` replaces it instead -- without
+# it, a PR opened as a draft and later marked ready never gets checked unless
+# someone also pushes a commit.
+
 env:
-  # Light jobs: git/bash only, well under ubuntu-slim's 15-minute cap.
-  RUNNER_LIGHT_JSON: &runner_light '["ubuntu-slim"]'
-  # Heavy jobs: ubuntu-slim runs unprivileged (no Docker-in-Docker), so buildx
-  # needs a full VM.
-  RUNNER_HEAVY_JSON: &runner_heavy '["ubuntu-latest"]'
+  # GHA billing is exhausted (spending limit / failed payment), so every job
+  # runs on self-hosted for now. Since #923 (2026-08-23), light/heavy is a real
+  # routing split, not just a no-op scaffold: sieitz-runner is either box,
+  # sieitz-lg is vm-sieitzstaging only. Split by measured GHA history, not by
+  # guess -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's #923 section. This
+  # is still a one-line revert if/when hosted runners come back (swap the
+  # value, not the anchor name -- see scripts/check-pr-quality-workflow.js,
+  # which asserts *runner_heavy).
+  RUNNER_LIGHT_JSON: &runner_light '["sieitz-runner"]'
+  RUNNER_HEAVY_JSON: &runner_heavy '["sieitz-lg"]'
+  # Empty on self-hosted: the Actions cache service serves these runners at 49-69 KB/s, so
+  # importing the layer cache costs ~21x the build it skips (#726). Revert to type=gha when
+  # hosted runners are back -- see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md.
+  BUILD_CACHE_FROM: &build_cache_from ''
+  # BUILD_CACHE_FROM: &build_cache_from 'type=gha'  # revert to this when hosted runners are back
 
 # Deliberately just `changes` plus one build-check job per deployable (this
 # repo splits `apps/dgfy-api` from `apps/dgfy-migration-runner`, so that's
-# two backend jobs instead of develop's one). PR title/body validation and
+# two backend jobs, plus one job per frontend app -- dgfy-ims/dgfy-pos/
+# dgfy-storefront, issue #322 Phase 6 -- instead of develop's single
+# frontend job). PR title/body validation and
 # the pos-receipt version-bump check used to be their own jobs (conventional-
 # commits, and a step inside code-quality); each extra job pays its own
 # per-job 1-minute GitHub Actions billing floor regardless of how many
@@ -49,13 +69,22 @@ env:
 # and shared-changed-paths.yml's `enforce_compliance_declarations` input are
 # left in place so re-enabling is a one-line change, not a redo.
 #
-# android-build-check is the exception to "fold it in": it's a real Gradle
-# build (see #254, a merged PR that broke every dev/staging Android build
-# because nothing compiled android/ on PR), not a few seconds of git/bash,
-# so it earns its own job and billing floor rather than being folded into
-# `changes`.
+# quality-checks and android-build-check used to be jobs here, gated
+# `if: false` (see #345 and #254 respectively for why each was paused, not
+# deleted). A permanently-skipped job is still a row in every PR's Checks
+# tab with nothing to say -- pure clutter, and it invites the false read
+# that something is actually being checked. Removed outright 2026-08-14
+# (#416); both reusable workflows are untouched and still runnable by hand
+# from the Actions tab (pr-quality-checks.yml / pr-android-build-checks.yml,
+# now `workflow_dispatch`-triggered) whenever a full test run or an Android
+# build-check is actually wanted, without paying for either on every PR.
 jobs:
   changes:
+    # Drafts aren't merge candidates -- skip the whole pipeline rather than
+    # pay a runner slot for them. Every job below depends on `changes`, and a
+    # skipped job's outputs are the empty string, so `== 'true'` is false and
+    # they all skip cleanly with no further changes needed.
+    if: github.event.pull_request.draft == false
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_light
@@ -74,25 +103,53 @@ jobs:
     if: needs.changes.outputs.dgfy_api == 'true'
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
-      runner_labels_json: *runner_heavy
+      # Measured (#923): npm ci --omit=dev + COPY, no compile step -- median
+      # 2.8m on the small box vs 3.4m on the large. Faster on either-box.
+      runner_labels_json: *runner_light
+      cache_from: *build_cache_from
 
   dgfy-migration-runner-build-check:
     needs: changes
     if: needs.changes.outputs.migration_runner == 'true'
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
-      runner_labels_json: *runner_heavy
+      # Measured (#923): same shape as dgfy-api-build-check -- median 1.4m on
+      # the small box vs 1.8m on the large. Faster on either-box.
+      runner_labels_json: *runner_light
+      cache_from: *build_cache_from
 
-  frontend-build-check:
+  frontend-ims-build-check:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: needs.changes.outputs.frontend_ims == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
+      # #923's own measurement was taken pre-split, against the old
+      # `npm run build:all:parallel` (3 concurrent vite builds in one job) --
+      # median 3.7m on the small box vs 2.4m on the large, plus the documented
+      # exit-137 OOM case (#662). The split (#322) turned that into three
+      # separate single-app build jobs below; each now builds only one app
+      # instead of three concurrently, so the OOM risk per job is lower than
+      # what was measured, but this hasn't been re-measured post-split. Keep
+      # all three on the large box until it is -- the conservative default,
+      # not a re-confirmed one.
+      app: dgfy-ims
       runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from
 
-  android-build-check:
+  frontend-pos-build-check:
     needs: changes
-    if: needs.changes.outputs.android == 'true'
-    uses: ./.github/workflows/pr-android-build-checks.yml
+    if: needs.changes.outputs.frontend_pos == 'true'
+    uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
+      app: dgfy-pos
       runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from
+
+  frontend-storefront-build-check:
+    needs: changes
+    if: needs.changes.outputs.frontend_storefront == 'true'
+    uses: ./.github/workflows/pr-frontend-build-checks.yml
+    with:
+      app: dgfy-storefront
+      runner_labels_json: *runner_heavy
+      cache_from: *build_cache_from

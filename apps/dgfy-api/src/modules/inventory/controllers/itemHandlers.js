@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import {
   getItemsUseCase,
   getItemByIdUseCase,
@@ -46,8 +47,13 @@ import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { enqueueItemImageGeneration } from '../../../workers/itemImageWorker.js';
 import { setItemImageStatus, getItemImageStatus } from '../../../workers/itemImageStatusStore.js';
+import {
+  enqueueCatalogImageUpload
+} from '../../../workers/catalogImageUploadWorker.js';
+import { getCatalogImageUploadStatus } from '../../../workers/catalogImageUploadStatusStore.js';
 import logger from '../../../config/logger.js';
 import { publishCatalogChange } from '../../shared/services/catalogChangeEventBus.js';
+import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -109,7 +115,7 @@ const runInventoryUseCase = async (runner, fallbackMessage) => {
 export const getItems = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
-      () => getItemsUseCase({ query: req.query }),
+      () => getItemsUseCase({ query: req.query, user: req.user }),
       'Failed to retrieve items'
     );
     await trackProductUsageFromResult({
@@ -121,7 +127,8 @@ export const getItems = async (req, res, next) => {
       result,
       successMetadataResolver: (data) => ({
         result_count: Array.isArray(data?.items) ? data.items.length : 0,
-        has_search: Boolean(req?.query?.search)
+        has_search: Boolean(req?.query?.search),
+        location_id: req?.query?.location_id || null
       })
     });
 
@@ -760,6 +767,113 @@ export const uploadStorefrontCatalogImage = async (req, res, next) => {
   }
 };
 
+const cleanupQueuedCatalogImageFiles = async (files = []) => {
+  await Promise.all((Array.isArray(files) ? files : []).map(async (file) => {
+    if (!file?.path) return;
+    try {
+      await fs.unlink(file.path);
+    } catch {
+      // The scheduled temp-file cleanup is the final backstop.
+    }
+  }));
+};
+
+const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
+  const itemId = req.validatedParams?.item_id || req.params.item_id;
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (normalizedFiles.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'At least one image file is required.',
+      error_code: 'VALIDATION_FAILED',
+      request_id: requestId(req, res),
+      timestamp: timestamp()
+    });
+  }
+
+  try {
+    const item = await getItemByIdUseCase({ itemId });
+    if (!item) {
+      await cleanupQueuedCatalogImageFiles(normalizedFiles);
+      return res.status(404).json({
+        success: false,
+        message: `Item ${itemId} was not found.`,
+        error_code: 'RESOURCE_NOT_FOUND',
+        request_id: requestId(req, res),
+        timestamp: timestamp()
+      });
+    }
+
+    const queued = await enqueueCatalogImageUpload({
+      tenantId: req.user?.tenant_id,
+      user: {
+        ...req.user,
+        permissions: resolveEffectivePermissions(req.user)
+      },
+      itemId,
+      mode,
+      files: normalizedFiles
+    });
+
+    return res.status(202).json({
+      success: true,
+      data: queued,
+      message: 'Image received. It will be optimized in the background.',
+      timestamp: timestamp()
+    });
+  } catch (error) {
+    await cleanupQueuedCatalogImageFiles(normalizedFiles);
+    throw error;
+  }
+};
+
+export const queueStorefrontCatalogImage = async (req, res, next) => {
+  try {
+    return await queueStorefrontCatalogImages({
+      req,
+      res,
+      mode: 'single',
+      files: req.file ? [req.file] : []
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const queueStorefrontCatalogGalleryImages = async (req, res, next) => {
+  try {
+    return await queueStorefrontCatalogImages({
+      req,
+      res,
+      mode: 'gallery',
+      files: req.files || []
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getStorefrontCatalogImageUploadStatus = async (req, res, next) => {
+  try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
+    const record = await getCatalogImageUploadStatus(req.user?.tenant_id, itemId);
+    return res.status(200).json({
+      success: true,
+      data: record || {
+        item_id: Number(itemId),
+        job_id: null,
+        status: 'unknown',
+        error_code: null,
+        error_message: null,
+        updated_at: null
+      },
+      timestamp: timestamp()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const importExternalStorefrontCatalogImage = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -1211,6 +1325,9 @@ export default {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  queueStorefrontCatalogImage,
+  queueStorefrontCatalogGalleryImages,
+  getStorefrontCatalogImageUploadStatus,
   uploadStorefrontCatalogGalleryImages,
   uploadBulkStorefrontCatalogImages,
   updateStorefrontCatalogGallery,

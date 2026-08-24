@@ -62,7 +62,12 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     allowNull: false
   },
   status: {
-    type: DataTypes.ENUM('requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'),
+    // Phase 88 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values;
+    // the original seven are unchanged and every existing transition still applies to them.
+    type: DataTypes.ENUM(
+      'requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show',
+      'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+    ),
     allowNull: false,
     defaultValue: 'requested'
   },

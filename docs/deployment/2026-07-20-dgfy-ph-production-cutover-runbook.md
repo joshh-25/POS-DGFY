@@ -117,3 +117,12 @@ Backups from the cutover: `*.bak.20260720-215135`. Reverting uses the local `fro
   `skupervisor.beta.dgfy.ph`.
 - Browser: login sets a host-only cookie (DevTools → no `Domain`); cross-app links stay prod↔prod
   and beta↔beta.
+
+## 2026-08-23 update — beta.dgfy.ph retired
+
+This runbook's "Future cleanup (Option B)" note above is what got carried out: the #329
+beta-deprecation epic converted every `*.beta.dgfy.ph` host to a `301` redirect to its `*.dgfy.ph`
+equivalent (nginx-side: #894/#896; CI-side removal of the `frontend-beta` build/deploy path:
+#895), and the beta TLS cert was re-issued dropping its dead `bar.space.com.ph` SAN. This record
+stays as-is — it is the historical, executed account of the dual-deploy cutover — see #329 and its
+children for the retirement itself, not an edit here.

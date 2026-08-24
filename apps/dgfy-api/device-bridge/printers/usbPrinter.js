@@ -142,8 +142,21 @@ export const printReceiptPayload = async ({ receipt, copies = 1 } = {}) => {
   });
   const safeCopies = Math.max(1, Math.min(Number.parseInt(copies, 10) || 1, 5));
 
+  // logo_raster (issue #321) is a base64 `GS v 0` payload pre-rasterized on the API
+  // side by resolveReceiptLogoRaster (see posDeviceUseCases.js's buildReceiptPayload)
+  // -- this bridge has no image library of its own, unlike the Bluetooth/iMin path's
+  // ReceiptLogoProvider.kt. Absent (no company icon configured) simply means no logo
+  // is printed; there's no bundled platform fallback on this transport.
+  const logoRasterBuffer = receipt?.business?.logo_raster
+    ? Buffer.from(receipt.business.logo_raster, 'base64')
+    : null;
+
   return withPrinter(async (printer, device) => {
     for (let index = 0; index < safeCopies; index += 1) {
+      if (logoRasterBuffer) {
+        printer.align('ct').raw(logoRasterBuffer).println('');
+      }
+
       printer.align('lt').style('normal').size(1, 1);
 
       receiptLines.forEach((line) => {

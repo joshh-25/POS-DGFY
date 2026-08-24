@@ -124,6 +124,14 @@ export const commercePaymentRepository = {
     }).then(toPlain);
   },
 
+  findSessionByProviderEventId(providerEventId, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: { provider_event_id: providerEventId },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
   findSessionByTenantAndPosTransaction({ tenantId, posTransactionId } = {}, options = {}) {
     return db.CommercePaymentSession.findOne({
       where: {

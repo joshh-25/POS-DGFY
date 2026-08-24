@@ -24,6 +24,11 @@ import {
     resolveAccessPolicyFromSettings
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
+import {
+    DEFAULT_VOUCHER_TIMEZONE,
+    evaluateVoucherEligibility
+} from '../modules/vouchers/domain/voucherEligibilityPolicy.js';
+import { DISPLAY_RELEVANT_REASON_CODES } from '../modules/vouchers/usecases/voucherDisplayUseCases.js';
 import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
 import { deriveStorefrontSlug, normalizeStorefrontSlug } from '../modules/shared/utils/storefrontSlug.js';
 
@@ -360,8 +365,93 @@ const buildItemSearchText = (item = {}) => (
         .join(' '))
 );
 
-const buildTenantSnapshot = async (tenant) => {
-    const tenantConnection = await tenantConnector.getConnection(tenant);
+/**
+ * Builds one tenant's discovery-index snapshot row.
+ *
+ * By default this goes through tenantConnector's shared, cached connection
+ * pool (`getConnection`) -- correct for the single-tenant, event-triggered
+ * callers (syncStorefrontDiscoveryIndexForTenant). The bulk reconciliation
+ * sweep (reconcileStorefrontDiscoveryIndex, all tenants, every 15 minutes)
+ * instead passes an `openConnection` override that opens a short-lived,
+ * uncached connection per tenant -- see #524/#527: going through the shared
+ * cache from a sweep that touches every tenant in a short window was
+ * thrashing the 20-slot LRU cache live POS/storefront traffic depends on.
+ * When an override is supplied, this function owns closing that connection
+ * (the default cached path does not close -- TenantConnector owns that
+ * connection's lifecycle instead).
+ * @param {Object} tenant
+ * @param {{ openConnection?: () => Promise<import('sequelize').Sequelize> }} [options]
+ */
+const buildTenantSnapshot = async (tenant, { openConnection } = {}) => {
+    const ephemeral = Boolean(openConnection);
+    const tenantConnection = ephemeral
+        ? await openConnection()
+        : await tenantConnector.getConnection(tenant);
+
+    try {
+        return await buildTenantSnapshotWithConnection(tenant, tenantConnection);
+    } finally {
+        if (ephemeral) {
+            await tenantConnection.close().catch((error) => {
+                logger.warn('[StorefrontDiscoveryIndex] Failed to close ephemeral tenant connection', {
+                    tenantId: tenant?.id || null,
+                    tenantName: tenant?.name || null,
+                    error: error?.message || 'unknown_error'
+                });
+            });
+        }
+    }
+};
+
+// #713: fails open, mirroring voucherDisplayUseCases.js's own convention -- a bad voucher query or
+// a malformed row must never block the whole discovery-index snapshot; it just omits vouchers this
+// pass rather than throwing. `DISPLAY_RELEVANT_REASON_CODES` reuses the exact same structural-only
+// filter that module already applies (basket-dependent reasons like min spend/quantity are
+// unknowable on a browse page and would otherwise blank every listed voucher).
+const buildPublicStorefrontVouchers = async ({ Voucher, timezone }) => {
+    if (!Voucher) return [];
+
+    let rows;
+    try {
+        rows = await Voucher.findAll({
+            where: { status: 'active', is_publicly_listed: true }
+        });
+    } catch (error) {
+        logger.warn('[StorefrontDiscovery] Failed to list public vouchers, omitting from snapshot', {
+            error: error?.message
+        });
+        return [];
+    }
+
+    const now = new Date();
+    return (rows || [])
+        .map((row) => {
+            const voucher = typeof row?.toJSON === 'function' ? row.toJSON() : row;
+            const eligibility = evaluateVoucherEligibility({
+                voucher,
+                context: { channel: 'storefront', now, timezone }
+            });
+            const blockingReason = eligibility.reasons.find(
+                (reason) => DISPLAY_RELEVANT_REASON_CODES.has(reason.reason_code)
+            );
+            if (blockingReason) return null;
+
+            return {
+                id: voucher.voucher_id,
+                code: voucher.code,
+                title: toTrimmedString(voucher.title, 255),
+                subtitle: toTrimmedString(voucher.subtitle, 255),
+                badge: toTrimmedString(voucher.badge, 80),
+                validity_text: toTrimmedString(voucher.validity_text, 255),
+                benefit_class: voucher.benefit_class,
+                percent_off_bps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
+                active: true
+            };
+        })
+        .filter(Boolean);
+};
+
+const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
     const {
         SystemSetting,
         TenantLocation,
@@ -370,7 +460,8 @@ const buildTenantSnapshot = async (tenant) => {
         StorefrontCatalogOverride,
         StorefrontLocationItemOverride,
         ServiceItemDetail,
-        ItemLocationStock
+        ItemLocationStock,
+        Voucher
     } = getTenantModels(tenantConnection);
 
     const settingsRows = await SystemSetting.findAll({
@@ -715,6 +806,15 @@ const buildTenantSnapshot = async (tenant) => {
         .slice(0, 8);
     const storefrontPromoRaw = parseJsonObject(settings.storefront_promo) || null;
     const storefrontPromos = parsePublicCommercialPromos(parseJsonArray(settings.storefront_promos));
+    // #713: a voucher-backed sibling of storefrontPromos above -- same "publicly advertised on the
+    // storefront" concept, adapted to the voucher schema. Independent of `channels_mask`
+    // (usability): a voucher must be BOTH `is_publicly_listed` AND storefront-channel-eligible to
+    // appear here, since an in-store-only voucher opted into public listing by mistake still
+    // shouldn't advertise a code the storefront itself will reject.
+    const storefrontVouchers = await buildPublicStorefrontVouchers({
+        Voucher,
+        timezone: settings.storefront_hours?.value?.timezone || DEFAULT_VOUCHER_TIMEZONE
+    });
     const storefrontPromo = storefrontPromoRaw
         ? {
             title: toTrimmedString(storefrontPromoRaw.title, 100),
@@ -782,6 +882,7 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_promo: storefrontPromo,
         storefront_promos: storefrontPromos,
+        storefront_vouchers: storefrontVouchers,
         storefront_ui_v2_enabled: storefrontUiV2Enabled,
         storefront_categories: storefrontCategories,
         storefront_gallery_images: storefrontGalleryImages,
@@ -1037,7 +1138,12 @@ export const reconcileStorefrontDiscoveryIndex = async ({
 
     await mapWithConcurrency(tenants || [], concurrency, async (tenant) => {
         try {
-            const snapshot = await buildTenantSnapshot(tenant);
+            // Ephemeral connection: this sweep touches every active tenant, so it
+            // must not route through tenantConnector's shared cache -- see the
+            // doc comment on buildTenantSnapshot and #524/#527.
+            const snapshot = await buildTenantSnapshot(tenant, {
+                openConnection: () => tenantConnector.openEphemeralConnection(tenant)
+            });
             if (!snapshot) {
                 if (!dryRun) {
                     await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });

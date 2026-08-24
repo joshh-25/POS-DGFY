@@ -44,3 +44,12 @@ Adopt one mandatory cross-surface fee policy and branding split:
 2. Legacy clients sending `service_fee_amount` remain compatible, but value is ignored.
 3. Compliance math remains unchanged: service fee stays non-VAT in VAT buckets/exports.
 4. Future pricing customization now requires explicit governance (new ADR) instead of settings-level mutation.
+
+## Amendments
+
+### 2026-08-19 — POS cashier fee policy clarification
+
+- POS cashier checkout is an in-store transaction and does not charge a DGFY convenience fee. Its effective `service_fee_amount` is `0`, and the cashier total excludes that fee.
+- The Storefront online-order fee policy remains unchanged at `round4(gross_subtotal * 0.01)`.
+- POS transaction history and POS receipt renderers must not display a DGFY convenience-fee row. Existing `service_fee_*` columns, snapshots, and historical values remain for schema compatibility and auditability; no historical backfill or recomputation is allowed.
+- Restaurant service-charge accounting remains separate from the DGFY convenience fee and continues to appear where the F&B receipt contract requires it.

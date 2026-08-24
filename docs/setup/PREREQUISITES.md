@@ -101,7 +101,9 @@ CORS_ORIGIN=http://localhost:5173
 REDIS_URL=redis://localhost:6379
 ```
 
-**Frontend (`apps/dgfy-web/.env`):**
+**Frontend** — there are three frontend apps, each with its own env file:
+`apps/dgfy-ims/.env` (IMS/SKUpervisor), `apps/dgfy-pos/.env.local` (POS), and
+`apps/dgfy-storefront/.env.local` (Storefront). Each takes:
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
 ```
@@ -116,7 +118,9 @@ VITE_API_URL=http://localhost:5000/api/v1
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:5173 |
+| IMS/SKUpervisor frontend | http://localhost:5173 |
+| POS frontend | http://localhost:5174 |
+| Storefront frontend | http://localhost:5175 |
 | Backend API | http://localhost:5000/api/v1 |
 | Health Check | http://localhost:5000/health |
 
@@ -174,13 +178,22 @@ sudo apt-get install nginx
 ```
 /var/www/skupervisor/
 ├── apps/
-│   ├── dgfy-web/       # Built static files served by Nginx
-│   │   └── dist/       # Production build output
-│   ├── dgfy-api/       # Node.js API server (PM2 managed)
-│   │   └── .env        # Production environment variables
+│   ├── dgfy-ims/           # IMS/SKUpervisor static build served by Nginx
+│   │   └── dist/           # Production build output
+│   ├── dgfy-pos/           # POS static build served by Nginx
+│   │   └── dist/
+│   ├── dgfy-storefront/    # Storefront static build served by Nginx
+│   │   └── dist/
+│   ├── dgfy-api/           # Node.js API server (PM2 managed)
+│   │   └── .env            # Production environment variables
 │   └── dgfy-migration-runner/  # Migrations/seeders, run on deploy
+├── packages/
+│   └── web-core/           # Shared frontend source consumed by all three apps
 └── ...
 ```
+
+Each frontend app builds into its own `apps/<app>/dist/`; there is no shared
+build-output directory.
 
 ### Server Environment Variables
 
@@ -266,7 +279,7 @@ server {
     
     # Frontend - serve static files
     location / {
-        root /var/www/skupervisor/apps/dgfy-web/dist;
+        root /var/www/skupervisor/apps/dgfy-ims/dist;
         try_files $uri $uri/ /index.html;
     }
     
@@ -289,12 +302,25 @@ server {
 }
 ```
 
+The POS and Storefront domains get their own equivalent server blocks, differing
+only in `server_name` and `root`:
+
+| Domain | `root` |
+|---|---|
+| `skupervisor.dgfy.ph` | `/var/www/skupervisor/apps/dgfy-ims/dist` |
+| `pos.dgfy.ph` | `/var/www/skupervisor/apps/dgfy-pos/dist` |
+| `dgfy.ph`, `store.dgfy.ph` | `/var/www/skupervisor/apps/dgfy-storefront/dist` |
+
 Enable the site:
 ```bash
 sudo ln -s /etc/nginx/sites-available/skupervisor /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+> The containerized deployment path (`infrastructure/docker/docker-compose.yml`)
+> instead serves each app from its own image — `dgfy-ims` (`8081`), `dgfy-pos`
+> (`8082`), `dgfy-storefront` (`8083`) — behind the bundled `nginx` service.
 
 ### Server URLs
 
@@ -362,7 +388,11 @@ git pull origin master
 
 # Install any new dependencies
 cd apps/dgfy-api && npm install && cd ../..
-cd apps/dgfy-web && npm install && npm run build && cd ../..
+
+# Rebuild only the frontend apps this release actually touched
+cd apps/dgfy-ims && npm install && npm run build && cd ../..
+cd apps/dgfy-pos && npm install && npm run build && cd ../..
+cd apps/dgfy-storefront && npm install && npm run build && cd ../..
 
 # Run migrations if database changes
 cd apps/dgfy-migration-runner && npm run migrate && cd ../..
@@ -375,7 +405,7 @@ pm2 logs sku-backend --lines 20
 ```
 
 > [!IMPORTANT]
-> Always run `npm run build` in the frontend after pulling changes. The hosting server serves the built files from `apps/dgfy-web/dist/`, not the development server.
+> Always rebuild the affected frontend apps after pulling changes. The hosting server serves the built files from `apps/dgfy-ims/dist/`, `apps/dgfy-pos/dist/`, and `apps/dgfy-storefront/dist/`, not the development server. There is no `build:all` script — run `npm run build:skupervisor`, `npm run build:pos`, and `npm run build:store` (or the per-app `npm run build`) separately, and only for the apps a release actually affects. A change under `packages/web-core` affects all three.
 
 ### What Needs to Match
 

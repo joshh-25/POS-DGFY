@@ -142,6 +142,11 @@ stated approval boundary.
   is now a seed baseline for a database table, not the runtime source.
   `workflowModes.js`, `capabilityModules.js`, and this ADR's own
   `fulfillmentProfiles.js` are unaffected by that amendment.
+- ADR 0064 (services handoff legs and round-trip persistence) — scoped
+  supersession of clause 3, for `item_pickup_return` and
+  `item_pickup_collection` only. Clauses 1, 2, and 4, and every other
+  profile in this vocabulary (including `item_dropoff_collection` and
+  `quote_request`), remain governed by clause 3 exactly as written here.
 - `docs/features/SERVICES_FULFILLMENT_PROFILES.md` — the merchant/developer
   reference this ADR's vocabulary is documented against, including the
   full exists-today-vs-gap matrix.

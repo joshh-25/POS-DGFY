@@ -9,6 +9,18 @@ topic: safe_cross_branch_merging
 
 # Safe Cross-Branch Merging
 
+> **Staleness notice (2026-08-23, issue #914).** This doc predates both repo relocations and was
+> written for one specific historical PR (#21) against a `master` branch that no longer exists
+> (the repo's branches are `develop`/`staging`/`main`; see
+> `docs/ops/RELEASE_CANDIDATE_POLICY.md`), citing `.github/workflows/ci.yml`, which also no longer
+> exists, and `npm --prefix backend`, which hasn't been the backend's location since ADR 0032. The
+> frontend paths and commands below **have been repaired** as part of the #322 frontend-split
+> merge prep (they're what a developer resolving a merge conflict is most likely to need), but the
+> `master`/`ci.yml`/`backend/` references elsewhere in this doc have **not** — treat this as a
+> worked example of the *pattern*, not a copy-pasteable procedure end to end. See
+> [`apps-layout-migration.md`'s "For developers with an in-flight branch"](../architecture/apps-layout-migration.md#for-developers-with-an-in-flight-branch)
+> for the current, maintained version of this guidance.
+
 ## Purpose
 
 This guide defines how to merge a small, isolated change into `master` without losing it or accidentally importing unrelated work. It also explains how to handle repository-wide CI failures that appear even when a pull request does not modify the failing area.
@@ -114,9 +126,9 @@ Do not resolve conflicts by replacing an entire file with a version from another
 Run tests and builds that directly exercise the changed behavior. For POS receipt changes, this includes:
 
 ```powershell
-npm --prefix frontend test -- --run src/features/pos/__tests__/receiptContractConformance.contract.test.js
-npm --prefix frontend run build:pos
-npm --prefix frontend run build:skupervisor
+npm --prefix apps/dgfy-ims test -- --run ../../packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js
+npm --prefix apps/dgfy-pos run build
+npm --prefix apps/dgfy-ims run build
 ```
 
 Focused validation demonstrates that the feature itself works. It does not replace required repository-wide CI.
@@ -203,10 +215,10 @@ To recover the scoped POS receipt and popup work from PR #21, the isolated commi
 PR #21 intentionally contains only:
 
 - `docs/features/POS_RECENT_CHANGES_2026-06-17.md`
-- `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
-- `frontend/src/features/pos/components/ReceiptPrintView.jsx`
-- `frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
-- `frontend/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `packages/web-core/src/features/pos/components/ReceiptPrintView.jsx`
+- `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
 
 The behavior added is limited to:
 

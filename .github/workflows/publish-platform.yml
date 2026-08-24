@@ -6,15 +6,32 @@
 # (2026-07-02)" section for the scoped decision that supersedes those rules
 # for this specific image-based deployment path.
 #
-# For environments whose server isn't directly reachable from GitHub Actions
-# (currently DEV/STAGING), set `vpn_required: true` to connect to a VPN via
-# OpenVPN before the SSH steps run -- see that ADR's "Amendment (2026-07-06)"
-# section for the scoped decision covering this VPN-gated variant.
+# `vpn_required: true` connects to a VPN via OpenVPN before the SSH steps run -- see that ADR's
+# "Amendment (2026-07-06)" section for the scoped decision covering this VPN-gated variant. As of
+# #598/#599, every registered self-hosted runner sits on the same internal LAN as the DEV/STAGING
+# server (vm-sieitzstaging IS that server), so no caller needs this today -- it exists as a
+# fallback for a GitHub-hosted runner, which would need it. See docs/ops/
+# CI_RUNNER_MIGRATION_HANDOFF.md for the current topology and the switch-back procedure.
 #
 # Assumes infrastructure/docker/docker-compose.yml + a filled-in .env +
 # nginx/ have already been copied to /opt/dgfy-platform on the target
 # server (see that file's header comment) and, for a fresh server,
 # ./nginx/init-letsencrypt.sh has been run once manually.
+#
+# PLANNED, NOT YET LIVE: ADR 0060 (docs/architecture/adr/
+# 0060-sops-age-encrypted-secrets-at-rest.md) and docs/ops/
+# SOPS_SECRETS_CUTOVER_RUNBOOK.md describe a cutover that will replace the
+# "filled-in .env" assumption above with a smaller non-secret .env plus
+# SOPS-encrypted secrets/*.env, decrypted by a ./deploy-sops.sh wrapper on
+# the server. When that cutover ships, the final two commands of the "Pull
+# and restart platform containers" step below (`docker compose pull &&
+# docker compose up -d --remove-orphans`) become a call to that wrapper,
+# with the staleness guard staying exactly where it is today (it only
+# inspects IMAGE_TAG, which stays in plaintext .env and needs no secret
+# access). No new GitHub secret is required for that change. Do not make
+# this edit until the runbook's Phases 1-4 have actually run on the server
+# -- deploy-sops.sh and secrets/ do not exist there yet, so flipping this
+# workflow ahead of that would break the next deploy.
 name: Publish Platform (SSH Deploy)
 
 on:
@@ -25,7 +42,7 @@ on:
         required: true
         type: string
       vpn_required:
-        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see header comment
         required: false
         type: boolean
         default: false
@@ -33,7 +50,7 @@ on:
         description: JSON array passed to runs-on for the publish job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
 
 permissions:
   contents: read
@@ -83,10 +100,24 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
+          SENTRY_RELEASE: ${{ github.sha }}
         run: |
           # Token is piped over the existing SSH stdin into `docker login
           # --password-stdin` on the remote -- never an argv or env var on
           # that host, so it can't leak via `ps aux` there.
+          #
+          # SENTRY_RELEASE (#633): the backend image is built
+          # environment-agnostically (no build-args, unlike frontend's
+          # `VITE_SENTRY_RELEASE` baked in at `docker build` time in
+          # deploy-frontend.yml) -- its config is entirely runtime-.env-driven.
+          # docker-compose.yml already declares `SENTRY_RELEASE: ${SENTRY_RELEASE:-}`
+          # as a passthrough, but nothing ever set a value, so every backend
+          # Sentry event carried release: null. Passing it as a shell env var
+          # here (same mechanism already used for $DOCKER_DIR/$GITHUB_ACTOR)
+          # fills that gap at the one point every environment's deploy goes
+          # through. Note: the target server's own docker-compose.yml must
+          # actually contain that passthrough line for this to take effect --
+          # #401 documents PROD's copy is currently drifted and missing it.
           #
           # Staleness guard (PR #55): $DOCKER_DIR on the server is
           # hand-maintained, NOT a git checkout (see this file's header
@@ -97,10 +128,32 @@ jobs:
           # against the now-frozen `backend:<tag>` image while everything
           # else moves on -- a green deploy that silently leaves the API on
           # stale code. Fail loudly instead.
+          #
+          # `docker compose pull` retry (2026-08-14, #342): the server pulls
+          # mysql:8.0/redis:7-alpine from docker.io ANONYMOUSLY (only GHCR
+          # gets a login above), which is subject to Docker Hub's per-IP
+          # anonymous pull limits and has intermittently timed out
+          # authenticating. 3 attempts with growing backoff (15s, 45s)
+          # before giving up. Deliberately only the pull is retried --
+          # `docker compose up -d` runs once, since blindly repeating a
+          # partial container restart is not safe. Durable fix is either a
+          # Docker Hub account (new secret, not done here) or mirroring
+          # mysql/redis into GHCR -- this retry is the no-new-secrets first
+          # move, not the end state.
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
             "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
-             { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
-             docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
+             { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
+             ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
+             SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
+
+      # Hosted runners are ephemeral and threw these away for free. On a
+      # persistent self-hosted runner (vm-sieitzstaging), a deploy key and
+      # OpenVPN config written to disk would otherwise survive on a box that
+      # also serves DEV/STAGING traffic -- clean up regardless of outcome.
+      - name: Clean up deploy credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/client.ovpn

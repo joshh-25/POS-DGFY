@@ -659,6 +659,11 @@ Get all items with pagination and filtering
 &status=active
 &fields=dropdown     # Lightweight projection: returns only item_id, sku_code, name, unit_of_measure, category, current_stock. Skips all JOINs. Use for dropdowns.
 &valuation_location_id=3   # Optional: adds location-scoped weighted metrics in cost_metrics.scoped
+&location_id=3       # Optional (#682): overlays current_stock with this branch's item_location_stocks
+                      # quantity_on_hand instead of the tenant-wide aggregate. Grant-checked the same
+                      # way as POS's /pos/catalog?location_id= (404 unknown/inactive location, 403 no
+                      # grant, 422 malformed id). Omitted -> current_stock is unchanged, the tenant-wide
+                      # aggregate, exactly as before this param existed. Not applied when fields=dropdown.
 ```
 
 **Response (200)**
@@ -704,6 +709,10 @@ Get all items with pagination and filtering
       "limit": 20,
       "total": 150,
       "pages": 8
+    },
+    "location_scope": {
+      "location_id": null,
+      "resolved": true
     }
   }
 }
@@ -715,6 +724,7 @@ Get all items with pagination and filtering
 - `cost_metrics.global` is always returned. `cost_metrics.scoped` is returned only when `valuation_location_id` is provided.
 - `cost_metrics.*.source` indicates valuation origin (`fifo_batches` or `item_cost_fallback`).
 - `cost_per_unit` is internal inventory/COGS data. `default_sale_price` is the explicit customer price used only when the row is sellable through POS, Storefront, or Dispatch Orders.
+- `location_scope` (#682): `location_id: null, resolved: true` when `location_id` was omitted (every `current_stock` in the response is the tenant-wide aggregate, as before this field existed). When `location_id` was provided: `resolved: true` means every stock-bearing item's `current_stock` was overlaid from `item_location_stocks` for that branch (including legitimate zeros); `resolved: false` means the tenant's schema doesn't support per-location stock yet and `current_stock` silently fell back to the tenant-wide aggregate -- callers must not treat a `resolved: false` response's `current_stock` as branch-accurate.
 
 > **Performance note — `fields=dropdown`**: When `fields=dropdown` is passed, the endpoint still uses a lightweight row projection (no join-heavy composition/folder payload), but now includes additive `cost_metrics` valuation data for procurement and planning surfaces. Prefer this mode for dropdowns and quick selectors; avoid it when you need full `ProductComposition`, `ItemFolder`, or deep detail payloads.
 
@@ -1011,6 +1021,14 @@ The item CSV endpoints share the same workflow-mode template contract for correc
 - Hospitality exports preserve PMS preset keys such as `room_night`, `paid_amenity`, `facility_booking`, `minibar_retail_product`, `housekeeping_supply`, `linen_reusable_asset`, and `physical_add_on`.
 - Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
 
+**Import contract and POS entry point**
+- `POST /items/import/preview` accepts the uploaded CSV content and returns row-level validation and create/update counts.
+- `POST /items/import/confirm` accepts the preview rows and upserts items by normalized SKU.
+- Both import endpoints require `items:import`; the POS Items workspace exposes the same three-step Upload → Preview → Result wizard used by IMS.
+- The POS wizard downloads the active tenant workflow-mode template and is disabled while the terminal is offline.
+- CSV import does not include image binaries. POS item images are managed through the shared Storefront gallery endpoints below, capped at five images per item.
+- After a successful import, the API publishes a tenant-scoped `pos.catalog.changed` event with reason `csv_items_imported` and the created/updated item IDs so POS catalog consumers refresh without a manual reload.
+
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
 
@@ -1163,7 +1181,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 - `image/avif`
 
 **Security Contract**
-- A single primary image source may be up to 100 MB. The backend validates it, stores the original privately, and generates public delivery variants. The public large variant is always 10 MB or smaller.
+- A single primary image source may be up to 100 MB. The backend validates it, uses the source as temporary processing input, and generates public delivery variants. The source is removed after successful variant generation; the public large variant is always 10 MB or smaller.
 - Backend validates both reported MIME type and binary signature.
 - Stored paths are served through `/uploads` with `nosniff` static serving.
 - Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
@@ -1179,8 +1197,70 @@ Append images to the ordered Storefront catalog image gallery for one item.
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
 - If a gallery already exists, accepted images are appended after the existing ordered entries and the existing first image remains primary.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
-- Gallery uploads remain capped at 10 MB per source image and use the same safe MIME/signature checks. The public large variant is always 10 MB or smaller.
+- Gallery uploads accept source images up to 100 MB per file and use the same safe MIME/signature checks. The backend uses each source as temporary processing input and removes it after generating optimized public delivery variants; the public large variant is always 10 MB or smaller.
 - Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
+- If server-side image processing fails, the endpoint returns HTTP 500 with `error_code=STOREFRONT_IMAGE_PROCESSING_FAILED`; if the optimized image cannot be committed to the catalog, it returns `error_code=STOREFRONT_IMAGE_PERSIST_FAILED`. Both responses include `request_id` for log correlation and clean up temporary/newly stored files before returning.
+
+### POST /items/:item_id/storefront-image/async
+Queue a Storefront catalog primary-image upload for background optimization. This is the POS interactive upload path for an existing item.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with one `image` file field.
+
+**Response (202)**
+```json
+{
+  "success": true,
+  "message": "Image received. It will be optimized in the background.",
+  "data": {
+    "job_id": "uuid",
+    "item_id": 22,
+    "queued": true
+  }
+}
+```
+
+**Processing Contract**
+- The API validates the item and accepts the source file, then returns without waiting for image compression or gallery persistence.
+- The POS may show a local temporary preview immediately. The temporary preview is not a public catalog asset and is not stored in browser, WebView, or Redis cache as the source of truth.
+- A backend worker validates and optimizes the staged file, updates the ordered gallery, and removes the temporary source after successful delivery-variant generation. Existing catalog data remains authoritative until the new job completes.
+- The worker uses the shared Redis queue in production. A process-local queue is available only for local development when Redis is unavailable; it is not a durable production queue.
+
+### POST /items/:item_id/storefront-images/async
+Queue one or more images for background append to the Storefront catalog gallery.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with up to 5 `images` file fields.
+
+**Response**: Same `202` acknowledgement shape as the single-image endpoint. The returned `job_id` identifies the queued gallery operation.
+
+**Notes**
+- The worker preserves gallery ordering and primary-image rules defined by `POST /items/:item_id/storefront-images`.
+- A failed job leaves the previously persisted gallery authoritative and reports the failure through the status endpoint.
+- This endpoint is asynchronous only; it does not change the synchronous endpoint contract used by existing callers.
+
+### GET /items/:item_id/storefront-image/async-status
+Read the latest interactive catalog-image job for an item.
+
+**Permission**: `items:edit`
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "tenant_id": 1,
+    "item_id": 22,
+    "job_id": "uuid",
+    "status": "queued|processing|completed|failed",
+    "error_code": null,
+    "error_message": null,
+    "updated_at": "2026-08-14T00:00:00.000Z"
+  }
+}
+```
+
+The status record is short-lived and is an acknowledgement mechanism, not a replacement for the persisted item/gallery response. Interactive POS clients do not need to poll this endpoint; the worker emits the existing catalog-change invalidation event after successful persistence, and the POS refreshes the item catalog through its normal catalog path to obtain the optimized public image URL and gallery metadata. Diagnostic or administrative clients may still read the status record. If no job exists, `data` is `null`.
 
 ### POST /items/storefront-images/bulk
 Upload Storefront catalog images in bulk by SKU filename stem.
@@ -2567,7 +2647,7 @@ Upload/replace POS catalog image override (multipart file upload).
 **Validation Contract**
 - Endpoint accepts image files only.
 - Unsupported upload types are rejected with `422 Validation failed`.
-- A single primary image source may be up to 100 MB; the backend retains the original privately and publishes a large delivery variant at or below 10 MB.
+- A single primary image source may be up to 100 MB; the backend uses the source as temporary processing input and publishes a large delivery variant at or below 10 MB before removing the source.
 - Existing image is replaced atomically when a valid new image is uploaded.
 
 **Image URL Contract**
@@ -2779,6 +2859,13 @@ terminal, and location. Mutations require `pos:transact`; the read requires
 | `POST` | `/pos/payment-sessions/:id/cancel` | Cancel an unpaid session with an auditable reason. Successful money must be cancelled/reversed first. |
 | `POST` | `/pos/payment-sessions/:id/complete` | Complete a fully paid session atomically through normal POS checkout and return the canonical transaction/receipt contract. |
 
+Completed split-tender transactions use
+`POST /pos/transactions/:id/split-allocations/:allocation_id/reversal` after
+the internal void. The body requires `reason` and `idempotency_key`; cash also
+requires the actual refunding `shift_id`, while merchant-owned digital tender
+requires an external reference and explicit later confirmation. The server
+resolves the allocation, provider ownership, and reversible amount.
+
 Every create/allocation/completion mutation requires an idempotency key. The
 provider-confirmation mutation uses the provider event identity as its replay
 key. Reusing a key with a different request hash returns a conflict; retries
@@ -2813,6 +2900,12 @@ List POS transactions with cashier metadata and pagination.
 **Permission**: `pos:view`
 **Plan Gate**: Premium (`requirePremium`)
 
+The response includes additive `adjustments` and `financial_outcome` fields.
+Adjustment rows preserve the original cashier/shift and the authenticated
+actor/actor shift separately. Request hashes and raw metadata are not exposed,
+and reading history or a receipt never creates a refund, drawer event, provider
+request, or Z-reading change.
+
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
@@ -2822,7 +2915,7 @@ List POS transactions with cashier metadata and pagination.
 | `status` | string | `completed` or `voided` |
 | `cashier_id` | number | Filter by cashier user id |
 | `payment_type` | string | `cash`, `gcash`, `maya`, `card`, `bank_transfer` |
-| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
+| `payment_status` | string | `unpaid`, `payment_pending`, `paid`, `partially_paid`, `failed`, `refund_pending`, `partial_refunded`, `refunded` |
 | `order_method` | string | `dine_in`, `takeout`, `pickup`, `delivery` (legacy `online` accepted for historical filters) |
 | `order_source` | string | `in_store`, `online_store` |
 | `date_from` | ISO date | Inclusive start date filter |
@@ -3042,6 +3135,27 @@ Update online order fulfillment status from POS terminal operations.
    - `data.idempotency` (`key`, `request_fingerprint`, `outcome`, `idempotent_replay`)
 5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
 6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
+7. `reason` is **required** when `fulfillment_status` is `rejected` (3-255 characters); optional
+   otherwise.
+
+**Payment Side Effects** (Phase 144, #824 -- previously undocumented)
+
+Reaching `completed`, `rejected`, or `cancelled` on an order backed by a commerce payment session
+runs the payment lifecycle after the status change commits, and the result is returned as
+`data.payment_lifecycle`:
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session exists for the order (a plain cash/COD order). |
+| `settlement_pending` | `completed` -- the order is released to the settlement workflow, nothing is refunded. |
+| `refunded` / `refund_pending` / `refund_failed` | `rejected` or `cancelled` -- one idempotent refund of the **captured** amount is submitted to PayMongo. For a downpayment order that is the downpayment, never the order total (ADR 0069 clause 1b). |
+| `forfeited` | Only reachable from the customer self-service cancel endpoint below, never from this one -- see its own Refund and Forfeiture section. |
+
+A store-initiated terminal state — `rejected`, or `cancelled` set through **this** endpoint —
+**always refunds**, even at a tenant whose `downpayment_refundable` is `false`. The store's
+inability to fulfil is not the customer's forfeiture (ADR 0070, 2026-08-22 amendment). Payment
+lifecycle failures never fail the status update itself: the status is already committed and the
+failure surfaces as `payment_action: 'refund_failed'` for administrator review.
 
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
@@ -3500,6 +3614,20 @@ Catalog rows include:
 - Services Mode service rows are stock-exempt and use service booking validation instead of product quantity availability.
 - Compatibility hardening (2026-04-21): when a tenant is temporarily missing `item_location_stocks` schema support (table or required columns), `location_id` requests fail closed to global availability computation and still return `200` (no `500` contract drift).
 
+**Response Envelope (Phase 142, #823; `customer_choice` added Phase 150, #866)**
+- The catalog response includes a top-level `payment_mode` field, sibling to `payment_capabilities`
+  (`'full_payment'` | `'downpayment_required'` | `'customer_choice'`) -- always present, defaulting
+  to `'full_payment'` for any tenant without downpayment settings configured, and fail-closed to
+  `'full_payment'` if the settings read itself fails (a catalog request never 500s over this).
+  `'customer_choice'` means the storefront must render the pay-in-full-vs-downpayment election
+  control (see the Downpayment Contract below); it never appears in a resolved quote/checkout
+  response, only on the catalog.
+- `payment_mode` is advisory/presentational for the storefront client (hide the cash payment
+  option, force a quote before the payment step); it is not itself an enforcement point -- the
+  actual capture guards live on the quote/checkout endpoints (see Phase 141's own contract below).
+  It is subject to the same 45s public cache above, so a tenant that just flipped its downpayment
+  setting may see up to ~45s of stale UI; the checkout/session-create guards remain the backstop.
+
 **Catalog Search Note**
 - `search` narrows by item name only; out-of-stock rows are still returned when `storefront_visible=true`.
 - Storefront-visible follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when the new Storefront override table is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`. A missing row in an existing Storefront override table does not inherit POS state.
@@ -3696,7 +3824,7 @@ Hospitality admin routes live under `/api/v1/hospitality`, require authenticatio
 
 ## Services Admin Endpoints
 
-Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
@@ -3762,6 +3890,46 @@ Route mapping note:
   - `service_fee_amount = round4(subtotal_amount * 0.01)`
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
+**Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
+added Phase 150, #866)
+- Request body accepts an optional `payment_election` field (`'full'` | `'downpayment'`, default
+  `'full'`) -- the customer's checkout-time pay-in-full-vs-downpayment choice. Only consulted when
+  the tenant's resolved `payment_mode` is `customer_choice`; ignored (and irrelevant) for
+  `full_payment` (always full) and `downpayment_required` (always split -- the merchant decided,
+  not the customer). Absent or unrecognized input defaults to `'full'` -- under-collecting is the
+  dangerous direction for a merchant expecting a downpayment, so an unresolved election fails
+  toward the safer, unambiguous shape rather than guessing a split.
+- Response includes, computed server-side from the tenant's `tenant_downpayment_settings` row
+  (Phase 138, #820) and, for a `customer_choice` tenant, the request's `payment_election` -- never
+  otherwise accepted from the request body:
+  - `payment_mode` (`full_payment` or `downpayment_required` -- **never** `customer_choice` in a
+    resolved quote/checkout response; that value only ever describes a tenant's settings/catalog,
+    never a resolved order)
+  - `downpayment_amount`, `balance_due_amount`, `downpayment_refundable` -- all `null` when
+    `payment_mode` is `full_payment` (never `0` or the total, so a `null` cannot be mistaken for "no
+    downpayment configured")
+- Downpayment formula, applied to the already promo/voucher-discounted `total_amount`:
+  - `percentage` type: `downpayment_amount = round(total_amount_centavos * downpayment_rate_bps / 10000)`
+  - `fixed` type: `downpayment_amount = downpayment_fixed_centavos`
+  - Floored to `min_downpayment_centavos` -- **percentage type only** (Phase 150, #865); a `fixed`
+    row's minimum is not enforced at resolution time, matching the write-time rule that only
+    requires it for `percentage` -- then clamped to `total_amount` (never more than the order is
+    worth; `balance_due_amount` is never negative).
+- Authorized for every workflow mode (ADR 0070) -- Retail is the reference implementation, not a
+  restriction.
+- **(Phase 141, #822)** A `downpayment_required` order is, by construction, cash-on-delivery for the
+  balance -- `payment_mode` never means "pay everything online". The customer's only online payment
+  choice is which method pays the downpayment leg (`POST /store/checkout/payment-sessions`, below);
+  the balance is always collected in person (ADR 0069 clause 2 `[binding]`).
+- **(Phase 150, #866)** A `customer_choice` tenant offers exactly two outcomes, both resolved from
+  the same `payment_election` field: `'full'` resolves to `payment_mode: 'full_payment'`, paid in
+  full online (cash/COD is hidden from the payment-method list at this store regardless of
+  election -- storefront-side `hideCash`, RF-3); `'downpayment'` resolves to `payment_mode:
+  'downpayment_required'` (online downpayment leg, balance COD, identical to a merchant-forced
+  `downpayment_required` store). Plain COD-with-no-deposit is not offered under `customer_choice`
+  at all -- that outcome is already expressible as a plain `full_payment` store with a cash
+  capability.
+
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
 
@@ -3778,6 +3946,13 @@ Route mapping note:
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, a direct
+  request to this endpoint (a customer picking plain `cash`, with no online payment at any point)
+  returns `422` with `reason_code=DOWNPAYMENT_CAPTURE_NOT_AVAILABLE` and creates no order -- this
+  path collects nothing, so it must not honor the downpayment configuration (ADR 0070 clause 7
+  `[binding]`). A `downpayment_required` order is instead created only by the PayMongo webhook
+  finalizer, after the downpayment payment session (below) has been confirmed paid; that internal
+  call is not reachable from any HTTP client request.
 
 **Persistence Contract**
 - Checkout persists service-fee snapshots from the same fixed policy as quote:
@@ -3785,11 +3960,25 @@ Route mapping note:
   - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
   - `service_fee_method_snapshot` (order method for traceability)
   - `service_fee_overridden=false`
+- `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
+  `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
+  Downpayment Contract above.
+- **(Phase 141, #822)** A downpayment order finalized via the webhook is created cash-on-delivery
+  for the balance -- `payment_type` is `cash`, `payment_timing` follows the normal
+  delivery/pickup-cash rule (`on_delivery`/`on_pickup`), and `payment_status` lands `partially_paid`
+  with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
+  ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
+  order.
+- **(Phase 142, #823)** `amount_paid`/`balance_due` -- persisted since Phase 141 as described above
+  -- are now also serialized on every order-shaped response that reaches a storefront client
+  (`/store/checkout`'s own `order`, `/store/track/:tracking_pin`, `/store/orders` history, and the
+  claim-by-pin response), all sharing the same base order serializer. `null` for any order that
+  isn't `partially_paid`.
 - Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
 - Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
 
 ### POST /store/checkout/payment-sessions
-Create a PayMongo QR Ph payment session for Storefront online checkout. This is a payment handoff, not an order commit.
+Create a PayMongo online payment session for Storefront online checkout. This is a payment handoff, not an order commit.
 
 **Auth**: Optional store customer (`Store JWT`)
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
@@ -3797,8 +3986,33 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 
 **Request**
 - Same payload as `/store/checkout`.
-- `payment_type` must be `qrph`.
+- `payment_type` must be one of `qrph`, `card`, `gcash`, `maya`, `grab_pay`, or
+  `shopeepay`.
 - `idempotency_key` is required and scoped to tenant + target type.
+- With `STOREFRONT_DIRECT_GCASH_ENABLED=true` and the live confirmation gate,
+  `payment_type=gcash` returns `payment_flow=direct_gcash`, a public PayMongo
+  key, Payment Intent client key, and return URL. With
+  `STOREFRONT_DIRECT_MAYA_ENABLED=true` and its live confirmation gate,
+  `payment_type=maya` returns the same browser-safe fields with
+  `payment_flow=direct_maya`. The Storefront creates the wallet-specific
+  Payment Method with the public key and attaches it with the client key; the
+  returned authorization URL is a provider redirect, not an order result.
+- **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, this
+  endpoint authorizes only the downpayment amount online, never the order total (ADR 0069 clause 1b
+  `[binding]`) -- the PayMongo `amount`, the session's `total_amount`/`total_amount_centavos`, and
+  `platform_fee_centavos` are all computed against the downpayment, not the full order. The session
+  additionally records `capture_kind=downpayment`, `order_total_centavos` (the full order value),
+  `capture_payment_method` (the online rail used), and `downpayment_refundable` (a policy snapshot
+  for Phase 144/#824). A fail-closed `422 DOWNPAYMENT_POLICY_UNRESOLVED` guards the case where the
+  tenant's stored setting says `downpayment_required` but the settings row itself is malformed --
+  the request must never silently fall through to authorizing the full total.
+- **(Phase 142, #823)** The session response (both this endpoint and `GET
+  /store/checkout/payment-sessions/:payment_session_id` below, which shares the same serializer)
+  now additionally returns `capture_kind` (`'full'` | `'downpayment'`), `order_total_amount` (the
+  full order value, pesos), `balance_due_amount` (pesos), and `downpayment_refundable` -- the four
+  fields above were persisted on the session row since Phase 141 but never reached the client. All
+  four are `'full'`/`null`/`null`/`null` for a `capture_kind='full'` (i.e. `full_payment`) session,
+  same present-and-null convention as the quote response's own downpayment fields.
 
 **Response (201)**
 ```json
@@ -3828,6 +4042,9 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 - The legacy child-merchant `transfer_to` path is disabled compatibility behavior and must not be enabled with tenant revenue sharing.
 - PayMongo/provider processing, payout, bank, dispute, and related fees are captured from provider data or reconciliation and allocated according to the versioned tenant policy.
 - QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
+- Direct GCash and Maya sessions use the same verified `payment.paid`
+  finalization path; the browser authorization return cannot mark the order
+  paid.
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
 Read the current public payment-session state for polling after QR Ph creation.
@@ -3993,6 +4210,48 @@ Track online-store order status for public users.
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
+### PATCH /store/orders/:tracking_pin/cancel
+Customer self-service cancellation of their own online-store order.
+
+**Auth**: Store customer session, **or** a signed `cancel_proof` for a guest order
+**Tenant Context**: Required (`x-store-slug`)
+**Rate Limit Contract**: Store tracking mutation limiter (stricter than the tracking read above)
+
+**Request Body**
+```json
+{
+  "cancel_proof": "<signed token, guest orders only>"
+}
+```
+
+**Eligibility**
+1. A logged-in customer must own the order (`store_customer_id` match), else `403`.
+2. A guest order requires a `cancel_proof` bound to tenant + order id + tracking PIN, else `401`/`403`.
+3. Only `placed` and `confirmed` orders may be cancelled — anything from `preparing` onward returns
+   `409` ("Order can only be cancelled before preparing.").
+
+**Refund and Forfeiture** (Phase 144, #824)
+
+Cancelling releases the inventory reservation, then — **after the cancellation commits** — runs the
+payment lifecycle and returns the outcome as `data.payment_lifecycle`. This is the **only** endpoint
+whose cancellations can forfeit; a POS-initiated cancel always refunds.
+
+| `payment_action` | When |
+|---|---|
+| `not_applicable` | No commerce payment session backs the order. |
+| `refunded` / `refund_pending` / `refund_failed` | The default. One idempotent refund of the captured amount. |
+| `forfeited` | The session captured a downpayment **and** its `downpayment_refundable` policy snapshot is explicitly `false`. No PayMongo call is made, no `commerce_payment_refunds` row is created, and the order's `payment_status`/`amount_paid`/`balance_due` are unchanged — nothing was reversed. Response also carries `forfeited_amount_centavos`. |
+
+The decision reads the **session snapshot** taken at capture time, never the tenant's live settings,
+so a merchant changing the toggle after payment cannot retroactively change the customer's terms. A
+null/unknown snapshot refunds. Both outcomes write a tenant-side `pos_order_payments` row (`kind`
+`'refund'` or `'forfeiture'`) linked to the original `'downpayment'` row; refund rows are written
+`pending` and promoted to `successful`/`failed` when the PayMongo refund webhook confirms. A payment
+lifecycle failure never fails the cancellation — it surfaces as `payment_action: 'refund_failed'`.
+
+Governance: ADR 0069 clause 8 `[default]` (carried by ADR 0070, 2026-08-22 amendment) and ADR 0052
+clause 14 (2026-08-22 amendment).
+
 ### VAT Data Placement (Current Contract)
 1. Default item classification: `items.vat_type`
 2. Immutable legal snapshot per sold line:
@@ -4061,7 +4320,11 @@ Authenticated premium POS routes:
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/pos/transactions/:id/print-events` | `pos:reprint` | Records operator-confirmed fiscal original print or reprint evidence after the browser print dialog is opened; reprints require a reason. |
-| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal void evidence for fiscal invoices, and creates POS stock-return movements for original POS stock issues. |
+| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal/inventory/internal-adjustment evidence, and returns the server-classified financial follow-up. It does not itself refund customer money. |
+| `POST` | `/api/v1/pos/transactions/:id/cash-refund` | `pos:cash_drawer_adjust` | Records a paid-cash refund for an already-voided transaction and atomically creates the linked `cash_out` drawer event on the acting cashier's owned open shift. |
+| `POST` | `/api/v1/pos/transactions/:id/external-refund` | `pos:void` | Records merchant-owned digital reversal evidence. Initial evidence remains manual review; explicit confirmation with the same reference and a new idempotency key completes it. |
+| `POST` | `/api/v1/pos/transactions/:id/provider-refund` | `pos:void` | Submits a server-verified PayMongo refund for a supported provider-owned online transaction. Provider identity, payment ID, amount, currency, and session ownership are server-derived. |
+| `POST` | `/api/v1/pos/transactions/:id/split-allocations/:allocation_id/reversal` | `pos:void` or `pos:cash_drawer_adjust` | Reverses one server-resolved split allocation using the tender-specific cash, merchant-owned, or provider-evidence workflow. |
 | `GET` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:view` | Lists fiscal terminal registration records. |
 | `PUT` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:fiscal_terminals:manage` | Creates or updates a terminal fiscal registration. Verified status requires MIN, machine serial, software serial, and PTU. |
 | `GET` | `/api/v1/pos/esales-reports` | `pos:view` | Lists generated eSales packages, payload hashes, lifecycle status, and submission evidence references. |
@@ -4075,7 +4338,7 @@ Fiscal activation also requires at least one verified fiscal terminal registrati
 
 ## Food & Beverage Endpoints
 
-Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
+Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. They require `requireWorkflowCapability('fnbDining')`; tenants outside `fnb` receive the workflow-mode capability denial response. These endpoints are additive to shared `items`, POS, and Storefront contracts. The Permission column lists the primary mode-native permission. Generic compatibility fallback is available for legacy users outside production by default; hosted production defaults to fail-closed and should keep `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` while remapping is completed.
 
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |

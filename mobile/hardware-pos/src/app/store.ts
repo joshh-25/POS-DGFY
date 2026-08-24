@@ -5,6 +5,7 @@ import { bundledCatalog, bundledCatalogGeneratedAt } from './bundledCatalog';
 import type { CatalogProduct } from '../domain/catalog';
 import type { LocalCheckoutInput, LocalTransactionLineInput } from '../domain/checkout';
 import type { HistoryRow } from '../domain/history';
+import { normalizePosTextScale, type PosTextScale } from '../domain/textScale';
 import type { PendingHistorySnapshot } from '../services/pendingHistoryService';
 import type { LegacyCheckoutTransaction, LegacyShiftRecord, MobilePosDevicePolicyResponse } from '../api/mobilePosClient';
 import type {
@@ -111,6 +112,8 @@ interface HardwarePosState {
     lastCatalogRefreshAt: string | null;
     settingsSummary: string;
     devicePolicySummary: string;
+    textScale: PosTextScale;
+    setTextScale(scale: PosTextScale): Promise<void>;
     bootstrap(): Promise<void>;
     unlockCashier(input: {
         baseUrl: string;
@@ -188,6 +191,7 @@ type HardwarePosViewState = Omit<
     | 'openDrawer'
     | 'loadHardwareDiagnostics'
     | 'closeShift'
+    | 'setTextScale'
 >;
 
 const DEFAULT_POS_BASE_URL = 'https://pos.dgfy.ph';
@@ -684,7 +688,8 @@ const initialState: HardwarePosViewState = {
     catalogSource: 'bundled_seed',
     lastCatalogRefreshAt: null,
     settingsSummary: 'No settings loaded yet.',
-    devicePolicySummary: 'No device policy loaded yet.'
+    devicePolicySummary: 'No device policy loaded yet.',
+    textScale: 1
 };
 
 export const useHardwarePosStore = (): HardwarePosState => {
@@ -713,6 +718,9 @@ export const useHardwarePosStore = (): HardwarePosState => {
             const persistedAuthConfig = await deps.runtimeStateService?.getAuthConfig() ?? null;
             const cachedCatalog = await deps.runtimeStateService?.getCatalogCache() ?? null;
             const cachedBootstrap = await deps.runtimeStateService?.getBootstrapCache() ?? null;
+            const persistedTextScale = normalizePosTextScale(
+                await deps.runtimeStateService?.getTextScalePreference() ?? 1
+            );
             const offlineAuthProfile = await deps.runtimeStateService?.getOfflineAuthProfile() ?? null;
 
             if (persistedAuthConfig) {
@@ -753,6 +761,7 @@ export const useHardwarePosStore = (): HardwarePosState => {
                 loginBaseUrl: normalizeRuntimeBaseUrl(persistedAuthConfig?.baseUrl ?? offlineAuthProfile?.baseUrl ?? DEFAULT_POS_BASE_URL),
                 companyToken: persistedAuthConfig?.companyToken ?? offlineAuthProfile?.companyToken ?? DEFAULT_COMPANY_TOKEN,
                 loginEmail: offlineAuthProfile?.email ?? DEFAULT_LOGIN_EMAIL,
+                textScale: persistedTextScale,
                 loading: false,
                 hardwareReady: deps.storageMode === 'sqlite',
                 adminAccessGranted: false,
@@ -773,6 +782,13 @@ export const useHardwarePosStore = (): HardwarePosState => {
                 hardwareMessage: `Startup failed: ${toBootstrapErrorMessage(error)}`
             });
         }
+    }, [mergeState]);
+
+    const setTextScale = useCallback(async (scale: PosTextScale) => {
+        const normalizedScale = normalizePosTextScale(scale);
+        mergeState({ textScale: normalizedScale });
+        const deps = await getDeps();
+        await deps.runtimeStateService?.saveTextScalePreference(normalizedScale);
     }, [mergeState]);
 
     const unlockCashier = useCallback(async (input: {
@@ -1540,7 +1556,10 @@ export const useHardwarePosStore = (): HardwarePosState => {
             receipt.syncState === 'synced' ? 'Status: Synced' : 'Status: Pending Sync'
         ].join('\n');
 
-        const result = await (await import('../native/standalonePosHardware')).standalonePosHardware.printReceipt(receiptText, true);
+        // No tenant branding sync exists in this offline app yet (see issue #321) --
+        // '' falls back to the bundled DGFY icon at the native layer, same as the
+        // hardcoded 'DGFY POS' header text above.
+        const result = await (await import('../native/standalonePosHardware')).standalonePosHardware.printReceipt(receiptText, true, '');
         mergeState({ hardwareMessage: result.message });
     }, [mergeState]);
 
@@ -1622,7 +1641,8 @@ export const useHardwarePosStore = (): HardwarePosState => {
         printLastReceipt,
         openDrawer,
         loadHardwareDiagnostics,
-        closeShift
+        closeShift,
+        setTextScale
     }), [
         state,
         bootstrap,
@@ -1653,6 +1673,7 @@ export const useHardwarePosStore = (): HardwarePosState => {
         printLastReceipt,
         openDrawer,
         loadHardwareDiagnostics,
-        closeShift
+        closeShift,
+        setTextScale
     ]);
 };

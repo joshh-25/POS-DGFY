@@ -59,8 +59,20 @@ function walkFiles(dirPath) {
   return files.sort();
 }
 
+// Each surface now builds inside its own standalone app (issue #322 Phase 6)
+// instead of a shared top-level dist-apps/<surface> output dir.
+const SURFACE_APP_DIR = {
+  skupervisor: 'apps/dgfy-ims',
+  pos: 'apps/dgfy-pos',
+  store: 'apps/dgfy-storefront',
+};
+
 function surfaceManifest(projectRoot, surface) {
-  const outputDir = path.join(projectRoot, 'dist-apps', surface);
+  const appDir = SURFACE_APP_DIR[surface];
+  if (!appDir) {
+    throw new Error(`Unknown surface: ${surface} (expected one of ${Object.keys(SURFACE_APP_DIR).join(', ')})`);
+  }
+  const outputDir = path.join(projectRoot, appDir, 'dist');
   const files = walkFiles(outputDir);
   const aggregate = crypto.createHash('sha256');
   for (const filePath of files) {

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-04-07
+last_reviewed: 2026-08-22
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -107,6 +107,58 @@ leaving the front matter to imply otherwise — see
 `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` for
 the established shape of that caveat. Reconciling `preflight_run_at` /
 `preflight_request_ref` against a real run remains a human step.
+
+### Where live preflight actually runs (#884, 2026-08-22)
+
+The endpoint requires an authenticated session against a running backend
+(`SYSTEM.EDIT_SETTINGS`), which no `develop`-merge PR ever has — so a per-PR
+live call was never realistic, and #884 named the consequence: every
+`major`/`regulatory` PR in the downpayment epic shipped with a
+`NOT-EXECUTED-*` placeholder and no stage ever converted it to a real run.
+
+**The resolution: a `NOT-EXECUTED-*` placeholder is the accepted, expected
+state for a `develop`-targeting PR.** It is not a defect and `pr-reviewer`
+should not raise it as a should-fix at that stage (see
+`.agents/skills/pr-reviewer/SKILL.md`, "Compliance"). The real preflight runs
+once per promotion batch, as part of the `develop → staging` leg, against a
+**deployed non-production host — DEV is sufficient**. The endpoint evaluates
+the change *proposal* carried in the declaration's `impact_declaration`
+payload against the policy engine; it does not need the change's code to be
+running anywhere, so DEV's currently-deployed version is irrelevant and
+production is never required. `.agents/skills/promoter/SKILL.md` owns the
+executable form of this sweep; `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+2026-08-22 amendment owns the ladder this sits in.
+
+**No `NOT-EXECUTED-*` declaration may reach the `staging → main` leg** — the
+promotion-time sweep must have reconciled every one in the batch first.
+
+Recipe (adapted from the worked example in
+`docs/compliance/impact-declarations/2026-08-07-pos-sentry-independent-debugging.md`,
+run once per outstanding declaration in the batch):
+
+```bash
+curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer ${DGFY_DEV_TOKEN}" \
+  -d '{
+    "request_name": "<PR title or declaration_id>",
+    "surfaces": [<declaration.surfaces>],
+    "impact_declaration": { <the declaration'"'"'s own fields, verbatim> }
+  }'
+```
+
+Record the response's `result`, `reason_code`, and a run timestamp into the
+declaration's `preflight_result` / `preflight_reason_code` / `preflight_run_at`
+/ `preflight_request_ref` fields, replacing the `NOT-EXECUTED-*` placeholder.
+**Land the reconciled front matter via a small cut branch and PR into
+`develop`, never a direct commit** — the same cut-branch discipline
+`RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port amendment already requires
+for anything landing on `develop` outside the normal feature-PR path; this is
+regulator-facing evidence and gets the same review, not an exception. Merge
+that PR before the `to-staging/<label>` branch is cut. If the response is
+`breach` or `review_required`, do not write `no_breach` — record the actual
+result and treat the change as blocked from promotion pending review, per the
+Mandatory Workflow above.
 
 ## Dirty Worktree Handling
 1. Use path-scoped diffs while preparing declaration evidence:

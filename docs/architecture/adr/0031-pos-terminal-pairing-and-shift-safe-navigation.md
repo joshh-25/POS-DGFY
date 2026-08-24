@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-20
 review_by: 2026-12-28
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
@@ -180,3 +180,11 @@ profiles inside the selected tenant, not a separate credential authority.
 - POS void amounts are disclosure metrics and must not be subtracted a second time from the already void-exclusive recognized sales total.
 - Payment-provider refunds are not POS voids. Their settlement and reconciliation remain in the commerce/provider ledger governed by ADR 0042 and ADR 0052; close reports must explicitly state that provider refunds are reconciled separately.
 - Existing immutable Z-reading snapshots remain readable. Missing newly introduced disclosure fields normalize to zero/false and do not rewrite historical snapshots.
+
+### 2026-08-20: Administrator Void Without Shift Reassignment
+
+- An administrator with `pos:void` may void a completed POS transaction without opening an administrator shift. The authenticated POS session, paired-terminal policy, reason validation, and duplicate-void guard still apply.
+- The original transaction cashier and shift are immutable. The administrator is recorded as the void actor, with a null actor shift when the no-shift exception is used.
+- A cashier with `pos:void` must still own an open shift. Physical cash refunds additionally require `pos:cash_drawer_adjust` and the actual refunding cashier's open shift.
+- A void or refund after shift close is append-only. It never rewrites the saved close summary or Z-reading; cashier history and daily reporting disclose the later adjustment with original and acting attribution.
+- Provider-owned, merchant-owned, cash, Employee Credit, and split-tender reversals remain server-classified workflows. A client cannot turn an internal void into evidence that customer money was refunded.

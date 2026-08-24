@@ -143,7 +143,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit'),
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay'),
         allowNull: false,
         defaultValue: 'cash'
     },
@@ -155,7 +155,9 @@ const PosTransaction = sequelize.define('PosTransaction', {
     cash_received: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     change_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     payment_status: {
-        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
+        // 'partially_paid' added by ADR 0069 clause 4 (carried over from ADR 0068 clause 4,
+        // unchanged by the supersession) -- Phase 137 (#819).
+        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
         allowNull: false,
         defaultValue: 'paid'
     },
@@ -291,6 +293,18 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     total_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    amount_paid: {
+        // ADR 0069 clause 4a (carried over from ADR 0068 clause 4a): peso DECIMAL(14,4),
+        // matching every other pos_transaction_* money column -- never centavos.
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    balance_due: {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false,
         defaultValue: 0

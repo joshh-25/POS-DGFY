@@ -12,13 +12,13 @@ import {
     getUomGroup as backendGetUomGroup,
     isValidUom as backendIsValidUom
 } from '../src/utils/uomConverter.js';
-import { MODE_ITEM_TAXONOMY as frontendTaxonomy } from '../../dgfy-web/src/features/settings/modeItemTaxonomy.js';
+import { MODE_ITEM_TAXONOMY as frontendTaxonomy } from '../../../packages/web-core/src/features/settings/modeItemTaxonomy.js';
 import {
     allowsDecimalQuantity as frontendAllowsDecimalQuantity,
     areCompatible as frontendAreCompatible,
     getUomGroup as frontendGetUomGroup,
     isValidUom as frontendIsValidUom
-} from '../../dgfy-web/src/utils/uomConverter.js';
+} from '../../../packages/web-core/src/utils/uomConverter.js';
 
 describe('mode-aware item taxonomy contract', () => {
     it('keeps corrected mode taxonomy aligned across backend and frontend', () => {

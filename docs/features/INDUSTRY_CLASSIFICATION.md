@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-15
 applies_to: catalog,settings,storefront
 topic: dgfy_industry_classification
 ---
@@ -327,16 +327,16 @@ panel:
   table retired once every consumer cut over; see
   `docs/development/STORE_TEMPLATES_HANDOFF.md` §5.)
 - Admin surface: the "Registration industries" panel on the Store Template
-  Manager page (`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), and the
+  Manager page (`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), and the
   `GET/POST/PATCH /api/v1/admin/registration-industries*` endpoints
   behind it.
 - Merchant contract: `GET /api/v1/registration/industries` always returns
   every row — it never shortens the array — with a `hidden: boolean` field
   per entry (plus `template_modules`, the paired template's live module
   list). The merchant-facing `IndustrySelect` dropdown
-  (`apps/dgfy-web/src/features/registration/IndustrySelect.jsx`) filters out any
+  (`packages/web-core/src/features/registration/IndustrySelect.jsx`) filters out any
   `hidden: true` entry; the admin-only `IndustryPicker`
-  (`apps/dgfy-web/src/features/registration/IndustryPicker.jsx`, TenantManager's
+  (`packages/web-core/src/features/registration/IndustryPicker.jsx`, TenantManager's
   assisted-provisioning panel) instead annotates it "Hidden from
   registration" and leaves it selectable.
 - Server enforcement: `registerCompanyRequestUseCase.js` resolves

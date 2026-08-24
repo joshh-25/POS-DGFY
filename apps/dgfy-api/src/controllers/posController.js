@@ -37,6 +37,10 @@ export {
     getTransactionById,
     recordFiscalPrintEvent,
     voidTransaction,
+    cashRefundTransaction,
+    externalRefundTransaction,
+    providerRefundTransaction,
+    splitAllocationReversal,
     generateESalesReport,
     listESalesReports,
     updateESalesReportStatus,
@@ -55,6 +59,7 @@ export {
     uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
+    getCashierShiftHistory,
     getMerchantTenderReconciliation,
     reviewMerchantTenderReconciliation,
     openTerminalShift,
@@ -69,6 +74,7 @@ export {
     getAdminLocationMonitor,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    recordOrderBalancePayment,
     assignDeliveryPersonnel,
     updateDeliveryJobStatus,
     updateOnlineOrderStatus,
@@ -76,6 +82,7 @@ export {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -113,6 +120,10 @@ import {
     getTransactionById,
     recordFiscalPrintEvent,
     voidTransaction,
+    cashRefundTransaction,
+    externalRefundTransaction,
+    providerRefundTransaction,
+    splitAllocationReversal,
     generateESalesReport,
     listESalesReports,
     updateESalesReportStatus,
@@ -131,6 +142,7 @@ import {
     uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
+    getCashierShiftHistory,
     getMerchantTenderReconciliation,
     reviewMerchantTenderReconciliation,
     openTerminalShift,
@@ -145,6 +157,7 @@ import {
     getAdminLocationMonitor,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    recordOrderBalancePayment,
     assignDeliveryPersonnel,
     updateDeliveryJobStatus,
     updateOnlineOrderStatus,
@@ -152,6 +165,7 @@ import {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -189,6 +203,10 @@ export default {
     getTransactionById,
     recordFiscalPrintEvent,
     voidTransaction,
+    cashRefundTransaction,
+    externalRefundTransaction,
+    providerRefundTransaction,
+    splitAllocationReversal,
     generateESalesReport,
     listESalesReports,
     updateESalesReportStatus,
@@ -207,6 +225,7 @@ export default {
     uploadBulkCatalogImages,
     deleteCatalogImage,
     getCurrentTerminalShift,
+    getCashierShiftHistory,
     getMerchantTenderReconciliation,
     reviewMerchantTenderReconciliation,
     openTerminalShift,
@@ -221,6 +240,7 @@ export default {
     getAdminLocationMonitor,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    recordOrderBalancePayment,
     assignDeliveryPersonnel,
     updateDeliveryJobStatus,
     updateOnlineOrderStatus,
@@ -228,5 +248,6 @@ export default {
     printReceipt,
     printShiftSummary,
     printZReading,
+    authorizeDeviceDrawer,
     openDeviceDrawer
 };

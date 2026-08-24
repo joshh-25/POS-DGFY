@@ -62,6 +62,7 @@ export const PERMISSIONS = {
         actions: {
             VIEW_POS: "pos:view",           // View POS transactions and reports
             TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
+            AUTHORIZE_DISCOUNTS: "pos:discount_authorize", // Authorize POS discounts with an individual PIN
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift
@@ -87,6 +88,28 @@ export const PERMISSIONS = {
             MANAGE_AFFILIATE_SETTINGS: "affiliates:settings",         // Enable program, change default rate/window/min cashout
             APPROVE_AFFILIATE_CASHOUTS: "affiliates:cashout_approve", // Approve or reject affiliate cashout requests
             PAY_AFFILIATE_CASHOUTS: "affiliates:cashout_pay",         // Mark an approved cashout as paid
+        }
+    },
+
+    // --- DOWNPAYMENT (Phase 138, #820) ---
+    DOWNPAYMENT: {
+        label: "Downpayment & Partial Payment",
+        actions: {
+            VIEW_DOWNPAYMENT_SETTINGS: "downpayment:view",       // View per-store payment mode / downpayment policy
+            MANAGE_DOWNPAYMENT_SETTINGS: "downpayment:settings", // Change payment mode, downpayment amount/type, refundability
+        }
+    },
+
+    // --- VOUCHERS (#655) ---
+    // Split out of SYSTEM.VIEW_SETTINGS/EDIT_SETTINGS, which Phase 103 (#614) deliberately reused as
+    // a scoping shortcut -- see routes/vouchers.js's own comment. Dual-gated for one release
+    // alongside the legacy SYSTEM pair (see routes/vouchers.js) so no existing admin/manager loses
+    // access before the deploy-time backfill (scripts/backfill-role-permissions.js) has run.
+    VOUCHERS: {
+        label: "Vouchers",
+        actions: {
+            VIEW: "vouchers:view",     // View voucher campaigns
+            MANAGE: "vouchers:manage", // Create, edit, and change lifecycle status of voucher campaigns
         }
     },
 
@@ -230,7 +253,10 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.VIEW_USERS,
         PERMISSIONS.SYSTEM.actions.DELETE_USERS,
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
-        PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES
+        PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
+        PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
+        PERMISSIONS.VOUCHERS.actions.VIEW,
+        PERMISSIONS.VOUCHERS.actions.MANAGE
     ],
     staff: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,

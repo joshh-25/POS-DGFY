@@ -1,13 +1,26 @@
 name: PR Android Build Check
 
+# No longer wired into pr-checks.yml (removed 2026-08-14, #416 -- it was
+# permanently `if: false` there since the self-hosted cutover, because
+# vm-sieitzstaging has no Android SDK installed and this workflow's default
+# runner is billing-blocked ubuntu-latest). Kept runnable by hand from the
+# Actions tab via workflow_dispatch for whenever an Android build-check is
+# actually wanted against a branch, without paying for it (or failing it) on
+# every PR. `workflow_call` stays too, in case a future caller wants it
+# path-gated or otherwise conditional again -- e.g. once an Android SDK is
+# set up on a self-hosted runner.
 on:
   workflow_call:
-    inputs:
+    inputs: &runner_labels_input
       runner_labels_json:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
+        # Not self-hosted like the other reusables: needs a preinstalled
+        # Android SDK, which the online self-hosted runner doesn't have.
         default: '["ubuntu-latest"]'
+  workflow_dispatch:
+    inputs: *runner_labels_input
 
 jobs:
   build-check:
@@ -28,8 +41,8 @@ jobs:
       # app/src/{dev,staging}/res/xml/network_security_config.xml resource
       # sets merge cleanly (an XML comment or config typo here is a class of
       # bug a plain XML-syntax check won't catch, since it only fails inside
-      # AAPT2's resource merge, not generic parsing -- see #254). beta/prod
-      # carry no network security config of their own and share the same
+      # AAPT2's resource merge, not generic parsing -- see #254). prod
+      # carries no network security config of its own and shares the same
       # app/src/main sources compiled by these two, so they don't need their
       # own build here. This deliberately only proves the app *builds*, same
       # scope as pr-frontend-build-checks.yml/pr-backend-build-checks.yml --

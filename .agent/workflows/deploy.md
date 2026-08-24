@@ -111,7 +111,9 @@ cd /var/www/skupervisor
 git pull --ff-only origin master
 npm ci --no-audit --no-fund
 cd backend && npm ci --no-audit --no-fund && npx sequelize-cli db:migrate && npm run repair:indexes && npm run audit:indexes && npm run audit:billing-funnel && cd ..
-cd apps/dgfy-web && npm ci --no-audit --no-fund && npm run build && cd ../..
+cd apps/dgfy-ims && npm ci --no-audit --no-fund && npm run build && cd ../..
+cd apps/dgfy-pos && npm ci --no-audit --no-fund && npm run build && cd ../..
+cd apps/dgfy-storefront && npm ci --no-audit --no-fund && npm run build && cd ../..
 pm2 startOrReload ecosystem.config.cjs --env production --update-env
 pm2 save
 ```

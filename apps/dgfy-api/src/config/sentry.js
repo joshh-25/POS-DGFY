@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/node';
+import { isExpectedDomainFailure } from '../modules/shared/contracts/domainErrors.js';
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
@@ -332,6 +333,10 @@ export const sentryRequestContext = (req, _res, next) => {
 // dropped. Exported standalone so this can be unit-tested without spinning
 // up the real Sentry.expressErrorHandler.
 export const shouldReportErrorToSentry = (error) => {
+  // Expected precondition failures (a DomainError shaped as 5xx for an optional integration
+  // that's simply not configured/enabled) are known client/environment state, not a fault --
+  // see domainErrors.js's isExpectedDomainFailure and #508.
+  if (isExpectedDomainFailure(error)) return false;
   const statusCode = Number(error?.statusCode || error?.status || 500);
   return statusCode >= 500;
 };

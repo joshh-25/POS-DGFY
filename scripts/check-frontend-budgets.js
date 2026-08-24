@@ -5,10 +5,12 @@ const { spawnSync } = require('child_process');
 
 const DEFAULT_REPORT_PATH = path.join('.tmp', 'frontend-budgets', 'frontend_budget_report.json');
 
+// Each app now builds inside its own standalone package (issue #322 Phase 6)
+// instead of a shared top-level dist-apps/<app> output dir.
 const REQUIRED_APP_ASSET_DIRS = [
-  { app: 'skupervisor', dirParts: ['dist-apps', 'skupervisor', 'assets'] },
-  { app: 'pos', dirParts: ['dist-apps', 'pos', 'assets'] },
-  { app: 'store', dirParts: ['dist-apps', 'store', 'assets'] },
+  { app: 'skupervisor', dirParts: ['apps', 'dgfy-ims', 'dist', 'assets'] },
+  { app: 'pos', dirParts: ['apps', 'dgfy-pos', 'dist', 'assets'] },
+  { app: 'store', dirParts: ['apps', 'dgfy-storefront', 'dist', 'assets'] },
 ];
 
 const ROUTE_BUDGETS = [
@@ -28,7 +30,14 @@ const ROUTE_BUDGETS = [
   // offline queue, terminal-session, and hardware-runtime controls were added.
   // Rebased 2026-06-30 after the standalone POS terminal candidate measured
   // above the June baseline during the governed release-local build.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 154 },
+  // Rebased 2026-08-16 after governed per-sale discount authorization, shared
+  // parked-sale handoff, and resumable split-payment completion were added to
+  // the cashier route. Heavy dialogs remain lazy chunks; this ceiling covers
+  // the route-level coordination state that must stay resident during a sale.
+  // Raised 166 -> 190 on 2026-08-18 for the #631 POS drawer/discount/notes/PayMongo work
+  // (measured 183.93KB). This is the second raise from the same workstream after #577; #392
+  // tracks splitting POSCheckoutTerminal.jsx rather than raising the ceiling again.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 190 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
   { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
   // Rebased after terminal auth, shift, queue orchestration, and setup-flow
@@ -36,7 +45,16 @@ const ROUTE_BUDGETS = [
   // split into lazy chunks.
   // Rebased 2026-07-01 after the POS map hotfix restored lazy checkout chunks
   // and measured the remaining route controller at 110.39KB.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 116 },
+  // Rebased 2026-08-16 after terminal recovery, cross-cashier shift resume,
+  // admin audit authorization, and shared parked-sale ownership checks added
+  // route-level orchestration while their rendered workspaces remain lazy.
+  // Raised 121 -> 128 on 2026-08-23 after the downpayment epic's terminal-facing
+  // work (#822/#824/#825, #865/#866 -- split display, Settle Balance action,
+  // customer_choice controls) tipped the route controller to 121.6KB, tripping
+  // the near-zero-headroom gate #392 already flagged. #392 tracks the larger
+  // decision of whether to keep rebasing vs. split TerminalPage.jsx; this is
+  // just the rebase half with real headroom restored, not a resolution of it.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 128 },
   // Rebased 2026-06-30 to the current sales route candidate.
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 49 },
 ];
@@ -120,31 +138,37 @@ function resolveRequiredAssetDirs(projectRoot) {
   }));
 }
 
+const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront'];
+
 function runFrontendBuild(projectRoot, logger = console) {
   // Two-second floor absorbs filesystem timestamp precision differences.
   const buildStartedAtMs = Date.now() - 2000;
   logger.log('[frontend-budgets] Building frontend apps before budget check');
-  const buildCommand = 'npm --prefix apps/dgfy-web run build:all';
-  const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
-  const args = process.platform === 'win32'
-    ? ['/d', '/s', '/c', buildCommand]
-    : ['--prefix', 'apps/dgfy-web', 'run', 'build:all'];
-  const result = spawnSync(command, args, {
-    cwd: projectRoot,
-    stdio: 'inherit',
-    env: process.env,
-  });
 
-  if (result.error) {
-    throw new BudgetGateError(`Failed to launch frontend build: ${result.error.message}`, {
-      code: 'BUILD_LAUNCH_FAILED',
+  for (const appDir of FRONTEND_BUILD_APP_DIRS) {
+    const buildCommand = `npm --prefix ${appDir} run build`;
+    const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+    const args = process.platform === 'win32'
+      ? ['/d', '/s', '/c', buildCommand]
+      : ['--prefix', appDir, 'run', 'build'];
+    const result = spawnSync(command, args, {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      env: process.env,
     });
+
+    if (result.error) {
+      throw new BudgetGateError(`Failed to launch frontend build (${appDir}): ${result.error.message}`, {
+        code: 'BUILD_LAUNCH_FAILED',
+      });
+    }
+    if (result.status !== 0) {
+      throw new BudgetGateError(`Frontend build failed before budget calculation (${appDir}).`, {
+        code: 'BUILD_FAILED',
+      });
+    }
   }
-  if (result.status !== 0) {
-    throw new BudgetGateError('Frontend build failed before budget calculation.', {
-      code: 'BUILD_FAILED',
-    });
-  }
+
   return buildStartedAtMs;
 }
 
@@ -323,7 +347,7 @@ function checkFrontendBudgets(options = {}) {
       status,
       mode,
       project_root: projectRoot,
-      build_command: options.skipBuild ? null : 'npm --prefix apps/dgfy-web run build:all',
+      build_command: options.skipBuild ? null : FRONTEND_BUILD_APP_DIRS.map((appDir) => `npm --prefix ${appDir} run build`).join(' && '),
       freshness_floor: freshnessFloorMs === null ? null : new Date(freshnessFloorMs).toISOString(),
       required_asset_dirs: requiredDirs.map(({ app, dir }) => ({ app, path: path.relative(projectRoot, dir) })),
       budgets: budgetResults,

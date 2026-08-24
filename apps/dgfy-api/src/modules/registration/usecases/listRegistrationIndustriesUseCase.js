@@ -3,6 +3,7 @@ import {
     describeRegistrationIndustry,
     withEngineClassification
 } from '../../shared/constants/registrationIndustries.js';
+import { normalizeRegistrationIndustryNiches } from '../registrationIndustryNiches.js';
 
 /**
  * The public read behind GET /api/v1/registration/industries (issue #178
@@ -39,7 +40,7 @@ export const buildListRegistrationIndustriesUseCase = ({ repository, catalogRepo
                 order: row.display_order,
                 label: row.label,
                 summary: row.summary,
-                niches: row.niches,
+                niches: normalizeRegistrationIndustryNiches(row.niches),
                 workflow_mode: row.workflow_mode,
                 template_key: row.template_key,
                 hidden: row.hidden === true,

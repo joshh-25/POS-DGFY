@@ -100,6 +100,18 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/testing/release-go-no-go-checklist.md",
+      "topic": "pre_promotion_local_gate",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
+      "path": "docs/testing/direct-paymongo-payment-verification.md",
+      "topic": "direct_paymongo_payment_verification",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
       "path": "docs/compliance/ph-pos-software-developer-compliance-guide.md",
       "topic": "ph_pos_software_developer_compliance",
       "expected_status": "authoritative",
@@ -162,6 +174,12 @@
     {
       "path": "docs/features/SERVICES_FULFILLMENT_PROFILES.md",
       "topic": "services_fulfillment_profiles",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/features/FUNDING_AND_DISCOUNT_STACKING.md",
+      "topic": "platform_funding_and_discount_stacking",
       "expected_status": "reference",
       "expected_authority_level": "reference"
     }

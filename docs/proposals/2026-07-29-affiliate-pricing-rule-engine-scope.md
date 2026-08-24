@@ -151,7 +151,7 @@ and are marked ⚠.
 | Ref | Decision | Resolution |
 |---|---|---|
 | A10 | VAT moving with the affiliate price | **Accepted.** BIR requires the receipt to reflect the price actually paid, so VAT on ₱90 is correct. Stated in the ADR rather than left to be discovered (§7.1). |
-| A11 | Promo codes stacking with affiliate discounts | **Allowed in Phase 1, surfaced as a warning in the config UI.** Commission computes on base price (A3), so affiliate earnings are unaffected either way; the only exposure is merchant margin, which is the owner's call to make knowingly. |
+| A11 | Promo codes stacking with affiliate discounts | **Allowed in Phase 1, surfaced as a warning in the config UI.** Commission computes on base price (A3), so affiliate earnings are unaffected either way; the only exposure is merchant margin, which is the owner's call to make knowingly. *Updated 2026-08-17 (#566): still true for percent-off and amount-off vouchers, which compose sequentially after the affiliate rule. A **fixed-price** voucher under an active affiliate attribution is refused (`VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT`), not warned — see §7.4 and ADR 0066.* |
 | A12 | `attribution_window_days` setting | **Removed from the owner panel** in the same change. It is enforced nowhere today and session-scoping makes it actively misleading. |
 | A13 | Pricing failure mode | **Pricing is pre-commit and blocking** — an unresolvable affiliate rule fails the checkout. A deliberate departure from ADR 0036's best-effort accrual convention, because silently charging the wrong price is the worst available outcome (§10). |
 | A14 | Can the affiliate set their own price? | **No in Phase 1.** The owner configures everything. Follows from B4, but the external pack's reseller example implies otherwise, so it is stated explicitly. |
@@ -292,6 +292,17 @@ Additive; no behavior change when no affiliate is attributed.
 
 `promoApplication.discountAmount` already exists. Affiliate discount plus promo code is a double
 discount the merchant funds twice. Allowed in Phase 1 with a config-UI warning.
+
+**Updated 2026-08-17 (#566, ADR 0066).** Vouchers generalize promo codes (#454), so the same
+question now has a sharper answer. The affiliate rule resolves the **line unit price** inside
+`prepareCheckoutLines`; a voucher resolves an **order-level discount** against the resulting
+subtotal, in the slot the promo application already occupies. They compose sequentially and never
+contend for `price_override_reason`. The A11 warning stands for percent-off and amount-off.
+
+The exception is `benefit_class = 'fixed_price'`: it and an affiliate price rule both claim the
+right to set the final unit price, which is undefined rather than merely expensive. That case fails
+checkout closed with `VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT` instead of warning. ADR 0050's
+Consequences item 5 carries the matching amendment.
 
 ### 7.5 Session-scoped attribution is a live behavior change *(B3)*
 

@@ -4,7 +4,7 @@ import android.os.Build
 import java.net.URI
 
 object AppConfig {
-    // Sourced from the active product flavor (prod/beta) in app/build.gradle.kts.
+    // Sourced from the active product flavor (prod/staging/dev) in app/build.gradle.kts.
     private val LIVE_POS_ORIGIN = BuildConfig.LIVE_POS_ORIGIN
     private val LIVE_POS_HOST = BuildConfig.LIVE_POS_HOST
     private val SKUPERVISOR_HOST = BuildConfig.SKUPERVISOR_HOST

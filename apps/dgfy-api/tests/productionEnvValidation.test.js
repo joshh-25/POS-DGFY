@@ -27,7 +27,9 @@ const baseEnv = {
   REDIS_URL: 'redis://127.0.0.1:6379',
   RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
   RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
-  PAYMENTS_ENABLED: 'false'
+  PAYMENTS_ENABLED: 'false',
+  ADMIN_USERNAME: 'platform-admin',
+  ADMIN_PASSWORD_HASH: `$2b$12$${'a'.repeat(53)}`
 };
 
 describe('production environment validation', () => {
@@ -84,6 +86,44 @@ describe('production environment validation', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('SESSION_COOKIE_SECURE must be true in production');
+  });
+
+  it('requires explicit non-default admin credentials in production', () => {
+    const missing = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        ADMIN_USERNAME: '',
+        ADMIN_PASSWORD_HASH: ''
+      }
+    });
+    expect(missing.errors).toEqual(expect.arrayContaining([
+      'Missing required environment value: ADMIN_USERNAME',
+      'Missing required environment value: ADMIN_PASSWORD_HASH'
+    ]));
+
+    const defaultHash = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        ADMIN_USERNAME: 'skupervisor',
+        ADMIN_PASSWORD_HASH: '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK'
+      }
+    });
+    expect(defaultHash.errors).toContain(
+      'ADMIN_PASSWORD_HASH must not use the documented default password hash in production'
+    );
+  });
+
+  it('disables generic mode RBAC fallback by default in production', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        MODE_RBAC_GENERIC_FALLBACK_ENABLED: 'true'
+      }
+    });
+    expect(result.errors).toContain('MODE_RBAC_GENERIC_FALLBACK_ENABLED must be false in production');
+
+    const defaulted = validateProductionEnv({ env: baseEnv });
+    expect(defaulted.errors).not.toContain('MODE_RBAC_GENERIC_FALLBACK_ENABLED must be false in production');
   });
 
   it('fails production when DB auto sync is enabled', () => {
@@ -156,6 +196,82 @@ describe('production environment validation', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS must not be true in production, live mode, or payment-enabled deployments');
+  });
+
+  it('requires explicit live confirmation for production direct GCash and Maya', () => {
+    const directLiveEnv = {
+      ...baseEnv,
+      COMMERCE_PAYMENTS_ENABLED: 'true',
+      PAYMONGO_MODE: 'live',
+      PAYMONGO_LIVE_PUBLIC_KEY: 'pk_live_fixture',
+      PAYMONGO_LIVE_SECRET_KEY: 'sk_live_fixture',
+      PAYMONGO_LIVE_WEBHOOK_SECRET: 'whsec_live_fixture',
+      PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture',
+      STOREFRONT_DIRECT_GCASH_ENABLED: 'true'
+    };
+
+    const missingConfirmation = validateProductionEnv({ env: directLiveEnv });
+    expect(missingConfirmation.ok).toBe(false);
+    expect(missingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true is required when direct GCash is enabled in live mode'
+    );
+
+    const configured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(configured.ok).toBe(true);
+
+    const mayaMissingConfirmation = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true'
+      }
+    });
+    expect(mayaMissingConfirmation.ok).toBe(false);
+    expect(mayaMissingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true is required when direct Maya is enabled in live mode'
+    );
+
+    const mayaConfigured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_GCASH_ENABLED: 'false',
+        STOREFRONT_DIRECT_MAYA_ENABLED: 'true',
+        STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(mayaConfigured.ok).toBe(true);
+  });
+
+  it('requires explicit live confirmation for production direct card', () => {
+    const directLiveEnv = {
+      ...baseEnv,
+      COMMERCE_PAYMENTS_ENABLED: 'true',
+      PAYMONGO_MODE: 'live',
+      PAYMONGO_LIVE_PUBLIC_KEY: 'pk_live_fixture',
+      PAYMONGO_LIVE_SECRET_KEY: 'sk_live_fixture',
+      PAYMONGO_LIVE_WEBHOOK_SECRET: 'whsec_live_fixture',
+      PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture',
+      STOREFRONT_DIRECT_CARD_ENABLED: 'true'
+    };
+
+    const missingConfirmation = validateProductionEnv({ env: directLiveEnv });
+    expect(missingConfirmation.ok).toBe(false);
+    expect(missingConfirmation.errors).toContain(
+      'STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED=true is required when direct card is enabled in live mode'
+    );
+
+    const configured = validateProductionEnv({
+      env: {
+        ...directLiveEnv,
+        STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED: 'true'
+      }
+    });
+    expect(configured.ok).toBe(true);
   });
 
   it('requires PayMongo and DGFY merchant config when commerce payments are enabled', () => {

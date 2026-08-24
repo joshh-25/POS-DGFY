@@ -146,13 +146,13 @@ describe('POS governed discount policy', () => {
 
     test('allows employee discounts without an employee ID', async () => {
         const result = await resolvePosGovernedDiscount({
-            draft: { type: 'employee', customer_name: 'Employee Buyer', method: 'percentage', rate: 50, employee_name: 'Optional display name' },
+            draft: { type: 'employee', method: 'percentage', rate: 50, employee_name: 'Employee Name Only' },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type]
         });
 
-        expect(result.application).toMatchObject({ employee_id: null, employee_name: null, rate: 15 });
+        expect(result.application).toMatchObject({ employee_id: null, employee_name: 'Employee Name Only', rate: 15 });
     });
 
     test('requires customer name for non-statutory promo discounts', async () => {
@@ -168,14 +168,14 @@ describe('POS governed discount policy', () => {
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
     });
 
-    test('requires customer name for employee discounts before resolving the employee', async () => {
+    test('requires employee name for employee discounts before resolving the employee', async () => {
         await expect(resolvePosGovernedDiscount({
             draft: { type: 'employee', employee_id: '7' },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type],
             findActiveEmployee: async () => ({ user_id: 7, username: 'cashier-seven' })
-        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+        })).rejects.toMatchObject({ details: { reason_code: 'EMPLOYEE_NAME_REQUIRED' } });
     });
 
     test('requires customer name for manual discounts while preserving existing manual controls', async () => {
@@ -185,5 +185,166 @@ describe('POS governed discount policy', () => {
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type]
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+    });
+
+    test('allows a manual discount without a reason when the customer identity is present', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: { type: 'manual', method: 'percentage', rate: 10, customer_name: 'Walk-in Customer' },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        });
+
+        expect(result.application).toMatchObject({
+            type: 'manual',
+            customer_name: 'Walk-in Customer',
+            rate: 10
+        });
+        expect(result.application.reason || '').toBe('');
+    });
+
+    test('restricts employee and manual discounts to selected cart items', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                customer_name: 'Employee Buyer',
+                employee_name: 'Employee Name',
+                eligible_item_ids: [2]
+            },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type]
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 2 }]);
+    });
+
+    // #712: POS voucher redemption -- the domain policy stays DB-agnostic, so `redeemVoucher` is a
+    // fake caller-bound async function here, matching how findActiveRule/findActiveEmployee are
+    // faked above.
+    describe('voucher discounts (#712)', () => {
+        const percentOffVoucher = {
+            applied: true,
+            code: 'GRACEOFFER',
+            title: 'Grace Offer',
+            badge: null,
+            benefitClass: 'percent_off',
+            percentOffBps: 1000, // 10%
+            discountCentavos: 800,
+            lineAllocations: [
+                { item_id: 1, quantity: 1, discountCentavos: 800, eligible: true },
+                { item_id: 2, quantity: 1, discountCentavos: 0, eligible: false }
+            ]
+        };
+
+        test('requires customer name for a voucher discount, matching the promo requirement', async () => {
+            await expect(resolvePosGovernedDiscount({
+                draft: { type: 'voucher', voucher_code: 'GRACEOFFER' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async () => percentOffVoucher
+            })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
+        });
+
+        test('requires a voucher code before calling redeemVoucher at all', async () => {
+            let callCount = 0;
+            const redeemVoucher = async () => { callCount += 1; return percentOffVoucher; };
+            await expect(resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: '  ' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher
+            })).rejects.toMatchObject({ details: { reason_code: 'VOUCHER_CODE_REQUIRED' } });
+            expect(callCount).toBe(0);
+        });
+
+        test('throws when no redeemVoucher dependency is provided for a voucher discount', async () => {
+            await expect(resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'GRACEOFFER' },
+                preparedLines,
+                subtotalAmount: 180
+            })).rejects.toThrow('redeemVoucher dependency is required for voucher governed discounts');
+        });
+
+        test('shapes a percent_off voucher application from the redemption result', async () => {
+            const result = await resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: ' graceoffer ' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async () => percentOffVoucher
+            });
+
+            expect(result.application).toMatchObject({
+                type: 'voucher',
+                method: 'percentage',
+                rate: 10,
+                amount: null,
+                promo_code: 'GRACEOFFER',
+                customer_name: 'Walk-in Customer',
+                lines: [{ item_id: 1 }]
+            });
+            expect(result.promo).toBeNull();
+            expect(result.voucher).toBe(percentOffVoucher);
+        });
+
+        test('shapes a fixed-benefit (amount_off / fixed_price) voucher application', async () => {
+            const fixedVoucher = {
+                applied: true,
+                code: 'PHARMA50',
+                title: 'Pharmacy Fixed Price',
+                badge: 'B2B',
+                benefitClass: 'fixed_price',
+                percentOffBps: null,
+                discountCentavos: 500,
+                lineAllocations: [
+                    { item_id: 1, quantity: 1, discountCentavos: 500, eligible: true }
+                ]
+            };
+            const result = await resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'PHARMA50' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async () => fixedVoucher
+            });
+
+            expect(result.application).toMatchObject({
+                type: 'voucher',
+                method: 'fixed',
+                rate: null,
+                label: 'B2B',
+                promo_code: 'PHARMA50'
+            });
+        });
+
+        test('passes every prepared line to redeemVoucher, sale-level only (no per-line scoping)', async () => {
+            let capturedLines = null;
+            await resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'GRACEOFFER' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async ({ lines }) => {
+                    capturedLines = lines;
+                    return percentOffVoucher;
+                }
+            });
+
+            expect(capturedLines).toEqual([
+                expect.objectContaining({ item_id: 1 }),
+                expect.objectContaining({ item_id: 2 })
+            ]);
+        });
+
+        test('never reaches the unsupported-discount-type rejection for a voucher', async () => {
+            // Regression guard: the voucher branch must be checked BEFORE the RULE_TYPES rejection,
+            // or every voucher discount would 422 with UNSUPPORTED_DISCOUNT_TYPE.
+            const result = await resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'GRACEOFFER' },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async () => percentOffVoucher
+            });
+
+            expect(result.application.type).toBe('voucher');
+        });
     });
 });

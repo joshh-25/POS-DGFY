@@ -1,0 +1,105 @@
+{
+    "env": {
+        "browser": true,
+        "es2021": true,
+        "node": true
+    },
+    "extends": [
+        "eslint:recommended",
+        "plugin:react/recommended",
+        "plugin:react-hooks/recommended"
+    ],
+    "parserOptions": {
+        "ecmaFeatures": {
+            "jsx": true
+        },
+        "ecmaVersion": 12,
+        "sourceType": "module"
+    },
+    "plugins": [
+        "react"
+    ],
+    "rules": {
+        "react/react-in-jsx-scope": "off",
+        "react/prop-types": "off",
+        "no-unused-vars": "warn",
+        "max-lines": ["warn", { "max": 1500, "skipBlankLines": true, "skipComments": true }],
+        "no-restricted-syntax": ["error",
+            {
+                "selector": "CallExpression[callee.property.name='replaceAll']",
+                "message": "String.prototype.replaceAll is ES2021 (Chrome 85+). The iMin POS WebView is Chrome 80-84 -- use .replace(/x/g, ...) instead. See DGFY-POS-B."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='at']",
+                "message": "Array/String.prototype.at is ES2022 (Chrome 92+). The iMin POS WebView is Chrome 80-84 -- use indexed access (arr[arr.length - 1]) instead. See #664 / #666."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='findLast']",
+                "message": "Array.prototype.findLast is ES2023 (Chrome 97+). The iMin POS WebView is Chrome 80-84 -- use a reversed loop or [...arr].reverse().find(...) instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='findLastIndex']",
+                "message": "Array.prototype.findLastIndex is ES2023 (Chrome 97+). The iMin POS WebView is Chrome 80-84 -- use a reversed loop instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.object.name='Object'][callee.property.name='hasOwn']",
+                "message": "Object.hasOwn is ES2022 (Chrome 93+). The iMin POS WebView is Chrome 80-84 -- use Object.prototype.hasOwnProperty.call(obj, prop) instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.name='structuredClone']",
+                "message": "structuredClone is Chrome 98+. The iMin POS WebView is Chrome 80-84 -- use JSON.parse(JSON.stringify(x)) or a manual deep clone instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='toSorted']",
+                "message": "Array.prototype.toSorted is ES2023 (Chrome 110+). The iMin POS WebView is Chrome 80-84 -- use [...arr].sort(...) instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='toReversed']",
+                "message": "Array.prototype.toReversed is ES2023 (Chrome 110+). The iMin POS WebView is Chrome 80-84 -- use [...arr].reverse() instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.property.name='toSpliced']",
+                "message": "Array.prototype.toSpliced is ES2023 (Chrome 110+). The iMin POS WebView is Chrome 80-84 -- use [...arr] then .splice(...) on the copy instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.object.name='Object'][callee.property.name='groupBy']",
+                "message": "Object.groupBy is Chrome 117+. The iMin POS WebView is Chrome 80-84 -- use array.reduce(...) instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.object.name='Map'][callee.property.name='groupBy']",
+                "message": "Map.groupBy is Chrome 117+. The iMin POS WebView is Chrome 80-84 -- use array.reduce(...) instead. See #666."
+            },
+            {
+                "selector": "CallExpression[callee.object.name='AbortSignal'][callee.property.name='timeout']",
+                "message": "AbortSignal.timeout is Chrome 103+. The iMin POS WebView is Chrome 80-84 -- use a manual AbortController + setTimeout instead. See #666."
+            }
+        ]
+    },
+    "settings": {
+        "react": {
+            "version": "detect"
+        }
+    },
+    "overrides": [
+        {
+            "files": ["**/__tests__/**", "**/*.test.js", "**/*.test.jsx"],
+            "rules": {
+                "max-lines": "off",
+                "no-restricted-syntax": "off"
+            }
+        },
+        {
+            "files": ["**/*.config.js", "**/*.config.mjs", "**/*.config.cjs"],
+            "rules": {
+                "no-restricted-syntax": "off"
+            }
+        },
+        {
+            "files": ["src/StorefrontApp.jsx"],
+            "rules": {
+                "react-hooks/preserve-manual-memoization": "warn",
+                "max-lines": "off"
+            }
+        }
+    ]
+}

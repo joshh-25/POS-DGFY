@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product_engineering
-last_reviewed: 2026-07-30
+last_reviewed: 2026-08-21
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_settlement
 ---
@@ -19,6 +19,23 @@ records the remaining tenant payable. Tenant funds are released through controll
 Automatic payouts are not production-ready. Manual payout evidence is the only
 supported release mechanism until provider, legal, accounting, tax, contract, and
 regulatory requirements are approved.
+
+### Payment Channel Boundary
+
+- Storefront Card, GCash, Maya, GrabPay, ShopeePay, and QR Ph are online payments. Every enabled
+  method must create a landlord-owned PayMongo commerce payment session and may
+  finalize an order only after verified provider confirmation.
+- Walk-in POS GCash uses the merchant's physical QR and is recorded manually as
+  a POS tender. It must not create a PayMongo commerce payment session.
+- Cash remains a direct payment method and must not be submitted through the
+  PayMongo online-payment session endpoint.
+- Production Storefront payment choices are fail-closed: the UI shows an online
+  method only when the catalog's server-resolved `payment_capabilities` marks it
+  enabled. The explicit local QR Ph sandbox override remains a non-production
+  developer aid.
+- Direct online banking remains outside the current Storefront Hosted Checkout
+  contract because BPI/UBP and Brankas banks require bank-specific `bank_code`
+  handling rather than the exact method routing used by this flow.
 
 ## Amount Contract
 
@@ -67,7 +84,10 @@ Financial migrations are additive and intentionally do not delete posted history
 ## Workflow
 
 1. A verified successful PayMongo payment creates one transaction snapshot and
-   idempotent ledger entries.
+   idempotent ledger entries. Enforced at the commerce webhook layer since #476
+   (2026-08-21) by a row-locked session claim plus a unique index and locked
+   lookup on `provider_event_id`, not state checks alone — see ADR 0052's
+   2026-08-21 amendment for the mechanism.
 2. Missing or inconsistent provider financial data creates a blocking
    reconciliation exception.
 3. Reconciled transactions become eligible after the policy's 15/30-day cycle.

@@ -10,6 +10,10 @@ import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
 import {
+    loadItemLocationStockMap,
+    applyItemLocationStockMap
+} from '../../shared/repositories/itemLocationStockOverlay.js';
+import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
@@ -510,6 +514,65 @@ const auditBarcodeEvent = async ({
     }, { transaction });
 };
 
+const ITEM_AUDIT_FIELDS = Object.freeze([
+    'name',
+    'sku_code',
+    'category',
+    'product_type',
+    'status',
+    'folder_id',
+    'product_folder',
+    'cost_per_unit',
+    'default_sale_price',
+    'unit_of_measure',
+    'vat_type',
+    'tracking_mode',
+    'current_stock',
+    'senior_pwd_discount_eligible'
+]);
+
+const auditValue = (value) => {
+    if (value === undefined) return null;
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'string') return value.slice(0, 500);
+    if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
+    return null;
+};
+
+const buildItemAuditChanges = (before = {}, after = {}, requested = {}) => ITEM_AUDIT_FIELDS.reduce((changes, field) => {
+    if (!Object.prototype.hasOwnProperty.call(requested, field)) return changes;
+    const previous = auditValue(before?.[field]);
+    const next = auditValue(after?.[field]);
+    if (String(previous ?? '') !== String(next ?? '')) {
+        changes[field] = { from: previous, to: next };
+    }
+    return changes;
+}, {});
+
+const auditInventoryEvent = async ({
+    userId = null,
+    entityType = 'item',
+    entityId = null,
+    action = 'UPDATE',
+    eventType,
+    changes = {},
+    transaction = null
+} = {}) => {
+    const AuditLog = dbStore.get('AuditLog');
+    if (typeof AuditLog?.create !== 'function' || !eventType) return null;
+    return AuditLog.create({
+        user_id: userId || null,
+        entity_type: entityType,
+        entity_id: entityId || null,
+        action,
+        event_type: eventType,
+        changes: {
+            event: eventType,
+            ...changes
+        }
+    }, { transaction });
+};
+
 const getCurrentWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
@@ -754,6 +817,18 @@ export const itemRepository = {
         return sequelize.transaction();
     },
 
+    async createAuditLog(payload = {}, options = {}) {
+        return auditInventoryEvent({
+            userId: payload.user_id,
+            entityType: payload.entity_type,
+            entityId: payload.entity_id,
+            action: payload.action,
+            eventType: payload.event_type,
+            changes: payload.changes,
+            transaction: options.transaction
+        });
+    },
+
     async getItems(queryParams = {}) {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
@@ -801,8 +876,14 @@ export const itemRepository = {
             search,
             sortBy = 'name',
             sortOrder = 'asc',
-            status
+            status,
+            location_id: locationId = null
         } = queryParams;
+
+        // #682: an already-resolved (grant-checked) location_id, passed by getItemsUseCase.
+        // Omitted -> current_stock stays the tenant-wide aggregate exactly as before this change.
+        const parsedLocationId = Number.parseInt(locationId, 10);
+        const hasLocationFilter = Number.isInteger(parsedLocationId) && parsedLocationId > 0;
 
         const parsedPage = parseInt(page, 10);
         const parsedLimit = parseInt(limit, 10);
@@ -929,10 +1010,27 @@ export const itemRepository = {
             locationId: hasValuationLocation ? valuationLocationId : null
         });
 
-        const itemsWithCostMetrics = transformedItems.map((item) => ({
+        let itemsWithCostMetrics = transformedItems.map((item) => ({
             ...item,
             cost_metrics: costMetricsByItemId.get(Number(item.item_id))
         }));
+
+        // #682: branch-scoped stock overlay -- mirrors POS's /pos/catalog handling of
+        // item_location_stocks exactly (same shared helpers), so Items and Sell never disagree
+        // about what a given branch actually has on hand. Honest fallback (not a hard error) when
+        // an older tenant schema doesn't have item_location_stocks yet -- location_scope.resolved
+        // tells the caller whether the overlay actually happened.
+        let locationScopeResolved = true;
+        if (hasLocationFilter) {
+            const { stockMap, locationScopeResolved: resolved } = await loadItemLocationStockMap(
+                itemsWithCostMetrics.map((item) => item.item_id),
+                parsedLocationId
+            );
+            locationScopeResolved = resolved;
+            itemsWithCostMetrics = resolved
+                ? applyItemLocationStockMap(itemsWithCostMetrics, stockMap)
+                : itemsWithCostMetrics;
+        }
 
         return {
             items: itemsWithCostMetrics,
@@ -941,7 +1039,10 @@ export const itemRepository = {
                 limit: parsedLimit,
                 total: count,
                 pages: Math.ceil(count / parsedLimit)
-            }
+            },
+            location_scope: hasLocationFilter
+                ? { location_id: parsedLocationId, resolved: locationScopeResolved }
+                : { location_id: null, resolved: true }
         };
     },
     async getItemById(itemId, queryParams = {}) {
@@ -1411,6 +1512,23 @@ export const itemRepository = {
                 });
             }
 
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'CREATE',
+                eventType: 'item_created',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    status: item.status,
+                    category: item.category,
+                    cost_per_unit: auditValue(item.cost_per_unit),
+                    default_sale_price: auditValue(item.default_sale_price)
+                },
+                transaction
+            });
+
             await transaction.commit();
             invalidateItemCostMetricsCache({ itemIds: [item.item_id] });
 
@@ -1528,6 +1646,7 @@ export const itemRepository = {
             if (!item) {
                 throw notFoundError('Item not found');
             }
+            const beforeSnapshot = { ...toPlain(item) };
 
             assertMsmePricingRequirements({
                 workflowMode,
@@ -1668,6 +1787,24 @@ export const itemRepository = {
                 });
             }
 
+            if (typeof item.reload === 'function') {
+                await item.reload({ transaction });
+            }
+            const changedFields = buildItemAuditChanges(beforeSnapshot, toPlain(item), itemData);
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'UPDATE',
+                eventType: 'item_updated',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    changed_fields: changedFields,
+                    changed_field_names: Object.keys(itemData || {}).filter((field) => field !== 'wizard_metadata')
+                },
+                transaction
+            });
+
             await transaction.commit();
             invalidateItemCostMetricsCache({ itemIds: [itemId] });
             return itemRepository.getItemById(itemId);
@@ -1796,6 +1933,19 @@ export const itemRepository = {
             };
 
             await item.update(updateData, { transaction });
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'UPDATE',
+                eventType: 'item_finalized',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    previous_status: 'draft',
+                    status: 'active'
+                },
+                transaction
+            });
             await transaction.commit();
 
             inventoryRepositoryDependencies.syncItemEmbedding(item).catch((error) => (
@@ -1916,10 +2066,28 @@ export const itemRepository = {
             throw error;
         }
 
-        await item.update({
-            status: 'inactive',
-            deleted_by: userId,
-            deleted_at: new Date()
+        const previousStatus = item.status;
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        await sequelize.transaction(async (transaction) => {
+            await item.update({
+                status: 'inactive',
+                deleted_by: userId,
+                deleted_at: new Date()
+            }, { transaction });
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'DELETE',
+                eventType: 'item_deleted',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    previous_status: previousStatus,
+                    status: 'inactive'
+                },
+                transaction
+            });
         });
 
         return true;

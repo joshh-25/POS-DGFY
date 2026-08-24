@@ -12,8 +12,8 @@
   base-config keeps cleartext blocked for everything except the emulator
   loopback and LAN preview host used for local development against a Vite
   dev server (WebPosNavigationPolicy also gates in-app navigation on scheme,
-  see WebPosActivity.kt). prod and beta carry no network security config at
-  all and stay strictly HTTPS-only.
+  see WebPosActivity.kt). prod and staging carry no network security config
+  at all and stay strictly HTTPS-only.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />

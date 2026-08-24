@@ -1,0 +1,391 @@
+import { describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import { buildStorefrontCheckoutPaymentOptions } from '../shared/model/storefrontCheckoutPaymentOptions.js';
+import {
+  createStorefrontOnlinePaymentSession,
+  startStorefrontDirectCardPayment,
+  startStorefrontDirectPayment
+} from '../shared/services/storefrontOnlinePaymentSession.js';
+
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const readSource = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');
+
+describe('Simple Storefront online payment contract', () => {
+  it('shows only backend-enabled PayMongo payment methods plus cash', () => {
+    const options = buildStorefrontCheckoutPaymentOptions({
+      card: { enabled: true, environment: 'test' },
+      gcash: { enabled: true, environment: 'test' },
+      maya: { enabled: false, environment: 'test' },
+      qrph: { enabled: true, environment: 'test' }
+    });
+
+    expect(options).toEqual([
+      { value: 'cash', label: 'Cash on delivery/pickup' },
+      { value: 'card', label: 'Card (PayMongo test)' },
+      { value: 'gcash', label: 'GCash (PayMongo test)' },
+      { value: 'qrph', label: 'Pay via QR Ph (PayMongo test)' }
+    ]);
+  });
+
+  it('shows every active hosted wallet method as its own exact selection', () => {
+    const options = buildStorefrontCheckoutPaymentOptions({
+      card: { enabled: true, environment: 'test' },
+      gcash: { enabled: true, environment: 'test' },
+      maya: { enabled: true, environment: 'test' },
+      grab_pay: { enabled: true, environment: 'test' },
+      shopeepay: { enabled: true, environment: 'test' },
+      qrph: { enabled: true, environment: 'test' }
+    });
+
+    expect(options).toEqual([
+      { value: 'cash', label: 'Cash on delivery/pickup' },
+      { value: 'card', label: 'Card (PayMongo test)' },
+      { value: 'gcash', label: 'GCash (PayMongo test)' },
+      { value: 'maya', label: 'Maya (PayMongo test)' },
+      { value: 'grab_pay', label: 'GrabPay (PayMongo test)' },
+      { value: 'shopeepay', label: 'ShopeePay (PayMongo test)' },
+      { value: 'qrph', label: 'Pay via QR Ph (PayMongo test)' }
+    ]);
+  });
+
+  it.each(['card', 'gcash', 'maya', 'grab_pay', 'shopeepay', 'qrph'])('routes online %s through the PayMongo commerce-session endpoint', async (paymentType) => {
+    const requestJson = vi.fn().mockResolvedValue({
+      payment_session: {
+        payment_session_id: 'CPS-ABC1234567',
+        payment_method: paymentType,
+        status: 'awaiting_payment'
+      }
+    });
+
+    const paymentSession = await createStorefrontOnlinePaymentSession({
+      authToken: 'customer-token',
+      checkoutPayload: { customer_name: 'Test Customer', items: [{ item_id: 1, quantity: 1 }] },
+      guestCheckoutProof: null,
+      idempotencyKey: `checkout-${paymentType}`,
+      paymentType,
+      requestJson,
+      storeSlug: 'masu-cafe-ed841f'
+    });
+
+    expect(requestJson).toHaveBeenCalledOnce();
+    expect(requestJson).toHaveBeenCalledWith('/api/v1/store/checkout/payment-sessions', expect.objectContaining({
+      method: 'POST',
+      storeSlug: 'masu-cafe-ed841f',
+      body: expect.objectContaining({
+        idempotency_key: `checkout-${paymentType}`,
+        payment_type: paymentType
+      })
+    }));
+    expect(paymentSession.payment_method).toBe(paymentType);
+  });
+
+  it('rejects cash from the PayMongo online-session helper', async () => {
+    const requestJson = vi.fn();
+
+    await expect(createStorefrontOnlinePaymentSession({
+      checkoutPayload: {},
+      idempotencyKey: 'cash-checkout',
+      paymentType: 'cash',
+      requestJson,
+      storeSlug: 'masu-cafe-ed841f'
+    })).rejects.toThrow('Only QR Ph, card, GCash, Maya, GrabPay, or ShopeePay');
+    expect(requestJson).not.toHaveBeenCalled();
+  });
+
+  it('creates a GCash payment method and attaches it with the Payment Intent client key', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'pm_test_gcash' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              next_action: { redirect: { url: 'gcash://authorize/test' } }
+            }
+          }
+        })
+      });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await startStorefrontDirectPayment({
+        billing: {
+          name: 'Test Customer',
+          email: 'customer@example.com',
+          phone: '+639171234567'
+        },
+        paymentSession: {
+          payment_flow: 'direct_gcash',
+          payment_method: 'gcash',
+          provider_payment_intent_id: 'pi_test_gcash',
+          paymongo_client_key: 'pi_test_gcash_client_key',
+          paymongo_public_key: 'pk_test_gcash',
+          paymongo_return_url: 'https://dgfy.ph/tenant-store/masu-cafe/order?payment_status=return'
+        }
+      });
+
+      expect(result).toEqual({
+        paymentMethodId: 'pm_test_gcash',
+        redirectUrl: 'gcash://authorize/test'
+      });
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"type":"gcash"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.paymongo.com/v1/payment_intents/pi_test_gcash/attach', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"client_key":"pi_test_gcash_client_key"')
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('creates a Maya payment method and attaches it with the Payment Intent client key', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'pm_test_maya' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              next_action: { redirect: { url: 'https://maya.test/authorize' } }
+            }
+          }
+        })
+      });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await startStorefrontDirectPayment({
+        billing: {
+          name: 'Test Customer',
+          email: 'customer@example.com',
+          phone: '+639171234567'
+        },
+        paymentSession: {
+          payment_flow: 'direct_maya',
+          payment_method: 'maya',
+          provider_payment_intent_id: 'pi_test_maya',
+          paymongo_client_key: 'pi_test_maya_client_key',
+          paymongo_public_key: 'pk_test_maya',
+          paymongo_return_url: 'https://dgfy.ph/tenant-store/masu-cafe/order?payment_status=return'
+        }
+      });
+
+      expect(result).toEqual({
+        paymentMethodId: 'pm_test_maya',
+        redirectUrl: 'https://maya.test/authorize'
+      });
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"type":"paymaya"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.paymongo.com/v1/payment_intents/pi_test_maya/attach', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"client_key":"pi_test_maya_client_key"')
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('creates a card payment method client-side and returns the 3-D Secure redirect', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'pm_test_card' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              status: 'awaiting_next_action',
+              next_action: { redirect: { url: 'https://secure-authentication-api.paymongo.com/3ds/test' } }
+            }
+          }
+        })
+      });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await startStorefrontDirectCardPayment({
+        billing: {
+          email: 'customer@example.com',
+          phone: '+639171234567'
+        },
+        cardDetails: {
+          cardholder: 'Test Customer',
+          cardNumber: '4343434343434345',
+          expiration: '12/30',
+          cvc: '123'
+        },
+        paymentSession: {
+          payment_flow: 'direct_card',
+          payment_method: 'card',
+          provider_payment_intent_id: 'pi_test_card',
+          paymongo_client_key: 'pi_test_card_client_key',
+          paymongo_public_key: 'pk_test_card',
+          paymongo_return_url: 'https://dgfy.ph/tenant-store/masu-cafe/order?payment_status=return'
+        }
+      });
+
+      expect(result).toEqual({
+        paymentMethodId: 'pm_test_card',
+        redirectUrl: 'https://secure-authentication-api.paymongo.com/3ds/test',
+        status: 'awaiting_next_action'
+      });
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"type":"card"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://api.paymongo.com/v1/payment_methods', expect.objectContaining({
+        body: expect.stringContaining('"card_number":"4343434343434345"')
+      }));
+      expect(fetch).toHaveBeenNthCalledWith(2, 'https://api.paymongo.com/v1/payment_intents/pi_test_card/attach', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"client_key":"pi_test_card_client_key"')
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('returns a retryable card error when PayMongo leaves the intent awaiting a payment method', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: 'pm_test_card_declined' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            attributes: {
+              status: 'awaiting_payment_method',
+              last_payment_error: { message: 'Your card was declined.' }
+            }
+          }
+        })
+      });
+    globalThis.fetch = fetch;
+
+    try {
+      const result = await startStorefrontDirectCardPayment({
+        billing: { email: 'customer@example.com' },
+        cardDetails: {
+          cardholder: 'Test Customer',
+          cardNumber: '4343434343434345',
+          expiration: '12/30',
+          cvc: '123'
+        },
+        paymentSession: {
+          payment_flow: 'direct_card',
+          payment_method: 'card',
+          provider_payment_intent_id: 'pi_test_card_declined',
+          paymongo_client_key: 'pi_test_card_declined_client_key',
+          paymongo_public_key: 'pk_test_card',
+          paymongo_return_url: 'https://dgfy.ph/tenant-store/masu-cafe/order?payment_status=return'
+        }
+      });
+
+      expect(result).toEqual({
+        paymentMethodId: 'pm_test_card_declined',
+        redirectUrl: null,
+        status: 'awaiting_payment_method',
+        errorMessage: 'Your card was declined.'
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('wires Simple checkout to capability options, PayMongo sessions, and return recovery', () => {
+    const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+    const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
+    const submission = readSource('shared/hooks/useCheckoutSubmission.js');
+    const shell = readSource('StorefrontApp.jsx');
+
+    // Phase 142 (#823): gained a second hideCash argument -- see storefrontDownpaymentPresentation.test.js
+    // and simpleCheckoutOnlinePayments.contract.test.js's own downpayment-specific assertions below.
+    // Phase 150 (#866) RF-3: widened to also hide cash at a customer_choice store regardless of
+    // election -- see the "hides cash for a customer_choice store" test below.
+    expect(route).toContain('buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })');
+    expect(route).toContain('StorefrontOnlinePaymentPanel');
+    expect(route).toContain('getStorefrontOnlinePaymentLabel');
+    expect(route).toContain('Pay with ${getStorefrontOnlinePaymentLabel(fnbPaymentType)}');
+    expect(route).toContain("fnbPaymentType === 'qrph'");
+    expect(panel).toContain("paymentType === 'qrph' && typeof onConfirmTestPayment === 'function'");
+    // Phase 142 (#823): Retail joined this branch -- see the new Retail contract test file for
+    // its own dedicated coverage.
+    expect(submission).toContain('(isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)');
+    expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    expect(submission).toContain('startStorefrontDirectPayment');
+    expect(submission).toContain('isStorefrontDirectPaymentSession');
+    expect(panel).toContain('Continue in the ${paymentLabel} app or browser authorization screen');
+    expect(panel).toContain('startStorefrontDirectCardPayment');
+    expect(panel).toContain('getCardFieldErrors');
+    expect(panel).toContain('aria-invalid');
+    expect(panel).toContain("const paymentInFlight = ['awaiting_payment', 'paid'].includes(paymentSession.status)");
+    expect(panel).toContain('cardSubmitting || cardAuthorizationSubmitted || paymentReturnPending');
+    expect(panel).toContain('PayMongo will open 3-D Secure authentication');
+    expect(panel).toContain('Your card details are sent directly to PayMongo');
+    expect(panel).toContain("result.status === 'awaiting_payment_method'");
+    expect(panel).toContain("paymentType === 'card'");
+    expect(panel).toContain("get('payment_status') === 'return'");
+    expect(panel).toContain('3-D Secure returned. Waiting for PayMongo confirmation.');
+    expect(panel).toContain('dgfy_storefront_direct_card_submitted:');
+    expect(panel).toContain('window.sessionStorage.setItem');
+    expect(panel).toContain('cardAuthorizationSubmitted');
+    expect(panel).toContain('onChooseAnotherPaymentMethod');
+    expect(panel).toContain('Choose another payment method');
+    expect(panel).not.toContain('Use cash instead');
+    expect(submission).toContain('choose another payment method after it finishes');
+    expect(shell).toContain('isSimpleMode && isResolvedOrderSubpage');
+    expect(shell).toContain("params.get('payment_session')");
+    expect(shell).toContain('setSimpleOrderStep(3)');
+    expect(shell).toContain("setCheckoutTab('checkout')");
+    expect(shell).toContain("paymentSession?.status === 'finalized' && paymentSession?.tracking_pin");
+    expect(shell).toContain('goStoreTrackPage({ pin: trackingPin });');
+  });
+
+  // Phase 142 (#823): downpayment-required stores hide cash and swap in the downpayment label/
+  // callout/submit-label -- pin the wiring at the source-text level (the full render path is
+  // exercised end-to-end by storefrontDownpaymentPresentation.test.js's model-level coverage).
+  it('hides cash and shows downpayment copy for a downpayment-required store', () => {
+    const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+    const step = readSource('modes/simple/checkout/components/SimpleCheckoutPaymentStep.jsx');
+
+    expect(route).toContain('resolveDownpaymentDisplay({ quoteResult: totals })');
+    expect(route).toContain("hideCash: downpaymentDisplay.active");
+    expect(route).toContain('isDownpaymentActive={downpaymentDisplay.active}');
+    expect(route).toContain('downpaymentDisplay.active');
+    expect(route).toContain("Pay downpayment (");
+    expect(step).toContain("isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'");
+    expect(step).toContain('!isDownpaymentActive && paymentType');
+  });
+
+  // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its
+  // options capture online (full total online, or downpayment online + balance COD), matching
+  // ADR 0070's amendment. Cash must stay hidden even when election='full' (downpaymentDisplay.active
+  // is false in that branch, since no split is in play).
+  it('hides cash for a customer_choice store regardless of the current election', () => {
+    const route = readSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+
+    expect(route).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
+  });
+});

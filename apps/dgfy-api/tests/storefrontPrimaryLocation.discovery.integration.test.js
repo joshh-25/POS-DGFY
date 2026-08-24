@@ -1,7 +1,9 @@
 import crypto from 'crypto';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import { DataTypes, Sequelize } from 'sequelize';
@@ -16,7 +18,9 @@ import { sequelize as landlordSequelize, Tenant, StorefrontDiscoveryIndex } from
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const migrationRunnerRoot = path.join(__dirname, '..', '..', 'dgfy-migration-runner');
+const backendRoot = path.join(__dirname, '..');
+const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
+const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -30,10 +34,14 @@ const createIsolatedDbName = () => (
 );
 
 const runMigrationsForDb = (dbName) => {
+    if (!fs.existsSync(sequelizeCliPath)) {
+        throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
+    }
+
     const migrationResult = spawnSync(
         process.execPath,
         [
-            'node_modules/sequelize-cli/lib/sequelize',
+            sequelizeCliPath,
             'db:migrate',
             '--env',
             'development',
@@ -117,6 +125,11 @@ describe('storefront primary location integration', () => {
         await ensureDiscoveryIndexColumn('storefront_follow_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
         await ensureDiscoveryIndexColumn('storefront_share_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
         await ensureDiscoveryIndexColumn('storefront_review_summary', { type: DataTypes.JSON, allowNull: true });
+        // The discovery index is landlord-scoped, while this test provisions an
+        // isolated tenant database. Keep the landlord test table aligned with
+        // the model and migration so a persisted snapshot exercises the current
+        // schema instead of failing on a missing column.
+        await ensureDiscoveryIndexColumn('storefront_vouchers', { type: DataTypes.JSON, allowNull: true });
         await ensureDiscoveryIndexColumn('customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });
         await ensureDiscoveryIndexColumn('effective_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'transaction' });
         await ensureDiscoveryIndexColumn('max_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });

@@ -45,6 +45,7 @@ const pathExists = async (filePath) => {
 const createBulkPosRepository = ({ items = [], existing = null, readiness = null, updateError = null } = {}) => ({
     findItemsBySkuCodes: jest.fn().mockResolvedValue(items),
     findCatalogOverrideByItemId: jest.fn().mockResolvedValue(existing),
+    createAuditLog: jest.fn().mockResolvedValue(null),
     getCatalogReadinessByItemId: jest.fn().mockResolvedValue(readiness || {
         pos_readiness: {
             ready: true,
@@ -681,7 +682,11 @@ describe('pos use-cases application result contract', () => {
         const getItemById = jest.fn().mockResolvedValue({ item_id: 101 });
         const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 101, pos_visible: true });
         const useCase = buildUpdatePosCatalogOverrideUseCase({
-            posRepository: { getItemById, upsertCatalogOverride }
+            posRepository: {
+                getItemById,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const deniedResult = await useCase({
@@ -742,7 +747,12 @@ describe('pos use-cases application result contract', () => {
         const getCatalogReadinessByItemId = jest.fn();
         const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 203, pos_visible: false });
         const useCase = buildUpdatePosCatalogOverrideUseCase({
-            posRepository: { getItemById, getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getItemById,
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -808,7 +818,11 @@ describe('pos use-cases application result contract', () => {
             })
             .mockResolvedValueOnce(null);
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -852,7 +866,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -875,7 +893,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -896,7 +918,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -932,7 +958,8 @@ describe('pos use-cases application result contract', () => {
                     pos_visible: false,
                     pos_image_path: null
                 }),
-                updateCatalogImage
+                updateCatalogImage,
+                createAuditLog: jest.fn().mockResolvedValue(null)
             },
             imageStorage: {
                 store: jest.fn().mockResolvedValue({ path: 'uploads/pos.png', url: '/uploads/pos.png' }),
@@ -1578,12 +1605,12 @@ describe('pos use-cases application result contract', () => {
             location_id: 5,
             lines: [],
             deliveryJob: {
-                status: 'delivered',
                 provider: 'manual',
+                status: 'delivered',
                 delivery_personnel_id: 21,
-                assigned_by: 9,
-                assigned_shift_id: 13,
-                assigned_at: new Date('2026-08-11T08:00:00.000Z')
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: '2026-08-07T03:00:00.000Z'
             }
         };
         const updatedOrder = {

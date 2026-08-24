@@ -280,7 +280,6 @@ Representative response:
         "tenant_id": "tenant-uuid",
         "slug": "carlos-store",
         "tenant_name": "Carlo's Store",
-        "tenant_company_token": "CARLO",
         "latitude": 10.3156,
         "longitude": 123.8854,
         "location_id": 3,

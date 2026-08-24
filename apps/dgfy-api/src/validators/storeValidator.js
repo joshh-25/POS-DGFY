@@ -2,7 +2,7 @@ import Joi from 'joi';
 import { STOREFRONT_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
 
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay'];
 const FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 
@@ -43,6 +43,9 @@ const storeQuoteSchema = Joi.object({
     location_id: Joi.number().integer().positive().allow(null).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('delivery'),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // Storefront voucher redemption (Phase 105, #455). Symmetric to promo_code, but max(64) to
+    // match vouchers.code's column width -- see src/models/Voucher.js.
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
     customer_email: Joi.string().email().trim().lowercase().max(255).allow('', null).optional(),
@@ -50,7 +53,12 @@ const storeQuoteSchema = Joi.object({
     delivery_latitude: Joi.number().min(-90).max(90).allow(null).optional(),
     delivery_longitude: Joi.number().min(-180).max(180).allow(null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
-    special_instructions: Joi.string().trim().max(2000).allow('', null).optional()
+    special_instructions: Joi.string().trim().max(2000).allow('', null).optional(),
+    // Phase 150 (#866): the customer's checkout-time pay-in-full-vs-downpayment choice, meaningful
+    // only at a payment_mode='customer_choice' store -- ignored otherwise (see
+    // downpaymentPolicy.js's resolveDownpaymentForTotal). Named payment_election, not payment_mode,
+    // to avoid colliding with the settings-level enum this schema does not otherwise carry.
+    payment_election: Joi.string().trim().lowercase().valid('full', 'downpayment').default('full')
 });
 
 const storeCheckoutSchema = storeQuoteSchema.keys({
@@ -117,12 +125,14 @@ const storeOrderHistoryQuerySchema = Joi.object({
 const storeCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
     limit: Joi.number().integer().min(1).max(200).default(60),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storeQrQuerySchema = Joi.object({
     code: Joi.string().trim().max(512).required(),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 
 const storefrontFollowBaseSchema = Joi.object({
@@ -160,7 +170,7 @@ export const validateStoreLogin = validateSchema(storeLoginSchema, 'body', 'vali
 export const validateStoreQuote = validateSchema(storeQuoteSchema, 'body', 'validatedData');
 export const validateStoreCheckout = validateSchema(storeCheckoutSchema, 'body', 'validatedData');
 export const validateStoreCheckoutPaymentSession = validateSchema(storeCheckoutSchema.keys({
-    payment_type: Joi.string().valid('qrph').default('qrph')
+    payment_type: Joi.string().valid('qrph', 'card', 'gcash', 'maya', 'grab_pay', 'shopeepay').default('qrph')
 }), 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpRequest = validateSchema(guestCheckoutOtpRequestSchema, 'body', 'validatedData');
 export const validateStoreGuestCheckoutOtpVerify = validateSchema(guestCheckoutOtpVerifySchema, 'body', 'validatedData');

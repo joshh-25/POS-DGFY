@@ -96,11 +96,10 @@ export const buildReceiptLines = (receipt = {}, { width = 48 } = {}) => {
   output.push(divider);
   output.push(buildKeyValueLine('Subtotal', money(transaction.subtotal_amount), normalizedWidth));
   output.push(buildKeyValueLine('Discount', money(transaction.discount_amount), normalizedWidth));
-  output.push(buildKeyValueLine('Service Fee', money(transaction.service_fee_amount), normalizedWidth));
   if (Number(transaction.restaurant_service_charge_amount || 0) > 0) {
     output.push(buildKeyValueLine('Svc Charge', money(transaction.restaurant_service_charge_amount), normalizedWidth));
   }
-  output.push(buildKeyValueLine('VAT', money(transaction.vat_amount), normalizedWidth));
+  output.push(buildKeyValueLine('VAT Amount (12%)', money(transaction.vat_amount), normalizedWidth));
   output.push(buildKeyValueLine('Total', money(transaction.total_amount), normalizedWidth));
   output.push(divider);
   if (business.footer_message) {
@@ -131,6 +130,13 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
     buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
     buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
+    ...(Number(sales.post_close_void_transaction_count || 0) > 0
+      ? [buildKeyValueLine(
+        `Post-close voids (${sales.post_close_void_transaction_count})`,
+        money(sales.post_close_void_amount),
+        normalizedWidth
+      )]
+      : []),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);

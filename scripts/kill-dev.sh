@@ -17,16 +17,24 @@ echo ""
 echo "⚛️  Frontend (Port 5173):"
 ./scripts/kill-port.sh 5173
 
-# Kill Alternative Frontend (Port 5174)
+# Kill POS (Port 5174)
 echo ""
-echo "⚛️  Alternative Frontend (Port 5174):"
+echo "⚛️  POS (Port 5174):"
 ./scripts/kill-port.sh 5174
+
+# Kill Storefront (Port 5175)
+echo ""
+echo "⚛️  Storefront (Port 5175):"
+./scripts/kill-port.sh 5175
 
 echo ""
 echo "========================================"
 echo "✅ All development servers cleaned up!"
 echo ""
 echo "You can now run:"
-echo "  npm run dev           # Start both"
-echo "  npm run dev:backend   # Backend only"
-echo "  npm run dev:frontend  # Frontend only"
+echo "  npm run dev                  # Backend + device-bridge + IMS"
+echo "  npm run dev:local-pos-stack  # Backend + device-bridge + all 3 frontend apps"
+echo "  npm run dev:backend          # Backend only"
+echo "  npm run dev:skupervisor      # IMS only"
+echo "  npm run dev:pos              # POS only"
+echo "  npm run dev:store            # Storefront only"

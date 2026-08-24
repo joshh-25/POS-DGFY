@@ -11,6 +11,10 @@ const mockExportPosReportsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockRecordFiscalPrintEventUseCase = jest.fn();
 const mockVoidPosTransactionUseCase = jest.fn();
+const mockCashRefundPosTransactionUseCase = jest.fn();
+const mockExternalRefundPosTransactionUseCase = jest.fn();
+const mockProviderRefundPosTransactionUseCase = jest.fn();
+const mockSplitAllocationReversalUseCase = jest.fn();
 const mockGenerateESalesReportUseCase = jest.fn();
 const mockListESalesReportsUseCase = jest.fn();
 const mockVerifyFiscalEventLedgerUseCase = jest.fn();
@@ -33,6 +37,7 @@ const mockListPosSetupCashiersUseCase = jest.fn();
 const mockLoginPosCashierUseCase = jest.fn();
 const mockSwitchTerminalShiftLocationUseCase = jest.fn();
 const mockGetCurrentTerminalShiftUseCase = jest.fn();
+const mockGetCashierShiftHistoryUseCase = jest.fn();
 const mockRecordCashDrawerEventUseCase = jest.fn();
 const mockCloseTerminalShiftUseCase = jest.fn();
 const mockForceCloseStaleTerminalShiftUseCase = jest.fn();
@@ -43,6 +48,10 @@ const mockListActiveDeliveryPersonnelUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockCollectCashDeliveryOrderUseCase = jest.fn();
+// Phase 148 (#825): the module mock enumerates every export posHandlers.js imports, so a new use
+// case has to be declared here too -- otherwise the whole suite fails to link, not just the tests
+// that exercise it.
+const mockRecordOrderBalancePaymentUseCase = jest.fn();
 const mockAssignDeliveryPersonnelUseCase = jest.fn();
 const mockUpdateDeliveryJobStatusUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
@@ -51,6 +60,7 @@ const mockPrintPosReceiptUseCase = jest.fn();
 const mockPrintPosShiftSummaryUseCase = jest.fn();
 const mockPrintPosZReadingUseCase = jest.fn();
 const mockOpenPosDrawerUseCase = jest.fn();
+const mockAuthorizePosDrawerUseCase = jest.fn();
 const mockVerifyPosTerminalUseCase = jest.fn();
 const mockGetPairedPosTerminalUseCase = jest.fn();
 const mockCreatePosParkedSaleUseCase = jest.fn();
@@ -83,6 +93,10 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase: mockRecordFiscalPrintEventUseCase,
     voidPosTransactionUseCase: mockVoidPosTransactionUseCase,
+    cashRefundPosTransactionUseCase: mockCashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase: mockExternalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase: mockProviderRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase: mockSplitAllocationReversalUseCase,
     generateESalesReportUseCase: mockGenerateESalesReportUseCase,
     listESalesReportsUseCase: mockListESalesReportsUseCase,
     verifyFiscalEventLedgerUseCase: mockVerifyFiscalEventLedgerUseCase,
@@ -106,6 +120,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     loginPosCashierUseCase: mockLoginPosCashierUseCase,
     switchTerminalShiftLocationUseCase: mockSwitchTerminalShiftLocationUseCase,
     getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
+    getCashierShiftHistoryUseCase: mockGetCashierShiftHistoryUseCase,
     recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
     closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
     forceCloseStaleTerminalShiftUseCase: mockForceCloseStaleTerminalShiftUseCase,
@@ -116,6 +131,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
+    recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
@@ -124,6 +140,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     printPosShiftSummaryUseCase: mockPrintPosShiftSummaryUseCase,
     printPosZReadingUseCase: mockPrintPosZReadingUseCase,
     openPosDrawerUseCase: mockOpenPosDrawerUseCase,
+    authorizePosDrawerUseCase: mockAuthorizePosDrawerUseCase,
     verifyPosTerminalUseCase: mockVerifyPosTerminalUseCase,
     getPairedPosTerminalUseCase: mockGetPairedPosTerminalUseCase,
     createPosParkedSaleUseCase: mockCreatePosParkedSaleUseCase,
@@ -151,6 +168,7 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 
 let listCatalog;
 let checkout;
+let voidTransaction;
 let listTransactions;
 let getReportsOverview;
 let exportReports;
@@ -174,6 +192,7 @@ beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/posHandlers.js');
     listCatalog = mod.listCatalog;
     checkout = mod.checkout;
+    voidTransaction = mod.voidTransaction;
     listTransactions = mod.listTransactions;
     getReportsOverview = mod.getReportsOverview;
     exportReports = mod.exportReports;
@@ -241,6 +260,71 @@ describe('posHandlers transport contracts', () => {
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();
+    });
+
+    it('voidTransaction uses the registered terminal identity when the request body omits it', async () => {
+        mockVoidPosTransactionUseCase.mockResolvedValue({
+            success: true,
+            data: { transaction: { pos_transaction_id: 178 } }
+        });
+
+        const req = {
+            validatedData: { reason: 'Manager correction' },
+            body: {},
+            params: { id: '178' },
+            validatedParams: { id: 178 },
+            posTerminalRegistration: { terminal_id: 'POS-02', location_id: 9 },
+            user: { user_id: 99, role: 'admin', permissions: ['pos:void'] }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await voidTransaction(req, res, next);
+
+        expect(mockVoidPosTransactionUseCase).toHaveBeenCalledWith({
+            posTransactionId: 178,
+            payload: {
+                reason: 'Manager correction',
+                terminal_id: 'POS-02',
+                terminal_location_id: 9
+            },
+            user: req.user
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('voidTransaction overrides client-supplied terminal scope with the registered terminal', async () => {
+        mockVoidPosTransactionUseCase.mockResolvedValue({
+            success: true,
+            data: { transaction: { pos_transaction_id: 179 } }
+        });
+
+        const req = {
+            validatedData: {
+                reason: 'Manager correction',
+                terminal_id: 'CLIENT-SUPPLIED',
+                terminal_location_id: 1
+            },
+            body: {},
+            params: { id: '179' },
+            validatedParams: { id: 179 },
+            posTerminalRegistration: { terminal_id: 'POS-02', location_id: 9 },
+            user: { user_id: 99, role: 'admin', permissions: ['pos:void'] }
+        };
+        const res = createRes();
+
+        await voidTransaction(req, res, jest.fn());
+
+        expect(mockVoidPosTransactionUseCase).toHaveBeenCalledWith({
+            posTransactionId: 179,
+            payload: {
+                reason: 'Manager correction',
+                terminal_id: 'POS-02',
+                terminal_location_id: 9
+            },
+            user: req.user
+        });
     });
 
     it('checkout returns 201 response with normalized payload', async () => {

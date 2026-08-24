@@ -91,6 +91,8 @@ If a server deploy lock is stale, first prove no deploy process is active. Clear
 
 Production SSH keys, database credentials, tokens, and signing private keys must not appear in GitHub, repository files, workflow inputs, commands, logs, or evidence artifacts. Store them only in the controller/production OS-protected secret stores.
 
+This document describes the release-controller/PM2 model that ADR 0030 records as never built for this repository (see that ADR's own superseded notice and `docs/ops/RELEASE_CANDIDATE_POLICY.md`). The actual current production secret handling is a single plaintext `/opt/dgfy-platform/.env`, consumed by `docker compose` per `.github/workflows/publish-platform.yml`. A planned replacement — SOPS-encrypted secrets, scoped per service, config left in a smaller plaintext `.env` — is recorded in ADR 0060 and `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`. Not yet executed; consult the runbook, not this section, for the actual current-and-planned secret-handling mechanics.
+
 ## References
 
 1. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`

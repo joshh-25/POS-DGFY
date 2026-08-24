@@ -5,6 +5,7 @@ import {
 
 describe('mode RBAC generic fallback switch', () => {
   const originalValue = process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   afterEach(() => {
     if (originalValue === undefined) {
@@ -12,15 +13,31 @@ describe('mode RBAC generic fallback switch', () => {
     } else {
       process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED = originalValue;
     }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
   });
 
   it('keeps generic fallback enabled by default for compatibility', () => {
+    process.env.NODE_ENV = 'test';
     delete process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED;
 
     expect(isModeRbacGenericFallbackEnabled()).toBe(true);
     expect(buildModePermissionRequirements('services:bookings:manage', 'pos:transact')).toEqual([
       'services:bookings:manage',
       'pos:transact'
+    ]);
+  });
+
+  it('defaults generic fallback off in production', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.MODE_RBAC_GENERIC_FALLBACK_ENABLED;
+
+    expect(isModeRbacGenericFallbackEnabled()).toBe(false);
+    expect(buildModePermissionRequirements('services:bookings:manage', 'pos:transact')).toEqual([
+      'services:bookings:manage'
     ]);
   });
 

@@ -47,6 +47,7 @@
     "reconcile:storefront-discovery": "node scripts/reconcile-storefront-discovery-index.js",
     "remediate:tenant-redundant-indexes": "node scripts/remediate-tenant-redundant-indexes.js",
     "audit:open-pos-shifts": "node scripts/audit-open-pos-shift-conflicts.js",
+    "audit:mode-rbac-users": "node scripts/audit-mode-rbac-users.js",
     "repair:pos-shift-operator-invariant": "node scripts/apply-pos-shift-operator-invariant.js",
     "doctor:runtime": "node scripts/doctor-runtime.js",
     "check:tenant-schema": "node scripts/sync-tenant-schemas.js --mode report --fail-on-error",
@@ -145,7 +146,7 @@
       "uuid": "11.1.1"
     },
     "underscore": "1.13.8",
-    "js-yaml": "4.3.0"
+    "js-yaml": "4.3.1"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",

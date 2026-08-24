@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+    getPosCashPaymentAmount,
     normalizePosPaymentBreakdown,
     resolvePosPaymentCategory
 } from '../src/modules/pos/utils/paymentBreakdown.js';
@@ -41,6 +42,11 @@ describe('POS close-report payment breakdown', () => {
         expect(resolvePosPaymentCategory('employee_credit')).toBe('employee_credit');
     });
 
+    it('derives cash sales from the normalized payment breakdown', () => {
+        expect(getPosCashPaymentAmount(rawBreakdown)).toBe(100);
+        expect(getPosCashPaymentAmount([{ payment_type: 'gcash', amount: 250 }])).toBe(0);
+    });
+
     it('includes zero-value rows and remains stable when normalizing an existing snapshot', () => {
         const firstPass = normalizePosPaymentBreakdown([
             { payment_type: 'cash', count: 2, amount: 250 }
@@ -64,9 +70,12 @@ describe('POS close-report payment breakdown', () => {
                 total_amount: 1050,
                 void_transaction_count: 2,
                 void_amount: 125,
+                post_close_void_transaction_count: 1,
+                post_close_void_amount: 125,
                 payment_breakdown: paymentBreakdown
             }
         });
+        expect(shiftLines).toContainEqual(expect.stringContaining('Post-close voids (1)'));
         const zReadingLines = buildZReadingLines({
             z_reading: {
                 summary: {

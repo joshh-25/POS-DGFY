@@ -1,0 +1,212 @@
+# Cutover fragment for /opt/dgfy-platform/docker-compose.yml -- SOPS+age
+# secrets split (ADR 0060, docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md).
+#
+# NOT a drop-in replacement, and NOT meant to be passed to `docker compose
+# -f docker-compose.yml -f prod.sops-cutover-fragment.yml` -- same reason as
+# prod.compose-fragment.yml (PR #55): /opt/dgfy-platform's compose file is
+# hand-maintained, not a git checkout.
+#
+# Captured from the live server 2026-08-13 -- reconcile again before
+# applying if /opt/dgfy-platform/docker-compose.yml has changed since.
+# Unlike PR #55's fragment, this one is NOT a clean reconciliation: the live
+# file and this repo's infrastructure/docker/docker-compose.yml have
+# drifted in BOTH directions since #55 shipped. Read both diffs below before
+# editing anything.
+#
+# =============================================================================
+# Drift inventory (live server vs. this repo, as of 2026-08-13)
+# =============================================================================
+#
+# Present in this repo's docker-compose.yml, MISSING on the live server --
+# carry these into the reconciled file:
+#   - mysql:    the extended comment explaining --max_connections=200 vs.
+#               apps/dgfy-api/src/config/connectionBudget.js's 170-connection
+#               budget (informational only, no behavior change)
+#   - dgfy-api: DB_MAX_CONNECTIONS, SENTRY_ENABLED, SENTRY_BACKEND_DSN,
+#               SENTRY_ENVIRONMENT, SENTRY_RELEASE, SENTRY_TRACES_SAMPLE_RATE,
+#               SENTRY_SEND_DEFAULT_PII, SENTRY_DEBUG
+#   - nginx:    ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
+#               volume mount
+#
+# Present on the live server, MISSING in this repo -- KEEP these, do not
+# drop them just because the repo file doesn't have them:
+#   - frontend-beta: whole service block (beta.dgfy.ph front)
+#   - nginx:    SKUPERVISOR_DOMAIN_PROD, POS_DOMAIN_PROD,
+#               STOREFRONT_DOMAIN_PROD, STOREFRONT_ALT_DOMAIN_PROD,
+#               CERT_DOMAIN_PROD
+#   - mysql:    ports: ["3306:3306"]  <- see "MySQL port" section below.
+#               This one is NOT carried forward -- it's being removed, not
+#               reconciled. Called out separately because it changes
+#               reachability, not just secret handling.
+#
+# =============================================================================
+# EDIT 1 -- mysql: drop env_file-adjacent inline vars, no env_file here
+# (mysql never had one), and remove the host port publish.
+# =============================================================================
+#
+#   mysql:
+#     image: mysql:8.0
+#     restart: unless-stopped
+#     command: --log-bin-trust-function-creators=1 --max_connections=200
+#     environment:
+#       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}   # now from secrets/mysql.env
+#       MYSQL_DATABASE: ${DB_NAME}                     # now from secrets/shared.env
+#       MYSQL_USER: ${DB_USER}                         # now from secrets/shared.env
+#       MYSQL_PASSWORD: ${DB_PASSWORD}                 # now from secrets/shared.env
+#     # ports: ["3306:3306"] line REMOVED -- see "MySQL port" section below.
+#     volumes:
+#       - ./data/mysql:/var/lib/mysql
+#     networks: [dgfy_internal]
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 10
+#       start_period: 30s
+#
+# The four ${VAR} references above are unchanged syntactically -- only their
+# SOURCE changes, from .env (blanket) to deploy-sops.sh's decrypt-and-export
+# step (see runbook Phase 5). Compose doesn't care where a shell-exported var
+# came from.
+#
+# =============================================================================
+# EDIT 2 -- dgfy-migration-runner: env_file: .env replaced with scoped vars
+# =============================================================================
+#
+#   dgfy-migration-runner:
+#     image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
+#     restart: "no"
+#     # WAS: env_file: .env  (blanket -- every one of 93 vars, whether used or not)
+#     # NOW: only the 6 vars this service actually touches.
+#     environment:
+#       DB_HOST: mysql
+#       DB_PORT: 3306
+#       DB_DIALECT: mysql
+#       DB_NAME: ${DB_NAME}
+#       DB_USER: ${DB_USER}
+#       DB_PASSWORD: ${DB_PASSWORD}
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#     networks: [dgfy_internal]
+#
+# =============================================================================
+# EDIT 3 -- dgfy-api: env_file: .env replaced with scoped vars, plus the
+# SENTRY_* passthrough this repo's version has and the live server is
+# currently missing.
+# =============================================================================
+#
+#   dgfy-api:
+#     image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
+#     restart: unless-stopped
+#     # WAS: env_file: .env  (blanket)
+#     # NOW: no env_file line. Non-secret config below comes from .env's
+#     # normal auto-load (Compose still reads .env for ${VAR} interpolation
+#     # even with no env_file: line); only actual secrets are listed
+#     # explicitly, sourced from deploy-sops.sh's decrypted exports.
+#     environment:
+#       DB_HOST: mysql
+#       DB_PORT: 3306
+#       DB_DIALECT: mysql
+#       REDIS_URL: redis://redis:6379
+#       PORT: 5100
+#       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
+#       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
+#       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+#       SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+#       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+#       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
+#       SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
+#       # -- secrets, from secrets/shared.env + secrets/dgfy-api.env --
+#       DB_NAME: ${DB_NAME}
+#       DB_USER: ${DB_USER}
+#       DB_PASSWORD: ${DB_PASSWORD}
+#       JWT_SECRET: ${JWT_SECRET}
+#       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+#       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+#       ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON}
+#       OPENAI_API_KEY: ${OPENAI_API_KEY}
+#       ORIGINAL_LEGACY_COMPANY_TOKEN: ${ORIGINAL_LEGACY_COMPANY_TOKEN}
+#       PAYMONGO_LIVE_SECRET_KEY: ${PAYMONGO_LIVE_SECRET_KEY}
+#       PAYMONGO_LIVE_WEBHOOK_SECRET: ${PAYMONGO_LIVE_WEBHOOK_SECRET}
+#       PAYMONGO_LIVE_PUBLIC_KEY: ${PAYMONGO_LIVE_PUBLIC_KEY}
+#       PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET}
+#       PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID}
+#       SMTP_PASS: ${SMTP_PASS}
+#       SMTP_USER: ${SMTP_USER}
+#       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
+#       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
+#     volumes:
+#       - ./data/dgfy-api/uploads:/app/uploads
+#       - ./data/dgfy-api/storage:/app/storage
+#       - ./data/dgfy-api/logs:/app/logs
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#       dgfy-migration-runner:
+#         condition: service_completed_successfully
+#     networks: [dgfy_internal]
+#     healthcheck:
+#       test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
+#       interval: 15s
+#       timeout: 5s
+#       retries: 5
+#       start_period: 30s
+#
+# All non-secret vars above (${DB_MAX_CONNECTIONS:-200}, ${SENTRY_ENABLED:-false},
+# etc.) keep their existing defaults from the repo file -- only the SOURCE of
+# the secret ones changes.
+#
+# `frontend`, `frontend-beta`, `nginx`, `certbot`, `redis`, and the top-level
+# `networks:` block are UNCHANGED by this fragment -- none of them carry
+# secrets. nginx's *_PROD domain vars (live-only, see drift inventory above)
+# stay exactly as they are on the server today.
+#
+# =============================================================================
+# MySQL port -- separate line item, not bundled into the env_file rewrite
+# =============================================================================
+#
+# The live server publishes MySQL to the host:
+#
+#   mysql:
+#     ports:
+#       - "3306:3306" # TEMPORARY! remove once fixed
+#
+# This is not in this repo's docker-compose.yml and is not required by
+# anything this cutover does -- dgfy-migration-runner and dgfy-api both reach
+# mysql over the internal dgfy_internal network by service name, never via
+# the host port. Encrypting MYSQL_ROOT_PASSWORD/DB_PASSWORD while this port
+# stays open to the internet is a real gap: SOPS protects the value at rest,
+# not a listening port using that value for auth. Remove the `ports:` block
+# above as its own reviewable change (own commit, own line in the PR
+# description) so it can be reverted independently if something unexpected
+# turns out to depend on host-level 3306 access -- check for that dependency
+# BEFORE removing, don't assume the "TEMPORARY" comment means it's safe.
+#
+# =============================================================================
+# .env delta (prod only)
+# =============================================================================
+#
+# Before this fragment is applied, /opt/dgfy-platform/.env has already been
+# split per docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md Phase 2 -- the 19
+# secret vars listed in the runbook's Appendix A are REMOVED from .env
+# (they now live encrypted in secrets/*.env), the 4 dead Brevo vars are
+# removed, and the duplicate MENU_IMPORT_BATCH_ENABLED line is collapsed to
+# one. Everything else in .env (~69 vars: domains, feature flags, rate
+# limits, IMAGE_TAG, FRONTEND_PROD_IMAGE_TAG) is untouched by this fragment.
+#
+# --- Data/file move (run BEFORE `docker compose up`, while the stack is down) ---
+#
+#   cd /opt/dgfy-platform
+#   cp .env .env.pre-sops && chmod 0600 .env.pre-sops
+#   cp docker-compose.yml docker-compose.yml.pre-sops
+#   docker compose down
+#   mkdir -p secrets
+#   # (secrets/*.env already populated + encrypted per runbook Phase 2)
+#   # apply this fragment's 3 service-block edits + the .env delta above
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   ./deploy-sops.sh                   # decrypt + docker compose up -d --remove-orphans
+#   docker compose restart nginx       # NOT reload -- template only re-renders
+#                                       # through envsubst on restart, not reload
