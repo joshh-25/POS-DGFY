@@ -566,9 +566,24 @@ export const authLimiter = rateLimit({
   // #958: brute force is about failed attempts, not successful ones -- without
   // this, 5 *successful* logins in the window locks out everyone else sharing
   // the same ip+email bucket (a shared cashier/office account on one network).
-  // Relies on express-rate-limit's default requestWasSuccessful (res.statusCode
-  // < 400), which matches this route's actual success codes (200/201/202).
+  //
+  // authLimiter is shared across ~20 mount points beyond login/register
+  // (routes/auth.js, routes/dgfy.js) -- password-reset/request,
+  // email-verification/request, tracking-recovery/request,
+  // legacy-link/request-email-otp, company switch/transfer-ownership, etc.
+  // A bare `skipSuccessfulRequests: true` would exempt every one of those
+  // routes' successful (<400) responses too, not just login/register.
+  // Several of them (password-reset/request in particular) deliberately
+  // return a uniform 2xx regardless of whether the target exists -- for
+  // those, this limiter is the ONLY throttle in front of the endpoint, and
+  // an unscoped skip would make it silently unlimited: a new abuse vector
+  // introduced by a change whose whole point is abuse control. Scope the
+  // skip to the two routes it's actually justified for.
   skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => {
+    const isLoginOrRegister = /\/(login|register)$/.test(req.path || '');
+    return isLoginOrRegister && res.statusCode < 400;
+  },
   store: new DynamicStore('auth'),
   keyGenerator: (req) => {
     const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';

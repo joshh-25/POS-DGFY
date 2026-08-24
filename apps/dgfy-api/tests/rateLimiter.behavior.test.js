@@ -236,6 +236,34 @@ describe('Rate limiter behavior', () => {
     }
   });
 
+  // #958 review follow-up (RF-1): authLimiter is shared across ~20 routes
+  // beyond login/register, and several of them (password-reset/request is
+  // the sharpest case) deliberately return a uniform 2xx regardless of
+  // whether the target exists -- for those, this limiter is the *only*
+  // throttle in front of the endpoint. skipSuccessfulRequests must not
+  // exempt them, or the endpoint becomes silently unlimited.
+  it('still counts repeated 2xx responses toward the budget on a non-login/register route', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/dgfy/auth/password-reset/request', authLimiter, (_req, res) => res.status(202).json({ ok: true }));
+
+    await request(app)
+      .post('/api/v1/dgfy/auth/password-reset/request')
+      .send({ email: 'delta@example.com' })
+      .expect(202);
+
+    const secondAttempt = await request(app)
+      .post('/api/v1/dgfy/auth/password-reset/request')
+      .send({ email: 'delta@example.com' })
+      .expect(429);
+
+    expect(secondAttempt.body).toEqual(expect.objectContaining({
+      success: false,
+      limitScope: 'other',
+      limitKeyType: 'ip_email',
+    }));
+  });
+
   it('keys lookup limiter by ip+email so shared POS networks do not cross-throttle different cashiers', async () => {
     const app = express();
     app.use(express.json());
