@@ -188,15 +188,17 @@ describe('Rate limiter behavior', () => {
   it('keys auth limiter by ip+email so different emails do not share the same bucket', async () => {
     const app = express();
     app.use(express.json());
-    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(200).json({ ok: true }));
+    // Wrong-password responses (401) are what a real /auth/login failure
+    // looks like -- this must still count toward the budget.
+    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(401).json({ ok: false }));
 
-    // First attempt for email A consumes that key's single slot.
+    // First failed attempt for email A consumes that key's single slot.
     await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'alpha@example.com', password: 'x' })
-      .expect(200);
+      .expect(401);
 
-    // Second attempt for email A is rate-limited.
+    // Second failed attempt for email A is rate-limited.
     const sameEmail = await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'alpha@example.com', password: 'x' })
@@ -214,7 +216,24 @@ describe('Rate limiter behavior', () => {
     await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'beta@example.com', password: 'x' })
-      .expect(200);
+      .expect(401);
+  });
+
+  // #958: 5 *successful* logins in the window used to lock out everyone else
+  // sharing the same ip+email bucket -- a real failure mode on a shared
+  // cashier/office account. skipSuccessfulRequests fixes this; confirm a
+  // successful login never even trips a 1-request budget.
+  it('does not count successful logins toward the auth limiter budget', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    for (let i = 0; i < 3; i += 1) {
+      await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'gamma@example.com', password: 'correct' })
+        .expect(200);
+    }
   });
 
   it('keys lookup limiter by ip+email so shared POS networks do not cross-throttle different cashiers', async () => {
