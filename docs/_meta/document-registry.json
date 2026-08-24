@@ -176,6 +176,12 @@
       "topic": "services_fulfillment_profiles",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/features/FUNDING_AND_DISCOUNT_STACKING.md",
+      "topic": "platform_funding_and_discount_stacking",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }

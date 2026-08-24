@@ -33,6 +33,8 @@ When to use:
 - Current DGFY customer account behavior for landlord-scoped customer identity, account activity, tracking/reorder/cancel/review actions, and saved delivery locations with optional exact pin coordinates.
 13. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
+14. `docs/features/FUNDING_AND_DISCOUNT_STACKING.md`
+- Code-grounded reference for how DGFY earns money per transaction, voucher/promo/affiliate/statutory-discount computation and stacking rules, and the current stacking matrix across storefront and POS.
 
 ## Usage Notes
 
