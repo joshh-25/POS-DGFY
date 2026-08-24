@@ -50,7 +50,10 @@ The Admin Portal exposes the same runtime view at `Admin > Hosting`. Use that sc
 ## Shared Deployment
 
 1. Copy `backend/.env.shared.example` to `backend/.env` on the shared host.
-2. Copy `apps/dgfy-web/.env.shared.example` to the frontend build environment.
+2. Copy `apps/dgfy-ims/.env.shared.example` to the frontend build environment. The three frontend
+   apps (`apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`) are built separately, so apply
+   the profile's `VITE_*` values to each app's build environment, not to one shared frontend
+   package.
 3. Replace every placeholder value. Do not leave example domains, placeholder secrets, or `DB_AUTO_SYNC=true`.
 4. Run:
 
@@ -60,7 +63,9 @@ npm run preflight:shared
 npm run test:hosting:shared
 ```
 
-5. Build and deploy the frontend assets using the shared profile.
+5. Build and deploy the frontend assets using the shared profile. Build each app separately
+   (`npm run build:skupervisor`, `npm run build:pos`, `npm run build:store` from the repo root);
+   each emits its own `apps/<app>/dist/`.
 6. Start the Node.js app through the host's Node app manager.
 7. Check `/health`. Expected capability values include:
    - `hostingProfile: "shared"`
@@ -79,7 +84,7 @@ npm run test:hosting:shared
    - `REDIS_URL=redis://...`
    - `AUTH_BLACKLIST_FAILURE_MODE=fail_closed`
    - `TEMP_FILE_STORAGE=auto`
-3. Copy `apps/dgfy-web/.env.vps.example` to the frontend build environment if API origins or base paths changed.
+3. Copy `apps/dgfy-ims/.env.vps.example` to the frontend build environment if API origins or base paths changed, and apply the same changed `VITE_*` values to the `apps/dgfy-pos` and `apps/dgfy-storefront` build environments.
 4. Run:
 
 ```bash

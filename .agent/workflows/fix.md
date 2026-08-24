@@ -14,7 +14,7 @@ cd ..
 
 ### 2. Frontend Lint Fix
 ```bash
-cd apps/dgfy-web
-npm run lint -- --fix
-cd ../..
+cd apps/dgfy-ims && npm run lint -- --fix && cd ../..
+cd apps/dgfy-pos && npm run lint -- --fix && cd ../..
+cd apps/dgfy-storefront && npm run lint -- --fix && cd ../..
 ```

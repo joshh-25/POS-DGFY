@@ -28,17 +28,20 @@ const requiredQualityMarkers = [
   'workflow_call:',
   'dgfy-api-quality:',
   'migration-runner-quality:',
-  'frontend-quality:',
+  'frontend-ims-quality:',
+  'frontend-pos-quality:',
+  'frontend-storefront-quality:',
   'repository-quality:',
   'node scripts/run-backend-test-matrix.js',
   '--detectOpenHandles',
   'npm run audit:indexes',
   'npm run lint:docs',
   'npm run check:compat-seams',
+  'npm run report:frontend-split-sync:post-merge',
   'npx vitest run',
   'fnbMode.contract.test.js',
   'posFnbModifierManager.session.test.jsx',
-  'npm run build:all',
+  'npm run build',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e:fnb-contract',
   'fnb-playwright-contract-',
@@ -56,17 +59,25 @@ const missing = [
 // silently reproduces either #726's outage (self-hosted + network cache back on) or throws away a
 // real cache hit for nothing (hosted + no cache). Checked here, not just documented, because a
 // documented-only invariant is exactly the kind of thing a fast anchor edit skips reading first.
+//
+// #923 (2026-08-23): RUNNER_HEAVY_JSON no longer carries the literal 'self-hosted' label --
+// self-hosted is implicit for a runner that carries any custom label (sieitz-lg/sieitz-runner;
+// hosted runners can't be assigned custom labels at all), so the array now reads e.g.
+// '["sieitz-lg"]' rather than '["self-hosted", "sieitz-lg"]'. Detect hosted-vs-self-hosted by the
+// presence of a GitHub-hosted runner image name instead of the (now absent) 'self-hosted' string --
+// this is also what the documented revert-to-hosted procedure actually swaps in (e.g.
+// '["ubuntu-latest"]'), so it's the real signal, not a proxy for it.
 const runnerHeavyMatch = prChecks.match(/RUNNER_HEAVY_JSON:\s*&runner_heavy\s*'([^']*)'/);
 const cacheFromMatch = prChecks.match(/BUILD_CACHE_FROM:\s*&build_cache_from\s*'([^']*)'/);
 if (!runnerHeavyMatch || !cacheFromMatch) {
   missing.push('pr-checks.yml: could not find RUNNER_HEAVY_JSON/BUILD_CACHE_FROM anchors to check runner/cache consistency (#726) -- did an anchor name change?');
 } else {
-  const isSelfHosted = runnerHeavyMatch[1].includes('self-hosted');
+  const isHosted = /ubuntu-latest|windows-latest|macos-latest/.test(runnerHeavyMatch[1]);
   const hasCache = cacheFromMatch[1].trim() !== '';
-  if (isSelfHosted && hasCache) {
+  if (!isHosted && hasCache) {
     missing.push('pr-checks.yml: RUNNER_HEAVY_JSON is self-hosted but BUILD_CACHE_FROM is non-empty -- this reproduces #726 (the Actions cache costs ~21x the build it skips on self-hosted). Flip BUILD_CACHE_FROM back to empty, or confirm the runner anchor is actually meant to be hosted.');
   }
-  if (!isSelfHosted && !hasCache) {
+  if (isHosted && !hasCache) {
     missing.push("pr-checks.yml: RUNNER_HEAVY_JSON is hosted but BUILD_CACHE_FROM is empty -- hosted runners are ephemeral with no local layer cache at all, so this throws away a real cache hit for nothing. Flip BUILD_CACHE_FROM back to 'type=gha'.");
   }
 }

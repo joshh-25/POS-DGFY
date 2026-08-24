@@ -1768,6 +1768,17 @@ const assertOpenShiftForPosMutation = async ({
     return toSerializable(shift);
 };
 
+const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
+    const activeShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
+    if (parsePositiveInt(order?.shift_id) || !activeShiftId) return {};
+
+    // Storefront creates online orders outside POS, so they have no register
+    // shift at creation time. The first POS handling action claims the order
+    // for the active shift; later actions and payment collection preserve their
+    // established accountability instead of moving the sale between shifts.
+    return { shift_id: activeShiftId };
+};
+
 const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, options = {} } = {}) => {
     const orderId = parsePositiveInt(order?.pos_transaction_id);
     if (!orderId) {
@@ -8789,6 +8800,16 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                order,
+                activeShift
+            });
+            if (Object.keys(shiftAttributionPayload).length > 0) {
+                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                    transaction,
+                    lock: true
+                });
+            }
             let personnel = null;
             if (hasRegisteredPersonnel) {
                 personnel = await posRepository.findActiveDeliveryPersonnelById(deliveryPersonnelId, {
@@ -8867,6 +8888,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
 
             const updatedOrder = {
                 ...order,
+                ...shiftAttributionPayload,
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
@@ -9043,6 +9065,16 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                order,
+                activeShift
+            });
+            if (Object.keys(shiftAttributionPayload).length > 0) {
+                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                    transaction,
+                    lock: true
+                });
+            }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
             const hasPersonnel = Boolean(
                 parsePositiveInt(deliveryJob.delivery_personnel_id)
@@ -9145,6 +9177,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
 
             const updatedOrder = {
                 ...order,
+                ...shiftAttributionPayload,
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
@@ -9280,7 +9313,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     { statusCode: 409 }
                 );
             }
-            await assertOpenShiftForPosMutation({
+            const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actingUserId,
                 locationId: existing.location_id || null,
@@ -9388,7 +9421,11 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
 
             const updatePayload = {
-                fulfillment_status: targetStatus
+                fulfillment_status: targetStatus,
+                ...buildOnlineOrderShiftAttributionPayload({
+                    order: existing,
+                    activeShift
+                })
             };
 
             // Online orders are created without a cashier. Capture the first staff

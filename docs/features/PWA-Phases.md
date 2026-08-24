@@ -26,7 +26,7 @@ initiative-local labels and are not a replacement phase sequence.
 - Packet: release-packet with web/fullstack delivery slices
 - Initiative: standalone DGFY POS PWA hardening
 - Production surface: `https://pos.dgfy.ph`
-- Source surface: `apps/dgfy-web/apps/pos/`
+- Source surface: `apps/dgfy-pos/`
 - Dedicated build: `npm run build:pos`
 - Generated output: `dist-apps/pos/`
 - Current ledger baseline: Phase 138 is the highest recorded phase at the time
@@ -96,12 +96,12 @@ The following ownership must be verified at PWA Stage 1 and preserved:
 
 | Responsibility | Existing owner | Required boundary |
 | --- | --- | --- |
-| POS entry HTML and manifest link | `apps/dgfy-web/apps/pos/index.html` | POS build only |
-| POS manifest source | `apps/dgfy-web/apps/pos/manifest.webmanifest` | One POS source of truth |
-| POS Service Worker | `apps/dgfy-web/apps/pos/public/sw.js` | Shell/static delivery only |
-| POS Service Worker registration | `apps/dgfy-web/apps/pos/src/main.jsx` | Registration/update coordination |
-| Offline precache generation | `apps/dgfy-web/apps/pos/vitePosOfflinePrecachePlugin.js` | Generated build output |
-| POS build configuration | `apps/dgfy-web/apps/pos/vite.config.js` | Dedicated `build:pos` output |
+| POS entry HTML and manifest link | `apps/dgfy-pos/index.html` | POS build only |
+| POS manifest source | `apps/dgfy-pos/manifest.webmanifest` | One POS source of truth |
+| POS Service Worker | `apps/dgfy-pos/public/sw.js` | Shell/static delivery only |
+| POS Service Worker registration | `apps/dgfy-pos/src/main.jsx` | Registration/update coordination |
+| Offline precache generation | `apps/dgfy-pos/vitePosOfflinePrecachePlugin.js` | Generated build output |
+| POS build configuration | `apps/dgfy-pos/vite.config.js` | Dedicated `build:pos` output |
 | Offline persistence and replay | Existing POS hooks/services/utils | Application layer; never Service Worker business logic |
 | Checkout and idempotency | Existing POS checkout workflow and API contracts | Existing request and duplicate semantics |
 | Terminal and shift safety | Existing POS terminal flow and backend contracts | Logical terminal, location, permission, and shift guards |
@@ -192,12 +192,12 @@ for artifact inspection; no generated file was hand-edited.
 
 | Responsibility | Current owner | Evidence |
 | --- | --- | --- |
-| Installed-app name, `short_name`, `id`, `start_url`, `scope`, and icons | POS manifest source | `apps/dgfy-web/apps/pos/manifest.webmanifest` |
-| HTML manifest/theme/favicon links | POS entry document | `apps/dgfy-web/apps/pos/index.html` |
-| Service Worker registration and waiting-worker message | POS bootstrap | `apps/dgfy-web/apps/pos/src/main.jsx` |
-| Shell/runtime cache boundaries and update activation | POS Service Worker | `apps/dgfy-web/apps/pos/public/sw.js` |
-| Build revision and precache manifest generation | POS Vite build plugin | `apps/dgfy-web/apps/pos/vitePosOfflinePrecachePlugin.js` |
-| Offline snapshot, scoped queue, replay, and idempotency behavior | POS offline/checkout services and hooks | `apps/dgfy-web/src/features/pos/services/`, `apps/dgfy-web/src/features/pos/hooks/` |
+| Installed-app name, `short_name`, `id`, `start_url`, `scope`, and icons | POS manifest source | `apps/dgfy-pos/manifest.webmanifest` |
+| HTML manifest/theme/favicon links | POS entry document | `apps/dgfy-pos/index.html` |
+| Service Worker registration and waiting-worker message | POS bootstrap | `apps/dgfy-pos/src/main.jsx` |
+| Shell/runtime cache boundaries and update activation | POS Service Worker | `apps/dgfy-pos/public/sw.js` |
+| Build revision and precache manifest generation | POS Vite build plugin | `apps/dgfy-pos/vitePosOfflinePrecachePlugin.js` |
+| Offline snapshot, scoped queue, replay, and idempotency behavior | POS offline/checkout services and hooks | `packages/web-core/src/features/pos/services/`, `packages/web-core/src/features/pos/hooks/` |
 | Server authority for checkout, stock, payment, receipt finalization, and replay conflicts | POS API/backend | Existing POS checkout and offline contracts governed by ADR 0014 |
 
 #### Build, test, and browser evidence
@@ -223,7 +223,7 @@ for artifact inspection; no generated file was hand-edited.
   `short_name: SKU POS`; the HTML document title is already `DGFY POS`.
 - The manifest has no explicit `id`, uses `/` for both `start_url` and `scope`,
   and declares `/logo-icon.png` and `/logo.png`.
-- Neither declared PNG exists in `apps/dgfy-web/apps/pos/public/`. A local
+- Neither declared PNG exists in `apps/dgfy-pos/public/`. A local
   preview request returned `200 text/html` for both paths through SPA fallback,
   not an image. The available POS PNGs are rectangular (`810x298` and
   `1000x368`), so they are not a verified replacement for square PWA icons.
@@ -396,11 +396,11 @@ during a transaction-critical state.
 
 ### Phase 141 completion report — 2026-08-20
 
-- `apps/dgfy-web/apps/pos/public/sw.js` no longer calls `skipWaiting()` during
+- `apps/dgfy-pos/public/sw.js` no longer calls `skipWaiting()` during
   install. The explicit `SKIP_WAITING` message remains the only activation
   request, and the worker continues to cache only the existing POS shell/runtime
   assets without business or replay logic.
-- `apps/dgfy-web/apps/pos/src/main.jsx` now observes `updatefound`, keeps the
+- `apps/dgfy-pos/src/main.jsx` now observes `updatefound`, keeps the
   new worker waiting, shows a small update notification with an `Update now`
   action, checks the derived POS safety state at activation time, and reloads
   once through a controlled `controllerchange` listener.

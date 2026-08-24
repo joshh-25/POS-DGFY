@@ -56,24 +56,37 @@ npm run dev
 
 ---
 
-### Step 3: Start Frontend Server
+### Step 3: Start a Frontend Server
 
-Open **Terminal 2** (new terminal window):
+There are three separate frontend apps. Start the one you need in its own
+terminal:
+
+| App | Directory | Port | From repo root |
+|---|---|---:|---|
+| IMS/SKUpervisor | `apps/dgfy-ims` | 5173 | `npm run dev:skupervisor` |
+| POS | `apps/dgfy-pos` | 5174 | `npm run dev:pos` |
+| Storefront | `apps/dgfy-storefront` | 5175 | `npm run dev:store` |
+
+Open **Terminal 2** (new terminal window) — IMS/SKUpervisor shown here:
 
 ```bash
-cd apps/dgfy-web
+cd apps/dgfy-ims
 npm run dev
 ```
 
 **Expected Output:**
 ```
-  VITE v5.x.x  ready in xxx ms
+  VITE v6.x.x  ready in xxx ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
 ```
 
 **Keep this terminal open** - the frontend server must stay running.
+
+All three apps share `packages/web-core` (`@sieitzz/web-core`) as source; it has
+no build or dev server of its own, so edits there are picked up by whichever
+app's dev server is running.
 
 ---
 
@@ -82,7 +95,9 @@ npm run dev
 Once both servers are running:
 
 1. **Frontend Application:**
-   - Open browser: http://localhost:5173
+   - IMS/SKUpervisor: http://localhost:5173
+   - POS: http://localhost:5174
+   - Storefront: http://localhost:5175/map-dgfy
    - The React application should load
 
 2. **Backend API Health Check:**
@@ -96,7 +111,8 @@ Once both servers are running:
 
 ## Running in Development Mode (Summary)
 
-You need **2 terminal windows** running simultaneously:
+You need at least **2 terminal windows** running simultaneously — one for the
+backend, one per frontend app you're working on:
 
 **Terminal 1 - Backend:**
 ```bash
@@ -104,13 +120,20 @@ cd apps/dgfy-api
 npm run dev
 ```
 
-**Terminal 2 - Frontend:**
+**Terminal 2 - Frontend (pick the app you're working on):**
 ```bash
-cd apps/dgfy-web
+cd apps/dgfy-ims          # or apps/dgfy-pos, apps/dgfy-storefront
 npm run dev
 ```
 
-**Both terminals must stay open** while you're developing.
+**All of these terminals must stay open** while you're developing.
+
+To run the backend, device bridge, and all three frontend apps at once, use the
+repo-root script instead:
+
+```bash
+npm run dev:local-pos-stack
+```
 
 ---
 
@@ -126,10 +149,13 @@ If you are working with the Antigravity AI assistant, you can skip manual termin
 
 ## Optional: Frontend Environment Configuration
 
-The frontend will work with default settings, but you can create a `.env` file in
-`apps/dgfy-web/` for customization:
+The frontend apps work with default settings, but each one can take its own env
+file for customization:
 
-**Create `apps/dgfy-web/.env`:**
+- `apps/dgfy-ims/.env` (copy from the committed `apps/dgfy-ims/.env.example`)
+- `apps/dgfy-pos/.env.local`
+- `apps/dgfy-storefront/.env.local`
+
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
 ```
@@ -174,9 +200,10 @@ Error: listen EADDRINUSE: address already in use :::5000
 **Problem:** Port 5173 already in use
 
 **Solutions:**
-1. Vite will automatically try the next available port (5174, 5175, etc.)
-2. Or stop the process using port 5173
-3. Or specify a different port: `npm run dev -- --port 3000`
+1. Stop the process using port 5173. Do **not** let Vite auto-increment onto
+   5174/5175 — those belong to the POS and Storefront apps, and the backend
+   CORS defaults assume the fixed 5173/5174/5175 assignment.
+2. Or specify a different, unused port: `npm run dev -- --port 3000`
 
 **Problem:** Cannot connect to backend API
 
@@ -270,16 +297,20 @@ cd apps/dgfy-api
 npm start
 ```
 
-**Frontend:**
+**Frontend** — build each app separately; there is no `build:all`:
 ```bash
-cd apps/dgfy-web
-npm run build
-npm run preview
+cd apps/dgfy-ims && npm run build && npm run preview
+cd apps/dgfy-pos && npm run build && npm run preview
+cd apps/dgfy-storefront && npm run build && npm run preview
 ```
+
+Equivalent root scripts: `npm run build:skupervisor`, `npm run build:pos`,
+`npm run build:store`. Build only the apps you actually changed; a change under
+`packages/web-core` affects all three. Output lands in each app's own `dist/`.
 
 ---
 
-**Last Updated:** 2024-12-23  
+**Last Updated:** 2026-08-14  
 **Status:** Ready for Development
 
 

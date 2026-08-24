@@ -25,14 +25,14 @@ on:
         description: JSON array passed to runs-on for the publish job.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
   workflow_dispatch:
     inputs:
       runner_labels_json:
         description: JSON array passed to runs-on for the manual publish job.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
 
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
     # `inputs` is only populated for workflow_call/workflow_dispatch -- for
     # the direct `push` trigger above it's empty, so fall back explicitly
     # rather than let fromJSON(null) error the job.
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["self-hosted"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-runner"]') }}  # #923: generic, either box
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

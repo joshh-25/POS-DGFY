@@ -158,12 +158,12 @@ const startManagedStorefrontServer = async () => {
   const url = new URL(baseUrl);
   if (!['127.0.0.1', 'localhost'].includes(url.hostname)) return null;
 
-  const viteBin = path.resolve(process.cwd(), 'apps/dgfy-web', 'node_modules', 'vite', 'bin', 'vite.js');
-  const cwd = path.resolve(process.cwd(), 'apps/dgfy-web');
+  const viteBin = path.resolve(process.cwd(), 'apps/dgfy-storefront', 'node_modules', 'vite', 'bin', 'vite.js');
+  const cwd = path.resolve(process.cwd(), 'apps/dgfy-storefront');
   const child = childProcess.spawn(process.execPath, [
     viteBin,
     '--config',
-    'apps/store/vite.config.js',
+    'vite.config.js',
     '--host',
     '127.0.0.1',
     '--port',

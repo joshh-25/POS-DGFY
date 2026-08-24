@@ -397,8 +397,8 @@ The AI Assistant respects the user's permissions:
 | `backend/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
 | `backend/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
 | `backend/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
-| `apps/dgfy-web/Components/users/PermissionMatrix.jsx` | UI for editing granular permissions |
-| `apps/dgfy-web/Components/users/UserManagementModal.jsx` | User CRUD, role dropdown, permission editor |
+| `packages/web-core/Components/users/PermissionMatrix.jsx` | UI for editing granular permissions |
+| `packages/web-core/Components/users/UserManagementModal.jsx` | User CRUD, role dropdown, permission editor |
 
 ---
 
@@ -426,7 +426,7 @@ AI responses are rendered with full **Markdown support** in the chat interface. 
 
 #### Frontend Component
 
-The `MarkdownRenderer` component (`apps/dgfy-web/Components/ai/MarkdownRenderer.jsx`) handles all markdown rendering with custom Tailwind styling for:
+The `MarkdownRenderer` component (`packages/web-core/Components/ai/MarkdownRenderer.jsx`) handles all markdown rendering with custom Tailwind styling for:
 - Proper heading hierarchy
 - Styled tables with borders and hover effects
 - Inline code with background highlighting
@@ -644,7 +644,7 @@ When asked to fix a bug, the AI Assistant **MUST** follow this strict protocol:
   - `runDiagnostics(user)` — computes coverage %, capability gaps (with severity + recommendation), and knowledge gaps
   - Live tenant DB counts via 12 parallel `dbStore.get()` `COUNT` queries (read-only, fully tenant-isolated)
   - Dynamic knowledge gaps built from real data (e.g. "6 archived POs are inaccessible")
-- **New Component**: `apps/dgfy-web/Components/ai/AiDiagnosticsPanel.jsx`
+- **New Component**: `packages/web-core/Components/ai/AiDiagnosticsPanel.jsx`
   - Three-tab panel: **Gaps** (grouped by category, severity-colored) / **Knowledge** / **Covered**
   - Per-category `Progress` bars + overall coverage percentage bar
   - Tenant data snapshot (items, suppliers, POs, JOs with archived counts)

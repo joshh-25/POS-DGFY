@@ -54,7 +54,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
-| 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
+| 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `amended` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
@@ -82,17 +82,19 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
 | 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
 | 0059 | [Frontend Relocation to `apps/dgfy-web`](0059-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
-| 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `accepted` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
+| 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `amended` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
 | 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `superseded` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
 | 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 6 |
-| 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `accepted` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 2 |
+| 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `amended` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 2 |
 | 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
 | 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
+| 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
+| 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
 
 ## Renumbered (collision stubs)
 

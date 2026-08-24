@@ -8,6 +8,7 @@ When to use:
 Primary deployment references:
 - `docs/ops/PRODUCTION_CHECKLIST.md` (step-by-step production execution checklist)
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md` (hard gate policy when staging is unavailable)
+- `docs/deployment/2026-08-23-frontend-split-cutover-runbook.md` (cutting DEV/STAGING/PROD over from the single `frontend` container to the three ADR-0071 split images — planned, not yet executed)
 - `docs/deployment/PWA_SURFACE_CONTRACT.md` (manifest/service-worker contracts and installability validation for SKUpervisor, POS, and Storefront)
 - `docs/guides/SCRIPTS_GUIDE.md` (canonical behavior for `scripts/deploy.sh` and `scripts/deploy-remote.sh`)
 - `docs/reference/QUICK_REFERENCE.md` (fast command snippets for operators)
