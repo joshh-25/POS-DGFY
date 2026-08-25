@@ -15,12 +15,21 @@ const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX
 const CONTINUE_ON_FAILURE = process.argv.includes('--continue-on-failure') || process.env.BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE === 'true';
 const SKIP_SCHEMA_PREFLIGHT = process.argv.includes('--skip-schema-preflight')
   || process.env.BACKEND_TEST_MATRIX_SKIP_SCHEMA_PREFLIGHT === 'true';
+// The fast tier deliberately points DB_HOST/DB_PORT nowhere reachable by default -- a permanent
+// guardrail (#1015), not just a one-time classification check: a file that secretly needs MySQL
+// fails loudly the moment it lands in the fast tier instead of quietly passing because some real
+// database happened to be reachable. Escape hatch for debugging a fast-tier failure locally only.
+const FAST_ALLOW_DB = process.env.BACKEND_TEST_MATRIX_FAST_ALLOW_DB === 'true';
 
 const groupFilterArgIndex = process.argv.indexOf('--group');
 const groupFilter = groupFilterArgIndex >= 0 ? String(process.argv[groupFilterArgIndex + 1] || '').trim() : '';
 const chunkFilterArgIndex = process.argv.indexOf('--chunk');
 const chunkFilterValue = chunkFilterArgIndex >= 0 ? String(process.argv[chunkFilterArgIndex + 1] || '').trim() : '';
 const chunkFilter = chunkFilterValue ? Number.parseInt(chunkFilterValue, 10) : null;
+const tierArgIndex = process.argv.indexOf('--tier');
+// 'all' (default) runs the fast tier then the db tier, sequentially, as one aggregate command --
+// this is what `npm run test:backend:matrix` invokes, so it stays a single entry point.
+const TIER = tierArgIndex >= 0 ? String(process.argv[tierArgIndex + 1] || '').trim() : (process.env.BACKEND_TEST_MATRIX_TIER || 'all');
 
 const GROUPS = [
   {
@@ -120,6 +129,24 @@ function classify(testPath) {
     if (group.match.test(basename) || group.match.test(relativePath)) return group.name;
   }
   return 'platform_misc';
+}
+
+// Splits the active test list into the "fast" tier (no real DB, default) and the "db" tier
+// (listed in backend-db-dependent-tests.js) -- #1015. Throws loudly if the manifest references a
+// path that no longer exists, so a rename/delete can't silently go stale.
+function partitionByDbManifest(activeTests) {
+  const manifestList = require('./backend-db-dependent-tests.js');
+  const manifestSet = new Set(manifestList);
+  const activeRelPaths = new Set(activeTests.map(relativeTestPath));
+  const staleEntries = manifestList.filter((entry) => !activeRelPaths.has(entry));
+  if (staleEntries.length > 0) {
+    throw new Error(
+      `backend-db-dependent-tests.js lists ${staleEntries.length} test path(s) that no longer exist: ${staleEntries.join(', ')}`
+    );
+  }
+  const dbTests = activeTests.filter((testPath) => manifestSet.has(relativeTestPath(testPath)));
+  const fastTests = activeTests.filter((testPath) => !manifestSet.has(relativeTestPath(testPath)));
+  return { dbTests, fastTests, manifestCount: manifestSet.size };
 }
 
 function chunk(array, size) {
@@ -238,6 +265,7 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
   writeLog(logFile, result);
   const timedOut = result.error && result.error.code === 'ETIMEDOUT';
   return {
+    tier: 'db',
     group: groupName,
     chunk_index: chunkIndex + 1,
     test_count: tests.length,
@@ -249,6 +277,110 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
     exit_status: result.status,
     signal: result.signal || null,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+  };
+}
+
+// The fast tier: one Jest invocation covering every non-DB test, real worker parallelism (no
+// --runInBand, no domain chunking -- Jest's own scheduler fans these out), no schema preflight.
+// DB_HOST/DB_PORT are deliberately pointed nowhere reachable unless FAST_ALLOW_DB is set -- see
+// the FAST_ALLOW_DB comment above for why this is a permanent guardrail, not a one-time check.
+function runFastTier(tests, evidenceDir) {
+  const startedAt = new Date();
+  const logFile = path.join(evidenceDir, 'fast-tier.log');
+  const maxWorkersArgs = process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS
+    ? [`--maxWorkers=${process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS}`]
+    : [];
+  const args = [
+    '--experimental-vm-modules',
+    JEST_BIN,
+    '--config',
+    JEST_CONFIG,
+    ...maxWorkersArgs,
+    '--runTestsByPath',
+    ...tests.map(relativeTestPath),
+  ];
+  const env = { ...process.env, NODE_ENV: 'test' };
+  if (!FAST_ALLOW_DB) {
+    env.DB_HOST = '127.0.0.1';
+    env.DB_PORT = '1';
+  }
+  const started = Date.now();
+  const result = run(process.execPath, args, {
+    cwd: APP_DIR,
+    timeout: DEFAULT_CHUNK_TIMEOUT_MS,
+    env,
+  });
+  const durationMs = Date.now() - started;
+  writeLog(logFile, result);
+  const timedOut = result.error && result.error.code === 'ETIMEDOUT';
+  return {
+    tier: 'fast',
+    group: 'fast_tier',
+    chunk_index: 1,
+    test_count: tests.length,
+    started_at: startedAt.toISOString(),
+    duration_ms: durationMs,
+    timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
+    status: timedOut ? 'timeout' : result.status === 0 ? 'pass' : 'fail',
+    exit_status: result.status,
+    signal: result.signal || null,
+    db_pinned_unreachable: !FAST_ALLOW_DB,
+    log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+  };
+}
+
+function runDbTier(dbTests, evidenceRoot) {
+  const schemaPreflight = runSchemaPreflight(evidenceRoot);
+  const grouped = new Map(GROUPS.map((group) => [group.name, []]));
+  for (const testPath of dbTests) {
+    grouped.get(classify(testPath)).push(testPath);
+  }
+
+  const selectedGroups = GROUPS
+    .filter((group) => !groupFilter || group.name === groupFilter)
+    .map((group) => ({
+      ...group,
+      tests: grouped.get(group.name) || [],
+    }))
+    .filter((group) => group.tests.length > 0);
+
+  if (groupFilter && selectedGroups.length === 0) {
+    throw new Error(`No backend db-tier test group matched --group ${groupFilter}`);
+  }
+
+  const chunks = [];
+  let failed = false;
+
+  for (const group of selectedGroups) {
+    const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
+    console.log(`[backend-test-matrix] tier=db group=${group.name} tests=${group.tests.length} chunks=${testChunks.length}`);
+    if (chunkFilter !== null && chunkFilter > testChunks.length) {
+      throw new Error(`Group ${group.name} has ${testChunks.length} chunks; cannot run chunk ${chunkFilter}`);
+    }
+    const selectedChunkIndexes = chunkFilter === null
+      ? testChunks.map((_, index) => index)
+      : [chunkFilter - 1];
+    for (const index of selectedChunkIndexes) {
+      const result = runChunk(group.name, index, testChunks[index], evidenceRoot);
+      chunks.push(result);
+      console.log(`[backend-test-matrix] ${result.status.toUpperCase()} tier=db group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
+      if (result.status !== 'pass') {
+        failed = true;
+        if (!CONTINUE_ON_FAILURE) break;
+      }
+    }
+    if (failed && !CONTINUE_ON_FAILURE) break;
+  }
+
+  return {
+    schemaPreflight,
+    groups: selectedGroups.map((group) => ({
+      name: group.name,
+      description: group.description,
+      test_count: group.tests.length,
+    })),
+    chunks,
+    failed,
   };
 }
 
@@ -269,54 +401,43 @@ function main() {
   if (chunkFilter !== null && !groupFilter) {
     throw new Error('--chunk requires --group so the selected chunk is deterministic');
   }
+  if (!['fast', 'db', 'all'].includes(TIER)) {
+    throw new Error(`--tier must be one of fast, db, all (got "${TIER}")`);
+  }
 
   const targetSha = getTargetSha();
   const evidenceRoot = path.join(ROOT, '.tmp', 'release-gates', targetSha, 'backend-test-matrix');
   ensureDir(evidenceRoot);
-  const schemaPreflight = runSchemaPreflight(evidenceRoot);
 
   const activeTests = listTests();
-  const grouped = new Map(GROUPS.map((group) => [group.name, []]));
-  for (const testPath of activeTests) {
-    grouped.get(classify(testPath)).push(testPath);
-  }
-
-  const selectedGroups = GROUPS
-    .filter((group) => !groupFilter || group.name === groupFilter)
-    .map((group) => ({
-      ...group,
-      tests: grouped.get(group.name) || [],
-    }))
-    .filter((group) => group.tests.length > 0);
-
-  if (groupFilter && selectedGroups.length === 0) {
-    throw new Error(`No backend test group matched --group ${groupFilter}`);
-  }
+  const { dbTests, fastTests, manifestCount } = partitionByDbManifest(activeTests);
 
   const startedAt = new Date();
   const chunks = [];
   let failed = false;
+  let schemaPreflight = { status: 'not_run', reason: `tier=${TIER}` };
+  let dbGroups = [];
 
-  console.log(`[backend-test-matrix] active_tests=${activeTests.length} chunk_size=${DEFAULT_CHUNK_SIZE} timeout_ms=${DEFAULT_CHUNK_TIMEOUT_MS}`);
-  for (const group of selectedGroups) {
-    const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
-    console.log(`[backend-test-matrix] group=${group.name} tests=${group.tests.length} chunks=${testChunks.length}`);
-    if (chunkFilter !== null && chunkFilter > testChunks.length) {
-      throw new Error(`Group ${group.name} has ${testChunks.length} chunks; cannot run chunk ${chunkFilter}`);
+  console.log(`[backend-test-matrix] tier=${TIER} active_tests=${activeTests.length} fast_tests=${fastTests.length} db_tests=${dbTests.length} (manifest=${manifestCount})`);
+
+  if (TIER === 'fast' || TIER === 'all') {
+    const fastResult = runFastTier(fastTests, evidenceRoot);
+    chunks.push(fastResult);
+    console.log(`[backend-test-matrix] ${fastResult.status.toUpperCase()} tier=fast tests=${fastResult.test_count} duration_ms=${fastResult.duration_ms} db_pinned_unreachable=${fastResult.db_pinned_unreachable} log=${fastResult.log_file}`);
+    if (fastResult.status !== 'pass') {
+      failed = true;
     }
-    const selectedChunkIndexes = chunkFilter === null
-      ? testChunks.map((_, index) => index)
-      : [chunkFilter - 1];
-    for (const index of selectedChunkIndexes) {
-      const result = runChunk(group.name, index, testChunks[index], evidenceRoot);
-      chunks.push(result);
-      console.log(`[backend-test-matrix] ${result.status.toUpperCase()} group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
-      if (result.status !== 'pass') {
-        failed = true;
-        if (!CONTINUE_ON_FAILURE) break;
-      }
-    }
-    if (failed && !CONTINUE_ON_FAILURE) break;
+  }
+
+  const skipDbTier = failed && !CONTINUE_ON_FAILURE && TIER === 'all';
+  if ((TIER === 'db' || TIER === 'all') && !skipDbTier) {
+    const dbResult = runDbTier(dbTests, evidenceRoot);
+    schemaPreflight = dbResult.schemaPreflight;
+    dbGroups = dbResult.groups;
+    chunks.push(...dbResult.chunks);
+    if (dbResult.failed) failed = true;
+  } else if (skipDbTier) {
+    console.log('[backend-test-matrix] fast tier failed; skipping db tier (pass --continue-on-failure to run both regardless)');
   }
 
   const completedAt = new Date();
@@ -324,20 +445,20 @@ function main() {
     generated_at: completedAt.toISOString(),
     started_at: startedAt.toISOString(),
     target_sha: targetSha,
+    tier: TIER,
     verdict: failed ? 'fail' : 'pass',
     active_test_count: activeTests.length,
-    selected_group_count: selectedGroups.length,
+    fast_test_count: fastTests.length,
+    db_test_count: dbTests.length,
+    selected_group_count: dbGroups.length,
     chunk_size: DEFAULT_CHUNK_SIZE,
     selected_group: groupFilter || null,
     selected_chunk: chunkFilter,
     chunk_timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
     continue_on_failure: CONTINUE_ON_FAILURE,
+    // Only meaningful for the db tier -- the fast tier has no schema preflight by construction.
     schema_preflight: schemaPreflight,
-    groups: selectedGroups.map((group) => ({
-      name: group.name,
-      description: group.description,
-      test_count: group.tests.length,
-    })),
+    groups: dbGroups,
     chunks,
   };
   const outputFile = path.join(evidenceRoot, 'backend_test_matrix.json');
