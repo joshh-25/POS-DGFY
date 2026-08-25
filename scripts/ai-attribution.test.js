@@ -45,3 +45,18 @@ test('records are isolated per worktree and reject a different worktree', () => 
     fs.rmSync(second, { recursive: true, force: true });
   }
 });
+test('Claude SessionStart adapter records a payload that the formatter can use', () => {
+  const cwd = worktree();
+  const root = path.resolve(__dirname, '..');
+  try {
+    const hook = path.join(root, '.claude', 'hooks', 'record-ai-attribution.js');
+    const formatter = path.join(root, 'scripts', 'ai-attribution.js');
+    const payload = JSON.stringify({ session_id: 'claude-fixture', cwd, model: 'claude-sonnet-4-5' });
+    const recorded = execFileSync(process.execPath, [hook], { cwd, input: payload, encoding: 'utf8' });
+    assert.equal(JSON.parse(recorded).model, 'claude-sonnet-4-5');
+    const line = execFileSync(process.execPath, [formatter, 'format', 'claude-code', 'claude-fixture', 'Opened', 'worker'], { cwd, encoding: 'utf8' });
+    assert.equal(line, 'Opened by (Claude Sonnet 4.5, worker)');
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
