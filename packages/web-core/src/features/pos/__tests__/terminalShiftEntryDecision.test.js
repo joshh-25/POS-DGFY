@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
@@ -130,6 +131,27 @@ describe('POS terminal shift entry decision', () => {
 
   it('accepts a valid scoped operator authority independent of the DGFY session identity', () => {
     expect(isPosOperatorAuthorityValid({ authorityValid: true })).toBe(true);
+  });
+
+  it('binds cashier lifecycle requests to the verified cashier session without refreshing as the DGFY account', () => {
+    expect(buildScopedCashierRequestConfig({
+      token: ' cashier-access-token ',
+      companyToken: ' tenant-company-token '
+    })).toEqual({
+      skipAuthRefresh: true,
+      skipGlobalErrorToast: true,
+      headers: {
+        Authorization: 'Bearer cashier-access-token',
+        'x-company-token': 'tenant-company-token'
+      }
+    });
+  });
+
+  it('fails closed when the verified cashier session is incomplete', () => {
+    expect(() => buildScopedCashierRequestConfig({
+      token: '',
+      companyToken: 'tenant-company-token'
+    })).toThrow('The cashier company session could not be verified. Sign in again.');
   });
 
   it('restores a missing operator authority session for an authenticated cashier', () => {

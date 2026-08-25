@@ -322,6 +322,31 @@ export const createPosCashierLifecycleUseCases = ({
                     await transaction.commit();
                     return ok({ feature, resumed: true, attendance, operator_session: refreshed.operatorSession, authority_token: refreshed.authorityToken, idempotent_resume: true });
                 }
+                if (!current && Number(shift.cashier_id) === userId) {
+                    const restored = await createOperatorAuthority({
+                        repository,
+                        authorityService,
+                        tenantId,
+                        shift,
+                        user,
+                        attendance,
+                        key: normalizeKey(requestId, `resume-operator-${resolvedShiftId}-${userId}`),
+                        requestId,
+                        transaction
+                    });
+                    await transaction.commit();
+                    return ok({
+                        feature,
+                        resumed: true,
+                        attendance,
+                        operator_session: restored.operatorSession,
+                        authority_token: restored.authorityToken,
+                        recovered_missing_operator: true
+                    });
+                }
+                if (current) {
+                    throw lifecycleError('Another cashier currently controls this register.', 409, { reason_code: 'POS_OPERATOR_ALREADY_ACTIVE' });
+                }
                 throw lifecycleError('This cashier is not currently on break.', 409, { reason_code: 'POS_OPERATOR_NOT_ON_BREAK' });
             }
             const current = await repository.findActiveOperator({ terminalId, locationId: resolvedLocationId, shiftId: resolvedShiftId, transaction, lock: true });

@@ -89,6 +89,23 @@ export const resolveCashierRegisterEntryMode = ({
 
 export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
 
+export const buildScopedCashierRequestConfig = ({ token = '', companyToken = '' } = {}) => {
+  const normalizedToken = String(token || '').trim();
+  const normalizedCompanyToken = String(companyToken || '').trim();
+  if (!normalizedToken || !normalizedCompanyToken) {
+    throw new Error('The cashier company session could not be verified. Sign in again.');
+  }
+
+  return {
+    skipAuthRefresh: true,
+    skipGlobalErrorToast: true,
+    headers: {
+      Authorization: `Bearer ${normalizedToken}`,
+      'x-company-token': normalizedCompanyToken
+    }
+  };
+};
+
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
   operatorUserId = null,
