@@ -42,7 +42,11 @@ export const resolveIminPrinterAvailability = (diagnostics) => {
         return availableResult();
     }
 
-    const pairedCount = Number(bluetooth.pairedCount);
+    // New APKs report the filtered printer-candidate count. Older APKs only
+    // expose pairedCount, so retain that as the compatibility fallback.
+    const pairedCount = Number(
+        bluetooth.printerCandidateCount ?? bluetooth.pairedCount
+    );
     const hasPairedPrinter = bluetooth.permissionGranted === true
         && bluetooth.adapterEnabled === true
         && Number.isFinite(pairedCount)

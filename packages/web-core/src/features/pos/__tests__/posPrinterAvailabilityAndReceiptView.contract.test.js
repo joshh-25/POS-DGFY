@@ -8,6 +8,7 @@ const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativeP
 const readCheckoutRenderSource = () => [
     read('../components/POSCheckoutTerminal.jsx'),
     read('../components/POSCheckoutTerminalView.jsx'),
+    read('../components/POSCheckoutConfirmDialog.jsx'),
     read('../components/POSCheckoutTerminalReceiptDialogs.jsx'),
 ].join('\n');
 

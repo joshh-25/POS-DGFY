@@ -2,6 +2,8 @@ import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const RECEIPT_COLUMNS = 42;
+const IMIN_ASYNC_RESULT_EVENT = 'dgfy:imin-command-result';
+const IMIN_ASYNC_COMMAND_TIMEOUT_MS = 30_000;
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
@@ -58,7 +60,9 @@ const parseBridgeResult = (value, fallbackMessage) => {
         return {
             success: value.success !== false,
             message: safeText(value.message, fallbackMessage),
-            diagnostics: value.diagnostics || value.printer || null
+            diagnostics: value.diagnostics || value.printer || null,
+            ...(typeof value.mayHaveExecuted === 'boolean' ? { mayHaveExecuted: value.mayHaveExecuted } : {}),
+            ...(typeof value.drawerOpened === 'boolean' ? { drawerOpened: value.drawerOpened } : {})
         };
     }
 
@@ -79,6 +83,77 @@ const parseBridgeResult = (value, fallbackMessage) => {
         message: fallbackMessage,
         diagnostics: null
     };
+};
+
+const createIminCommandError = (message, code) => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+};
+
+const requestIminAsyncResult = (startCommand, fallbackMessage) => {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+        return Promise.reject(new Error('The iMin asynchronous bridge is unavailable.'));
+    }
+
+    const requestId = globalThis.crypto?.randomUUID?.()
+        || `imin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => {
+            window.removeEventListener(IMIN_ASYNC_RESULT_EVENT, handleResult);
+            clearTimeout(timeoutId);
+        };
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+        const handleResult = (event) => {
+            if (event?.detail?.requestId !== requestId) return;
+            finish(resolve, event.detail.result);
+        };
+        const timeoutId = setTimeout(() => {
+            finish(reject, createIminCommandError(
+                'The iMin hardware command did not return a final result in time. Check the device before retrying.',
+                'IMIN_COMMAND_TIMEOUT'
+            ));
+        }, IMIN_ASYNC_COMMAND_TIMEOUT_MS);
+
+        window.addEventListener(IMIN_ASYNC_RESULT_EVENT, handleResult);
+        try {
+            const accepted = parseBridgeResult(startCommand(requestId), fallbackMessage);
+            if (!accepted.success) {
+                finish(reject, createIminCommandError(
+                    accepted.message || 'The iMin hardware command was rejected.',
+                    'IMIN_COMMAND_REJECTED'
+                ));
+            }
+        } catch (error) {
+            finish(reject, error);
+        }
+    });
+};
+
+const mapMaybePromise = (value, mapper) => (
+    value && typeof value.then === 'function' ? value.then(mapper) : mapper(value)
+);
+
+const sendIminTextPrint = ({ bridge, receiptText, openDrawerAfterPrint = false, fallbackMessage }) => {
+    if (typeof bridge.printReceiptAsync === 'function') {
+        return requestIminAsyncResult(
+            (requestId) => bridge.printReceiptAsync(
+                requestId,
+                receiptText,
+                Boolean(openDrawerAfterPrint)
+            ),
+            fallbackMessage
+        );
+    }
+
+    return bridge.printReceipt(receiptText, Boolean(openDrawerAfterPrint));
 };
 
 export const notifyIminWebPosReady = () => {
@@ -132,7 +207,7 @@ const describeIminPrinterFailure = (diagnostics, nativeMessage) => {
                 message: 'Turn on Bluetooth to use the receipt printer.'
             };
         }
-        if (Number(bluetooth.pairedCount || 0) === 0) {
+        if (Number(bluetooth.printerCandidateCount ?? bluetooth.pairedCount ?? 0) === 0) {
             return {
                 reasonCode: 'NO_PRINTER_CONFIGURED',
                 message: 'No receipt printer is connected to this device.'
@@ -506,29 +581,53 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
     // printReceipt always ends the payload with a partial cut. Older field APKs
     // without printReceiptWithLogo still print correctly via the plain printReceipt
     // fallback, just without the company icon.
-    const raw = typeof bridge.printReceiptWithLogo === 'function'
-        ? bridge.printReceiptWithLogo(
-            receiptText,
-            Boolean(openDrawerAfterPrint),
-            resolveReceiptLogoSource(businessSettings)
-        )
-        : bridge.printReceipt(receiptText, Boolean(openDrawerAfterPrint));
+    const finalizeResult = (raw) => {
+        const result = parseBridgeResult(raw, 'Receipt print command sent.');
 
-    const result = parseBridgeResult(raw, 'Receipt print command sent.');
+        if (!result.success) {
+            return { handled: true, result: toHardwareFailureResult(result) };
+        }
 
-    if (!result.success) {
-        return { handled: true, result: toHardwareFailureResult(result) };
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: result.message || 'Receipt print command sent.',
+            tone: 'success',
+            source: 'iMin hardware',
+            details: result.diagnostics || null
+        });
+
+        return { handled: true, result };
+    };
+
+    const logoSource = resolveReceiptLogoSource(businessSettings);
+    if (typeof bridge.printReceiptWithLogoAsync === 'function') {
+        return requestIminAsyncResult(
+            (requestId) => bridge.printReceiptWithLogoAsync(
+                requestId,
+                receiptText,
+                Boolean(openDrawerAfterPrint),
+                logoSource
+            ),
+            'Receipt print command accepted.'
+        ).then(finalizeResult);
     }
 
-    emitPosHardwareMessage({
-        title: 'iMin receipt printer',
-        message: result.message || 'Receipt print command sent.',
-        tone: 'success',
-        source: 'iMin hardware',
-        details: result.diagnostics || null
-    });
+    if (typeof bridge.printReceiptAsync === 'function') {
+        return requestIminAsyncResult(
+            (requestId) => bridge.printReceiptAsync(
+                requestId,
+                receiptText,
+                Boolean(openDrawerAfterPrint)
+            ),
+            'Receipt print command accepted.'
+        ).then(finalizeResult);
+    }
 
-    return { handled: true, result };
+    const raw = typeof bridge.printReceiptWithLogo === 'function'
+        ? bridge.printReceiptWithLogo(receiptText, Boolean(openDrawerAfterPrint), logoSource)
+        : bridge.printReceipt(receiptText, Boolean(openDrawerAfterPrint));
+
+    return finalizeResult(raw);
 };
 
 const resolveOrderTicketItemName = (cartLine, index) => safeText(
@@ -590,26 +689,30 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
 
 export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {} }) => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.printReceipt !== 'function') {
+    if (!bridge || (
+        typeof bridge.printReceiptAsync !== 'function'
+        && typeof bridge.printReceipt !== 'function'
+    )) {
         return { handled: false };
     }
-    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
-    if (bitmapResult && !bitmapResult.success) {
-        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
-    }
-    const result = parseBridgeResult(
-        bridge.printReceipt(formatIminShiftSummaryText({ shiftSummary, businessSettings }), false),
-        'Shift sales summary print command sent.'
-    );
-    const normalizedResult = result.success ? result : toHardwareFailureResult(result);
-    emitPosHardwareMessage({
-        title: 'iMin receipt printer',
-        message: normalizedResult.message || 'Shift sales summary print command sent.',
-        tone: normalizedResult.success ? 'success' : 'error',
-        source: 'iMin hardware',
-        details: normalizedResult.diagnostics || null
+
+    const raw = sendIminTextPrint({
+        bridge,
+        receiptText: formatIminShiftSummaryText({ shiftSummary, businessSettings }),
+        fallbackMessage: 'Shift sales summary print command sent.'
     });
-    return { handled: true, result: normalizedResult };
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, 'Shift sales summary print command sent.');
+        const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: normalizedResult.message || 'Shift sales summary print command sent.',
+            tone: normalizedResult.success ? 'success' : 'error',
+            source: 'iMin hardware',
+            details: normalizedResult.diagnostics || null
+        });
+        return { handled: true, result: normalizedResult };
+    });
 };
 
 const formatZReadingValue = (value) => Number(value || 0).toFixed(2);
@@ -651,26 +754,30 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
 
 export const printZReadingWithIminBridge = ({ zReading, businessSettings = {} }) => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.printReceipt !== 'function') {
+    if (!bridge || (
+        typeof bridge.printReceiptAsync !== 'function'
+        && typeof bridge.printReceipt !== 'function'
+    )) {
         return { handled: false };
     }
-    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
-    if (bitmapResult && !bitmapResult.success) {
-        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
-    }
-    const result = parseBridgeResult(
-        bridge.printReceipt(formatIminZReadingText({ zReading, businessSettings }), false),
-        'Z-reading print command sent.'
-    );
-    const normalizedResult = result.success ? result : toHardwareFailureResult(result);
-    emitPosHardwareMessage({
-        title: 'iMin receipt printer',
-        message: normalizedResult.message || 'Z-reading print command sent.',
-        tone: normalizedResult.success ? 'success' : 'error',
-        source: 'iMin hardware',
-        details: normalizedResult.diagnostics || null
+
+    const raw = sendIminTextPrint({
+        bridge,
+        receiptText: formatIminZReadingText({ zReading, businessSettings }),
+        fallbackMessage: 'Z-reading print command sent.'
     });
-    return { handled: true, result: normalizedResult };
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, 'Z-reading print command sent.');
+        const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: normalizedResult.message || 'Z-reading print command sent.',
+            tone: normalizedResult.success ? 'success' : 'error',
+            source: 'iMin hardware',
+            details: normalizedResult.diagnostics || null
+        });
+        return { handled: true, result: normalizedResult };
+    });
 };
 
 export const formatIminOrderTicketText = ({
@@ -812,59 +919,72 @@ export const printOrderWithIminBridge = ({
     billTotal = null
 }) => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.printReceipt !== 'function') {
+    if (!bridge || (
+        typeof bridge.printReceiptAsync !== 'function'
+        && typeof bridge.printReceipt !== 'function'
+    )) {
         return { handled: false };
     }
 
-    const result = parseBridgeResult(
-        bridge.printReceipt(
-            billRequest
-                ? formatIminBillRequestText({ cart, terminalId, orderMethod, fnbContext, orderNotes, billTotal })
-                : formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
-            false
-        ),
-        billRequest ? 'Bill request print command sent.' : 'Order ticket print command sent.'
-    );
-
-    if (!result.success) {
-        return { handled: true, result: toHardwareFailureResult(result) };
-    }
-
-    emitPosHardwareMessage({
-        title: 'iMin order printer',
-        message: result.message || (billRequest ? 'Bill request print command sent.' : 'Order ticket print command sent.'),
-        tone: 'success',
-        source: 'iMin hardware',
-        details: result.diagnostics || null
+    const fallbackMessage = billRequest
+        ? 'Bill request print command sent.'
+        : 'Order ticket print command sent.';
+    const raw = sendIminTextPrint({
+        bridge,
+        receiptText: billRequest
+            ? formatIminBillRequestText({ cart, terminalId, orderMethod, fnbContext, orderNotes, billTotal })
+            : formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
+        fallbackMessage
     });
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, fallbackMessage);
+        if (!result.success) {
+            return { handled: true, result: toHardwareFailureResult(result) };
+        }
 
-    return { handled: true, result };
+        emitPosHardwareMessage({
+            title: 'iMin order printer',
+            message: result.message || fallbackMessage,
+            tone: 'success',
+            source: 'iMin hardware',
+            details: result.diagnostics || null
+        });
+
+        return { handled: true, result };
+    });
 };
 
 export const openDrawerWithIminBridge = () => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.openCashDrawer !== 'function') {
+    if (!bridge || (
+        typeof bridge.openCashDrawerAsync !== 'function'
+        && typeof bridge.openCashDrawer !== 'function'
+    )) {
         return { handled: false };
     }
 
-    const result = parseBridgeResult(
-        bridge.openCashDrawer(),
-        'Cash drawer open command sent.'
-    );
+    const raw = typeof bridge.openCashDrawerAsync === 'function'
+        ? requestIminAsyncResult(
+            (requestId) => bridge.openCashDrawerAsync(requestId),
+            'Cash drawer open command accepted.'
+        )
+        : bridge.openCashDrawer();
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, 'Cash drawer open command sent.');
+        if (!result.success) {
+            return { handled: true, result: toHardwareFailureResult(result) };
+        }
 
-    if (!result.success) {
-        return { handled: true, result: toHardwareFailureResult(result) };
-    }
+        emitPosHardwareMessage({
+            title: 'iMin cash drawer',
+            message: result.message || 'Cash drawer open command sent.',
+            tone: 'success',
+            source: 'iMin hardware',
+            details: result.diagnostics || null
+        });
 
-    emitPosHardwareMessage({
-        title: 'iMin cash drawer',
-        message: result.message || 'Cash drawer open command sent.',
-        tone: 'success',
-        source: 'iMin hardware',
-        details: result.diagnostics || null
+        return { handled: true, result };
     });
-
-    return { handled: true, result };
 };
 
 // silent: true skips the emitPosHardwareMessage announcement -- used by the

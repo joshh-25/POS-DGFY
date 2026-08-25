@@ -15,6 +15,7 @@ vi.mock('../../services/posService.js', () => ({
 let resolvePosHardwareDriver;
 let refreshPosHardwareDriver;
 let __resetPosHardwareDriverCacheForTests;
+let POS_HARDWARE_CAPABILITIES;
 
 beforeEach(async () => {
     vi.resetModules();
@@ -30,6 +31,7 @@ beforeEach(async () => {
 
     ({ resolvePosHardwareDriver, refreshPosHardwareDriver, __resetPosHardwareDriverCacheForTests } =
         await import('../posHardwareRegistry.js'));
+    ({ POS_HARDWARE_CAPABILITIES } = await import('../posHardwareContract.js'));
 });
 
 afterEach(() => {
@@ -43,6 +45,7 @@ describe('posHardwareRegistry', () => {
         const driver = await resolvePosHardwareDriver();
 
         expect(driver.id).toBe('imin_native');
+        expect(driver.capabilities).toContain(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT);
         expect(fetchPosDeviceStatus).not.toHaveBeenCalled();
     });
 
@@ -101,6 +104,8 @@ describe('posHardwareRegistry', () => {
         const driver = await resolvePosHardwareDriver();
 
         expect(driver.id).toBe('lan_escpos_bridge');
+        expect(driver.capabilities).toContain(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT);
+        expect(driver.capabilities).not.toContain(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT);
     });
 
     it('falls back to the noop driver, not an exception, when the status request itself fails', async () => {

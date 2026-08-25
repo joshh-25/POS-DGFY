@@ -1,5 +1,5 @@
 import { fetchPosDeviceStatus, printPosReceipt, printPosShiftSummary, printPosZReading, openPosDeviceDrawer } from '../../services/posService.js';
-import { normalizeHardwareResult } from '../posHardwareContract.js';
+import { POS_HARDWARE_CAPABILITIES, normalizeHardwareResult } from '../posHardwareContract.js';
 
 const extractErrorMessage = (error, fallback) => (
     error?.response?.data?.message || error?.message || fallback
@@ -13,6 +13,12 @@ const extractErrorMessage = (error, fallback) => (
 export const lanBridgeDriver = {
     id: 'lan_escpos_bridge',
     label: 'LAN receipt printer bridge',
+    capabilities: Object.freeze([
+        POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+        POS_HARDWARE_CAPABILITIES.PRINT_SHIFT_SUMMARY,
+        POS_HARDWARE_CAPABILITIES.PRINT_Z_READING,
+        POS_HARDWARE_CAPABILITIES.OPEN_DRAWER
+    ]),
     async getStatus() {
         try {
             const status = await fetchPosDeviceStatus();
