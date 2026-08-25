@@ -143,6 +143,17 @@ workflow run in the promotion flow") was resolved by #1018 itself — see
   Decision 4; rejected as new scope this ADR doesn't need to build to answer #980's question. Named
   as an open door for a future change, not built here.
 
+## Interaction with #860
+
+#980 explicitly asked how #860's own "procedure for next time" work interacts with this ADR — stated
+here rather than left implicit. #860's own Definition of Done already resolved this on its own:
+"Procedure for next time — moved to #1007, not tracked here anymore." #860 itself carries no
+standing "expedited exception" framing left to retire or rewrite; it deferred that work to #1007 in
+full, and #1007's mechanism (Decision 9 above, defined in `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+2026-08-25 amendment) is that deferred work's actual, shipped answer. #860 itself remains open only
+for its own narrower, unrelated retro-verification checklist (confirming PR #858's specific
+promotion was sound) — unaffected by this ADR either way.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
