@@ -210,22 +210,24 @@ AVX-family instructions → `exit 132`/SIGILL loading `@napi-rs/canvas`, see
 the active `pr-checks.yml` job set — those are buildx builds, Gradle, and
 git/bash, none of which load that addon.
 
-**This warning is no longer hypothetical as of #1018 (2026-08-25).** The one
-job that loads the addon (`dgfy-api-quality`, in the renamed
-`promotion-quality-gate.yml` — formerly `pr-quality-checks.yml`) was
+**This warning was no longer hypothetical as of #1018 (2026-08-25), and is
+now handled.** The one job that loads the addon (`dgfy-api-quality`, in the
+renamed `promotion-quality-gate.yml` — formerly `pr-quality-checks.yml`) was
 `workflow_dispatch`-only until #1018 and, as far as this doc's own history
 shows, was never actually run against `sieitz-lg` since the AVX gap was
 found — so the risk stayed latent. #1018 wires it to trigger *automatically*
 on every `to-staging/*`/`release/*` promotion PR, still pinned to
-`sieitz-lg`. Building that workflow surfaced a **confirmed, not hypothetical,
-guaranteed-red consequence**: `apps/dgfy-api/tests/menuPdfRasterService.test.js`'s
-capability-gating test hardcodes `expect(isPdfRasterizationSupported()).toBe(true)`
-— false on an AVX-less host, so it fails every run on `sieitz-lg`. Filed as
-#1035, not fixed by #1018 itself (out of that issue's scope — a CI-wiring
-change, not a test-logic change). Until #1035 lands, expect
-`promotion-quality-gate.yml`'s `dgfy-api-quality` job to be red on this one
-assertion on every real promotion PR — a known, tracked gap, not a mystery
-flake if someone hits it before #1035 is fixed.
+`sieitz-lg`. Building that workflow surfaced a **confirmed, not hypothetical**
+consequence: `apps/dgfy-api/tests/menuPdfRasterService.test.js`'s
+capability-gating test hardcoded `expect(isPdfRasterizationSupported()).toBe(true)`
+— false on an AVX-less host. Filed and fixed in the same change as #1018
+(#1035): the render-dependent tests in that file are now gated on a real
+probe of the runner's own capability, captured once at file load, rather
+than assuming every runner has AVX — on `sieitz-lg` they report as Jest
+`skipped` (a real, visible signal, not a false red or a masked failure), and
+still run for real on any host that does have AVX. If a *different* addon-
+loading test is ever added to a job pinned here, the same pattern applies:
+gate it on a real capability probe, don't assume the host.
 
 **The one-line switch-back claim in the 2026-08-01 section below is no
 longer accurate.** Beyond the `runner_labels_json` sites it documents, this

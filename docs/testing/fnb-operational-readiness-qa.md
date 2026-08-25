@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-25
 applies_to: fnb_mode
 topic: fnb_operational_readiness_qa
 ---
@@ -68,13 +68,15 @@ The gate runs:
    - governed docs lint;
    - diff whitespace hygiene.
 
-The gate is also executed as a blocking `quality-checks` reusable workflow in
-`.github/workflows/pr-checks.yml`. CI additionally runs the complete backend
-test matrix, open-handle diagnostics for F&B contracts, a fresh migration
-runner schema smoke test, frontend lint/F&B contract tests/builds, the blocking
-deterministic browser contract (`npm run test:e2e:fnb-contract`), required-index
-auditing, and compatibility-seam validation. The browser contract uses a
-dedicated Playwright configuration that starts only the Storefront Vite server;
+The same coverage also runs in CI, automatically, on `to-staging/*`/`release/*`
+promotion PRs specifically (`promotion-quality-gate.yml`, formerly
+`pr-quality-checks.yml`, #1018) — not on every PR into `develop`. CI additionally
+runs the complete backend test matrix, open-handle diagnostics for F&B contracts,
+a fresh migration runner schema smoke test, frontend lint/F&B contract
+tests/builds, the blocking deterministic browser contract (`npm run
+test:e2e:fnb-contract`), required-index auditing, and compatibility-seam
+validation. The browser contract uses a dedicated Playwright configuration that
+starts only the Storefront Vite server;
 it does not claim live tenant, payment, or POS lifecycle evidence.
 
 ## Manual Live QA Overlay

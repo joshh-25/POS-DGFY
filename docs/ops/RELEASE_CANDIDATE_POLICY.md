@@ -173,15 +173,19 @@ as a follow-up, not assumed here.
 
 ## The pre-promotion local gate
 
-`quality-checks` (described above as blocking) is not wired into
-`pr-checks.yml` at all — removed 2026-08-14 (#416) after sitting disabled
-(`if: false`, since 2026-08-11 over #345's ~14min unfiltered run) with no
-path back in decided yet — see "Known gaps" below. Until that's resolved,
-the human supplement is `npm run gate:release:local`, run by hand before a
-`staging`/`main` promotion. It is documented in
-`docs/testing/release-go-no-go-checklist.md`, which is the authoritative
-runbook for that gate — see #375. Do not propose rebuilding it (#345, #330);
-invoke it.
+`quality-checks` (described above as blocking) was removed from
+`pr-checks.yml` entirely on 2026-08-14 (#416) after sitting disabled
+(`if: false`, since 2026-08-11 over #345's ~14min unfiltered run). **The path
+back in has since been decided and built** (#1018, 2026-08-25) —
+`promotion-quality-gate.yml` (renamed from `pr-quality-checks.yml`) triggers
+itself automatically on `to-staging/*`/`release/*` promotion PRs specifically,
+never on an ordinary `develop` PR; see "What actually gates a release into
+`main` today" above and the "Promotion-time CI quality gate" amendment below.
+It is **complementary**, not a replacement: `npm run gate:release:local`, run
+by hand before a `staging`/`main` promotion, stays required regardless. It is
+documented in `docs/testing/release-go-no-go-checklist.md`, which is the
+authoritative runbook for that gate — see #375. Do not propose rebuilding it
+(#345, #330); invoke it.
 
 ## Known gaps (tracked, not solved by this document)
 
@@ -189,12 +193,12 @@ invoke it.
   `staging-qualification` / `exact-master-sha-qualification` as required
   checks for a controller that was never installed. Reconciling or removing
   it is a separate decision.
-- No live RC gate beyond the PR checks above (see previous section).
-- `quality-checks` is not wired into `pr-checks.yml` at all (removed
-  2026-08-14, #416; was short-circuited with `if: false` since #345 before
-  that), so the "blocking" description above is aspirational until a path
-  back in is decided. `npm run gate:release:local` (see
-  above) is the only place the full test matrix runs meanwhile.
+- **Resolved 2026-08-25 (#1018):** `quality-checks` now runs automatically at
+  promotion time via `promotion-quality-gate.yml` — see "The pre-promotion
+  local gate" above. Its `dgfy-api-quality` job's AVX-dependent tests
+  (`menuPdfRasterService.test.js`) are gated on a real probe of the runner's
+  own capability (#1035, same PR) rather than assuming every runner has AVX
+  — on `sieitz-lg` they show as Jest `skipped`, not a false red.
 - `develop` and `staging` have drifted before without a backport in the
   other direction — the compliance bypass this document depends on
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed
