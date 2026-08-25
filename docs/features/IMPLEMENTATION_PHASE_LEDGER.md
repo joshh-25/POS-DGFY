@@ -9256,9 +9256,51 @@ Phase 168 is eligible after this completion.
 
 ---
 
+## Phase 168 - POS Discount Self-Approval and Operator-Authority Remediation (#1033)
+
+### Initiative and release
+
+POS employee-discount hardening follow-up for PR #1033.
+
+### Objective and scope
+
+- Restore fail-closed cashier self-approval protection for Senior, PWD, Promo, and Other item discounts in both direct-PIN and trusted split-payment completion paths.
+- Preserve tenant-controlled self-approval exclusively for Employee Directory discounts.
+- Remove the unapproved DGFY-session/operator-authority identity binding so scoped cashier authority remains independent of DGFY browser identity, as required by ADR 0073.
+- Defer the employee-discount storage migration/API-performance follow-up items outside this blocker remediation.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-25.
+
+### Dependencies
+
+- Phase 167 completed.
+- ADR 0033, ADR 0039, and ADR 0073.
+- PR #1033 / issue #1020.
+
+### Acceptance and validation evidence
+
+- [x] Direct PIN and trusted split-payment manual item self-approval return `DISCOUNT_SELF_APPROVAL_BLOCKED` (focused checkout contracts, 2026-08-25).
+- [x] Employee-discount self-approval enabled/disabled coverage remains green (`posDiscountApprovalPolicy.unit.test.js`, 2026-08-25).
+- [x] A valid correctly scoped operator-authority cookie remains usable when the DGFY session identity differs; expired and scope-mismatch rejection coverage remains green (`posOperatorAuthority.usecases.test.js`, 2026-08-25).
+- [x] Focused POS policy/use-case and shared frontend suites, POS/SKUpervisor/Storefront builds, architecture/compliance/docs checks, and diff safety pass (2026-08-25).
+
+### Implementation links
+
+- PR #1033
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posOperatorAuthorityUseCases.js`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
+
+---
+
 ### Planning Record (2026-08-25)
 
-- Phase 156 through Phase 167 are `completed`. Phase 168 is now eligible.
+- Phase 156 through Phase 167 are `completed`. Phase 168 is in progress.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
