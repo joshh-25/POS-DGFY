@@ -1,17 +1,29 @@
 /** @vitest-environment jsdom */
 
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSCheckoutConfirmDialog } from '../components/POSCheckoutConfirmDialog.jsx';
+import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
+
+vi.mock('../../../utils/iminRuntimeFeedback.js', () => ({
+    isIminWrapperRuntime: vi.fn(() => false)
+}));
 
 vi.mock('@/components/ui/dialog', () => ({
-    Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
+    Dialog: ({ open, overlayClassName, children }) => (open ? <div data-testid="checkout-dialog-root" data-overlay-class={overlayClassName || ''}>{children}</div> : null),
     DialogContent: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogFooter: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogHeader: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogTitle: ({ children, ...props }) => <h2 {...props}>{children}</h2>
 }));
+
+beforeEach(() => {
+    vi.clearAllMocks();
+    isIminWrapperRuntime.mockReturnValue(false);
+});
+
+afterEach(cleanup);
 
 vi.mock('../components/PosCheckoutDetailsSlot.jsx', () => ({
     PosCheckoutDetailsSlot: ({ paymentTypeField }) => <div>{paymentTypeField}</div>
@@ -63,6 +75,20 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('disables backdrop blur only inside the iMin wrapper', () => {
+        const { unmount } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('');
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
+
+        unmount();
+        isIminWrapperRuntime.mockReturnValue(true);
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('backdrop-blur-none');
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(2);
+    });
+
     it('keeps keystrokes local and confirms with the validated payment snapshot', async () => {
         const viewModel = createViewModel();
         let terminalRenderCount = 0;
@@ -87,11 +113,13 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(terminalRenderCount).toBe(1);
         expect(viewModel.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
         expect(viewModel.setCustomerPaymentAmountAutoFilled).not.toHaveBeenCalled();
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.change(paymentInput, { target: { value: '150' } });
         expect(confirmButton.disabled).toBe(false);
         expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
         expect(terminalRenderCount).toBe(1);
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.click(confirmButton);
 

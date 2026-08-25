@@ -12,7 +12,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(',')
 
-const Dialog = ({ open, onOpenChange, children }) => {
+const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
   const rootRef = useRef(null)
 
   useEffect(() => {
@@ -32,7 +32,8 @@ const Dialog = ({ open, onOpenChange, children }) => {
     <DialogContext.Provider value={{ onOpenChange, rootRef }}>
       <div ref={rootRef} data-dialog-root="true" className="fixed inset-0 z-[100] flex items-center justify-center">
         <div
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm"
+          data-dialog-overlay="true"
+          className={cn('fixed inset-0 bg-slate-950/60 backdrop-blur-sm', overlayClassName)}
           onClick={() => onOpenChange && onOpenChange(false)}
         />
         {/*

@@ -26,6 +26,16 @@ function DialogHarness() {
   )
 }
 
+function DialogOverlayHarness({ overlayClassName }) {
+  return (
+    <Dialog open onOpenChange={() => {}} overlayClassName={overlayClassName}>
+      <DialogContent>
+        <DialogTitle>Checkout</DialogTitle>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 describe('Dialog focus management', () => {
   it('exposes modal semantics and focuses the requested initial field', () => {
     render(<DialogHarness />)
@@ -50,5 +60,15 @@ describe('Dialog focus management', () => {
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(lastControl)
     expect(document.activeElement).not.toBe(screen.getByRole('link', { name: 'Background navigation' }))
+  })
+
+  it('allows a caller to replace the backdrop blur without removing the dark overlay', () => {
+    render(<DialogOverlayHarness overlayClassName="backdrop-blur-none" />)
+
+    const overlay = document.querySelector('[data-dialog-overlay="true"]')
+    expect(overlay).not.toBeNull()
+    expect(overlay.className).toContain('bg-slate-950/60')
+    expect(overlay.className).toContain('backdrop-blur-none')
+    expect(overlay.className).not.toContain('backdrop-blur-sm')
   })
 })
