@@ -32,6 +32,14 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT || 3306,
     dialect: process.env.DB_DIALECT || 'mysql',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    // Test-only: bound the raw mysql2 TCP+handshake so a hung DB connection attempt fails fast
+    // instead of silently consuming Jest's whole 120s hook timeout (#925 --
+    // token_refresh_race.test.js's beforeAll hung on this exact `sequelize.authenticate()` call
+    // with no Sequelize-level error at all, meaning the hang was below the pool's own `acquire`
+    // timeout -- the raw connect() itself, which had no timeout of its own before this). Scoped to
+    // NODE_ENV=test only; production connection tuning is a separate, deliberately unreviewed-here
+    // decision.
+    dialectOptions: process.env.NODE_ENV === 'test' ? { connectTimeout: 8000 } : {},
     pool: {
       // Landlord DB is hit on every single request (tenant resolution).
       // At 50 users × ~3 concurrent requests = ~150 simultaneous touches at peak.
