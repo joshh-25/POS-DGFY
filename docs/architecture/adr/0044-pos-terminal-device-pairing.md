@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-28
-last_reviewed: 2026-06-28
-review_by: 2026-12-28
+last_reviewed: 2026-08-24
+review_by: 2027-02-24
 applies_to: architecture_decision
 topic: pos_terminal_device_pairing
 ---
@@ -44,3 +44,22 @@ Missing, expired, tampered, or invalidated pairing fails closed to the existing 
 - POS frontend contract test for Opening Cash and secure fallback.
 - Browser privileged-token storage guard.
 - `npm run check:architecture`.
+
+## Amendments
+
+### 2026-08-24: Pairing Is Not Cashier Takeover Authentication (Phase 154)
+
+- Pairing remains a device-binding signal only. It never authenticates a
+  relief cashier, starts attendance, starts a break, opens a register shift, or
+  authorizes a drawer mutation.
+- A current operator session may be established only
+  after the cashier's tenant identity, location grant, terminal scope, and
+  dedicated cashier-authentication step have all passed server-side. Pairing
+  may reduce repeated device verification but cannot replace that step.
+- Missing, expired, or invalid pairing continues to fail closed to the existing
+  authenticated terminal-unlock flow. No browser-readable operator token is
+  introduced by this amendment.
+- The current pairing and shift-opening behavior remains unchanged until a later
+  implementation phase activates the approved operator-session contract. This is
+  a governance amendment only; it does not authorize migration or runtime work.
+- See `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`.
