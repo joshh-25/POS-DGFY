@@ -78,6 +78,15 @@ env:
 # from the Actions tab (pr-quality-checks.yml / pr-android-build-checks.yml,
 # now `workflow_dispatch`-triggered) whenever a full test run or an Android
 # build-check is actually wanted, without paying for either on every PR.
+#
+# 2026-08-25 (PR #1003): this PR's own head commit re-added a `quality-checks:`
+# job block right here, unconditional and unfiltered by path -- exactly the
+# every-PR cost the paragraph directly above it describes removing. Reverted
+# in the same PR before merge; the block never ran as part of develop's
+# history. If quality-checks is ever genuinely re-wired on purpose, it needs
+# its own PR that says so in the title/body and updates this comment plus
+# scripts/check-pr-quality-workflow.js's expectations -- not a side effect of
+# an unrelated feature PR.
 jobs:
   changes:
     # Drafts aren't merge candidates -- skip the whole pipeline rather than
@@ -90,13 +99,6 @@ jobs:
       runner_labels_json: *runner_light
       validate_pr_metadata: true
       enforce_compliance_declarations: false
-
-  quality-checks:
-    needs: changes
-    if: needs.changes.result == 'success'
-    uses: ./.github/workflows/pr-quality-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
 
   dgfy-api-build-check:
     needs: changes
