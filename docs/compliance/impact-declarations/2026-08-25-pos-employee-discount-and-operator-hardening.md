@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 related_adr: 0033-commercial-promo-and-statutory-pos-discount-boundaries.md
 declaration_id: 2026-08-25-pos-employee-discount-and-operator-hardening
 classification: major
@@ -45,3 +45,12 @@ Major because this change affects POS discount authorization, cashier/operator i
 - Shared POS frontend behavior and source-contract tests are required to pass.
 - POS and SKUpervisor production builds are required because both consume the shared POS package.
 - Architecture, controller-boundary, documentation, compatibility, tenant-schema, compliance, lint, and diff-safety gates are required before handoff.
+
+## Update 2026-08-26: Cashier Authority Recovery and Version-Skew Compatibility (#1045)
+
+- The existing operator-authority classification governs issue #1045 and production hotfix PR #1046. No compliance surface, statutory calculation, payment allocation, receipt, tax, or inventory rule is added or relaxed.
+- When the opening cashier still has active attendance but the operator-session row is missing, the backend may reconstruct authority only for that exact shift owner. A different authenticated cashier remains fail-closed and must use the explicit takeover flow.
+- Manual cashier resume and takeover send the lifecycle mutation with the separately verified cashier company session without installing that session as the active DGFY browser identity.
+- A frontend may preserve the pre-operator legacy shift-owner flow only when the API explicitly reports `POS_OPERATOR_FEATURE_DISABLED` or the exact `/pos/terminal/operator/current` route is absent. Authentication, authorization, permission, operator-domain, and unrelated route failures remain fail-closed.
+- Focused verification passed: 25 backend lifecycle/operator tests, 32 shared POS decision/contract tests, API syntax, and POS/SKUpervisor/Storefront production builds.
+- Rollback is a code revert of the recovery and compatibility branch. No migration or persisted-data transformation is introduced.

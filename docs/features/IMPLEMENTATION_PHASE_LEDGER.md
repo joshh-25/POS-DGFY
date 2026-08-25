@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-26
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -9298,9 +9298,64 @@ POS employee-discount hardening follow-up for PR #1033.
 
 ---
 
-### Planning Record (2026-08-25)
+## Phase 169 - Production POS Cashier Authority Recovery and Version-Skew Compatibility (#1045)
 
-- Phase 156 through Phase 167 are `completed`. Phase 168 is in progress.
+### Initiative and release
+
+Production hotfix adoption and rolling-version compatibility for POS operator authority.
+
+### Objective and scope
+
+- Restore a missing operator session only when the authenticated cashier is the exact owner of the open register shift and still has active attendance at that location.
+- Bind manual resume/takeover mutations to the separately verified cashier session without replacing the active DGFY browser identity.
+- Preserve legacy shift-owner selling only when operator authority is explicitly feature-disabled or the exact current-operator route is absent during a mixed-version local/deployment window.
+- Keep arbitrary authorization, permission, domain, terminal, location, shift, attendance, and unrelated route failures fail-closed.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-26.
+
+### Dependencies
+
+- Phase 168 completed.
+- ADR 0026, ADR 0031, and ADR 0073.
+- Incident issue #1045 and production hotfix PR #1046.
+
+### Acceptance and validation evidence
+
+- [x] Missing operator recovery succeeds for the authenticated shift owner with active attendance.
+- [x] A different cashier cannot claim a missing operator session through resume.
+- [x] Manual resume/takeover request configuration uses the verified cashier access/company tokens, disables auth refresh, and does not install the cashier session as DGFY browser identity.
+- [x] Feature-disabled and exact route-missing current-operator responses enter legacy mode without issuing a second doomed resume request; unrelated 404, permission, and operator-domain failures remain fail-closed.
+- [x] Backend lifecycle/operator suites: 3 suites, 25 tests passed.
+- [x] Shared POS decision/contract suites: 2 files, 32 tests passed.
+- [x] API syntax, architecture/controller guardrails, compliance/docs checks, diff safety, and POS/SKUpervisor/Storefront production builds passed.
+
+### Implementation links
+
+- Issue #1045 / production hotfix PR #1046
+- `apps/dgfy-api/src/modules/pos/usecases/posCashierLifecycleUseCases.js`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
+- `docs/compliance/impact-declarations/2026-08-25-pos-employee-discount-and-operator-hardening.md`
+
+### Next eligible phase
+
+Phase 170 is eligible after this completion.
+
+### Residual validation note
+
+The optional frontend budget gate remains red on the existing SKUpervisor `TerminalPage` chunk:
+the untouched `develop` baseline is 133.89 KB against a 128 KB budget, while this branch is
+134.97 KB. The 1.08 KB delta is the scoped compatibility classifier and tests do not mask the
+pre-existing 5.89 KB baseline overage; budget remediation remains outside issue #1045.
+
+---
+
+### Planning Record (2026-08-26)
+
+- Phase 156 through Phase 169 are `completed`. Phase 170 is the next eligible phase.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
