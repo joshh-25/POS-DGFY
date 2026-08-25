@@ -8337,15 +8337,21 @@ unshipped reservation.
   `vouchers` rows and deletes the settings key on apply. Already exercised against a restored
   local-test snapshot (45 tenants, 3 real promos migrated); never run against staging or
   production.
-- New in this phase: freezes the one remaining legacy promo-authoring surface. #776/#695 already
-  froze the plural `storefront_promos` "Add Promo" button in
-  `packages/web-core/.../TerminalOperationsWorkspace.jsx`, but a second, older, singular-only editor
-  -- the "Promo Card" block in `apps/dgfy-ims/Pages/Settings.jsx`, writing `storefront_promo` --
-  was never touched by that freeze and remained fully editable. Reported as a live regression by
-  Pat, 2026-08-24. This phase disables every input in that block (values still load and render) and
-  drops `storefront_promo` from that screen's settings-save payload, since the payload previously
-  rebuilt the key from only 11 of the fields the promo engine persists and would have re-created it
-  after a migration run deletes it.
+- New in this phase: freezes every remaining legacy promo-authoring surface, in two rounds.
+  Round 1 addressed the singular editor -- the "Promo Card" block in
+  `apps/dgfy-ims/Pages/Settings.jsx`, writing `storefront_promo` -- reported as a live regression by
+  Pat, 2026-08-24, since #776's freeze of the *plural* `storefront_promos` "Add Promo" button in
+  `packages/web-core/.../TerminalOperationsWorkspace.jsx` never touched it. A PR #988 review (RF-1,
+  blocker) then correctly found round 1 incomplete: #776 had only frozen *creating* a new plural
+  promo, not *editing* an existing one -- code, discount, usage limit, time window, and eligibility
+  were all still mutable there, and `handleStorefrontSave` wrote both legacy keys on every
+  storefront save regardless. Round 2 disables every remaining input/button in that plural editor
+  (Title, Badge, Subtitle, Validity Text, Promo Code, Discount Percent, Usage Limit, From/To date
+  pickers, the three eligibility checkbox groups, the Active checkbox, Remove, and the promo-item
+  picker) and drops both `storefront_promo`/`storefront_promos` from that save handler's payload,
+  matching the singular editor's fix. Both save payloads previously rebuilt/re-sent these keys from
+  a narrower or stale field set than the promo engine persists and would have re-created them after
+  a migration run deletes them.
 - ADR 0066 Consequences item 4 amended to match what PR #778 actually shipped: migrated vouchers
   get `channels_mask = storefront|pos` and `is_publicly_listed = true`, derived from each promo's
   own (always-permissive, per #459) config -- not the storefront-only default the ADR text
@@ -8384,6 +8390,14 @@ unshipped reservation.
 - [x] `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx` -- new contract test asserting
   every promo input and the Active switch are disabled, the relabel/copy are present, and
   `storefront_promo` is absent from the save payload.
+- [x] `packages/web-core/src/features/pos/__tests__/legacyPromoAuthoringFrozen.contract.test.js` --
+  extended (PR #988 review round) to assert every control in the plural editor is disabled and
+  both `storefront_promo`/`storefront_promos` are absent from `handleStorefrontSave`'s payload.
+- [x] `npm run build:pos` -- real Vite production build of `apps/dgfy-pos`, the second app
+  consuming `TerminalOperationsWorkspace.jsx`, passed.
+- [ ] Rendered-UI proof (Architecture Governance item 8) -- deliberately deferred; no running
+  tenant-backed dev environment available to this session. See the compliance declaration's
+  Verification Evidence section for the full reasoning.
 - [ ] Inventory + apply run against staging/production -- not part of this phase; a deploy-scoped
   action outside Worker's checkpoint policy.
 - [ ] `storefront_promos`/`commercialPromoPolicy.js` retirement -- deferred per Pat's call.
@@ -8394,6 +8408,8 @@ unshipped reservation.
   `apps/dgfy-api/scripts/migrate-promos-to-vouchers.js` (PR #778, retroactive coverage)
 - `apps/dgfy-ims/Pages/Settings.jsx`
 - `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx`
+- `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `packages/web-core/src/features/pos/__tests__/legacyPromoAuthoringFrozen.contract.test.js`
 - `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-25 amendment)
 - `docs/compliance/impact-declarations/2026-08-25-legacy-promo-card-frozen.md`
 - [Issue #695 - Migrate legacy Promo Codes into the voucher entity and retire storefront_promos](https://github.com/Sieitzz/dgfy-platform/issues/695)

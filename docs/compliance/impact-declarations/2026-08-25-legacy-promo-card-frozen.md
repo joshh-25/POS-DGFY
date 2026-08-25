@@ -4,11 +4,11 @@ owner: engineering
 last_reviewed: 2026-08-25
 declaration_id: 2026-08-25-legacy-promo-card-frozen
 classification: major
-surfaces: settings
+surfaces: settings,pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.08.23
-verification_evidence: npm run build:skupervisor,npm run check:compliance,npm run check:adr,npm test (apps/dgfy-ims)
-rollback_note: Revert this commit. The change disables inputs on an already-frozen settings card and drops one key from the settings save payload; no schema, migration, redemption logic, or persisted-value shape changed, so rollback carries no data or compliance-state risk. A rollback restores the ability to author a new legacy promo code via this one screen -- the same exposure that existed before #776's parallel freeze on the plural editor, not a new one.
+verification_evidence: npm run build:skupervisor,npm run build:pos,npm run check:compliance,npm run check:adr,npm test (apps/dgfy-ims)
+rollback_note: Revert this commit. The change disables inputs on two already-frozen (or partially-frozen) settings/POS editors and drops legacy promo keys from two settings save payloads; no schema, migration, redemption logic, or persisted-value shape changed, so rollback carries no data or compliance-state risk. A rollback restores the ability to edit an existing legacy promo code's discount/eligibility via either screen -- the same exposure that predates this PR, not a new one.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-25T00:00:00Z
@@ -19,42 +19,50 @@ preflight_request_ref: NOT-EXECUTED-695-LEGACY-PROMO-CARD-FROZEN
 
 ## Compliance Impact Classification
 
-Classified `major` because `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES`
-hard-floors any change to `apps/dgfy-ims/Pages/Settings.jsx` at `major` with surface `settings` --
-an exact-path match on the file, independent of the diff's actual content, matching the same
-blunt-floor situation `2026-08-23-ims-settings-lint-entity-escape.md` already documents for this
-file.
+Classified `major` for two independent, both-already-major reasons:
 
-**The actual content is a freeze, not a capability change.** The "Promo Card" block in the
-Storefront Page settings tab is the last remaining surface anywhere in the codebase that can author
-a new legacy `storefront_promo` discount code -- the sibling plural editor
-(`packages/web-core/.../TerminalOperationsWorkspace.jsx`, `storefront_promos`) was already frozen by
-#776/#695. This change:
+1. `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` hard-floors any change to
+   `apps/dgfy-ims/Pages/Settings.jsx` at `major`/`settings` -- an exact-path match, independent of
+   the diff's actual content, matching the same blunt-floor situation
+   `2026-08-23-ims-settings-lint-entity-escape.md` already documents for this file.
+2. `packages/web-core/src/features/pos/` is separately floored at `major`/`pos,terminal` -- this PR
+   touches `TerminalOperationsWorkspace.jsx` (a shared POS/IMS settings component under that path)
+   and its contract test.
 
-- Relabels the section "Promo Card (Legacy)" and adds copy pointing merchants at Vouchers.
-- Adds `disabled` to every input and the Active switch in that block. Existing values still load
-  and render (the load path, `:1017`/`:1101-1111`, is untouched) so a tenant's current card stays
-  visible; nothing can be newly authored or edited.
-- Drops the `storefront_promo` key from this screen's settings-save payload
-  (`updatePayload` at `:2002`). This editor only ever knew 11 of the fields the promo engine
-  persists -- it has no `target_item_ids`, `valid_from`/`valid_until`, or the
-  `channels`/`fulfillment_methods`/`order_timing` eligibility maps the fuller web-core editor can
-  set. Before this change, every save on this screen silently rebuilt `storefront_promo` from just
-  those 11 fields (narrowing a richer record) and would re-create the key after the #695 migration
-  deletes it. `settingsRepository.updateSettings` only touches keys present in the request body, so
-  omitting the key here leaves whatever is stored on that key strictly alone.
+**The actual content is a freeze, not a capability change**, expanded mid-review after a PR #988
+review (see `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` Phase 155) correctly found the first cut
+incomplete. Two editors write the legacy `storefront_promo(s)` keys that
+`commercialPromoPolicy.js` still redeems on both POS and storefront checkout:
+
+- **`apps/dgfy-ims/Pages/Settings.jsx`** ("Promo Card", singular `storefront_promo` key) -- every
+  input and the Active switch are disabled; the load path is untouched so an existing tenant's card
+  still displays. `storefront_promo` is dropped from this screen's save payload (`updatePayload`).
+- **`packages/web-core/.../TerminalOperationsWorkspace.jsx`** ("Promo Codes (Legacy)", plural
+  `storefront_promos` key) -- #776 had already frozen the "Add Promo" *creation* button, but
+  **editing an existing card was still fully live**: code, discount percent, usage limit, time
+  window, and channel/fulfillment/timing eligibility were all mutable, the Remove button worked,
+  and `handleStorefrontSave` wrote both `storefront_promo` and `storefront_promos` on *every*
+  storefront settings save regardless of whether a promo field changed. This PR disables every
+  remaining input/button in that section (Title, Badge, Subtitle, Validity Text, Promo Code,
+  Discount Percent, Usage Limit, From/To date pickers, the three eligibility checkbox groups, the
+  Active checkbox, Remove, the promo-item picker/Add Item, and each item's remove chip) and drops
+  both `storefront_promo` and `storefront_promos` from that save handler's payload.
 
 No new discount capability, redemption path, validation rule, or persisted data shape is
-introduced. `commercialPromoPolicy.js` and every existing redemption/read path
-(`posDiscountPolicy.js`, `storeUseCases.js`, the storefront discovery projections) are unchanged --
-per Pat's standing call, the legacy engine's actual retirement stays deferred until the voucher-
-based system is prod-proven.
+introduced -- both changes only remove write/edit surface. `commercialPromoPolicy.js` and every
+existing redemption/read path (`posDiscountPolicy.js`, `storeUseCases.js`, the storefront discovery
+projections) are unchanged -- per Pat's standing call, the legacy engine's actual retirement stays
+deferred until the voucher-based system is prod-proven.
 
 ## Affected Surfaces
 
-`settings` (via the exact-path rule above). No `pos`, `terminal`, `payments`, or `compliance`
-surface logic changed -- this file's compliance floor is a blanket rule on the whole Settings page,
-not a marker that this specific change touches settings *logic*.
+- `settings` -- `apps/dgfy-ims/Pages/Settings.jsx`'s exact-path floor.
+- `pos`, `terminal` -- `packages/web-core/src/features/pos/`'s path-prefix floor
+  (`TerminalOperationsWorkspace.jsx` is the shared POS settings workspace both `dgfy-ims` and
+  `dgfy-pos` build against).
+
+No `payments` or `compliance` surface logic changed -- both floors are blanket rules on the whole
+file/directory, not a marker that this diff touches payments or compliance decision logic.
 
 ## Compliance Preconditions
 
@@ -67,21 +75,37 @@ about already-merged code, it does not itself change any runtime behavior.
 
 ## Verification Evidence
 
-- `npm run build:skupervisor`: real Vite production build of `apps/dgfy-ims`, succeeded.
-- `npm run check:compliance`: PASS, confirming this declaration validates against the gate's
-  frontmatter/section requirements.
+- `npm run build:skupervisor`: real Vite production build of `apps/dgfy-ims` (consumes
+  `TerminalOperationsWorkspace.jsx`), succeeded.
+- `npm run build:pos`: real Vite production build of `apps/dgfy-pos` (also consumes
+  `TerminalOperationsWorkspace.jsx`), succeeded.
+- `npm run check:compliance`: PASS, confirming this declaration's `surfaces` now cover both changed
+  paths.
 - `npm run check:adr`: PASS (79 ADRs validated), confirming the ADR 0066 amendment's shape is
   correct.
-- `npm test` in `apps/dgfy-ims`: new `legacyPromoCardFrozen.test.jsx` contract test passes,
-  asserting every promo input and the Active switch are disabled, the relabel/copy are present, and
-  `storefront_promo` is absent from the save payload.
-- Manual diff review: the load path (`:1017`, `:1101-1111`) is untouched; the only behavioral
-  change is the added `disabled` attributes and the removed `storefront_promo` payload key.
+- `npm test` in `apps/dgfy-ims` (which also runs `packages/web-core/**` tests per that workspace's
+  vitest config): `legacyPromoCardFrozen.test.jsx` (IMS singular editor) and the extended
+  `legacyPromoAuthoringFrozen.contract.test.js` (web-core plural editor) both pass, asserting every
+  promo control in each editor is disabled and both legacy keys are absent from each save payload.
+- Manual diff review: both editors' load/display paths are untouched -- an existing tenant's promo
+  card still renders on both screens; the only behavioral change is the added `disabled` attributes
+  and the removed payload keys.
+- **Rendered-UI proof (Architecture Governance item 8) is deliberately deferred, not silently
+  skipped.** This session has no running tenant-backed dev environment (API + auth + fixture data)
+  to drive a real browser check against, and this class of change -- disabling settings inputs, not
+  authentication/registration/payment/checkout/tenant-provisioning -- sits outside the Implementation
+  Hardening Contract's own trigger list in `ARCHITECTURE_GOVERNANCE.md`, so the full 9-point
+  hardening checklist is not mandatory here. The source-text contract tests above assert the actual
+  DOM attributes (`disabled` on each control) rather than a rendered screenshot; a human or a
+  session with a live tenant environment should still confirm visually before this reaches
+  production, and that gap is named here rather than implied to be covered.
 
 ## Changed Files
 
 - `apps/dgfy-ims/Pages/Settings.jsx`
 - `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx`
+- `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `packages/web-core/src/features/pos/__tests__/legacyPromoAuthoringFrozen.contract.test.js`
 - `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`
 - `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
 
