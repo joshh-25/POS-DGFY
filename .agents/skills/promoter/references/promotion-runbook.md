@@ -110,10 +110,13 @@ git rev-list --count origin/staging..origin/main
 
 ```bash
 # DEV/STAGING — unattended, per ../SKILL.md's checkpoint table
-gh workflow run deploy.yml -f components=all -f deploy=true --ref develop   # or staging
+# (#1050, 2026-08-25: the old single-select `components` input is gone; the
+# four build_* booleans below all default true, so omitting them builds/pushes
+# everything, same as the old components=all)
+gh workflow run deploy.yml -f deploy=true --ref develop   # or staging
 
 # BETA/PROD — ask Pat first, every time
-gh workflow run deploy-main.yml -f components=all -f deploy=true --ref main
+gh workflow run deploy-main.yml -f deploy=true --ref main
 
 # Verify health after either dispatch — read-only, unattended
 gh workflow run verify-deployment.yml -f environment=<DEV|STAGING|BETA|PROD> -f poll_minutes=5
