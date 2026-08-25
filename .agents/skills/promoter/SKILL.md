@@ -126,6 +126,11 @@ second retry (run `31956577646`) succeeded, completing the deploy.
 See `AGENTS.md`'s "Role handoffs and composite instructions" section for what a chained "review,
 merge, and deploy" instruction actually does end to end and where it hands off to Pat.
 
+## Verified AI/model attribution
+
+For a promotion PR, put `Opened by (..., promoter)` first under `## Summary` only when the
+formatter validates the active session. Otherwise omit it; never guess or use `unknown-AI`.
+
 ## Board handling
 
 This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-reviewer` still sets

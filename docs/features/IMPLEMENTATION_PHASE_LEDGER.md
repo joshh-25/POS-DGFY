@@ -9206,10 +9206,57 @@ part of this phase.
 
 ---
 
+## Phase 167 - Verified AI/Model PR Attribution (#1024)
+
+### Initiative and release
+
+Developer-experience attribution contract for AI-assisted pull requests and review comments.
+
+### Objective and scope
+
+- Provide verified, tool-neutral runtime/model attribution for Claude Code, Codex, Antigravity,
+  OpenCode, and Cursor.
+- Keep session evidence local, ephemeral, worktree-bound, and fail-closed when it cannot be proven.
+- Standardize `Opened by`, `Review`, and `Addressed` tags in the PR template and canonical roles.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-25.
+
+### Dependencies
+
+- Phase 166 completed.
+- `docs/ai/PR.md`, canonical role definitions, and the PR template.
+- No ADR change: this is an AI tooling/documentation contract with no application architecture impact.
+
+### Acceptance and validation evidence
+
+- [x] Runtime payload extraction covers all five adapters, mapped and unmapped models, blank model
+  rejection, expired/stale evidence, and Cursor initialization ambiguity.
+- [x] Versioned records are atomically stored only under Git metadata, scoped by runtime/session/
+  worktree and rejected unless current worktree validation succeeds.
+- [x] PR/template and Worker, Reviewer, and Promoter instructions omit attribution when validation
+  produces no proof.
+- [x] Node syntax checks, attribution unit tests, documentation lint, architecture, and compliance
+  gates pass (2026-08-25).
+
+### Implementation links
+
+- `scripts/ai-attribution.js`
+- `scripts/ai-attribution.test.js`
+- `docs/ai/AI_MODEL_ATTRIBUTION.md`
+- `.opencode/plugins/dgfy-ai-attribution.js`
+
+### Next eligible phase
+
+Phase 168 is eligible after this completion.
+
+---
+
 ### Planning Record (2026-08-25)
 
-- Phase 156 through Phase 166 are `completed` under the approved automatic cashier lifecycle
-  scope. Phase 167 is now eligible.
+- Phase 156 through Phase 167 are `completed`. Phase 168 is now eligible.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
