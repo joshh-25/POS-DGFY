@@ -6,21 +6,30 @@ name: Deploy Main (PROD)
 # this by hand from the Actions tab, with the branch selector left on `main`
 # (this workflow file must exist on `main` to be dispatchable against it; it
 # reaches there the normal way, by being promoted from develop -> staging ->
-# main like any other change).
+# main like any other change). #1050 (2026-08-25): that assumption was never
+# actually enforced -- `gh workflow run` with no `--ref` dispatches against
+# the repo's *default* branch (`develop`, not `main`), and nothing in this
+# file checked `github.ref` before running. The `guard-branch` job below is
+# the enforcement; see its comment.
 on:
   workflow_dispatch:
     inputs:
-      components:
-        description: Which images to build. backend = api + migration-runner together (see deploy.yml for why they're never split). frontend = all 3 frontend apps; dgfy-ims/dgfy-pos/dgfy-storefront build just one.
-        type: choice
-        options:
-          - all
-          - backend
-          - frontend
-          - dgfy-ims
-          - dgfy-pos
-          - dgfy-storefront
-        default: all
+      build_api:
+        description: Build/push dgfy-api and dgfy-migration-runner (always paired -- see the dgfy-api job comment for why they're never split). Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_ims:
+        description: Build/push the dgfy-ims image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_pos:
+        description: Build/push the dgfy-pos image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_storefront:
+        description: Build/push the dgfy-storefront image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -38,8 +47,8 @@ permissions:
 # redirects every *.beta.dgfy.ph host straight to its *.dgfy.ph equivalent
 # (#894/#896), so the `dgfy-{ims,pos,storefront}-beta` images/containers this
 # workflow used to build and deploy no longer have anything to serve.
-# Dispatching this with components:all (the default) now builds and deploys
-# three frontend images, prod-only:
+# Dispatching this with every build_* box left checked (the default) now
+# builds and deploys three frontend images, prod-only:
 #
 #   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest
 #                         -- built against the PROD GitHub Environment's
@@ -72,18 +81,40 @@ permissions:
 # deploy is resolved from the PROD Environment's SSH secrets (validated in
 # the 2026-07-20 cutover).
 #
-# NOTE (shared api, no gate): a components:all/backend dispatch restarts the
-# shared dgfy-api (+ dgfy-migration-runner), with no approval gate beyond
-# whoever has dispatch access. This is unchanged from the dual-deploy window.
+# NOTE (shared api, no gate): a build_api dispatch restarts the shared
+# dgfy-api (+ dgfy-migration-runner), with no approval gate beyond whoever
+# has dispatch access. This is unchanged from the dual-deploy window.
 
 jobs:
+  # #1050: hard branch guard, ahead of every build/publish job below. This
+  # workflow is PROD-only and has no legitimate reason to ever act on
+  # anything but `main` -- deploy.yml already covers DEV/STAGING. Failing
+  # here, not "remembering to pass --ref main", is the actual fix: on
+  # 2026-08-25 a dispatch with no --ref silently ran against the repo's
+  # *default* branch (`develop`), and PROD ran unreviewed, unpromoted code
+  # for ~30 minutes before anyone noticed via head_sha inspection.
+  guard-branch:
+    runs-on: ['sieitz-runner']  # #923: generic, either box
+    timeout-minutes: 1
+    steps:
+      - name: Refuse to run against anything but main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::deploy-main.yml was dispatched against '${{ github.ref }}', not refs/heads/main. This workflow is PROD-only -- use deploy.yml for develop/staging. Re-dispatch with the branch selector (or --ref) set to main."
+            exit 1
+          fi
+          echo "OK: dispatched against refs/heads/main."
+
   # Shared dgfy-api image (environment-agnostic; built once, tagged beta to
   # match the server's IMAGE_TAG=beta). backend = api + migration-runner
   # together, never separately -- see deploy.yml's comment on the same
   # coupling (compose's depends_on: service_completed_successfully means a
   # mismatched pair is a schema/code mismatch waiting to happen).
   dgfy-api:
-    if: inputs.components == 'all' || inputs.components == 'backend'
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_api
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: PROD
@@ -98,7 +129,8 @@ jobs:
 
   # Paired one-shot migration image dgfy-api depends on at compose-up.
   dgfy-migration-runner:
-    if: inputs.components == 'all' || inputs.components == 'backend'
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_api
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: PROD
@@ -140,7 +172,8 @@ jobs:
   # fully-serial chain, not a 3x speedup. If a GHCR rate limit does recur,
   # reverting this is a one-line `needs:` re-add per job below.
   frontend-ims-prod:
-    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims'
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_ims
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-ims
@@ -154,7 +187,8 @@ jobs:
       packages: write
 
   frontend-pos-prod:
-    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos'
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_pos
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-pos
@@ -168,7 +202,8 @@ jobs:
       packages: write
 
   frontend-storefront-prod:
-    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront'
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_storefront
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-storefront
@@ -183,8 +218,9 @@ jobs:
 
   # Single SSH deploy that refreshes all four images on the server in one
   # `docker compose pull && up -d`. Runs unless any image build actually
-  # failed or was cancelled - a `skipped` result (e.g. a components dispatch
-  # that only picked one app) must still allow publish to proceed with
+  # failed or was cancelled - a `skipped` result (e.g. a build_* dispatch
+  # that only left one box checked, or guard-branch failing and skipping
+  # every job transitively) must still allow publish to proceed with
   # whichever images did build, matching deployment-orchestrator.yml's
   # publish gate.
   publish:
