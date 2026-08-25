@@ -46,15 +46,21 @@ function extractPayload(runtime, payload) {
 
 function git(args, cwd) { return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim(); }
 function rootFor(cwd) { return fs.realpathSync(git(['rev-parse', '--show-toplevel'], cwd)); }
-function gitDirFor(cwd) { return fs.realpathSync(git(['rev-parse', '--absolute-git-dir'], cwd)); }
+// Shared across every worktree of one clone — unlike --absolute-git-dir, which is per-worktree
+// (each `git worktree add` gets its own .git/worktrees/<name>/). Storing here, keyed only on
+// (runtime, sessionId), is what lets a role running in a dedicated worktree (implement,
+// pr-reviewer, promoter, incident-responder all branch this way per their own SKILL.md files)
+// still see a record the top-level session wrote in the main worktree. Cross-*repo* isolation
+// still holds: two independent clones resolve to two different common-dirs, hence two different
+// storage locations, with no shared key space at all. See docs/ai/AI_MODEL_ATTRIBUTION.md.
+function repoStoreFor(cwd) { return fs.realpathSync(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd))); }
 function recordPath(record, cwd) {
-  const key = crypto.createHash('sha256').update(`${record.runtime}\0${record.sessionId}\0${record.worktree}`).digest('hex');
-  return path.join(gitDirFor(cwd), 'ai-attribution', 'sessions', `${key}.json`);
+  const key = crypto.createHash('sha256').update(`${record.runtime}\0${record.sessionId}`).digest('hex');
+  return path.join(repoStoreFor(cwd), 'ai-attribution', 'sessions', `${key}.json`);
 }
-function valid(record, cwd, now = Date.now()) {
+function valid(record, now = Date.now()) {
   if (!record || record.version !== VERSION || !RUNTIMES.has(record.runtime) || !record.sessionId || !record.model) return false;
-  if (!Number.isFinite(record.expiresAt) || record.expiresAt <= now) return false;
-  try { return record.worktree === rootFor(cwd); } catch { return false; }
+  return Number.isFinite(record.expiresAt) && record.expiresAt > now;
 }
 function writeRecord(payload, cwd = process.cwd(), now = Date.now()) {
   const record = extractPayload(payload.runtime, payload);
@@ -62,8 +68,8 @@ function writeRecord(payload, cwd = process.cwd(), now = Date.now()) {
   let suppliedRoot;
   try { suppliedRoot = fs.realpathSync(record.worktree || cwd); } catch { return null; }
   const root = rootFor(cwd);
-  if (suppliedRoot !== root) return null;
-  record.worktree = root;
+  if (suppliedRoot !== root) return null; // the hook's own payload must match where it's actually running
+  record.worktree = root; // informational only now — not part of the storage key or validity check
   record.version = VERSION;
   record.createdAt = now;
   record.expiresAt = now + TTL_MS;
@@ -75,10 +81,10 @@ function writeRecord(payload, cwd = process.cwd(), now = Date.now()) {
   return record;
 }
 function readRecord(input, cwd = process.cwd(), now = Date.now()) {
-  const probe = { version: VERSION, runtime: input.runtime, sessionId: input.sessionId, worktree: rootFor(cwd), model: input.model || 'probe' };
+  const probe = { runtime: input.runtime, sessionId: input.sessionId };
   let parsed;
   try { parsed = JSON.parse(fs.readFileSync(recordPath(probe, cwd), 'utf8')); } catch { return null; }
-  return valid(parsed, cwd, now) && parsed.runtime === input.runtime && parsed.sessionId === input.sessionId ? parsed : null;
+  return valid(parsed, now) && parsed.runtime === input.runtime && parsed.sessionId === input.sessionId ? parsed : null;
 }
 function modelLabel(model) { return FRIENDLY_MODELS[model] || model; }
 function formatTag(record, action, role) {
