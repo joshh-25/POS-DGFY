@@ -66,6 +66,10 @@ import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
+import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
+import EmployeeBreakSegment from './EmployeeBreakSegment.js';
+import PosTerminalOperatorSession from './PosTerminalOperatorSession.js';
+import PosDrawerHandoffEvent from './PosDrawerHandoffEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import TenantLocation from './TenantLocation.js';
@@ -584,6 +588,7 @@ PosTransaction.belongsTo(User, { foreignKey: 'payment_collected_by', as: 'paymen
 PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
 PosTransaction.belongsTo(User, { foreignKey: 'accepted_by', as: 'acceptedByUser' });
 PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosTransaction.belongsTo(PosTerminalOperatorSession, { foreignKey: 'operator_session_id', as: 'operatorSession', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
@@ -706,6 +711,15 @@ PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' }
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
 PosTerminalShift.hasMany(PosTransaction, { foreignKey: 'shift_id', as: 'transactions' });
+PosTerminalShift.hasMany(PosTerminalOperatorSession, { foreignKey: 'pos_terminal_shift_id', as: 'operatorSessions' });
+PosTerminalOperatorSession.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(User, { foreignKey: 'user_id', as: 'operator', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(EmployeeAttendanceSession, { foreignKey: 'employee_attendance_session_id', as: 'attendanceSession', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosTerminalOperatorSession.hasMany(PosTransaction, { foreignKey: 'operator_session_id', as: 'transactions' });
+User.hasMany(PosTerminalOperatorSession, { foreignKey: 'user_id', as: 'posTerminalOperatorSessions' });
+TenantLocation.hasMany(PosTerminalOperatorSession, { foreignKey: 'location_id', as: 'posTerminalOperatorSessions' });
+EmployeeAttendanceSession.hasMany(PosTerminalOperatorSession, { foreignKey: 'employee_attendance_session_id', as: 'operatorSessions' });
 PosTerminalShift.hasMany(DeliveryJob, { foreignKey: 'assigned_shift_id', as: 'assignedDeliveryJobs' });
 PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift' });
 PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
@@ -722,6 +736,32 @@ PosShiftLocationBackfillAudit.belongsTo(TenantLocation, { foreignKey: 'resolved_
 PosTerminalShift.hasMany(PosShiftLocationBackfillAudit, { foreignKey: 'shift_id', as: 'locationBackfillAudits' });
 User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
 User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
+EmployeeAttendanceSession.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+EmployeeAttendanceSession.belongsTo(User, { foreignKey: 'user_id', as: 'user', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeAttendanceSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeAttendanceSession.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+EmployeeAttendanceSession.hasMany(EmployeeBreakSegment, { foreignKey: 'employee_attendance_session_id', as: 'breakSegments' });
+EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, { foreignKey: 'employee_attendance_session_id', as: 'attendanceSession', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeBreakSegment.belongsTo(User, { foreignKey: 'ended_by', as: 'endedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+Employee.hasMany(EmployeeAttendanceSession, { foreignKey: 'employee_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeAttendanceSession, { foreignKey: 'user_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeAttendanceSession, { foreignKey: 'closed_by', as: 'closedAttendanceSessions' });
+TenantLocation.hasMany(EmployeeAttendanceSession, { foreignKey: 'location_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeBreakSegment, { foreignKey: 'ended_by', as: 'endedBreakSegments' });
+PosDrawerHandoffEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosDrawerHandoffEvent.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'outgoing_operator_user_id', as: 'outgoingOperator', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'incoming_operator_user_id', as: 'incomingOperator', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'outgoing_acknowledged_by', as: 'outgoingAcknowledgedBy', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'incoming_acknowledged_by', as: 'incomingAcknowledgedBy', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalShift.hasMany(PosDrawerHandoffEvent, { foreignKey: 'pos_terminal_shift_id', as: 'drawerHandoffEvents' });
+TenantLocation.hasMany(PosDrawerHandoffEvent, { foreignKey: 'location_id', as: 'drawerHandoffEvents' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'outgoing_operator_user_id', as: 'outgoingDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'incoming_operator_user_id', as: 'incomingDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'outgoing_acknowledged_by', as: 'outgoingAcknowledgedDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'incoming_acknowledged_by', as: 'incomingAcknowledgedDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'recorded_by', as: 'recordedDrawerHandoffs' });
 User.hasOne(EmployeeCreditAccount, { foreignKey: 'user_id', as: 'employeeCreditAccount' });
 EmployeeCreditAccount.belongsTo(User, { foreignKey: 'user_id', as: 'employee' });
 Employee.hasOne(EmployeeCreditAccount, { foreignKey: 'employee_id', as: 'employeeCreditAccount' });
@@ -1084,6 +1124,10 @@ const db = {
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
+  EmployeeAttendanceSession,
+  EmployeeBreakSegment,
+  PosTerminalOperatorSession,
+  PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
   TenantLocation,
@@ -1293,6 +1337,10 @@ export {
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
+  EmployeeAttendanceSession,
+  EmployeeBreakSegment,
+  PosTerminalOperatorSession,
+  PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
   TenantLocation,

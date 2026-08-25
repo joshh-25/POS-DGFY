@@ -16,7 +16,10 @@ const DB_PASSWORD = process.env.DB_PASSWORD || '';
 const LANDLORD_DB = process.env.DB_NAME || 'sku_inventory_manager';
 const BACKFILL_ALL_ROLES = process.env.BACKFILL_ROLE_PERMISSIONS_ALL === '1';
 
-const TARGETED_ROLES = new Set(['admin', 'manager', 'staff']);
+// Cashier permissions are included here because attendance is now part of the
+// normal terminal lifecycle. This remains additive: existing explicit or
+// custom permissions are preserved by the merge below.
+const TARGETED_ROLES = new Set(['admin', 'manager', 'staff', 'cashier']);
 const IDENTIFIER_SAFE = /^[A-Za-z0-9_]+$/;
 
 const ensureSafeIdentifier = (identifier) => {

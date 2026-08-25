@@ -119,6 +119,24 @@ describe('POS split-payment engine', () => {
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
     });
 
+    it('records a server-validated relief cashier without transferring the register shift', async () => {
+        const harness = buildHarness();
+        const useCase = buildCreatePosPaymentSessionUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
+        const reliefUser = {
+            user_id: 22,
+            operator_session_id: 601,
+            register_shift_owner_user_id: 15
+        };
+
+        const result = await runInTenant(harness.sequelize, () => useCase({ payload: basePayload(), user: reliefUser }));
+
+        expect(result.success).toBe(true);
+        expect(harness.posRepository.createPosPaymentSession).toHaveBeenCalledWith(
+            expect.objectContaining({ cashier_id: 22, shift_id: 41 }),
+            expect.objectContaining({ transaction: harness.transaction })
+        );
+    });
+
     it('verifies a PIN-protected discount during session creation and stores only a server approval proof', async () => {
         const harness = buildHarness();
         const governedSnapshot = {

@@ -1315,6 +1315,44 @@ describe('pos use-cases application result contract', () => {
         expect(posRepository.listIncomingOnlineOrders).not.toHaveBeenCalled();
     });
 
+    it('listIncomingOnlineOrders accepts the active operator while preserving the shift owner', async () => {
+        const activeShift = {
+            pos_terminal_shift_id: 12,
+            cashier_id: 7,
+            terminal_id: 'REG-1',
+            location_id: 2,
+            status: 'open'
+        };
+        const posRepository = {
+            getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
+            listIncomingOnlineOrders: jest.fn().mockResolvedValue([])
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({
+            location_id: 2,
+            location: { location_id: 2 }
+        });
+        const useCase = buildListIncomingOnlineOrdersUseCase({
+            posRepository,
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            query: { shift_id: 12, location_id: 2, limit: 25 },
+            user: {
+                user_id: 6,
+                operator_session_id: 44,
+                register_shift_owner_user_id: 7
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(12, {});
+        expect(posRepository.listIncomingOnlineOrders).toHaveBeenCalledWith({
+            locationId: 2,
+            limit: 25
+        });
+    });
+
     it('updateOnlineOrderStatus rejects an order outside the operator active-shift location', async () => {
         const transaction = {
             finished: false,
@@ -1416,7 +1454,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 10,
+                pos_terminal_shift_id: 10,
                 cashier_id: 7,
                 location_id: 3,
                 status: 'open'
@@ -1475,7 +1513,7 @@ describe('pos use-cases application result contract', () => {
         });
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             55,
-            { fulfillment_status: 'completed', cashier_id: 7 },
+            { fulfillment_status: 'completed', shift_id: 10, cashier_id: 7 },
             expect.objectContaining({ transaction, lock: true })
         );
     });
@@ -1519,7 +1557,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 11,
+                pos_terminal_shift_id: 11,
                 cashier_id: 7,
                 location_id: 4,
                 status: 'open'
@@ -1619,7 +1657,7 @@ describe('pos use-cases application result contract', () => {
         };
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 13,
+                pos_terminal_shift_id: 13,
                 cashier_id: 9,
                 location_id: 5,
                 status: 'open'
@@ -1642,7 +1680,7 @@ describe('pos use-cases application result contract', () => {
         expect(result.data.order.fulfillment_status).toBe(targetStatus);
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             57,
-            { fulfillment_status: targetStatus, cashier_id: 9 },
+            { fulfillment_status: targetStatus, shift_id: 13, cashier_id: 9 },
             expect.objectContaining({ transaction, lock: true })
         );
         expect(transaction.commit).toHaveBeenCalledTimes(1);
@@ -1670,7 +1708,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 12,
+                pos_terminal_shift_id: 12,
                 cashier_id: 8,
                 status: 'open'
             }),
@@ -1697,5 +1735,55 @@ describe('pos use-cases application result contract', () => {
 
         expect(result.success).toBe(true);
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('updateOnlineOrderStatus preserves an existing shift attribution', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+        const existingOrder = {
+            pos_transaction_id: 58,
+            order_source: 'online_store',
+            order_method: 'pickup',
+            fulfillment_status: 'placed',
+            location_id: 6,
+            shift_id: 4,
+            cashier_id: 7,
+            lines: []
+        };
+        const updatedOrder = { ...existingOrder, fulfillment_status: 'confirmed' };
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                pos_terminal_shift_id: 15,
+                cashier_id: 7,
+                location_id: 6,
+                status: 'open'
+            }),
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(existingOrder)
+                .mockResolvedValueOnce(updatedOrder),
+            updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
+        };
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 58,
+            payload: { fulfillment_status: 'confirmed' },
+            user: { user_id: 7 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(posRepository.updateOrderById).toHaveBeenCalledWith(
+            58,
+            { fulfillment_status: 'confirmed', accepted_by: 7, accepted_at: expect.any(Date) },
+            expect.objectContaining({ transaction, lock: true })
+        );
     });
 });

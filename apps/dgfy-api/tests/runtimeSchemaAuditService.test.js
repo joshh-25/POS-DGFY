@@ -77,7 +77,11 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260813000002-add-pos-parked-sale-revision.cjs' },
         { name: '20260815000002-add-pos-parked-sale-origin-ownership.cjs' },
         { name: '20260819000001-create-pos-transaction-adjustments.cjs' },
-        { name: '20260819000002-add-pos-split-allocation-reversal-state.cjs' }
+        { name: '20260819000002-add-pos-split-allocation-reversal-state.cjs' },
+        { name: '20260824000001-create-pos-cashier-attendance-operator-sessions.cjs' },
+        { name: '20260824000002-add-pos-attendance-idempotency.cjs' },
+        { name: '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs' },
+        { name: '20260825000001-add-pos-operator-protected-operation-lease.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -110,7 +114,11 @@ const buildHealthySequelizeMock = () => ({
                     is_master_admin: {},
                     deleted_at: {},
                     pos_approval_pin_hash: {},
-                    pos_day_close_pin_hash: {}
+                    pos_day_close_pin_hash: {},
+                    pos_cashier_pin_hash: {},
+                    pos_cashier_pin_failed_attempts: {},
+                    pos_cashier_pin_locked_until: {},
+                    pos_cashier_pin_changed_at: {}
                 },
                 items: {
                     item_id: {},
@@ -175,7 +183,76 @@ const buildHealthySequelizeMock = () => ({
                     employee_credit_balance_after: {},
                     employee_credit_outstanding_after: {},
                     employee_credit_authorization_reference: {},
-                    payment_breakdown: {}
+                    payment_breakdown: {},
+                    operator_session_id: { allowNull: true }
+                },
+                employee_attendance_sessions: {
+                    employee_attendance_session_id: {},
+                    employee_id: {},
+                    user_id: {},
+                    location_id: {},
+                    duty_type: {},
+                    status: {},
+                    active_user_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    closed_by: {},
+                    start_idempotency_key: {},
+                    end_idempotency_key: {}
+                },
+                employee_break_segments: {
+                    employee_break_segment_id: {},
+                    employee_attendance_session_id: {},
+                    status: {},
+                    active_attendance_session_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    ended_by: {},
+                    start_idempotency_key: {},
+                    end_idempotency_key: {}
+                },
+                pos_terminal_operator_sessions: {
+                    pos_terminal_operator_session_id: {},
+                    pos_terminal_shift_id: {},
+                    terminal_id: {},
+                    location_id: {},
+                    user_id: {},
+                    employee_attendance_session_id: {},
+                    status: {},
+                    active_terminal_id: {},
+                    active_operator_user_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    ended_reason: {},
+                    authority_token_hash: {},
+                    authority_expires_at: {},
+                    revoked_at: {},
+                    revoked_reason: {},
+                    idempotency_key: {},
+                    protected_operation_key: {},
+                    protected_operation_type: {},
+                    protected_operation_started_at: {}
+                },
+                pos_drawer_handoff_events: {
+                    pos_drawer_handoff_event_id: {},
+                    pos_terminal_shift_id: {},
+                    terminal_id: {},
+                    location_id: {},
+                    event_type: {},
+                    custody_mode: {},
+                    outgoing_operator_user_id: {},
+                    incoming_operator_user_id: {},
+                    expected_cash_amount: {},
+                    counted_cash_amount: {},
+                    variance_amount: {},
+                    outgoing_acknowledged_by: {},
+                    outgoing_acknowledged_at: {},
+                    incoming_acknowledged_by: {},
+                    incoming_acknowledged_at: {},
+                    recorded_by: {},
+                    event_at: {},
+                    idempotency_key: {},
+                    note: {}
                 },
                 pos_payment_sessions: {
                     pos_payment_session_id: {},

@@ -71,7 +71,7 @@ const posControllerNames = [
     'listIncomingOnlineOrders', 'listOnlineOrderHistory', 'listParkedSales', 'listSetupCashiers',
     'listTransactions', 'loginCashier', 'openDeviceDrawer', 'openTerminalShift', 'printReceipt',
     'printShiftSummary', 'printZReading', 'reconcilePaymentAllocation', 'recordCashDrawerEvent',
-    'recordFiscalPrintEvent', 'reparkParkedSale', 'requirePairedTerminal',
+    'recordFiscalPrintEvent', 'reparkParkedSale', 'requirePairedTerminal', 'requireActiveOperatorForMutation',
     'reviewMerchantTenderReconciliation', 'scanBarcode', 'streamCatalogEvents', 'switchTerminalShiftLocation',
     'updateBulkCatalogOverrides', 'updateCatalogOverride', 'updateDeliveryJobStatus',
     'updateESalesReportStatus', 'uploadBulkCatalogImages', 'uploadCatalogImage',
@@ -80,6 +80,10 @@ const posControllerNames = [
     // Phase 148 (#825): this list enumerates every named export posController.js provides, so a
     // new one has to be added here too or the route wiring under test fails to construct.
     'recordOrderBalancePayment'
+    , 'getCurrentAttendance', 'timeInAttendance', 'timeOutAttendance', 'startAttendanceBreak',
+    'endAttendanceBreak', 'startReliefDuty', 'endReliefDuty', 'correctAttendance', 'enrollCashierPin',
+    'resetCashierPin', 'takeOverRegister', 'returnRegister', 'startSharedRelief', 'endSharedRelief',
+    'countedCustodyHandoff', 'getCurrentOperator', 'listEligibleOperators', 'endOperatorSession'
 ];
 
 const employeeCreditControllerNames = [
@@ -114,7 +118,8 @@ const posControllerMock = createControllerMock(posControllerNames, {
             location_id: 7
         };
         return next();
-    })
+    }),
+    requireActiveOperatorForMutation: jest.fn((req, res, next) => next())
 });
 
 const employeeCreditControllerMock = createControllerMock(employeeCreditControllerNames);

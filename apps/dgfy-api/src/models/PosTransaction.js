@@ -39,6 +39,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.INTEGER,
         allowNull: true
     },
+    operator_session_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     terminal_id: {
         type: DataTypes.STRING(100),
         allowNull: true
@@ -375,6 +379,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['fnb_server_id'] },
         { fields: ['cashier_id'] },
         { fields: ['shift_id'] },
+        { name: 'idx_pos_transactions_operator_session_id', fields: ['operator_session_id'] },
         { fields: ['fiscal_document_hash'] },
         { fields: ['fiscal_lifecycle_state'] },
         { fields: ['created_at'] },
