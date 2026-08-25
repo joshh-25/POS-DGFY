@@ -165,11 +165,11 @@ export default defineConfig({
     // boundaries in parallel. Five seconds is below the normal cold-start
     // budget on CI/local Windows workers and turns healthy tests into flakes.
     testTimeout: 15000,
-    // Bound fork fan-out on Windows. The default pool size starts one worker
-    // per available CPU and starves the integration-heavy Storefront/POS files,
-    // causing false timeouts and cross-file state failures under a full run.
-    // Four workers preserve file parallelism while keeping the system-test gate
-    // deterministic on the supported local/CI environments.
-    maxWorkers: 4,
+    // Bound fork fan-out on Windows only (#1015). The default pool size starts one worker
+    // per available CPU and starved the integration-heavy Storefront/POS files there, causing
+    // false timeouts and cross-file state failures under a full run. The runner and every
+    // Linux/macOS dev machine are unaffected -- default back to one worker per CPU on those
+    // platforms rather than carrying the Windows-only cap everywhere.
+    maxWorkers: process.platform === 'win32' ? 4 : undefined,
   },
 });
