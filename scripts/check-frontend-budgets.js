@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 
 const DEFAULT_REPORT_PATH = path.join('.tmp', 'frontend-budgets', 'frontend_budget_report.json');
 
@@ -140,33 +140,71 @@ function resolveRequiredAssetDirs(projectRoot) {
 
 const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront'];
 
-function runFrontendBuild(projectRoot, logger = console) {
-  // Two-second floor absorbs filesystem timestamp precision differences.
-  const buildStartedAtMs = Date.now() - 2000;
-  logger.log('[frontend-budgets] Building frontend apps before budget check');
+function spawnFrontendBuild(projectRoot, appDir) {
+  const buildCommand = `npm --prefix ${appDir} run build`;
+  const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+  const args = process.platform === 'win32'
+    ? ['/d', '/s', '/c', buildCommand]
+    : ['--prefix', appDir, 'run', 'build'];
 
-  for (const appDir of FRONTEND_BUILD_APP_DIRS) {
-    const buildCommand = `npm --prefix ${appDir} run build`;
-    const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
-    const args = process.platform === 'win32'
-      ? ['/d', '/s', '/c', buildCommand]
-      : ['--prefix', appDir, 'run', 'build'];
-    const result = spawnSync(command, args, {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
       cwd: projectRoot,
-      stdio: 'inherit',
+      // Piped, not 'inherit': three concurrent builds writing to the same inherited stdout would
+      // interleave mid-line. Buffer each app's output and flush it as one contiguous block once
+      // all builds have settled (see runFrontendBuild) instead.
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
 
-    if (result.error) {
-      throw new BudgetGateError(`Failed to launch frontend build (${appDir}): ${result.error.message}`, {
-        code: 'BUILD_LAUNCH_FAILED',
-      });
+    const chunks = [];
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.stderr.on('data', (chunk) => chunks.push(chunk));
+    child.on('error', (launchError) => {
+      resolve({ appDir, launchError, status: null, output: Buffer.concat(chunks) });
+    });
+    child.on('close', (status) => {
+      resolve({ appDir, launchError: null, status, output: Buffer.concat(chunks) });
+    });
+  });
+}
+
+async function runFrontendBuild(projectRoot, logger = console) {
+  // Two-second floor absorbs filesystem timestamp precision differences. Taken before any build
+  // starts, so it stays a valid freshness floor regardless of which app finishes first below.
+  const buildStartedAtMs = Date.now() - 2000;
+  logger.log('[frontend-budgets] Building frontend apps before budget check (parallel)');
+
+  // The 3 apps build inside independent packages with independent dist dirs (issue #322 Phase 6)
+  // -- no ordering dependency between them -- so run concurrently instead of the prior serial
+  // `for` loop.
+  const results = await Promise.all(
+    FRONTEND_BUILD_APP_DIRS.map((appDir) => spawnFrontendBuild(projectRoot, appDir))
+  );
+
+  // Flush output in FRONTEND_BUILD_APP_DIRS order, once every build has settled, so logs stay
+  // reproducible and readable regardless of which build actually finished first.
+  for (const result of results) {
+    logger.log(`[frontend-budgets] -- ${result.appDir} --`);
+    if (result.output.length > 0) {
+      process.stdout.write(result.output);
     }
-    if (result.status !== 0) {
-      throw new BudgetGateError(`Frontend build failed before budget calculation (${appDir}).`, {
-        code: 'BUILD_FAILED',
-      });
-    }
+  }
+
+  const launchFailures = results.filter((result) => result.launchError);
+  if (launchFailures.length > 0) {
+    throw new BudgetGateError(
+      `Failed to launch frontend build(s): ${launchFailures.map((result) => `${result.appDir} (${result.launchError.message})`).join(', ')}`,
+      { code: 'BUILD_LAUNCH_FAILED' }
+    );
+  }
+
+  const buildFailures = results.filter((result) => result.status !== 0);
+  if (buildFailures.length > 0) {
+    throw new BudgetGateError(
+      `Frontend build failed before budget calculation (${buildFailures.map((result) => result.appDir).join(', ')}).`,
+      { code: 'BUILD_FAILED' }
+    );
   }
 
   return buildStartedAtMs;
@@ -319,7 +357,7 @@ function printReport(report, logger = console) {
   }
 }
 
-function checkFrontendBudgets(options = {}) {
+async function checkFrontendBudgets(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
   const reportPath = options.reportPath || DEFAULT_REPORT_PATH;
   const mode = options.skipBuild ? 'prebuilt' : 'owned-build';
@@ -327,7 +365,7 @@ function checkFrontendBudgets(options = {}) {
 
   let freshnessFloorMs = options.builtAfterMs ?? null;
   if (!options.skipBuild) {
-    freshnessFloorMs = runFrontendBuild(projectRoot, logger);
+    freshnessFloorMs = await runFrontendBuild(projectRoot, logger);
   } else if (freshnessFloorMs === null) {
     throw new BudgetGateError(
       'Prebuilt mode requires --built-after <ISO timestamp or epoch ms> so stale assets cannot be accepted.',
@@ -376,10 +414,10 @@ function checkFrontendBudgets(options = {}) {
   }
 }
 
-function main() {
+async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    checkFrontendBudgets(options);
+    await checkFrontendBudgets(options);
   } catch (error) {
     if (error instanceof BudgetGateError) {
       console.error(`[frontend-budgets] FAIL: ${error.message}`);
@@ -393,7 +431,13 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  // Matches the existing async-main convention in scripts/create-incident-bundle.js and
+  // scripts/gate-release-observability.js -- an uncaught non-BudgetGateError still exits non-zero,
+  // just via an explicit catch instead of relying on Node's default unhandled-rejection behavior.
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
 
 module.exports = {
