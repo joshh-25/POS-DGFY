@@ -7,7 +7,10 @@ const repoRoot = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const prChecks = read('.github/workflows/pr-checks.yml');
-const qualityWorkflow = read('.github/workflows/pr-quality-checks.yml');
+const complianceScript = read('scripts/check-compliance-impact.js');
+// Renamed from pr-quality-checks.yml (#1018/#1008 Phase 3) once it became the promotion-time CI
+// gate instead of a workflow_dispatch-only manual run -- this checker's own path must follow.
+const qualityWorkflow = read('.github/workflows/promotion-quality-gate.yml');
 
 // Originally also required `quality-checks:` / `uses: ./.github/workflows/
 // pr-quality-checks.yml` to exist in pr-checks.yml -- i.e. that this
@@ -17,15 +20,24 @@ const qualityWorkflow = read('.github/workflows/pr-quality-checks.yml');
 // asserting nothing, and Pat asked to stop showing it rather than keep it
 // wired-but-disabled. Dropped that half of the assertion accordingly.
 // `requiredQualityMarkers` below is the half that actually matters and
-// stays fully enforced: pr-quality-checks.yml itself must keep every real
+// stays fully enforced: promotion-quality-gate.yml itself must keep every real
 // gate and must never be continue-on-error, whether it's invoked
-// automatically, manually (workflow_dispatch), or re-wired into a caller
-// again later.
+// automatically (a real promotion PR), manually (workflow_dispatch), or via
+// a workflow_call caller.
 const requiredPrChecks = [
   'runner_labels_json: *runner_heavy'
 ];
 const requiredQualityMarkers = [
   'workflow_call:',
+  // #1018: the promotion-detection gate job, and its two head-prefix literals -- see the
+  // sync guard below, which cross-checks these against check-compliance-impact.js's own
+  // PROMOTION_HEAD_PREFIX_BY_BASE so the two can't silently drift apart.
+  'gate:',
+  'is_promotion',
+  'to-staging/*',
+  'release/*',
+  'needs: gate',
+  "if: needs.gate.outputs.is_promotion == 'true'",
   'dgfy-api-quality:',
   'migration-runner-quality:',
   'frontend-ims-quality:',
@@ -50,8 +62,22 @@ const requiredQualityMarkers = [
 
 const missing = [
   ...requiredPrChecks.filter((marker) => !prChecks.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
-  ...requiredQualityMarkers.filter((marker) => !qualityWorkflow.includes(marker)).map((marker) => `pr-quality-checks.yml:${marker}`)
+  ...requiredQualityMarkers.filter((marker) => !qualityWorkflow.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`)
 ];
+
+// #1018: promotion-quality-gate.yml's `gate` job hand-mirrors
+// check-compliance-impact.js's PROMOTION_HEAD_PREFIX_BY_BASE literals (to-staging/, release/)
+// rather than importing the constant -- that script has no module.exports and runs to
+// completion on require(), so it can't be safely required as a module. Best-effort sync guard:
+// if either file's copy of these literals goes missing, something changed one side without the
+// other and this should fail loudly instead of the two definitions drifting apart silently.
+if (!complianceScript.includes('to-staging/') || !complianceScript.includes('release/')) {
+  missing.push(
+    'scripts/check-compliance-impact.js: no longer contains the to-staging// release/ prefix ' +
+    'literals promotion-quality-gate.yml\'s `gate` job mirrors -- PROMOTION_HEAD_PREFIX_BY_BASE ' +
+    'may have changed; update the gate job\'s case statement to match.'
+  );
+}
 
 // #726: RUNNER_HEAVY_JSON and BUILD_CACHE_FROM are a paired flip, not two independent anchors --
 // the cache backend's viability depends on which runner tier is active (empty/no-cache on
@@ -83,7 +109,7 @@ if (!runnerHeavyMatch || !cacheFromMatch) {
 }
 
 if (qualityWorkflow.includes('continue-on-error')) {
-  missing.push('pr-quality-checks.yml:continue-on-error is forbidden for blocking quality gates');
+  missing.push('promotion-quality-gate.yml:continue-on-error is forbidden for blocking quality gates');
 }
 
 if (missing.length > 0) {
@@ -92,4 +118,4 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-console.log('[pr-quality-workflow] OK. Blocking PR quality workflow contains all required gates.');
+console.log('[pr-quality-workflow] OK. Blocking promotion quality gate contains all required gates.');
