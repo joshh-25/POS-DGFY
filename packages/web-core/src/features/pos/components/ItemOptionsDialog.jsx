@@ -38,6 +38,8 @@ export default function ItemOptionsDialog({
   globalDiscount = null,
   discountApprovers = [],
   discountApproversLoading = false,
+  discountEmployees = [],
+  discountEmployeesLoading = false,
   defaultDiscountApprover = null,
   onClose,
   onSave,
@@ -53,8 +55,9 @@ export default function ItemOptionsDialog({
   const [discountAmount, setDiscountAmount] = useState(() => itemDiscount?.amount || '');
   const [customerName, setCustomerName] = useState(() => itemDiscount?.customer_name || '');
   const [idNumber, setIdNumber] = useState(() => itemDiscount?.id_number || '');
-  const [employeeName, setEmployeeName] = useState(() => itemDiscount?.employee_name || defaultDiscountApprover?.username || '');
+  const [employeeName, setEmployeeName] = useState(() => itemDiscount?.employee_name || '');
   const [employeeId, setEmployeeId] = useState(() => itemDiscount?.employee_id || '');
+  const [employeeDirectoryId, setEmployeeDirectoryId] = useState(() => itemDiscount?.employee_directory_id || '');
   const [promoCode, setPromoCode] = useState(() => itemDiscount?.promo_code || '');
   const [discountReason, setDiscountReason] = useState(() => itemDiscount?.reason || '');
   const [approverUserId, setApproverUserId] = useState(() => itemDiscount?.approver_user_id || defaultDiscountApprover?.user_id || '');
@@ -63,7 +66,6 @@ export default function ItemOptionsDialog({
 
   useEffect(() => {
     if (itemDiscount?.enabled || !defaultDiscountApprover) return;
-    setEmployeeName((current) => current || String(defaultDiscountApprover.username || ''));
     setApproverUserId((current) => current || String(defaultDiscountApprover.user_id || ''));
   }, [defaultDiscountApprover, itemDiscount?.enabled]);
 
@@ -143,6 +145,7 @@ export default function ItemOptionsDialog({
               id_number: idNumber.trim(),
               employee_name: employeeName.trim(),
               employee_id: employeeId.trim(),
+              employee_directory_id: employeeDirectoryId,
               promo_code: promoCode.trim().toUpperCase(),
               reason: discountReason.trim().slice(0, 500),
               approver_user_id: approverUserId,
@@ -331,22 +334,35 @@ export default function ItemOptionsDialog({
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-xs font-bold text-slate-700" htmlFor="pos-item-discount-employee-name">
                       Employee name <span className="text-rose-600">*</span>
-                      <Input
+                      <select
                         id="pos-item-discount-employee-name"
-                        value={employeeName}
-                        onChange={(event) => setEmployeeName(event.target.value)}
-                        placeholder="Employee name"
-                        className="mt-1 h-9 rounded-md border-slate-300 bg-white"
-                      />
+                        aria-label="Employee name"
+                        value={employeeDirectoryId}
+                        disabled={discountEmployeesLoading}
+                        onChange={(event) => {
+                          const selected = discountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
+                          setEmployeeDirectoryId(selected ? String(selected.employee_id) : '');
+                          setEmployeeName(selected?.full_name || '');
+                          setEmployeeId(selected?.employee_code || '');
+                        }}
+                        className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+                      >
+                        <option value="">{discountEmployeesLoading ? 'Loading…' : 'Select registered employee'}</option>
+                        {discountEmployees.map((employee) => (
+                          <option key={employee.employee_id} value={employee.employee_id}>
+                            {employee.full_name} ({employee.employee_code} · {employee.location_name})
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label className="text-xs font-bold text-slate-700" htmlFor="pos-item-discount-employee-id">
-                      Employee ID (optional)
+                      Employee ID
                       <Input
                         id="pos-item-discount-employee-id"
                         value={employeeId}
-                        onChange={(event) => setEmployeeId(event.target.value)}
-                        placeholder="Employee ID"
-                        className="mt-1 h-9 rounded-md border-slate-300 bg-white"
+                        readOnly
+                        placeholder="Auto-filled"
+                        className="mt-1 h-9 rounded-md border-slate-300 bg-slate-50"
                       />
                     </label>
                   </div>

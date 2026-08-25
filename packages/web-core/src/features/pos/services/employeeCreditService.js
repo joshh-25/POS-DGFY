@@ -7,11 +7,12 @@ export const fetchEmployeeCreditAccount = async (accountCode) => {
     return response.data?.data?.account || null;
 };
 
-export const fetchEmployeeCreditCheckoutOptions = async ({ search = '', locationId = null, limit = 50 } = {}) => {
+export const fetchEmployeeCreditCheckoutOptions = async ({ search = '', locationId = null, employeeId = null, limit = 50 } = {}) => {
     const response = await api.get('/pos/employee-credit/checkout-options', {
         params: {
             search: String(search || '').trim(),
             location_id: locationId || undefined,
+            employee_id: employeeId || undefined,
             limit
         }
     });

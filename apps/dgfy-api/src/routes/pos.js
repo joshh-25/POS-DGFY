@@ -205,6 +205,7 @@ router.get('/employee-credit/checkout-options', checkPermission(PERMISSIONS.POS.
 router.get('/employee-credit/lookup', checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT), validateEmployeeCreditLookupQuery, employeeCreditController.lookupEmployeeCreditAccount);
 router.get('/employee-credit/report', checkPermission(PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT), validateEmployeeCreditReportQuery, employeeCreditController.getEmployeeCreditReport);
 router.get('/discount-approvers', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountApprovers);
+router.get('/discount-employees', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountEmployees);
 router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosDiscountApproval, posController.requireActiveOperatorForMutation, posController.verifyDiscountApproval);
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);

@@ -4,9 +4,10 @@ import dbStore from '../../../utils/dbStore.js';
 const toPlain = (value) => value?.get ? value.get({ plain: true }) : value;
 
 export const employeeCreditRepository = {
-  async listCheckoutEmployees({ search = '', locationId = null, limit = 100 } = {}, options = {}) {
+  async listCheckoutEmployees({ search = '', locationId = null, employeeId = null, limit = 100 } = {}, options = {}) {
     const normalizedSearch = String(search || '').trim();
     const clauses = [{ is_active: true }];
+    if (employeeId) clauses.push({ employee_id: employeeId });
     if (locationId) {
       clauses.push({
         [Op.or]: [

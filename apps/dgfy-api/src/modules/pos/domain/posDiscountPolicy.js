@@ -46,10 +46,10 @@ export const resolvePosGovernedDiscount = async ({
     orderMethod = '',
     requireCustomerName = true,
     findActiveRule,
-    findActiveEmployee,
+    findActiveEmployeeDirectory,
     // #712: bound by the caller (posUseCases.js) with the open checkout transaction, idempotency
     // key, and channel already captured -- this domain module stays DB-agnostic, same pattern as
-    // findActiveRule/findActiveEmployee above. Signature: async ({ code, lines }) => redemption
+    // findActiveRule/findActiveEmployeeDirectory above. Signature: async ({ code, lines }) => redemption
     // result (redeemVoucherUseCase's or previewVoucherEligibilityUseCase's return shape).
     redeemVoucher
 }) => {
@@ -185,23 +185,20 @@ export const resolvePosGovernedDiscount = async ({
     }
 
     if (type === 'employee') {
-        const employeeName = text(draft.employee_name);
-        if (!employeeName) {
-            validationError('Employee name is required.', 'EMPLOYEE_NAME_REQUIRED');
+        const employeeDirectoryId = positiveInt(draft.employee_directory_id);
+        if (!employeeDirectoryId) {
+            validationError('Select an active registered employee for this discount.', 'EMPLOYEE_DIRECTORY_ID_REQUIRED');
         }
-        const employeeId = positiveInt(draft.employee_id);
-        if (employeeId) {
-            if (typeof findActiveEmployee !== 'function') {
-                validationError('A valid active employee ID is required.', 'EMPLOYEE_ID_REQUIRED');
-            }
-            const employee = await findActiveEmployee(employeeId);
-            if (!employee) validationError('Employee ID does not match an active employee.', 'EMPLOYEE_NOT_FOUND');
-            application.employee_id = String(employee.user_id);
-            application.employee_name = text(employee.username);
-        } else {
-            application.employee_id = null;
-            application.employee_name = employeeName;
+        if (typeof findActiveEmployeeDirectory !== 'function') {
+            throw new Error('findActiveEmployeeDirectory dependency is required for employee discounts');
         }
+        const employee = await findActiveEmployeeDirectory(employeeDirectoryId);
+        if (!employee) validationError('Employee does not match an active registered employee.', 'EMPLOYEE_DIRECTORY_NOT_FOUND');
+        application.employee_directory_id = Number(employee.employee_id);
+        application.employee_id = text(employee.employee_code);
+        application.employee_name = text(employee.full_name);
+        application.employee_email = text(employee.email).toLowerCase() || null;
+        application.employee_user_id = null;
     }
 
     if (['employee', 'manual'].includes(type)) {

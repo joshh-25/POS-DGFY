@@ -42,12 +42,14 @@ const calculateLineItemDiscount = (line, application) => {
             id_number: application.id_number || null,
             employee_name: application.employee_name || null,
             employee_id: application.employee_id || null,
+            employee_directory_id: application.employee_directory_id || null,
             promo_code: application.promo_code || null,
             reason: application.reason || null,
             rule_id: application.rule_id || null,
             approver_user_id: application.manager_approval_id || null,
             approver_name: application.manager_approval_name || null,
-            approved_at: application.manager_approved_at || null
+            approved_at: application.manager_approved_at || null,
+            self_approved: application.self_approved === true
         }
     };
 };

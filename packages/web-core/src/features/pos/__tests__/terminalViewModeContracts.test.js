@@ -624,12 +624,22 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('exposes a current shift summary action without auto-printing it', () => {
-    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(() => {');
+    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(async () => {');
+    expect(terminalPageContent).toContain('const currentShiftResult = await fetchCurrentTerminalShift({');
+    expect(terminalPageContent).toContain("summary: false");
+    expect(terminalOperationsWorkspaceContent).toContain("'Refreshing Summary...'");
     expect(terminalPageContent).toContain('setClosedShiftReportAutoPrint(false);');
     expect(terminalPageContent).toContain("title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}");
     expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
     expect(terminalSidebarPanelContent).toContain('View Shift Summary');
+  });
+
+  it('refreshes financial summaries after void mutations without a manual browser refresh', () => {
+    expect(posCheckoutTerminalContent).toContain('onFinancialMutationCompleted: onCheckoutCompleted');
+    expect(posHistoryVoidWorkflowContent).toContain("await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });");
+    expect(terminalPageContent).toContain('takeoverShiftContextRef.current = null;');
+    expect(terminalPageContent).toContain('await refreshOperationalContext();');
   });
 
   it('separates sales revenue from opening cash and expected drawer cash', () => {

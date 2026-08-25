@@ -18,7 +18,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { formatSplitPaymentMethod, money, round4 } from '../utils/posCheckoutTerminalUtils.js';
+import {
+    formatSplitPaymentMethod,
+    money,
+    resolveEmployeeDiscountCreditPreference,
+    resolvePaymentMethodColorStyles,
+    round4
+} from '../utils/posCheckoutTerminalUtils.js';
 
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
@@ -41,6 +47,7 @@ const normalizePaymentAmount = (value) => {
 export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const {
         billRequestPrinting,
+        appliedDiscount,
         calculatedDiscountAmount,
         cartSubtotal,
         cartTotal,
@@ -48,17 +55,20 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         checkoutDiscountLabel,
         checkoutLoading,
         clearAppliedDiscount,
+        clearDiscountEmployeeCreditPrefill,
         customerPaymentAmountAutoFilled,
         customerPaymentAmountInput,
         customerPaymentFieldLabel,
         employeeCreditAccount,
         employeeCreditLookupLoading,
+        employeeCreditSelectionSource,
         governedDiscountTotals = {},
         handleBillRequest,
         handleCancelCheckout,
         handleCheckout,
         handleCompletePreparedSplitPayment,
         handlePrintOrder,
+        handlePrefillEmployeeCredit,
         handleSelectEmployeeCredit,
         hasSplitPaymentSummary,
         isCashPayment,
@@ -105,6 +115,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         splitPaymentSummaryRemainingAmount,
         tableNumber
     } = viewModel;
+
+    const employeeCreditDiscountPreference = resolveEmployeeDiscountCreditPreference(appliedDiscount, safeCart);
+    const selectedPaymentMethodColor = resolvePaymentMethodColorStyles(paymentType);
 
     const [paymentAmountInput, setPaymentAmountInput] = useState(customerPaymentAmountInput || '');
     const [paymentAmountAutoFilled, setPaymentAmountAutoFilled] = useState(Boolean(customerPaymentAmountAutoFilled));
@@ -213,7 +226,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                             value={paymentType}
                                             onChange={handlePaymentTypeChange}
                                             disabled={posActionsBlocked || checkoutLoading}
-                                            className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
+                                            className={`mt-1 h-9 w-full rounded-lg border px-2 py-1 text-[12px] ${selectedPaymentMethodColor.selectClassName} ${POS_FORM_SELECT_CLASS}`}
                                         >
                                             <option value="cash">Cash</option>
                                             <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
@@ -243,11 +256,15 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                     const displayedAmount = paymentMethod === 'cash' ? cashTendered : appliedAmount;
                                     const cashChange = round4(allocation?.change_amount);
                                     const hasCashAdjustment = paymentMethod === 'cash' && cashTendered !== appliedAmount;
+                                    const paymentMethodColor = resolvePaymentMethodColorStyles(paymentMethod);
                                     return (
-                                        <div key={`${paymentMethod || 'payment'}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2" data-testid={`pos-checkout-split-payment-method-${index + 1}`}>
+                                        <div key={`${paymentMethod || 'payment'}-${index}`} className={`rounded-lg border px-3 py-2 ${paymentMethodColor.rowClassName}`} data-testid={`pos-checkout-split-payment-method-${index + 1}`}>
                                             <div className="flex items-center justify-between gap-3 text-sm">
-                                                <span className="font-extrabold text-slate-800">{formatSplitPaymentMethod(paymentMethod)}</span>
-                                                <span className="font-black text-[#1A4E8D]">PHP {money(displayedAmount)}</span>
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-extrabold ${paymentMethodColor.badgeClassName}`}>
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${paymentMethodColor.dotClassName}`} aria-hidden="true" />
+                                                    {formatSplitPaymentMethod(paymentMethod)}
+                                                </span>
+                                                <span className={`font-black ${paymentMethodColor.amountClassName}`}>PHP {money(displayedAmount)}</span>
                                             </div>
                                             {hasCashAdjustment && (
                                                 <p className="mt-1 text-[11px] font-semibold text-slate-500">
@@ -280,10 +297,16 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                             <EmployeeCreditPaymentPanel
                                 selectedEmployee={selectedEmployeeCreditOption}
                                 onSelectEmployee={handleSelectEmployeeCredit}
+                                onPrefillEmployee={handlePrefillEmployeeCredit}
+                                onClearPrefill={clearDiscountEmployeeCreditPrefill}
                                 lookupLoading={employeeCreditLookupLoading}
                                 account={employeeCreditAccount}
                                 totalDue={cartTotal}
                                 locationId={selectedLocationId}
+                                preferredEmployeeId={employeeCreditDiscountPreference.preferredEmployeeId}
+                                prefillEnabled={!hasSplitPaymentSummary}
+                                prefillLocked={employeeCreditSelectionSource === 'manual'}
+                                prefillBlockedReason={employeeCreditDiscountPreference.hasConflict ? 'Different employees are assigned to this sale’s discounts. Select the Employee Credit account manually.' : ''}
                             />
                         </Suspense>
                     )}
@@ -410,7 +433,10 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-[#64748B]">Payment Summary</p>
                                 <div className="flex justify-between gap-2">
                                     <span className="text-[#334155]">Payment Method</span>
-                                    <span className="font-bold text-[#1A4E8D]">{formatSplitPaymentMethod(paymentType)}</span>
+                                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold ${selectedPaymentMethodColor.badgeClassName}`}>
+                                        <span className={`h-1.5 w-1.5 rounded-full ${selectedPaymentMethodColor.dotClassName}`} aria-hidden="true" />
+                                        {formatSplitPaymentMethod(paymentType)}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between gap-2">
                                     <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>

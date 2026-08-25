@@ -246,6 +246,12 @@ describe('POS checkout F&B contracts', () => {
             findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             findActiveDiscountRuleByType: jest.fn().mockResolvedValue({ id: 7, type: 'manual', is_active: true }),
+            findActiveDiscountEmployeeById: jest.fn().mockResolvedValue({
+                employee_id: 44,
+                employee_code: 'EMP-044',
+                full_name: 'Staff Customer',
+                email: 'staff.customer@example.test'
+            }),
             findActiveDiscountApproverById: jest.fn().mockResolvedValue({
                 user_id: 99,
                 username: 'Manager',
@@ -284,6 +290,7 @@ describe('POS checkout F&B contracts', () => {
                 discount_approval: {
                     discount_type: 'employee',
                     approver_user_id: 99,
+                    employee_directory_id: 44,
                     manager_pin: '1234'
                 },
                 governed_discount: {
@@ -291,6 +298,7 @@ describe('POS checkout F&B contracts', () => {
                     label: 'Employee Discount',
                     method: 'percentage',
                     rate: 10,
+                    employee_directory_id: 44,
                     employee_name: 'Staff Customer'
                 },
                 lines: [{
@@ -562,6 +570,7 @@ describe('POS checkout F&B contracts', () => {
             request_hash: hashPayload({
                 terminal_id: 'TERM-01',
                 location_id: 3,
+                operator_session_id: null,
                 order_method: 'pickup',
                 payment_type: 'cash',
                 service_fee_amount: null,

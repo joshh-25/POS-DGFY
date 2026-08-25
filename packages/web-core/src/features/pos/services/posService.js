@@ -167,6 +167,11 @@ export const fetchPosDiscountApprovers = async () => {
     return response.data?.data?.approvers || [];
 };
 
+export const fetchPosDiscountEmployees = async () => {
+    const response = await api.get('/pos/discount-employees');
+    return response.data?.data?.employees || [];
+};
+
 export const verifyPosDiscountApproval = async (payload = {}) => {
     const response = await api.post('/pos/discount-approvals/verify', payload);
     return response.data?.data?.approver || null;

@@ -11,6 +11,7 @@ import {
     money,
     normalizeDiscountProfiles,
     normalizePromoCode,
+    resolveEmployeeDiscountCreditPreference,
     resolvePosCatalogImageSources,
     rowMatchesHistoryFilters,
     round4,
@@ -94,6 +95,22 @@ describe('POS checkout terminal pure utilities', () => {
             actionTarget: '/settings?tab=compliance#section-profile'
         });
         expect(buildCompliancePolicyBlockerMessage({})).toBeNull();
+    });
+
+    it('resolves one employee across global and item discounts without guessing across conflicts', () => {
+        expect(resolveEmployeeDiscountCreditPreference(null, [{
+            item_discount: { discount_type: 'employee', employee_directory_id: 44 }
+        }])).toEqual({ preferredEmployeeId: 44, hasConflict: false });
+
+        expect(resolveEmployeeDiscountCreditPreference(
+            { type: 'employee', employee_directory_id: 44 },
+            [{ item_discount: { discount_type: 'employee', employee_directory_id: '44' } }]
+        )).toEqual({ preferredEmployeeId: 44, hasConflict: false });
+
+        expect(resolveEmployeeDiscountCreditPreference(null, [
+            { item_discount: { discount_type: 'employee', employee_directory_id: 44 } },
+            { item_discount: { discount_type: 'employee', employee_directory_id: 45 } }
+        ])).toEqual({ preferredEmployeeId: null, hasConflict: true });
     });
 
     it('builds searchable pending history rows and applies date/status filters', () => {

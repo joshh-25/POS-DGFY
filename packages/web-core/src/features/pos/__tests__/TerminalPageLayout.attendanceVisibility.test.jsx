@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
@@ -49,6 +49,10 @@ const baseProps = {
   queueLocationScopeId: 1,
   handleSelectViewMode: vi.fn(),
   handleLock: vi.fn(),
+  handleCashierSignIn: vi.fn(),
+  checkoutOperatorLocked: false,
+  checkoutOperatorLoading: false,
+  activeShiftOwnerLabel: 'Cashier One',
   setDrawerOpen: vi.fn(),
   effectiveSidebarCollapsed: true,
   setSidebarCollapsed: vi.fn(),
@@ -89,5 +93,19 @@ describe('TerminalPageLayout attendance visibility', () => {
     renderLayout({ posViewMode });
 
     expect(screen.getByTestId('pos-attendance-panel')).toBeTruthy();
+  });
+
+  it('shows one compact cashier sign-in guard on Sell when operator authority is missing', () => {
+    const handleCashierSignIn = vi.fn();
+    renderLayout({
+      posViewMode: 'checkout',
+      checkoutOperatorLocked: true,
+      activeShiftOwnerLabel: 'Cashier One',
+      handleCashierSignIn
+    });
+
+    expect(screen.getByText('Register is assigned to Cashier One. Sign in as a cashier to sell.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cashier Sign In' }));
+    expect(handleCashierSignIn).toHaveBeenCalledTimes(1);
   });
 });

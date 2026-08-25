@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isPosOperatorAuthorityOwnedByUser,
   resolveActiveShiftResumeDecision,
+  resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
   resolveTerminalShiftEntryDecision
 } from '../utils/terminalShiftEntryDecision.js';
@@ -109,5 +111,35 @@ describe('POS terminal shift entry decision', () => {
       lockReason: 'shift_start_required',
       activeShift: null
     })).toBe('shift_start');
+  });
+
+  it('automatically resumes the cashier who owns the open shift', () => {
+    expect(resolveCashierRegisterEntryMode({
+      shiftCashierId: 12,
+      authenticatedCashierId: 12
+    })).toBe('resume');
+  });
+
+  it('requires takeover for a different authenticated cashier', () => {
+    expect(resolveCashierRegisterEntryMode({
+      shiftCashierId: 12,
+      authenticatedCashierId: 27
+    })).toBe('takeover');
+  });
+
+  it('accepts operator authority only for the currently authenticated user', () => {
+    expect(isPosOperatorAuthorityOwnedByUser({
+      authorityValid: true,
+      operatorUserId: 12,
+      authenticatedUserId: 12
+    })).toBe(true);
+  });
+
+  it('rejects valid operator authority left behind by a different signed-in account', () => {
+    expect(isPosOperatorAuthorityOwnedByUser({
+      authorityValid: true,
+      operatorUserId: 12,
+      authenticatedUserId: 27
+    })).toBe(false);
   });
 });

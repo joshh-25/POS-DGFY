@@ -44,7 +44,8 @@ export const usePosHistoryVoidWorkflow = ({
     externalReceiptTransactionId = null,
     onExternalReceiptHydrated = null,
     externalHistoryQuery = '',
-    onExternalHistoryHydrated = null
+    onExternalHistoryHydrated = null,
+    onFinancialMutationCompleted = null
 } = {}) => {
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
@@ -253,16 +254,23 @@ export const usePosHistoryVoidWorkflow = ({
                 terminal_id: normalizedTerminalId || undefined
             };
             if (activeShiftId) voidPayload.shift_id = activeShiftId;
-            await voidPosTransaction(posTransactionId, voidPayload);
+            const voidResult = await voidPosTransaction(posTransactionId, voidPayload);
             toast.success('POS transaction voided.');
             await loadHistory(historyPage);
+            if (typeof onFinancialMutationCompleted === 'function') {
+                try {
+                    await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });
+                } catch {
+                    toast.warning('The transaction was voided, but shift totals could not refresh automatically.');
+                }
+            }
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Failed to void POS transaction.');
             throw error;
         } finally {
             setVoidingTransactionId(null);
         }
-    }, [activeShiftId, canVoidTransactions, historyPage, isAdminOperator, loadHistory, normalizedTerminalId]);
+    }, [activeShiftId, canVoidTransactions, historyPage, isAdminOperator, loadHistory, normalizedTerminalId, onFinancialMutationCompleted]);
 
     const openHistoryRefundWorkflow = useCallback(async (historyRow) => {
         const posTransactionId = Number(historyRow?.pos_transaction_id);

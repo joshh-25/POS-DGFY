@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-25
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -203,6 +203,25 @@ for backward compatibility, but POS displays it as **Other**. This is a
 presentation-only label change; validation, PIN authorization, stored audit
 records, reports, and receipts continue to use the existing `manual` value
 where they require the canonical type.
+
+### 2026-08-25 — Controlled employee-discount self-approval and directory identity
+
+- Clauses amended: Decision 6 and the employee self-approval prohibition in
+  Decision 7 (both untagged, therefore `default` tier per ADR 0039).
+- Employee discount identity is now selected from the active tenant Employee
+  Directory. The server persists the canonical employee name and employee code
+  snapshot; a numeric employee code is never interpreted as a POS user ID.
+- Employee self-approval remains disabled by default. A tenant administrator may
+  explicitly enable `pos_employee_discount_self_approval_enabled`. When enabled,
+  an active authorized cashier with a configured valid POS approval PIN may
+  approve an Employee discount applied to that cashier's own directory identity.
+- A successful self-approval persists `self_approved=true` with the applying
+  cashier, selected directory employee, PIN-owner approver, and approval time.
+  The raw PIN remains transient request data and is never stored.
+- Senior, PWD, Promo, Voucher, and Other discount authorization rules are
+  unchanged. Disabling the setting immediately restores the separate-approver
+  requirement for new Employee discount approvals.
+- Issue: #1020.
 
 ## Authoritative Sources
 

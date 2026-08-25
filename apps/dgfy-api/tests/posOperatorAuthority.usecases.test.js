@@ -214,6 +214,7 @@ describe('Phase 159 POS operator authority use cases', () => {
         const result = await useCases.authorizeMutation({
             authorityToken: 'authority-10',
             tenantId: 'tenant-1',
+            authenticatedUserId: 1,
             scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
             operationKey: 'request-authorize-001',
             operationType: 'POST /checkouts'
@@ -223,6 +224,22 @@ describe('Phase 159 POS operator authority use cases', () => {
         expect(result.data.legacy_fallback).toBe(false);
         expect(result.data.operator_session).toMatchObject({ user_id: 1, pos_terminal_shift_id: 99 });
         expect(result.data.operator_user).toMatchObject({ user_id: 1, username: 'alice' });
+    });
+
+    test('rejects a protected mutation when the signed-in account does not own the operator authority', async () => {
+        const { useCases } = buildFixture();
+        const result = await useCases.authorizeMutation({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            authenticatedUserId: 2,
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            operationKey: 'request-identity-mismatch-001',
+            operationType: 'POST /checkouts'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.details?.reason_code).toBe('POS_OPERATOR_IDENTITY_MISMATCH');
     });
 
     test('keeps legacy mutations available when the rollout flag is disabled', async () => {
@@ -243,6 +260,7 @@ describe('Phase 159 POS operator authority use cases', () => {
         const result = await useCases.authorizeMutation({
             authorityToken: 'authority-10',
             tenantId: 'tenant-1',
+            authenticatedUserId: 1,
             scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
             operationKey: 'request-break-001',
             operationType: 'POST /checkouts'

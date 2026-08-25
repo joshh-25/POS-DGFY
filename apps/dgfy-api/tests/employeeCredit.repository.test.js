@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { Op } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import { employeeCreditRepository } from '../src/modules/employeeCredit/repositories/employeeCreditRepository.js';
 
@@ -14,6 +15,7 @@ describe('Employee Credit repository', () => {
       await employeeCreditRepository.listCheckoutEmployees({
         search: 'employee',
         locationId: 3,
+        employeeId: 44,
         limit: 10
       });
 
@@ -23,6 +25,7 @@ describe('Employee Credit repository', () => {
         attributes: ['location_id', 'name']
       }));
       expect(query.include[0].attributes).not.toContain('location_name');
+      expect(query.where[Op.and]).toEqual(expect.arrayContaining([{ employee_id: 44 }]));
     } finally {
       getModel.mockRestore();
     }

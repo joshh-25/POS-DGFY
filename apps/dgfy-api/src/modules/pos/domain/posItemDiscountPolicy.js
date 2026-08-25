@@ -23,7 +23,8 @@ export const resolvePosItemDiscount = async ({
     settings = {},
     orderMethod = '',
     findActiveRule,
-    findActiveEmployee
+    findActiveEmployee,
+    findActiveEmployeeDirectory
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const normalizedItemId = positiveInt(itemId);
@@ -51,7 +52,8 @@ export const resolvePosItemDiscount = async ({
         orderMethod,
         requireCustomerName: type === 'promo',
         findActiveRule,
-        findActiveEmployee
+        findActiveEmployee,
+        findActiveEmployeeDirectory
     });
     const application = resolution?.application;
     if (!application) validationError('The item discount could not be resolved.', 'ITEM_DISCOUNT_RESOLUTION_FAILED', { item_id: normalizedItemId });

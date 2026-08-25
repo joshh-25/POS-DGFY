@@ -749,6 +749,9 @@ export const usePosCheckoutWorkflow = ({
                     amount: appliedDiscount.amount == null ? null : Number(appliedDiscount.amount),
                     customer_name: appliedDiscount.customer_name || null,
                     id_number: appliedDiscount.id_number || null,
+                    employee_name: appliedDiscount.employee_name || null,
+                    employee_id: appliedDiscount.employee_id || null,
+                    employee_directory_id: Number(appliedDiscount.employee_directory_id) || null,
                     approver_user_id: appliedDiscount.approver_user_id || null,
                     approver_name: appliedDiscount.approver_name || null,
                     promo_code: appliedDiscount.promo_code || null,
@@ -785,6 +788,7 @@ export const usePosCheckoutWorkflow = ({
                     id_number: line.item_discount.id_number || null,
                     employee_name: line.item_discount.employee_name || null,
                     employee_id: line.item_discount.employee_id || null,
+                    employee_directory_id: Number(line.item_discount.employee_directory_id) || null,
                     promo_code: line.item_discount.promo_code || null,
                     reason: line.item_discount.reason || null,
                     approver_user_id: line.item_discount.approver_user_id || null,
@@ -1198,7 +1202,9 @@ export const usePosCheckoutWorkflow = ({
             discount_approval: appliedDiscount && discountApprovalRef?.current ? {
                 discount_type: appliedDiscount.type,
                 approver_user_id: appliedDiscount.approver_user_id,
-                employee_user_id: appliedDiscount.type === 'employee' ? Number(appliedDiscount.employee_id) || null : null,
+                employee_directory_id: appliedDiscount.type === 'employee'
+                    ? Number(appliedDiscount.employee_directory_id) || null
+                    : null,
                 manager_pin: discountApprovalRef.current.manager_pin
             } : undefined,
             governed_discount: appliedDiscount ? {
@@ -1232,6 +1238,7 @@ export const usePosCheckoutWorkflow = ({
                         id_number: line.item_discount.id_number || null,
                         employee_name: line.item_discount.employee_name || null,
                         employee_id: line.item_discount.employee_id || null,
+                        employee_directory_id: Number(line.item_discount.employee_directory_id) || null,
                         promo_code: line.item_discount.promo_code || null,
                         reason: line.item_discount.reason || null,
                         approver_user_id: line.item_discount.approver_user_id || null
@@ -1239,6 +1246,9 @@ export const usePosCheckoutWorkflow = ({
                     ...(itemDiscountApprovalRef?.current?.get(getLineKey(line))?.manager_pin ? {
                         item_discount_approval: {
                             approver_user_id: itemDiscountApprovalRef.current.get(getLineKey(line)).approver_user_id,
+                            employee_directory_id: line.item_discount.discount_type === 'employee'
+                                ? Number(line.item_discount.employee_directory_id) || null
+                                : null,
                             manager_pin: itemDiscountApprovalRef.current.get(getLineKey(line)).manager_pin
                         }
                     } : {})

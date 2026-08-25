@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
+const mockListPosDiscountEmployeesUseCase = jest.fn();
 const mockListPosDiscountApproversUseCase = jest.fn();
 const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
@@ -95,6 +96,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: mockListPosCatalogUseCase,
     scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
+    listPosDiscountEmployeesUseCase: mockListPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase: mockListPosDiscountApproversUseCase,
     verifyPosDiscountApprovalUseCase: mockVerifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,

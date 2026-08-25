@@ -238,7 +238,7 @@ describe('Employee Credit service', () => {
     const result = await useCase({ query: { search: 'employee', limit: 50 } });
 
     expect(result.success).toBe(true);
-    expect(repository.listCheckoutEmployees).toHaveBeenCalledWith({ search: 'employee', locationId: null, limit: 50 });
+    expect(repository.listCheckoutEmployees).toHaveBeenCalledWith({ search: 'employee', locationId: null, employeeId: null, limit: 50 });
     expect(result.data.options).toEqual(expect.arrayContaining([
       expect.objectContaining({
         option_key: 'employee:44',
@@ -267,6 +267,25 @@ describe('Employee Credit service', () => {
       })
     ]));
     expect(result.data.options.some((option) => Object.hasOwn(option, 'authorization_pin_hash'))).toBe(false);
+  });
+
+  it('loads one exact directory employee without mixing legacy accounts into prefill', async () => {
+    const repository = {
+      listCheckoutEmployees: jest.fn(async () => []),
+      listLegacyCheckoutAccounts: jest.fn(async () => [])
+    };
+    const useCase = buildListEmployeeCreditCheckoutOptionsUseCase({ repository });
+
+    const result = await useCase({ query: { employee_id: 144, location_id: 5, limit: 1 } });
+
+    expect(result.success).toBe(true);
+    expect(repository.listCheckoutEmployees).toHaveBeenCalledWith({
+      search: '',
+      locationId: 5,
+      employeeId: 144,
+      limit: 1
+    });
+    expect(repository.listLegacyCheckoutAccounts).not.toHaveBeenCalled();
   });
 
   it('authorizes a directory employee who has no POS login account', async () => {

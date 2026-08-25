@@ -55,6 +55,11 @@ const checkoutLineSchema = Joi.object({
         id_number: Joi.string().trim().max(100).allow('', null).optional(),
         employee_name: Joi.string().trim().max(255).allow('', null).optional(),
         employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+        employee_directory_id: Joi.when('discount_type', {
+            is: 'employee',
+            then: Joi.number().integer().positive().required(),
+            otherwise: Joi.number().integer().positive().allow(null).optional()
+        }),
         promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
         reason: Joi.string().trim().max(500).allow('', null).optional(),
         approver_user_id: Joi.number().integer().positive().allow(null).optional()
@@ -63,6 +68,7 @@ const checkoutLineSchema = Joi.object({
         approver_user_id: Joi.number().integer().positive().allow(null).optional(),
         manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
         employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+        employee_directory_id: Joi.number().integer().positive().allow(null).optional(),
         discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
     }).unknown(false).allow(null).optional(),
     scan_metadata: Joi.object({
@@ -96,6 +102,11 @@ const governedDiscountSchema = Joi.object({
     id_number: Joi.string().trim().max(100).allow('', null).optional(),
     employee_name: Joi.string().trim().max(255).allow('', null).optional(),
     employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+    employee_directory_id: Joi.when('type', {
+        is: 'employee',
+        then: Joi.number().integer().positive().required(),
+        otherwise: Joi.number().integer().positive().allow(null).optional()
+    }),
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     // 40 matches VOUCHER_CODE_PATTERN's own cap (voucherValidator.js) -- narrower than
@@ -118,6 +129,11 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+    employee_directory_id: Joi.when('discount_type', {
+        is: 'employee',
+        then: Joi.number().integer().positive().required(),
+        otherwise: Joi.number().integer().positive().allow(null).optional()
+    }),
     discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').optional()
 });
 
@@ -1008,6 +1024,7 @@ const employeeCreditLookupQuerySchema = Joi.object({
 const employeeCreditCheckoutOptionsQuerySchema = Joi.object({
     search: Joi.string().trim().max(100).allow('').default(''),
     location_id: Joi.number().integer().positive().optional(),
+    employee_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(100).default(50)
 });
 

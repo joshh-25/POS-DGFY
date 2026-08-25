@@ -76,3 +76,23 @@ export const resolveStoredShiftUnlockMode = ({
   if (lockReason === 'shift_start_required' && activeShift) return 'resume_shift';
   return 'shift_start';
 };
+
+export const resolveCashierRegisterEntryMode = ({
+  shiftCashierId = null,
+  authenticatedCashierId = null
+} = {}) => (
+  normalizePositiveInteger(shiftCashierId) === normalizePositiveInteger(authenticatedCashierId)
+    && normalizePositiveInteger(shiftCashierId)
+    ? 'resume'
+    : 'takeover'
+);
+
+export const isPosOperatorAuthorityOwnedByUser = ({
+  authorityValid = false,
+  operatorUserId = null,
+  authenticatedUserId = null
+} = {}) => (
+  authorityValid === true
+  && normalizePositiveInteger(operatorUserId) === normalizePositiveInteger(authenticatedUserId)
+  && Boolean(normalizePositiveInteger(operatorUserId))
+);
