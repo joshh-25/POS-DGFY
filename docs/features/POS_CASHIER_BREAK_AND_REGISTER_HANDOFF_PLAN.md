@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: pos
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 review_by: 2027-02-24
 applies_to: pos_cashier_attendance_breaks_and_register_handoff
 topic: pos_cashier_break_and_register_handoff_plan
@@ -24,10 +24,12 @@ shift, add a second opening float, close the drawer, or duplicate an existing at
 A scheduled change of cash custodian uses a counted handoff while the same register shift remains
 open.
 
-This plan governs Phases 156-165 in
-`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`. The phases are intentionally sequential and do not
-overlap. A phase may start only after the preceding phase's acceptance gates pass and its ledger
-status is `completed`.
+This plan originated in Phases 156-165 and is extended by the Phase 170
+standalone POS operator sign-in contract in
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`. The ledger remains authoritative
+for intervening completed phases. Future delivery slices are intentionally
+sequential unless their own dependency record says otherwise, and no phase may
+start before its dependencies and approval gates pass.
 
 All new runtime behavior remains behind one tenant/location-scoped, default-off feature flag until
 Phase 162. Earlier phases may deploy their completed slice, but they cannot expose an incomplete
@@ -454,6 +456,80 @@ continue the open register without pretending to resume the opening cashier's sh
 - Focused/shared frontend tests, existing operator-authority API tests, all three frontend builds,
   architecture checks, and a rendered verification path pass before tenant activation.
 
+## Phase 170 - Standalone POS Operator Sign-In Contract
+
+### Planning Packet
+
+- Packet: `feature-slice`
+- Domain: standalone POS web/fullstack
+- Source material: issue #1052, production cashier-authority evidence, ADR 0073, and the existing
+  terminal flow
+- Readiness: Phase 170 is ready and documentation-only; runtime slices remain `planned`
+
+### Objective
+
+Freeze a familiar operator-switch flow for standalone POS: the DGFY browser session establishes
+the company and terminal, while each eligible operator uses a personal POS PIN to resume or take
+over the open register without closing its shift or re-entering a second DGFY password.
+
+### Product Contract
+
+- Operator eligibility is capability-based. A tenant owner, administrator, manager, or invited
+  cashier may sell only when the server confirms active membership, `pos:transact`,
+  `pos:attendance:operate`, location access, attendance/no-break eligibility, and valid PIN
+  security state.
+- The DGFY browser identity remains unchanged. The server issues, rotates, or revokes only the
+  scoped operator authority described by ADR 0073.
+- The open register shift, opening float, drawer ledger, and existing transaction history remain
+  continuous across routine operator switches.
+- An ordinary switch records shared-drawer access. Counted custody and individual variance remain
+  a separate acknowledged handoff.
+- A cart must be parked or cancelled before switching, and protected financial/drawer operations
+  block the transition until they finish or fail safely.
+- The contract is standalone POS only. IMS receives no operator-switch UI, feature behavior,
+  release scope, or rollout work.
+
+### Delivery Slices
+
+| Phase | Slice | Outcome | Owner role | Dependencies | Ready? |
+| --- | --- | --- | --- | --- | --- |
+| 171 | Server eligibility and PIN authority | One atomic, rate-limited resume/takeover policy validates capabilities, preserves a non-circular PIN enrollment path, and issues operator authority without replacing DGFY identity. | Backend | Phase 170 | Planned; approval required |
+| 172 | Standalone POS operator-switch UI | Eligible-operator picker and personal-PIN flow replace the repeated DGFY credential/role gate in standalone POS. | Frontend | Phase 171 | Planned; approval required |
+| 173 | Security, concurrency, and compatibility hardening | Replay, double-submit, stale eligibility, protected-operation, cart, lockout, idempotency, and mixed-version cases fail safely. | Backend + frontend | Phases 171-172 | Planned; approval required |
+| 174 | POS-only end-to-end proof and rollout | Two-operator selling, attribution, shared drawer, restore, rollback, accessibility, and production verification are evidenced. | QA + release | Phase 173 | Planned; approval required |
+
+### Main Risks and Required Mitigations
+
+| Risk | Required solution |
+| --- | --- |
+| A user with a broad role is treated as a cashier automatically. | Never authorize by role label; revalidate `pos:transact`, `pos:attendance:operate`, location, membership, attendance, PIN, terminal, and shift on the server. |
+| A first operator cannot enter because no PIN exists and PIN setup itself requires an operator session. | Keep authenticated self-enrollment under `pos:attendance:operate` and administrative reset under `users:manage` reachable without pre-existing operator authority; audit both paths. |
+| The PIN flow replaces or leaks the DGFY session. | Keep DGFY and operator cookies separate, HttpOnly, scoped, rotated, and independently revocable; never install target DGFY credentials in browser state. |
+| Two devices or rapid submits create two current operators. | Use one transactional transition, a single-current-operator database invariant, idempotency keys, and deterministic conflict responses. |
+| A switch interrupts a cart or financial mutation. | Require park/cancel for a non-empty cart and reject while checkout, refund, void, drawer, or other protected work is active. |
+| Shared-drawer access is mistaken for counted custody. | Record ordinary access separately and require count plus both acknowledgements for custody transfer and variance ownership. |
+| Stale browser/backend versions reopen permissive fallback behavior. | Version the operator contract, support only the bounded compatibility window, instrument failures, and remove the fallback after rollout proof. |
+| PIN guessing or operator enumeration exposes staff. | Use generic failures, rate limits, lockout, audit events, minimum PIN policy, and no secret/browser-readable PIN storage. |
+| Shared `web-core` changes accidentally alter IMS. | Keep IMS out of product acceptance; when shared runtime files change, run its build only as a regression gate and add no IMS UX. |
+
+### Phase 170 Exclusions
+
+- No backend, frontend, database, test, migration, feature-flag, or deployment change.
+- No IMS product behavior or UI.
+- No counted custody implementation, payroll, scheduling, biometrics, or multi-drawer expansion.
+- No runtime removal of the current DGFY credential/role gate; that belongs to Phases 171-172.
+
+### Phase 170 Acceptance Gates
+
+- ADR 0073 records the standalone POS PIN/capability contract without weakening binding identity,
+  operator-session, attendance, or cash-custody clauses.
+- The authoritative terminal flow distinguishes initial DGFY login from routine operator sign-in
+  and clearly labels the target behavior as not yet implemented.
+- IMS is excluded as a product surface, with only conditional shared-code regression coverage.
+- Later delivery phases have one outcome, owner role, dependency chain, risk boundary, and
+  separately required approval.
+- Documentation, ADR, architecture, compliance, and diff-safety checks pass.
+
 ## Feature-Wide Acceptance Contract
 
 The feature is complete only when all of the following are true:
@@ -479,6 +555,7 @@ The feature is complete only when all of the following are true:
 - Cloning UTAK's interface or claiming undocumented UTAK behavior.
 - Multiple physical drawers on one terminal or one drawer shared simultaneously by terminals.
 - Individual cash-variance attribution during an uncounted shared-drawer interval.
+- IMS operator-switch UI, feature behavior, or rollout.
 
 ## Governing Sources
 
@@ -490,6 +567,7 @@ The feature is complete only when all of the following are true:
 - `docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md`
 - `docs/architecture/adr/0044-pos-terminal-device-pairing.md`
 - `docs/architecture/adr/0065-pos-shared-parked-sales-and-cashier-handoff.md`
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
 - `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
 - `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
 
@@ -500,14 +578,12 @@ authority. No implementation phase may bypass these governance gates.
 
 ## Current State and Next Move
 
-- Current repository phase: Phase 165, `completed` on 2026-08-25.
-- Planned initiative: Phases 156-165; Phases 156-164 are `completed` and Phase 165 is the
-  approved locked-terminal cashier takeover entry point.
-- Current phase: Phase 165, Locked-Terminal Cashier Takeover Entry Point, completed after focused
-  and full shared-web-core tests, operator-authority API tests, all three production builds, and
-  architecture checks passed. A signed-in two-cashier browser run remains an operational
-  verification before tenant activation because the local browser had no authenticated second
-  cashier session.
+- Current repository phase: Phase 170, `completed` on 2026-08-26 as a documentation/governance
+  contract only.
+- Planned initiative: Phases 171-174 deliver the server policy, standalone POS UI, hardening, and
+  POS-only end-to-end rollout proof. None is approved for implementation by Phase 170.
+- Next eligible phase: Phase 171, server eligibility and PIN authority, after explicit approval
+  and after the stacked Phase 169 dependency reaches `develop`.
 - Phase 157 evidence includes the additive migration, tenant schema registry, model associations,
   repository/serializer foundation, and focused persistence tests. Phase 158 evidence now includes
   the lifecycle implementation, migration rollback/re-apply, focused backend/frontend tests, and

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-24
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 review_by: 2027-02-24
 applies_to: pos, attendance, cash_drawer, cashier_reporting
 topic: pos_cashier_attendance_breaks_and_register_operator_sessions
@@ -14,8 +14,8 @@ supersedes_in_part: docs/architecture/adr/0065-pos-shared-parked-sales-and-cashi
 
 ## Status
 
-Accepted on 2026-08-24 and amended on 2026-08-25 for Phase 164 automatic
-cashier lifecycle orchestration.
+Accepted on 2026-08-24 and amended through 2026-08-26 for automatic cashier
+lifecycle orchestration and the standalone POS operator sign-in contract.
 
 ## Context
 
@@ -191,6 +191,44 @@ Phase 157-162 implementations must prove at minimum:
 - Takeover still changes only the current operator session. The continuous
   register shift, opening float, drawer custody, and counted-handoff rules are
   unchanged.
+
+### 2026-08-26: Standalone POS Operator Sign-In Contract (Phase 170)
+
+This amendment replaces only the default takeover orchestration that required
+the incoming operator to create a second DGFY browser login. The binding
+identity, authorization, attendance, operator-session, and cash-custody clauses
+above remain unchanged.
+
+- The existing DGFY browser session continues to establish the tenant, company,
+  and terminal context. A routine operator switch does not replace that browser
+  identity and does not require the target operator's DGFY password.
+- The incoming operator selects their eligible tenant-local profile and proves
+  possession of their personal, write-only POS PIN. The server revalidates
+  active membership, `pos:transact`, `pos:attendance:operate`, location scope,
+  attendance/break rules, PIN state, terminal/shift scope, and transition
+  eligibility before issuing operator authority.
+- Eligibility is capability-based, not tied to `role === cashier`. An owner,
+  founder, administrator, manager, or invited cashier may operate the standalone
+  POS when the same server-side permission, location, attendance, and PIN
+  requirements pass.
+- Same-operator resume and different-operator takeover use the same target
+  eligibility policy but remain distinct auditable transitions. Generic
+  authentication failures, rate limits, lockout, idempotency, stale-session
+  rejection, and single-current-operator concurrency guarantees continue to
+  fail closed.
+- A routine switch preserves the open register shift, opening float, drawer
+  ledger, and shared-drawer disclosure. Counted custody transfer remains a
+  separate acknowledged handoff.
+- A cart must be parked or cancelled before the operator changes, and any
+  payment, refund, void, drawer mutation, or other protected operation blocks
+  the transition until it completes or is safely rejected.
+- This product contract applies only to the standalone POS. It adds no IMS
+  operator-switch UI, feature behavior, or rollout obligation. A later runtime
+  change to shared `packages/web-core` code may still require an IMS build as a
+  regression gate, not as an IMS deliverable.
+- Phase 170 freezes documentation and implementation boundaries only. Runtime
+  delivery, hardening, end-to-end proof, rollout, and deployment require later
+  separately approved phases.
 
 ## References
 
