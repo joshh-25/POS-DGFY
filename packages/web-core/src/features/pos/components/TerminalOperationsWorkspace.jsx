@@ -6629,8 +6629,12 @@ function SettingsWorkspace({
           comment: String(entry?.comment || '').trim().slice(0, 240)
         }))
         .filter((entry) => entry.reviewer_name || entry.comment || entry.rating !== null);
+      // #695/#988: primaryStorefrontPromo is intentionally not computed -- it existed only to
+      // feed the storefront_promo payload key removed below. storefrontPromos itself is kept
+      // (used by the duplicate-code/schedule validation immediately below) even though every
+      // promo field is now frozen in the UI -- retained as cheap insurance against any already-
+      // stored data being invalid, not because it can still be edited here.
       const storefrontPromos = mergeCurrentStorefrontPromoList(storefrontForm);
-      const primaryStorefrontPromo = storefrontPromos.find((promo) => promo.active === true) || storefrontPromos[0] || createBlankStorefrontPromo();
       const seenPromoCodes = new Set();
       for (const promo of storefrontPromos) {
         const promoCode = String(promo.promo_code || '').trim().toUpperCase();
@@ -6667,8 +6671,13 @@ function SettingsWorkspace({
         storefront_delivery_partners: normalizeStorefrontDeliveryPartnersSettings(storefrontForm.storefrontDeliveryPartners),
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_review_summary: serializeStorefrontReviewSummary(storefrontForm),
-        storefront_promo: primaryStorefrontPromo,
-        storefront_promos: storefrontPromos,
+        // #695/#988: storefront_promo and storefront_promos are intentionally omitted here. Every
+        // promo control above is now frozen (view-only), but this save handler used to write both
+        // legacy keys on EVERY storefront save regardless -- which would silently recreate them
+        // after the #695 migration deletes them. updateSettings only touches keys present in the
+        // request body, so omitting both here leaves whatever is stored on those keys strictly
+        // alone. Mirrors the same fix already applied to the singular editor in
+        // apps/dgfy-ims/Pages/Settings.jsx.
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
         storefront_share_enabled: storefrontForm.storefrontShareEnabled === true
       });
@@ -8669,16 +8678,21 @@ function SettingsWorkspace({
               <div>
                 <Label>Promo Codes (Legacy)</Label>
                 <p className="text-[12px] text-slate-500">
-                  Promo codes now run on Vouchers -- create new discount codes there instead. Any
-                  existing promo below stays editable, but creating a new one is disabled so nothing
-                  new falls outside the voucher system (#776/#695).
+                  Promo codes now run on Vouchers -- create new discount codes there instead. Every
+                  control below is read-only: an existing promo can be viewed but not edited,
+                  removed, or newly created (#695 PR #988 review finding).
                 </p>
               </div>
-              {/* #776/#695: frozen, not removed -- matches deferring the legacy promo engine's
-                  actual removal until the voucher-based system is prod-proven. Every real promo
-                  this codebase had was already converted to a voucher by the #695 migration, so
-                  this button being disabled blocks zero real merchant workflow today; it exists to
-                  stop a NEW promo being created outside the voucher system going forward. */}
+              {/* #776/#695/#988: fully frozen, not removed -- matches deferring the legacy promo
+                  engine's actual removal until the voucher-based system is prod-proven. Every real
+                  promo this codebase had was already converted to a voucher by the #695 migration,
+                  so every control in this section being disabled blocks zero real merchant
+                  workflow today. Originally only this Add button was frozen (#776); a PR #988
+                  review correctly found that editing an EXISTING card was still fully live (code,
+                  discount, eligibility, and the storefront save handler still wrote both legacy
+                  settings keys on every save, which would recreate them post-migration), so this
+                  now disables every input/button in the section and drops both keys from the save
+                  payload below. */}
               <Button type="button" variant="outline" onClick={addStorefrontPromo} disabled title="Promo codes have moved to Vouchers. Create new discount codes there instead.">
                 <Plus className="mr-1 h-4 w-4" />Add Promo
               </Button>
@@ -8716,11 +8730,11 @@ function SettingsWorkspace({
               <Label>Selected Promo Active</Label>
               <div className="flex items-center gap-3">
                 {storefrontPromoCards.length > 1 ? (
-                  <Button type="button" variant="outline" className="h-8 px-3 text-[12px]" onClick={() => removeStorefrontPromo(storefrontForm.storefrontPromoEditingId)}>
+                  <Button type="button" variant="outline" className="h-8 px-3 text-[12px]" disabled onClick={() => removeStorefrontPromo(storefrontForm.storefrontPromoEditingId)}>
                     <Trash2 className="mr-1 h-3.5 w-3.5" />Remove
                   </Button>
                 ) : null}
-                <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
+                <input type="checkbox" disabled className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoActive === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoActive: event.target.checked }))} />
               </div>
             </div>
             <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
@@ -8731,7 +8745,7 @@ function SettingsWorkspace({
                   ['pos', 'POS Counter']
                 ].map(([key, label]) => (
                   <label key={`promo-channel-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
-                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoChannels?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoChannels: { ...current.storefrontPromoChannels, [key]: event.target.checked } }))} />
+                    <input type="checkbox" disabled className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoChannels?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoChannels: { ...current.storefrontPromoChannels, [key]: event.target.checked } }))} />
                     {label}
                   </label>
                 ))}
@@ -8743,7 +8757,7 @@ function SettingsWorkspace({
                   ['pickup', 'Pickup']
                 ].map(([key, label]) => (
                   <label key={`promo-fulfillment-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
-                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoFulfillmentMethods?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoFulfillmentMethods: { ...current.storefrontPromoFulfillmentMethods, [key]: event.target.checked } }))} />
+                    <input type="checkbox" disabled className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoFulfillmentMethods?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoFulfillmentMethods: { ...current.storefrontPromoFulfillmentMethods, [key]: event.target.checked } }))} />
                     {label}
                   </label>
                 ))}
@@ -8755,7 +8769,7 @@ function SettingsWorkspace({
                   ['scheduled', 'Scheduled']
                 ].map(([key, label]) => (
                   <label key={`promo-timing-${key}`} className="flex items-center gap-2 text-[12px] text-slate-700">
-                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoOrderTiming?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoOrderTiming: { ...current.storefrontPromoOrderTiming, [key]: event.target.checked } }))} />
+                    <input type="checkbox" disabled className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontPromoOrderTiming?.[key] === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoOrderTiming: { ...current.storefrontPromoOrderTiming, [key]: event.target.checked } }))} />
                     {label}
                   </label>
                 ))}
@@ -8764,31 +8778,31 @@ function SettingsWorkspace({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Title</Label>
-                <Input value={storefrontForm.storefrontPromoTitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))} placeholder="10% OFF" />
+                <Input disabled value={storefrontForm.storefrontPromoTitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoTitle: event.target.value }))} placeholder="10% OFF" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Badge</Label>
-                <Input value={storefrontForm.storefrontPromoBadge} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))} placeholder="Today's Promo" />
+                <Input disabled value={storefrontForm.storefrontPromoBadge} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoBadge: event.target.value }))} placeholder="Today's Promo" />
               </div>
               <div className="space-y-1 md:col-span-2">
                 <Label className="text-[12px] font-semibold text-slate-600">Subtitle</Label>
-                <Input value={storefrontForm.storefrontPromoSubtitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))} placeholder="All BBQ items, min order ₱100" />
+                <Input disabled value={storefrontForm.storefrontPromoSubtitle} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoSubtitle: event.target.value }))} placeholder="All BBQ items, min order ₱100" />
               </div>
               <div className="space-y-1 md:col-span-2">
                 <Label className="text-[12px] font-semibold text-slate-600">Validity Text</Label>
-                <Input value={storefrontForm.storefrontPromoValidityText} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))} placeholder="Valid today only" />
+                <Input disabled value={storefrontForm.storefrontPromoValidityText} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoValidityText: event.target.value }))} placeholder="Valid today only" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Promo Code</Label>
-                <Input value={storefrontForm.storefrontPromoCode} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoCode: String(event.target.value || '').toUpperCase() }))} placeholder="SAVE20" />
+                <Input disabled value={storefrontForm.storefrontPromoCode} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoCode: String(event.target.value || '').toUpperCase() }))} placeholder="SAVE20" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Discount Percent</Label>
-                <Input type="number" min="0" max="100" step="0.01" value={storefrontForm.storefrontPromoDiscountPercent} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoDiscountPercent: event.target.value }))} placeholder="20" />
+                <Input disabled type="number" min="0" max="100" step="0.01" value={storefrontForm.storefrontPromoDiscountPercent} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoDiscountPercent: event.target.value }))} placeholder="20" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Usage Limit</Label>
-                <Input type="number" min="1" step="1" value={storefrontForm.storefrontPromoUsageLimit} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoUsageLimit: event.target.value }))} placeholder="30" />
+                <Input disabled type="number" min="1" step="1" value={storefrontForm.storefrontPromoUsageLimit} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPromoUsageLimit: event.target.value }))} placeholder="30" />
               </div>
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">Used Count</Label>
@@ -8797,6 +8811,7 @@ function SettingsWorkspace({
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">From</Label>
                 <Input
+                  disabled
                   type="datetime-local"
                   className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
@@ -8810,6 +8825,7 @@ function SettingsWorkspace({
               <div className="space-y-1">
                 <Label className="text-[12px] font-semibold text-slate-600">To</Label>
                 <Input
+                  disabled
                   type="datetime-local"
                   className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
@@ -8830,7 +8846,7 @@ function SettingsWorkspace({
                     className="h-10 w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
                     value={storefrontPromoCandidateItemId}
                     onChange={(event) => setStorefrontPromoCandidateItemId(event.target.value)}
-                    disabled={storefrontPromoItemsLoading || availableStorefrontPromoItems.length === 0}
+                    disabled
                   >
                     <option value="">{storefrontPromoItemsLoading ? 'Loading items...' : 'Select an item'}</option>
                     {availableStorefrontPromoItems.map((item) => (
@@ -8839,7 +8855,7 @@ function SettingsWorkspace({
                       </option>
                     ))}
                   </select>
-                  <Button type="button" variant="outline" onClick={addStorefrontPromoTargetItem} disabled={!toPositiveInt(storefrontPromoCandidateItemId)}>
+                  <Button type="button" variant="outline" onClick={addStorefrontPromoTargetItem} disabled>
                     <Plus className="mr-1 h-4 w-4" />Add Item
                   </Button>
                 </div>
@@ -8849,6 +8865,7 @@ function SettingsWorkspace({
                       <button
                         key={`promo-target-${item.item_id}`}
                         type="button"
+                        disabled
                         className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-medium text-slate-700"
                         onClick={() => removeStorefrontPromoTargetItem(item.item_id)}
                       >
