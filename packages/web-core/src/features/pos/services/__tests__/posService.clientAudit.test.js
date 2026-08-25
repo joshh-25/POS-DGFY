@@ -35,10 +35,11 @@ describe('POS client hardware audit reporting', () => {
 
         expect(result).toEqual({ audit_id: 77 });
         expect(apiMock.post).toHaveBeenCalledTimes(3);
-        apiMock.post.mock.calls.forEach(([, payload]) => {
+        apiMock.post.mock.calls.forEach(([, payload, config]) => {
             expect(payload.idempotency_key).toBe('receipt-audit-41');
             expect(payload.transaction_id).toBe(41);
             expect(payload.client_driver_id).toBe('imin_native');
+            expect(config.timeout).toBe(5_000);
         });
     });
 

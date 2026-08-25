@@ -14,6 +14,10 @@ const checkoutSource = [
         'utf8'
     ),
     fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
         path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
         'utf8'
     ),
@@ -46,7 +50,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('<POSSplitPaymentWorkflow');
         expect(splitDialogSource).toContain('parked_sale_id: parkedSaleId || undefined');
         expect(checkoutWorkflowSource).toContain('handleSplitPaymentOpenChange(true);');
-        expect(checkoutSource).toContain('onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : handleCheckout}');
+        expect(checkoutSource).toContain('onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : confirmCheckout}');
         expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
         expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
@@ -74,11 +78,11 @@ describe('POS split-payment UI contract', () => {
         expect(financialWorkflowSource).toContain('const effectiveCustomerPaymentAmountInput = checkoutConfirmModalOpen && customerPaymentAmountAutoFilled');
         expect(financialWorkflowSource).toContain("? round4(cartTotal).toFixed(2)");
         expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(true);');
-        expect(checkoutSource).toContain('if (customerPaymentAmountAutoFilled) {');
+        expect(checkoutSource).toContain('if (paymentAmountAutoFilled) selectPaymentAmount(\'\');');
         expect(checkoutSource).toContain('data-testid="pos-cash-payment-exact"');
         expect(checkoutSource).toContain('Exact Amount · PHP {money(cartTotal)}');
-        expect(checkoutSource).toContain('setCustomerPaymentAmountInput(String(amount));');
-        expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(false);');
+        expect(checkoutSource).toContain('selectPaymentAmount(String(amount))');
+        expect(checkoutSource).toContain('const [paymentAmountAutoFilled, setPaymentAmountAutoFilled] = useState');
         expect(splitDialogSource).toContain("if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });");
     });
 
@@ -93,8 +97,8 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('Split payment in progress');
         expect(checkoutSource).not.toContain('The sale is not paid yet. Press Confirm below to finish it.');
         expect(checkoutSource).not.toContain('must be at least PHP');
-        expect(checkoutSource).toContain('!isCustomerPaymentSufficient');
-        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !isCustomerPaymentSufficient)}');
+        expect(checkoutSource).toContain('!paymentIsSufficient');
+        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {
@@ -111,7 +115,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('data-testid="pos-checkout-add-discount"');
         expect(checkoutSource).toContain('data-testid="pos-edit-checkout-discount"');
         expect(checkoutSource).toContain('data-testid="pos-remove-checkout-discount"');
-        expect(checkoutSource).toContain('onClick={() => openDiscountModal({ returnToCheckout: true })}');
+        expect(checkoutSource).toContain('openDiscountModal({ returnToCheckout: true });');
         expect(checkoutSource).toContain('onClick={clearAppliedDiscount}');
         expect(checkoutSource).toContain('const discountReturnToCheckoutRef = useRef(false);');
         expect(checkoutSource).toContain('setCheckoutConfirmModalOpen(false);');
@@ -125,7 +129,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];');
         expect(checkoutSource).toContain('data-testid="pos-cash-payment-suggestions"');
         expect(checkoutSource).toContain('isCashPayment && (');
-        expect(checkoutSource).toContain('setCustomerPaymentAmountInput(String(amount));');
+        expect(checkoutSource).toContain('selectPaymentAmount(String(amount))');
         expect(checkoutSource).toContain('data-testid={`pos-cash-payment-suggestion-${amount}`}');
         expect(checkoutSource).toContain('id="pos-customer-payment-amount"');
     });
@@ -139,7 +143,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutDialogIndex).toBeGreaterThan(-1);
         expect(totalPaymentIndex).toBeGreaterThan(checkoutDialogIndex);
         expect(paymentInputIndex).toBeGreaterThan(totalPaymentIndex);
-        expect(paymentInputSection).toContain('value={customerPaymentAmountInput}');
+        expect(paymentInputSection).toContain('value={paymentAmountInput}');
         expect(paymentInputSection).not.toContain('autoFocus');
     });
 

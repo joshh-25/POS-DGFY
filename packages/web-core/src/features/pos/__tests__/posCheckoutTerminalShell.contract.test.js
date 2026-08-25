@@ -7,6 +7,7 @@ const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const componentRoot = path.resolve(webCoreRoot, 'src/features/pos/components');
 const shellSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminal.jsx'), 'utf8');
 const viewSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminalView.jsx'), 'utf8');
+const checkoutDialogSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutConfirmDialog.jsx'), 'utf8');
 const receiptDialogsSource = fs.readFileSync(path.join(componentRoot, 'POSCheckoutTerminalReceiptDialogs.jsx'), 'utf8');
 
 describe('POS checkout terminal orchestration shell contract', () => {
@@ -28,10 +29,18 @@ describe('POS checkout terminal orchestration shell contract', () => {
   it('keeps stable rendered DOM/test-ID ownership in the extracted view', () => {
     expect(viewSource).toContain('data-testid="pos-catalog-scroll"');
     expect(viewSource).toContain('data-testid="pos-clear-current-sale-dialog"');
-        expect(receiptDialogsSource).toContain('data-testid="pos-receipt-modal-open-pos-report"');
+    expect(receiptDialogsSource).toContain('data-testid="pos-receipt-modal-open-pos-report"');
     expect(viewSource).toContain('data-testid="pos-header-parked-sales-history-button"');
     expect(viewSource).toContain('aria-label="POS catalog contents"');
     expect(viewSource).toContain('aria-label="Current sale contents"');
+  });
+
+  it('keeps the payment draft inside the isolated checkout dialog', () => {
+    expect(viewSource).toContain('<POSCheckoutConfirmDialog viewModel={viewModel} />');
+    expect(checkoutDialogSource).toContain('const [paymentAmountInput, setPaymentAmountInput] = useState');
+    expect(checkoutDialogSource).toContain('onChange={(event) => selectPaymentAmount(event.target.value)}');
+    expect(checkoutDialogSource).toContain('const confirmCheckout = () => handleCheckout({');
+    expect(viewSource).not.toContain('id="pos-customer-payment-amount"');
   });
 
   it('keeps business/API ownership out of the presentation view', () => {

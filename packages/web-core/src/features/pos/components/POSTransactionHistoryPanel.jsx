@@ -20,7 +20,10 @@ import {
     resolvePosVoidActorLabel,
     resolvePosVoidReason
 } from '../utils/posVoidAudit.js';
+import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
+
+const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
@@ -154,16 +157,15 @@ export default function POSTransactionHistoryPanel({
     };
 
     useEffect(() => {
-        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-        const media = window.matchMedia('(min-width: 768px) and (max-width: 1279px)');
-        const sync = (event) => setIsTabletViewport(Boolean(event.matches));
-        sync(media);
-        if (typeof media.addEventListener === 'function') {
-            media.addEventListener('change', sync);
-            return () => media.removeEventListener('change', sync);
-        }
-        media.addListener(sync);
-        return () => media.removeListener(sync);
+        if (typeof window === 'undefined') return undefined;
+        const sync = () => setIsTabletViewport(isPosTabletViewport({
+            viewportWidth: window.innerWidth,
+            isDgfyPosSurface: IS_DGFY_POS_SURFACE,
+            windowObj: window
+        }));
+        sync();
+        window.addEventListener('resize', sync);
+        return () => window.removeEventListener('resize', sync);
     }, []);
 
     return (

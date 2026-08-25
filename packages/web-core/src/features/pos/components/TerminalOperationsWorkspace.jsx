@@ -154,6 +154,7 @@ import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
 import DownpaymentSettingsPanel from './DownpaymentSettingsPanel.jsx';
+import PosCashierAttendanceSettingsCard from './PosCashierAttendanceSettingsCard.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
@@ -5411,6 +5412,8 @@ function SettingsWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
+  const canEditSettings = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('settings:edit');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageDayClosePins = terminalUser?.is_master_admin === true;
   const canManageEmployeeCredit = terminalUser?.is_master_admin === true
@@ -7135,6 +7138,7 @@ function SettingsWorkspace({
   const renderPosSetupPane = () => (
     <div className="grid gap-3">
       <div className="grid gap-3">
+          <PosCashierAttendanceSettingsCard locked={locked} canEdit={canEditSettings} />
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
             <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-100 pb-5">
               <div className="flex items-center gap-4">
