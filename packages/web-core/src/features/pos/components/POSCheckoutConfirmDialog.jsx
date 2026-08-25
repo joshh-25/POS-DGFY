@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import {
     formatSplitPaymentMethod,
     money,
@@ -121,6 +122,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
     const [paymentAmountInput, setPaymentAmountInput] = useState(customerPaymentAmountInput || '');
     const [paymentAmountAutoFilled, setPaymentAmountAutoFilled] = useState(Boolean(customerPaymentAmountAutoFilled));
+    const [isIminRuntime] = useState(() => isIminWrapperRuntime());
 
     useEffect(() => {
         if (!checkoutConfirmModalOpen) return;
@@ -164,6 +166,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     return (
         <Dialog
             open={checkoutConfirmModalOpen}
+            overlayClassName={isIminRuntime ? 'backdrop-blur-none' : undefined}
             onOpenChange={(nextOpen) => {
                 if (nextOpen) {
                     setCheckoutConfirmModalOpen(true);
