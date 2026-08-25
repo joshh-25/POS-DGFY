@@ -66,6 +66,13 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("cashierEmail: String(activeOperator?.email || shiftState?.shift?.cashier?.email || '').trim()");
   });
 
+  it('keeps legacy selling available when a mixed-version API has no operator-authority route', () => {
+    expect(terminalPageSource).toContain('isPosOperatorAuthorityUnavailableError(initialError)');
+    expect(terminalPageSource).toContain('const shouldRecover = !operatorAuthorityUnavailable');
+    expect(terminalPageSource).toContain('if (operatorAuthorityUnavailable) {');
+    expect(terminalPageSource).toContain('required: false');
+  });
+
   it('preserves the open register shift while the incoming operator session takes control', () => {
     expect(terminalPageSource).toContain('shiftSnapshot: {');
     expect(terminalPageSource).toContain('const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {');

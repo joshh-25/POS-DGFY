@@ -89,6 +89,54 @@ export const resolveCashierRegisterEntryMode = ({
 
 export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
 
+export const buildScopedCashierRequestConfig = ({ token = '', companyToken = '' } = {}) => {
+  const normalizedToken = String(token || '').trim();
+  const normalizedCompanyToken = String(companyToken || '').trim();
+  if (!normalizedToken || !normalizedCompanyToken) {
+    throw new Error('The cashier company session could not be verified. Sign in again.');
+  }
+
+  return {
+    skipAuthRefresh: true,
+    skipGlobalErrorToast: true,
+    headers: {
+      Authorization: `Bearer ${normalizedToken}`,
+      'x-company-token': normalizedCompanyToken
+    }
+  };
+};
+
+const POS_OPERATOR_FEATURE_DISABLED = 'POS_OPERATOR_FEATURE_DISABLED';
+const POS_OPERATOR_CURRENT_ROUTE = '/pos/terminal/operator/current';
+
+const readOperatorReasonCode = (error) => String(
+  error?.response?.data?.errors?.reason_code
+  || error?.response?.data?.details?.reason_code
+  || error?.response?.data?.error?.details?.reason_code
+  || error?.response?.data?.error_code
+  || ''
+).trim();
+
+export const isPosOperatorAuthorityUnavailableError = (error) => {
+  if (!error) return false;
+  if (readOperatorReasonCode(error) === POS_OPERATOR_FEATURE_DISABLED) return true;
+
+  const status = Number(error?.response?.status || 0);
+  const message = String(error?.response?.data?.message || '').trim();
+  const requestPath = String(error?.config?.url || '').trim();
+  const missingCurrentRoute = message.startsWith('Route ')
+    && message.endsWith(' not found')
+    && message.includes(POS_OPERATOR_CURRENT_ROUTE);
+
+  // During a rolling or local mixed-version start, the shared frontend can
+  // briefly reach an API that predates operator-authority routes. That API
+  // also predates server-side operator enforcement, so retain the documented
+  // legacy shift-owner path instead of issuing a second doomed resume call.
+  return status === 404
+    && missingCurrentRoute
+    && (!requestPath || requestPath.includes(POS_OPERATOR_CURRENT_ROUTE));
+};
+
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
   operatorUserId = null,

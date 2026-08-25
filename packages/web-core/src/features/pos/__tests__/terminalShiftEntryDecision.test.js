@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
+  isPosOperatorAuthorityUnavailableError,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -130,6 +132,83 @@ describe('POS terminal shift entry decision', () => {
 
   it('accepts a valid scoped operator authority independent of the DGFY session identity', () => {
     expect(isPosOperatorAuthorityValid({ authorityValid: true })).toBe(true);
+  });
+
+  it('binds cashier lifecycle requests to the verified cashier session without refreshing as the DGFY account', () => {
+    expect(buildScopedCashierRequestConfig({
+      token: ' cashier-access-token ',
+      companyToken: ' tenant-company-token '
+    })).toEqual({
+      skipAuthRefresh: true,
+      skipGlobalErrorToast: true,
+      headers: {
+        Authorization: 'Bearer cashier-access-token',
+        'x-company-token': 'tenant-company-token'
+      }
+    });
+  });
+
+  it('fails closed when the verified cashier session is incomplete', () => {
+    expect(() => buildScopedCashierRequestConfig({
+      token: '',
+      companyToken: 'tenant-company-token'
+    })).toThrow('The cashier company session could not be verified. Sign in again.');
+  });
+
+  it.each([
+    ['top-level feature code', {
+      response: {
+        status: 404,
+        data: { error_code: 'POS_OPERATOR_FEATURE_DISABLED' }
+      }
+    }],
+    ['details feature code', {
+      response: {
+        status: 404,
+        data: { errors: { reason_code: 'POS_OPERATOR_FEATURE_DISABLED' } }
+      }
+    }],
+    ['route-level mixed-version response', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 404,
+        data: {
+          message: 'Route /api/v1/pos/terminal/operator/current?terminal_id=COUNTER-01&location_id=1&shift_id=1 not found'
+        }
+      }
+    }]
+  ])('uses legacy operator behavior for an unavailable operator API: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityUnavailableError(error)).toBe(true);
+  });
+
+  it.each([
+    ['unrelated missing route', {
+      config: { url: '/pos/terminal/shifts/current' },
+      response: {
+        status: 404,
+        data: { message: 'Route /api/v1/pos/terminal/shifts/current not found' }
+      }
+    }],
+    ['operator domain failure', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 404,
+        data: {
+          error_code: 'RESOURCE_NOT_FOUND',
+          errors: { reason_code: 'POS_OPERATOR_SHIFT_NOT_OPEN' },
+          message: 'The register shift is no longer open.'
+        }
+      }
+    }],
+    ['authorization failure', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 403,
+        data: { error_code: 'AUTHORIZATION_FAILED' }
+      }
+    }]
+  ])('keeps operator enforcement for a real failure: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityUnavailableError(error)).toBe(false);
   });
 
   it('restores a missing operator authority session for an authenticated cashier', () => {
