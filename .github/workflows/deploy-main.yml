@@ -110,18 +110,35 @@ jobs:
       contents: read
       packages: write
 
-  # Three frontend image builds (one per app, prod-only), serialized into one
-  # chain via `needs`. issue #322 Phase 6 replaced the single combined
-  # `frontend` image with one image per app; this workflow originally chained
-  # 6 jobs (3 apps x beta/prod, added 2026-08-14, #427, after a real GHCR
-  # secondary-rate-limit 403 when two large pushes ran in parallel -- see run
-  # 31728787346). Beta retired 2026-08-23 (#329/#895) halves that to 3 jobs,
-  # but the serialization itself stays: three large pushes to the same GHCR
-  # org around the same time is still exactly the pressure #427 fixed, so
-  # dropping to independent parallel jobs would reintroduce that failure
-  # mode. This costs several extra minutes of wall-clock versus parallelism,
-  # which is the accepted trade -- see the frontend-pos-prod step comment
-  # below for the "if"/needs mechanics.
+  # Three frontend image builds (one per app, prod-only), run independently
+  # in parallel -- no `needs` between them. issue #322 Phase 6 replaced the
+  # single combined `frontend` image with one image per app; this workflow
+  # originally chained all 6 jobs (3 apps x beta/prod, added 2026-08-14,
+  # #427, after a real GHCR secondary-rate-limit 403 when two large pushes
+  # ran in parallel -- see run 31728787346). The very next day, #433 found
+  # and fixed the *actual* root cause: all three build workflows were also
+  # pushing a second, full `mode=max` registry cache image to GHCR on every
+  # build, roughly doubling push volume -- that duplication (not raw
+  # parallel-push count) is what tripped the rate limit, and #433 removed it
+  # from `deploy-frontend.yml`/`deploy-api.yml`/`deploy-migration-runner.yml`.
+  # #433's PR also layered this `needs` serialization on top of that fix, as
+  # a second, never-independently-re-justified safeguard. Beta retired
+  # 2026-08-23 (#329/#895) halved the chain to 3 jobs but kept it serialized
+  # at the time (see ADR 0071's Amendments), without re-checking either the
+  # real root cause or current image sizes.
+  #
+  # Removed 2026-08-25 (#1041): DEV/STAGING's `deployment-orchestrator.yml`
+  # has run these same three builds fully in parallel, no `needs` chain at
+  # all, on every dispatch since the #322 frontend split, with no rate-limit
+  # recurrence -- same registry, same runner pool, same-sized images PROD
+  # pushes (~27-33 MB compressed each, confirmed against GHCR directly; a
+  # modest size, not the "large" pre-split combined-image pushes #427's
+  # incident described). Matches DEV/STAGING parity now. One bound worth
+  # knowing: only 2 self-hosted runners exist (`vm-openproject`,
+  # `vm-sieitzstaging`), so GitHub can still only run 2 of these 3 jobs at
+  # once regardless -- the win here is a couple of minutes off the old
+  # fully-serial chain, not a 3x speedup. If a GHCR rate limit does recur,
+  # reverting this is a one-line `needs:` re-add per job below.
   frontend-ims-prod:
     if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims'
     uses: ./.github/workflows/deploy-frontend.yml
@@ -136,25 +153,8 @@ jobs:
       contents: read
       packages: write
 
-  # `needs: frontend-ims-prod` (not just frontend-pos-prod on its own):
-  # keeps this whole 3-job build serialized end-to-end. Side effect worth
-  # knowing (applies to every needs: link in this chain): `needs` on a job
-  # whose `if:` does not reference success()/always()/failure()/cancelled()
-  # keeps GitHub's default implicit gate -- a job only runs if the one it
-  # needs actually succeeded. A failure anywhere in the chain skips (not
-  # attempts) everything after it, and the publish job below correctly
-  # refuses to deploy when any job in the chain failed.
   frontend-pos-prod:
-    needs: frontend-ims-prod
-    # !cancelled() (matching publish's own idiom below): a plain `if:` here
-    # meant a components: dgfy-pos-only dispatch skipped frontend-ims-prod
-    # (its own if fails), which then skipped this job too since GHA
-    # auto-skips a job whose `needs` was itself skipped -- a components:
-    # dgfy-pos/dgfy-storefront PROD dispatch finished green having built and
-    # deployed nothing. Caught in review (RF-1, PR #513).
-    if: >-
-      !cancelled() && needs.frontend-ims-prod.result != 'failure' &&
-      (inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos')
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-pos
@@ -168,13 +168,7 @@ jobs:
       packages: write
 
   frontend-storefront-prod:
-    needs: frontend-pos-prod
-    # Same fix as frontend-pos-prod above (RF-1, PR #513) -- a
-    # dgfy-storefront-only dispatch skipped frontend-pos-prod, which skipped
-    # this job too.
-    if: >-
-      !cancelled() && needs.frontend-pos-prod.result != 'failure' &&
-      (inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront')
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-storefront

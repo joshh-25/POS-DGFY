@@ -4,10 +4,14 @@ name: Build & Deploy Platform
 # build-develop.yml, build-staging.yml, build-manual.yml, and
 # build-beta-manual.yml (all deleted 2026-08-14, #417). PROD stays on its
 # own workflow -- see deploy-main.yml -- rather than being folded in here:
-# a mistake there restarts the shared dgfy-api that BOTH beta.dgfy.ph and
-# dgfy.ph depend on, with no approval gate available on GitHub Free, so it
-# gets a separate, more deliberate dispatch entry rather than a dropdown
-# option buried in this one.
+# a mistake there restarts the shared dgfy-api that dgfy.ph's production
+# traffic depends on (beta.dgfy.ph retired 2026-08-23, #329/#895 -- not "both"
+# beta and prod anymore), with no approval gate available on GitHub Free, so
+# it gets a separate, more deliberate dispatch entry rather than a dropdown
+# option buried in this one. That reasoning is independent of beta ever
+# having existed -- it's about not burying a no-approval-gate PROD dispatch
+# in the same dropdown DEV/STAGING casually dispatches from, so the split
+# stays even though beta is gone (considered and confirmed, #1041).
 #
 # Every push-triggered build/deploy in the repo is gone as of #419. Pat's
 # own framing: "we'll remove the auto-triggers. We'll manually trigger them
