@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-08-18
+last_reviewed: 2026-08-25
 applies_to: all_agents_and_engineers
 topic: documentation_discovery
 ---
@@ -55,7 +55,8 @@ untagged clauses are `default`.
 2. Confirm ADR impact (`new`, `update`, or `not needed`).
 3. Confirm planning does not rely on deprecated docs.
 4. Run `npm run check:architecture` for architecture-sensitive changes.
-5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`.
+5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+   (`docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`, previously pointed to here, is superseded by it).
 6. For questions about the repository layout under `apps/`, path relocations from the
    pre-refactor `backend/`/`frontend/`/`android/` trees or the pre-split `apps/dgfy-web/` tree
    (now `apps/dgfy-ims`/`apps/dgfy-pos`/`apps/dgfy-storefront`/`packages/web-core`), or local

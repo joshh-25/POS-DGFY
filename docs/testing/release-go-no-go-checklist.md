@@ -181,9 +181,10 @@ authorization tags, or a `master`-branch promotion model. `docs/architecture/adr
 describes that model but was never implemented for this repository and is registered
 `status: superseded` / `authority_level: historical` — do not cite it, and do not re-add its gates
 here. `docs/ops/RELEASE_CANDIDATE_POLICY.md` explicitly supersedes it. For the same reason,
-`docs/ops/NO_STAGING_RELEASE_STANDARD.md` (also ADR-0030-dependent) and its associated PowerShell
-gate wrappers (`gate:release:no-staging:qa-env`, `gate:release:prod-contracts:env`, drill/deploy
-scripts under `scripts/*.ps1`) are not part of this gate and are not must-pass here.
+`docs/ops/NO_STAGING_RELEASE_STANDARD.md` (also ADR-0030-dependent, and — as of 2026-08-25, #1019 —
+formally marked `status: superseded`) and its associated PowerShell gate wrappers
+(`gate:release:no-staging:qa-env`, `gate:release:prod-contracts:env`, drill/deploy scripts under
+`scripts/*.ps1`) are not part of this gate and are not must-pass here.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
@@ -213,7 +214,11 @@ Date-specific snapshots are archived under:
   this repository (#339), was deleted 2026-08-14 (#417) — no longer applicable.
 - `docs/ops/RELEASE_CANDIDATE_POLICY.md` still describes `quality-checks` as blocking (it isn't,
   currently — see above); worth a follow-up correction there.
-- `docs/ops/NO_STAGING_RELEASE_STANDARD.md` still assumes the ADR-0030 signed controller model.
+- **Resolved 2026-08-25 (#1019):** `docs/ops/NO_STAGING_RELEASE_STANDARD.md` is now formally
+  `status: superseded` (previously had no frontmatter at all), pointing at
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, so it no longer contradicts the actual override mechanisms
+  (`incident-responder`'s and `promoter`'s #1007 override) by asserting "there is no unsigned
+  emergency bypass."
 - #238 proposes promoting `npm run audit:dependencies` from this local gate into PR CI — that would
   move cost back onto the cheap per-PR tier this doc's two-tier model depends on. Needs an explicit
   decision from Pat, not a default.
