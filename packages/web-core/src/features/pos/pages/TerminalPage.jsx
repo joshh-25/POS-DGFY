@@ -97,7 +97,8 @@ import {
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
-  resolveTerminalShiftEntryDecision
+  resolveTerminalShiftEntryDecision,
+  shouldRestorePosOperatorAuthority
 } from '../utils/terminalShiftEntryDecision.js';
 import {
   buildTenantSetupSearch,
@@ -580,6 +581,7 @@ export default function TerminalPage() {
     operatorUser: null,
     errorMessage: ''
   });
+  const operatorAuthorityRecoveryAttemptRef = useRef('');
   const [cashierHistoryState, setCashierHistoryState] = useState({
     loading: false,
     cashier: null,
@@ -3016,12 +3018,64 @@ export default function TerminalPage() {
       valid: false,
       errorMessage: ''
     }));
-    fetchCurrentPosOperator({
+    const authorityParams = {
       terminal_id: terminalId,
       location_id: locationId,
       shift_id: shiftId
-    }, SUPPRESS_GLOBAL_ERROR_TOAST).then((payload) => {
+    };
+    const recoveryKey = `${scopeKey}:${Number(terminalUser?.user_id || 0)}`;
+
+    const resolveAuthority = async () => {
+      let payload = null;
+      let initialError = null;
+      try {
+        payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch (error) {
+        initialError = error;
+      }
+
+      const reasonCode = String(
+        initialError?.response?.data?.details?.reason_code
+        || initialError?.response?.data?.error?.details?.reason_code
+        || initialError?.response?.data?.error_code
+        || ''
+      ).trim();
+      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
+      const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
+      const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
+        authorityValid: payload?.authority_valid === true,
+        operatorUserId: payload?.operator_user?.user_id,
+        authenticatedUserId: terminalUser?.user_id,
+        alreadyAttempted
+      });
+
+      if (shouldRecover) {
+        operatorAuthorityRecoveryAttemptRef.current = recoveryKey;
+        try {
+          await resumePosCashier({
+            idempotency_key: createIdempotencyKey('pos-operator-authority-recovery'),
+            ...authorityParams
+          }, SUPPRESS_GLOBAL_ERROR_TOAST);
+          payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+          initialError = null;
+        } catch (recoveryError) {
+          initialError = recoveryError;
+        }
+      }
+
       if (cancelled) return;
+      if (featureDisabled) {
+        setOperatorAuthorityState({
+          scopeKey,
+          loading: false,
+          required: false,
+          valid: true,
+          operatorUser: null,
+          errorMessage: ''
+        });
+        return;
+      }
+
       setOperatorAuthorityState({
         scopeKey,
         loading: false,
@@ -3032,26 +3086,11 @@ export default function TerminalPage() {
           authenticatedUserId: terminalUser?.user_id
         }),
         operatorUser: payload?.operator_user || null,
-        errorMessage: ''
+        errorMessage: initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : '')
       });
-    }).catch((error) => {
-      if (cancelled) return;
-      const reasonCode = String(
-        error?.response?.data?.details?.reason_code
-        || error?.response?.data?.error?.details?.reason_code
-        || error?.response?.data?.error_code
-        || ''
-      ).trim();
-      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
-      setOperatorAuthorityState({
-        scopeKey,
-        loading: false,
-        required: !featureDisabled,
-        valid: featureDisabled,
-        operatorUser: null,
-        errorMessage: featureDisabled ? '' : (error?.response?.data?.message || 'Unable to verify the active cashier.')
-      });
-    });
+    };
+
+    void resolveAuthority();
 
     return () => {
       cancelled = true;

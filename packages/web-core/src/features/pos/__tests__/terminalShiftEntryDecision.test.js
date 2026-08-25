@@ -4,7 +4,8 @@ import {
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
-  resolveTerminalShiftEntryDecision
+  resolveTerminalShiftEntryDecision,
+  shouldRestorePosOperatorAuthority
 } from '../utils/terminalShiftEntryDecision.js';
 
 describe('POS terminal shift entry decision', () => {
@@ -140,6 +141,33 @@ describe('POS terminal shift entry decision', () => {
       authorityValid: true,
       operatorUserId: 12,
       authenticatedUserId: 27
+    })).toBe(false);
+  });
+
+  it('restores a missing operator authority session for an authenticated cashier', () => {
+    expect(shouldRestorePosOperatorAuthority({
+      authorityValid: false,
+      operatorUserId: null,
+      authenticatedUserId: 12,
+      alreadyAttempted: false
+    })).toBe(true);
+  });
+
+  it('does not silently replace valid authority owned by another cashier', () => {
+    expect(shouldRestorePosOperatorAuthority({
+      authorityValid: true,
+      operatorUserId: 12,
+      authenticatedUserId: 27,
+      alreadyAttempted: false
+    })).toBe(false);
+  });
+
+  it('attempts automatic authority recovery only once per register scope', () => {
+    expect(shouldRestorePosOperatorAuthority({
+      authorityValid: false,
+      operatorUserId: null,
+      authenticatedUserId: 12,
+      alreadyAttempted: true
     })).toBe(false);
   });
 });

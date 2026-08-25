@@ -96,3 +96,17 @@ export const isPosOperatorAuthorityOwnedByUser = ({
   && normalizePositiveInteger(operatorUserId) === normalizePositiveInteger(authenticatedUserId)
   && Boolean(normalizePositiveInteger(operatorUserId))
 );
+
+export const shouldRestorePosOperatorAuthority = ({
+  authorityValid = false,
+  operatorUserId = null,
+  authenticatedUserId = null,
+  alreadyAttempted = false
+} = {}) => {
+  if (alreadyAttempted || !normalizePositiveInteger(authenticatedUserId)) return false;
+
+  // A valid authority token that belongs to another user is a real cashier
+  // mismatch, not a recoverable browser-session gap. Only a missing/invalid
+  // authority session should be refreshed through the backend resume flow.
+  return authorityValid !== true || !normalizePositiveInteger(operatorUserId);
+};

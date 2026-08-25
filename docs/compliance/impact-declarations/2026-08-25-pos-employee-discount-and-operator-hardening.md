@@ -9,7 +9,7 @@ surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,EMPLOYEE_DIRECTORY_ID_REQUIRED,EMPLOYEE_DIRECTORY_NOT_FOUND,DISCOUNT_SELF_APPROVAL_BLOCKED,DISCOUNT_SELF_APPROVAL_ACTOR_MISMATCH,DISCOUNT_SELF_APPROVAL_IDENTITY_UNVERIFIED,DISCOUNT_APPROVAL_IDENTITY_CHANGED,DISCOUNT_APPROVAL_OPERATOR_MISMATCH
 policy_version: 2026.08.25
 verification_evidence: focused POS discount tests,split-payment approval tests,Employee Credit tests,shared POS frontend tests,POS and SKUpervisor production builds,architecture guardrails,compliance guardrails
-rollback_note: Revert the Employee Directory enforcement, authenticated-operator self-approval binding, split-payment item approval proofs, Employee Credit exact prefill lookup, and active-operator sign-in routing as one batch; no migration or persisted-data transformation is required.
+rollback_note: Revert the Employee Directory enforcement, authenticated-operator self-approval binding, split-payment item approval proofs, Employee Credit exact prefill lookup, active-operator sign-in routing, and same-operator authority-session recovery as one batch; no migration or persisted-data transformation is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-25T18:15:00+08:00
@@ -29,6 +29,7 @@ Major because this change affects POS discount authorization, cashier/operator i
 - Split-payment sessions retain server-owned item-discount approval proofs after PIN values are scrubbed, allowing final checkout to revalidate approval without persisting or replaying a raw PIN.
 - Employee Credit prefill can query the exact selected directory employee instead of relying on the first page of results.
 - Cashier sign-in and terminal lock context use the active takeover operator before falling back to the immutable shift owner.
+- An authenticated cashier whose browser authority cookie is missing or stale receives one backend-verified authority refresh only when that cashier still controls the active register; a different active cashier is never replaced automatically.
 
 ## Compliance Preconditions
 
