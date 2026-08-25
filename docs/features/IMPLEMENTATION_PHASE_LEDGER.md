@@ -8319,10 +8319,89 @@ unshipped reservation.
 - `docs/deployment/2026-08-23-frontend-split-cutover-runbook.md`
 - [Issue #913 - rename the shared backend image tag off IMAGE_TAG=beta](https://github.com/Sieitzz/dgfy-platform/issues/913)
 
+## Phase 155 - Promo-to-Voucher Migration: Freeze the Last Legacy Authoring Surface, Reconcile ADR 0066 (issue #695)
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), issue #695 ("Migrate legacy Promo Codes
+  into the voucher entity and retire `storefront_promos`"). Partly a retroactive entry: the
+  promo-to-voucher data-migration tooling itself shipped 2026-08-20 as PR #778, with no phase-ledger
+  entry written at the time.
+- Release: `fix/695-freeze-legacy-promo-card` targeting `develop`.
+
+### Objective and Scope
+
+- Retroactive coverage: `apps/dgfy-api/scripts/inventory-promo-to-voucher-migration.js` and
+  `apps/dgfy-api/scripts/migrate-promos-to-vouchers.js` (PR #778, 2026-08-20) -- per-tenant,
+  dry-run-by-default tooling that converts `system_settings.storefront_promo(s)` JSON into real
+  `vouchers` rows and deletes the settings key on apply. Already exercised against a restored
+  local-test snapshot (45 tenants, 3 real promos migrated); never run against staging or
+  production.
+- New in this phase: freezes the one remaining legacy promo-authoring surface. #776/#695 already
+  froze the plural `storefront_promos` "Add Promo" button in
+  `packages/web-core/.../TerminalOperationsWorkspace.jsx`, but a second, older, singular-only editor
+  -- the "Promo Card" block in `apps/dgfy-ims/Pages/Settings.jsx`, writing `storefront_promo` --
+  was never touched by that freeze and remained fully editable. Reported as a live regression by
+  Pat, 2026-08-24. This phase disables every input in that block (values still load and render) and
+  drops `storefront_promo` from that screen's settings-save payload, since the payload previously
+  rebuilt the key from only 11 of the fields the promo engine persists and would have re-created it
+  after a migration run deletes it.
+- ADR 0066 Consequences item 4 amended to match what PR #778 actually shipped: migrated vouchers
+  get `channels_mask = storefront|pos` and `is_publicly_listed = true`, derived from each promo's
+  own (always-permissive, per #459) config -- not the storefront-only default the ADR text
+  previously stated. The ADR amendment this issue's own body called for was never landed when #778
+  merged; this phase closes that gap.
+
+### Status
+
+- `in_progress` -- the staging/production migration run and the eventual retirement of
+  `commercialPromoPolicy.js`/`storefront_promos` remain open, deferred per Pat's standing call
+  until the voucher-based system is prod-proven.
+
+### Dependencies and Governance Note
+
+- Depends on #712 (POS voucher redemption) and #713 (`is_publicly_listed` column), both closed
+  2026-08-20/22 -- #695's own hard dependencies, now satisfied.
+- Classification: `major`, `surfaces: settings` -- `apps/dgfy-ims/Pages/Settings.jsx` trips
+  `check-compliance-impact.js`'s exact-path floor regardless of diff content, per
+  `docs/compliance/impact-declarations/2026-08-25-legacy-promo-card-frozen.md`.
+- ADR 0066 Consequences item 4 amended 2026-08-25 (untagged, no strictness tier, same-PR amendment
+  per ADR 0039 Decision 3 -- no new ADR, no tech-lead approval required).
+- **Open production risk, named but not closed by this phase:** the #776/#777 storefront checkout
+  UI (already on `main`) routes every "Use" click through the voucher endpoint. The migration
+  script has only ever run against a local restored snapshot -- any real, un-migrated promo still
+  live on production is exposed until the inventory + apply run happens there. Worker scope does
+  not extend to a deployed environment; this is flagged for `promoter`/a human to run before the
+  next promotion that carries this diff.
+- The PR uses `Refs #695`, not `Closes #695` -- the staging/production migration run and the
+  `storefront_promos`/`commercialPromoPolicy.js` retirement remain open.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run build:skupervisor` -- real Vite production build of `apps/dgfy-ims`, passed.
+- [x] `npm run check:compliance` -- passes with the new declaration.
+- [x] `npm run check:adr` -- passes (79 ADRs validated) with the ADR 0066 amendment.
+- [x] `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx` -- new contract test asserting
+  every promo input and the Active switch are disabled, the relabel/copy are present, and
+  `storefront_promo` is absent from the save payload.
+- [ ] Inventory + apply run against staging/production -- not part of this phase; a deploy-scoped
+  action outside Worker's checkpoint policy.
+- [ ] `storefront_promos`/`commercialPromoPolicy.js` retirement -- deferred per Pat's call.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/inventory-promo-to-voucher-migration.js`,
+  `apps/dgfy-api/scripts/migrate-promos-to-vouchers.js` (PR #778, retroactive coverage)
+- `apps/dgfy-ims/Pages/Settings.jsx`
+- `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-25 amendment)
+- `docs/compliance/impact-declarations/2026-08-25-legacy-promo-card-frozen.md`
+- [Issue #695 - Migrate legacy Promo Codes into the voucher entity and retire storefront_promos](https://github.com/Sieitzz/dgfy-platform/issues/695)
+
 ### Completion Record (2026-08-25)
 
-- Phase 154 is complete (repo half). Phase 155 is the next eligible
-  repository phase and requires separate approval.
+- Phase 155 is `in_progress`. Phase 156 is the next eligible repository phase and requires separate
+  approval.
 
 ---
 
