@@ -2042,19 +2042,14 @@ export default function Settings() {
         },
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_review_summary: serializeStorefrontReviewSummary(settings),
-        storefront_promo: {
-          title: String(settings.storefrontPromoTitle || '').trim(),
-          subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
-          badge: String(settings.storefrontPromoBadge || '').trim(),
-          validity_text: String(settings.storefrontPromoValidityText || '').trim(),
-          promo_code: String(settings.storefrontPromoCode || '').trim().toUpperCase(),
-          discount_percent: settings.storefrontPromoDiscountPercent === '' ? null : Number(settings.storefrontPromoDiscountPercent),
-          usage_limit: settings.storefrontPromoUsageLimit === '' ? null : Number(settings.storefrontPromoUsageLimit),
-          used_count: settings.storefrontPromoUsedCount === '' ? 0 : Number(settings.storefrontPromoUsedCount),
-          valid_time_start: String(settings.storefrontPromoValidTimeStart || '').trim(),
-          valid_time_end: String(settings.storefrontPromoValidTimeEnd || '').trim(),
-          active: settings.storefrontPromoActive === true
-        },
+        // #695: storefront_promo is intentionally omitted from this write payload. This editor is
+        // frozen (see the Promo Card (Legacy) block below) and only ever knows 11 of the fields
+        // the promo engine actually persists -- it has no target_item_ids, valid_from/valid_until,
+        // or channels/fulfillment_methods/order_timing eligibility maps. Before this change every
+        // save here silently rebuilt storefront_promo from just those 11 fields, which both
+        // narrowed a richer tenant record and re-created the key after the #695 migration deletes
+        // it. settingsRepository.updateSettings only touches keys present in the body, so omitting
+        // the key here leaves whatever is stored strictly alone.
         storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
         storefront_categories: storefrontCategories,
         storefront_gallery_images: serializeStorefrontGallerySettings(settings.storefrontGalleryImages),
@@ -3346,25 +3341,41 @@ export default function Settings() {
                   <Input value={settings.storefrontReviewSummaryStar1} onChange={(e) => handleChange('storefrontReviewSummaryStar1', e.target.value)} placeholder="1★ count" />
                 </div>
               </div>
+              {/* #695: frozen, not removed -- matches the #776 precedent in
+                  packages/web-core/.../TerminalOperationsWorkspace.jsx for the plural
+                  storefront_promos "Add Promo" button. This is the singular storefront_promo
+                  editor that freeze never touched, and commercialPromoPolicy.js still redeems
+                  whatever is stored here on both POS and storefront checkout -- so disabling every
+                  input here, not just relabeling, is what actually stops a new legacy discount
+                  code from being authored. Existing values still load and render (see
+                  storefrontPromo* hydration above) so a tenant's current card stays visible;
+                  nothing here can be edited or newly created. Full removal stays deferred per
+                  Pat's call until the voucher-based system is prod-proven. */}
               <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
                 <div className="flex items-center justify-between">
-                  <Label>Promo Card</Label>
+                  <div>
+                    <Label>Promo Card (Legacy)</Label>
+                    <p className="text-[12px] text-slate-500">
+                      Promo codes now run on Vouchers -- create new discount codes there instead.
+                      This card stays visible but is no longer editable (#695).
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2 text-sm">
                     <span>Active</span>
-                    <Switch checked={settings.storefrontPromoActive === true} onCheckedChange={(checked) => handleChange('storefrontPromoActive', checked === true)} />
+                    <Switch disabled checked={settings.storefrontPromoActive === true} onCheckedChange={(checked) => handleChange('storefrontPromoActive', checked === true)} />
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Input value={settings.storefrontPromoTitle} onChange={(e) => handleChange('storefrontPromoTitle', e.target.value)} placeholder="10% OFF" />
-                  <Input value={settings.storefrontPromoBadge} onChange={(e) => handleChange('storefrontPromoBadge', e.target.value)} placeholder="Today's Promo" />
-                  <Input value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
-                  <Input value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
-                  <Input value={settings.storefrontPromoCode} onChange={(e) => handleChange('storefrontPromoCode', String(e.target.value || '').toUpperCase())} placeholder="Promo Code (e.g. SAVE20)" />
-                  <Input type="number" min="0" max="100" step="0.01" value={settings.storefrontPromoDiscountPercent} onChange={(e) => handleChange('storefrontPromoDiscountPercent', e.target.value)} placeholder="Discount % (e.g. 20)" />
-                  <Input type="number" min="1" step="1" value={settings.storefrontPromoUsageLimit} onChange={(e) => handleChange('storefrontPromoUsageLimit', e.target.value)} placeholder="Usage Limit (e.g. 30)" />
-                  <Input value={settings.storefrontPromoUsedCount} readOnly placeholder="Used Count" />
-                  <Input type="time" value={settings.storefrontPromoValidTimeStart} onChange={(e) => handleChange('storefrontPromoValidTimeStart', e.target.value)} />
-                  <Input type="time" value={settings.storefrontPromoValidTimeEnd} onChange={(e) => handleChange('storefrontPromoValidTimeEnd', e.target.value)} />
+                  <Input disabled value={settings.storefrontPromoTitle} onChange={(e) => handleChange('storefrontPromoTitle', e.target.value)} placeholder="10% OFF" />
+                  <Input disabled value={settings.storefrontPromoBadge} onChange={(e) => handleChange('storefrontPromoBadge', e.target.value)} placeholder="Today's Promo" />
+                  <Input disabled value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
+                  <Input disabled value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
+                  <Input disabled value={settings.storefrontPromoCode} onChange={(e) => handleChange('storefrontPromoCode', String(e.target.value || '').toUpperCase())} placeholder="Promo Code (e.g. SAVE20)" />
+                  <Input disabled type="number" min="0" max="100" step="0.01" value={settings.storefrontPromoDiscountPercent} onChange={(e) => handleChange('storefrontPromoDiscountPercent', e.target.value)} placeholder="Discount % (e.g. 20)" />
+                  <Input disabled type="number" min="1" step="1" value={settings.storefrontPromoUsageLimit} onChange={(e) => handleChange('storefrontPromoUsageLimit', e.target.value)} placeholder="Usage Limit (e.g. 30)" />
+                  <Input disabled value={settings.storefrontPromoUsedCount} readOnly placeholder="Used Count" />
+                  <Input disabled type="time" value={settings.storefrontPromoValidTimeStart} onChange={(e) => handleChange('storefrontPromoValidTimeStart', e.target.value)} />
+                  <Input disabled type="time" value={settings.storefrontPromoValidTimeEnd} onChange={(e) => handleChange('storefrontPromoValidTimeEnd', e.target.value)} />
                 </div>
               </div>
             </CardContent>
