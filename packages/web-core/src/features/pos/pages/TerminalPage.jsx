@@ -95,6 +95,7 @@ import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
   buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
+  isPosOperatorFeatureDisabledReason,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -3037,7 +3038,7 @@ export default function TerminalPage() {
         || initialError?.response?.data?.error_code
         || ''
       ).trim();
-      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
+      const featureDisabled = isPosOperatorFeatureDisabledReason(reasonCode);
       const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
       const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
         authorityValid: payload?.authority_valid === true,
