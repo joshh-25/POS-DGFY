@@ -86,9 +86,13 @@ verification, nor the other two gates the artifact itself flags `structurally_ca
 (`compliance.contracts`, `observability.evidence.report`). Since #1016, the script also accepts
 `--only`/`--skip` and records per-gate `duration_ms` plus a top-level `run_mode: "full"|"partial"` —
 **a promotion decision must be made on a `run_mode: "full"` artifact only**; a partial run is for
-iterating on one gate locally, never for citing as promotion evidence. Also confirm the tenant-schema
-sync report is clean against **production** tenant databases specifically, not staging's — the
-2026-07-28 outage happened because schema drift was checked against the wrong environment.
+iterating on one gate locally, never for citing as promotion evidence. Also dispatch
+`tenant-schema-report.yml` (#1017) with `environment: PROD` and confirm `failed_tenant_count: 0` —
+this is #1007's own never-skippable gate, and it must run against **production** tenant databases
+specifically, not staging's — the 2026-07-28 outage happened because schema drift was checked
+against the wrong environment. Dispatching this workflow is read-only (`--mode report` only, no
+write path exists in the workflow at all — see its own header comment), so it needs no checkpoint,
+same as dispatching `verify-deployment.yml`.
 
 ## Unattended vs. checkpoint — stop and ask before proceeding
 
