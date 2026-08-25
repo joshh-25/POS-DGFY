@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-25
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
@@ -163,10 +163,14 @@ separate approval step beyond dispatch access. Treat every PR into `main` as "th
 the merge.
 
 `.github/workflows/pr-checks.yml`'s `quality-checks` job — the blocking API/frontend test coverage —
-is currently hard-disabled (`if: false`, paused over #345's ~14min unfiltered run). Today a PR is
-gated only by path-filtered Docker build checks. **This makes `gate:release:local` the only place
-the full test matrix runs at all, CI or local**, until #345 is resolved. Run it before every
-`staging`/`main` promotion; it is not optional polish on top of CI.
+was removed entirely 2026-08-14 (#416, after sitting paused over #345's ~14min unfiltered run). An
+ordinary `develop`-bound PR is still gated only by path-filtered Docker build checks. **Since #1018
+(2026-08-25)**, the full test matrix also runs automatically in CI — `promotion-quality-gate.yml`
+(renamed from `pr-quality-checks.yml`) triggers itself on `to-staging/*`/`release/*` promotion PRs
+specifically, not on every PR. This is **complementary** to `gate:release:local`, not a replacement
+for it — run `gate:release:local` before every `staging`/`main` promotion regardless; it is not
+optional polish on top of CI, and it's the promoter's own pre-flight (runs before the promotion
+branch is even cut), which the CI run alone can't substitute for.
 
 ### Authorization boundary
 
