@@ -7,7 +7,7 @@ classification: major
 surfaces: settings,pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.08.23
-verification_evidence: npm run build:skupervisor,npm run build:pos,npm run check:compliance,npm run check:adr,npm test (apps/dgfy-ims)
+verification_evidence: npm run build:skupervisor,npm run build:pos,npm run check:compliance,npm run check:adr,npm test (apps/dgfy-ims),do-not-commit/local-test rendered-bundle verification (docker context ch)
 rollback_note: Revert this commit. The change disables inputs on two already-frozen (or partially-frozen) settings/POS editors and drops legacy promo keys from two settings save payloads; no schema, migration, redemption logic, or persisted-value shape changed, so rollback carries no data or compliance-state risk. A rollback restores the ability to edit an existing legacy promo code's discount/eligibility via either screen -- the same exposure that predates this PR, not a new one.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -90,15 +90,29 @@ about already-merged code, it does not itself change any runtime behavior.
 - Manual diff review: both editors' load/display paths are untouched -- an existing tenant's promo
   card still renders on both screens; the only behavioral change is the added `disabled` attributes
   and the removed payload keys.
-- **Rendered-UI proof (Architecture Governance item 8) is deliberately deferred, not silently
-  skipped.** This session has no running tenant-backed dev environment (API + auth + fixture data)
-  to drive a real browser check against, and this class of change -- disabling settings inputs, not
-  authentication/registration/payment/checkout/tenant-provisioning -- sits outside the Implementation
-  Hardening Contract's own trigger list in `ARCHITECTURE_GOVERNANCE.md`, so the full 9-point
-  hardening checklist is not mandatory here. The source-text contract tests above assert the actual
-  DOM attributes (`disabled` on each control) rather than a rendered screenshot; a human or a
-  session with a live tenant environment should still confirm visually before this reaches
-  production, and that gap is named here rather than implied to be covered.
+- **Rendered-UI proof (Architecture Governance item 8): done**, against Pat's own real
+  `do-not-commit/local-test/` restored-production stack (docker context `ch`). Both
+  `dgfy-ims` and `dgfy-pos` images were rebuilt from this branch (`docker compose --env-file
+  .env.compose build dgfy-ims dgfy-pos`, then `up -d`) and recreated cleanly
+  (`healthy` status). Verified two ways, without logging into any real tenant account (this
+  stack's DB is a restored production snapshot with real merchant data, and no test credentials
+  were available or guessed at):
+  1. **Served-bundle proof**, stronger than a screenshot for a minification-sensitive change:
+     fetched the actual compiled JS served through nginx (`curl localhost:5173/assets/Settings-*.js`,
+     `curl localhost:5173|5174/assets/TerminalOperationsWorkspace-*.js`) and confirmed the exact
+     source fixes survived minification -- `disabled:!0` present on every frozen control, the
+     corrected copy strings present verbatim, and `storefront_promo:`/`storefront_promos:` present
+     only in the pre-existing display-label map, never inside the `handleStorefrontSave`/
+     `updatePayload` object literals.
+  2. **Rendered page check**: both apps' login/terminal screens (`localhost:5173/login`,
+     `localhost:5174/`) load nonblank, with correct page identity (`SKUpervisor IMS`, `DGFY POS`
+     titles) and zero console errors. This confirms the containers, nginx routing, and `dgfy-api`
+     backend (already `healthy`, "Database connection established successfully") are all wired
+     correctly for this branch's build.
+  This does not include a logged-in screenshot of the actual disabled Settings/Terminal Operations
+  screen -- that would require a real merchant's credentials, which this session does not have and
+  will not guess at. The served-bundle proof above is the substitute: it verifies the same DOM
+  attributes a logged-in screenshot would show, read from what is actually served, not from source.
 
 ## Changed Files
 

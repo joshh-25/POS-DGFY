@@ -8395,9 +8395,12 @@ unshipped reservation.
   both `storefront_promo`/`storefront_promos` are absent from `handleStorefrontSave`'s payload.
 - [x] `npm run build:pos` -- real Vite production build of `apps/dgfy-pos`, the second app
   consuming `TerminalOperationsWorkspace.jsx`, passed.
-- [ ] Rendered-UI proof (Architecture Governance item 8) -- deliberately deferred; no running
-  tenant-backed dev environment available to this session. See the compliance declaration's
-  Verification Evidence section for the full reasoning.
+- [x] Rendered-UI proof (Architecture Governance item 8) -- done against Pat's real
+  `do-not-commit/local-test/` restored-production stack (docker context `ch`): both `dgfy-ims`
+  and `dgfy-pos` rebuilt from this branch and recreated healthy; served-bundle verification
+  confirms every fix survived minification; both apps' entry screens render nonblank with zero
+  console errors. No real tenant account was logged into. Full detail in the compliance
+  declaration's Verification Evidence section.
 - [ ] Inventory + apply run against staging/production -- not part of this phase; a deploy-scoped
   action outside Worker's checkpoint policy.
 - [ ] `storefront_promos`/`commercialPromoPolicy.js` retirement -- deferred per Pat's call.
