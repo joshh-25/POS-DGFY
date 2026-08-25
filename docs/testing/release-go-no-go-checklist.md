@@ -27,7 +27,7 @@ folded into this gate. See `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 a
 "Compliance verification ladder," for the full picture and why nothing on this ladder is a
 production precondition.
 
-This document is a runbook: how to run the gate and what its 18 checks mean. It is not a release
+This document is a runbook: how to run the gate and what its 19 checks mean. It is not a release
 ledger — dated pass/fail evidence for individual releases belongs in
 `.tmp/release-gates/<sha>/local_readiness.json` and, if worth keeping past that SHA's lifetime, a
 dated file under `docs/archive/testing/`. The prior 100-entry evidence log that used to live in this
@@ -60,11 +60,14 @@ falls back to `git rev-parse HEAD`.
 The only env var the script itself reads is `RELEASE_TARGET_SHA`. Everything else (DB/Redis
 connection, JWT secrets) is read by the child processes it spawns, exactly as in CI.
 
-## The 18 gates
+## The 19 gates
 
 `scripts/gate-release-local.js` runs these in order, unconditionally — a failing gate does not stop
 the run, and every gate's result is recorded. Exit code is `2` if any gate failed, `0` if all passed;
-the JSON artifact is written either way.
+the JSON artifact is written either way. Since #1016, `--only <name,name>` / `--skip <name,name>`
+filter which gates actually run (everything else is recorded `status: "skipped"`, `duration_ms: 0`),
+and the artifact carries `run_mode: "full"|"partial"` plus per-gate `duration_ms` — a partial run's
+`verdict: "pass"` is not evidence of a full pass; check `run_mode` first.
 
 | # | Gate name | Command | Notes |
 |---|---|---|---|
@@ -82,13 +85,21 @@ the JSON artifact is written either way.
 | 12 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. |
 | 13 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. |
 | 14 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. |
-| 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
-| 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
-| 17 | `observability.evidence.report` | `npm run gate:release:observability -- --evidence-dir <dir>` | Warns (does not fail) if `OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL` is unset; only fails under `--enforce`, which this gate does not pass. Expect a pass with warnings in a plain local run. |
-| 18 | `release.verdict.contract` | `node scripts/verify-release-verdict.js --file <dir>/release_verdict.json --sha <sha>` | **Conditional and easy to over-read: this gate auto-passes with "Skipped" if `release_verdict.json` doesn't already exist for the target SHA** — the normal case on a fresh run. It only does real verification when a prior no-staging run already produced that file for the same SHA. |
+| 15 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 14 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. |
+| 16 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
+| 17 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
+| 18 | `observability.evidence.report` | `npm run gate:release:observability -- --evidence-dir <dir>` | Warns (does not fail) if `OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL` is unset; only fails under `--enforce`, which this gate does not pass. Expect a pass with warnings in a plain local run. |
+| 19 | `release.verdict.contract` | `node scripts/verify-release-verdict.js --file <dir>/release_verdict.json --sha <sha>` | **Conditional and easy to over-read: this gate auto-passes with "Skipped" if `release_verdict.json` doesn't already exist for the target SHA** — the normal case on a fresh run. It only does real verification when a prior no-staging run already produced that file for the same SHA. |
 
-Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `target_sha`, `verdict`
-(`pass`/`fail`), `gate_count` (18), `failed_gate_count`, and each gate's `{name, ok, detail}`.
+Three gates are structurally incapable of failing on a clean promotion checkout — `compliance.contracts`
+(no compliance-relevant diff to flag), `observability.evidence.report` (warns, never fails, without
+`--enforce`), and `release.verdict.contract` (auto-skips per above) — the artifact marks each with
+`structurally_cannot_fail: true` (#1016) so a green result on these three is never cited as evidence.
+
+Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `target_sha`, `run_mode`
+(`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (19),
+`failed_gate_count`, `skipped_gate_count`, and each gate's
+`{name, ok, status, detail, duration_ms, structurally_cannot_fail}`.
 
 ## Measured cost (2026-08-12, target SHA `df5e72b0`, `develop`)
 

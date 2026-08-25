@@ -23,6 +23,13 @@ Fill in whichever other template sections apply to the change (Architecture Impa
 Compliance Evidence, Batch Inventory, etc.) — leave inapplicable ones as unchecked
 boxes rather than deleting them.
 
+### Verified AI/model attribution
+
+When the current runtime has a valid local attribution session, the first content line under
+`## Summary` must be formatter output, for example `Opened by (Codex GPT-5.6 Terra, worker)`.
+Use `node scripts/ai-attribution.js format <runtime> <session-id> Opened <role>`. Do not guess a
+model, reuse another session's record, or write `unknown-AI`: if it emits no line, omit attribution.
+
 ## PR base branch
 
 - Ordinary branches (features, fixes, chores, docs) target `develop` as base

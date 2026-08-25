@@ -78,13 +78,17 @@ declaration may reach the `staging → main` leg** — this sweep is what clears
 ## Pre-`main` gates
 
 Before a `release/<label>` → `main` PR: run `npm run gate:release:local` — **invoke it, do not
-rebuild it** (the policy says this outright). ~25 minutes, needs local MySQL/Redis; exit code `2`
-means at least one of 16 gates failed — report which, don't merge past it. Gate 16
+rebuild it** (the policy says this outright). ~25 minutes on a full run, needs local MySQL/Redis;
+exit code `2` means at least one of 19 gates failed — report which, don't merge past it. Gate 19
 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json` exists for
-the target SHA — the normal case — so a green #16 is not evidence of anything; don't cite it as
-verification. Also confirm the tenant-schema sync report is clean against **production** tenant
-databases specifically, not staging's — the 2026-07-28 outage happened because schema drift was
-checked against the wrong environment.
+the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite it as
+verification, nor the other two gates the artifact itself flags `structurally_cannot_fail: true`
+(`compliance.contracts`, `observability.evidence.report`). Since #1016, the script also accepts
+`--only`/`--skip` and records per-gate `duration_ms` plus a top-level `run_mode: "full"|"partial"` —
+**a promotion decision must be made on a `run_mode: "full"` artifact only**; a partial run is for
+iterating on one gate locally, never for citing as promotion evidence. Also confirm the tenant-schema
+sync report is clean against **production** tenant databases specifically, not staging's — the
+2026-07-28 outage happened because schema drift was checked against the wrong environment.
 
 ## Unattended vs. checkpoint — stop and ask before proceeding
 
@@ -121,6 +125,11 @@ second retry (run `31956577646`) succeeded, completing the deploy.
 
 See `AGENTS.md`'s "Role handoffs and composite instructions" section for what a chained "review,
 merge, and deploy" instruction actually does end to end and where it hands off to Pat.
+
+## Verified AI/model attribution
+
+For a promotion PR, put `Opened by (..., promoter)` first under `## Summary` only when the
+formatter validates the active session. Otherwise omit it; never guess or use `unknown-AI`.
 
 ## Board handling
 
