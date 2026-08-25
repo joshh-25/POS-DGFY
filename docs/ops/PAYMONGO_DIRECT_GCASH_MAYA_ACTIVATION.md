@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: payments_operations
-last_reviewed: 2026-08-18
+last_reviewed: 2026-08-25
 applies_to: paymongo_direct_gcash_maya_production
 ---
 
@@ -23,8 +23,10 @@ PR [#681](https://github.com/Sieitzz/dgfy-platform/pull/681). As of this writing
 flags and code paths they reference do not exist in production — until:
 
 1. PR #681 is reviewed (`pr-reviewer`, or a manual review) and merged into `develop`.
-2. It is promoted `develop → staging → main` per `docs/ops/RELEASE_CANDIDATE_POLICY.md` and
-   actually deployed via a `deploy-main.yml` dispatch.
+2. It is promoted `develop → release/<label> → main` (the default since ADR 0074/#980,
+   2026-08-25 — a `develop → staging → main` soak is also fine, as an optional per-batch route
+   under the same policy) per `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and actually deployed via a
+   `deploy-main.yml` dispatch.
 
 Confirm the merge commit is live in production (`/health`, and the release SHA) before proceeding
 to section 1.

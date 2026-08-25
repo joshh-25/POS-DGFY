@@ -1,4 +1,25 @@
+---
+status: superseded
+superseded_by: docs/ops/RELEASE_CANDIDATE_POLICY.md
+authority_level: historical
+owner: release
+date: 2026-06-18
+last_reviewed: 2026-08-25
+applies_to: development_to_production_release_flow
+topic: no_staging_release_standard
+---
+
 # Signed-Controller Release Standard
+
+**Superseded 2026-08-25 (#1019, part of #1008 Phase 4) — see
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`. Do not follow this document's gates.** This document
+describes the ADR-0030 signed-controller model (GPG-signed annotated tags, a root-owned external
+release controller) — ADR 0030 itself was superseded 2026-07-30 because neither the controller nor
+the branch-protection primitives it depends on were ever buildable on GitHub Free. This document
+also states outright that "there is no unsigned emergency bypass," which directly contradicted
+`.agents/skills/incident-responder/SKILL.md`'s existing phrase-gated `main`-merge override and
+`.agents/skills/promoter/SKILL.md`'s #1007 expedited-override — both real, both in force. Kept here
+for history, not deleted, matching the treatment ADR 0030 itself already received.
 
 ## Purpose
 
