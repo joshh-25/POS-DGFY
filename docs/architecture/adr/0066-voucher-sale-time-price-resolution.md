@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-08-20
+last_reviewed: 2026-08-25
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -321,6 +321,39 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   total). `posVoucherDiscountCalculator.js`'s `buildVoucherGovernedCalculation` builds the same
   return shape directly from `lineAllocations` instead.
 - PR: #712 (child of epic #453).
+
+### 2026-08-25 — Migrated promos keep POS eligibility and public listing (#695)
+
+- Clause amended: **Consequences item 4** (untagged -- Consequences record effects, not Decisions,
+  so no strictness tier applies, per the same reasoning the 2026-08-19 #668 amendment above already
+  established for this section). Previously stated: "Migrated promos lose channel eligibility. Per
+  #459 those three fields were never actually persisted, so they cannot be carried forward
+  faithfully; every migrated voucher gets `channels = 'storefront'` only."
+- Change: the shipped migration (`apps/dgfy-api/scripts/migrate-promos-to-vouchers.js`, PR #778)
+  does not do this. It sets `channels_mask` to `storefront|pos` (both bits) whenever a promo's own
+  `channels` map derives to zero, and always sets `is_publicly_listed = true`. Corrected here to
+  match what actually shipped.
+- Reason: #459 means `channels`/`fulfillment_methods`/`order_timing` are silently stripped by
+  `settingsValidator.js`'s `stripUnknown: true` on every settings save, so every promo in production
+  is *de facto* eligible on both storefront and POS today -- that bug is the very reason no stored
+  promo carries a real restriction to migrate. Migrating as storefront-only per the original
+  Consequences text would not have been a faithful narrowing; it would have silently deleted every
+  POS promo discount on migration day, since POS has no other path to that discount. Preserving
+  observed behavior (both channels) is the honest transform; guessing storefront-only is not.
+  `is_publicly_listed = true` follows the identical reasoning for public visibility: the legacy
+  engine always advertised every active promo (`parsePublicCommercialPromos`), and #713 added the
+  column specifically so this could be preserved rather than defaulted to the voucher system's
+  normal `false`.
+- Also recorded: the 2026-08-20 dry-run against a restored production snapshot (45 tenants) found
+  zero real promos carrying any per-channel/fulfillment/timing restriction, so deriving from each
+  promo's own (always-permissive) config and hardcoding a flat allow-both value produce an
+  identical result on every real row seen so far. Deriving was kept anyway, as the more correct
+  mechanism if a restricted promo turns up on a tenant not yet migrated.
+- Unchanged by this amendment: Decision 3's fail-closed degenerate/unresolvable-timezone handling,
+  and every other Consequences item, are untouched.
+- PR: #695 tooling shipped as PR #778 (2026-08-20); this amendment reconciles the ADR text with
+  that already-merged behavior and is landed alongside the remaining #695 work (freezing the last
+  live legacy promo authoring surface).
 
 ## Decision (continued)
 

@@ -14,6 +14,7 @@ import {
 // see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
 import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
 import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
+import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
@@ -96,6 +97,14 @@ export function useFnbCheckoutSubmission({
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
       const message = GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    // #963: same backstop as shared/hooks/useCheckoutSubmission.js -- F&B submits through its own
+    // hook, so the guard has to exist in both places or one mode ships without it.
+    if (requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail })) {
+      const message = 'Add an email address before paying by card. Your card issuer needs it to authorize the payment.';
       setCheckoutError(message);
       toast.error(message);
       return;

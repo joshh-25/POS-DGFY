@@ -11,7 +11,7 @@ applies_to: pos, attendance, cash_drawer
 
 ## Preconditions
 
-- Phases 154-159 are completed in `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`.
+- Phases 156-161 are completed in `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`.
 - Target tenant migrations are current and runtime schema audit passes.
 - The location has no open register shift, attendance session, break, operator session, or
   protected payment/drawer operation when configuration changes.
@@ -21,9 +21,9 @@ applies_to: pos, attendance, cash_drawer
 
 1. Choose one non-production tenant and one location.
 2. Record the current `pos_cashier_attendance_lifecycle_v1` configuration and monitoring baseline.
-3. During Phase 160, have the release operator update only the selected location in the
+3. During Phase 162, have the release operator update only the selected location in the
    `pos_cashier_attendance_lifecycle_v1` tenant setting and record the before/after value. After
-   Phase 161 is complete, use the audited POS Setup control instead of direct setting access.
+   Phase 163 is complete, use the audited POS Setup control instead of direct setting access.
 4. Run the deterministic A/B scenario: regular duty, break, relief duty, operator takeover,
    return, counted custody transfer, checkout attribution, report reconciliation, and Z close.
 5. Confirm `sku_pos_cashier_lifecycle_signals_total` has no unexpected failure or mismatch spike.
@@ -34,7 +34,7 @@ applies_to: pos, attendance, cash_drawer
 1. Stop new cashier activity and finish or safely close every active protected operation.
 2. End active breaks, attendance sessions, operator sessions, and the register shift through the
    normal POS workflow. Never update lifecycle rows directly.
-3. During Phase 160, restore the recorded tenant setting value. After Phase 161 is complete,
+3. During Phase 162, restore the recorded tenant setting value. After Phase 163 is complete,
    disable the selected location through POS Setup; the server rejects an unsafe rollback with
    `409`.
 4. Verify the attendance panel disappears while legacy single-cashier checkout, shift, X/Z, and

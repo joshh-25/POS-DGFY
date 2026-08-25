@@ -44,7 +44,7 @@ const idempotencyWhere = ({ userId, action, key, attendanceSessionId = null } = 
 };
 
 /**
- * Phase 155/156 persistence adapter. Lifecycle policy belongs in use cases;
+ * Phase 157/158 persistence adapter. Lifecycle policy belongs in use cases;
  * model lookup stays lazy so tenant requests never use the landlord model.
  */
 export const createPosCashierAttendanceRepository = (models = null) => Object.freeze({
@@ -197,7 +197,7 @@ export const createPosCashierAttendanceRepository = (models = null) => Object.fr
         return Model.create(payload, transactionOptions({ transaction }));
     },
 
-    // Phase 155 dormant primitives retained below; Phase 157 owns their policy.
+    // Phase 157 dormant primitives retained below; Phase 159 owns their policy.
     async findActiveOperator({ terminalId, userId, locationId, shiftId, transaction, lock = false } = {}) {
         const Model = requireModel(models, 'PosTerminalOperatorSession');
         const where = { status: 'active' };

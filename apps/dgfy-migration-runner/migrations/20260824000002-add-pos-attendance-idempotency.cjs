@@ -45,7 +45,7 @@ module.exports = {
     async up(queryInterface, Sequelize) {
         for (const tableName of TABLES) {
             if (!(await tableExists(queryInterface, tableName))) {
-                throw new Error(`Required Phase 155 table is missing: ${tableName}`);
+                throw new Error(`Required Phase 157 table is missing: ${tableName}`);
             }
         }
 

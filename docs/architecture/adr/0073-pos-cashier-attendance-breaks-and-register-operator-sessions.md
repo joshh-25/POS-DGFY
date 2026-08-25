@@ -14,7 +14,7 @@ supersedes_in_part: docs/architecture/adr/0065-pos-shared-parked-sales-and-cashi
 
 ## Status
 
-Accepted on 2026-08-24 and amended on 2026-08-25 for Phase 162 automatic
+Accepted on 2026-08-24 and amended on 2026-08-25 for Phase 164 automatic
 cashier lifecycle orchestration.
 
 ## Context
@@ -38,12 +38,12 @@ The target operating day is:
 Attendance, breaks, register cash custody, and current terminal operation are
 different facts and must not be inferred from one mutable cashier column.
 
-The Phase 155 persistence names are frozen as follows: tenant-local
+The Phase 157 persistence names are frozen as follows: tenant-local
 `employee_attendance_sessions`, `employee_break_segments`,
 `pos_terminal_operator_sessions`, and `pos_drawer_handoff_events` tables, plus
 an additive nullable `pos_transactions.operator_session_id` reference. These
 names are contract identifiers; their exact columns, indexes, foreign keys,
-backfill, and rollback behavior are Phase 155 implementation work.
+backfill, and rollback behavior are Phase 157 implementation work.
 
 ## Decision
 
@@ -141,7 +141,7 @@ backfill, and rollback behavior are Phase 155 implementation work.
 
 ## Validation Contract
 
-Phase 155-160 implementations must prove at minimum:
+Phase 157-162 implementations must prove at minimum:
 
 1. The target 7:00 AM-10:00 PM scenario creates the exact attendance, break,
    operator, transaction, handoff, and register records described above.
@@ -157,12 +157,12 @@ Phase 155-160 implementations must prove at minimum:
 ## Approval Record
 
 - Tech-lead approval: **accepted by the user in this task on 2026-08-24**.
-- Phase 154 may complete after its remaining documentation and validation gates
+- Phase 156 may complete after its remaining documentation and validation gates
   are checked in the implementation phase ledger.
 
 ## Amendments
 
-### 2026-08-25: Automatic Cashier Shift Lifecycle (Phase 162)
+### 2026-08-25: Automatic Cashier Shift Lifecycle (Phase 164)
 
 - Opening a register shift may orchestrate regular attendance and the initial
   operator session in the same database transaction when the location has the
@@ -178,7 +178,7 @@ Phase 155-160 implementations must prove at minimum:
   operator session, and closes the register in one transaction. Security or
   inactivity lock alone does not create a break.
 
-### 2026-08-25: Automatic Attendance on Cashier Takeover (Phase 164)
+### 2026-08-25: Automatic Attendance on Cashier Takeover (Phase 166)
 
 - After the incoming cashier passes DGFY authentication, location scope,
   dedicated POS PIN, and no-active-break checks, takeover automatically creates

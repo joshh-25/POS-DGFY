@@ -1,14 +1,14 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-15
+last_reviewed: 2026-08-24
 related_adr: docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md
 declaration_id: 2026-06-15-pos-shared-item-image-gallery
 classification: major
 surfaces: pos,terminal,inventory,storefront-catalog
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED
 policy_version: 2026.06.15
-verification_evidence: npm --prefix backend test -- --runTestsByPath tests/inventoryItemRepository.test.js tests/storefrontCatalogUseCases.test.js tests/posRepository.catalogImages.test.js tests/runtimeSchemaAuditService.test.js tests/posCheckoutFnbContracts.usecase.test.js,npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js --pool=threads,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check,production deploy summary /var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt
+verification_evidence: npm --prefix backend test -- --runTestsByPath tests/inventoryItemRepository.test.js tests/storefrontCatalogUseCases.test.js tests/posRepository.catalogImages.test.js tests/runtimeSchemaAuditService.test.js tests/posCheckoutFnbContracts.usecase.test.js,npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js --pool=threads,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check,production deploy summary /var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt,2026-08-24 fix (#871): npm --prefix apps/dgfy-api test -- tests/posRepository.catalogImages.test.js tests/posRepository.locationStockFallback.test.js tests/posCatalogCategory.contract.test.js tests/posCatalogBarcodeScope.contract.test.js tests/posTerminalReadiness.usecase.test.js tests/posUsecases.applicationResult.test.js (68 passed, 0 failed)
 rollback_note: Revert the Storefront-only wizard item-image upload wiring, POS catalog image fallback, and gallery primary-key repository fix together; POS visibility and Storefront visibility remain independently controlled.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -54,3 +54,32 @@ Required validation for this branch:
 7. `git diff --check`
 8. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`
 9. Space Bar tenant schema verification showed `buyer_tin`, `buyer_business_style`, `buyer_address`, and `fiscal_lifecycle_state` present after targeted remediation.
+
+
+## Amendment, 2026-08-24 (bugfix, #871)
+
+Live production investigation of #871 (POS catalog images 404ing) found `applyCatalogOverrides()`
+(used by `listCatalog()`, the actual POS terminal catalog grid) and `getCatalogReadinessByItemId()`
+never actually implemented the fallback order this declaration documents above -- both always used
+the Storefront catalog image unconditionally and silently ignored a present, working
+`pos_catalog_overrides.pos_image_url`. Confirmed live against production tenant
+`sku_tenant_eaterynidoe_2e561dbb`: items 7 and 10 each had a working POS-specific image on disk
+while the Storefront-linked image the grid actually displayed was missing, producing the reported
+404s. `resolveBarcode`'s barcode-scan flow and `listCatalogOverrides` (the admin/setup screen)
+already used the POS-specific image correctly -- only the two functions above had the bug.
+
+Fixed by introducing one shared `resolvePosDisplayImage()` helper (POS-specific image first,
+Storefront image as fallback when absent) and routing both `applyCatalogOverrides()` and
+`getCatalogReadinessByItemId()` through it. No POS/Storefront visibility change, no schema change,
+no new endpoint -- this restores the already-declared fallback-order contract to what the code
+actually does; it does not change the contract itself. Classification and affected surfaces are
+unchanged from the original declaration above.
+
+**Affected surfaces (already covered by `surfaces:` above, restated for clarity):**
+`apps/dgfy-api/src/modules/pos/repositories/posRepository.js`.
+
+**Not covered by this amendment:** the still-missing production image file behind item 5 (no
+`pos_catalog_overrides` fallback exists for it either -- a genuine missing-asset data gap, not a
+code bug) is addressed operationally via `apps/dgfy-api/scripts/backfill-optimized-catalog-images.js
+--clear-missing-only`, run separately against production with explicit sign-off, not part of this
+code change.

@@ -8,7 +8,7 @@ import { csrfProtection } from '../src/middleware/csrfProtection.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-describe('Phase 157 operator authority security contracts', () => {
+describe('Phase 159 operator authority security contracts', () => {
     const originalDedicatedSecret = process.env.POS_OPERATOR_AUTHORITY_SECRET;
     const originalJwtSecret = process.env.JWT_SECRET;
 
@@ -72,7 +72,7 @@ describe('Phase 157 operator authority security contracts', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    test('Phase 157 exposes only the gated operator endpoints and does not add checkout routes', () => {
+    test('Phase 159 exposes only the gated operator endpoints and does not add checkout routes', () => {
         const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/pos.js'), 'utf8');
         for (const endpoint of [
             '/operator/pin/enroll',

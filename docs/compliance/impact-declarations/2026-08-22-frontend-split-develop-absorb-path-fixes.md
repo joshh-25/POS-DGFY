@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-24
 declaration_id: 2026-08-22-frontend-split-develop-absorb-path-fixes
 classification: major
 surfaces: pos,terminal
@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-ims vitest suite (285 files, 1660 tests, all pa
 rollback_note: Revert this commit. Every change is a test-file or comment edit; no runtime source file, route, or behavior changed, so rollback carries no data or compliance-state risk.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-23T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-322-FRONTEND-SPLIT-ABSORB
+preflight_run_at: 2026-08-24T16:12:03+08:00
+preflight_request_ref: PROMOTER-322-ABSORB-2026-08-24
 ---
 
 # Frontend-Split Develop-Absorb Path Fixes
@@ -33,22 +33,26 @@ post-split, since these tests now run from `apps/dgfy-ims` against source that p
 tree; **zero test assertion, matcher, or expected value changed**. No POS route, use case, permission
 check, discount/tax/payment logic, or UI behavior was touched.
 
-**Preflight disclosure, corrected 2026-08-23**: this declaration originally shipped with
-`preflight_result: not_run` and `git commit --no-verify`, because no live environment was available
-to make the real `POST /api/v1/compliance/preflight` call and fabricating `no_breach` would have
-misrepresented what was verified. The next absorb cycle (2026-08-23) brought in `develop`'s #884
-compliance-verification-ladder work, which resolves exactly this situation: the preflight endpoint
-needs an authenticated session against a deployed host, which no `develop`-targeting PR ever has, so
-a per-PR live call was never realistic. Per #884
+**Preflight disclosure, corrected 2026-08-23, reconciled 2026-08-24**: this declaration originally
+shipped with `preflight_result: not_run` and `git commit --no-verify`, because no live environment
+was available to make the real `POST /api/v1/compliance/preflight` call and fabricating `no_breach`
+would have misrepresented what was verified. The next absorb cycle (2026-08-23) brought in
+`develop`'s #884 compliance-verification-ladder work, which resolves exactly this situation: the
+preflight endpoint needs an authenticated session against a deployed host, which no
+`develop`-targeting PR ever has, so a per-PR live call was never realistic. Per #884
 (`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"), **a
 `NOT-EXECUTED-*` placeholder is the accepted, expected state for a `develop`-targeting PR — not a
 defect** — and the real preflight runs once per promotion batch, on the `develop → staging` leg,
-against a deployed non-production host. This declaration now uses that sanctioned shape
-(`preflight_result: no_breach`, `preflight_request_ref:
-NOT-EXECUTED-322-FRONTEND-SPLIT-ABSORB`), matching the convention `develop`'s own declarations for
-this same epoch use. **No `NOT-EXECUTED-*` declaration may reach the `staging → main` leg** — this
-one must be reconciled with a real preflight run as part of that promotion sweep, same as every
-other one in its batch.
+against a deployed non-production host.
+
+~~`preflight_request_ref: NOT-EXECUTED-322-FRONTEND-SPLIT-ABSORB`~~ — **reconciled 2026-08-24** by
+the `develop -> staging` promotion-time sweep (#884,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment). Run against the DEV tenant
+(`Loandry`, `dev.dgfy.ph`) with `request_name: "PR #513 frontend-split develop-absorb path fixes
+(#322)"`; the endpoint returned `result: no_breach`, `reason_code: ALLOWED`, matching the values
+this declaration had provisionally recorded. Front matter above now carries the real run timestamp
+and `preflight_request_ref: PROMOTER-322-ABSORB-2026-08-24` in place of the `NOT-EXECUTED-`
+placeholder.
 
 ## Affected Surfaces
 

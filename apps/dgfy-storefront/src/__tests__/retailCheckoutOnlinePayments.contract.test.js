@@ -65,6 +65,35 @@ describe('Retail Storefront online payment contract', () => {
     expect(shell).toContain('(isSimpleMode || isRetailMode) && isResolvedOrderSubpage');
   });
 
+  // #963: the Retail call site was written against an older panel API and never updated -- it
+  // omitted `billing` (so PayMongo got no email and 422'd on card) and passed cashFallbackAllowed
+  // /onUseCash, which the panel does not accept, leaving "Choose another payment method" wired to
+  // onClick={undefined}. The pre-existing assertion below only checked the bare component name,
+  // which is exactly why none of that was caught.
+  it('passes the customer billing contact and the panel-declared recovery handler', () => {
+    const page = readSource('modes/retail/checkout/pages/RetailOrderPage.jsx');
+    const panel = readSource('shared/components/checkout/StorefrontOnlinePaymentPanel.jsx');
+
+    expect(page).toContain('billing={{ name: customerName, email: customerEmail, phone: customerPhone }}');
+    expect(page).toContain('onChooseAnotherPaymentMethod={');
+    // Dead props: asserted absent against the panel's own signature, not a hardcoded list, so a
+    // future rename fails here rather than silently re-opening the same gap.
+    expect(panel).not.toContain('cashFallbackAllowed');
+    expect(panel).not.toContain('onUseCash');
+    expect(page).not.toContain('cashFallbackAllowed');
+    expect(page).not.toContain('onUseCash');
+  });
+
+  // #963: card needs a billing email, but hasPrimaryContact accepts phone OR email and a signed-in
+  // customer can hold a phone-only account. Retail gates submit on it and renders the input.
+  it('requires a billing email before card checkout and offers the input', () => {
+    const step = readSource('modes/retail/checkout/components/RetailOrderPaymentStep.jsx');
+
+    expect(step).toContain('requiresBillingEmail({ paymentType, customerEmail })');
+    expect(step).toContain('renderBillingEmailPrompt(');
+    expect(step).toContain('|| billingEmailRequired}');
+  });
+
   it('resumes to the payment step after a PayMongo return, self-contained (no hoisted retail step)', () => {
     const page = readSource('modes/retail/checkout/pages/RetailOrderPage.jsx');
     expect(page).toContain("if (qrphPaymentSession?.payment_session_id && step !== 3) setStep(3);");

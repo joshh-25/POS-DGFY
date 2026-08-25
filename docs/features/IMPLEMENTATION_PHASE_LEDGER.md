@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-24
-review_by: 2027-02-24
+last_reviewed: 2026-08-15
+review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
 ---
@@ -45,14 +45,6 @@ This is the repository source of truth for continuous implementation phase numbe
 | 26 | Adds F&B Specific / Release 2 | Remove the three POS prop-to-draft synchronization exceptions by introducing explicit modifier-picker, modifier-manager, and service-options edit-session boundaries. | `completed` | Phase 25 | 2026-08-10; effect exceptions removed, session-isolation regressions passed, POS/Storefront builds and readiness/governance validation passed |
 | 27 | Adds F&B Specific / Release 2 | Add folder-scoped F&B modifier inheritance with item-level override and exclusion so POS and Storefront share one effective add-on assignment. | `completed` | Phase 26 | 2026-08-10; 75 focused backend tests, 18 focused frontend tests, 20-step F&B readiness gate, migration/schema coverage, lint, builds, architecture, docs, and whitespace validation |
 | 80 | POS Financial and Release Hardening / Release 1 | Make split-payment totals server-authoritative, protect shift close from funded unresolved sessions, restore server-side session discovery and strict scope, close runtime-schema blind spots, and remove production dependency advisories. | `completed` | Phases 58-69, 74, 79; final change audit | 2026-08-13; 101 backend regressions, 516 POS frontend tests, production builds, runtime/schema checks, governance gates, and zero production audit findings |
-| 154 | POS Cashier Attendance and Register Handoff / Release 1 | Freeze attendance, break, register, operator-session, cashier-authentication, and cash-custody contracts. | `completed` | Phase 153; tech-lead approval for binding ADR change | 2026-08-24; ADR 0073 accepted, ADR 0031/0044 amended, governance gates passed |
-| 155 | POS Cashier Attendance and Register Handoff / Release 1 | Add backward-compatible persistence for attendance, breaks, operator sessions, handoffs, and transaction attribution. | `completed` | Phase 154 completed | 2026-08-24; migration/model/repository foundation, MySQL migration rehearsal, focused tests, and governance gates passed |
-| 156 | POS Cashier Attendance and Register Handoff / Release 1 | Deliver regular-duty, relief-duty, and break lifecycles independently of terminal control. | `completed` | Phase 155 completed | 2026-08-24; lifecycle/API/UI implementation, 65 focused backend tests, 3 frontend tests, MySQL migrate/rollback/re-apply, schema/architecture/compliance/docs/build gates |
-| 157 | POS Cashier Attendance and Register Handoff / Release 1 | Deliver secure atomic cashier takeover plus shared-relief and counted-custody handoffs. | `completed` | Phase 156 completed | 2026-08-24 completed; dedicated PIN authority, atomic takeover/custody flows, revocation, migration, security, regression, architecture, schema, compliance, docs, lint, and POS build evidence recorded below |
-| 158 | POS Cashier Attendance and Register Handoff / Release 1 | Integrate the active operator with checkout and every cashier-sensitive POS workflow. | `completed` | Phase 157 completed | 2026-08-25; server-authoritative operator enforcement, A/B attribution database proof, focused backend/frontend regressions, architecture/schema/compliance/docs gates, and all production builds passed |
-| 159 | POS Cashier Attendance and Register Handoff / Release 1 | Deliver separate attendance, cashier-sales, register, and handoff reporting with reconciliation. | `completed` | Phase 158 completed | 2026-08-25; lifecycle reporting, operator/legacy attribution, register-only variance, CSV exports, focused tests, all frontend builds, budgets, architecture, compliance, and docs gates passed |
-| 160 | POS Cashier Attendance and Register Handoff / Release 1 | Prove the complete feature and release it through a reversible controlled rollout. | `completed` | Phase 159 completed | 2026-08-25; real-MySQL attribution/migration proof, focused lifecycle/security regressions, Playwright responsive checks, metrics, and reversible local canary/rollback passed |
-| 161 | POS Cashier Attendance and Register Handoff / Release 1 | Add tenant-admin, per-location Cashier Attendance & Breaks configuration without direct database editing. | `completed` | Phase 160 completed | 2026-08-25; dedicated audited API, safe workflow blockers, revision concurrency, POS Setup card, immediate refresh, tests, builds, and governance gates passed |
 
 ## Phase 6 Acceptance Gates
 
@@ -8259,7 +8251,195 @@ unshipped reservation.
 
 ---
 
-## Phase 154 - POS Cashier Attendance and Register Handoff Contract Freeze
+## Phase 154 - Shared Backend Image Tag Renamed Off `beta` (issue #913)
+
+### Initiative and Release
+
+- Initiative: rename the shared `dgfy-api`/`dgfy-migration-runner` GHCR image
+  tag from `beta` to `latest`, per issue Sieitzz/dgfy-platform#913.
+- Release: `chore/913-shared-backend-image-tag` targeting `develop`, riding
+  the same `develop -> staging -> main` promotion train as the frontend-split
+  cutover's PROD leg.
+
+### Objective and Scope
+
+- `beta` was a leftover from the retired beta/prod frontend split
+  (#329/#895/#896) — a name that outlived its own meaning once
+  `beta.dgfy.ph` was retired, and one that would have forced a prod-only
+  `${FRONTEND_PROD_IMAGE_TAG:-latest}` special case into the frontend-split
+  cutover's `prod.compose-fragment.yml` had it stayed.
+- Repo-side only in this phase: `deploy-main.yml`'s `dgfy-api` and
+  `dgfy-migration-runner` jobs' `image_tags` input, `"beta"` -> `"latest"`;
+  the now-dead fallback paragraphs in `prod.compose-fragment.yml` and the
+  frontend-split cutover runbook's "Prerequisite: issue #913" section,
+  rewritten to reflect the rename as landed.
+- Deliberately **not** in scope for this phase: the server-side `.env` edit
+  (`IMAGE_TAG=beta` -> `latest`) and the `dgfy-api`/`dgfy-migration-runner`
+  restart it requires. Landing that alone would be a second, avoidable prod
+  downtime window; instead it's folded into the frontend-split cutover
+  runbook's own PROD-leg step 3/7, so one server edit and one restart covers
+  both changes. Issue #913 stays open until that server-side half lands.
+
+### Status
+
+- `completed` (repo half only — see Dependencies and Governance Note)
+- Completed on 2026-08-25.
+
+### Dependencies and Governance Note
+
+- Depends on Phase 153 (#928 GHCR flatten) having already landed —
+  `deploy-main.yml`'s image references are the flattened `sieitzz/<name>`
+  paths this phase's tag rename applies to.
+- Blocks the frontend-split cutover runbook's PROD leg (`docs/deployment/
+  2026-08-23-frontend-split-cutover-runbook.md`) — that runbook's own
+  `${IMAGE_TAG:-latest}` fragment for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront`
+  is only correct once this phase's `deploy-main.yml` change has shipped.
+- The PR uses `Refs #913`, not `Closes #913` — the issue stays open through
+  the server-side `.env` edit, which is part of the frontend-split cutover's
+  own completion, not this phase's.
+- No compliance impact declaration required: touches only
+  `.github/workflows/deploy-main.yml`, `infrastructure/docker/env/
+  prod.compose-fragment.yml`, and `docs/**` — none of
+  `check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` paths.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run lint:docs` (chains `check:adr`) passes with the runbook edit.
+- [x] `npm run check:compliance` reports no compliance-sensitive changes.
+- [x] Repo sweep confirms `image_tags: "beta"` no longer appears in
+  `deploy-main.yml`.
+- [ ] Server-side `.env` `IMAGE_TAG=latest` confirmed on `/opt/dgfy-platform`
+  — deferred to the frontend-split cutover runbook's PROD-leg step 3/7; not
+  part of this phase's own completion.
+
+### Implementation Links
+
+- `.github/workflows/deploy-main.yml`
+- `infrastructure/docker/env/prod.compose-fragment.yml`
+- `docs/deployment/2026-08-23-frontend-split-cutover-runbook.md`
+- [Issue #913 - rename the shared backend image tag off IMAGE_TAG=beta](https://github.com/Sieitzz/dgfy-platform/issues/913)
+
+## Phase 155 - Promo-to-Voucher Migration: Remove the Legacy Authoring Surface, Reconcile ADR 0066 (issue #695)
+
+### Initiative and Release
+
+- Initiative: Vouchers & promotions engine (epic #453), issue #695 ("Migrate legacy Promo Codes
+  into the voucher entity and retire `storefront_promos`"). Partly a retroactive entry: the
+  promo-to-voucher data-migration tooling itself shipped 2026-08-20 as PR #778, with no phase-ledger
+  entry written at the time.
+- Release: `fix/695-freeze-legacy-promo-card` targeting `develop`.
+
+### Objective and Scope
+
+- Retroactive coverage: `apps/dgfy-api/scripts/inventory-promo-to-voucher-migration.js` and
+  `apps/dgfy-api/scripts/migrate-promos-to-vouchers.js` (PR #778, 2026-08-20) -- per-tenant,
+  dry-run-by-default tooling that converts `system_settings.storefront_promo(s)` JSON into real
+  `vouchers` rows and deletes the settings key on apply. Already exercised against a restored
+  local-test snapshot (45 tenants, 3 real promos migrated); never run against staging or
+  production.
+- This phase went through three rounds before landing, all in the same PR:
+  1. **Freeze, round 1** -- the singular editor ("Promo Card" in `apps/dgfy-ims/Pages/Settings.jsx`,
+     writing `storefront_promo`) was reported as a live regression by Pat, 2026-08-24, since #776's
+     freeze of the *plural* `storefront_promos` "Add Promo" button in
+     `packages/web-core/.../TerminalOperationsWorkspace.jsx` never touched it. Fixed by disabling
+     every input in that block.
+  2. **Freeze, round 2** -- a PR #988 review (RF-1, blocker) correctly found round 1 incomplete:
+     #776 had only frozen *creating* a new plural promo, not *editing* an existing one. Every
+     remaining input/button in the plural editor was disabled too, and both legacy keys dropped
+     from `handleStorefrontSave`'s payload.
+  3. **Full removal (final scope)** -- while investigating why the migration tooling's own
+     "not run against staging/production" note (PR #778) hadn't been resolved, a direct read-only
+     check against production (`ssh dgfy`, all 45 tenant DBs) found exactly one real, live,
+     un-migrated promo: `storefront_promo` on `sku_tenant_digistore_07dc0023`, code `STOREKO`, 5%
+     off, active, valid until 2026-08-31. Per Pat's call, `digistore` is a test store and losing
+     `STOREKO` on removal is acceptable. Given that, Pat asked to remove both legacy promo sections
+     from the settings UI entirely (not just freeze them) and to file two follow-up tickets: #991
+     (retire `commercialPromoPolicy.js` and the settings keys -- the backend half this phase does
+     NOT do) and #992 (voucher quick-create macros for "Promo Code" and "List Price Voucher"). This
+     phase's final diff deletes both settings sections' JSX, every handler/state/memo that existed
+     solely to serve them, the module-level helpers they alone depended on, the now-dead validation
+     loop in `handleStorefrontSave`, and the now-fully-orphaned `storefrontPromoSchedule.js` utility
+     + its test (verified zero remaining consumers first). `posCommercialPromoConfig.js` and
+     `commercialPromoPolicy.js` are untouched -- they're the live *redemption* path, a different
+     concern from the *authoring* UI removed here, and are #991's scope.
+- ADR 0066 Consequences item 4 amended to match what PR #778 actually shipped: migrated vouchers
+  get `channels_mask = storefront|pos` and `is_publicly_listed = true`, derived from each promo's
+  own (always-permissive, per #459) config -- not the storefront-only default the ADR text
+  previously stated. The ADR amendment this issue's own body called for was never landed when #778
+  merged; this phase closes that gap.
+- Also corrected: #783 and #459 both carried a stale claim ("no live promo settings remain") that
+  the production check above disproved -- corrected via comment on each, detail in #991's body.
+
+### Status
+
+- `in_progress` -- the backend retirement (`commercialPromoPolicy.js`, the settings keys) is now
+  tracked by #991, not this phase. This phase's own scope (remove the authoring UI, reconcile ADR
+  0066) is complete.
+
+### Dependencies and Governance Note
+
+- Depends on #712 (POS voucher redemption) and #713 (`is_publicly_listed` column), both closed
+  2026-08-20/22 -- #695's own hard dependencies, now satisfied.
+- Classification: `major`, `surfaces: settings,pos,terminal` -- both
+  `apps/dgfy-ims/Pages/Settings.jsx` and `packages/web-core/src/features/pos/` trip
+  `check-compliance-impact.js`'s exact-path/prefix floors regardless of diff content, per
+  `docs/compliance/impact-declarations/2026-08-25-legacy-promo-card-frozen.md`.
+- ADR 0066 Consequences item 4 amended 2026-08-25 (untagged, no strictness tier, same-PR amendment
+  per ADR 0039 Decision 3 -- no new ADR, no tech-lead approval required).
+- **Production risk from PR #778, now resolved by this phase's own investigation, not left open:**
+  the #776/#777 storefront checkout UI (on `main`) routes every "Use" click through the voucher
+  endpoint, and the migration script had only ever run against a local snapshot. Checked directly
+  against production (this phase): exactly one real legacy promo remains (`STOREKO`, a confirmed
+  test-store tenant), and Pat has accepted losing it. #991 tracks whether to bother migrating it
+  before deleting the settings key, or just delete it outright.
+- The PR uses `Refs #695`, not `Closes #695` -- #991 (backend retirement) is the issue that
+  eventually closes out #695's remaining scope.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run build:skupervisor` and `npm run build:pos` -- real Vite production builds of both
+  apps consuming `TerminalOperationsWorkspace.jsx`. Both bundles measurably shrank (Settings:
+  229.45kB -> 226.20kB; TerminalOperationsWorkspace: 586.68kB -> 564.61kB), confirming real dead
+  code removal.
+- [x] `npm run check:compliance`, `npm run check:adr`, `npm run check:architecture` -- all PASS.
+- [x] `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx` and
+  `packages/web-core/src/features/pos/__tests__/legacyPromoAuthoringFrozen.contract.test.js` --
+  both rewritten to assert absence (no rendered section, no supporting identifiers, no legacy keys
+  in either save payload) rather than disabled-presence.
+  `storefrontPromoEligibility.contract.test.js` deleted (asserted now-removed UI behavior).
+- [x] `npm test` in `apps/dgfy-ims` (includes `packages/web-core/**`) -- 286 files / 1679 tests,
+  all passing.
+- [x] Rendered-UI proof (Architecture Governance item 8) -- done against Pat's real
+  `do-not-commit/local-test/` restored-production stack (docker context `ch`) during the freeze
+  rounds; both `dgfy-ims` and `dgfy-pos` rebuilt and recreated healthy, served-bundle verification
+  confirmed the fix survived minification, both apps' entry screens render nonblank with zero
+  console errors. No real tenant account was logged into.
+- [ ] Inventory + apply run against staging/production for the one remaining test-store promo --
+  now #991's own call, not blocking this phase.
+- [ ] `storefront_promo(s)`/`commercialPromoPolicy.js` retirement -- tracked by #991.
+
+### Implementation Links
+
+- `apps/dgfy-api/scripts/inventory-promo-to-voucher-migration.js`,
+  `apps/dgfy-api/scripts/migrate-promos-to-vouchers.js` (PR #778, retroactive coverage)
+- `apps/dgfy-ims/Pages/Settings.jsx`
+- `apps/dgfy-ims/Pages/__tests__/legacyPromoCardFrozen.test.jsx`
+- `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `packages/web-core/src/features/pos/__tests__/legacyPromoAuthoringFrozen.contract.test.js`
+- `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (2026-08-25 amendment)
+- `docs/compliance/impact-declarations/2026-08-25-legacy-promo-card-frozen.md`
+- [Issue #695 - Migrate legacy Promo Codes into the voucher entity and retire storefront_promos](https://github.com/Sieitzz/dgfy-platform/issues/695)
+- [Issue #991 - Retire Legacy Promo Codes: commercialPromoPolicy.js and the storefront_promo(s) settings keys](https://github.com/Sieitzz/dgfy-platform/issues/991)
+- [Issue #992 - Vouchers: quick-create macros for "Promo Code" and "List Price Voucher"](https://github.com/Sieitzz/dgfy-platform/issues/992)
+
+### Completion Record (2026-08-25)
+
+- Phase 155 is `in_progress`. Phase 156 is the next eligible repository phase and requires separate
+  approval.
+
+---
+
+## Phase 156 - POS Cashier Attendance and Register Handoff Contract Freeze
 
 ### Initiative and Release
 
@@ -8273,7 +8453,7 @@ unshipped reservation.
 - Define the complete state transitions, actor permissions, server-authority rules, concurrency
   behavior, audit evidence, historical compatibility, and failure codes.
 - Freeze one tenant/location-scoped, default-off rollout flag that prevents partial workflow
-  exposure before Phase 160.
+  exposure before Phase 162.
 - Add a tech-lead-approved ADR that supersedes in part the affected binding handoff clauses in ADR
   0065, plus dated amendments to ADR 0031 and ADR 0044.
 - Freeze the expected data for the 7:00 AM-10:00 PM target scenario and its negative-test matrix.
@@ -8302,14 +8482,14 @@ unshipped reservation.
 
 ### Progress Record (2026-08-24)
 
-- [x] Phase 154 scope re-read and confirmed as governance-only; no migration,
+- [x] Phase 156 scope re-read and confirmed as governance-only; no migration,
   model, API, frontend, report, feature-flag, or runtime files changed.
 - [x] ADR 0073 drafted with the attendance/operator-session/register/custody
   contract and the 7:00 AM-10:00 PM target scenario.
 - [x] Dated ADR 0031 and ADR 0044 amendments recorded with current runtime
   behavior preserved until later implementation activation.
 - [x] Tech-lead acceptance of ADR 0073 recorded in the ADR approval record.
-- [x] Phase 154 acceptance gates complete and status moved to `completed`.
+- [x] Phase 156 acceptance gates complete and status moved to `completed`.
 
 ### Completion Record (2026-08-24)
 
@@ -8317,10 +8497,10 @@ unshipped reservation.
   clauses in part.
 - ADR 0031 and ADR 0044 dated amendments are effective for the approved future
   implementation contract while preserving current runtime behavior.
-- The exact Phase 155 persistence identifiers are frozen; no schema or runtime
-  code was changed in Phase 154.
-- Phase 155 became the implementation phase after approval, completed its additive
-  persistence gates, and leaves Phase 156 as the next eligible phase.
+- The exact Phase 157 persistence identifiers are frozen; no schema or runtime
+  code was changed in Phase 156.
+- Phase 157 became the implementation phase after approval, completed its additive
+  persistence gates, and leaves Phase 158 as the next eligible phase.
 
 ### Planning and Implementation Links
 
@@ -8331,7 +8511,7 @@ unshipped reservation.
 
 ---
 
-## Phase 155 - POS Cashier Attendance and Register Handoff Persistence
+## Phase 157 - POS Cashier Attendance and Register Handoff Persistence
 
 ### Initiative and Release
 
@@ -8341,10 +8521,10 @@ unshipped reservation.
 ### Objective and Scope
 
 - Add forward and rollback migrations, models, repositories, serializers, tenant-schema entries,
-  database constraints, and indexes for the Phase 154-approved attendance, break, operator-session,
+  database constraints, and indexes for the Phase 156-approved attendance, break, operator-session,
   handoff, and transaction-attribution records.
 - Preserve historical transaction and shift data; do not fabricate historical attendance.
-- Add compatibility handling for qualifying open register shifts only as approved in Phase 154.
+- Add compatibility handling for qualifying open register shifts only as approved in Phase 156.
 - Explicit exclusion: no new endpoint, UI, takeover flow, authorization change, or report change.
 
 ### Status
@@ -8354,11 +8534,11 @@ unshipped reservation.
 
 ### Dependencies
 
-- Phase 154 completed with accepted governance and frozen schema contract.
+- Phase 156 completed with accepted governance and frozen schema contract.
 
 ### Progress Record (2026-08-24)
 
-- [x] Phase 155 started after Phase 154 completion.
+- [x] Phase 157 started after Phase 156 completion.
 - [x] Persistence identifiers and compatibility boundaries are frozen by ADR
   0073.
 - [x] Additive migrations, models, repositories, serializers, schema
@@ -8389,13 +8569,13 @@ unshipped reservation.
   registry, and new-tenant bootstrap application of the same migration.
 - Added the dormant repository/serializer foundation without adding routes, UI, authorization
   changes, checkout attribution, or reports.
-- Validation evidence: focused Phase 155 tests (10 passing), existing POS shift/checkout/X/Z/readiness
+- Validation evidence: focused Phase 157 tests (10 passing), existing POS shift/checkout/X/Z/readiness
   tests (78 passing), actual MySQL fresh/populated/constraint/rollback smoke, actual re-apply smoke,
   `npm run check:tenant-schema-coverage`, `npm run check:architecture`, `npm run check:compliance`,
   `npm run lint:docs`, `npm run check:adr -- --write-index`, ESLint, and `git diff --check`.
-- At the time of this Phase 155 completion record, Phase 156 was complete and Phase 157 was the
-  next eligible phase pending explicit approval. Phases 157 and 158 are now completed; the current
-  next eligible phase is Phase 159.
+- At the time of this Phase 157 completion record, Phase 158 was complete and Phase 159 was the
+  next eligible phase pending explicit approval. Phases 159 and 158 are now completed; the current
+  next eligible phase is Phase 161.
 
 ### Planning and Implementation Links
 
@@ -8414,7 +8594,7 @@ unshipped reservation.
 
 ---
 
-## Phase 156 - POS Attendance and Break Lifecycle
+## Phase 158 - POS Attendance and Break Lifecycle
 
 ### Initiative and Release
 
@@ -8439,7 +8619,7 @@ unshipped reservation.
 
 ### Dependencies
 
-- Phase 155 completed with migration and persistence evidence.
+- Phase 157 completed with migration and persistence evidence.
 
 ### Acceptance and Validation Evidence
 
@@ -8461,12 +8641,12 @@ unshipped reservation.
 
 ### Progress Record (2026-08-24)
 
-- [x] Phase 156 approved after Phase 155 completion and the authoritative contract re-read.
+- [x] Phase 158 approved after Phase 157 completion and the authoritative contract re-read.
 - [x] Scope fixed to attendance and break lifecycle only; register takeover, PIN
   authentication, checkout attribution, and reporting remain deferred to later phases.
 - [x] Backend lifecycle, permission, audit, idempotency, and location-isolation implementation.
 - [x] Gated POS attendance panel and frontend lifecycle tests.
-- [x] Full Phase 156 acceptance and governance evidence.
+- [x] Full Phase 158 acceptance and governance evidence.
 
 ### Completion Record (2026-08-24)
 
@@ -8474,23 +8654,23 @@ unshipped reservation.
   events, server timestamps, manager corrections, and retry idempotency behind the
   `pos_cashier_attendance_lifecycle_v1` location allowlist.
 - Added the gated POS attendance panel and service bindings; register takeover, PIN, checkout
-  attribution, and reporting remain deferred to Phase 157/158/159.
+  attribution, and reporting remain deferred to Phase 159/160/161.
 - Focused backend evidence: 66 tests passed across lifecycle, route, repository, migration,
   schema, runtime-audit, permission, and transport suites. Frontend evidence: 3 focused panel
   tests passed. POS production build passed.
-- Database evidence: both attendance migrations applied to local MySQL; Phase 156 migration was
+- Database evidence: both attendance migrations applied to local MySQL; Phase 158 migration was
   rolled back and re-applied successfully, with both migrations reporting `up` afterward.
 - Governance evidence: architecture guardrails, controller boundaries, tenant-schema coverage,
   compliance/API contracts, ADR lint, governed-doc lint, targeted ESLint, Node syntax checks, and
   `git diff --check` passed. The broad all-path POS sweep was stopped after an unrelated existing
   long-running test stalled; the targeted POS reconciliation and transport regressions passed.
 
-Phase 156 through Phase 158 are complete. Phase 159 is the next eligible phase and requires
+Phase 158 through Phase 160 are complete. Phase 161 is the next eligible phase and requires
 separate approval.
 
 ---
 
-## Phase 157 - Secure POS Operator Takeover and Cash Custody
+## Phase 159 - Secure POS Operator Takeover and Cash Custody
 
 ### Initiative and Release
 
@@ -8521,7 +8701,7 @@ separate approval.
 
 ### Dependencies
 
-- Phase 156 completed with correct attendance and break eligibility state.
+- Phase 158 completed with correct attendance and break eligibility state.
 
 ### Acceptance and Validation Evidence
 
@@ -8536,17 +8716,17 @@ separate approval.
 - [x] Cookie, CSRF, rate-limit, lockout, revocation, permission, and isolation contracts pass in
   `posOperatorAuthority.security.contract.test.js` and the focused attendance/transport suites.
 - [x] Existing checkout behavior remains unchanged; checkout attribution is explicitly deferred to
-  Phase 158.
+  Phase 160.
 
-### Phase 157 Completion Record
+### Phase 159 Completion Record
 
 - Database: `20260824000003-add-pos-cashier-pin-and-operator-authority.cjs` was applied, rolled
-  back, reapplied, and confirmed `up` together with the Phase 155/156 migrations.
+  back, reapplied, and confirmed `up` together with the Phase 157/158 migrations.
 - Implementation: dedicated bcrypt cashier PIN state; revocable, tenant/location/terminal/shift/
   employee/session-scoped HttpOnly authority; atomic takeover, return, shared-relief, counted
   custody, explicit end, and revocation hooks for breaks, Time Out, unpair, close, disable, and
   removal.
-- Tests: Phase 157 migration/use-case/security suites (21 tests), attendance/persistence/route
+- Tests: Phase 159 migration/use-case/security suites (21 tests), attendance/persistence/route
   suites (20 tests), and permissions/handler/device transport suites (35 tests) passed.
 - Governance and quality: architecture guardrails, controller boundaries, tenant-schema coverage,
   compliance/API contracts, governed-doc and ADR lint, ESLint (0 errors; seven pre-existing
@@ -8561,11 +8741,11 @@ separate approval.
 
 - `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
 - `docs/architecture/adr/0026-browser-session-cookie-authority.md`
-- Phase 154's accepted ADR and amendments.
+- Phase 156's accepted ADR and amendments.
 
 ---
 
-## Phase 158 - POS Checkout and Cashier Workflow Integration
+## Phase 160 - POS Checkout and Cashier Workflow Integration
 
 ### Initiative and Release
 
@@ -8592,7 +8772,7 @@ separate approval.
 
 ### Dependencies
 
-- Phase 157 completed with secure operator and custody behavior.
+- Phase 159 completed with secure operator and custody behavior.
 
 ### Acceptance and Validation Evidence
 
@@ -8615,11 +8795,11 @@ separate approval.
 
 - `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
 - `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
-- Phase 154's accepted ADR and amendments.
+- Phase 156's accepted ADR and amendments.
 
 ---
 
-## Phase 159 - Cashier, Attendance, Register, and Handoff Reporting
+## Phase 161 - Cashier, Attendance, Register, and Handoff Reporting
 
 ### Initiative and Release
 
@@ -8644,7 +8824,7 @@ separate approval.
 
 ### Dependencies
 
-- Phase 158 completed with authoritative transaction and operator attribution.
+- Phase 160 completed with authoritative transaction and operator attribution.
 
 ### Acceptance and Validation Evidence
 
@@ -8672,11 +8852,11 @@ separate approval.
 ### Planning and Implementation Links
 
 - `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
-- Phase 154's accepted reporting contract.
+- Phase 156's accepted reporting contract.
 
 ---
 
-## Phase 160 - POS Cashier Handoff End-to-End Hardening and Rollout
+## Phase 162 - POS Cashier Handoff End-to-End Hardening and Rollout
 
 ### Initiative and Release
 
@@ -8697,12 +8877,12 @@ separate approval.
 ### Status
 
 - `completed`
-- Started: 2026-08-25 after Phase 159 completed.
+- Started: 2026-08-25 after Phase 161 completed.
 - Completion date: 2026-08-25.
 
 ### Dependencies
 
-- Phase 159 completed with reconciled reports.
+- Phase 161 completed with reconciled reports.
 - Non-production environment and representative migration dataset available.
 
 ### Acceptance and Validation Evidence
@@ -8738,7 +8918,7 @@ separate approval.
 
 ---
 
-## Phase 161 - Tenant-Admin Cashier Attendance Configuration
+## Phase 163 - Tenant-Admin Cashier Attendance Configuration
 
 ### Initiative and Release
 
@@ -8761,12 +8941,12 @@ separate approval.
 ### Status
 
 - `completed`
-- Started: 2026-08-25 after Phase 160 completed.
+- Started: 2026-08-25 after Phase 162 completed.
 - Completion date: 2026-08-25.
 
 ### Dependencies
 
-- Phase 160 completed with controlled canary activation and rollback proof.
+- Phase 162 completed with controlled canary activation and rollback proof.
 - Existing tenant location, settings RBAC, POS Settings PIN, attendance, operator-session, and audit
   contracts remain available.
 
@@ -8806,7 +8986,7 @@ separate approval.
   booted without browser console errors. The signed-in configuration surface is covered by component
   behavior/accessibility tests because no credentials were supplied to the temporary browser session.
 
-## Phase 162 - Automatic Cashier Attendance Lifecycle
+## Phase 164 - Automatic Cashier Attendance Lifecycle
 
 ### Initiative and release
 
@@ -8831,12 +9011,12 @@ legacy-account repair.
 ### Status
 
 - `completed`
-- Started: 2026-08-25 after Phase 161 completed.
+- Started: 2026-08-25 after Phase 163 completed.
 - Completed: 2026-08-25 after signed-in cashier browser and failure-path gates passed.
 
 ### Dependencies
 
-- Phases 154-161 completed.
+- Phases 156-163 completed.
 - ADR 0073 and ADR 0031 amended on 2026-08-25.
 - Existing attendance, operator-session, shift, parked-sale, and payment leases.
 
@@ -8884,10 +9064,10 @@ operator session were also closed cleanly at the expected PHP 1,000 count.
 
 ### Next eligible phase
 
-Phase 163 is now eligible; Phase 162 signed-in cashier E2E and
+Phase 165 is now eligible; Phase 164 signed-in cashier E2E and
 failure/rollback acceptance gates passed on 2026-08-25.
 
-## Phase 163 - Locked-Terminal Cashier Takeover Entry Point
+## Phase 165 - Locked-Terminal Cashier Takeover Entry Point
 
 ### Initiative and release
 
@@ -8910,12 +9090,12 @@ POS cashier attendance and register handoff hardening, terminal takeover UX.
 ### Status
 
 - `completed`
-- Started: 2026-08-25 after Phase 162 completed.
+- Started: 2026-08-25 after Phase 164 completed.
 - Completed: 2026-08-25 after focused, full-suite, build, and architecture gates passed.
 
 ### Dependencies
 
-- Phase 162 completed.
+- Phase 164 completed.
 - ADR 0073 operator sessions, scoped cashier PIN, and fail-closed attendance
   invariants.
 - Existing `/pos/terminal/operator/takeover` route and HttpOnly operator
@@ -8962,7 +9142,7 @@ the target location is enabled and a POS PIN is enrolled.
 
 ---
 
-## Phase 164 - Automatic Attendance on Cashier Takeover
+## Phase 166 - Automatic Attendance on Cashier Takeover
 
 ### Initiative and release
 
@@ -8981,12 +9161,12 @@ POS cashier attendance and register handoff hardening, automatic incoming-cashie
 ### Status
 
 - `completed`
-- Started: 2026-08-25 after the Phase 163 Masu browser test exposed the attendance dead-end.
+- Started: 2026-08-25 after the Phase 165 Masu browser test exposed the attendance dead-end.
 - Completed: 2026-08-25 after focused API/frontend tests and production builds passed.
 
 ### Dependencies
 
-- Phase 163 completed.
+- Phase 165 completed.
 - ADR 0073 automatic cashier lifecycle and operator-session contract.
 - Existing `/pos/terminal/operator/takeover` route and tenant attendance rollout.
 
@@ -9028,14 +9208,13 @@ part of this phase.
 
 ### Planning Record (2026-08-25)
 
-- Phase 154 through Phase 164 are `completed` under the approved automatic cashier lifecycle
-  scope. Phase 165 is now eligible.
-- Phase 155 evidence includes the actual temporary-MySQL migration/constraint/
+- Phase 156 through Phase 166 are `completed` under the approved automatic cashier lifecycle
+  scope. Phase 167 is now eligible.
+- Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
 - A phase becomes `completed` only after all of its required acceptance evidence is checked and
   linked; planning alone is not evidence of functional completion.
-
 ---
 
 **Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per

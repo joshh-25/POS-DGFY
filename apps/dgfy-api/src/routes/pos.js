@@ -145,7 +145,7 @@ router.post('/attendance/relief/start', checkPermission(PERMISSIONS.POS.actions.
 router.post('/attendance/relief/end', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), validateAttendanceMutation, posController.endReliefDuty);
 router.post('/attendance/corrections', checkPermission(PERMISSIONS.POS.actions.MANAGE_ATTENDANCE), validateAttendanceCorrection, posController.correctAttendance);
 
-// Phase 157: secure operator authority and custody transitions. These routes are
+// Phase 159: secure operator authority and custody transitions. These routes are
 // deliberately paired-terminal scoped, CSRF-protected by the global middleware,
 // and remain inaccessible while the lifecycle flag is disabled.
 router.post('/operator/pin/enroll', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), validateCashierPin, posController.enrollCashierPin);

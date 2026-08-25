@@ -500,7 +500,7 @@ export const provisionTenant = async (options) => {
             await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
             // Sequelize sync cannot express the generated active-state columns used by the
             // cashier attendance/operator-session uniqueness contract. Apply the idempotent
-            // Phase 155 migration immediately after the model graph is created so a brand-new
+            // Phase 157 migration immediately after the model graph is created so a brand-new
             // tenant has the same constraints as an existing tenant repaired by migrations.
             const { default: cashierAttendanceMigration } = await import(
                 '../../../dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'

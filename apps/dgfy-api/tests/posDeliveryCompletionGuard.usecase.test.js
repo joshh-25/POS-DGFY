@@ -82,9 +82,13 @@ describe('POS delivery completion guard', () => {
 
         expect(result.success).toBe(true);
         expect(repository.order.fulfillment_status).toBe('completed');
+        // shift_id: 9 -- online-order shift attribution (#944/#969, commit 64f9d16f). The order
+        // has no shift_id of its own (created outside POS by the storefront); the active terminal
+        // shift (findOpenTerminalShift, seeded at pos_terminal_shift_id: 9) claims it on the first
+        // POS lifecycle action, same as buildOnlineOrderShiftAttributionPayload's own doc comment.
         expect(repository.updateOrderById).toHaveBeenCalledWith(
             44,
-            { fulfillment_status: 'completed', cashier_id: 12 },
+            { fulfillment_status: 'completed', shift_id: 9, cashier_id: 12 },
             expect.objectContaining({ lock: true })
         );
     });

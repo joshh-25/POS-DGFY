@@ -122,34 +122,27 @@ Exact per-environment diffs (with the required prod image-tag override, see belo
 those exact files — this document is the narrative and sequencing; those files are the literal
 paste-in diff.
 
-### Prerequisite: issue #913 (rename `IMAGE_TAG` off `beta`) must land on prod first
+### Prerequisite: issue #913 (rename `IMAGE_TAG` off `beta`) — landed 2026-08-25
 
-The repo's reference compose above uses `${IMAGE_TAG:-latest}` for all three new services. **That is
-correct on DEV and STAGING** (`IMAGE_TAG=develop` / `IMAGE_TAG=staging` respectively, matching what
-`deploy.yml` actually pushes for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` there). **On PROD, this
-depends on issue #913 having shipped first.** Today, prod's `IMAGE_TAG=beta` is a leftover from the
-now-retired beta/prod frontend split — a name that predates and is unrelated to this ADR-0071 split,
-scoped to the backend images only (`dgfy-api`, `dgfy-migration-runner`). Copying `${IMAGE_TAG:-
-latest}` verbatim onto prod's three new services while `IMAGE_TAG` still says `beta` would try to
-pull a `dgfy-ims:beta`/`dgfy-pos:beta`/`dgfy-storefront:beta` tag that `deploy-main.yml` never
-pushes — only `"latest"`.
+The repo's reference compose above uses `${IMAGE_TAG:-latest}` for all three new services. That is
+correct on DEV and STAGING (`IMAGE_TAG=develop` / `IMAGE_TAG=staging` respectively, matching what
+`deploy.yml` actually pushes for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` there), and — as of #913 —
+correct on PROD too: `deploy-main.yml`'s `dgfy-api`/`dgfy-migration-runner` jobs now push
+`image_tags: "latest"` instead of `"beta"`, so `${IMAGE_TAG:-latest}` on all five images is uniform
+across every environment, no prod-only special case.
 
-**This runbook's PROD leg assumes #913 has already landed and prod's `IMAGE_TAG` is `latest`.**
-Per Pat's direction (2026-08-23), #913 is sequenced *before* this runbook's PROD leg specifically so
-the fragment below can use plain `${IMAGE_TAG:-latest}` — identical to DEV/STAGING and to the repo's
-own reference compose, with no prod-only special case. Confirm before starting the PROD leg:
+Per Pat's direction (2026-08-23), #913's repo-side change rides this same promotion train and its
+server-side `.env` edit (`IMAGE_TAG=beta` → `latest`) lands in this runbook's PROD leg step 3, in
+the same pass as the frontend-cutover compose edit — one server restart covers both. Confirm before
+starting the PROD leg's deploy dispatch (step 5):
 
 ```
 ssh dgfy 'grep ^IMAGE_TAG= /opt/dgfy-platform/.env'   # must read IMAGE_TAG=latest, not beta
 ```
 
-**Fallback, only if #913 has not shipped yet and the frontend cutover can't wait**: use
-`${FRONTEND_PROD_IMAGE_TAG:-latest}` instead of `${IMAGE_TAG:-latest}` on all three new services —
-the variable the 2026-07-20 backend/frontend-beta cutover added to prod's `.env` for exactly this
-kind of beta/prod disambiguation, already set to `latest` there today, so it works correctly either
-way. Once #913 does land, `FRONTEND_PROD_IMAGE_TAG` becomes fully vestigial (per the recommendation
-on #913) and should be removed from `.env` as part of that issue's own coordinated restart, not
-carried forward here.
+The `FRONTEND_PROD_IMAGE_TAG` fallback this section previously described is no longer needed —
+`${IMAGE_TAG:-latest}` is used verbatim in `prod.compose-fragment.yml`. That variable is removed
+from prod's `.env` as part of this same cutover (step 7 below), not left behind for later.
 
 ### Nginx template — already correct in-repo, just needs copying
 
@@ -166,9 +159,10 @@ with this cutover's own diff, not addressed by this runbook.
 
 ## Pre-flight checklist
 
-0. **PROD only: confirm issue #913 has landed** (`IMAGE_TAG` renamed off `beta` to `latest` on prod's
-   `.env`) before starting the PROD leg — see "Prerequisite: issue #913" above for why, the exact
-   check to run, and the documented fallback if #913 genuinely can't land first. DEV and STAGING have
+0. **PROD only: confirm the server's `.env` reads `IMAGE_TAG=latest`, not `beta`,** before the
+   deploy dispatch (step 5) — see "Prerequisite: issue #913" above for the check to run. #913's
+   repo-side change (this runbook's own `deploy-main.yml` image_tags) has landed; the server-side
+   `.env` edit lands as part of this runbook's own step 3 pass, not separately. DEV and STAGING have
    no such dependency and can proceed without this check.
 1. **GHCR org package permissions — now covers all five renamed packages, not just the frontend
    three.** Issue #928 flattened every image path (`ghcr.io/sieitzz/dgfy-platform/<name>` ->
@@ -212,15 +206,17 @@ already in `.agents/skills/promoter/SKILL.md`.
    touches nothing live. This is also what first creates the GHCR packages — do this before the
    pre-flight permissions step above, not after.
 2. **Grant GHCR permissions** per pre-flight item 1, now that the packages exist.
-3. **SSH in and hand-edit the server's `docker-compose.yml`.** Two things land in this same pass,
-   not two separate edits: (a) delete the `frontend:` service block and paste in the three new
-   service blocks from the matching `infrastructure/docker/env/<env>.compose-fragment.yml`'s
-   frontend-cutover section (already carries the correct network name, host-port publish, and — on
-   prod — the `FRONTEND_PROD_IMAGE_TAG` override); (b) update the existing `dgfy-api` and
+3. **SSH in and hand-edit the server's `docker-compose.yml` (and, on prod, `.env`).** Several things
+   land in this same pass, not separate edits: (a) delete the `frontend:` service block and paste in
+   the three new service blocks from the matching
+   `infrastructure/docker/env/<env>.compose-fragment.yml`'s frontend-cutover section (already
+   carries the correct network name and host-port publish); (b) update the existing `dgfy-api` and
    `dgfy-migration-runner` services' `image:` lines to their flattened paths
    (`ghcr.io/sieitzz/dgfy-api:...`, `ghcr.io/sieitzz/dgfy-migration-runner:...` — those two services
    already exist from the earlier PR #55 cutover, only the registry path changes). On prod, also
-   apply the `nginx:` `depends_on` edit from that same fragment file. Validate with `docker compose
+   apply the `nginx:` `depends_on` edit from that same fragment file, **and edit `.env`:
+   `IMAGE_TAG=beta` → `IMAGE_TAG=latest`** (#913's server-side half — DEV/STAGING's `IMAGE_TAG`
+   already reads `develop`/`staging` and needs no edit here). Validate with `docker compose
    config >/dev/null` before proceeding — it should show all five images resolving to
    `ghcr.io/sieitzz/dgfy-*` paths with no remaining `dgfy-platform/` segment anywhere.
 4. **Prod only: copy the nginx template.** `scp` this repo's `infrastructure/docker/nginx/` directory
@@ -239,7 +235,9 @@ already in `.agents/skills/promoter/SKILL.md`.
 6. **Verify.** Dispatch `verify-deployment.yml` (after the `SERVICES` fix landing alongside this
    runbook — see below) and manually `curl` all three domains for that environment as a smoke test.
 7. **Bake, then finalize.** See Rollback below for how long to wait before treating the cutover as
-   done on that environment.
+   done on that environment. **Prod only, once healthy:** remove the now-vestigial
+   `FRONTEND_PROD_IMAGE_TAG` from `.env` — separately from step 3's edit, after the cutover is
+   confirmed healthy, not in the same restart.
 
 ## Rollback (manual — no tooling exists for this)
 
@@ -299,8 +297,9 @@ three environments — not bundled into this runbook's own PR.
 - `docs/deployment/2026-07-20-dgfy-ph-production-cutover-runbook.md` — the precedent this document's
   shape and the "hand-maintained, not a git checkout" framing are drawn from.
 - Issue #913 — **PROD-leg prerequisite**, see above. Renames prod's `IMAGE_TAG` off `beta` to
-  `latest` and retires `FRONTEND_PROD_IMAGE_TAG`; must land before this runbook's PROD leg for the
-  fragment below to use the plain, unconditional `${IMAGE_TAG:-latest}` form.
+  `latest` and retires `FRONTEND_PROD_IMAGE_TAG`; its repo-side change has landed, letting the
+  fragment below use the plain, unconditional `${IMAGE_TAG:-latest}` form. The server-side `.env`
+  edit lands as part of this runbook's own PROD-leg step 3/7.
 - Issue #915.
 - ADR 0072 (`docs/architecture/adr/0072-ghcr-container-image-naming.md`) and issue #928 — the GHCR
   image-path flattening folded into this cutover's steps 1, 3, and 5 above, and into the pre-flight

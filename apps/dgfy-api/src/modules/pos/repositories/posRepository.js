@@ -548,6 +548,28 @@ const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
     }
 };
 
+// POS terminal catalog display prefers a POS-specific override image
+// (pos_catalog_overrides.pos_image_*) when present, falling back to the shared
+// Storefront catalog image only when no POS-specific image exists -- the
+// contract documented in
+// docs/compliance/impact-declarations/2026-06-15-pos-shared-item-image-gallery.md
+// ("...pos_image_url first, then the shared Storefront catalog primary item
+// image as a display fallback... Legacy POS-only image data remains
+// compatible and remains preferred when present."). listCatalog()'s
+// applyCatalogOverrides() and getCatalogReadinessByItemId() previously always
+// used the Storefront image unconditionally, silently dropping a working
+// POS-specific image whenever both existed (#871) -- fixed by routing both
+// through this single helper instead of re-deriving the precedence inline.
+const resolvePosDisplayImage = ({ override, storefrontImage }) => {
+    const path = override?.pos_image_path || storefrontImage?.storefront_image_path || null;
+    const url = override?.pos_image_url || storefrontImage?.storefront_image_url || null;
+    return {
+        path,
+        url,
+        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url })
+    };
+};
+
 const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
         return new Map();
@@ -618,6 +640,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
             const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
                 ? override.pos_best_seller_mode
                 : 'auto';
+            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
             return {
                 ...item,
                 pos_visible: posVisible,
@@ -625,12 +648,9 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_best_seller_mode: bestSellerMode,
                 is_best_seller: bestSellerMode === 'force'
                     || (bestSellerMode === 'auto' && autoBestSellerItemIds.has(Number(item.item_id))),
-                pos_image_path: override?.pos_image_path || null,
-                pos_image_url: storefrontImage?.storefront_image_url || null,
-                pos_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                pos_image_path: posDisplayImage.path,
+                pos_image_url: posDisplayImage.url,
+                pos_image_variants: posDisplayImage.variants,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
                 storefront_image_variants: deriveImageAssetVariantUrls({
@@ -4500,17 +4520,15 @@ export const posRepository = {
         });
         const storefrontImageMap = await loadStorefrontCatalogImageMap([normalizedItemId]);
         const storefrontImage = storefrontImageMap.get(normalizedItemId);
+        const posDisplayImage = resolvePosDisplayImage({ override: effectiveOverride, storefrontImage });
 
         return {
             item_id: payload.item_id,
             pos_visible: resolveCatalogVisibility({ item: payload, override: effectiveOverride, surface: 'pos' }),
             pos_always_available: effectiveOverride?.pos_always_available === true,
-            pos_image_url: storefrontImage?.storefront_image_url || null,
-            pos_image_path: effectiveOverride?.pos_image_path || null,
-            pos_image_variants: deriveImageAssetVariantUrls({
-                storedPath: storefrontImage?.storefront_image_path || null,
-                storedUrl: storefrontImage?.storefront_image_url || null
-            }),
+            pos_image_url: posDisplayImage.url,
+            pos_image_path: posDisplayImage.path,
+            pos_image_variants: posDisplayImage.variants,
             storefront_image_path: storefrontImage?.storefront_image_path || null,
             storefront_image_url: storefrontImage?.storefront_image_url || null,
             storefront_image_variants: deriveImageAssetVariantUrls({

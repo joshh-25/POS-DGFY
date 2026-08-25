@@ -8,7 +8,7 @@ surfaces: pos,terminal,cash_drawer,payments,refunds,online_orders
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.24
 verification_evidence: pos-operator-authority-usecase-tests,pos-operator-mutation-attribution-contracts,pos-checkout-db-integration-tests,pos-workflow-regressions,migration-and-schema-checks,csrf-cookie-security-checks,all-frontend-production-builds
-rollback_note: Disable the tenant/location attendance rollout flag and revoke active operator sessions to restore the legacy cashier path; the additive PIN, authority, and transaction-attribution columns can be rolled back only after no Phase 157 or Phase 158 data remains in use.
+rollback_note: Disable the tenant/location attendance rollout flag and revoke active operator sessions to restore the legacy cashier path; the additive PIN, authority, and transaction-attribution columns can be rolled back only after no Phase 159 or Phase 160 data remains in use.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-25T00:55:00+08:00
@@ -53,4 +53,4 @@ cash-custody handoffs. The register shift and opening float remain unchanged.
 - Migration, runtime schema, tenant-schema coverage, architecture, compliance, lint, syntax,
   focused workflow regression, and all three frontend production-build gates pass before activation
   is requested.
-- Reporting and reconciliation remain deferred to Phase 159.
+- Reporting and reconciliation remain deferred to Phase 161.

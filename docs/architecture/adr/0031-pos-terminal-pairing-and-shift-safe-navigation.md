@@ -189,7 +189,7 @@ profiles inside the selected tenant, not a separate credential authority.
 - A void or refund after shift close is append-only. It never rewrites the saved close summary or Z-reading; cashier history and daily reporting disclose the later adjustment with original and acting attribution.
 - Provider-owned, merchant-owned, cash, Employee Credit, and split-tender reversals remain server-classified workflows. A client cannot turn an internal void into evidence that customer money was refunded.
 
-### 2026-08-24: Attendance and Operator-Session Boundary (Phase 154)
+### 2026-08-24: Attendance and Operator-Session Boundary (Phase 156)
 
 - Clauses amended: the 2026-07-24 Durable Shift Ownership addendum, clauses 1,
   2, 4, and 9 (untagged/default behavior).
@@ -207,7 +207,7 @@ profiles inside the selected tenant, not a separate credential authority.
   phases; it does not authorize a migration or runtime change by itself.
 - See `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`.
 
-### 2026-08-25: Automatic Attendance Hooks (Phase 162)
+### 2026-08-25: Automatic Attendance Hooks (Phase 164)
 
 - Opening and closing a register shift may invoke the enabled location's
   attendance and operator lifecycle in the same transaction. The continuous

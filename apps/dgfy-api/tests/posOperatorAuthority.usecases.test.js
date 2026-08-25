@@ -90,7 +90,7 @@ const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
     return { useCases, repository, users, events, getTakeoverAttendanceCalls: () => takeoverAttendanceCalls };
 };
 
-describe('Phase 157 POS operator authority use cases', () => {
+describe('Phase 159 POS operator authority use cases', () => {
     test('takeover ends the current operator and creates exactly one replacement session', async () => {
         const { useCases, events } = buildFixture();
         const result = await useCases.takeOver({

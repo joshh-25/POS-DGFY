@@ -174,27 +174,14 @@ services:
 # (from cutover fragment 1 above), `certbot:`, and the top-level `networks:`
 # block stay untouched.
 #
-# PREREQUISITE -- issue #913 must land first: this fragment uses plain
-# ${IMAGE_TAG:-latest}, IDENTICAL to the repo's own
-# infrastructure/docker/docker-compose.yml, dev.compose-fragment.yml, and
-# stage.compose-fragment.yml. That's only correct once prod's IMAGE_TAG has
-# been renamed off "beta" to "latest" per issue #913 -- while IMAGE_TAG=beta
-# still stands (its current, historical value, scoped to the backend images
-# only), ${IMAGE_TAG:-latest} on these three NEW services would try to pull
-# a dgfy-ims:beta/dgfy-pos:beta/dgfy-storefront:beta tag that deploy-main.yml
-# never pushes -- only "latest". See docs/deployment/2026-08-23-frontend-
-# split-cutover-runbook.md's "Prerequisite: issue #913" section for the
-# `ssh dgfy 'grep ^IMAGE_TAG= /opt/dgfy-platform/.env'` check to run first.
-#
-# FALLBACK, only if #913 genuinely has not shipped yet and this cutover
-# can't wait for it: replace ${IMAGE_TAG:-latest} below with
-# ${FRONTEND_PROD_IMAGE_TAG:-latest} on all three services instead -- that
-# variable already exists in prod's .env (added by the 2026-07-20 backend/
-# frontend-beta cutover for exactly this kind of beta/prod disambiguation)
-# and is already set to "latest" there today, so it works correctly either
-# way. Once #913 lands, FRONTEND_PROD_IMAGE_TAG becomes vestigial and should
-# be deleted from .env as part of #913's own coordinated restart, not left
-# behind for a later cleanup.
+# ISSUE #913 LANDED 2026-08-25: this fragment uses plain ${IMAGE_TAG:-latest},
+# IDENTICAL to the repo's own infrastructure/docker/docker-compose.yml,
+# dev.compose-fragment.yml, and stage.compose-fragment.yml -- correct now
+# that prod's IMAGE_TAG has been renamed off "beta" to "latest" as part of
+# this same cutover's server edit (deploy-main.yml's dgfy-api/
+# dgfy-migration-runner jobs also moved to image_tags: "latest" in the same
+# PR). `FRONTEND_PROD_IMAGE_TAG` is now vestigial -- removed from prod's
+# `.env` as part of this cutover's own restart, not left behind for later.
 
 services:
   dgfy-ims:

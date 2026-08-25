@@ -24,17 +24,17 @@ shift, add a second opening float, close the drawer, or duplicate an existing at
 A scheduled change of cash custodian uses a counted handoff while the same register shift remains
 open.
 
-This plan governs Phases 154-163 in
+This plan governs Phases 156-165 in
 `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`. The phases are intentionally sequential and do not
 overlap. A phase may start only after the preceding phase's acceptance gates pass and its ledger
 status is `completed`.
 
 All new runtime behavior remains behind one tenant/location-scoped, default-off feature flag until
-Phase 160. Earlier phases may deploy their completed slice, but they cannot expose an incomplete
+Phase 162. Earlier phases may deploy their completed slice, but they cannot expose an incomplete
 cashier workflow to ordinary users.
 
-Phase 161 adds the tenant-admin configuration surface for that already-proven rollout flag. It does
-not weaken Phase 160's canary or rollback gates, and it does not permit a location to change
+Phase 163 adds the tenant-admin configuration surface for that already-proven rollout flag. It does
+not weaken Phase 162's canary or rollback gates, and it does not permit a location to change
 attendance mode while register, attendance, break, or operator work is active.
 
 ## Target Scenario
@@ -94,7 +94,7 @@ existing ownership checks can safely change.
 
 ## Proposed Persistence Boundaries
 
-Names are frozen during Phase 154 before a migration is written. The proposed records are:
+Names are frozen during Phase 156 before a migration is written. The proposed records are:
 
 | Record | Purpose | Key invariant |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ Names are frozen during Phase 154 before a migration is written. The proposed re
 `pos_transactions.cashier_id` remains the immutable reporting snapshot. `pos_terminal_shifts`
 remains the register-level X/Z and cash-reconciliation record. Existing
 `pos_terminal_shifts.cashier_id` data is preserved for compatibility and is formally assigned an
-opening-cashier meaning by the Phase 154 contract; it is not silently repurposed.
+opening-cashier meaning by the Phase 156 contract; it is not silently repurposed.
 
 ## Phase Isolation Matrix
 
@@ -122,7 +122,7 @@ opening-cashier meaning by the Phase 154 contract; it is not silently repurposed
 | 160 | Release hardening and controlled rollout | New product scope | Full scenario, security, migration, regression, and rollout gates pass |
 | 161 | Admin attendance configuration | Attendance lifecycle or reporting changes | Safe per-location activation, audit, UI, and regression gates pass |
 
-## Phase 154 - Governance and Contract Freeze
+## Phase 156 - Governance and Contract Freeze
 
 ### Objective
 
@@ -140,7 +140,7 @@ Approve the new ownership model before any schema or application behavior change
   concurrency behavior, historical compatibility, and the single default-off rollout flag.
 - Freeze authorization for sale, payment, refund, void, no-sale/drawer-open, parked-sale handoff,
   online-order cash collection, X report, handoff count, and Z close.
-- Approve the scenario and negative-test matrix used by Phases 155-160.
+- Approve the scenario and negative-test matrix used by Phases 157-162.
 
 ### Excluded Work
 
@@ -156,7 +156,7 @@ Approve the new ownership model before any schema or application behavior change
 - The 7:00 AM-10:00 PM target scenario and all prohibited transitions have approved expected data.
 - `npm run check:adr` and `npm run lint:docs` pass.
 
-## Phase 155 - Additive Persistence Foundation
+## Phase 157 - Additive Persistence Foundation
 
 ### Objective
 
@@ -171,7 +171,7 @@ Create the database and repository foundation without changing visible POS behav
 - Add models, repositories, serializers, tenant schema registration, schema parity checks, and
   indexes for current-operator and reporting lookups.
 - Backfill one compatibility operator-session history row for qualifying legacy open shifts only
-  if the Phase 154 contract permits it; never fabricate attendance history.
+  if the Phase 156 contract permits it; never fabricate attendance history.
 - Preserve all closed-shift and transaction history and make rollback behavior explicit.
 
 ### Excluded Work
@@ -187,7 +187,7 @@ Create the database and repository foundation without changing visible POS behav
 - Runtime schema registry and tenant schema parity checks include every new object and index.
 - Migration contains no destructive rewrite of historical cashier or shift ownership.
 
-## Phase 156 - Attendance and Break Lifecycle
+## Phase 158 - Attendance and Break Lifecycle
 
 ### Objective
 
@@ -209,7 +209,7 @@ Deliver accurate regular-duty, relief-duty, and break records independently of r
 - No cashier takeover, PIN authentication, register authorization change, transaction attribution,
   payroll calculation, schedule optimizer, or final attendance report.
 
-### Phase 156 Implementation Contract
+### Phase 158 Implementation Contract
 
 - Rollout is controlled by the tenant `system_settings` key
   `pos_cashier_attendance_lifecycle_v1`, whose value is `{ "enabled": true, "location_ids": [...] }`.
@@ -234,7 +234,7 @@ Deliver accurate regular-duty, relief-duty, and break records independently of r
 - Refresh and retry do not duplicate attendance or break records.
 - Existing POS terminal and checkout behavior remains unchanged.
 
-## Phase 157 - Secure Operator Takeover and Cash Custody
+## Phase 159 - Secure Operator Takeover and Cash Custody
 
 ### Objective
 
@@ -252,8 +252,8 @@ Allow an eligible cashier to take or return terminal control without closing the
   Time Out, terminal unpair, register close, account disable, or explicit takeover.
 - Add counted 3:00 PM custody handoff with expected-cash snapshot, actual count, variance, notes,
   and two-party acknowledgement. Record 12:00-1:00 as shared access without inventing a count.
-- Replace only the server authorization rules approved in Phase 154; keep the user-facing checkout
-  workflow unchanged until Phase 158. New takeover behavior remains inaccessible while the rollout
+- Replace only the server authorization rules approved in Phase 156; keep the user-facing checkout
+  workflow unchanged until Phase 160. New takeover behavior remains inaccessible while the rollout
   flag is disabled, and the legacy single-cashier path remains unchanged.
 
 ### Excluded Work
@@ -271,7 +271,7 @@ Allow an eligible cashier to take or return terminal control without closing the
   boundary.
 - Security, CSRF, cookie, rate-limit, revocation, and authorization tests pass.
 
-## Phase 158 - Checkout and POS Workflow Integration
+## Phase 160 - Checkout and POS Workflow Integration
 
 ### Objective
 
@@ -309,7 +309,7 @@ safe terminal workflow.
 - In-flight-operation, offline/retry, refresh, duplicate-click, and terminal-unpair tests pass.
 - Focused backend/frontend suites and all three production builds pass.
 
-## Phase 159 - Reporting and Reconciliation
+## Phase 161 - Reporting and Reconciliation
 
 ### Objective
 
@@ -324,7 +324,7 @@ Expose separate, reconcilable attendance, cashier-sales, register, and custody v
 - Add register timeline and handoff audit showing operator intervals, shared-drawer access, counted
   custody transfers, expected cash, actual cash, and variances.
 - Label historical rows without operator-session links and prevent false precision.
-- Add export and timezone/business-date behavior defined by Phase 154.
+- Add export and timezone/business-date behavior defined by Phase 156.
 
 ### Excluded Work
 
@@ -340,7 +340,7 @@ Expose separate, reconcilable attendance, cashier-sales, register, and custody v
 - Historical data is readable and clearly labeled where operator detail does not exist.
 - Permission, tenant/location, timezone, pagination, export, and performance tests pass.
 
-## Phase 160 - End-to-End Hardening and Controlled Rollout
+## Phase 162 - End-to-End Hardening and Controlled Rollout
 
 ### Objective
 
@@ -375,7 +375,7 @@ Prove the complete feature is safe to release and provide a reversible activatio
   activation is requested.
 - Ledger evidence links to test output, screenshots/traces, migration rehearsal, and rollout proof.
 
-## Phase 161 - Tenant-Admin Attendance Configuration
+## Phase 163 - Tenant-Admin Attendance Configuration
 
 ### Objective
 
@@ -416,7 +416,7 @@ active location from POS Setup without editing `system_settings` manually.
 - Frontend behavior, accessibility, desktop/tablet/mobile rendered checks, all three frontend
   production builds, architecture, compliance, and docs gates pass.
 
-## Phase 163 - Locked-Terminal Cashier Takeover Entry Point
+## Phase 165 - Locked-Terminal Cashier Takeover Entry Point
 
 ### Objective
 
@@ -493,29 +493,29 @@ The feature is complete only when all of the following are true:
 - `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
 - `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
 
-ADR 0065 contains affected binding handoff clauses, so Phase 154 requires a new
+ADR 0065 contains affected binding handoff clauses, so Phase 156 requires a new
 superseding-in-part ADR and tech-lead approval. ADR 0031 and ADR 0044 contain affected default or
 untagged behavior and require dated amendments. ADR 0026 continues to govern cookie and CSRF
 authority. No implementation phase may bypass these governance gates.
 
 ## Current State and Next Move
 
-- Current repository phase: Phase 163, `completed` on 2026-08-25.
-- Planned initiative: Phases 154-163; Phases 154-162 are `completed` and Phase 163 is the
+- Current repository phase: Phase 165, `completed` on 2026-08-25.
+- Planned initiative: Phases 156-165; Phases 156-164 are `completed` and Phase 165 is the
   approved locked-terminal cashier takeover entry point.
-- Current phase: Phase 163, Locked-Terminal Cashier Takeover Entry Point, completed after focused
+- Current phase: Phase 165, Locked-Terminal Cashier Takeover Entry Point, completed after focused
   and full shared-web-core tests, operator-authority API tests, all three production builds, and
   architecture checks passed. A signed-in two-cashier browser run remains an operational
   verification before tenant activation because the local browser had no authenticated second
   cashier session.
-- Phase 155 evidence includes the additive migration, tenant schema registry, model associations,
-  repository/serializer foundation, and focused persistence tests. Phase 156 evidence now includes
+- Phase 157 evidence includes the additive migration, tenant schema registry, model associations,
+  repository/serializer foundation, and focused persistence tests. Phase 158 evidence now includes
   the lifecycle implementation, migration rollback/re-apply, focused backend/frontend tests, and
   governance/build gates; operator takeover and reporting remain deferred.
-- Phase 157 implementation adds dedicated cashier PIN security state, revocable operator authority,
+- Phase 159 implementation adds dedicated cashier PIN security state, revocable operator authority,
   atomic takeover/return/shared-relief/counted-handoff use cases, CSRF-protected HttpOnly cookie
   transport, and revocation hooks for breaks, time out, terminal unpair, register close, and account
-  disable. Phase 158 now makes that active operator authoritative across checkout, payments,
+  disable. Phase 160 now makes that active operator authoritative across checkout, payments,
   parked sales, refunds, voids, online cash collection, and drawer mutations while retaining one
   register shift. The A/B/A/B database scenario, focused regressions, governance gates, and all
-  three production builds passed on 2026-08-25. Reporting remains deferred to Phase 159.
+  three production builds passed on 2026-08-25. Reporting remains deferred to Phase 161.

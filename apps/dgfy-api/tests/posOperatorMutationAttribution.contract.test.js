@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 const read = (relativePath) => fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 
-describe('Phase 158 POS operator mutation attribution contract', () => {
+describe('Phase 160 POS operator mutation attribution contract', () => {
     test('checkout derives cashier and operator session from server middleware', () => {
         const handlers = read('../src/modules/pos/controllers/posHandlers.js');
         const useCases = read('../src/modules/pos/usecases/posUseCases.js');

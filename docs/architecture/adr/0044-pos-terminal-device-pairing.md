@@ -47,7 +47,7 @@ Missing, expired, tampered, or invalidated pairing fails closed to the existing 
 
 ## Amendments
 
-### 2026-08-24: Pairing Is Not Cashier Takeover Authentication (Phase 154)
+### 2026-08-24: Pairing Is Not Cashier Takeover Authentication (Phase 156)
 
 - Pairing remains a device-binding signal only. It never authenticates a
   relief cashier, starts attendance, starts a break, opens a register shift, or
