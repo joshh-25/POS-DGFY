@@ -27,8 +27,10 @@ boxes rather than deleting them.
 
 When the current runtime has a valid local attribution session, the first content line under
 `## Summary` must be formatter output, for example `Opened by (Codex GPT-5.6 Terra, worker)`.
-Use `node scripts/ai-attribution.js format <runtime> <session-id> Opened <role>`. Do not guess a
-model, reuse another session's record, or write `unknown-AI`: if it emits no line, omit attribution.
+Use `node scripts/ai-attribution.js format <runtime> <session-id> Opened <role>`. The session ID
+isn't something to hunt for — Claude Code and Codex both print it, and the exact command to run,
+as plain-text context at session start (`docs/ai/AI_MODEL_ATTRIBUTION.md`). Do not guess a model,
+reuse another session's record, or write `unknown-AI`: if it emits no line, omit attribution.
 
 ## PR base branch
 
