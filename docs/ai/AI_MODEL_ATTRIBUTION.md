@@ -23,12 +23,14 @@ Known IDs use the utility's friendly map. A newly verified model remains its raw
 | --- | --- | --- |
 | Claude Code | `.claude/hooks/record-ai-attribution.js` SessionStart | `model` |
 | Codex | `.codex/hooks/session-start.js` SessionStart | `model` |
-| Antigravity | `.antigravity/hooks/record-ai-attribution.js` invocation | `modelName` |
+| Antigravity | `.antigravity/hooks/record-ai-attribution.js` invocation | `modelName` (best-effort; verify against a captured payload before enabling) |
 | OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.params` | live `providerID` / `model.id` |
-| Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | `model_id`, then `model`, from complete `stream-json` `init` |
+| Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | `model_id`, then `model`, from complete `stream-json` `init` (best-effort; verify before enabling) |
 
-Configure native session/invocation hooks to pipe their JSON to the named adapter. Use the Cursor
-wrapper with `cursor agent --output-format stream-json`; it ignores incomplete or ambiguous state.
+Claude Code is activated in `.claude/settings.json`. Configure the other native session/invocation
+hooks to pipe their JSON to the named adapter. Antigravity and Cursor remain research-first:
+capture and validate their payload shape before enabling them. The Cursor wrapper uses
+`cursor agent --output-format stream-json` and ignores incomplete or ambiguous state.
 
 Run `node scripts/ai-attribution.js format <runtime> <session-id> Opened worker` and place non-empty
 output first under `## Summary`. Replace `Opened` with `Review` or `Addressed` for the appropriate

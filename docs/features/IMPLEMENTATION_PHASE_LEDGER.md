@@ -9232,8 +9232,9 @@ Developer-experience attribution contract for AI-assisted pull requests and revi
 
 ### Acceptance and validation evidence
 
-- [x] Runtime payload extraction covers all five adapters, mapped and unmapped models, blank model
-  rejection, expired/stale evidence, and Cursor initialization ambiguity.
+- [x] Runtime payload extraction covers Claude Code, Codex, and OpenCode plus best-effort
+  Antigravity/Cursor adapters; mapped/unmapped models, blank rejection, expired/stale evidence,
+  and Cursor initialization ambiguity are covered.
 - [x] Versioned records are atomically stored only under Git metadata, scoped by runtime/session/
   worktree and rejected unless current worktree validation succeeds.
 - [x] PR/template and Worker, Reviewer, and Promoter instructions omit attribution when validation
@@ -9247,6 +9248,7 @@ Developer-experience attribution contract for AI-assisted pull requests and revi
 - `scripts/ai-attribution.test.js`
 - `docs/ai/AI_MODEL_ATTRIBUTION.md`
 - `.opencode/plugins/dgfy-ai-attribution.js`
+- `.claude/settings.json`
 
 ### Next eligible phase
 

@@ -5,7 +5,6 @@
 // session, resolved worktree, model, and expiry all agree.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
@@ -90,9 +89,12 @@ function formatTag(record, action, role) {
 }
 function main() {
   const [command, runtime, sessionId, action, role] = process.argv.slice(2);
-  const stdin = fs.readFileSync(0, 'utf8').trim();
   if (command === 'record') {
-    try { const record = writeRecord({ ...JSON.parse(stdin || '{}'), runtime }); if (record) process.stdout.write(JSON.stringify(record)); } catch { /* attribution must never block a session */ }
+    try {
+      const stdin = fs.readFileSync(0, 'utf8').trim();
+      const record = writeRecord({ ...JSON.parse(stdin || '{}'), runtime });
+      if (record) process.stdout.write(JSON.stringify(record));
+    } catch { /* attribution must never block a session */ }
     return;
   }
   if (command === 'format') {
