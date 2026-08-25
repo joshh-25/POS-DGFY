@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
+  isPosOperatorFeatureDisabledReason,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -131,6 +132,18 @@ describe('POS terminal shift entry decision', () => {
 
   it('accepts a valid scoped operator authority independent of the DGFY session identity', () => {
     expect(isPosOperatorAuthorityValid({ authorityValid: true })).toBe(true);
+  });
+
+  it('recognizes both the operator and attendance feature-disabled reason codes', () => {
+    expect(isPosOperatorFeatureDisabledReason('POS_OPERATOR_FEATURE_DISABLED')).toBe(true);
+    expect(isPosOperatorFeatureDisabledReason('POS_ATTENDANCE_FEATURE_DISABLED')).toBe(true);
+    expect(isPosOperatorFeatureDisabledReason(' POS_ATTENDANCE_FEATURE_DISABLED ')).toBe(true);
+  });
+
+  it('does not treat an unrelated or missing reason code as feature-disabled', () => {
+    expect(isPosOperatorFeatureDisabledReason('POS_OPERATOR_SCOPE_MISMATCH')).toBe(false);
+    expect(isPosOperatorFeatureDisabledReason('')).toBe(false);
+    expect(isPosOperatorFeatureDisabledReason(undefined)).toBe(false);
   });
 
   it('binds cashier lifecycle requests to the verified cashier session without refreshing as the DGFY account', () => {
