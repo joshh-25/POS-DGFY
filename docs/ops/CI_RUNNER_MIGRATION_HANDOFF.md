@@ -39,11 +39,11 @@ no compile step and are measurably *faster* on the small box, so `pr-checks.yml`
 `RUNNER_HEAVY_JSON`/`RUNNER_LIGHT_JSON` anchors were re-split accordingly: only
 `frontend-build-check` stays on `*runner_heavy` (→ `sieitz-lg`); `dgfy-api-build-check` and
 `dgfy-migration-runner-build-check` moved to `*runner_light` (→ `sieitz-runner`).
-`pr-quality-checks.yml`'s default is pinned to `sieitz-lg` on the merits (`dgfy-api-quality`: 2
+`promotion-quality-gate.yml`'s default is pinned to `sieitz-lg` on the merits (`dgfy-api-quality`: 2
 service containers, `--max-old-space-size=4096`, 45-min timeout; `frontend-quality`: 3 sequential
 vite builds + `playwright install chromium`, 35-min timeout — the two heaviest jobs in the repo).
 Everything else (deploy/publish path, `shared-changed-paths.yml`, PR build-check defaults) went to
-the generic `sieitz-runner` — see `pr-checks.yml`, `pr-quality-checks.yml`, and the other edited
+the generic `sieitz-runner` — see `pr-checks.yml`, `promotion-quality-gate.yml`, and the other edited
 workflow files' inline `#923` comments for the exact site-by-site reasoning.
 
 **Correction to a since-superseded framing:** #923's own issue body raised a concern that
@@ -207,14 +207,25 @@ forever. Bare `self-hosted` matches whichever runner is up, including
 The AVX warning that justified the pin (`vm-sieitzstaging`'s CPU lacks
 AVX-family instructions → `exit 132`/SIGILL loading `@napi-rs/canvas`, see
 `apps/dgfy-api/src/services/menuPdfRasterService.js`) does **not** apply to
-the active CI job set — those are buildx builds, Gradle, and git/bash, none
-of which load that addon. The one job that would (`quality-checks`) is no
-longer wired into `pr-checks.yml` at all (removed 2026-08-14, #416; was
-`if: false` there before that) — it's now only reachable by manually
-dispatching `pr-quality-checks.yml` from the Actions tab. **Re-check this
-before ever running `quality-checks`, manually or wired back in** — if it
-lands on `vm-sieitzstaging` it will need the label narrowed back to
-`sieitz-ubuntu-runner`, or the AVX-lacking runner excluded some other way.
+the active `pr-checks.yml` job set — those are buildx builds, Gradle, and
+git/bash, none of which load that addon.
+
+**This warning is no longer hypothetical as of #1018 (2026-08-25).** The one
+job that loads the addon (`dgfy-api-quality`, in the renamed
+`promotion-quality-gate.yml` — formerly `pr-quality-checks.yml`) was
+`workflow_dispatch`-only until #1018 and, as far as this doc's own history
+shows, was never actually run against `sieitz-lg` since the AVX gap was
+found — so the risk stayed latent. #1018 wires it to trigger *automatically*
+on every `to-staging/*`/`release/*` promotion PR, still pinned to
+`sieitz-lg`. Building that workflow surfaced a **confirmed, not hypothetical,
+guaranteed-red consequence**: `apps/dgfy-api/tests/menuPdfRasterService.test.js`'s
+capability-gating test hardcodes `expect(isPdfRasterizationSupported()).toBe(true)`
+— false on an AVX-less host, so it fails every run on `sieitz-lg`. Filed as
+#1035, not fixed by #1018 itself (out of that issue's scope — a CI-wiring
+change, not a test-logic change). Until #1035 lands, expect
+`promotion-quality-gate.yml`'s `dgfy-api-quality` job to be red on this one
+assertion on every real promotion PR — a known, tracked gap, not a mystery
+flake if someone hits it before #1035 is fixed.
 
 **The one-line switch-back claim in the 2026-08-01 section below is no
 longer accurate.** Beyond the `runner_labels_json` sites it documents, this

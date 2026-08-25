@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-25
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -121,22 +121,28 @@ legs.
 
 ## What actually gates a release into `main` today
 
-Everything in `pr-checks.yml`, same as any other PR:
+`pr-checks.yml`, same as any other PR into `develop`/`staging`/`main`:
 
 - `changes` — resolves which image builds the diff needs, and folds in three
   advisory checks (`continue-on-error: true`, visible but never blocking): PR
   title format, PR body sections, and the POS receipt version bump.
-- `quality-checks` — blocking API matrix/open-handle diagnostics, migration
-  smoke, required-index audit, frontend lint/F&B contract tests/builds, the
-  deterministic Storefront F&B Playwright contract, architecture guardrails,
-  governed-doc lint, compatibility seams, and diff hygiene. **Removed from
-  `pr-checks.yml` 2026-08-14 (#416)** — it had been permanently `if: false`
-  there since 2026-08-11 (#345), so this was dead wiring, not a live check.
-  The workflow itself (`pr-quality-checks.yml`) is untouched and still
-  `workflow_dispatch`-runnable by hand from the Actions tab.
 - `backend-build-check` / `frontend-build-check` — the actual Docker images
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
+
+**Plus, since #1018 (2026-08-25), `promotion-quality-gate.yml`** — the renamed
+former `pr-quality-checks.yml` — triggers automatically on its own, on any PR
+whose base/head matches a known promotion shape (`staging` ← `to-staging/*`,
+`main` ← `release/*`; its own `gate` job decides this, see the workflow's
+header comment). It is **not** a job inside `pr-checks.yml` and does not run
+on an ordinary feature PR into `develop` — see the "Amendments" entry below
+for why once per promotion, not per PR, is what makes this affordable at all.
+It carries the blocking API matrix/open-handle diagnostics, migration smoke,
+required-index audit, frontend lint/F&B contract tests/builds, the
+deterministic Storefront F&B Playwright contract, architecture guardrails,
+governed-doc lint, compatibility seams, and diff hygiene that used to be dead
+wiring here. `workflow_dispatch`/`workflow_call` remain for a manual full run
+against an arbitrary branch.
 
 The former `code-quality` job was removed because it was advisory. Phases 24
 and 25 restore the required API, frontend, and deterministic browser coverage
@@ -241,8 +247,8 @@ Applying that split to what this repo actually has:
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → staging` promotion | merge gate for the promotion PR, plus a **preflight sweep** | `npm run gate:release:local` (the 25-min test-matrix gate, per `docs/testing/release-go-no-go-checklist.md`) **and** a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices — see the protocol doc) for every `NOT-EXECUTED-*` declaration in the batch, reconciling each declaration's front matter via its own small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before the promotion branch is cut. `.agents/skills/promoter/SKILL.md` owns the executable form of this step | DEV (or STAGING) — not production |
-| `staging → main` | merge gate | `gate:release:local` on the release SHA, tenant-schema sync checked against **production** tenant databases, the go/no-go checklist's remaining non-technical blockers. **No `NOT-EXECUTED-*` declaration may reach this leg** — the promotion-time sweep above must already have cleared it | none beyond what's already required |
+| `develop → staging` promotion | merge gate for the promotion PR, plus a **preflight sweep** | `npm run gate:release:local` (the 25-min test-matrix gate, per `docs/testing/release-go-no-go-checklist.md`), the CI-side `promotion-quality-gate.yml` run triggered automatically by the `to-staging/*` PR itself (#1018), **and** a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices — see the protocol doc) for every `NOT-EXECUTED-*` declaration in the batch, reconciling each declaration's front matter via its own small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before the promotion branch is cut. `.agents/skills/promoter/SKILL.md` owns the executable form of this step | DEV (or STAGING) — not production |
+| `staging → main` | merge gate | `gate:release:local` on the release SHA, the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018), the tenant-schema report (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases, the go/no-go checklist's remaining non-technical blockers. **No `NOT-EXECUTED-*` declaration may reach this leg** — the promotion-time sweep above must already have cleared it | none beyond what's already required |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -259,3 +265,21 @@ This does not reopen the compliance-guardrail CI question from the "What actuall
 into `main` today" section above — `enforce_compliance_declarations` stays `false` in
 `pr-checks.yml`; this amendment adds a real preflight *sweep* at promotion time, it does not attempt
 to make the per-PR guardrail itself call the live endpoint.
+
+### 2026-08-25: Promotion-time CI quality gate (#1018)
+
+Resolves #927 ("where does `pr-quality-checks.yml` run in the promotion flow"). #1015/#1016 (this
+same epic's earlier phases, #1008) cut the backend test matrix from ~19.6min to ~2-4min and made
+`gate:release:local` instrumented/selectable — the cost that made a full test+lint+build pass too
+expensive to run automatically no longer holds. `pr-quality-checks.yml` is renamed
+`promotion-quality-gate.yml` and now triggers itself automatically on `to-staging/*` → `staging`
+and `release/*` → `main` PRs specifically — never on an ordinary `develop` PR, via its own `gate`
+job (mirrors `scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_PREFIX_BY_BASE`). This is a
+**complementary** addition to `gate:release:local`, not a replacement for it — deliberately, so this
+isn't ambiguous: `gate:release:local` is the promoter's own pre-flight, run *before* the promotion
+branch is even cut, on the promoter's own machine, fast to iterate on with `--only`/`--skip`; the
+CI run is the recorded, shareable evidence attached to the promotion PR itself once opened, visible
+in the Checks tab to anyone reviewing it without needing local/SSH access to reproduce it. Both are
+expected to run for every promotion; neither substitutes for the other. See the workflow's own
+header comment and `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section for the
+executable form.
