@@ -46,25 +46,33 @@ anything beyond dispatch access.
 
 ## Flow
 
+**Default, since #980/ADR 0074 (2026-08-25):**
+
 ```text
-feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main
+feature branch -> develop -> release/<label> -> main
 ```
 
 1. Feature branches PR into `develop`. Ordinary PR checks apply
    (`pr-checks.yml`).
-2. A **staging-candidate** branch — `to-staging/<label>`, e.g. `to-staging/2026-08-16` — is cut
-   fresh from `origin/develop` at the exact commit being promoted, whenever a batch of work is
-   ready to qualify together. It carries no new commits of its own; it exists only to be a PR
-   head. Cut it fresh each time, never reused — the same pattern as `release/<label>` below, not
-   a separate one.
-3. `to-staging/<label>` PRs into `staging`. Once its checks pass and it is merged, `staging`
-   reflects that commit.
-4. A **release candidate** branch — `release/<label>`, e.g.
-   `release/2026-07-30` — is cut from `staging` at the exact commit being
-   promoted. It carries no new commits of its own; it exists only to be a PR
-   head. Cut it fresh each time from `origin/staging`, never reused.
-5. `release/<label>` PRs into `main`. Once its checks pass and it is merged,
-   production is live at that commit.
+2. A **release candidate** branch — `release/<label>`, e.g. `release/2026-08-25` — is cut fresh from
+   `origin/develop` at the exact commit being promoted, whenever a batch of work is ready to ship.
+   It carries no new commits of its own; it exists only to be a PR head. Cut it fresh each time,
+   never reused.
+3. `release/<label>` PRs into `main`. Once its checks pass and it is merged, production is live at
+   that commit (once someone dispatches `deploy-main.yml` — see "The one fact that matters" above).
+
+**Optional, non-default: a `staging` soak first.** The three-stage flow this document described
+before 2026-08-25 still works and is not deleted — a promoter may still choose to cut
+`to-staging/<label>` fresh from `origin/develop`, PR it into `staging`, and only then cut
+`release/<label>` from `origin/staging` instead of `origin/develop`, before merging into `main`.
+Nothing requires this; it exists for a promoter who judges a specific batch risky enough to want a
+`staging` soak before it ships. See ADR 0074 for why this wasn't removed outright, and its Decision
+4 for the explicit statement that `staging` is refreshed on demand only — it is not kept
+automatically current, so treat it as possibly stale before relying on it for anything.
+
+```text
+feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main   (optional)
+```
 
 `release/*` and `to-staging/*` are both already in
 `.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes`, so neither kind of promotion
@@ -204,6 +212,10 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed
   on `staging` for several days before it was ported back to `develop` as
   part of this same change. Worth an audit of what else has diverged.
+- **Accepted, not solved (2026-08-25, ADR 0074):** with `staging` no longer part of the default
+  promotion path, it has no automatic anti-rot mechanism — it will drift stale between whatever
+  on-demand refreshes a promoter actually does. If `staging`'s accuracy ever needs to be guaranteed
+  rather than best-effort, that's new scope, not something this document or ADR 0074 already solves.
 
 ## Amendments
 
@@ -246,13 +258,15 @@ verification runs *after* a merge or a deploy, against whatever environment actu
 then, with a defined response if it fails — it is never a precondition on the merge that produced
 it.
 
-Applying that split to what this repo actually has:
+Applying that split to what this repo actually has — **updated 2026-08-25 (#980/ADR 0074) for the
+two-stage default; the original three-stage version of this table is preserved in the "2026-08-25:
+Retire staging..." amendment below for history**:
 
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → staging` promotion | merge gate for the promotion PR, plus a **preflight sweep** | `npm run gate:release:local` (the 25-min test-matrix gate, per `docs/testing/release-go-no-go-checklist.md`), the CI-side `promotion-quality-gate.yml` run triggered automatically by the `to-staging/*` PR itself (#1018), **and** a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices — see the protocol doc) for every `NOT-EXECUTED-*` declaration in the batch, reconciling each declaration's front matter via its own small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before the promotion branch is cut. `.agents/skills/promoter/SKILL.md` owns the executable form of this step | DEV (or STAGING) — not production |
-| `staging → main` | merge gate | `gate:release:local` on the release SHA, the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018), the tenant-schema report (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases, the go/no-go checklist's remaining non-technical blockers. **No `NOT-EXECUTED-*` declaration may reach this leg** — the promotion-time sweep above must already have cleared it | none beyond what's already required |
+| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018); a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut; **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too). Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | DEV (or STAGING) |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -287,3 +301,68 @@ in the Checks tab to anyone reviewing it without needing local/SSH access to rep
 expected to run for every promotion; neither substitutes for the other. See the workflow's own
 header comment and `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section for the
 executable form.
+
+### 2026-08-25: Retire `staging` from the default promotion path, and an expedited override (#980/#1007, ADR 0074)
+
+Full reasoning and the decision record: `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`.
+Summarized here as the executable consequence for this policy document.
+
+**What changed.** The default flow (see "Flow" above) drops from three stages to two:
+`feature → develop → release/<label> → main`. `release/<label>` is now cut from `origin/develop`,
+not `origin/staging`. The `staging` *environment* stays; the `staging` *branch*'s
+`to-staging/<label>` mechanism stays too, as a non-default option a promoter may still choose per
+batch — see "Flow" above. `staging` is refreshed on demand only (a manual fast-forward, not a PR);
+there is no automatic anti-rot mechanism, named as an accepted gap, not a solved one (ADR 0074
+Decision 4).
+
+**The original three-stage compliance ladder**, preserved here for history rather than deleted (it
+governed every promotion from 2026-08-22 through 2026-08-24):
+
+| Stage | Gate type | What ran | Environment needed |
+|---|---|---|---|
+| `develop → staging` promotion | merge gate + preflight sweep | `gate:release:local`, `promotion-quality-gate.yml` via `to-staging/*`, the live compliance preflight sweep | DEV (or STAGING) |
+| `staging → main` | merge gate | `gate:release:local` on the release SHA, `promotion-quality-gate.yml` via `release/*`, the production tenant-schema report | none beyond required |
+
+Both checks (preflight sweep, tenant-schema report) now land on the single `develop → main` leg —
+see the updated ladder table above.
+
+**#1007's expedited override.** `promoter` carries a second, narrow, phrase-gated exception to
+merge `main` — parallel to, and independent of, `incident-responder`'s existing override, mirroring
+its shape (phrase-gated, restated every invocation, logged before acting) but with its own trigger:
+a business-urgency "we critically need this shipped now" request from Pat, not necessarily a
+production incident. "Signed review," per #1007's own resolved reading, means an explicit,
+attributable, logged authorization — Pat's real-time phrase plus a comment on the promotion PR/issue
+naming who authorized it and why — not a revival of ADR 0030's cryptographic signing model.
+
+- **Skippable, only under this override, only on Pat's explicit real-time phrase given in the
+  moment (never a standing pre-authorization, never inferred from urgency alone):**
+  - `npm run gate:release:local` for the `develop → main` promotion PR.
+  - The live compliance preflight sweep (`NOT-EXECUTED-*` declarations may reach `main` when this
+    override is invoked — the only case where that's not itself a blocker).
+  - (The `staging` soak was already non-default per ADR 0074 — this override doesn't change that,
+    it's already skippable by default.)
+- **Never skippable, under this override or any other circumstance:**
+  - The production tenant-schema report (`tenant-schema-report.yml`, #1017) — this is the specific
+    control that would have caught the #860/#639-class crash-loop risk; ADR 0074 Decision 6.
+  - `AGENTS.md`'s Merge Safety hard stop (no `in_progress`/`queued` check, `mergeStateStatus: CLEAN`).
+  - The never-`--squash` rule.
+  - The `release/<label>` cut-from-`origin/develop` head-cut rule (the #426 incident this guards
+    against).
+- **Every invocation**, matching `incident-responder`'s own discipline exactly: (1) restate the
+  standing "gate:release:local and the preflight sweep are normally required" rule out loud before
+  acting, so it is visibly not being silently skipped; (2) post a comment on the promotion PR (or the
+  tracking issue if no PR exists yet) logging the override — timestamp, the phrase given, what's
+  being skipped — before the merge happens, not after.
+- **Retro-verification is part of "done," not a follow-up**, mirroring #860's own checklist for
+  PR #858: run the skipped `gate:release:local` against the merged SHA afterward and file/annotate
+  any real failures (a findings issue, not a revert); confirm the tenant-schema report (already run
+  pre-merge, since it's never skippable) stayed clean after `deploy-main.yml` actually ships it;
+  if `staging` is now more than a trivial number of commits behind, note it rather than silently
+  leaving it stale indefinitely.
+- **#495 (no rollback) and #639 (schema repair disarmed) are accepted standing risk for this
+  override too** — unchanged from ADR 0074's own Consequences: neither is a prerequisite, and
+  neither is made worse by this override specifically, since the tenant-schema report stays
+  mandatory regardless of what else is skipped.
+
+`.agents/skills/promoter/SKILL.md`'s own checkpoint table carries the executable form of this row —
+read it there for the actual procedure, not just this summary.
