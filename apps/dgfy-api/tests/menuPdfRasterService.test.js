@@ -60,7 +60,26 @@ const multiPagePdf = (pageCount) => {
     );
 };
 
-describe('menuPdfRasterService.rasterizePdfPages', () => {
+// #1018/#1035 (2026-08-25): the promotion-time CI gate (#1018, PR #1036) runs this suite
+// unattended on sieitz-lg (vm-sieitzstaging), whose CPU lacks the AVX-family instructions
+// @napi-rs/canvas's prebuilt Skia binary requires (see menuPdfRasterService.js's own header
+// comment). The render tests below, and the two capability-gating tests further down that also
+// exercise real rendering, previously assumed every host running this suite has AVX -- false on
+// that runner, and a hardcoded assertion made the newly-automatic promotion gate permanently red
+// (PR #1036 review, RF-1). CANVAS_SUPPORTED_ON_THIS_HOST asks the same question production code
+// asks at runtime (isPdfRasterizationSupported()'s own out-of-process probe, memoized), captured
+// once here so every host-dependent test below is gated on the real, current answer instead of an
+// assumption. On a host that can't load the addon, these show as Jest `skipped` -- a real,
+// visible signal distinct from `passed`/`failed`, not a masked failure.
+const CANVAS_SUPPORTED_ON_THIS_HOST = isPdfRasterizationSupported();
+
+(CANVAS_SUPPORTED_ON_THIS_HOST ? describe : describe.skip)('menuPdfRasterService.rasterizePdfPages', () => {
+    it('confirms this host can actually load the addon, guarding the describe.skip gate above', () => {
+        // Scoped inside the same condition this describe block is gated on: if this is ever
+        // false while running (i.e. describe.skip above didn't fire), the gate has a logic bug.
+        expect(isPdfRasterizationSupported()).toBe(true);
+    });
+
     it('renders every page of a document that fits under maxPages', async () => {
         const result = await rasterizePdfPages(multiPagePdf(3), { maxPages: 15 });
 
@@ -126,10 +145,17 @@ describe('menuPdfRasterService capability gating', () => {
         }
     });
 
-    it('reports rasterization as supported on a host whose CPU can load the addon', () => {
-        // Guards the probe itself: if this ever fails while the render tests
-        // above pass, the probe has become wrong rather than the host.
-        expect(isPdfRasterizationSupported()).toBe(true);
+    it('memoizes a consistent answer across repeated calls, regardless of host capability', () => {
+        // Host-independent by design (#1035) -- runs the same way whether this box has AVX or
+        // not. What must always hold is the memoization contract menuPdfRasterService.js documents
+        // (`_canvasSupported`, cached for the process lifetime): the probe doesn't re-run and
+        // doesn't flip its answer between calls. This replaces a prior version of this test that
+        // hardcoded `toBe(true)`, which was really an unstated assumption that every host running
+        // this suite has AVX -- see the CANVAS_SUPPORTED_ON_THIS_HOST-gated tests above and below
+        // for the actual host-capability coverage.
+        const first = isPdfRasterizationSupported();
+        const second = isPdfRasterizationSupported();
+        expect(second).toBe(first);
     });
 
     it('degrades to MenuRasterUnsupportedError instead of crashing when unsupported', async () => {
@@ -146,14 +172,19 @@ describe('menuPdfRasterService capability gating', () => {
             .rejects.toMatchObject({ code: 'PDF_RASTER_UNSUPPORTED' });
     });
 
-    it('reads the kill switch at call time, so flipping it back restores rendering', async () => {
-        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
-        expect(isPdfRasterizationSupported()).toBe(false);
+    // Gated like the render describe block above: "flipping the switch back on restores
+    // rendering" is only a meaningful assertion on a host that can render at all.
+    (CANVAS_SUPPORTED_ON_THIS_HOST ? it : it.skip)(
+        'reads the kill switch at call time, so flipping it back restores rendering',
+        async () => {
+            process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
+            expect(isPdfRasterizationSupported()).toBe(false);
 
-        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'true';
-        expect(isPdfRasterizationSupported()).toBe(true);
+            process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'true';
+            expect(isPdfRasterizationSupported()).toBe(true);
 
-        const result = await rasterizePdfPages(singlePagePdf(), { maxPages: 15 });
-        expect(result.buffers).toHaveLength(1);
-    });
+            const result = await rasterizePdfPages(singlePagePdf(), { maxPages: 15 });
+            expect(result.buffers).toHaveLength(1);
+        }
+    );
 });

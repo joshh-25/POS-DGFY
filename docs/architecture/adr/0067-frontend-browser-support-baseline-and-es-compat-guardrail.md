@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-25
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -110,10 +110,13 @@ therefore cannot run against the merged tree on every PR — only a build-time m
    `Pages/` and is covered there). Widening `npm run lint`'s scope is separate cleanup — those
    directories currently carry 27 pre-existing ESLint errors unrelated to this guardrail — and is not
    undertaken here. `[snapshot]`
-6. **Known gap, not solved by this ADR:** re-wiring `pr-quality-checks.yml` (and therefore `eslint`)
-   back into the automatic PR pipeline is out of scope — #416 removed it deliberately for GHA-minutes
-   reasons, and Layer 2 already provides the CI-enforced backstop this issue's acceptance criteria
-   asked for. `[snapshot]`
+6. **Gap closed 2026-08-25 (#1018), partially.** The former `pr-quality-checks.yml` (renamed
+   `promotion-quality-gate.yml`) is now automatically wired into the promotion flow — `to-staging/*`
+   into `staging`, `release/*` into `main` — once #1015/#1016 (#1008 Phase 1/2) made its ~14min cost
+   affordable. This is narrower than "back into the automatic PR pipeline": it still does not run on
+   an ordinary PR into `develop`, only on the two promotion-shaped PRs, so `eslint` coverage on a
+   `develop`-bound PR remains exactly what Layer 2's build-time scan already provided — this ADR's
+   original acceptance criteria are unaffected, not superseded. `[snapshot]`
 
 ## Consequences
 
@@ -135,7 +138,10 @@ therefore cannot run against the merged tree on every PR — only a build-time m
   auto-updating method list beats a hand-maintained one long-term, but neither plugin can reach
   `node_modules` or run in the one CI gate that actually executes on every PR today — it would have
   solved this ADR's clause 2's Layer 3 concern only, leaving clauses about `maplibre-gl` and the evil
-  merge vector unresolved. Revisit if/when `pr-quality-checks.yml` is re-wired into CI (clause 6).
+  merge vector unresolved. Partially revisited 2026-08-25 — `promotion-quality-gate.yml` (formerly
+  `pr-quality-checks.yml`) now runs on promotion PRs (clause 6) — but not on an ordinary `develop`
+  PR, so this alternative's core tradeoff (neither plugin runs in the one gate every PR hits) is
+  unchanged.
 - **`@vitejs/plugin-legacy`'s `modernPolyfills`** (via `core-js`) instead of a hand-written Layer 1:
   spec-exact and auto-maintained, but adds two new devDependencies (`@vitejs/plugin-legacy`,
   `terser`) and a larger entry chunk against `check:frontend-budgets`' existing ceilings, for five

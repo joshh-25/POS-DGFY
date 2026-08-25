@@ -219,7 +219,7 @@ export default function TerminalPageDialogLayer({ model }) {
                   {adminReauthUnlock
                     ? 'Admin Unlock'
                     : cashierTakeoverUnlock
-                      ? 'Cashier Takeover'
+                      ? 'Cashier Sign In'
                       : cashierResumeUnlock || signedInShiftResume
                       ? 'Resume Shift'
                       : terminalUnlockMode === 'relock'
@@ -230,7 +230,7 @@ export default function TerminalPageDialogLayer({ model }) {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierTakeoverUnlock
-                      ? 'Sign in as the incoming cashier and enter their POS cashier PIN. The existing register shift and opening cash remain unchanged.'
+                      ? 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
                       : cashierResumeUnlock
                       ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
                       : signedInShiftResume
@@ -288,11 +288,11 @@ export default function TerminalPageDialogLayer({ model }) {
                       Open shift owned by {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'the current cashier'}
                     </div>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-[#1A4E8D]">
-                      Attendance starts automatically when takeover succeeds. The incoming cashier must have no active break. A POS PIN is required; the shift and drawer are not closed.
+                      The shift owner resumes automatically. A different cashier enters their PIN and attendance starts automatically.
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-identifier" className="text-xs font-extrabold text-[#0F172A]">
-                        Incoming Cashier DGFY Email
+                        Cashier DGFY Email
                       </Label>
                       <Input
                         id="cashier-takeover-identifier"
@@ -322,7 +322,7 @@ export default function TerminalPageDialogLayer({ model }) {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-pin" className="text-xs font-extrabold text-[#0F172A]">
-                        POS Cashier PIN
+                        POS Cashier PIN <span className="font-semibold text-slate-500">(different cashier only)</span>
                       </Label>
                       <Input
                         id="cashier-takeover-pin"
@@ -333,7 +333,6 @@ export default function TerminalPageDialogLayer({ model }) {
                         onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))}
                         placeholder="4 to 12 digits"
                         disabled={submitting}
-                        required
                       />
                     </div>
                   </>
@@ -529,7 +528,7 @@ export default function TerminalPageDialogLayer({ model }) {
                     Back to Login
                   </Button>
                 )}
-                {cashierTakeoverUnlock && (
+                {cashierTakeoverUnlock && cashierResumeContext?.returnToResumeAllowed && (
                   <Button
                     type="button"
                     variant="outline"
@@ -558,14 +557,14 @@ export default function TerminalPageDialogLayer({ model }) {
                     ? (adminReauthUnlock
                       ? 'Checking admin...'
                       : cashierTakeoverUnlock
-                        ? 'Taking over register...'
+                        ? 'Signing in cashier...'
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resuming shift...'
                         : 'Opening shift...')
                     : (adminReauthUnlock
                       ? 'Unlock as Admin'
                       : cashierTakeoverUnlock
-                        ? 'Take over register'
+                        ? 'Continue to POS'
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resume Shift'
                         : terminalUnlockMode === 'relock'

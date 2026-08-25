@@ -225,6 +225,20 @@ describe('Phase 159 POS operator authority use cases', () => {
         expect(result.data.operator_user).toMatchObject({ user_id: 1, username: 'alice' });
     });
 
+    test('authorizes a valid scoped authority when its operator differs from the DGFY session identity', async () => {
+        const { useCases } = buildFixture();
+        const result = await useCases.authorizeMutation({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            operationKey: 'request-identity-mismatch-001',
+            operationType: 'POST /checkouts'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.operator_user).toMatchObject({ user_id: 1, username: 'alice' });
+    });
+
     test('keeps legacy mutations available when the rollout flag is disabled', async () => {
         const { useCases } = buildFixture({ featureEnabled: false });
         const result = await useCases.authorizeMutation({

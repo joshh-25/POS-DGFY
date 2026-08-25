@@ -199,6 +199,34 @@ describe('PosAttendancePanel', () => {
         expect(onBreakAndLock).toHaveBeenCalledTimes(1);
     });
 
+    it('refreshes compact attendance when opening a shift automatically starts attendance', async () => {
+        fetchCurrentPosCashierAttendance
+            .mockResolvedValueOnce({
+                feature: { enabled: true },
+                attendance_session: null,
+                active_break: null
+            })
+            .mockResolvedValueOnce({
+                feature: { enabled: true },
+                attendance_session: { duty_type: 'regular', started_at: '2026-08-24T04:00:00.000Z' },
+                active_break: null
+            });
+        const onBreakAndLock = vi.fn();
+        const { rerender } = render(
+            <PosAttendancePanel locationId={12} canView canOperate compact onBreakAndLock={onBreakAndLock} />
+        );
+
+        expect(await screen.findByText('Shift attendance will start when you open the shift')).toBeTruthy();
+
+        rerender(
+            <PosAttendancePanel locationId={12} shiftId={88} canView canOperate compact onBreakAndLock={onBreakAndLock} />
+        );
+
+        await waitFor(() => expect(fetchCurrentPosCashierAttendance).toHaveBeenCalledTimes(2));
+        expect(await screen.findByRole('button', { name: 'Break & Lock' })).toBeTruthy();
+        expect(screen.queryByText('Shift attendance will start when you open the shift')).toBeNull();
+    });
+
     it('keeps End Break reachable from the compact cashier status bar', async () => {
         fetchCurrentPosCashierAttendance.mockResolvedValueOnce({
             feature: { enabled: true },

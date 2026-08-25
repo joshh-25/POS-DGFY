@@ -14,7 +14,9 @@ module.exports = {
         '^@sieitzz/shared-constants/(.*)$': '<rootDir>/node_modules/@sieitzz/shared-constants/src/$1.js',
     },
     testTimeout: 30000,
-    verbose: true,
+    // Flipped from true (#1015): printing every one of ~3,800 test names through 78+ piped
+    // stdout buffers was pure overhead. A failure still prints its own name/error regardless.
+    verbose: false,
     openHandlesTimeout: 10000,
     roots: ['<rootDir>/tests'],
     testPathIgnorePatterns: ['/node_modules/', '\\.legacy\\.test\\.js$'],

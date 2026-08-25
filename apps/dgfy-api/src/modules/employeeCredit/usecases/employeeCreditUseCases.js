@@ -329,9 +329,10 @@ export const buildListEmployeeCreditCheckoutOptionsUseCase = ({ repository }) =>
     const search = String(query.search || '').trim();
     const limit = Math.min(100, Math.max(1, Number(query.limit || 50)));
     const locationId = query.location_id ? requirePositiveInt(query.location_id, 'location_id') : null;
+    const employeeId = query.employee_id ? requirePositiveInt(query.employee_id, 'employee_id') : null;
     const [employees, legacyAccounts] = await Promise.all([
-      repository.listCheckoutEmployees({ search, locationId, limit }),
-      repository.listLegacyCheckoutAccounts({ search, limit })
+      repository.listCheckoutEmployees({ search, locationId, employeeId, limit }),
+      employeeId ? Promise.resolve([]) : repository.listLegacyCheckoutAccounts({ search, limit })
     ]);
     const options = [
       ...employees.map(checkoutOptionFromDirectoryEmployee),

@@ -11,6 +11,7 @@ import {
   fetchPosTransactionById,
   fetchPosParkedSales,
   fetchCurrentTerminalShift,
+  fetchCurrentPosOperator,
   fetchCashierShiftHistory,
   fetchPosDayCloseReadiness,
   fetchTerminalTodayDashboard,
@@ -92,9 +93,12 @@ import {
 } from '../utils/terminalIdentity.js';
 import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
+  isPosOperatorAuthorityValid,
   resolveActiveShiftResumeDecision,
+  resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
-  resolveTerminalShiftEntryDecision
+  resolveTerminalShiftEntryDecision,
+  shouldRestorePosOperatorAuthority
 } from '../utils/terminalShiftEntryDecision.js';
 import {
   buildTenantSetupSearch,
@@ -569,6 +573,15 @@ export default function TerminalPage() {
     cashSummary: null,
     salesSummary: null
   });
+  const [operatorAuthorityState, setOperatorAuthorityState] = useState({
+    scopeKey: '',
+    loading: false,
+    required: false,
+    valid: true,
+    operatorUser: null,
+    errorMessage: ''
+  });
+  const operatorAuthorityRecoveryAttemptRef = useRef('');
   const [cashierHistoryState, setCashierHistoryState] = useState({
     loading: false,
     cashier: null,
@@ -600,6 +613,7 @@ export default function TerminalPage() {
     open: false,
     switchLocation: false,
     cashEvent: false,
+    summary: false,
     close: false,
     zReading: false,
     staleRecovery: false
@@ -1992,19 +2006,49 @@ export default function TerminalPage() {
     }
   }, [printZReading, refreshDayCloseReadiness, zReadingClosePin]);
 
-  const handleViewShiftSummary = useCallback(() => {
+  const handleViewShiftSummary = useCallback(async () => {
     if (!shiftState?.shift) {
       toast.error('Open a shift before viewing its sales summary.');
       return;
     }
-    setClosedShiftReportAutoPrint(false);
-    setClosedShiftReport({
-      shift: shiftState.shift,
-      cash_summary: shiftState.cashSummary || {},
-      sales_summary: shiftState.salesSummary || {}
-    });
-    setClosedShiftReportOpen(true);
-  }, [shiftState.cashSummary, shiftState.salesSummary, shiftState.shift]);
+    const terminalId = sanitizeTerminalId(activeTerminalId || shiftState.shift.terminal_id);
+    if (!terminalId) {
+      toast.error('Select a terminal before viewing its sales summary.');
+      return;
+    }
+
+    setShiftActionLoading((previous) => ({ ...previous, summary: true }));
+    try {
+      const shiftLocationId = Number(shiftState.shift.location_id || operatingLocationId);
+      const currentShiftResult = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        ...(Number.isInteger(shiftLocationId) && shiftLocationId > 0 ? { location_id: shiftLocationId } : {})
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (!currentShiftResult?.shift) {
+        toast.error('The active shift is no longer available. Refresh the Shift screen.');
+        return;
+      }
+      const freshShiftState = {
+        loading: false,
+        shift: currentShiftResult.shift,
+        cashSummary: currentShiftResult.cash_summary || null,
+        salesSummary: currentShiftResult.sales_summary || null
+      };
+      takeoverShiftContextRef.current = null;
+      setShiftState(freshShiftState);
+      setClosedShiftReportAutoPrint(false);
+      setClosedShiftReport({
+        shift: freshShiftState.shift,
+        cash_summary: freshShiftState.cashSummary || {},
+        sales_summary: freshShiftState.salesSummary || {}
+      });
+      setClosedShiftReportOpen(true);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to refresh the current shift summary. Try again.');
+    } finally {
+      setShiftActionLoading((previous) => ({ ...previous, summary: false }));
+    }
+  }, [activeTerminalId, operatingLocationId, shiftState.shift]);
 
   const handleViewCashierHistoryShift = useCallback((record) => {
     if (!record?.shift) {
@@ -2898,14 +2942,164 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
+  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  const operatorScopeKey = `${shiftState?.shift?.location_id || operatingLocationId || ''}:${sanitizeTerminalId(activeTerminalId)}:${activeShiftId || ''}`;
+  const operatorAuthorityPending = Boolean(activeShiftId)
+    && (operatorAuthorityState.scopeKey !== operatorScopeKey || operatorAuthorityState.loading);
+  const operatorAuthorityValid = isPosOperatorAuthorityValid({ authorityValid: operatorAuthorityState.valid });
+  const checkoutOperatorLocked = Boolean(activeShiftId)
+    && (operatorAuthorityPending || (operatorAuthorityState.required && !operatorAuthorityValid));
+  const activeShiftOwnerLabel = String(
+    operatorAuthorityState.operatorUser?.username
+    || operatorAuthorityState.operatorUser?.email
+    || shiftState?.shift?.cashier?.username
+    || shiftState?.shift?.cashier?.email
+    || shiftState?.shift?.cashier_name
+    || 'the current cashier'
+  ).trim();
+
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
+    if (checkoutOperatorLocked) {
+      return operatorAuthorityPending
+        ? 'Verifying the active cashier for this register.'
+        : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`;
+    }
     return '';
-  }, [canTransactPos, locked, shiftState.shift]);
+  }, [activeShiftOwnerLabel, canTransactPos, checkoutOperatorLocked, locked, operatorAuthorityPending, shiftState.shift]);
 
-  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  useEffect(() => {
+    let cancelled = false;
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const locationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
+    const shiftId = Number(activeShiftId || 0);
+    const scopeKey = `${locationId || ''}:${terminalId}:${shiftId || ''}`;
+
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0 || !Number.isInteger(shiftId) || shiftId <= 0) {
+      setOperatorAuthorityState({
+        scopeKey,
+        loading: false,
+        required: false,
+        valid: true,
+        operatorUser: null,
+        errorMessage: ''
+      });
+      return undefined;
+    }
+
+    if (locked || !isOnline || !apiReachable) {
+      setOperatorAuthorityState((previous) => {
+        if (!locked && previous.scopeKey === scopeKey && !previous.loading) {
+          return previous;
+        }
+        return {
+          scopeKey,
+          loading: false,
+          required: true,
+          valid: false,
+          operatorUser: null,
+          errorMessage: locked ? '' : 'Reconnect to verify the active cashier.'
+        };
+      });
+      return undefined;
+    }
+
+    setOperatorAuthorityState((previous) => ({
+      ...previous,
+      scopeKey,
+      loading: true,
+      required: true,
+      valid: false,
+      errorMessage: ''
+    }));
+    const authorityParams = {
+      terminal_id: terminalId,
+      location_id: locationId,
+      shift_id: shiftId
+    };
+    const recoveryKey = `${scopeKey}:${Number(terminalUser?.user_id || 0)}`;
+
+    const resolveAuthority = async () => {
+      let payload = null;
+      let initialError = null;
+      try {
+        payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch (error) {
+        initialError = error;
+      }
+
+      const reasonCode = String(
+        initialError?.response?.data?.details?.reason_code
+        || initialError?.response?.data?.error?.details?.reason_code
+        || initialError?.response?.data?.error_code
+        || ''
+      ).trim();
+      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
+      const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
+      const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
+        authorityValid: payload?.authority_valid === true,
+        operatorUserId: payload?.operator_user?.user_id,
+        authenticatedUserId: terminalUser?.user_id,
+        alreadyAttempted
+      });
+
+      if (shouldRecover) {
+        operatorAuthorityRecoveryAttemptRef.current = recoveryKey;
+        try {
+          await resumePosCashier({
+            idempotency_key: createIdempotencyKey('pos-operator-authority-recovery'),
+            ...authorityParams
+          }, SUPPRESS_GLOBAL_ERROR_TOAST);
+          payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+          initialError = null;
+        } catch (recoveryError) {
+          initialError = recoveryError;
+        }
+      }
+
+      if (cancelled) return;
+      if (featureDisabled) {
+        setOperatorAuthorityState({
+          scopeKey,
+          loading: false,
+          required: false,
+          valid: true,
+          operatorUser: null,
+          errorMessage: ''
+        });
+        return;
+      }
+
+      setOperatorAuthorityState({
+        scopeKey,
+        loading: false,
+        required: true,
+        valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
+        operatorUser: payload?.operator_user || null,
+        errorMessage: initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : '')
+      });
+    };
+
+    void resolveAuthority();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShiftId, activeTerminalId, apiReachable, isOnline, locked, operatingLocationId, shiftState?.shift?.location_id, terminalUser?.user_id]);
+
+  const handleOperatorAuthorityChange = useCallback((payload) => {
+    setOperatorAuthorityState({
+      scopeKey: operatorScopeKey,
+      loading: false,
+      required: true,
+      valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
+      operatorUser: payload?.operator_user || null,
+      errorMessage: ''
+    });
+  }, [operatorScopeKey, terminalUser?.user_id]);
+
   const companySwitchBlockedReason = activeShiftId
     ? 'Close the active shift before switching companies.'
     : '';
@@ -3746,8 +3940,6 @@ export default function TerminalPage() {
         return;
       }
 
-      activateDgfyTenantSession(posSession);
-      setTerminalUser(cashierUser);
       await resumePosCashier({
         idempotency_key: createIdempotencyKey('pos-break-resume'),
         terminal_id: terminalId,
@@ -3771,12 +3963,8 @@ export default function TerminalPage() {
     const password = String(cashierTakeoverForm.password || '');
     const pin = String(cashierTakeoverForm.pin || '').trim();
 
-    if (!identifier || !password || !pin) {
-      toast.error('Cashier email, password, and POS cashier PIN are required to take over this register.');
-      return;
-    }
-    if (!/^[0-9]{4,12}$/.test(pin)) {
-      toast.error('POS cashier PIN must contain 4 to 12 digits.');
+    if (!identifier || !password) {
+      toast.error('Cashier email and password are required to continue.');
       return;
     }
     if (!cashierResumeContext?.shiftId) {
@@ -3843,8 +4031,15 @@ export default function TerminalPage() {
         return;
       }
 
-      activateDgfyTenantSession(posSession);
-      setTerminalUser(cashierUser);
+      const entryMode = resolveCashierRegisterEntryMode({
+        shiftCashierId: cashierResumeContext.cashierId,
+        authenticatedCashierId: cashierUser.user_id
+      });
+      if (entryMode === 'takeover' && !/^[0-9]{4,12}$/.test(pin)) {
+        toast.error('A different cashier must enter their 4 to 12 digit POS cashier PIN.');
+        return;
+      }
+
       const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {
         shift: shiftState?.shift || null,
         shiftState: {
@@ -3857,19 +4052,30 @@ export default function TerminalPage() {
         },
         locationId
       };
-      await takeOverPosRegister({
-        idempotency_key: createIdempotencyKey('pos-cashier-takeover'),
-        user_id: cashierUser.user_id,
-        pin,
-        terminal_id: terminalId,
-        location_id: locationId,
-        shift_id: shiftId
-      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (entryMode === 'resume') {
+        await resumePosCashier({
+          idempotency_key: createIdempotencyKey('pos-cashier-resume'),
+          terminal_id: terminalId,
+          location_id: locationId,
+          shift_id: shiftId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } else {
+        await takeOverPosRegister({
+          idempotency_key: createIdempotencyKey('pos-cashier-takeover'),
+          user_id: cashierUser.user_id,
+          pin,
+          terminal_id: terminalId,
+          location_id: locationId,
+          shift_id: shiftId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      }
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: locationId,
         preserveShiftContext: preservedShiftContext
       });
-      toast.success('Cashier verified. Register takeover completed.');
+      toast.success(entryMode === 'resume'
+        ? 'Cashier verified. Shift resumed.'
+        : 'Cashier verified. Register takeover completed.');
     } catch (error) {
       const message = error?.response?.data?.message
         || error?.response?.data?.error?.message
@@ -3891,8 +4097,53 @@ export default function TerminalPage() {
   const handleOpenCashierTakeover = () => {
     setUnlockFailure(null);
     setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+    setCashierResumeContext((previous) => ({ ...(previous || {}), returnToResumeAllowed: true }));
     setTerminalUnlockMode('cashier_takeover');
   };
+
+  const handleCashierSignIn = useCallback(() => {
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const locationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
+    const shiftId = Number(activeShiftId || 0);
+    const activeOperator = operatorAuthorityState.operatorUser;
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0 || !Number.isInteger(shiftId) || shiftId <= 0) {
+      toast.error('The active register shift is unavailable. Refresh POS and try again.');
+      return;
+    }
+
+    setUnlockFailure(null);
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+    setCashierResumeContext({
+      shiftId,
+      cashierId: Number(activeOperator?.user_id || shiftState?.shift?.cashier_id || 0) || null,
+      cashierEmail: String(activeOperator?.email || shiftState?.shift?.cashier?.email || '').trim(),
+      cashierUsername: String(activeOperator?.username || shiftState?.shift?.cashier?.username || shiftState?.shift?.cashier_name || '').trim(),
+      terminalId,
+      locationId,
+      tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
+      companyToken: String(getCompanyToken() || '').trim(),
+      returnToResumeAllowed: false,
+      shiftSnapshot: {
+        shift: shiftState?.shift || null,
+        shiftState: {
+          cashSummary: shiftState?.cashSummary || null,
+          salesSummary: shiftState?.salesSummary || null
+        },
+        todayDashboard: {
+          businessDate: todayDashboard?.businessDate || null,
+          salesSummary: todayDashboard?.salesSummary || null
+        },
+        locationId
+      }
+    });
+    setStoredTerminalLock(true);
+    setStoredTerminalLockReason('terminal_reunlock');
+    setLocked(true);
+    setDrawerOpen(false);
+    setTerminalUnlockRequired(false);
+    setTerminalUnlockMode('cashier_takeover');
+    setTerminalUnlockModalOpen(true);
+  }, [activeShiftId, activeTerminalId, cashierUnlockSession?.tenantId, formData.dgfyTenantId, operatingLocationId, operatorAuthorityState.operatorUser, shiftState, terminalUser?.company?.id, todayDashboard]);
 
   const handleBackToCashierResume = () => {
     setUnlockFailure(null);
@@ -4232,7 +4483,8 @@ export default function TerminalPage() {
     const hasOpenShift = Boolean(activeShiftId) && !forceLogin;
     const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;
     const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
-    const activeShiftCashierId = Number(shiftState?.shift?.cashier_id || terminalUser?.user_id || 0);
+    const activeOperator = operatorAuthorityState.operatorUser;
+    const activeShiftCashierId = Number(activeOperator?.user_id || shiftState?.shift?.cashier_id || terminalUser?.user_id || 0);
     const activeShiftLocationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
     const activeCompanyToken = String(getCompanyToken() || '').trim();
     const activeDgfyToken = String(getStoredDgfyToken() || '').trim();
@@ -4335,8 +4587,8 @@ export default function TerminalPage() {
       setCashierResumeContext({
         shiftId: activeShiftId,
         cashierId: Number.isInteger(activeShiftCashierId) && activeShiftCashierId > 0 ? activeShiftCashierId : null,
-        cashierEmail: String(terminalUser?.email || '').trim(),
-        cashierUsername: String(terminalUser?.username || '').trim(),
+        cashierEmail: String(activeOperator?.email || terminalUser?.email || '').trim(),
+        cashierUsername: String(activeOperator?.username || terminalUser?.username || '').trim(),
         terminalId: selectedTerminalId,
         locationId: Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 ? activeShiftLocationId : null,
         tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
@@ -5358,6 +5610,7 @@ export default function TerminalPage() {
   }, [incomingOrderDetail, isOnline, printOnlineOrderReceiptById]);
 
   const handleCheckoutCompleted = useCallback(async (completedTransaction = null) => {
+    takeoverShiftContextRef.current = null;
     await refreshOperationalContext();
     setReportRefreshKey((previous) => previous + 1);
     if (String(completedTransaction?.payment_type || '').trim().toLowerCase() === 'employee_credit') {
@@ -6094,6 +6347,11 @@ function PosRestorationLoadingScreen() {
               : 'settings_profile'
           }
           handleLock={handleLock}
+          handleCashierSignIn={handleCashierSignIn}
+          checkoutOperatorLocked={checkoutOperatorLocked}
+          checkoutOperatorLoading={operatorAuthorityPending}
+          activeShiftOwnerLabel={activeShiftOwnerLabel}
+          onOperatorAuthorityChange={handleOperatorAuthorityChange}
           setDrawerOpen={setDrawerOpen}
           effectiveSidebarCollapsed={effectiveSidebarCollapsed}
           isCheckoutWorkspaceMode={isCheckoutWorkspaceMode}

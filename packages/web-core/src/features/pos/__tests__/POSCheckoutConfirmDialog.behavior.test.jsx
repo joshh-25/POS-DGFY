@@ -1,24 +1,42 @@
 /** @vitest-environment jsdom */
 
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSCheckoutConfirmDialog } from '../components/POSCheckoutConfirmDialog.jsx';
+import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
+
+vi.mock('../../../utils/iminRuntimeFeedback.js', () => ({
+    isIminWrapperRuntime: vi.fn(() => false)
+}));
 
 vi.mock('@/components/ui/dialog', () => ({
-    Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
+    Dialog: ({ open, overlayClassName, children }) => (open ? <div data-testid="checkout-dialog-root" data-overlay-class={overlayClassName || ''}>{children}</div> : null),
     DialogContent: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogFooter: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogHeader: ({ children, ...props }) => <div {...props}>{children}</div>,
     DialogTitle: ({ children, ...props }) => <h2 {...props}>{children}</h2>
 }));
 
+beforeEach(() => {
+    vi.clearAllMocks();
+    isIminWrapperRuntime.mockReturnValue(false);
+});
+
+afterEach(cleanup);
+
 vi.mock('../components/PosCheckoutDetailsSlot.jsx', () => ({
     PosCheckoutDetailsSlot: ({ paymentTypeField }) => <div>{paymentTypeField}</div>
 }));
 
 vi.mock('../components/EmployeeCreditPaymentPanel.jsx', () => ({
-    default: () => <div>Employee credit payment</div>
+    default: ({ preferredEmployeeId, prefillBlockedReason }) => (
+        <div
+            data-testid="employee-credit-payment-panel"
+            data-preferred-employee-id={preferredEmployeeId || ''}
+            data-prefill-blocked-reason={prefillBlockedReason || ''}
+        >Employee credit payment</div>
+    )
 }));
 
 const createViewModel = (overrides = {}) => ({
@@ -63,6 +81,49 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('passes the saved item-discount employee to Employee Credit and blocks ambiguous matches', async () => {
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            isEmployeeCreditPayment: true,
+            paymentType: 'employee_credit',
+            safeCart: [{
+                item_id: 7,
+                item_discount: { discount_type: 'employee', employee_directory_id: 44 }
+            }]
+        })} />);
+
+        const paymentPanel = await screen.findByTestId('employee-credit-payment-panel');
+        expect(paymentPanel.getAttribute('data-preferred-employee-id')).toBe('44');
+        expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toBe('');
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            isEmployeeCreditPayment: true,
+            paymentType: 'employee_credit',
+            safeCart: [
+                { item_id: 7, item_discount: { discount_type: 'employee', employee_directory_id: 44 } },
+                { item_id: 8, item_discount: { discount_type: 'employee', employee_directory_id: 45 } }
+            ]
+        })} />);
+
+        expect(paymentPanel.getAttribute('data-preferred-employee-id')).toBe('');
+        expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toContain('Different employees');
+    });
+
+    it('disables backdrop blur only inside the iMin wrapper', () => {
+        const { unmount } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('');
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
+
+        unmount();
+        isIminWrapperRuntime.mockReturnValue(true);
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('backdrop-blur-none');
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(2);
+    });
+
     it('keeps keystrokes local and confirms with the validated payment snapshot', async () => {
         const viewModel = createViewModel();
         let terminalRenderCount = 0;
@@ -87,11 +148,13 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(terminalRenderCount).toBe(1);
         expect(viewModel.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
         expect(viewModel.setCustomerPaymentAmountAutoFilled).not.toHaveBeenCalled();
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.change(paymentInput, { target: { value: '150' } });
         expect(confirmButton.disabled).toBe(false);
         expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
         expect(terminalRenderCount).toBe(1);
+        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.click(confirmButton);
 
@@ -100,5 +163,20 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
             customerPaymentChange: 50,
             isCustomerPaymentSufficient: true
         });
+    });
+
+    it('uses the payment method color on the selector and payment summary', () => {
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByLabelText('Payment Type').className).toContain('bg-amber-100');
+        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('Cash').className).toContain('text-amber-950');
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            paymentType: 'gcash'
+        })} />);
+
+        expect(screen.getByLabelText('Payment Type').className).toContain('bg-blue-100');
+        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('GCash').className).toContain('text-blue-950');
     });
 });

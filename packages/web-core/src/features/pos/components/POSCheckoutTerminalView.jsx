@@ -183,6 +183,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentViewMode,
         discountApplying,
         discountApproversLoading,
+        discountEmployeesLoading,
         discountDraft,
         discountModalOpen,
         discountPreviewTotals,
@@ -304,6 +305,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         safeCart,
         safeCatalog,
         safeDiscountApprovers,
+        safeDiscountEmployees,
         safeEligibleDiscountItemIds,
         safeEligibleDiscountItems,
         saveItemOptions,
@@ -1856,14 +1858,37 @@ return (
                                         <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
                                         <div className="relative">
                                             <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
+                                            <select
+                                                aria-label="Employee Name"
+                                                value={discountDraft.employee_directory_id || ''}
+                                                disabled={discountEmployeesLoading}
+                                                onChange={(event) => {
+                                                    const selected = safeDiscountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
+                                                    setDiscountDraft((previous) => ({
+                                                        ...previous,
+                                                        employee_directory_id: selected ? String(selected.employee_id) : '',
+                                                        employee_name: selected?.full_name || '',
+                                                        employee_id: selected?.employee_code || ''
+                                                    }));
+                                                }}
+                                                className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
+                                            >
+                                                <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
+                                                {safeDiscountEmployees.map((employee) => (
+                                                    <option key={employee.employee_id} value={employee.employee_id}>
+                                                        {employee.full_name} ({employee.employee_code} · {employee.location_name})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                         </div>
+                                        {!discountEmployeesLoading && safeDiscountEmployees.length === 0 && <p className="mt-1 text-xs font-medium text-amber-700">No active registered employees are available.</p>}
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID <span className="font-medium text-slate-400">(optional)</span></label>
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID</label>
                                         <div className="relative">
                                             <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
+                                            <Input readOnly className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-xs font-medium" placeholder="Auto-filled" value={discountDraft.employee_id} />
                                         </div>
                                     </div>
                                 </div>
@@ -2238,6 +2263,8 @@ return (
                         globalDiscount={itemOptionsGlobalDiscount}
                         discountApprovers={safeDiscountApprovers}
                         discountApproversLoading={discountApproversLoading}
+                        discountEmployees={safeDiscountEmployees}
+                        discountEmployeesLoading={discountEmployeesLoading}
                         defaultDiscountApprover={activeShiftCashierApprover}
                         onClose={() => setItemOptionsLineKey(null)}
                         onSave={saveItemOptions}

@@ -84,7 +84,7 @@
     "apps/dgfy-web/tests/e2e/storefront/.gitkeep"
   ],
   "consumerPathPatterns": [
-    "^\\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|deploy|deploy-main|pr-frontend-build-checks|pr-checks|pr-quality-checks)\\.yml$",
+    "^\\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|deploy|deploy-main|pr-frontend-build-checks|pr-checks|promotion-quality-gate)\\.yml$",
     "^infrastructure/docker/",
     "^scripts/deploy\\.sh$",
     "^scripts/(audit-dependencies|check-compliance-impact|check-batch-inventory|check-merge-adoption-required|check-merge-adoption|check-frontend-budgets|check-frontend-asset-parity|gate-release-local|integrate-prs|lint-docs|run-fnb-readiness-gate|smoke-storefront-delivery-map|record-frontend-build-manifest)\\.(js|cjs)$",

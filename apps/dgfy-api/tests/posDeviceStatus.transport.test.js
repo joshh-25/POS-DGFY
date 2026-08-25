@@ -10,6 +10,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: jest.fn(),
     scanPosBarcodeUseCase: jest.fn(),
     checkoutPosUseCase: jest.fn(),
+    listPosDiscountEmployeesUseCase: jest.fn(),
     listPosDiscountApproversUseCase: jest.fn(),
     verifyPosDiscountApprovalUseCase: jest.fn(),
     listPosTransactionsUseCase: jest.fn(),

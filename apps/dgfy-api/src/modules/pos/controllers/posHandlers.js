@@ -5,6 +5,7 @@ import {
     listPosCatalogUseCase,
     scanPosBarcodeUseCase,
     checkoutPosUseCase,
+    listPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase,
     verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
@@ -506,6 +507,19 @@ export const endOperatorSession = operatorMutationHandler(endPosOperatorSessionU
 export const listDiscountApprovers = async (req, res, next) => {
     try {
         const result = await listPosDiscountApproversUseCase();
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listDiscountEmployees = async (req, res, next) => {
+    try {
+        const result = await listPosDiscountEmployeesUseCase();
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
@@ -2614,6 +2628,7 @@ export default {
     getAttendanceConfig,
     updateAttendanceConfig,
     listDiscountApprovers,
+    listDiscountEmployees,
     verifyDiscountApproval,
     requireRegisteredTerminal,
     createSetupCashier,

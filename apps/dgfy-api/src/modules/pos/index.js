@@ -33,6 +33,7 @@ import {
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
+    buildListPosDiscountEmployeesUseCase,
     buildListPosDiscountApproversUseCase,
     buildVerifyPosDiscountApprovalUseCase,
     buildListPosTransactionsUseCase,
@@ -164,6 +165,7 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     completeClaimedPosParkedSaleUseCase
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
+export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({ posRepository });

@@ -13,6 +13,74 @@ export const SPLIT_PAYMENT_METHOD_LABELS = {
     qrph: 'QR Ph'
 };
 
+// Payment colors are shared by the checkout summaries so a tender keeps the
+// same visual identity when it appears in the single-payment or split-payment
+// flow. Labels remain visible because color is an aid, not the only identifier.
+export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
+    cash: Object.freeze({
+        selectClassName: 'border-amber-400 bg-amber-100 text-amber-950',
+        rowClassName: 'border-amber-300 bg-amber-100',
+        badgeClassName: 'border-amber-300 bg-amber-200 text-amber-950',
+        dotClassName: 'bg-amber-700',
+        amountClassName: 'text-amber-900'
+    }),
+    gcash: Object.freeze({
+        selectClassName: 'border-blue-400 bg-blue-100 text-blue-950',
+        rowClassName: 'border-blue-300 bg-blue-100',
+        badgeClassName: 'border-blue-300 bg-blue-200 text-blue-950',
+        dotClassName: 'bg-blue-800',
+        amountClassName: 'text-blue-950'
+    }),
+    maya: Object.freeze({
+        selectClassName: 'border-emerald-400 bg-emerald-100 text-emerald-950',
+        rowClassName: 'border-emerald-300 bg-emerald-100',
+        badgeClassName: 'border-emerald-300 bg-emerald-200 text-emerald-950',
+        dotClassName: 'bg-emerald-800',
+        amountClassName: 'text-emerald-950'
+    }),
+    card: Object.freeze({
+        selectClassName: 'border-[#A66A45] bg-[#E8D2BF] text-[#4A2C1A]',
+        rowClassName: 'border-[#B9825A] bg-[#E8D2BF]',
+        badgeClassName: 'border-[#A66A45] bg-[#D7B191] text-[#4A2C1A]',
+        dotClassName: 'bg-[#6B3F24]',
+        amountClassName: 'text-[#4A2C1A]'
+    }),
+    // Bank Transfer uses a dark indigo family, distinct from Employee Credit's navy.
+    bank_transfer: Object.freeze({
+        selectClassName: 'border-[#7C3AED] bg-[#EDE9FE] text-[#3B0764]',
+        rowClassName: 'border-[#8B5CF6] bg-[#EDE9FE]',
+        badgeClassName: 'border-[#8B5CF6] bg-[#DDD6FE] text-[#4C1D95]',
+        dotClassName: 'bg-[#6D28D9]',
+        amountClassName: 'text-[#4C1D95]'
+    }),
+    employee_credit: Object.freeze({
+        selectClassName: 'border-[#1A4E8D] bg-[#DBEAFE] text-[#0B2E59]',
+        rowClassName: 'border-[#6F95BF] bg-[#DBEAFE]',
+        badgeClassName: 'border-[#6F95BF] bg-[#BFDBFE] text-[#0B2E59]',
+        dotClassName: 'bg-[#1A4E8D]',
+        amountClassName: 'text-[#0B2E59]'
+    }),
+    qrph: Object.freeze({
+        selectClassName: 'border-violet-400 bg-violet-100 text-violet-950',
+        rowClassName: 'border-violet-300 bg-violet-100',
+        badgeClassName: 'border-violet-300 bg-violet-200 text-violet-950',
+        dotClassName: 'bg-violet-800',
+        amountClassName: 'text-violet-950'
+    }),
+    default: Object.freeze({
+        selectClassName: 'border-slate-300 bg-slate-50 text-slate-900',
+        rowClassName: 'border-slate-200 bg-slate-50/70',
+        badgeClassName: 'border-slate-200 bg-slate-100 text-slate-700',
+        dotClassName: 'bg-slate-500',
+        amountClassName: 'text-slate-800'
+    })
+});
+
+export const resolvePaymentMethodColorStyles = (value) => {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    return PAYMENT_METHOD_COLOR_STYLES[normalizedValue] || PAYMENT_METHOD_COLOR_STYLES.default;
+};
+
 export const formatSplitPaymentMethod = (value) => {
     const normalizedValue = String(value || '').trim().toLowerCase();
     return SPLIT_PAYMENT_METHOD_LABELS[normalizedValue]
@@ -35,9 +103,28 @@ export const toArray = (value) => (Array.isArray(value) ? value : []);
 export const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 export const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
 
+export const resolveEmployeeDiscountCreditPreference = (appliedDiscount, cart = []) => {
+    const employeeDirectoryIds = new Set();
+    if (String(appliedDiscount?.type || '').trim().toLowerCase() === 'employee') {
+        const employeeDirectoryId = Number(appliedDiscount?.employee_directory_id);
+        if (Number.isInteger(employeeDirectoryId) && employeeDirectoryId > 0) employeeDirectoryIds.add(employeeDirectoryId);
+    }
+    toArray(cart).forEach((line) => {
+        const itemDiscount = line?.item_discount;
+        if (String(itemDiscount?.discount_type || '').trim().toLowerCase() !== 'employee') return;
+        const employeeDirectoryId = Number(itemDiscount?.employee_directory_id);
+        if (Number.isInteger(employeeDirectoryId) && employeeDirectoryId > 0) employeeDirectoryIds.add(employeeDirectoryId);
+    });
+    const uniqueEmployeeDirectoryIds = [...employeeDirectoryIds];
+    return {
+        preferredEmployeeId: uniqueEmployeeDirectoryIds.length === 1 ? uniqueEmployeeDirectoryIds[0] : null,
+        hasConflict: uniqueEmployeeDirectoryIds.length > 1
+    };
+};
+
 export const EMPTY_DISCOUNT_DRAFT = {
     type: 'employee', method: 'percentage', rate: '15', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: '', voucher_code: ''
+    id_number: '', employee_name: '', employee_id: '', employee_directory_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: '', voucher_code: ''
 };
 
 export const calculateGovernedDiscount = (cart, application) => {

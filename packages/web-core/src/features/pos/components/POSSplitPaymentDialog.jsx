@@ -24,6 +24,10 @@ import {
     persistPosSplitPaymentSessionPointer,
     readPosSplitPaymentSessionPointer
 } from '../services/posSplitPaymentSessionStore.js';
+import {
+    formatSplitPaymentMethod,
+    resolvePaymentMethodColorStyles
+} from '../utils/posCheckoutTerminalUtils.js';
 
 const PAYMENT_METHODS = [
     { value: 'cash', label: 'Cash' },
@@ -527,28 +531,35 @@ export default function POSSplitPaymentDialog({
                                     <RefreshCw className={`mr-1 h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh
                                 </Button>
                             </div>
-                            {allocations.map((allocation) => (
-                                <div key={getAllocationId(allocation)} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-                                    <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-sm font-extrabold capitalize text-slate-800">{String(allocation.payment_method || '').replace('_', ' ')}</span>
-                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClassName(allocation.status)}`}>{statusLabel(allocation.status)}</span>
+                            {allocations.map((allocation) => {
+                                const paymentMethod = String(allocation.payment_method || '').trim().toLowerCase();
+                                const paymentMethodColor = resolvePaymentMethodColorStyles(paymentMethod);
+                                return (
+                                    <div key={getAllocationId(allocation)} className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 ${paymentMethodColor.rowClassName}`}>
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-extrabold ${paymentMethodColor.badgeClassName}`}>
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${paymentMethodColor.dotClassName}`} aria-hidden="true" />
+                                                    {formatSplitPaymentMethod(paymentMethod)}
+                                                </span>
+                                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClassName(allocation.status)}`}>{statusLabel(allocation.status)}</span>
+                                            </div>
+                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                {allocation.payment_reference ? `Reference: ${allocation.payment_reference}` : (allocation.payment_provider === 'merchant_owned' ? 'Store-owned payment · no reference entered' : 'No provider reference')}
+                                                {allocation.change_amount > 0 ? ` · Change PHP ${money(allocation.change_amount)}` : ''}
+                                            </p>
                                         </div>
-                                        <p className="mt-1 text-[11px] text-slate-500">
-                                            {allocation.payment_reference ? `Reference: ${allocation.payment_reference}` : (allocation.payment_provider === 'merchant_owned' ? 'Store-owned payment · no reference entered' : 'No provider reference')}
-                                            {allocation.change_amount > 0 ? ` · Change PHP ${money(allocation.change_amount)}` : ''}
-                                        </p>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            <span className={`text-sm font-black ${paymentMethodColor.amountClassName}`}>PHP {money(allocation.applied_amount)}</span>
+                                            {!['cancelled', 'reversed'].includes(allocation.status) && session?.status !== 'completed' && (
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setCancelTarget(allocation)} disabled={loading} className="h-7 px-2 text-rose-700 hover:bg-rose-50" aria-label={`Cancel ${allocation.payment_method} payment`}>
+                                                    <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <span className="text-sm font-black text-[#1A4E8D]">PHP {money(allocation.applied_amount)}</span>
-                                        {!['cancelled', 'reversed'].includes(allocation.status) && session?.status !== 'completed' && (
-                                            <Button type="button" variant="ghost" size="sm" onClick={() => setCancelTarget(allocation)} disabled={loading} className="h-7 px-2 text-rose-700 hover:bg-rose-50" aria-label={`Cancel ${allocation.payment_method} payment`}>
-                                                <Ban className="h-3.5 w-3.5" aria-hidden="true" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
@@ -563,8 +574,9 @@ export default function POSSplitPaymentDialog({
                                 <div className="space-y-3" data-testid="pos-payment-rows">
                                     {paymentRows.map((row, index) => {
                                         const selectedMethod = PAYMENT_METHODS.find((method) => method.value === row.method);
+                                        const paymentMethodColor = resolvePaymentMethodColorStyles(selectedMethod?.value || row.method);
                                         return (
-                                            <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-3" data-testid={`pos-payment-row-${index + 1}`}>
+                                            <div key={row.id} className={`rounded-xl border p-3 ${paymentMethodColor.rowClassName}`} data-testid={`pos-payment-row-${index + 1}`}>
                                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                                                     <label className="block text-xs font-bold text-slate-700">
                                                         Method of Payment
@@ -575,7 +587,7 @@ export default function POSSplitPaymentDialog({
                                                             })}
                                                             disabled={loading}
                                                             aria-label={`Method of payment ${index + 1}`}
-                                                            className="mt-1 h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-extrabold text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                                            className={`mt-1 h-12 w-full rounded-lg border px-3 text-sm font-extrabold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${paymentMethodColor.selectClassName}`}
                                                             data-testid={`pos-payment-method-${index + 1}`}
                                                         >
                                                             {PAYMENT_METHODS.map((method) => (
