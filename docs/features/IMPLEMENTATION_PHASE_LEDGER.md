@@ -8439,6 +8439,784 @@ unshipped reservation.
 
 ---
 
+## Phase 156 - POS Cashier Attendance and Register Handoff Contract Freeze
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, contract and governance slice.
+
+### Objective and Scope
+
+- Separate employee attendance, employee breaks, register shifts, terminal operator sessions, and
+  cash-custody handoffs at the architecture and product-contract level.
+- Define the complete state transitions, actor permissions, server-authority rules, concurrency
+  behavior, audit evidence, historical compatibility, and failure codes.
+- Freeze one tenant/location-scoped, default-off rollout flag that prevents partial workflow
+  exposure before Phase 162.
+- Add a tech-lead-approved ADR that supersedes in part the affected binding handoff clauses in ADR
+  0065, plus dated amendments to ADR 0031 and ADR 0044.
+- Freeze the expected data for the 7:00 AM-10:00 PM target scenario and its negative-test matrix.
+- Explicit exclusion: no migration, runtime code, API, UI, report, or production behavior change.
+
+### Status
+
+- `completed`
+- Completion date: 2026-08-24.
+
+### Dependencies
+
+- Phase 153 completed.
+- Architecture Governance ADR change process and tech-lead approval for affected binding clauses.
+
+### Acceptance and Validation Evidence
+
+- [x] New superseding-in-part ADR is `accepted` and records tech-lead approval.
+- [x] ADR 0031 and ADR 0044 have dated amendments with no contradictory active rule remaining.
+- [x] Every transition names its actor, preconditions, persisted event, error behavior, and audit
+  evidence.
+- [x] Entity names, statuses, uniqueness rules, authentication rules, compatibility semantics, and
+  reporting invariants are frozen.
+- [x] Target and negative scenarios have approved expected records.
+- [x] `npm run check:adr` and `npm run lint:docs` pass.
+
+### Progress Record (2026-08-24)
+
+- [x] Phase 156 scope re-read and confirmed as governance-only; no migration,
+  model, API, frontend, report, feature-flag, or runtime files changed.
+- [x] ADR 0073 drafted with the attendance/operator-session/register/custody
+  contract and the 7:00 AM-10:00 PM target scenario.
+- [x] Dated ADR 0031 and ADR 0044 amendments recorded with current runtime
+  behavior preserved until later implementation activation.
+- [x] Tech-lead acceptance of ADR 0073 recorded in the ADR approval record.
+- [x] Phase 156 acceptance gates complete and status moved to `completed`.
+
+### Completion Record (2026-08-24)
+
+- ADR 0073 is accepted and supersedes the affected ADR 0065 handoff binding
+  clauses in part.
+- ADR 0031 and ADR 0044 dated amendments are effective for the approved future
+  implementation contract while preserving current runtime behavior.
+- The exact Phase 157 persistence identifiers are frozen; no schema or runtime
+  code was changed in Phase 156.
+- Phase 157 became the implementation phase after approval, completed its additive
+  persistence gates, and leaves Phase 158 as the next eligible phase.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md`
+- `docs/architecture/adr/0044-pos-terminal-device-pairing.md`
+- `docs/architecture/adr/0065-pos-shared-parked-sales-and-cashier-handoff.md`
+
+---
+
+## Phase 157 - POS Cashier Attendance and Register Handoff Persistence
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, additive persistence slice.
+
+### Objective and Scope
+
+- Add forward and rollback migrations, models, repositories, serializers, tenant-schema entries,
+  database constraints, and indexes for the Phase 156-approved attendance, break, operator-session,
+  handoff, and transaction-attribution records.
+- Preserve historical transaction and shift data; do not fabricate historical attendance.
+- Add compatibility handling for qualifying open register shifts only as approved in Phase 156.
+- Explicit exclusion: no new endpoint, UI, takeover flow, authorization change, or report change.
+
+### Status
+
+- `completed`
+- Completion date: 2026-08-24.
+
+### Dependencies
+
+- Phase 156 completed with accepted governance and frozen schema contract.
+
+### Progress Record (2026-08-24)
+
+- [x] Phase 157 started after Phase 156 completion.
+- [x] Persistence identifiers and compatibility boundaries are frozen by ADR
+  0073.
+- [x] Additive migrations, models, repositories, serializers, schema
+  registration, tenant bootstrap repair, and constraints implemented.
+- [x] Fresh/populated migration, rollback, re-apply, parity, and repository
+  evidence recorded.
+
+### Acceptance and Validation Evidence
+
+- [x] Fresh migration, production-shaped populated migration, rollback, and re-apply pass in the
+  temporary MySQL smoke database; the database is removed after validation.
+- [x] Database-enforced unique active-state indexes reject duplicate attendance, break, and
+  terminal-operator records; the focused migration tests and MySQL constraint smoke pass.
+- [x] Runtime schema registration and tenant schema parity checks cover every new object, generated
+  active-state column, transaction link, and named index.
+- [x] Existing shift, transaction, checkout, and X/Z tests pass without behavior changes.
+- [x] Historical cashier and register-shift data remains attributable because the migration is
+  additive, the operator link is nullable, and no historical backfill/update is issued.
+- [x] Focused model/repository tests, architecture checks, compliance checks, docs checks, and
+  tenant-schema coverage pass.
+
+### Completion Record (2026-08-24)
+
+- Added the idempotent forward/rollback migration
+  `20260824000001-create-pos-cashier-attendance-operator-sessions.cjs` with generated active-state
+  uniqueness and transaction operator attribution.
+- Added tenant models/associations, named indexes, runtime schema requirements, tenant repair
+  registry, and new-tenant bootstrap application of the same migration.
+- Added the dormant repository/serializer foundation without adding routes, UI, authorization
+  changes, checkout attribution, or reports.
+- Validation evidence: focused Phase 157 tests (10 passing), existing POS shift/checkout/X/Z/readiness
+  tests (78 passing), actual MySQL fresh/populated/constraint/rollback smoke, actual re-apply smoke,
+  `npm run check:tenant-schema-coverage`, `npm run check:architecture`, `npm run check:compliance`,
+  `npm run lint:docs`, `npm run check:adr -- --write-index`, ESLint, and `git diff --check`.
+- At the time of this Phase 157 completion record, Phase 158 was complete and Phase 159 was the
+  next eligible phase pending explicit approval. Phases 159 and 158 are now completed; the current
+  next eligible phase is Phase 161.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
+- `apps/dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`
+- `apps/dgfy-api/src/models/EmployeeAttendanceSession.js`
+- `apps/dgfy-api/src/models/EmployeeBreakSegment.js`
+- `apps/dgfy-api/src/models/PosTerminalOperatorSession.js`
+- `apps/dgfy-api/src/models/PosDrawerHandoffEvent.js`
+- `apps/dgfy-api/src/modules/pos/repositories/posCashierAttendanceRepository.js`
+- `apps/dgfy-api/src/modules/pos/serializers/posCashierAttendanceSerializers.js`
+- `apps/dgfy-api/tests/posCashierAttendanceOperatorSessions.migration.test.js`
+- `apps/dgfy-api/tests/posCashierAttendanceRepository.test.js`
+- `apps/dgfy-api/tests/posCashierAttendanceSchema.contract.test.js`
+
+---
+
+## Phase 158 - POS Attendance and Break Lifecycle
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, attendance slice.
+
+### Objective and Scope
+
+- Deliver Time In, Time Out, Start Break, End Break, Start Relief Duty, and End Relief Duty use
+  cases, APIs, permissions, auditing, and minimal POS attendance UI behind the default-off rollout
+  flag.
+- Enforce server timestamps, valid transition order, one active attendance, one active break,
+  location scope, idempotency, and manager correction audit history.
+- Record Cashier B's 12:00-1:00 relief separately from B's 3:00-10:00 regular duty.
+- Explicit exclusion: no PIN takeover, register-control change, transaction attribution, payroll,
+  schedule optimizer, or final reporting module.
+
+### Status
+
+- `completed`
+- Completion date: 2026-08-24.
+
+### Dependencies
+
+- Phase 157 completed with migration and persistence evidence.
+
+### Acceptance and Validation Evidence
+
+- [x] The target scenario creates exactly three attendance sessions and one break segment.
+- [x] Duplicate Time In, attendance overlap, invalid break order, and invalid location access fail
+  with stable codes and no partial record.
+- [x] Refresh, retry, and duplicate clicks do not duplicate attendance or break records.
+- [x] Permission, tenant isolation, concurrency, API, repository, and frontend lifecycle tests pass.
+- [x] Existing terminal shift and checkout behavior remains unchanged.
+- [x] Production build and applicable architecture/compliance/docs checks pass.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
+- `docs/compliance/impact-declarations/2026-08-24-pos-cashier-attendance-lifecycle.md`
+- `apps/dgfy-api/src/modules/pos/usecases/posCashierAttendanceUseCases.js`
+- `packages/web-core/src/features/pos/components/PosAttendancePanel.jsx`
+
+### Progress Record (2026-08-24)
+
+- [x] Phase 158 approved after Phase 157 completion and the authoritative contract re-read.
+- [x] Scope fixed to attendance and break lifecycle only; register takeover, PIN
+  authentication, checkout attribution, and reporting remain deferred to later phases.
+- [x] Backend lifecycle, permission, audit, idempotency, and location-isolation implementation.
+- [x] Gated POS attendance panel and frontend lifecycle tests.
+- [x] Full Phase 158 acceptance and governance evidence.
+
+### Completion Record (2026-08-24)
+
+- Added tenant-local attendance/break lifecycle use cases, routes, validators, permissions, audit
+  events, server timestamps, manager corrections, and retry idempotency behind the
+  `pos_cashier_attendance_lifecycle_v1` location allowlist.
+- Added the gated POS attendance panel and service bindings; register takeover, PIN, checkout
+  attribution, and reporting remain deferred to Phase 159/160/161.
+- Focused backend evidence: 66 tests passed across lifecycle, route, repository, migration,
+  schema, runtime-audit, permission, and transport suites. Frontend evidence: 3 focused panel
+  tests passed. POS production build passed.
+- Database evidence: both attendance migrations applied to local MySQL; Phase 158 migration was
+  rolled back and re-applied successfully, with both migrations reporting `up` afterward.
+- Governance evidence: architecture guardrails, controller boundaries, tenant-schema coverage,
+  compliance/API contracts, ADR lint, governed-doc lint, targeted ESLint, Node syntax checks, and
+  `git diff --check` passed. The broad all-path POS sweep was stopped after an unrelated existing
+  long-running test stalled; the targeted POS reconciliation and transport regressions passed.
+
+Phase 158 through Phase 160 are complete. Phase 161 is the next eligible phase and requires
+separate approval.
+
+---
+
+## Phase 159 - Secure POS Operator Takeover and Cash Custody
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, operator and custody slice.
+
+### Objective and Scope
+
+- Add dedicated cashier PIN enrollment/reset/verification with strong hashing, rate limiting,
+  lockout, generic errors, and auditable security events.
+- Add HttpOnly, CSRF-protected operator authority scoped to tenant, location, terminal, register
+  shift, employee, and operator session.
+- Deliver atomic Take Over Register, Return Register, End Operator Session, temporary shared-relief
+  access, and counted cash-custody handoff use cases.
+- Revoke operator authority on break, Time Out, terminal unpair, register close, account disable,
+  or replacement takeover.
+- Record lunch relief as uncounted shared-drawer access and the 3:00 PM custodian change as a
+  counted, two-party-acknowledged handoff.
+- Keep all new takeover behavior inaccessible while the default-off rollout flag is disabled; the
+  legacy single-cashier path remains unchanged.
+- Explicit exclusion: no checkout UI integration, broad transaction-flow changes, final reports,
+  or production rollout.
+
+### Status
+
+- `completed`
+- Completion date: 2026-08-24.
+
+### Dependencies
+
+- Phase 158 completed with correct attendance and break eligibility state.
+
+### Acceptance and Validation Evidence
+
+- [x] Concurrent takeover state is serialized by the open-shift/operator locks and the active
+  operator uniqueness constraint; replacement and end events are audited in one transaction.
+- [x] Invalid, expired, replayed, locked, off-duty, on-break, cross-tenant, cross-location, and
+  cross-terminal attempts fail closed through server-owned scope, PIN verification, JWT claims,
+  persisted token hashes, active-attendance checks, and feature gating.
+- [x] Takeover never opens or closes a register shift and never changes the opening float.
+- [x] Counted handoff expected cash, actual cash, variance, and two-party acknowledgements persist
+  atomically with the operator replacement.
+- [x] Cookie, CSRF, rate-limit, lockout, revocation, permission, and isolation contracts pass in
+  `posOperatorAuthority.security.contract.test.js` and the focused attendance/transport suites.
+- [x] Existing checkout behavior remains unchanged; checkout attribution is explicitly deferred to
+  Phase 160.
+
+### Phase 159 Completion Record
+
+- Database: `20260824000003-add-pos-cashier-pin-and-operator-authority.cjs` was applied, rolled
+  back, reapplied, and confirmed `up` together with the Phase 157/158 migrations.
+- Implementation: dedicated bcrypt cashier PIN state; revocable, tenant/location/terminal/shift/
+  employee/session-scoped HttpOnly authority; atomic takeover, return, shared-relief, counted
+  custody, explicit end, and revocation hooks for breaks, Time Out, unpair, close, disable, and
+  removal.
+- Tests: Phase 159 migration/use-case/security suites (21 tests), attendance/persistence/route
+  suites (20 tests), and permissions/handler/device transport suites (35 tests) passed.
+- Governance and quality: architecture guardrails, controller boundaries, tenant-schema coverage,
+  compliance/API contracts, governed-doc and ADR lint, ESLint (0 errors; seven pre-existing
+  warnings), backend build, POS production build, Node syntax checks, and `git diff --check`
+  passed.
+- Links: `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`,
+  `docs/compliance/impact-declarations/2026-08-24-pos-cashier-operator-authority.md`,
+  `apps/dgfy-api/src/modules/pos/usecases/posOperatorAuthorityUseCases.js`, and
+  `apps/dgfy-api/tests/posOperatorAuthority.security.contract.test.js`.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/architecture/adr/0026-browser-session-cookie-authority.md`
+- Phase 156's accepted ADR and amendments.
+
+---
+
+## Phase 160 - POS Checkout and Cashier Workflow Integration
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, POS integration slice.
+
+### Objective and Scope
+
+- Add the current-cashier banner, locked-terminal state, PIN takeover, return, break handoff,
+  shared-relief disclosure, and counted-handoff UI behind the default-off rollout flag.
+- Make the active operator authoritative for checkout, payments, refunds, voids, protected
+  discounts/overrides, no-sale/drawer-open, parked-sale resume, and online cash collection.
+- Derive transaction cashier and operator-session attribution on the server; retain the one register
+  shift for X/Z and cash reconciliation.
+- Block incompatible break, Time Out, takeover, handoff, and close operations while payment or
+  drawer mutation is in flight, with deterministic retry/recovery.
+- Explicit exclusion: no new reporting module, payroll engine, scheduling, biometrics, or
+  multi-drawer redesign.
+
+### Status
+
+- `completed`
+- Completion date: 2026-08-25.
+
+### Dependencies
+
+- Phase 159 completed with secure operator and custody behavior.
+
+### Acceptance and Validation Evidence
+
+- [x] `posCheckout.db.integration.test.js` proves target sales are attributed A, B, A, B under
+  one unchanged register shift.
+- [x] `posOperatorMutationAttribution.contract.test.js` proves client-supplied cashier data cannot
+  override the server-selected operator.
+- [x] Parked-sale, split-payment, refund, void, online-cash, and drawer authorization suites prove
+  the original context is retained while the actual operator is recorded.
+- [x] In-flight payment, authority refresh/retry, duplicate takeover, revocation, and terminal-unpair
+  tests pass without partial operator transitions.
+- [x] `PosAttendancePanel.behavior.test.jsx` and the POS responsive contracts verify named controls,
+  status/alert semantics, duplicate-submit protection, and responsive terminal integration.
+- [x] Focused backend suites (121 tests), the fresh-schema database integration suite (11 tests),
+  focused operator tests (11 tests), focused POS UI/contract tests (30 tests), architecture,
+  tenant-schema,
+  compliance, docs, lint, syntax, and all three production builds pass.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
+- Phase 156's accepted ADR and amendments.
+
+---
+
+## Phase 161 - Cashier, Attendance, Register, and Handoff Reporting
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, reporting and reconciliation slice.
+
+### Objective and Scope
+
+- Add separate attendance output, cashier sales summary, register X/Z views, and operator/handoff
+  audit timeline.
+- Report regular duty, relief duty, breaks, worked minutes, actual transaction operator, shared
+  drawer access, counted custody changes, expected/actual cash, and variance.
+- Reconcile cashier subtotals to register transaction totals and handoff snapshots to final Z close.
+- Clearly label historical data that lacks operator-session detail; do not fabricate precision.
+- Explicit exclusion: no workflow behavior changes, payroll, schedule enforcement, or unrelated
+  analytics.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-25.
+
+### Dependencies
+
+- Phase 160 completed with authoritative transaction and operator attribution.
+
+### Acceptance and Validation Evidence
+
+- [x] Cashier subtotals reconcile to register totals for identical filters and documented exclusions.
+- [x] Handoff snapshots and tender movements remain register-scoped and disclose counted versus shared access.
+- [x] The target scenario fixture reports correct attendance, break, sales, operator, shared-access,
+  custody, and register records for A and B.
+- [x] Historical rows remain readable and clearly disclose missing operator detail.
+- [x] Permission, isolation, Manila business-date, bounded pagination/range, export, and budget gates pass.
+- [x] Reporting regressions, all three production builds, architecture, compliance, and docs checks pass.
+
+### Completion Evidence (2026-08-25)
+
+- Backend: `posReports.repository.test.js`, `posReports.usecase.test.js`, and
+  `posValidator.reportsOverviewQuery.test.js` passed (25 tests total after the lifecycle scenario).
+- Frontend: `posReportsAnalyticsWorkspace.contract.test.js` passed (5 tests); POS, Skupervisor,
+  and Storefront production builds passed; frontend route budgets passed.
+- Governance: architecture guardrails, controller boundaries, compliance checks, docs lint, and
+  strict ADR validation passed.
+- Implementation: POS report overview/export now exposes separate attendance, cashier sales,
+  register reconciliation, operator sessions, and handoff records. Shared-drawer access never
+  fabricates individual variance, and transactions without operator-session detail are labeled
+  `legacy_cashier_snapshot`.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- Phase 156's accepted reporting contract.
+
+---
+
+## Phase 162 - POS Cashier Handoff End-to-End Hardening and Rollout
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, release-hardening and rollout slice.
+
+### Objective and Scope
+
+- Prove the complete target scenario through deterministic E2E and database assertions.
+- Run security, tenant/location isolation, concurrency, replay, offline/recovery, accessibility,
+  responsive, performance, migration, rollback, build, and full regression gates.
+- Preserve legacy behavior behind a tenant/location feature flag, then canary and verify the new
+  behavior through a documented reversible rollout.
+- Add operational metrics and alerts for failed takeover, session-constraint, PIN lockout,
+  unreconciled handoff, and report-mismatch signals.
+- Explicit exclusion: no new product scope; discoveries are routed into a new planned phase.
+
+### Status
+
+- `completed`
+- Started: 2026-08-25 after Phase 161 completed.
+- Completion date: 2026-08-25.
+
+### Dependencies
+
+- Phase 161 completed with reconciled reports.
+- Non-production environment and representative migration dataset available.
+
+### Acceptance and Validation Evidence
+
+- [x] Repeated deterministic target scenario proves exact attendance, break, operator, transaction, handoff,
+  and register records from 7:00 AM through 10:00 PM.
+- [x] Security, architecture, compliance, migration, rollback, focused feature regression, production builds,
+  Playwright, accessibility, and performance gates pass.
+- [x] No critical/high defect, data mismatch, unresolved exception, or unchecked required gate
+  remains.
+- [x] Feature-disabled legacy behavior and feature-enabled behavior both pass compatibility tests.
+- [x] Canary activation and rollback are proven outside production before production approval is
+  requested.
+- [x] Ledger evidence links test output, migration rehearsal, monitoring, and
+  rollout proof.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/ops/POS_CASHIER_ATTENDANCE_ROLLOUT.md`
+- Focused backend lifecycle, authority, report, route, security, attribution, and metrics suites:
+  49 passing tests; additive migration/schema safe-rerun and rollback suites: 13 passing tests.
+- Real MySQL isolated-database checkout proof applied the complete migration chain and persisted
+  A/B/A/B operator attribution under one register shift.
+- POS Playwright responsive/accessibility proof passed at 1024x600, 1280x720, 1366x768, and
+  390x844 with no runtime crash or viewport overflow; frontend component/contract suites passed
+  25 tests, and all three production builds plus frontend budget checks passed.
+- Local non-production canary at location 1 verified zero active shift/attendance/break/operator
+  blockers, enabled only location 1, and restored the original absent setting row; production was
+  not changed.
+- `npm run check:architecture`, `npm run check:tenant-schema-coverage`,
+  `npm run check:compliance`, and governed documentation checks passed.
+
+---
+
+## Phase 163 - Tenant-Admin Cashier Attendance Configuration
+
+### Initiative and Release
+
+- Initiative: POS Cashier Attendance and Register Handoff.
+- Release: Release 1, tenant-admin configuration slice.
+
+### Objective and Scope
+
+- Add a dedicated POS attendance-configuration API for the existing tenant/location-scoped
+  `pos_cashier_attendance_lifecycle_v1` setting.
+- Add a separate Cashier Attendance & Breaks card under Settings > POS Setup with enable/disable
+  control, active-location selection, workflow warnings, and an independent save boundary.
+- Keep configuration server-authoritative: validate tenant locations, reject unsafe changes while
+  affected shifts/attendance/breaks/operator sessions are active, and write an immutable audit event.
+- Refresh the active POS attendance surface after a successful change without requiring direct
+  database editing or an application restart.
+- Explicit exclusion: no new attendance state, payroll, scheduling, reporting behavior, automatic
+  lifecycle closure, or cashier permission to change rollout configuration.
+
+### Status
+
+- `completed`
+- Started: 2026-08-25 after Phase 162 completed.
+- Completion date: 2026-08-25.
+
+### Dependencies
+
+- Phase 162 completed with controlled canary activation and rollback proof.
+- Existing tenant location, settings RBAC, POS Settings PIN, attendance, operator-session, and audit
+  contracts remain available.
+
+### Acceptance and Validation Evidence
+
+- [x] Authorized tenant settings administrators can enable one or more active tenant locations;
+  unauthorized users and cashiers receive a stable denial.
+- [x] Invalid, duplicate, inactive, and cross-tenant location IDs fail without a partial write.
+- [x] Enabling without a selected location fails validation; missing or malformed persisted state
+  remains disabled.
+- [x] Activation, deactivation, and location removal fail closed while affected register shifts,
+  attendance sessions, breaks, or operator sessions are active.
+- [x] Configuration writes record actor, request, before/after value, and affected locations.
+- [x] Unrelated POS Setup saves cannot alter the attendance configuration.
+- [x] The attendance panel refreshes immediately after a successful configuration save.
+- [x] Backend route/use-case/repository, permission, tenant-isolation, concurrency, audit, frontend
+  behavior, accessibility, desktop/tablet/mobile, production builds, architecture, compliance, and
+  docs gates pass.
+
+### Planning and Implementation Links
+
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
+- API and policy: `apps/dgfy-api/src/modules/pos/repositories/posCashierAttendanceConfigRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posCashierAttendanceConfigUseCases.js`,
+  `apps/dgfy-api/src/routes/pos.js`, and `apps/dgfy-api/src/validators/posValidator.js`.
+- UI and refresh: `packages/web-core/src/features/pos/components/PosCashierAttendanceSettingsCard.jsx`,
+  `packages/web-core/src/features/pos/components/PosAttendancePanel.jsx`, and
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
+- Focused configuration repository/use-case/route suites passed 11 tests; the complete cashier
+  attendance/authority/report/migration/metrics regression passed 92 tests; frontend configuration,
+  attendance, reporting, tablet, and responsive suites passed 31 tests after the refresh assertion.
+- POS, SKUpervisor, and Storefront production builds passed. Frontend route budgets passed with the
+  existing large-chunk warnings. Architecture, controller boundaries, tenant schema coverage,
+  compliance/API contracts, governed docs/ADR lint, targeted ESLint, and local API health passed.
+- Unauthenticated live requests to the dedicated endpoint returned `401`; the protected local POS
+  booted without browser console errors. The signed-in configuration surface is covered by component
+  behavior/accessibility tests because no credentials were supplied to the temporary browser session.
+
+## Phase 164 - Automatic Cashier Attendance Lifecycle
+
+### Initiative and release
+
+POS cashier attendance and register handoff hardening, post-Phase-161 UX and
+legacy-account repair.
+
+### Objective and scope
+
+- Make opening a shift automatically create regular attendance and the active
+  operator session when attendance is enabled for the terminal location.
+- Make `Break & Lock` record the break and revoke operator authority before the
+  client locks; same-cashier authentication ends the break and resumes the
+  existing shift.
+- Make shift close end attendance and operator authority in the same transaction
+  as register close.
+- Remove normal-cashier Time In, Start Break, End Break, and Time Out controls
+  from the POS surface while retaining manager correction and relief handoff
+  controls in their governed surfaces.
+- Add missing attendance permissions to existing cashier accounts additively and
+  prevent raw 403 attendance banners for users without view permission.
+
+### Status
+
+- `completed`
+- Started: 2026-08-25 after Phase 163 completed.
+- Completed: 2026-08-25 after signed-in cashier browser and failure-path gates passed.
+
+### Dependencies
+
+- Phases 156-163 completed.
+- ADR 0073 and ADR 0031 amended on 2026-08-25.
+- Existing attendance, operator-session, shift, parked-sale, and payment leases.
+
+### Acceptance and validation evidence
+
+- [x] Legacy cashier permission backfill now includes `cashier` and remains
+  additive/idempotent.
+- [x] Open-shift and close-shift lifecycle hooks are transaction-scoped.
+- [x] Break & Lock and same-cashier resume endpoints are wired.
+- [x] Compact POS attendance status hides manual normal-cashier attendance
+  controls and avoids fetching attendance without view permission.
+- [x] Backend syntax, attendance lifecycle, operator authority, route, replay,
+  and shift use-case regression suites pass.
+- [x] Signed-in legacy-cashier browser E2E passes on an enabled location.
+- [x] POS, IMS, and Storefront production builds pass after the shared web-core
+  changes.
+- [x] Tablet viewport contract and utility verification pass.
+- [x] Signed-in failure/rollback verification passes on an enabled location.
+
+Signed-in local verification on 2026-08-25 used the legacy cashier account on
+`http://localhost:5174/` after the additive permission backfill: opening shift
+138 created attendance session 2 and operator session 1; the POS showed
+`Working since` and `Break & Lock`; Break & Lock created break segment 2 and
+ended operator authority; offline resume was rejected with the reconnect guard;
+online resume closed break segment 2 and restored authority; final close ended
+shift 138, attendance session 2, break segment 2, and operator session 2 with
+the expected PHP 1,000 cash count. Browser dev logs contained no error-level
+entries. The prior permission failure was reproduced before backfill and
+resolved after the targeted role-permission repair. A clean rerun with the
+post-open stock alert dismissed confirmed the single-click Break & Lock path
+on shift 140; that shift, attendance session 4, break segment 4, and its
+operator session were also closed cleanly at the expected PHP 1,000 count.
+
+### Implementation links
+
+- `apps/dgfy-api/src/modules/pos/usecases/posCashierLifecycleUseCases.js`
+- `apps/dgfy-api/tests/posCashierLifecycle.usecases.test.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`
+- `apps/dgfy-api/src/routes/pos.js`
+- `apps/dgfy-api/scripts/backfill-role-permissions.js`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/components/PosAttendancePanel.jsx`
+- `packages/web-core/src/features/pos/services/posService.js`
+
+### Next eligible phase
+
+Phase 165 is now eligible; Phase 164 signed-in cashier E2E and
+failure/rollback acceptance gates passed on 2026-08-25.
+
+## Phase 165 - Locked-Terminal Cashier Takeover Entry Point
+
+### Initiative and release
+
+POS cashier attendance and register handoff hardening, terminal takeover UX.
+
+### Objective and scope
+
+- Add a direct **Another cashier taking over?** entry point to the locked-terminal
+  Resume Shift dialog.
+- Keep same-cashier Resume Shift owner-only and unchanged.
+- Authenticate the incoming cashier through a DGFY POS tenant session, then
+  authorize the existing server-side operator takeover with the incoming
+  cashier's dedicated POS PIN.
+- Keep the continuous register shift, opening float, and drawer lifecycle
+  unchanged; this UI performs an uncounted relief takeover only.
+- State the server-enforced precondition that the incoming cashier must have
+  active attendance and no active break. Counted custody transfer remains a
+  separate handoff action.
+
+### Status
+
+- `completed`
+- Started: 2026-08-25 after Phase 164 completed.
+- Completed: 2026-08-25 after focused, full-suite, build, and architecture gates passed.
+
+### Dependencies
+
+- Phase 164 completed.
+- ADR 0073 operator sessions, scoped cashier PIN, and fail-closed attendance
+  invariants.
+- Existing `/pos/terminal/operator/takeover` route and HttpOnly operator
+  authority cookie transport.
+
+### Acceptance and validation evidence
+
+- [x] Locked terminal keeps owner-only Resume Shift and exposes the separate
+  incoming-cashier takeover path.
+- [x] Takeover requires incoming cashier DGFY authentication and a 4-12 digit
+  POS PIN; duplicate submits are disabled while the request is in flight.
+- [x] Takeover uses the existing server-side operator authority route and does
+  not create a register shift, opening float, or counted custody event.
+- [x] UI clearly reports the active-attendance/no-active-break precondition and
+  preserves server-side fail-closed validation.
+- [x] POS shared-web-core contract and attendance behavior tests pass (16/16).
+- [x] Full shared-web-core/IMS Vitest suite passes (1,724/1,724 tests).
+- [x] Attendance rollout ordering, compact End Break reachability, and active-break lock
+  fallback are covered by regression tests.
+- [x] Existing operator-authority, cashier-attendance, and cashier-lifecycle API suites pass
+  (28/28 tests across the focused suites).
+- [x] POS, IMS, and Storefront production builds pass.
+- [x] Architecture guardrails and controller-boundary checks pass.
+
+### Implementation links
+
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/components/TerminalPageDialogLayer.jsx`
+- `packages/web-core/src/features/pos/__tests__/terminalPairing.contract.test.js`
+- `packages/web-core/src/features/pos/services/posService.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posOperatorAuthorityUseCases.js`
+- `apps/dgfy-api/src/routes/pos.js`
+
+### Residual verification note
+
+The local in-app browser successfully authenticated both supplied cashier test
+accounts and verified temporary shift cleanup. A successful takeover submission
+was not completed because the fallback test terminal's location was not enabled
+in the tenant attendance rollout and no separate POS cashier PIN was supplied.
+No sale or payment was created. The takeover modal is covered by the shared
+web-core contract suite, server authority behavior remains fail-closed, and a
+successful two-cashier takeover remains the next operational verification after
+the target location is enabled and a POS PIN is enrolled.
+
+---
+
+## Phase 166 - Automatic Attendance on Cashier Takeover
+
+### Initiative and release
+
+POS cashier attendance and register handoff hardening, automatic incoming-cashier lifecycle.
+
+### Objective and scope
+
+- Remove the dead-end where a cashier is required to be timed in before takeover
+  even though the occupied register prevents that cashier from opening a shift.
+- Start a regular attendance session automatically for the incoming cashier
+  during takeover when attendance is enabled for the register location.
+- Reuse same-location attendance, reject an active attendance session at another
+  location, and preserve the existing POS PIN, no-active-break, authorization,
+  operator-session, drawer, and register-shift controls.
+
+### Status
+
+- `completed`
+- Started: 2026-08-25 after the Phase 165 Masu browser test exposed the attendance dead-end.
+- Completed: 2026-08-25 after focused API/frontend tests and production builds passed.
+
+### Dependencies
+
+- Phase 165 completed.
+- ADR 0073 automatic cashier lifecycle and operator-session contract.
+- Existing `/pos/terminal/operator/takeover` route and tenant attendance rollout.
+
+### Acceptance and validation evidence
+
+- [x] A takeover with no active attendance creates one regular attendance session
+  and the replacement operator session in the same transaction.
+- [x] A same-location active attendance session is reused; a different-location
+  active session fails closed without creating a duplicate.
+- [x] Existing PIN, no-active-break, location-grant, in-flight-operation, and
+  idempotency guards remain enforced.
+- [x] The takeover dialog explains that attendance starts automatically.
+- [x] Focused operator-authority and lifecycle API tests pass (25/25 across the
+  focused suites).
+- [x] Shared POS contract and behavior tests pass; the full IMS suite remains
+  green (1,724/1,724).
+- [x] POS and IMS production builds, architecture guardrails, and controller
+  boundary checks pass.
+
+### Implementation links
+
+- `apps/dgfy-api/src/modules/pos/usecases/posCashierLifecycleUseCases.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posOperatorAuthorityUseCases.js`
+- `apps/dgfy-api/src/modules/pos/index.js`
+- `apps/dgfy-api/tests/posCashierLifecycle.usecases.test.js`
+- `apps/dgfy-api/tests/posOperatorAuthority.usecases.test.js`
+- `packages/web-core/src/features/pos/components/TerminalPageDialogLayer.jsx`
+- `packages/web-core/src/features/pos/__tests__/terminalPairing.contract.test.js`
+
+### Residual verification note
+
+The Masu browser test reproduced the original failure and confirmed the takeover
+entry point. The automatic-attendance fix is covered by the API use-case tests;
+the final live success path still requires a valid, separately enrolled POS PIN
+for the incoming cashier. No sale, payment, shift close, or drawer mutation is
+part of this phase.
+
+---
+
+### Planning Record (2026-08-25)
+
+- Phase 156 through Phase 166 are `completed` under the approved automatic cashier lifecycle
+  scope. Phase 167 is now eligible.
+- Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
+  rollback/re-apply rehearsals, focused persistence tests, existing POS
+  regression tests, and architecture/compliance/docs/schema gates.
+- A phase becomes `completed` only after all of its required acceptance evidence is checked and
+  linked; planning alone is not evidence of functional completion.
+---
+
 **Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
 the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
 renumbers"):**

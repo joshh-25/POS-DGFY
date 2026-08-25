@@ -91,6 +91,8 @@ const buildReplayRepository = () => {
     let failAuditWrites = false;
     let activeParkedSaleCount = 0;
     let unresolvedFundedPaymentSessions = [];
+    let inFlightPaymentSessions = [];
+    let inFlightOperatorMutation = null;
     let shiftSequence = 1;
     let terminalPolicy = {
         mode: 'warn',
@@ -120,6 +122,12 @@ const buildReplayRepository = () => {
         },
         setUnresolvedFundedPaymentSessions(value) {
             unresolvedFundedPaymentSessions = Array.isArray(value) ? clone(value) : [];
+        },
+        setInFlightPaymentSessions(value) {
+            inFlightPaymentSessions = Array.isArray(value) ? clone(value) : [];
+        },
+        setInFlightOperatorMutation(value) {
+            inFlightOperatorMutation = value ? clone(value) : null;
         },
         async getTerminalIdentityPolicySettings() {
             return clone(terminalPolicy);
@@ -208,6 +216,12 @@ const buildReplayRepository = () => {
         },
         async listUnresolvedFundedPaymentSessionsForShift() {
             return clone(unresolvedFundedPaymentSessions);
+        },
+        async listInFlightPaymentSessionsForShift() {
+            return clone(inFlightPaymentSessions);
+        },
+        async findInFlightOperatorMutationForShift() {
+            return clone(inFlightOperatorMutation);
         },
         async closeTerminalShift(shiftId, payload = {}) {
             const existing = shifts.get(Number(shiftId));
@@ -623,6 +637,61 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 active_payment_session_count: 1,
                 shift_id: shiftId
             }));
+            expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('blocks shift close while an unfunded payment session is still open', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-PAYMENT-GUARD' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightPaymentSessions([{ pos_payment_session_id: 502, session_reference: 'PAY-OPEN', status: 'open' }]);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-PAYMENT-GUARD', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT', shift_id: shiftId }));
+            expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('blocks shift close while a protected cashier mutation is still running', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-OPERATOR-GUARD' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightOperatorMutation({
+                pos_terminal_operator_session_id: 77,
+                protected_operation_type: 'POST /api/v1/pos/checkouts'
+            });
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-OPERATOR-GUARD', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'POS_OPERATOR_MUTATION_IN_FLIGHT', operator_session_id: 77 }));
             expect(posRepository.counters.shiftCloses).toBe(0);
         });
     });

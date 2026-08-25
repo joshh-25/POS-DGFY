@@ -9,6 +9,15 @@ const workspacePath = path.resolve(__dirname, '../components/PosReportsAnalytics
 const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
 
 describe('POS report category filter contract', () => {
+  it('separates attendance, cashier sales, register reconciliation, and handoff reporting', () => {
+    expect(workspaceSource).toContain("{ id: 'attendance', label: 'Attendance' }");
+    expect(workspaceSource).toContain("{ id: 'cashiers', label: 'Cashier Sales' }");
+    expect(workspaceSource).toContain("{ id: 'registers', label: 'Registers' }");
+    expect(workspaceSource).toContain("{ id: 'handoffs', label: 'Handoffs' }");
+    expect(workspaceSource).toContain('Drawer variance is shown under Registers, never assigned to an uncounted relief cashier.');
+    expect(workspaceSource).toContain('legacy rows are disclosed in transaction detail');
+  });
+
   it('uses active folder IDs rather than date-dependent category names', () => {
     expect(workspaceSource).toContain("const [categoryId, setCategoryId] = useState('');");
     expect(workspaceSource).toContain('category_id: categoryId || undefined');

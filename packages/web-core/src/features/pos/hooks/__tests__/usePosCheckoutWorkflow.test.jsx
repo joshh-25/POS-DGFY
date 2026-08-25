@@ -1,19 +1,22 @@
 /** @vitest-environment jsdom */
 
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     cancelPosPaymentSession,
     createPosCheckout
 } from '../../services/posService';
 import {
+    enqueueTerminalOperationIntent,
     getReplayCandidateEntries,
     listTerminalOperationQueueEntries,
     markTerminalOperationReplayed,
     markTerminalOperationReplaying
 } from '../../services/terminalOperationQueueStore.js';
 import { clearPosSplitPaymentSessionPointer } from '../../services/posSplitPaymentSessionStore.js';
+import { posToast } from '@/src/utils/iminRuntimeFeedback.js';
 import { usePosCheckoutWorkflow } from '../usePosCheckoutWorkflow.js';
+import { POS_HARDWARE_CAPABILITIES } from '../../hardware/posHardwareContract.js';
 
 vi.mock('../../services/posService', () => ({
     cancelPosPaymentSession: vi.fn(),
@@ -61,6 +64,16 @@ const transaction = {
     invoice_number: 'NFS-000017',
     total_amount: 100,
     status: 'completed'
+};
+
+const createDeferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, reject, resolve };
 };
 
 const createBaseProps = (overrides = {}) => ({
@@ -188,10 +201,130 @@ describe('usePosCheckoutWorkflow', () => {
         expect(props.setLastReceipt).toHaveBeenCalledWith(transaction);
         expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
         expect(props.onCheckoutCompleted).toHaveBeenCalledWith(transaction);
-        expect(markTerminalOperationReplayed).toHaveBeenCalledWith(
-            createPosCheckout.mock.calls[0][0].idempotency_key,
-            expect.objectContaining({ resolution_source: 'network_success' })
-        );
+        await waitFor(() => {
+            expect(markTerminalOperationReplayed).toHaveBeenCalledWith(
+                createPosCheckout.mock.calls[0][0].idempotency_key,
+                expect.objectContaining({ resolution_source: 'network_success' })
+            );
+        });
+    });
+
+    it('uses the confirmed dialog payment snapshot instead of stale shell payment state', async () => {
+        const { result } = renderCheckout({
+            customerPaymentAmount: 0,
+            customerPaymentChange: 0,
+            isCustomerPaymentSufficient: false
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout({
+                customerPaymentAmount: 150,
+                customerPaymentChange: 50,
+                isCustomerPaymentSufficient: true
+            });
+        });
+
+        expect(createPosCheckout).toHaveBeenCalledWith(expect.objectContaining({
+            payment_type: 'cash',
+            cash_received: 150,
+            change_amount: 50
+        }));
+        await waitFor(() => expect(markTerminalOperationReplayed).toHaveBeenCalledTimes(1));
+    });
+
+    it('reveals payment completion before capability-driven printing and audit work finishes', async () => {
+        const printDeferred = createDeferred();
+        const posHardware = {
+            driverId: 'future_vendor_driver',
+            supportsCapability: (capability) => capability === POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT,
+            printReceipt: vi.fn(() => printDeferred.promise),
+            openDrawer: vi.fn()
+        };
+        const { result, props } = renderCheckout({ posHardware });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(props.setCheckoutLoading.mock.calls).toEqual([[true], [false]]);
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
+        expect(props.setReceiptPreviewModalOpen).toHaveBeenCalledWith(true);
+        expect(props.setLastReceipt).toHaveBeenCalledWith(transaction);
+
+        await waitFor(() => expect(posHardware.printReceipt).toHaveBeenCalledTimes(1));
+        expect(markTerminalOperationReplayed).not.toHaveBeenCalled();
+
+        await act(async () => {
+            printDeferred.resolve({ success: true, message: 'Receipt printed.' });
+            await printDeferred.promise;
+        });
+        await waitFor(() => expect(markTerminalOperationReplayed).toHaveBeenCalledTimes(1));
+    });
+
+    it('starts a later receipt without waiting for an earlier checkout audit chain', async () => {
+        const firstPrint = createDeferred();
+        const posHardware = {
+            driverId: 'imin_native',
+            supportsCapability: (capability) => capability === POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT,
+            printReceipt: vi.fn()
+                .mockImplementationOnce(() => firstPrint.promise)
+                .mockResolvedValueOnce({ success: true, message: 'Second receipt printed.' }),
+            openDrawer: vi.fn()
+        };
+        const { result } = renderCheckout({ posHardware });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+            await result.current.handleCheckout();
+        });
+
+        await waitFor(() => expect(posHardware.printReceipt).toHaveBeenCalledTimes(2));
+
+        await act(async () => {
+            firstPrint.resolve({ success: true, message: 'First receipt printed.' });
+            await firstPrint.promise;
+        });
+    });
+
+    it('does not pulse the drawer again after an uncertain native timeout', async () => {
+        const posHardware = {
+            driverId: 'imin_native',
+            supportsCapability: (capability) => capability === POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT,
+            printReceipt: vi.fn().mockResolvedValue({
+                success: false,
+                message: 'Check the printer before retrying.',
+                reasonCode: 'IMIN_COMMAND_TIMEOUT',
+                raw: null
+            }),
+            openDrawer: vi.fn()
+        };
+        const { result } = renderCheckout({ posHardware });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        await waitFor(() => expect(posToast.error).toHaveBeenCalledWith('Check the printer before retrying.'));
+        expect(posHardware.openDrawer).not.toHaveBeenCalled();
+    });
+
+    it('never queues a duplicate checkout when post-commit bookkeeping fails', async () => {
+        markTerminalOperationReplayed.mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+        const { result, props } = renderCheckout();
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        await waitFor(() => {
+            expect(posToast.error).toHaveBeenCalledWith(
+                'Payment completed, but the local checkout queue status could not refresh.'
+            );
+        });
+        expect(createPosCheckout).toHaveBeenCalledTimes(1);
+        expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
+        expect(props.setCart).toHaveBeenCalledWith([]);
+        expect(props.setReceiptPreviewModalOpen).toHaveBeenCalledWith(true);
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

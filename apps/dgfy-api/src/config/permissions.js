@@ -73,6 +73,9 @@ export const PERMISSIONS = {
             MANAGE_ESALES_REPORTS: "pos:esales:manage", // Generate and update eSales reporting packages
             SWITCH_LOCATION_POS: "pos:switch_location", // Switch terminal shift location using governed flow
             MANAGE_EMPLOYEES: "pos:employees:manage", // Manage non-login employee directory records
+            VIEW_ATTENDANCE: "pos:attendance:view", // View the signed-in cashier's attendance state
+            OPERATE_ATTENDANCE: "pos:attendance:operate", // Time in/out and start/end breaks for self
+            MANAGE_ATTENDANCE: "pos:attendance:manage", // Correct attendance with an auditable reason
             USE_EMPLOYEE_CREDIT: "pos:employee_credit:use", // Accept Employee Credit as a governed POS tender
             MANAGE_EMPLOYEE_CREDIT: "pos:employee_credit:manage", // Configure eligibility, limits, and balances
             VIEW_EMPLOYEE_CREDIT_REPORT: "pos:employee_credit:report" // View the non-cash Employee Credit ledger
@@ -273,6 +276,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
+        PERMISSIONS.POS.actions.VIEW_ATTENDANCE,
+        PERMISSIONS.POS.actions.OPERATE_ATTENDANCE,
         PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT,
         PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
         PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,

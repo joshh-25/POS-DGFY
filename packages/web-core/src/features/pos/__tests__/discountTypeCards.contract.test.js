@@ -13,11 +13,15 @@ const checkoutViewContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'
 );
+const checkoutDialogContent = fs.readFileSync(
+  path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx'),
+  'utf8'
+);
 const checkoutUtilsContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js'),
   'utf8'
 );
-const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutUtilsContent}`;
+const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutDialogContent}\n${checkoutUtilsContent}`;
 const modalStart = checkoutRenderContent.indexOf('<Dialog open={discountModalOpen}');
 const modalEnd = checkoutRenderContent.indexOf('<Dialog open={checkoutConfirmModalOpen}', modalStart);
 const discountModalContent = checkoutRenderContent.slice(modalStart, modalEnd);

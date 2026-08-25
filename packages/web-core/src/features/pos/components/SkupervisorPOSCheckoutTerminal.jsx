@@ -47,6 +47,7 @@ import {
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
+import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 import { COMMON_POS_ITEM_IMAGE_MAP as POS_ITEM_IMAGE_MAP } from '../utils/posItemImageMap.js';
 
@@ -1484,65 +1485,10 @@ export default function POSCheckoutTerminal({
             return;
         }
 
+        let data;
         setCheckoutLoading(true);
         try {
-            const data = await createPosCheckout(payload);
-            setLastReceipt(data?.transaction || null);
-            setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
-            setCart([]);
-            setSelectedDiscountProfile('');
-            setManualDiscountRateInput('');
-            if (typeof onCheckoutCompleted === 'function') {
-                onCheckoutCompleted(data?.transaction || null);
-            }
-            try {
-                // Auto-print-on-checkout only ever ran on the iMin native
-                // printer — see the equivalent note in POSCheckoutTerminal.jsx.
-                if (posHardware.driverId === 'imin_native') {
-                    const completedTransaction = data?.transaction || null;
-                    const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
-                    const isCashPayment = String(completedTransaction?.payment_type || paymentType).trim().toLowerCase() === 'cash';
-                    const printOutcome = await posHardware.printReceipt({
-                        transaction: completedTransaction,
-                        businessSettings: receiptSettings,
-                        receiptContract,
-                        openDrawerAfterPrint: isCashPayment,
-                        shiftId: activeShiftId,
-                        transactionId: completedTransaction?.pos_transaction_id,
-                        terminalId: normalizedTerminalId,
-                        reason: 'checkout_auto_print'
-                    });
-                    if (printOutcome.success) {
-                        toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
-                    } else if (isCashPayment) {
-                        const drawerOutcome = await posHardware.openDrawer({
-                            shiftId: activeShiftId,
-                            transactionId: completedTransaction?.pos_transaction_id,
-                            terminalId: normalizedTerminalId,
-                            reason: 'checkout_auto_open_drawer'
-                        });
-                        if (drawerOutcome.success) {
-                            toast.success('Cash drawer opened.');
-                        }
-                    }
-                }
-            } catch (hardwareError) {
-                toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
-            }
-            toast.success(
-                data?.idempotent_replay
-                    ? `Replayed (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
-                    : `Done (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
-            );
-            if (data?.terminal_identity_policy?.warning?.message) {
-                toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
-            }
-            await markTerminalOperationReplayed(payload.idempotency_key, {
-                resolution_source: 'network_success',
-                resolution_note: 'Checkout completed while online'
-            });
-            await syncQueuedCheckoutsState();
-            loadCatalog();
+            data = await createPosCheckout(payload);
         } catch (error) {
             if (!error?.response) {
                 await queueCheckoutIntentLocally('network_failure');
@@ -1563,6 +1509,86 @@ export default function POSCheckoutTerminal({
         } finally {
             setCheckoutLoading(false);
         }
+
+        const completedTransaction = data?.transaction || null;
+        const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
+        const isCashPayment = String(completedTransaction?.payment_type || paymentType).trim().toLowerCase() === 'cash';
+        setLastReceipt(completedTransaction);
+        setLastReceiptContract(receiptContract);
+        setCart([]);
+        setSelectedDiscountProfile('');
+        setManualDiscountRateInput('');
+        if (typeof onCheckoutCompleted === 'function') {
+            onCheckoutCompleted(completedTransaction);
+        }
+        toast.success(
+            data?.idempotent_replay
+                ? `Replayed (${receiptContract?.label || 'receipt loaded'})`
+                : `Done (${receiptContract?.label || 'receipt ready'})`
+        );
+        if (data?.terminal_identity_policy?.warning?.message) {
+            toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
+        }
+
+        // Payment is complete once the server commits. Defer hardware, local
+        // queue bookkeeping, and refresh work so they cannot hold the checkout UI.
+        setTimeout(() => {
+            Promise.resolve().then(async () => {
+                try {
+                    if (posHardware.supportsCapability(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)) {
+                        const printOutcome = await posHardware.printReceipt({
+                            transaction: completedTransaction,
+                            businessSettings: receiptSettings,
+                            receiptContract,
+                            openDrawerAfterPrint: isCashPayment,
+                            shiftId: activeShiftId,
+                            transactionId: completedTransaction?.pos_transaction_id,
+                            terminalId: normalizedTerminalId,
+                            reason: 'checkout_auto_print'
+                        });
+                        if (printOutcome.success) {
+                            toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
+                        } else if (
+                            isCashPayment
+                            && printOutcome.reasonCode !== 'IMIN_COMMAND_TIMEOUT'
+                            && printOutcome.raw?.hardware?.mayHaveExecuted === false
+                            && printOutcome.raw?.hardware?.drawerOpened !== true
+                        ) {
+                            const drawerOutcome = await posHardware.openDrawer({
+                                shiftId: activeShiftId,
+                                transactionId: completedTransaction?.pos_transaction_id,
+                                terminalId: normalizedTerminalId,
+                                reason: 'checkout_auto_open_drawer'
+                            });
+                            if (drawerOutcome.success) toast.success('Cash drawer opened.');
+                            else toast.error(drawerOutcome.message || 'Receipt printing and cash drawer opening failed.');
+                        } else {
+                            toast.error(printOutcome.message || 'Checkout completed, but receipt printing failed.');
+                        }
+                    }
+                } catch (hardwareError) {
+                    toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
+                }
+
+                try {
+                    await markTerminalOperationReplayed(payload.idempotency_key, {
+                        resolution_source: 'network_success',
+                        resolution_note: 'Checkout completed while online'
+                    });
+                    await syncQueuedCheckoutsState();
+                } catch {
+                    toast.error('Payment completed, but the local checkout queue status could not refresh.');
+                }
+
+                try {
+                    await loadCatalog();
+                } catch {
+                    toast.error('Payment completed, but the latest catalog could not refresh.');
+                }
+            }).catch((error) => {
+                toast.error(error?.message || 'Payment completed, but a post-checkout task failed.');
+            });
+        }, 0);
     };
 
     const handleCloseDay = () => {
@@ -1612,11 +1638,11 @@ export default function POSCheckoutTerminal({
             });
 
             if (outcome.success) {
-                toast.success(
-                    shouldOpenDrawer && outcome.driverId === 'imin_native'
+                toast.success(outcome.message || (
+                    shouldOpenDrawer
                         ? 'Receipt printed and cash drawer opened.'
-                        : (outcome.message || 'Receipt printed.')
-                );
+                        : 'Receipt printed.'
+                ));
             } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED') {
                 toast.message(outcome.message || 'No printer is configured for this terminal. The receipt is available for on-screen preview.');
             } else {

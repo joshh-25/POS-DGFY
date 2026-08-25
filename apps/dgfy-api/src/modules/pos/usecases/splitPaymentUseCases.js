@@ -187,6 +187,7 @@ const paymentError = (code, message, statusCode, details = undefined) => (
 
 const resolveOwnedOpenShift = async ({ posRepository, payload = {}, user, transaction }) => {
     const userId = toPositiveInt(user?.user_id || user?.id);
+    const shiftOwnerUserId = toPositiveInt(user?.register_shift_owner_user_id) || userId;
     if (!userId) throw paymentError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required.', 401);
 
     const shiftId = toPositiveInt(payload.shift_id);
@@ -201,8 +202,8 @@ const resolveOwnedOpenShift = async ({ posRepository, payload = {}, user, transa
             reason_code: 'POS_SHIFT_NOT_OPEN'
         });
     }
-    if (toPositiveInt(shift.cashier_id) !== userId) {
-        throw paymentError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the shift cashier may collect this payment.', 403, {
+    if (toPositiveInt(shift.cashier_id) !== shiftOwnerUserId) {
+        throw paymentError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the active register operator may collect this payment.', 403, {
             reason_code: 'POS_SHIFT_OWNER_REQUIRED'
         });
     }
@@ -1013,7 +1014,7 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
     };
 };
 
-export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutPosUseCase }) => async ({ paymentSessionId, payload = {}, user }) => {
+export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutPosUseCase }) => async ({ paymentSessionId, payload = {}, user, operatorSessionId = null }) => {
     let transaction = null;
     try {
         const normalizedId = toPositiveInt(paymentSessionId);
@@ -1072,6 +1073,7 @@ export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutP
             payload: completionPayload.checkoutPayload,
             userId: scope.userId,
             user,
+            operatorSessionId,
             transaction,
             trustedDiscountApproval: completionPayload.trustedDiscountApproval,
             beforeCommit: async ({ transactionId }) => {

@@ -54,6 +54,10 @@ export default function OrderPreviewView({ transaction, mobileResponsive = false
   const totalAmount = Number.isFinite(Number(transaction.total_amount))
     ? Number(transaction.total_amount)
     : (subtotalAmount - discountAmount + restaurantServiceChargeAmount + deliveryFeeAmount);
+  const persistedChangeAmount = Number(transaction.change_amount);
+  const showCashChange = String(transaction.payment_type || '').trim().toLowerCase() === 'cash'
+    && Number.isFinite(persistedChangeAmount)
+    && persistedChangeAmount > 0;
   const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
 
   // Format date to: May 18, 2024 • 10:34 AM
@@ -223,6 +227,7 @@ export default function OrderPreviewView({ transaction, mobileResponsive = false
               </div>
               {restaurantServiceChargeAmount > 0 && <div className={summaryRowClassName}><span className={summaryLabelClassName}>Restaurant Service Charge</span><span className={summaryValueClassName}>{money(restaurantServiceChargeAmount)}</span></div>}
               {deliveryFeeAmount > 0 && <div className={summaryRowClassName}><span className={summaryLabelClassName}>Delivery Fee</span><span className={summaryValueClassName}>{money(deliveryFeeAmount)}</span></div>}
+              {showCashChange && <div className={summaryRowClassName}><span className={summaryLabelClassName}>Change</span><span className={summaryValueClassName}>{money(persistedChangeAmount)}</span></div>}
             </div>
           </div>
 

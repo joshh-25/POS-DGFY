@@ -8,7 +8,7 @@ import {
 } from '../../utils/iminHardwareBridge.js';
 import { reportPosDeviceClientResult } from '../../services/posService.js';
 import { emitPosHardwareMessage } from '../../utils/posHardwareMessageBus.js';
-import { normalizeHardwareResult } from '../posHardwareContract.js';
+import { POS_HARDWARE_CAPABILITIES, normalizeHardwareResult } from '../posHardwareContract.js';
 import { resolveIminPrinterAvailability } from '../iminPrinterAvailability.js';
 
 const isIminWrapper = () => {
@@ -85,6 +85,14 @@ const probeAvailability = () => {
 export const iminNativeDriver = {
     id: 'imin_native',
     label: 'iMin built-in printer',
+    capabilities: Object.freeze([
+        POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+        POS_HARDWARE_CAPABILITIES.PRINT_SHIFT_SUMMARY,
+        POS_HARDWARE_CAPABILITIES.PRINT_Z_READING,
+        POS_HARDWARE_CAPABILITIES.OPEN_DRAWER,
+        POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET,
+        POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT
+    ]),
     async detect() {
         if (!isIminWrapper()) return false;
         return probeAvailability().availability.available;
@@ -112,7 +120,7 @@ export const iminNativeDriver = {
     } = {}) {
         let outcome;
         try {
-            const result = printReceiptWithIminBridge({
+            const result = await printReceiptWithIminBridge({
                 transaction,
                 businessSettings,
                 receiptContract,
@@ -131,7 +139,7 @@ export const iminNativeDriver = {
                 success: false,
                 driverId: this.id,
                 message: error?.message || 'Failed to print on the iMin printer.',
-                reasonCode: 'IMIN_PRINT_FAILED'
+                reasonCode: error?.code || 'IMIN_PRINT_FAILED'
             });
         }
 
@@ -165,7 +173,7 @@ export const iminNativeDriver = {
     },
     async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal } = {}) {
         try {
-            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal });
+            const result = await printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             return normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -179,19 +187,20 @@ export const iminNativeDriver = {
                 success: false,
                 driverId: this.id,
                 message: error?.message || (billRequest ? 'Failed to print the bill request on the iMin printer.' : 'Failed to print the order ticket on the iMin printer.'),
-                reasonCode: 'IMIN_PRINT_FAILED'
+                reasonCode: error?.code || 'IMIN_PRINT_FAILED'
             });
         }
     },
     async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey } = {}) {
         let outcome;
         try {
-            const result = printShiftSummaryWithIminBridge({ shiftSummary, businessSettings });
+            const result = await printShiftSummaryWithIminBridge({ shiftSummary, businessSettings });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
-                success: true,
+                success: result.result?.success !== false,
                 driverId: this.id,
                 message: result.result?.message,
+                reasonCode: result.result?.reasonCode || null,
                 raw: result.result
             });
         } catch (error) {
@@ -199,7 +208,7 @@ export const iminNativeDriver = {
                 success: false,
                 driverId: this.id,
                 message: error?.message || 'Failed to print the shift sales summary on the iMin printer.',
-                reasonCode: 'IMIN_PRINT_FAILED'
+                reasonCode: error?.code || 'IMIN_PRINT_FAILED'
             });
         }
 
@@ -219,7 +228,7 @@ export const iminNativeDriver = {
     async printZReading({ zReading, businessSettings, businessDate, locationId, terminalId, reason, idempotencyKey } = {}) {
         let outcome;
         try {
-            const result = printZReadingWithIminBridge({ zReading, businessSettings });
+            const result = await printZReadingWithIminBridge({ zReading, businessSettings });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -233,7 +242,7 @@ export const iminNativeDriver = {
                 success: false,
                 driverId: this.id,
                 message: error?.message || 'Failed to print the Z-reading on the iMin printer.',
-                reasonCode: 'IMIN_PRINT_FAILED'
+                reasonCode: error?.code || 'IMIN_PRINT_FAILED'
             });
         }
 
@@ -264,7 +273,7 @@ export const iminNativeDriver = {
 
         let outcome;
         try {
-            const result = openDrawerWithIminBridge();
+            const result = await openDrawerWithIminBridge();
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -278,7 +287,7 @@ export const iminNativeDriver = {
                 success: false,
                 driverId: this.id,
                 message: error?.message || 'Failed to open the iMin cash drawer.',
-                reasonCode: 'IMIN_DRAWER_FAILED'
+                reasonCode: error?.code || 'IMIN_DRAWER_FAILED'
             });
         }
 

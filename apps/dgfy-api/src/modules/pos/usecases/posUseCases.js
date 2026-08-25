@@ -577,6 +577,10 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
             if (dateFrom > dateTo) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
             }
+            const rangeDays = Math.round((new Date(`${dateTo}T00:00:00.000Z`) - new Date(`${dateFrom}T00:00:00.000Z`)) / 86400000) + 1;
+            if (rangeDays > 366) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'POS report range cannot exceed 366 days', { statusCode: 422 });
+            }
             return baseUseCase({
                 query: {
                     ...scopePosReportQueryToActor({ query, user }),
@@ -601,7 +605,30 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
         const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
-        const rows = [
+        const lifecycle = overviewResult.data?.cashier_lifecycle || {};
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
+        const lifecycleRows = section === 'attendance'
+            ? [
+                ['Cashier', 'Duty Type', 'Status', 'Started At', 'Ended At', 'Break Minutes', 'Worked Minutes', 'Location'],
+                ...(lifecycle.attendance?.rows || []).map((row) => [row.cashier_name, row.duty_type, row.status, row.started_at, row.ended_at, row.break_minutes, row.worked_minutes, row.location_id])
+            ]
+            : section === 'cashiers'
+                ? [
+                    ['Cashier', 'Transactions', 'Gross Sales', 'Net Sales', 'Operator Attribution'],
+                    ...cashierRows.map((row) => [row.cashier_name, row.summary?.total_transactions, row.summary?.gross_sales, row.summary?.net_sales, 'Authenticated operator where operator_session_id exists; otherwise legacy cashier snapshot'])
+                ]
+                : section === 'registers'
+                    ? [
+                        ['Opening Cashier', 'Shift IDs', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance', 'Notice'],
+                        ...(lifecycle.registers || []).map((row) => [row.opening_cashier_name, (row.shift_ids || []).join('|'), row.opening_float_amount, row.cash_sales_amount, row.cash_in_total, row.cash_out_total, row.expected_cash_amount, row.closing_cash_amount, row.variance_amount, row.attribution_notice])
+                    ]
+                    : section === 'handoffs'
+                        ? [
+                            ['Event At', 'Terminal', 'Shift', 'Type', 'Custody Mode', 'Outgoing', 'Incoming', 'Expected Cash', 'Counted Cash', 'Variance', 'Attribution'],
+                            ...(lifecycle.handoffs?.rows || []).map((row) => [row.event_at, row.terminal_id, row.shift_id, row.event_type, row.custody_mode, row.outgoing_operator_name, row.incoming_operator_name, row.expected_cash_amount, row.counted_cash_amount, row.variance_amount, row.variance_attribution])
+                        ]
+                        : null;
+        const rows = lifecycleRows || [
             ['Metric', 'Value'],
             ['Gross Sales', summary.gross_sales || 0],
             ['Net Sales', summary.net_sales || 0],
@@ -636,7 +663,6 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
                 row.net_sales || 0
             ])
         ];
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         return ok({
             filename: `pos-${section}-report.csv`,
             content_type: 'text/csv; charset=utf-8',
@@ -1704,6 +1730,8 @@ const assertOpenShiftForPosMutation = async ({
     shiftId = null,
     terminalId = null,
     locationId = null,
+    authorizedOperatorUserId = null,
+    shiftOwnerCashierId = null,
     transaction = null,
     lock = true
 } = {}) => {
@@ -1717,6 +1745,7 @@ const assertOpenShiftForPosMutation = async ({
     }
 
     const normalizedShiftId = parsePositiveInt(shiftId);
+    const normalizedShiftOwnerCashierId = parsePositiveInt(shiftOwnerCashierId) || normalizedCashierId;
     if (shiftId != null && !normalizedShiftId) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -1730,14 +1759,16 @@ const assertOpenShiftForPosMutation = async ({
         ? await posRepository.getTerminalShiftById(normalizedShiftId, options)
         : await posRepository.findOpenTerminalShift({
             terminalId: terminalId || null,
-            cashierId: normalizedCashierId,
+            cashierId: normalizedShiftOwnerCashierId,
             locationId: locationId || null
         }, options);
 
     if (!shift || shift.status !== 'open') {
         throw buildShiftClosedError();
     }
-    if (Number(shift.cashier_id) !== normalizedCashierId) {
+    const normalizedAuthorizedOperatorUserId = parsePositiveInt(authorizedOperatorUserId);
+    if (Number(shift.cashier_id) !== normalizedShiftOwnerCashierId
+        && normalizedAuthorizedOperatorUserId !== normalizedCashierId) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'Shift does not belong to the authenticated cashier.',
@@ -2546,6 +2577,7 @@ export const buildCheckoutPosUseCase = ({
         payload,
         userId,
         user,
+        operatorSessionId = null,
         transaction: providedTransaction = null,
         beforeCommit = null,
         quoteOnly = false,
@@ -2557,6 +2589,16 @@ export const buildCheckoutPosUseCase = ({
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'userId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        const normalizedOperatorSessionId = operatorSessionId == null
+            ? null
+            : parsePositiveInt(operatorSessionId);
+        if (operatorSessionId != null && !normalizedOperatorSessionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'operatorSessionId must be a positive integer when provided',
                 { statusCode: 400 }
             ));
         }
@@ -2857,6 +2899,7 @@ export const buildCheckoutPosUseCase = ({
             };
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
+                operator_session_id: normalizedOperatorSessionId,
                 terminal_id: normalizedTerminalId || null,
                 location_id: enforcedCheckoutLocationId,
                 restaurant_service_charge: normalizeRestaurantServiceChargeInput({
@@ -2967,15 +3010,54 @@ export const buildCheckoutPosUseCase = ({
                 });
             }
 
+            let operatorSession = null;
+            if (normalizedOperatorSessionId) {
+                if (typeof posRepository.getTerminalOperatorSessionById !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'POS operator-session persistence is unavailable.',
+                        { statusCode: 500 }
+                    );
+                }
+                operatorSession = await posRepository.getTerminalOperatorSessionById(normalizedOperatorSessionId, {
+                    transaction,
+                    lock: true
+                });
+                const operatorExpired = operatorSession?.authority_expires_at
+                    && new Date(operatorSession.authority_expires_at).getTime() <= Date.now();
+                if (!operatorSession
+                    || operatorSession.status !== 'active'
+                    || operatorSession.revoked_at
+                    || operatorExpired
+                    || Number(operatorSession.user_id) !== normalizedUserId
+                    || (normalizedTerminalId && String(operatorSession.terminal_id) !== String(normalizedTerminalId))
+                    || (enforcedCheckoutLocationId && Number(operatorSession.location_id) !== Number(enforcedCheckoutLocationId))) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'The active cashier authority is no longer valid for this checkout.',
+                        { statusCode: 403, details: { reason_code: 'POS_OPERATOR_AUTHORITY_INVALID' } }
+                    );
+                }
+            }
+
             const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: normalizedUserId,
-                shiftId: payload.shift_id,
+                shiftId: payload.shift_id || operatorSession?.pos_terminal_shift_id,
                 terminalId: normalizedTerminalId || null,
                 locationId: enforcedCheckoutLocationId || null,
+                authorizedOperatorUserId: operatorSession?.user_id || null,
                 transaction,
                 lock: true
             });
+            if (operatorSession
+                && Number(operatorSession.pos_terminal_shift_id) !== Number(activeShift.pos_terminal_shift_id)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'The active cashier authority does not match this register shift.',
+                    { statusCode: 403, details: { reason_code: 'POS_OPERATOR_SHIFT_MISMATCH' } }
+                );
+            }
             const normalizedShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
             if (!shiftLocationId) {
@@ -3636,6 +3718,7 @@ export const buildCheckoutPosUseCase = ({
                     idempotency_key: idempotencyKey,
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
+                    operator_session_id: normalizedOperatorSessionId,
                     shift_id: normalizedShiftId || null,
                     terminal_id: normalizedTerminalId || null,
                     order_source: 'in_store',
@@ -4140,6 +4223,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const reason = String(payload.reason || '').trim();
         const hasShiftIdPayload = Object.prototype.hasOwnProperty.call(payload || {}, 'shift_id')
             && payload.shift_id != null
@@ -4203,6 +4287,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     shiftId: activeShiftId,
                     terminalId: activeTerminalId,
                     locationId: terminalLocationId,
+                    shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                    authorizedOperatorUserId: user?.register_shift_owner_user_id ? actorUserId : null,
                     transaction,
                     lock: true
                 });
@@ -4357,6 +4443,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 completed_at: voidedAt,
                 metadata: {
                     evidence_scope: 'internal_void_only',
+                    operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
                     payment_status_before_void: paymentStatusBeforeVoid,
                     transaction_shift_id: transactionShiftId,
@@ -4384,6 +4471,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 reason,
                 changes: {
                     event: 'pos_transaction_voided',
+                    operator_session_id: operatorSessionId,
                     status: 'voided',
                     reason,
                     invoice_number: existing.invoice_number || null,
@@ -6435,7 +6523,8 @@ const buildCashierHistorySalesSummary = async ({ posRepository, shiftId, shift }
 export const buildOpenTerminalShiftUseCase = ({
     posRepository,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
-    resolveLocationScope = resolvePosOperationalLocationScope
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    onShiftOpened = null
 }) => {
     return async ({ payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -6601,11 +6690,22 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
+                const lifecycle = typeof onShiftOpened === 'function'
+                    ? await onShiftOpened({
+                        shift: existing,
+                        user,
+                        payload,
+                        requestId: idempotencyKey,
+                        tenantId,
+                        transaction
+                    })
+                    : null;
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
                     terminal_identity_policy: terminalPolicyContext,
-                    shift: toSerializable(existing)
+                    shift: toSerializable(existing),
+                    ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
                 };
                 await persistOperationReplay({
                     posRepository,
@@ -6678,11 +6778,22 @@ export const buildOpenTerminalShiftUseCase = ({
                 { transaction }
             );
 
+            const lifecycle = typeof onShiftOpened === 'function'
+                ? await onShiftOpened({
+                    shift: hydratedCreated || created,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    tenantId,
+                    transaction
+                })
+                : null;
             const replayPayload = {
                 reused_existing: false,
                 compliance_decision: complianceDecision,
                 terminal_identity_policy: terminalPolicyContext,
-                shift: toSerializable(hydratedCreated || created)
+                shift: toSerializable(hydratedCreated || created),
+                ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6951,6 +7062,7 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 event: 'shift_location_switched',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     from_location_id: sourceLocationId,
                     to_location_id: enforcedTargetLocationId,
@@ -7041,7 +7153,7 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 // Terminal context never grants ownership of another cashier's
                 // drawer. Admin monitoring is exposed through a separate
                 // read-only endpoint below.
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: requestedLocationId
             });
 
@@ -7322,6 +7434,7 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 event: 'cash_drawer_event_recorded',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     cash_drawer_event_id: created.pos_cash_drawer_event_id || null,
                     event_type: eventType,
@@ -7418,7 +7531,57 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
+const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+    const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
+        ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
+        : [];
+    if (sessions.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Complete or cancel ${sessions.length} in-flight payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
+                active_payment_session_count: sessions.length,
+                shift_id: Number(shiftId),
+                sessions: sessions.map((session) => ({
+                    pos_payment_session_id: Number(session.pos_payment_session_id),
+                    session_reference: session.session_reference,
+                    status: session.status
+                }))
+            }
+        }
+    );
+};
+
+const assertNoInFlightOperatorMutationForShift = async ({ posRepository, shiftId, transaction }) => {
+    const mutation = typeof posRepository.findInFlightOperatorMutationForShift === 'function'
+        ? await posRepository.findInFlightOperatorMutationForShift(shiftId, {
+            staleBefore: new Date(Date.now() - (5 * 60 * 1000)),
+            transaction,
+            lock: true
+        })
+        : null;
+    if (!mutation) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Wait for the active cashier operation to finish before closing this shift.',
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_OPERATOR_MUTATION_IN_FLIGHT',
+                operator_session_id: Number(mutation.pos_terminal_operator_session_id),
+                operation_type: mutation.protected_operation_type || null,
+                shift_id: Number(shiftId)
+            }
+        }
+    );
+};
+
+export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
@@ -7499,6 +7662,16 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -7522,6 +7695,15 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
 
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -7534,6 +7716,14 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_closed',
+                    transaction,
+                    at: new Date()
+                });
+            }
             const shiftLocationId = parsePositiveInt(shiftPayload?.location_id);
             const remainingOpenShifts = shiftLocationId
                 ? await posRepository.listOpenTerminalShiftsForLocation(
@@ -7545,6 +7735,7 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 compliance_decision: complianceDecision,
                 shift_authorization: shiftAuthorization,
                 shift: toSerializable(closed),
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 cash_summary: {
                     ...summary,
                     closing_cash_amount: closingCashAmount,
@@ -7612,6 +7803,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
 
 export const buildForceCloseStaleTerminalShiftUseCase = ({
     posRepository,
+    revokeOperatorSessionsForTerminal = null,
+    onShiftClosing = null,
     now = () => new Date(),
     staleAfterHours = resolvePosStaleShiftHours()
 }) => {
@@ -7700,6 +7893,16 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -7724,6 +7927,15 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -7736,10 +7948,19 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_force_closed',
+                    transaction,
+                    at: recoveredAt
+                });
+            }
 
             const replayPayload = {
                 compliance_decision: complianceDecision,
                 recovery_authorization: recoveryAuthorization,
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 shift: toSerializable(closed),
                 cash_summary: {
                     ...summary,
@@ -7840,7 +8061,7 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;
@@ -7917,6 +8138,8 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 posRepository,
                 cashierId: normalizedUserId,
                 shiftId,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.operator_session_id ? normalizedUserId : null,
                 lock: false
             });
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
@@ -8181,6 +8404,8 @@ const buildCollectCashOnlineOrderUseCase = ({
                 cashierId,
                 terminalId,
                 locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
                 transaction,
                 lock: true
             });
@@ -8213,6 +8438,7 @@ const buildCollectCashOnlineOrderUseCase = ({
                 action: 'UPDATE',
                 changes: {
                     event: `${orderLabel}_cash_collected`,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_type: 'cash',
                     payment_timing: paymentTiming,
                     payment_status: 'paid',
@@ -8454,6 +8680,8 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
                 cashierId,
                 terminalId,
                 locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
                 transaction,
                 lock: true
             });
@@ -8534,6 +8762,7 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
                 action: 'UPDATE',
                 changes: {
                     event: 'order_balance_settled',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_method: paymentMethod,
                     payment_provider: isCashSettlement ? null : 'merchant_owned',
                     manual_payment_received: manualPaymentReceived,

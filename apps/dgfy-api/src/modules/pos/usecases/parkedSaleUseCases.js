@@ -175,6 +175,7 @@ const resolveOwnedOpenShift = async ({
     allowShared = false
 }) => {
     const userId = toPositiveInt(user?.user_id);
+    const shiftOwnerUserId = toPositiveInt(user?.register_shift_owner_user_id) || userId;
     if (!userId) throw buildParkedSaleError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required.', 401);
 
     const shiftId = toPositiveInt(payload.shift_id);
@@ -199,8 +200,8 @@ const resolveOwnedOpenShift = async ({
     // Parked sales are a location-level handoff queue. Listing and claiming
     // may be performed by another authorized cashier at the same location;
     // create, re-park, complete, and cancel still require shift ownership.
-    if (!allowShared && toPositiveInt(shift.cashier_id) !== userId) {
-        throw buildParkedSaleError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the cashier who opened the shift may manage its parked sales.', 403, {
+    if (!allowShared && toPositiveInt(shift.cashier_id) !== shiftOwnerUserId) {
+        throw buildParkedSaleError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the active register operator may manage its parked sales.', 403, {
             reason_code: 'POS_SHIFT_OWNER_REQUIRED',
             shift_id: shiftId
         });
@@ -236,6 +237,7 @@ const resolveOwnedOpenShift = async ({
 
     return {
         userId,
+        operatorSessionId: toPositiveInt(user?.operator_session_id),
         shiftId,
         locationId: shiftLocationId,
         terminalId: requestedTerminalId || shiftTerminalId,
@@ -353,6 +355,7 @@ export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ p
             location_id: scope.locationId,
             changes: {
                 event: 'pos_parked_sale_created',
+                operator_session_id: scope.operatorSessionId,
                 park_reference: created?.park_reference || null,
                 line_count: requestPayload.line_count,
                 total_amount: requestPayload.total_amount,
@@ -428,6 +431,7 @@ export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             location_id: scope.locationId,
             changes: {
                 event: 'pos_parked_sale_reparked',
+                operator_session_id: scope.operatorSessionId,
                 revision: reparkingPayload.revision,
                 total_amount: reparkingPayload.total_amount,
                 terminal_id: scope.terminalId,
@@ -491,6 +495,7 @@ export const buildCompleteClaimedPosParkedSaleUseCase = ({ posRepository }) => a
         location_id: scope.locationId,
         changes: {
             event: 'pos_parked_sale_completed',
+            operator_session_id: scope.operatorSessionId,
             completed_transaction_id: normalizedTransactionId,
             terminal_id: scope.terminalId,
             shift_id: scope.shiftId,
@@ -581,6 +586,7 @@ export const buildClaimPosParkedSaleUseCase = ({ posRepository }) => async ({ pa
             location_id: scope.locationId,
             changes: {
                 event: 'pos_parked_sale_resumed',
+                operator_session_id: scope.operatorSessionId,
                 origin_cashier_id: toPositiveInt(row.origin_cashier_id) || toPositiveInt(row.cashier_id),
                 origin_shift_id: toPositiveInt(row.origin_shift_id) || toPositiveInt(row.shift_id),
                 previous_cashier_id: toPositiveInt(row.cashier_id),
@@ -645,6 +651,7 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             reason,
             changes: {
                 event: 'pos_parked_sale_cancelled',
+                operator_session_id: scope.operatorSessionId,
                 reason,
                 terminal_id: scope.terminalId,
                 shift_id: scope.shiftId,

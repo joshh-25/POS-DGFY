@@ -1315,6 +1315,44 @@ describe('pos use-cases application result contract', () => {
         expect(posRepository.listIncomingOnlineOrders).not.toHaveBeenCalled();
     });
 
+    it('listIncomingOnlineOrders accepts the active operator while preserving the shift owner', async () => {
+        const activeShift = {
+            pos_terminal_shift_id: 12,
+            cashier_id: 7,
+            terminal_id: 'REG-1',
+            location_id: 2,
+            status: 'open'
+        };
+        const posRepository = {
+            getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
+            listIncomingOnlineOrders: jest.fn().mockResolvedValue([])
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({
+            location_id: 2,
+            location: { location_id: 2 }
+        });
+        const useCase = buildListIncomingOnlineOrdersUseCase({
+            posRepository,
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            query: { shift_id: 12, location_id: 2, limit: 25 },
+            user: {
+                user_id: 6,
+                operator_session_id: 44,
+                register_shift_owner_user_id: 7
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(12, {});
+        expect(posRepository.listIncomingOnlineOrders).toHaveBeenCalledWith({
+            locationId: 2,
+            limit: 25
+        });
+    });
+
     it('updateOnlineOrderStatus rejects an order outside the operator active-shift location', async () => {
         const transaction = {
             finished: false,

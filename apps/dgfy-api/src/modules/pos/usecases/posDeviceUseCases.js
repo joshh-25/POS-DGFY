@@ -374,6 +374,7 @@ export const buildGetPosDeviceStatusUseCase = ({ deviceDriver }) => {
 export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
         const transactionId = parsePositiveInt(payload?.transaction_id);
         const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 5));
         const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
@@ -424,7 +425,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
             }
 
             const activeShift = toSerializable(await posRepository.findOpenTerminalShift({
-                cashierId: userId
+                cashierId: registerShiftOwnerUserId
             }));
             if (!activeShift) {
                 throw new DomainError(
@@ -465,6 +466,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 action: 'UPDATE',
                 changes: {
                     operation: 'print_receipt',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     reason,
                     copies,
                     paper_width: paperWidth,
@@ -510,6 +512,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                     action: 'UPDATE',
                     changes: {
                         operation: 'print_receipt',
+                        operator_session_id: parsePositiveInt(user?.operator_session_id),
                         reason,
                         copies,
                         paper_width: paperWidth,
@@ -882,6 +885,7 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
 export const buildAuthorizePosDrawerUseCase = ({ posRepository, authorizationService }) => {
     return async ({ payload, user }) => {
         const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
         const shiftId = parsePositiveInt(payload?.shift_id);
         const transactionId = payload?.transaction_id == null ? null : parsePositiveInt(payload.transaction_id);
         const terminalId = String(payload?.terminal_id || '').trim() || null;
@@ -923,7 +927,7 @@ export const buildAuthorizePosDrawerUseCase = ({ posRepository, authorizationSer
                     : posRepository.findActiveDiscountApproverById(userId))
             );
             const adminBypass = isPosDrawerAdmin(user) || isPosDrawerAdmin(operator);
-            if (!adminBypass && Number(shift.cashier_id) !== userId) {
+            if (!adminBypass && Number(shift.cashier_id) !== registerShiftOwnerUserId) {
                 throw new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,
                     'Only the cashier assigned to this open shift can open its drawer.',
@@ -970,6 +974,7 @@ export const buildAuthorizePosDrawerUseCase = ({ posRepository, authorizationSer
                     changes: {
                         event: 'pos_drawer_authorization_failed',
                         operation: 'authorize_drawer',
+                        operator_session_id: parsePositiveInt(user?.operator_session_id),
                         shift_id: shiftId || null,
                         transaction_id: transactionId,
                         terminal_id: terminalId,
@@ -990,6 +995,7 @@ export const buildAuthorizePosDrawerUseCase = ({ posRepository, authorizationSer
 export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver, authorizationService }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
         const shiftId = parsePositiveInt(payload?.shift_id);
         const transactionId = payload?.transaction_id == null ? null : parsePositiveInt(payload?.transaction_id);
         const terminalId = String(payload?.terminal_id || '').trim() || null;
@@ -1118,7 +1124,7 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver, authori
                         : posRepository.findActiveDiscountApproverById(userId))
                 );
                 const adminBypass = isPosDrawerAdmin(user) || isPosDrawerAdmin(operator);
-                if (!adminBypass && Number(shift.cashier_id) !== userId) {
+                if (!adminBypass && Number(shift.cashier_id) !== registerShiftOwnerUserId) {
                     throw new DomainError(
                         DomainErrorCode.AUTHORIZATION_FAILED,
                         'Only the cashier assigned to this open shift can auto-open its drawer.',
@@ -1166,6 +1172,7 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver, authori
                 action: 'UPDATE',
                 changes: {
                     operation: 'open_drawer',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     reason,
                     shift_id: shiftId,
                     location_id: shift.location_id || null,

@@ -1578,6 +1578,8 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 status: transaction.status || null,
                 cashier_id: transaction.cashier?.user_id || transaction.cashier_id || transaction.accepted_by || null,
                 cashier_name: transaction.cashier?.username || transaction.acceptedByUser?.username || null,
+                operator_session_id: transaction.operator_session_id || null,
+                attribution_type: transaction.operator_session_id ? 'authenticated_operator' : 'legacy_cashier_snapshot',
                 payment_type: transaction.payment_type || null,
                 payment_status: transaction.payment_status || null,
                 order_source: transaction.order_source || null,
@@ -1589,6 +1591,189 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 refund_amount: round4(summary.refund_amount)
             };
         });
+};
+
+const reportMinutesBetween = (startedAt, endedAt, fallbackEnd = new Date()) => {
+    const start = new Date(startedAt);
+    const end = endedAt ? new Date(endedAt) : fallbackEnd;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+    return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+};
+
+const reportPage = (rows = [], filters = {}) => {
+    const page = Math.max(1, Number.parseInt(filters.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, Number.parseInt(filters.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+    return {
+        rows: rows.slice(offset, offset + limit),
+        pagination: {
+            page,
+            limit,
+            total: rows.length,
+            total_pages: Math.max(1, Math.ceil(rows.length / limit))
+        }
+    };
+};
+
+const loadCashierLifecycleReport = async ({ filters = {}, options = {}, registerReconciliation = new Map() } = {}) => {
+    const Attendance = dbStore.get('EmployeeAttendanceSession');
+    const Break = dbStore.get('EmployeeBreakSegment');
+    const Operator = dbStore.get('PosTerminalOperatorSession');
+    const Handoff = dbStore.get('PosDrawerHandoffEvent');
+    const User = dbStore.get('User');
+    if (!Attendance || !Break || !Operator || !Handoff || !User) {
+        const empty = reportPage([], filters);
+        return {
+            attendance: empty,
+            operators: empty,
+            handoffs: empty,
+            registers: [],
+            reconciliation: { cashier_net_sales: 0, register_net_sales: 0, difference: 0 }
+        };
+    }
+
+    const range = resolveReportDateRange(filters);
+    const overlapWhere = {
+        started_at: { [Op.lt]: range.endAtExclusive },
+        [Op.or]: [
+            { ended_at: null },
+            { ended_at: { [Op.gte]: range.startAt } }
+        ]
+    };
+    const attendanceWhere = { ...overlapWhere };
+    const operatorWhere = { ...overlapWhere };
+    const handoffWhere = { event_at: { [Op.gte]: range.startAt, [Op.lt]: range.endAtExclusive } };
+    const cashierId = toPositiveInt(filters.cashier_id);
+    const locationId = toPositiveInt(filters.location_id);
+    const terminalId = String(filters.terminal_id || '').trim();
+    if (cashierId) {
+        attendanceWhere.user_id = cashierId;
+        operatorWhere.user_id = cashierId;
+        handoffWhere[Op.or] = [
+            { outgoing_operator_user_id: cashierId },
+            { incoming_operator_user_id: cashierId }
+        ];
+    }
+    if (locationId) {
+        attendanceWhere.location_id = locationId;
+        operatorWhere.location_id = locationId;
+        handoffWhere.location_id = locationId;
+    }
+    if (terminalId) {
+        operatorWhere.terminal_id = terminalId;
+        handoffWhere.terminal_id = terminalId;
+    }
+
+    const transaction = options.transaction;
+    const [attendanceRecords, operatorRecords, handoffRecords] = await Promise.all([
+        Attendance.findAll({
+            where: attendanceWhere,
+            include: [
+                { model: User, as: 'user', attributes: ['user_id', 'username'], required: false },
+                { model: Break, as: 'breakSegments', required: false, separate: true, order: [['started_at', 'ASC']] }
+            ],
+            order: [['started_at', 'DESC'], ['employee_attendance_session_id', 'DESC']],
+            transaction
+        }),
+        Operator.findAll({
+            where: operatorWhere,
+            include: [{ model: User, as: 'operator', attributes: ['user_id', 'username'], required: false }],
+            order: [['started_at', 'DESC'], ['pos_terminal_operator_session_id', 'DESC']],
+            transaction
+        }),
+        Handoff.findAll({
+            where: handoffWhere,
+            include: [
+                { model: User, as: 'outgoingOperator', attributes: ['user_id', 'username'], required: false },
+                { model: User, as: 'incomingOperator', attributes: ['user_id', 'username'], required: false }
+            ],
+            order: [['event_at', 'DESC'], ['pos_drawer_handoff_event_id', 'DESC']],
+            transaction
+        })
+    ]);
+
+    const now = new Date();
+    const attendanceRows = attendanceRecords.map(toPlain).map((session) => {
+        const breakRows = (session.breakSegments || []).map(toPlain);
+        const breakMinutes = breakRows.reduce((total, segment) => (
+            total + reportMinutesBetween(segment.started_at, segment.ended_at, now)
+        ), 0);
+        const elapsedMinutes = reportMinutesBetween(session.started_at, session.ended_at, now);
+        return {
+            attendance_session_id: session.employee_attendance_session_id,
+            user_id: session.user_id,
+            cashier_name: session.user?.username || `Cashier #${session.user_id}`,
+            location_id: session.location_id,
+            duty_type: session.duty_type,
+            status: session.status,
+            started_at: session.started_at,
+            ended_at: session.ended_at,
+            elapsed_minutes: elapsedMinutes,
+            break_minutes: breakMinutes,
+            worked_minutes: Math.max(0, elapsedMinutes - breakMinutes),
+            breaks: breakRows.map((segment) => ({
+                break_segment_id: segment.employee_break_segment_id,
+                status: segment.status,
+                started_at: segment.started_at,
+                ended_at: segment.ended_at,
+                minutes: reportMinutesBetween(segment.started_at, segment.ended_at, now)
+            }))
+        };
+    });
+    const operatorRows = operatorRecords.map(toPlain).map((session) => ({
+        operator_session_id: session.pos_terminal_operator_session_id,
+        shift_id: session.pos_terminal_shift_id,
+        terminal_id: session.terminal_id,
+        location_id: session.location_id,
+        user_id: session.user_id,
+        cashier_name: session.operator?.username || `Cashier #${session.user_id}`,
+        attendance_session_id: session.employee_attendance_session_id,
+        status: session.status,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        ended_reason: session.ended_reason,
+        minutes: reportMinutesBetween(session.started_at, session.ended_at, now)
+    }));
+    const handoffRows = handoffRecords.map(toPlain).map((event) => ({
+        handoff_event_id: event.pos_drawer_handoff_event_id,
+        shift_id: event.pos_terminal_shift_id,
+        terminal_id: event.terminal_id,
+        location_id: event.location_id,
+        event_type: event.event_type,
+        custody_mode: event.custody_mode,
+        outgoing_operator_user_id: event.outgoing_operator_user_id,
+        outgoing_operator_name: event.outgoingOperator?.username || null,
+        incoming_operator_user_id: event.incoming_operator_user_id,
+        incoming_operator_name: event.incomingOperator?.username || null,
+        expected_cash_amount: event.expected_cash_amount == null ? null : round4(event.expected_cash_amount),
+        counted_cash_amount: event.counted_cash_amount == null ? null : round4(event.counted_cash_amount),
+        variance_amount: event.variance_amount == null ? null : round4(event.variance_amount),
+        event_at: event.event_at,
+        note: event.note || null,
+        variance_attribution: event.custody_mode === 'shared_access' ? 'shared_drawer_no_individual_variance' : 'counted_transfer'
+    }));
+    const registerRows = Array.from(registerReconciliation.values()).map((entry) => ({
+        opening_cashier_id: entry.cashier_id,
+        opening_cashier_name: entry.cashier_name,
+        shift_ids: entry.shift_ids,
+        shift_count: entry.shift_count,
+        closed_shift_count: entry.closed_shift_count,
+        opening_float_amount: entry.opening_float_amount,
+        cash_sales_amount: entry.cash_sales_amount,
+        cash_in_total: entry.cash_in_total,
+        cash_out_total: entry.cash_out_total,
+        expected_cash_amount: entry.expected_cash_amount,
+        closing_cash_amount: entry.closing_cash_amount,
+        variance_amount: entry.cash_variance_amount,
+        attribution_notice: 'Register totals belong to the drawer lifecycle, not an individual relief cashier.'
+    }));
+
+    return {
+        attendance: reportPage(attendanceRows, filters),
+        operators: reportPage(operatorRows, filters),
+        handoffs: reportPage(handoffRows, filters),
+        registers: registerRows
+    };
 };
 
 const loadReportCashierReconciliation = async ({ transactions = [], filters = {}, options = {} } = {}) => {
@@ -1976,7 +2161,8 @@ const buildReportPayloadFromTransactions = (
     filters = {},
     categoryOptions = [],
     cashierReconciliation = new Map(),
-    adjustments = []
+    adjustments = [],
+    cashierLifecycle = null
 ) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
     const adjustmentRows = normalizeReportAdjustmentRows(adjustments);
@@ -2064,6 +2250,7 @@ const buildReportPayloadFromTransactions = (
             top_items: topItems,
             trend: dailySeries
         },
+        cashier_lifecycle: cashierLifecycle,
         monthly_report: {
             summary,
             sales_trend: monthlySeries,
@@ -3313,13 +3500,32 @@ export const posRepository = {
             filters,
             options
         });
-        return buildReportPayloadFromTransactions(
+        const cashierLifecycle = await loadCashierLifecycleReport({
+            filters,
+            options,
+            registerReconciliation: cashierReconciliation
+        });
+        const payload = buildReportPayloadFromTransactions(
             transactions,
             filters,
             categoryOptions,
             cashierReconciliation,
-            adjustments
+            adjustments,
+            cashierLifecycle
         );
+        const cashierNetSales = round4((payload.daily_report?.cashier_summary || []).reduce(
+            (total, row) => total + Number(row.summary?.net_sales || 0),
+            0
+        ));
+        const registerNetSales = round4(payload.daily_report?.summary?.net_sales || 0);
+        payload.cashier_lifecycle.reconciliation = {
+            cashier_net_sales: cashierNetSales,
+            register_transaction_net_sales: registerNetSales,
+            difference: round4(cashierNetSales - registerNetSales),
+            reconciled: round4(cashierNetSales - registerNetSales) === 0,
+            exclusions: ['cash drawer movements are register ledger entries, not sales']
+        };
+        return payload;
     },
 
     async exportReports(filters = {}, options = {}) {
@@ -4640,6 +4846,42 @@ export const posRepository = {
         return rows.map(toPlainPaymentSession);
     },
 
+    async listInFlightPaymentSessionsForShift(shiftId, options = {}) {
+        const PosPaymentSession = dbStore.get('PosPaymentSession');
+        const normalizedShiftId = toPositiveInt(shiftId);
+        if (!PosPaymentSession || !normalizedShiftId) return [];
+
+        const rows = await PosPaymentSession.findAll({
+            where: {
+                shift_id: normalizedShiftId,
+                status: { [Op.in]: ['open', 'partially_paid', 'ready_to_complete'] }
+            },
+            order: [['created_at', 'ASC'], ['pos_payment_session_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlainPaymentSession);
+    },
+
+    async findInFlightOperatorMutationForShift(shiftId, { staleBefore, transaction, lock = false } = {}) {
+        const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+        const normalizedShiftId = toPositiveInt(shiftId);
+        if (!PosTerminalOperatorSession || !normalizedShiftId) return null;
+        const where = {
+            pos_terminal_shift_id: normalizedShiftId,
+            status: 'active',
+            protected_operation_key: { [Op.ne]: null }
+        };
+        if (staleBefore) where.protected_operation_started_at = { [Op.gte]: staleBefore };
+        const row = await PosTerminalOperatorSession.findOne({
+            where,
+            order: [['protected_operation_started_at', 'DESC']],
+            transaction,
+            lock: lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        return row?.toJSON ? row.toJSON() : row || null;
+    },
+
     async createPosPaymentSession(payload = {}, options = {}) {
         const PosPaymentSession = dbStore.get('PosPaymentSession');
         if (!PosPaymentSession) throw new Error('PosPaymentSession model is unavailable');
@@ -5074,6 +5316,17 @@ export const posRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
+    },
+
+    async getTerminalOperatorSessionById(operatorSessionId, options = {}) {
+        const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+        const normalizedId = toPositiveInt(operatorSessionId);
+        if (!PosTerminalOperatorSession || !normalizedId) return null;
+        const row = await PosTerminalOperatorSession.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
     },
 
     async createCashDrawerEvent(payload = {}, options = {}) {

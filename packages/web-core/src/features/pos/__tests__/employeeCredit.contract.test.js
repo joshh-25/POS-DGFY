@@ -11,7 +11,8 @@ const readPosFile = (relativePath) => fs.readFileSync(
 
 const checkoutContent = readPosFile('components/POSCheckoutTerminal.jsx');
 const checkoutViewContent = readPosFile('components/POSCheckoutTerminalView.jsx');
-const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}`;
+const checkoutDialogContent = readPosFile('components/POSCheckoutConfirmDialog.jsx');
+const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutDialogContent}`;
 const checkoutWorkflowContent = readPosFile('hooks/usePosCheckoutWorkflow.js');
 const receiptHardwareWorkflowContent = readPosFile('hooks/usePosReceiptHardwareWorkflow.js');
 const employeeCreditWorkflowContent = readPosFile('hooks/usePosEmployeeCreditWorkflow.js');
@@ -30,9 +31,9 @@ const reportsWorkspaceContent = readPosFile('components/PosReportsAnalyticsWorks
 
 describe('Employee Credit POS contract', () => {
   it('places the Employee Credit selector before Sale Summary and Add Discount only for that tender', () => {
-    const employeeCreditPanelIndex = checkoutViewContent.indexOf('{isEmployeeCreditPayment && (');
-    const saleSummaryIndex = checkoutViewContent.indexOf('data-testid="pos-checkout-sale-summary"');
-    const addDiscountIndex = checkoutViewContent.indexOf('data-testid="pos-checkout-add-discount"');
+    const employeeCreditPanelIndex = checkoutDialogContent.indexOf('{isEmployeeCreditPayment && (');
+    const saleSummaryIndex = checkoutDialogContent.indexOf('data-testid="pos-checkout-sale-summary"');
+    const addDiscountIndex = checkoutDialogContent.indexOf('data-testid="pos-checkout-add-discount"');
 
     expect(employeeCreditPanelIndex).toBeGreaterThanOrEqual(0);
     expect(employeeCreditPanelIndex).toBeLessThan(saleSummaryIndex);
@@ -54,7 +55,7 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutRenderContent).toContain('employee_name: employeeCreditDiscountName');
     expect(checkoutRenderContent).toContain('employee_id: employeeCreditDiscountId');
     expect(checkoutContent).not.toContain('employeeCreditBalance >= cartTotal');
-    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !isCustomerPaymentSufficient)}');
+    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');
@@ -73,7 +74,7 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).not.toContain('placeholder="Employee account code"');
     expect(employeeCreditPaymentContent).not.toContain("'Verify'");
     expect(checkoutRenderContent).toContain('{!isEmployeeCreditPayment && !splitPaymentReady && (');
-    expect(checkoutWorkflowContent).toContain("cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined");
+    expect(checkoutWorkflowContent).toContain('cash_received: isCashPayment ? effectiveCustomerPaymentAmount : undefined');
     // Checkout still auto-opens the drawer for a cash sale...
     expect(checkoutWorkflowContent).toContain('openDrawerAfterPrint: isCashPayment');
     expect(checkoutWorkflowContent).toContain("reason: 'checkout_auto_print'");

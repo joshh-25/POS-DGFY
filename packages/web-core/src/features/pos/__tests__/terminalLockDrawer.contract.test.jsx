@@ -28,6 +28,18 @@ afterEach(() => {
 });
 
 describe('TerminalLockDrawer contract', () => {
+  it('keeps all drawer actions reachable through contained vertical scrolling', () => {
+    render(<TerminalLockDrawer {...buildProps()} />);
+
+    const drawer = document.querySelector('.dgfy-pos-terminal-lock-drawer');
+    expect(drawer).toBeTruthy();
+    expect(drawer.classList.contains('overflow-x-hidden')).toBe(true);
+    expect(drawer.classList.contains('overflow-y-auto')).toBe(true);
+    expect(drawer.classList.contains('overscroll-contain')).toBe(true);
+    expect(drawer.classList.contains('touch-pan-y')).toBe(true);
+    expect(drawer.firstElementChild.classList.contains('min-h-full')).toBe(true);
+  });
+
   it('does not render company token input in terminal lock drawer', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
