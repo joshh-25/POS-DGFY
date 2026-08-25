@@ -1,13 +1,13 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-25
 declaration_id: 2026-08-24-pos-cashier-attendance-lifecycle
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.24
-verification_evidence: pos-cashier-attendance-lifecycle-tests,pos-cashier-attendance-route-tests,pos-cashier-attendance-frontend-tests,tenant-schema-and-architecture-checks,production-build
+verification_evidence: pos-cashier-attendance-lifecycle-tests,pos-cashier-attendance-route-tests,pos-cashier-attendance-frontend-tests,pos-cashier-attendance-settings-tests,tenant-schema-and-architecture-checks,production-build
 rollback_note: Disable the default-off attendance feature setting and revert the additive lifecycle migration and handlers; existing register shifts, checkout, and transaction history remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -26,6 +26,7 @@ does not select a register operator, alter checkout attribution, move money, or 
 ## Affected Surfaces
 
 - POS attendance and break lifecycle APIs and the gated terminal panel.
+- Tenant-admin attendance configuration and active-location selection in POS Setup.
 - Tenant-local attendance and break persistence, audit history, and retry constraints.
 - POS permission and location-isolation enforcement.
 

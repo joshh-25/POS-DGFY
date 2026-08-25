@@ -80,10 +80,10 @@ const posControllerNames = [
     // Phase 148 (#825): this list enumerates every named export posController.js provides, so a
     // new one has to be added here too or the route wiring under test fails to construct.
     'recordOrderBalancePayment'
-    , 'getCurrentAttendance', 'timeInAttendance', 'timeOutAttendance', 'startAttendanceBreak',
+    , 'getAttendanceConfig', 'updateAttendanceConfig', 'getCurrentAttendance', 'timeInAttendance', 'timeOutAttendance', 'startAttendanceBreak',
     'endAttendanceBreak', 'startReliefDuty', 'endReliefDuty', 'correctAttendance', 'enrollCashierPin',
     'resetCashierPin', 'takeOverRegister', 'returnRegister', 'startSharedRelief', 'endSharedRelief',
-    'countedCustodyHandoff', 'getCurrentOperator', 'listEligibleOperators', 'endOperatorSession'
+    'countedCustodyHandoff', 'getCurrentOperator', 'listEligibleOperators', 'resumeCashier', 'endOperatorSession'
 ];
 
 const employeeCreditControllerNames = [

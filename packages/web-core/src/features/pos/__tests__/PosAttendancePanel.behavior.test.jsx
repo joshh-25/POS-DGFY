@@ -130,7 +130,7 @@ describe('PosAttendancePanel', () => {
             terminal_id: 'COUNTER-01',
             location_id: 12,
             shift_id: 88
-        }))); 
+        })));
     });
 
     it('requires an explicit outgoing-cashier acknowledgement before a counted handoff', async () => {

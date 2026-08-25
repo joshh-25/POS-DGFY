@@ -48,9 +48,10 @@ describe('PosCashierAttendanceSettingsCard', () => {
     window.addEventListener(POS_ATTENDANCE_CONFIG_CHANGED_EVENT, changed);
     render(<PosCashierAttendanceSettingsCard canEdit />);
 
-    const enableSwitch = await screen.findByRole('switch', { name: 'Enable Cashier Attendance and Breaks' });
+    const mainStore = await screen.findByRole('checkbox', { name: 'Main Store' });
+    const enableSwitch = screen.getByRole('switch', { name: 'Enable Cashier Attendance and Breaks' });
     fireEvent.click(enableSwitch);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Main Store' }));
+    fireEvent.click(mainStore);
     fireEvent.click(screen.getByRole('button', { name: /save attendance settings/i }));
 
     await waitFor(() => expect(updatePosCashierAttendanceConfig).toHaveBeenCalledWith({
@@ -80,7 +81,7 @@ describe('PosCashierAttendanceSettingsCard', () => {
     });
     render(<PosCashierAttendanceSettingsCard canEdit />);
 
-    await screen.findByRole('switch', { name: 'Enable Cashier Attendance and Breaks' });
+    await screen.findByRole('checkbox', { name: 'Main Store' });
     fireEvent.click(screen.getByRole('switch', { name: 'Enable Cashier Attendance and Breaks' }));
     fireEvent.click(screen.getByRole('button', { name: /save attendance settings/i }));
 
@@ -91,7 +92,8 @@ describe('PosCashierAttendanceSettingsCard', () => {
   it('is view-only without settings edit permission', async () => {
     render(<PosCashierAttendanceSettingsCard canEdit={false} />);
 
-    const enableSwitch = await screen.findByRole('switch', { name: 'Enable Cashier Attendance and Breaks' });
+    await screen.findByRole('checkbox', { name: 'Main Store' });
+    const enableSwitch = screen.getByRole('switch', { name: 'Enable Cashier Attendance and Breaks' });
     expect(enableSwitch.disabled).toBe(true);
     expect(screen.queryByRole('button', { name: /save attendance settings/i })).toBeNull();
     expect(screen.getByText('You have view-only settings access.')).toBeTruthy();

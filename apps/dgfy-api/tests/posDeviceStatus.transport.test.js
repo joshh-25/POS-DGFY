@@ -82,6 +82,8 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     completePosPaymentSessionUseCase: jest.fn(),
     getMerchantTenderReconciliationUseCase: jest.fn(),
     reviewMerchantTenderReconciliationUseCase: jest.fn(),
+    getPosCashierAttendanceConfigUseCase: jest.fn(),
+    updatePosCashierAttendanceConfigUseCase: jest.fn(),
     getCurrentPosCashierAttendanceUseCase: jest.fn(),
     timeInPosCashierAttendanceUseCase: jest.fn(),
     timeOutPosCashierAttendanceUseCase: jest.fn(),
@@ -107,6 +109,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     releasePosOperatorMutationUseCase: jest.fn(),
     endPosOperatorSessionUseCase: jest.fn(),
     revokePosOperatorSessionsForTerminal: jest.fn(),
+    resumePosCashierUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000
 }));
 
