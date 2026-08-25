@@ -226,17 +226,6 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storefrontReviewSummaryStar3: '',
   storefrontReviewSummaryStar4: '',
   storefrontReviewSummaryStar5: '',
-  storefrontPromoTitle: '',
-  storefrontPromoSubtitle: '',
-  storefrontPromoBadge: '',
-  storefrontPromoValidityText: '',
-  storefrontPromoCode: '',
-  storefrontPromoDiscountPercent: '',
-  storefrontPromoUsageLimit: '',
-  storefrontPromoUsedCount: '0',
-  storefrontPromoValidTimeStart: '',
-  storefrontPromoValidTimeEnd: '',
-  storefrontPromoActive: false,
   storefrontUiV2Enabled: false,
   storefrontCategories: [''],
   storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
@@ -1014,7 +1003,6 @@ export default function Settings() {
         // Map backend settings to frontend state
         const normalizedWorkflowMode = normalizeWorkflowMode(systemSettings.ops_workflow_mode?.value);
         const storefrontSocialLinks = parseJsonObjectSetting(systemSettings.storefront_social_links?.value);
-        const storefrontPromo = parseJsonObjectSetting(systemSettings.storefront_promo?.value);
         const storefrontReviewSummary = parseJsonObjectSetting(systemSettings.storefront_review_summary?.value);
         const storefrontReviewHighlightsRaw = Array.isArray(systemSettings.storefront_review_highlights?.value)
           ? systemSettings.storefront_review_highlights.value
@@ -1098,17 +1086,6 @@ export default function Settings() {
           storefrontReviewSummaryStar3: normalizedReviewSummary.star3,
           storefrontReviewSummaryStar4: normalizedReviewSummary.star4,
           storefrontReviewSummaryStar5: normalizedReviewSummary.star5,
-          storefrontPromoTitle: String(storefrontPromo.title || ''),
-          storefrontPromoSubtitle: String(storefrontPromo.subtitle || ''),
-          storefrontPromoBadge: String(storefrontPromo.badge || ''),
-          storefrontPromoValidityText: String(storefrontPromo.validity_text || ''),
-          storefrontPromoCode: String(storefrontPromo.promo_code || ''),
-          storefrontPromoDiscountPercent: storefrontPromo.discount_percent == null ? '' : String(storefrontPromo.discount_percent),
-          storefrontPromoUsageLimit: storefrontPromo.usage_limit == null ? '' : String(storefrontPromo.usage_limit),
-          storefrontPromoUsedCount: storefrontPromo.used_count == null ? '0' : String(storefrontPromo.used_count),
-          storefrontPromoValidTimeStart: String(storefrontPromo.valid_time_start || ''),
-          storefrontPromoValidTimeEnd: String(storefrontPromo.valid_time_end || ''),
-          storefrontPromoActive: storefrontPromo.active === true,
           storefrontUiV2Enabled: systemSettings.storefront_ui_v2_enabled?.value === true,
           storefrontCategories: normalizeStringList(storefrontCategoriesRaw, 12, 60).length > 0
             ? normalizeStringList(storefrontCategoriesRaw, 12, 60)
@@ -2042,19 +2019,11 @@ export default function Settings() {
         },
         storefront_review_highlights: storefrontReviewHighlights,
         storefront_review_summary: serializeStorefrontReviewSummary(settings),
-        storefront_promo: {
-          title: String(settings.storefrontPromoTitle || '').trim(),
-          subtitle: String(settings.storefrontPromoSubtitle || '').trim(),
-          badge: String(settings.storefrontPromoBadge || '').trim(),
-          validity_text: String(settings.storefrontPromoValidityText || '').trim(),
-          promo_code: String(settings.storefrontPromoCode || '').trim().toUpperCase(),
-          discount_percent: settings.storefrontPromoDiscountPercent === '' ? null : Number(settings.storefrontPromoDiscountPercent),
-          usage_limit: settings.storefrontPromoUsageLimit === '' ? null : Number(settings.storefrontPromoUsageLimit),
-          used_count: settings.storefrontPromoUsedCount === '' ? 0 : Number(settings.storefrontPromoUsedCount),
-          valid_time_start: String(settings.storefrontPromoValidTimeStart || '').trim(),
-          valid_time_end: String(settings.storefrontPromoValidTimeEnd || '').trim(),
-          active: settings.storefrontPromoActive === true
-        },
+        // #695: storefront_promo is intentionally omitted from this write payload -- the legacy
+        // "Promo Card" editor that used to live on this screen has been removed entirely (not just
+        // frozen); this comment is what's left of it, so a future save doesn't silently reintroduce
+        // the key. settingsRepository.updateSettings only touches keys present in the body, so
+        // omitting it here leaves whatever is stored on that key strictly alone.
         storefront_ui_v2_enabled: settings.storefrontUiV2Enabled === true,
         storefront_categories: storefrontCategories,
         storefront_gallery_images: serializeStorefrontGallerySettings(settings.storefrontGalleryImages),
@@ -3344,27 +3313,6 @@ export default function Settings() {
                   <Input value={settings.storefrontReviewSummaryStar3} onChange={(e) => handleChange('storefrontReviewSummaryStar3', e.target.value)} placeholder="3★ count" />
                   <Input value={settings.storefrontReviewSummaryStar2} onChange={(e) => handleChange('storefrontReviewSummaryStar2', e.target.value)} placeholder="2★ count" />
                   <Input value={settings.storefrontReviewSummaryStar1} onChange={(e) => handleChange('storefrontReviewSummaryStar1', e.target.value)} placeholder="1★ count" />
-                </div>
-              </div>
-              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                <div className="flex items-center justify-between">
-                  <Label>Promo Card</Label>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span>Active</span>
-                    <Switch checked={settings.storefrontPromoActive === true} onCheckedChange={(checked) => handleChange('storefrontPromoActive', checked === true)} />
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input value={settings.storefrontPromoTitle} onChange={(e) => handleChange('storefrontPromoTitle', e.target.value)} placeholder="10% OFF" />
-                  <Input value={settings.storefrontPromoBadge} onChange={(e) => handleChange('storefrontPromoBadge', e.target.value)} placeholder="Today's Promo" />
-                  <Input value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
-                  <Input value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
-                  <Input value={settings.storefrontPromoCode} onChange={(e) => handleChange('storefrontPromoCode', String(e.target.value || '').toUpperCase())} placeholder="Promo Code (e.g. SAVE20)" />
-                  <Input type="number" min="0" max="100" step="0.01" value={settings.storefrontPromoDiscountPercent} onChange={(e) => handleChange('storefrontPromoDiscountPercent', e.target.value)} placeholder="Discount % (e.g. 20)" />
-                  <Input type="number" min="1" step="1" value={settings.storefrontPromoUsageLimit} onChange={(e) => handleChange('storefrontPromoUsageLimit', e.target.value)} placeholder="Usage Limit (e.g. 30)" />
-                  <Input value={settings.storefrontPromoUsedCount} readOnly placeholder="Used Count" />
-                  <Input type="time" value={settings.storefrontPromoValidTimeStart} onChange={(e) => handleChange('storefrontPromoValidTimeStart', e.target.value)} />
-                  <Input type="time" value={settings.storefrontPromoValidTimeEnd} onChange={(e) => handleChange('storefrontPromoValidTimeEnd', e.target.value)} />
                 </div>
               </div>
             </CardContent>

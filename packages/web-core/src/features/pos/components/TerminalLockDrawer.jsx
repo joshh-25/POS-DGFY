@@ -34,7 +34,7 @@ export default function TerminalLockDrawer({
 
   return (
     <div
-      className={`dgfy-pos-terminal-lock-drawer fixed top-0 right-0 z-50 h-full w-full max-w-md border-l shadow-2xl shadow-slate-950/30 transition-transform duration-300 ${
+      className={`dgfy-pos-terminal-lock-drawer fixed top-0 right-0 z-50 h-full w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain border-l shadow-2xl shadow-slate-950/30 touch-pan-y transition-transform duration-300 ${
         drawerOpen ? 'translate-x-0' : 'translate-x-full'
       }`}
       style={{
@@ -42,7 +42,7 @@ export default function TerminalLockDrawer({
         background: '#ffffff'
       }}
     >
-      <div className="h-full flex flex-col">
+      <div className="flex min-h-full flex-col">
         <div className="border-b border-slate-200 bg-white px-6 py-5">
           <div className="flex items-start gap-3 text-[#0F172A]">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-blue-200 bg-blue-50">

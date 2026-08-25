@@ -8,7 +8,7 @@ const SESSION_ESTABLISHMENT_ROUTES = [
   /^\/api\/v1\/store\/auth\/(login|register)\b/i
 ];
 
-const hasBrowserSessionCookie = (req) => /(^|;\s*)sku_(refresh_token|dgfy_session|store_session|admin_session)=/.test(String(req.headers.cookie || ''));
+const hasBrowserSessionCookie = (req) => /(^|;\s*)sku_(refresh_token|dgfy_session|store_session|admin_session|pos_operator_authority)=/.test(String(req.headers.cookie || ''));
 const hasBearerAuthorization = (req) => /^Bearer\s+\S+/i.test(String(req.headers.authorization || '').trim());
 const isSessionEstablishmentRoute = (req) => SESSION_ESTABLISHMENT_ROUTES.some((pattern) => (
   pattern.test(String(req.originalUrl || req.url || ''))

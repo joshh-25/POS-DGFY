@@ -215,7 +215,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         await row.update(updatePayload);
     };
 
-    const checkoutAsCashier = async (cashier, payload) => {
+    const checkoutAsCashier = async (cashier, payload, { operatorSessionId = null } = {}) => {
         const itemIds = [...new Set((payload.lines || []).map((line) => Number(line.item_id)))];
         for (const itemId of itemIds) {
             const item = await models.Item.findByPk(itemId);
@@ -230,6 +230,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         return runInTenantContext(() => checkoutPosUseCase({
             userId: cashier.user_id,
             user: cashier,
+            operatorSessionId,
             payload: {
                 ...payload,
                 terminal_id: cashier.posTestTerminalId,
@@ -314,6 +315,102 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
         const refreshedItem = await models.Item.findByPk(product.item_id);
         expect(Number(refreshedItem.current_stock)).toBe(8);
+    });
+
+    it('persists A, B, A, B operator attribution under one register shift', async () => {
+        const cashierA = await createCashier();
+        const suffix = crypto.randomUUID().slice(0, 8);
+        const cashierB = await models.User.create({
+            username: `relief_${suffix}`,
+            email: `relief_${suffix}@pos.test`,
+            password_hash: 'test-hash',
+            role: 'staff',
+            is_active: true
+        });
+        await models.UserLocationGrant.create({
+            user_id: cashierB.user_id,
+            location_id: cashierA.posTestLocationId,
+            created_by: cashierA.user_id
+        });
+        cashierB.posTestTerminalId = cashierA.posTestTerminalId;
+        cashierB.posTestLocationId = cashierA.posTestLocationId;
+
+        const [attendanceA, attendanceB] = await Promise.all([
+            models.EmployeeAttendanceSession.create({
+                user_id: cashierA.user_id,
+                location_id: cashierA.posTestLocationId,
+                duty_type: 'regular',
+                status: 'open',
+                started_at: new Date(),
+                start_idempotency_key: `attendance-a-${suffix}`
+            }),
+            models.EmployeeAttendanceSession.create({
+                user_id: cashierB.user_id,
+                location_id: cashierA.posTestLocationId,
+                duty_type: 'relief',
+                status: 'open',
+                started_at: new Date(),
+                start_idempotency_key: `attendance-b-${suffix}`
+            })
+        ]);
+        const shift = await models.PosTerminalShift.findOne({
+            where: { terminal_id: cashierA.posTestTerminalId, status: 'open' }
+        });
+        const product = await createFinishedGood({ current_stock: 10 });
+        const actors = [cashierA, cashierB, cashierA, cashierB];
+        const attendanceByUserId = new Map([
+            [cashierA.user_id, attendanceA],
+            [cashierB.user_id, attendanceB]
+        ]);
+        const createdSessionIds = [];
+
+        for (let index = 0; index < actors.length; index += 1) {
+            await models.PosTerminalOperatorSession.update(
+                {
+                    status: 'ended',
+                    ended_at: new Date(),
+                    ended_reason: 'test_handoff',
+                    revoked_at: new Date(),
+                    revoked_reason: 'test_handoff'
+                },
+                { where: { pos_terminal_shift_id: shift.pos_terminal_shift_id, status: 'active' } }
+            );
+            const actor = actors[index];
+            const operatorSession = await models.PosTerminalOperatorSession.create({
+                pos_terminal_shift_id: shift.pos_terminal_shift_id,
+                terminal_id: cashierA.posTestTerminalId,
+                location_id: cashierA.posTestLocationId,
+                user_id: actor.user_id,
+                employee_attendance_session_id: attendanceByUserId.get(actor.user_id).employee_attendance_session_id,
+                status: 'active',
+                started_at: new Date(),
+                authority_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+                idempotency_key: `operator-${suffix}-${index}`
+            });
+            createdSessionIds.push(operatorSession.pos_terminal_operator_session_id);
+            const result = await checkoutAsCashier(actor, {
+                idempotency_key: `operator-checkout-${suffix}-${index}`,
+                shift_id: shift.pos_terminal_shift_id,
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: product.item_id, quantity: 1 }]
+            }, { operatorSessionId: operatorSession.pos_terminal_operator_session_id });
+            expect(result.success).toBe(true);
+        }
+
+        const transactions = await models.PosTransaction.findAll({
+            where: { idempotency_key: actors.map((_, index) => `operator-checkout-${suffix}-${index}`) },
+            order: [['pos_transaction_id', 'ASC']]
+        });
+        expect(transactions.map((row) => Number(row.cashier_id))).toEqual([
+            cashierA.user_id,
+            cashierB.user_id,
+            cashierA.user_id,
+            cashierB.user_id
+        ]);
+        expect(transactions.map((row) => Number(row.operator_session_id))).toEqual(createdSessionIds);
+        expect(new Set(transactions.map((row) => Number(row.shift_id)))).toEqual(new Set([shift.pos_terminal_shift_id]));
+        expect(Number(shift.cashier_id)).toBe(cashierA.user_id);
     });
 
     it('persists governed discount allocations against the real transaction line primary key', async () => {

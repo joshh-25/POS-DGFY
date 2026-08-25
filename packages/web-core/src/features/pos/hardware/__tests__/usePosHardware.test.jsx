@@ -12,6 +12,7 @@ vi.mock('../posHardwareRegistry.js', () => ({
 }));
 
 import { usePosHardware } from '../usePosHardware.js';
+import { POS_HARDWARE_CAPABILITIES } from '../posHardwareContract.js';
 
 describe('usePosHardware authentication boundary', () => {
     beforeEach(() => {
@@ -52,5 +53,23 @@ describe('usePosHardware authentication boundary', () => {
         });
 
         expect(refreshPosHardwareDriver).not.toHaveBeenCalled();
+    });
+
+    it('exposes driver capabilities without requiring components to inspect the driver id', async () => {
+        resolvePosHardwareDriver.mockResolvedValue({
+            id: 'future_vendor_driver',
+            capabilities: [
+                POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+                POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT
+            ]
+        });
+        const { result } = renderHook(() => usePosHardware({ enabled: true }));
+
+        await waitFor(() => expect(result.current.driver?.id).toBe('future_vendor_driver'));
+
+        expect(result.current.isPrinterAvailable).toBe(true);
+        expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT)).toBe(true);
+        expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)).toBe(true);
+        expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER)).toBe(false);
     });
 });

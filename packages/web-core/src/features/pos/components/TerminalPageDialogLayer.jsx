@@ -43,6 +43,8 @@ export default function TerminalPageDialogLayer({ model }) {
     cashierResumeContext,
     cashierResumeForm,
     cashierResumeUnlock,
+    cashierTakeoverForm,
+    cashierTakeoverUnlock,
     cashierUnlockSession,
     closeShiftBlocker,
     closeShiftConfirmOpen,
@@ -55,7 +57,10 @@ export default function TerminalPageDialogLayer({ model }) {
     getNextTenantSetupStep,
     getPreviousTenantSetupStep,
     handleAdminReauthSubmit,
+    handleBackToCashierResume,
     handleCashierResumeSubmit,
+    handleCashierTakeoverSubmit,
+    handleOpenCashierTakeover,
     handleCloseDay,
     handleCollectCash,
     handleSettleBalance,
@@ -107,6 +112,7 @@ export default function TerminalPageDialogLayer({ model }) {
     setCashCollectionOrder,
     setCashReceivedInput,
     setCashierResumeForm,
+    setCashierTakeoverForm,
     setCloseShiftConfirmOpen,
     setClosedShiftReport,
     setClosedShiftReportAutoPrint,
@@ -200,19 +206,21 @@ export default function TerminalPageDialogLayer({ model }) {
         />
         <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
           if (submitting) return;
-          if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock' || cashierResumeUnlock || adminReauthUnlock)) {
+          if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock' || cashierResumeUnlock || cashierTakeoverUnlock || adminReauthUnlock)) {
             toast.message('Unlock the terminal to continue.');
             return;
           }
           setTerminalUnlockModalOpen(open);
         }}>
           <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
-            <form onSubmit={adminReauthUnlock ? handleAdminReauthSubmit : (cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit)}>
+            <form onSubmit={adminReauthUnlock ? handleAdminReauthSubmit : (cashierTakeoverUnlock ? handleCashierTakeoverSubmit : (cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit))}>
               <DialogHeader className="border-b border-slate-100 px-5 py-4">
                 <DialogTitle className="text-lg font-extrabold text-[#0F172A]">
                   {adminReauthUnlock
                     ? 'Admin Unlock'
-                    : cashierResumeUnlock || signedInShiftResume
+                    : cashierTakeoverUnlock
+                      ? 'Cashier Takeover'
+                      : cashierResumeUnlock || signedInShiftResume
                       ? 'Resume Shift'
                       : terminalUnlockMode === 'relock'
                         ? 'Unlock Terminal'
@@ -221,7 +229,9 @@ export default function TerminalPageDialogLayer({ model }) {
                 <DialogDescription className="text-sm text-slate-600">
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
-                    : cashierResumeUnlock
+                    : cashierTakeoverUnlock
+                      ? 'Sign in as the incoming cashier and enter their POS cashier PIN. The existing register shift and opening cash remain unchanged.'
+                      : cashierResumeUnlock
                       ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
                       : signedInShiftResume
                         ? 'Your active shift was found. Resume the same terminal, cart, totals, and cashier session.'
@@ -272,6 +282,61 @@ export default function TerminalPageDialogLayer({ model }) {
                       </p>
                     </div>
                   </>
+                ) : cashierTakeoverUnlock ? (
+                  <>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                      Open shift owned by {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'the current cashier'}
+                    </div>
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-[#1A4E8D]">
+                      Attendance starts automatically when takeover succeeds. The incoming cashier must have no active break. A POS PIN is required; the shift and drawer are not closed.
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="cashier-takeover-identifier" className="text-xs font-extrabold text-[#0F172A]">
+                        Incoming Cashier DGFY Email
+                      </Label>
+                      <Input
+                        id="cashier-takeover-identifier"
+                        type="email"
+                        value={cashierTakeoverForm.identifier}
+                        onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, identifier: event.target.value }))}
+                        placeholder="cashier@company.com"
+                        autoComplete="username"
+                        disabled={submitting}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="cashier-takeover-password" className="text-xs font-extrabold text-[#0F172A]">
+                        DGFY Password
+                      </Label>
+                      <Input
+                        id="cashier-takeover-password"
+                        type="password"
+                        value={cashierTakeoverForm.password}
+                        onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, password: event.target.value }))}
+                        placeholder="Enter cashier password"
+                        autoComplete="current-password"
+                        disabled={submitting}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="cashier-takeover-pin" className="text-xs font-extrabold text-[#0F172A]">
+                        POS Cashier PIN
+                      </Label>
+                      <Input
+                        id="cashier-takeover-pin"
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={cashierTakeoverForm.pin}
+                        onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                        placeholder="4 to 12 digits"
+                        disabled={submitting}
+                        required
+                      />
+                    </div>
+                  </>
                 ) : cashierResumeUnlock ? (
                   <>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1A4E8D]">
@@ -309,6 +374,15 @@ export default function TerminalPageDialogLayer({ model }) {
                       <p className="text-[11px] text-[#64748B]">
                         Only the cashier who owns this open shift can continue it.
                       </p>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto justify-start px-0 text-xs font-extrabold text-[#1A4E8D]"
+                        onClick={handleOpenCashierTakeover}
+                        disabled={submitting}
+                      >
+                        Another cashier taking over?
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -455,6 +529,16 @@ export default function TerminalPageDialogLayer({ model }) {
                     Back to Login
                   </Button>
                 )}
+                {cashierTakeoverUnlock && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleBackToCashierResume}
+                    disabled={submitting}
+                  >
+                    Back to Resume Shift
+                  </Button>
+                )}
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
                   <Button
                     type="button"
@@ -473,11 +557,15 @@ export default function TerminalPageDialogLayer({ model }) {
                   {submitting
                     ? (adminReauthUnlock
                       ? 'Checking admin...'
+                      : cashierTakeoverUnlock
+                        ? 'Taking over register...'
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resuming shift...'
                         : 'Opening shift...')
                     : (adminReauthUnlock
                       ? 'Unlock as Admin'
+                      : cashierTakeoverUnlock
+                        ? 'Take over register'
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resume Shift'
                         : terminalUnlockMode === 'relock'

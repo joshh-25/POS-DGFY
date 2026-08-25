@@ -76,6 +76,9 @@ export const PERMISSION_GROUPS = {
             MANAGE_ESALES_REPORTS: "pos:esales:manage",
             SWITCH_LOCATION_POS: "pos:switch_location",
             MANAGE_EMPLOYEES: "pos:employees:manage",
+            VIEW_ATTENDANCE: "pos:attendance:view",
+            OPERATE_ATTENDANCE: "pos:attendance:operate",
+            MANAGE_ATTENDANCE: "pos:attendance:manage",
             USE_EMPLOYEE_CREDIT: "pos:employee_credit:use",
             MANAGE_EMPLOYEE_CREDIT: "pos:employee_credit:manage",
             VIEW_EMPLOYEE_CREDIT_REPORT: "pos:employee_credit:report"

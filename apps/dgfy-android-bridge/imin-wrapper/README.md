@@ -10,6 +10,10 @@ This is a minimal Android WebView wrapper for running the hosted DGFY POS URL on
   - `window.iMinBridge.isIminWrapper()`
   - `window.iMinBridge.getDeviceInfo()`
   - `window.iMinBridge.openCashDrawer()`
+  - `window.iMinBridge.printReceipt(...)` and `printReceiptWithLogo(...)` for compatibility
+  - `window.iMinBridge.printReceiptWithLogoAsync(...)` for non-blocking branded receipts
+  - `window.iMinBridge.printReceiptAsync(...)` for non-blocking text reports/order tickets
+  - `window.iMinBridge.openCashDrawerAsync(...)` for non-blocking drawer commands
 - Provides a stub `DrawerController` where the iMin SDK call will go
 
 ## Current live routing
@@ -81,6 +85,17 @@ window.iMinBridge?.openCashDrawer?.();
 ```
 
 Do not call this in the browser-only path without the wrapper.
+
+Hardware calls are feature-detected by the shared POS frontend. New wrapper builds use the
+asynchronous receipt, text-print, and drawer methods and receive completion through the
+`dgfy:imin-command-result` window event, keeping printer-service and Bluetooth waits off the WebView thread.
+Older installed APKs remain compatible through `printReceiptWithLogo(...)` or
+`printReceipt(...)`, but those legacy calls are synchronous.
+
+On iMin hardware, the built-in printer service is attempted first. Only a confirmed pre-send
+failure falls back to a paired printer-like Bluetooth device. Native callbacks and Bluetooth
+connections are deadline-bounded so an uncertain result is reported without repeating the
+receipt or drawer pulse.
 
 ## Recommended implementation order
 

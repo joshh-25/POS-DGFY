@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolvePosHardwareDriver, refreshPosHardwareDriver } from './posHardwareRegistry.js';
-import { normalizeHardwareResult } from './posHardwareContract.js';
+import { POS_HARDWARE_CAPABILITIES, normalizeHardwareResult } from './posHardwareContract.js';
+
+const NO_HARDWARE_CAPABILITIES = Object.freeze([]);
 
 // Single entry point terminal components use to reach POS hardware. Resolves
 // once per mount (cached across the whole tab via posHardwareRegistry), never
@@ -67,6 +69,11 @@ export const usePosHardware = ({ enabled = true } = {}) => {
     const printZReading = useCallback((args) => withDriver('printZReading', args), [withDriver]);
     const printOrderTicket = useCallback((args) => withDriver('printOrderTicket', args), [withDriver]);
     const openDrawer = useCallback((args) => withDriver('openDrawer', args), [withDriver]);
+    const capabilities = driver?.capabilities || NO_HARDWARE_CAPABILITIES;
+    const supportsCapability = useCallback(
+        (capability) => capabilities.includes(capability),
+        [capabilities]
+    );
 
     return {
         driver,
@@ -75,7 +82,9 @@ export const usePosHardware = ({ enabled = true } = {}) => {
         // Honest UI state: true only once a real driver (not the noop fallback)
         // has been resolved. Print/drawer controls should read this instead of
         // failing silently on click.
-        isPrinterAvailable: Boolean(driver && driver.id !== 'none'),
+        isPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT),
+        capabilities,
+        supportsCapability,
         loading,
         refresh: () => load({ forceRefresh: true }),
         printReceipt,

@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
 const posTerminalLayoutPath = path.resolve(__dirname, '../utils/posTerminalLayout.js');
 const posCatalogWorkflowPath = path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js');
 const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurrentSaleActions.jsx');
@@ -28,7 +29,7 @@ describe('POS terminal responsive scroll contracts', () => {
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
-    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath]
+    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     posTerminalLayoutContent = fs.readFileSync(posTerminalLayoutPath, 'utf8');
@@ -165,7 +166,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(checkoutDialogSection).toContain('onClick={handlePrintOrder}');
     expect(checkoutDialogSection).toContain('Print Order');
     expect(checkoutDialogSection).toContain('grid grid-cols-3 gap-2');
-    expect(posCheckoutContent).toContain('!isCheckoutWorkflowValid || (!splitPaymentReady && !isCustomerPaymentSufficient)');
+    expect(posCheckoutContent).toContain('!isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)');
   });
 
   it('keeps the compact desktop summary separate with the governed totals typography', () => {

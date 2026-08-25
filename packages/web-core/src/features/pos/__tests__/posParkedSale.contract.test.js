@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const componentPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const componentViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
-const componentSource = [componentPath, componentViewPath]
+const componentDialogPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx');
+const componentSource = [componentPath, componentViewPath, componentDialogPath]
     .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
     .join('\n');
 const workflowSource = fs.readFileSync(

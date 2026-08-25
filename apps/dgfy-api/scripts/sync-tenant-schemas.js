@@ -68,6 +68,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         pos_day_close_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
+        }),
+        pos_cashier_pin_hash: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_hash` VARCHAR(255) NULL COMMENT 'Dedicated POS cashier takeover PIN bcrypt hash'"
+        }),
+        pos_cashier_pin_failed_attempts: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_failed_attempts` INT NOT NULL DEFAULT 0 COMMENT 'Failed dedicated cashier PIN attempts since last successful verification'"
+        }),
+        pos_cashier_pin_locked_until: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_locked_until` DATETIME NULL COMMENT 'Dedicated cashier PIN lockout expiry'"
+        }),
+        pos_cashier_pin_changed_at: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_changed_at` DATETIME NULL COMMENT 'Dedicated cashier PIN last enrollment/reset timestamp'"
         })
     }),
     audit_logs: Object.freeze({
@@ -215,6 +227,48 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         payment_breakdown: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_breakdown` JSON NULL COMMENT 'Immutable successful tender allocation snapshot for receipts and reports'"
+        }),
+        operator_session_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `operator_session_id` INTEGER NULL AFTER `shift_id`, ADD CONSTRAINT `pos_transactions_fk_operator_session` FOREIGN KEY (`operator_session_id`) REFERENCES `pos_terminal_operator_sessions` (`pos_terminal_operator_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        })
+    }),
+    employee_attendance_sessions: Object.freeze({
+        active_user_id: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `active_user_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `user_id` ELSE NULL END) STORED"
+        }),
+        start_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `start_idempotency_key` VARCHAR(120) NULL"
+        }),
+        end_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `end_idempotency_key` VARCHAR(120) NULL"
+        })
+    }),
+    employee_break_segments: Object.freeze({
+        active_attendance_session_id: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `active_attendance_session_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `employee_attendance_session_id` ELSE NULL END) STORED"
+        }),
+        start_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `start_idempotency_key` VARCHAR(120) NULL"
+        }),
+        end_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `end_idempotency_key` VARCHAR(120) NULL"
+        })
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        active_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'active' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
+        }),
+        active_operator_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `active_operator_user_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'active' THEN `user_id` ELSE NULL END) STORED"
+        }),
+        protected_operation_key: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_key` VARCHAR(120) NULL COMMENT 'Request identity for a currently executing protected POS mutation'"
+        }),
+        protected_operation_type: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_type` VARCHAR(120) NULL"
+        }),
+        protected_operation_started_at: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_started_at` DATETIME NULL"
         })
     }),
     pos_parked_sales: Object.freeze({
@@ -1487,6 +1541,140 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `inventory_reservation_lines_ibfk_1` FOREIGN KEY (`inventory_reservation_id`) REFERENCES `inventory_reservations` (`inventory_reservation_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `inventory_reservation_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    employee_attendance_sessions: Object.freeze({
+        sql: "CREATE TABLE `employee_attendance_sessions` (\n"
+            + "  `employee_attendance_session_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `employee_id` int DEFAULT NULL,\n"
+            + "  `user_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `duty_type` enum('regular','relief') NOT NULL,\n"
+            + "  `status` enum('open','closed') NOT NULL DEFAULT 'open',\n"
+            + "  `active_user_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'open' THEN `user_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `closed_by` int DEFAULT NULL,\n"
+            + "  `start_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `end_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`employee_attendance_session_id`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_active_user` (`active_user_id`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_user_start_idempotency` (`user_id`,`start_idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_user_end_idempotency` (`user_id`,`end_idempotency_key`),\n"
+            + "  KEY `idx_employee_attendance_sessions_employee_started` (`employee_id`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_user_started` (`user_id`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_location_status_started` (`location_id`,`status`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_duty_started` (`duty_type`,`started_at`),\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    employee_break_segments: Object.freeze({
+        sql: "CREATE TABLE `employee_break_segments` (\n"
+            + "  `employee_break_segment_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `employee_attendance_session_id` int NOT NULL,\n"
+            + "  `status` enum('open','closed') NOT NULL DEFAULT 'open',\n"
+            + "  `active_attendance_session_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'open' THEN `employee_attendance_session_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `ended_by` int DEFAULT NULL,\n"
+            + "  `start_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `end_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`employee_break_segment_id`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_active_session` (`active_attendance_session_id`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_session_start_idempotency` (`employee_attendance_session_id`,`start_idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_session_end_idempotency` (`employee_attendance_session_id`,`end_idempotency_key`),\n"
+            + "  KEY `idx_employee_break_segments_attendance_started` (`employee_attendance_session_id`,`started_at`),\n"
+            + "  KEY `idx_employee_break_segments_status_started` (`status`,`started_at`),\n"
+            + "  CONSTRAINT `employee_break_segments_fk_attendance` FOREIGN KEY (`employee_attendance_session_id`) REFERENCES `employee_attendance_sessions` (`employee_attendance_session_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_break_segments_fk_ended_by` FOREIGN KEY (`ended_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        sql: "CREATE TABLE `pos_terminal_operator_sessions` (\n"
+            + "  `pos_terminal_operator_session_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_terminal_shift_id` int NOT NULL,\n"
+            + "  `terminal_id` varchar(100) NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `user_id` int NOT NULL,\n"
+            + "  `employee_attendance_session_id` int DEFAULT NULL,\n"
+            + "  `status` enum('active','ended') NOT NULL DEFAULT 'active',\n"
+            + "  `active_terminal_id` varchar(100) GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'active' THEN upper(trim(`terminal_id`)) ELSE NULL END) STORED,\n"
+            + "  `active_operator_user_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'active' THEN `user_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `ended_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `authority_token_hash` varchar(64) DEFAULT NULL,\n"
+            + "  `authority_expires_at` datetime DEFAULT NULL,\n"
+            + "  `revoked_at` datetime DEFAULT NULL,\n"
+            + "  `revoked_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_key` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_type` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_started_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_terminal_operator_session_id`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_active_terminal` (`active_terminal_id`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_active_user` (`active_operator_user_id`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_shift_started` (`pos_terminal_shift_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_terminal_started` (`terminal_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_location_started` (`location_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_user_started` (`user_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_status_started` (`status`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_authority_token_hash` (`authority_token_hash`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_protected_operation` (`pos_terminal_shift_id`,`protected_operation_started_at`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`),\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_shift` FOREIGN KEY (`pos_terminal_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_terminal_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_attendance` FOREIGN KEY (`employee_attendance_session_id`) REFERENCES `employee_attendance_sessions` (`employee_attendance_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    pos_drawer_handoff_events: Object.freeze({
+        sql: "CREATE TABLE `pos_drawer_handoff_events` (\n"
+            + "  `pos_drawer_handoff_event_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_terminal_shift_id` int NOT NULL,\n"
+            + "  `terminal_id` varchar(100) NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `event_type` enum('shared_relief_start','shared_relief_end','counted_custody_transfer') NOT NULL,\n"
+            + "  `custody_mode` enum('shared_access','counted_transfer') NOT NULL,\n"
+            + "  `outgoing_operator_user_id` int DEFAULT NULL,\n"
+            + "  `incoming_operator_user_id` int DEFAULT NULL,\n"
+            + "  `expected_cash_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `counted_cash_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `variance_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `outgoing_acknowledged_by` int DEFAULT NULL,\n"
+            + "  `outgoing_acknowledged_at` datetime DEFAULT NULL,\n"
+            + "  `incoming_acknowledged_by` int DEFAULT NULL,\n"
+            + "  `incoming_acknowledged_at` datetime DEFAULT NULL,\n"
+            + "  `recorded_by` int NOT NULL,\n"
+            + "  `event_at` datetime NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `note` varchar(500) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_drawer_handoff_event_id`),\n"
+            + "  UNIQUE KEY `uq_pos_drawer_handoff_events_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_shift_event` (`pos_terminal_shift_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_terminal_event` (`terminal_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_location_event` (`location_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_type_event` (`event_type`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_incoming_event` (`incoming_operator_user_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_outgoing_event` (`outgoing_operator_user_id`,`event_at`),\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_shift` FOREIGN KEY (`pos_terminal_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_outgoing` FOREIGN KEY (`outgoing_operator_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming` FOREIGN KEY (`incoming_operator_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_outgoing_ack` FOREIGN KEY (`outgoing_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming_ack` FOREIGN KEY (`incoming_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     })
 });
 
@@ -1505,6 +1693,55 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         uq_pos_terminal_shifts_active_operator: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
+        })
+    }),
+    pos_transactions: Object.freeze({
+        idx_pos_transactions_operator_session_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
+        })
+    }),
+    employee_attendance_sessions: Object.freeze({
+        uq_employee_attendance_sessions_active_user: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_active_user` (`active_user_id`)"
+        }),
+        uq_employee_attendance_sessions_user_start_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_user_start_idempotency` (`user_id`,`start_idempotency_key`)"
+        }),
+        uq_employee_attendance_sessions_user_end_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_user_end_idempotency` (`user_id`,`end_idempotency_key`)"
+        })
+    }),
+    employee_break_segments: Object.freeze({
+        uq_employee_break_segments_active_session: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_active_session` (`active_attendance_session_id`)"
+        }),
+        uq_employee_break_segments_session_start_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_session_start_idempotency` (`employee_attendance_session_id`,`start_idempotency_key`)"
+        }),
+        uq_employee_break_segments_session_end_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_session_end_idempotency` (`employee_attendance_session_id`,`end_idempotency_key`)"
+        })
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        uq_pos_terminal_operator_sessions_active_terminal: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_active_terminal` (`active_terminal_id`)"
+        }),
+        uq_pos_terminal_operator_sessions_active_user: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_active_user` (`active_operator_user_id`)"
+        }),
+        idx_pos_terminal_operator_sessions_authority_token_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD INDEX `idx_pos_terminal_operator_sessions_authority_token_hash` (`authority_token_hash`)"
+        }),
+        idx_pos_terminal_operator_sessions_protected_operation: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD INDEX `idx_pos_terminal_operator_sessions_protected_operation` (`pos_terminal_shift_id`,`protected_operation_started_at`)"
+        }),
+        uq_pos_terminal_operator_sessions_shift_idempotency: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`)"
+        })
+    }),
+    pos_drawer_handoff_events: Object.freeze({
+        uq_pos_drawer_handoff_events_shift_idempotency: Object.freeze({
+            sql: "ALTER TABLE `pos_drawer_handoff_events` ADD UNIQUE INDEX `uq_pos_drawer_handoff_events_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`)"
         })
     }),
     pos_z_reading_snapshots: Object.freeze({

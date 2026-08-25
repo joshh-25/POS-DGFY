@@ -5,7 +5,8 @@ const metricState = {
     errorCountBySurfaceStatusCode: new Map(),
     requestDurationBuckets: new Map(),
     requestDurationSumMs: 0,
-    requestDurationCount: 0
+    requestDurationCount: 0,
+    posCashierLifecycleSignals: new Map()
 };
 
 const serializeLabels = (labels) => Object.entries(labels)
@@ -53,6 +54,15 @@ export const recordHttpErrorMetrics = ({ surface, statusClass, errorCode }) => {
     incrementMapValue(metricState.errorCountBySurfaceStatusCode, makeMetricKey(labels));
 };
 
+export const recordPosCashierLifecycleSignal = ({ signal, outcome = 'observed', reason = 'none' } = {}) => {
+    const labels = {
+        signal: signal || 'unknown',
+        outcome: outcome || 'observed',
+        reason: reason || 'none'
+    };
+    incrementMapValue(metricState.posCashierLifecycleSignals, makeMetricKey(labels));
+};
+
 const parseMetricKey = (key) => Object.fromEntries(
     key.split('|').map((pair) => {
         const index = pair.indexOf(':');
@@ -86,6 +96,13 @@ export const renderPrometheusMetrics = () => {
         lines.push(`sku_http_errors_total{${serializeLabels(labels)}} ${count}`);
     }
 
+    lines.push('# HELP sku_pos_cashier_lifecycle_signals_total POS cashier attendance, takeover, handoff, and reconciliation operational signals.');
+    lines.push('# TYPE sku_pos_cashier_lifecycle_signals_total counter');
+    for (const [key, count] of metricState.posCashierLifecycleSignals.entries()) {
+        const labels = parseMetricKey(key);
+        lines.push(`sku_pos_cashier_lifecycle_signals_total{${serializeLabels(labels)}} ${count}`);
+    }
+
     return `${lines.join('\n')}\n`;
 };
 
@@ -93,6 +110,7 @@ export const resetMetricsForTests = () => {
     metricState.requestCountByMethodStatus.clear();
     metricState.errorCountBySurfaceStatusCode.clear();
     metricState.requestDurationBuckets.clear();
+    metricState.posCashierLifecycleSignals.clear();
     metricState.requestDurationSumMs = 0;
     metricState.requestDurationCount = 0;
 };

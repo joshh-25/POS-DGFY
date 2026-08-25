@@ -671,6 +671,22 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   validateAdminHierarchy(adminUser, targetUser, 'change status for');
 
   await targetUser.update({ is_active: isActive });
+  if (!isActive) {
+    try {
+      const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+      const revokedAt = new Date();
+      await PosTerminalOperatorSession.update({
+        status: 'ended',
+        ended_at: revokedAt,
+        ended_reason: 'account_disabled',
+        revoked_at: revokedAt,
+        revoked_reason: 'account_disabled',
+        authority_token_hash: null
+      }, { where: { user_id: targetUser.user_id, status: 'active' } });
+    } catch (revocationError) {
+      console.warn('Failed to revoke POS operator authority after account disable:', revocationError.message);
+    }
+  }
 
   // Update email-tenant mapping based on active status
   const store = dbStore.getStore();
@@ -752,6 +768,20 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
     deleted_by: adminUserId,
     is_active: false
   });
+  try {
+    const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+    const revokedAt = new Date();
+    await PosTerminalOperatorSession.update({
+      status: 'ended',
+      ended_at: revokedAt,
+      ended_reason: 'account_removed',
+      revoked_at: revokedAt,
+      revoked_reason: 'account_removed',
+      authority_token_hash: null
+    }, { where: { user_id: targetUser.user_id, status: 'active' } });
+  } catch (revocationError) {
+    console.warn('Failed to revoke POS operator authority after account removal:', revocationError.message);
+  }
 
   // Remove email-tenant mapping
   const store = dbStore.getStore();

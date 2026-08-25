@@ -29,4 +29,37 @@ describe('POS order preview financial truth', () => {
     expect(screen.getByText('111.00')).toBeTruthy();
     expect(screen.queryByText('Tax')).toBeNull();
   });
+
+  it('shows persisted change for a completed cash payment', () => {
+    render(<OrderPreviewView transaction={{
+      invoice_number: 'INV-CASH-1',
+      status: 'completed',
+      payment_type: 'cash',
+      subtotal_amount: 400,
+      total_amount: 400,
+      cash_received: 500,
+      change_amount: 100,
+      lines: []
+    }} />);
+
+    expect(screen.getByText('Change')).toBeTruthy();
+    expect(screen.getByText('100.00')).toBeTruthy();
+  });
+
+  it.each([
+    ['exact cash', { payment_type: 'cash', change_amount: 0 }],
+    ['non-cash', { payment_type: 'gcash', change_amount: 100 }],
+    ['missing change', { payment_type: 'cash' }]
+  ])('hides change for %s payments', (_label, paymentFields) => {
+    render(<OrderPreviewView transaction={{
+      invoice_number: 'INV-NO-CHANGE',
+      status: 'completed',
+      subtotal_amount: 400,
+      total_amount: 400,
+      lines: [],
+      ...paymentFields
+    }} />);
+
+    expect(screen.queryByText('Change')).toBeNull();
+  });
 });

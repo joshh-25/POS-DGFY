@@ -23,6 +23,16 @@ describe('resolveIminPrinterAvailability', () => {
         expect(result.available).toBe(true);
     });
 
+    it('ignores unrelated paired Bluetooth devices when a new APK reports no printer candidates', () => {
+        const result = resolveIminPrinterAvailability({
+            printerServiceConnected: false,
+            bluetoothEscPos: bluetooth({ pairedCount: 3, printerCandidateCount: 0 })
+        });
+
+        expect(result.available).toBe(false);
+        expect(result.reasonCode).toBe(NO_PRINTER_REASON_CODE);
+    });
+
     it('is unavailable when neither the iMin service nor any paired Bluetooth device is reachable', () => {
         const result = resolveIminPrinterAvailability({
             printerServiceConnected: false,

@@ -8,7 +8,7 @@ const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employ
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
-const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss'];
+const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
@@ -527,7 +527,9 @@ const posReportsQuerySchema = Joi.object({
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
     category_id: Joi.number().integer().positive().optional(),
-    category: Joi.string().trim().max(120).allow('', null).optional()
+    category: Joi.string().trim().max(120).allow('', null).optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(200).default(50)
 });
 
 const posReportsExportQuerySchema = posReportsQuerySchema.keys({
@@ -577,6 +579,84 @@ const openTerminalShiftSchema = Joi.object({
         'number.min': 'Opening cash amount must be 0 or greater'
     }),
     opening_note: Joi.string().trim().max(255).allow(null, '').optional()
+});
+
+const attendanceMutationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    employee_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const attendanceQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().min(1).max(100).default(30)
+});
+
+const attendanceConfigUpdateSchema = Joi.object({
+    enabled: Joi.boolean().required(),
+    location_ids: Joi.array()
+        .items(Joi.number().integer().positive())
+        .unique()
+        .when('enabled', {
+            is: true,
+            then: Joi.array().min(1).required(),
+            otherwise: Joi.array().default([])
+        })
+        .messages({
+            'array.min': 'Select at least one active location before enabling cashier attendance.',
+            'array.unique': 'Cashier attendance locations must not contain duplicates.'
+        }),
+    revision: Joi.string().hex().length(64).allow(null).required()
+});
+
+const attendanceCorrectionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    attendance_session_id: Joi.number().integer().positive().required(),
+    correction_action: Joi.string().valid('end_break', 'end_attendance').required(),
+    location_id: Joi.number().integer().positive().required(),
+    reason: Joi.string().trim().min(8).max(500).required()
+});
+
+const cashierPinSchema = Joi.object({
+    user_id: Joi.number().integer().positive().allow(null).optional(),
+    pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+        'any.required': 'Cashier PIN is required',
+        'string.pattern.base': 'Cashier PIN must contain 4 to 12 digits'
+    }),
+    location_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const operatorTransitionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    user_id: Joi.number().integer().positive().allow(null).optional(),
+    incoming_user_id: Joi.number().integer().positive().allow(null).optional(),
+    pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+        'any.required': 'Cashier PIN is required',
+        'string.pattern.base': 'Cashier PIN must contain 4 to 12 digits'
+    }),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    counted_cash_amount: Joi.number().min(0).precision(4).allow(null).optional(),
+    outgoing_acknowledged: Joi.boolean().default(false),
+    incoming_acknowledged: Joi.boolean().default(false),
+    note: Joi.string().trim().max(500).allow(null, '').optional()
+}).custom((value, helpers) => {
+    if (!value.user_id && !value.incoming_user_id) return helpers.error('any.custom');
+    return value;
+}).messages({ 'any.custom': 'A target cashier is required' });
+
+const operatorCurrentQuerySchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    shift_id: Joi.number().integer().positive().optional()
+});
+
+const cashierResumeSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().required(),
+    shift_id: Joi.number().integer().positive().required()
 });
 
 const switchTerminalShiftLocationSchema = Joi.object({
@@ -1009,6 +1089,19 @@ export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonn
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
+export const validateAttendanceMutation = validateSchema(attendanceMutationSchema, 'body', 'validatedData');
+export const validateAttendanceQuery = validateSchema(attendanceQuerySchema, 'query', 'validatedQuery');
+export const validateAttendanceConfigUpdate = validateSchema(attendanceConfigUpdateSchema, 'body', 'validatedData');
+export const validateAttendanceCorrection = validateSchema(attendanceCorrectionSchema, 'body', 'validatedData');
+export const validateCashierPin = validateSchema(cashierPinSchema, 'body', 'validatedData');
+export const validateOperatorTransition = validateSchema(operatorTransitionSchema, 'body', 'validatedData');
+export const validateOperatorCurrentQuery = validateSchema(operatorCurrentQuerySchema, 'query', 'validatedQuery');
+export const validateCashierResume = validateSchema(cashierResumeSchema, 'body', 'validatedData');
+export const validateOperatorEnd = validateSchema(Joi.object({
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional()
+}), 'body', 'validatedData');
 export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCashRefundPosTransaction = validateSchema(cashRefundPosTransactionSchema, 'body', 'validatedData');

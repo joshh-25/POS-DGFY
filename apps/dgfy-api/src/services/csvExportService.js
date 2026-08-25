@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { PassThrough } from 'stream';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
@@ -484,7 +484,7 @@ const generateCSV = (items, templateType = TEMPLATE_TYPES.MASTER) => {
  */
 const generateZipBuffer = async (itemsData, productsData) => {
     return new Promise((resolve, reject) => {
-        const archive = archiver('zip', { zlib: { level: 9 } });
+        const archive = new ZipArchive({ zlib: { level: 9 } });
         const chunks = [];
         const passThrough = new PassThrough();
 

@@ -8,18 +8,24 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class BluetoothEscPosController(
-    private val context: Context
+    private val context: Context,
+    private val logoProvider: ReceiptLogoProvider = ReceiptLogoProvider(context.applicationContext)
 ) {
     private val appContext = context.applicationContext
-    private val logoProvider = ReceiptLogoProvider(appContext)
 
     @Volatile
     private var lastAttemptedDevice = ""
@@ -31,6 +37,8 @@ class BluetoothEscPosController(
     private var lastErrorMessage = ""
     @Volatile
     private var lastPairedCount = 0
+    @Volatile
+    private var lastPrinterCandidateCount = 0
 
     fun openDrawer(): BluetoothCommandResult {
         return sendToFirstPrinterLikeDevice(
@@ -103,6 +111,7 @@ class BluetoothEscPosController(
             .put("adapterAvailable", bluetoothAdapterOrNull() != null)
             .put("adapterEnabled", bluetoothAdapterOrNull()?.isEnabled == true)
             .put("pairedCount", pairedDevices.size)
+            .put("printerCandidateCount", pairedDevices.count { isPrinterLikeDevice(it) })
             .put("lastAttemptedDevice", lastAttemptedDevice)
             .put("lastSuccessDevice", lastSuccessDevice)
             .put("lastErrorClass", lastErrorClass)
@@ -142,24 +151,43 @@ class BluetoothEscPosController(
             return BluetoothCommandResult(false, lastErrorMessage)
         }
 
-        val orderedDevices = pairedDevices.sortedByDescending { isPrinterLikeDevice(it) }
+        val orderedDevices = pairedDevices.filter { isPrinterLikeDevice(it) }
+        lastPrinterCandidateCount = orderedDevices.size
+        if (orderedDevices.isEmpty()) {
+            lastErrorClass = "NoPairedBluetoothPrinters"
+            lastErrorMessage = "No paired Bluetooth receipt printer found"
+            return BluetoothCommandResult(false, lastErrorMessage)
+        }
+
+        val deadlineMs = SystemClock.elapsedRealtime() + TOTAL_SEND_TIMEOUT_MS
         var finalError: Throwable? = null
+        var mayHaveExecuted = false
 
         for (device in orderedDevices) {
             lastAttemptedDevice = safeDeviceLabel(device)
+            val remainingMs = deadlineMs - SystemClock.elapsedRealtime()
+            if (remainingMs <= 0L) {
+                finalError = TimeoutException("Bluetooth receipt printer deadline exceeded")
+                break
+            }
             try {
                 adapter.cancelDiscovery()
-                device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
-                    socket.connect()
-                    socket.outputStream.use { outputStream ->
-                        outputStream.write(bytes)
-                        outputStream.flush()
-                    }
+                val attempt = sendWithTimeout(
+                    device = device,
+                    bytes = bytes,
+                    timeoutMs = minOf(PER_DEVICE_SEND_TIMEOUT_MS, remainingMs)
+                )
+                mayHaveExecuted = mayHaveExecuted || attempt.mayHaveExecuted
+                if (attempt.success) {
+                    lastSuccessDevice = lastAttemptedDevice
+                    lastErrorClass = ""
+                    lastErrorMessage = ""
+                    return BluetoothCommandResult(true, "$successMessage via $lastSuccessDevice", true)
                 }
-                lastSuccessDevice = lastAttemptedDevice
-                lastErrorClass = ""
-                lastErrorMessage = ""
-                return BluetoothCommandResult(true, "$successMessage via $lastSuccessDevice")
+                finalError = attempt.error
+                // A timeout after connect/write has an uncertain physical outcome.
+                // Do not try another printer and risk a duplicate receipt/drawer pulse.
+                if (attempt.mayHaveExecuted) break
             } catch (exception: IOException) {
                 finalError = exception
             } catch (exception: RuntimeException) {
@@ -173,8 +201,51 @@ class BluetoothEscPosController(
         // diagnosticsJson() -- no need to also append them to the message
         // DrawerController folds into its own diagnostic dump (or, now, no
         // longer does; see DrawerController.printReceipt).
-        Log.w(TAG, "$lastErrorMessage | pairedCount=$lastPairedCount, lastAttempted=$lastAttemptedDevice")
-        return BluetoothCommandResult(false, lastErrorMessage)
+        Log.w(TAG, "$lastErrorMessage | pairedCount=$lastPairedCount, printerCandidates=$lastPrinterCandidateCount, lastAttempted=$lastAttemptedDevice")
+        return BluetoothCommandResult(false, lastErrorMessage, mayHaveExecuted)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun sendWithTimeout(
+        device: BluetoothDevice,
+        bytes: ByteArray,
+        timeoutMs: Long
+    ): SendAttemptResult {
+        val socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
+        val executor = Executors.newSingleThreadExecutor()
+        val commandMayHaveExecuted = AtomicBoolean(false)
+        val future = executor.submit<Unit> {
+            socket.use {
+                it.connect()
+                it.outputStream.use { outputStream ->
+                    commandMayHaveExecuted.set(true)
+                    outputStream.write(bytes)
+                    outputStream.flush()
+                }
+            }
+        }
+
+        return try {
+            future.get(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
+            SendAttemptResult(success = true, mayHaveExecuted = true)
+        } catch (exception: TimeoutException) {
+            runCatching { socket.close() }
+            future.cancel(true)
+            SendAttemptResult(success = false, mayHaveExecuted = true, error = exception)
+        } catch (exception: InterruptedException) {
+            Thread.currentThread().interrupt()
+            runCatching { socket.close() }
+            future.cancel(true)
+            SendAttemptResult(success = false, mayHaveExecuted = true, error = exception)
+        } catch (exception: ExecutionException) {
+            SendAttemptResult(
+                success = false,
+                mayHaveExecuted = commandMayHaveExecuted.get(),
+                error = exception.cause ?: exception
+            )
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun pairedDevicesOrEmpty(): Set<BluetoothDevice> {
@@ -239,11 +310,20 @@ class BluetoothEscPosController(
 
     data class BluetoothCommandResult(
         val success: Boolean,
-        val message: String
+        val message: String,
+        val mayHaveExecuted: Boolean = false
+    )
+
+    private data class SendAttemptResult(
+        val success: Boolean,
+        val mayHaveExecuted: Boolean,
+        val error: Throwable? = null
     )
 
     companion object {
         private const val TAG = "BluetoothEscPosController"
+        private const val PER_DEVICE_SEND_TIMEOUT_MS = 4_000L
+        private const val TOTAL_SEND_TIMEOUT_MS = 10_000L
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private val INIT_PRINTER_BYTES = byteArrayOf(0x1B, 0x40)
         private val ALIGN_CENTER_BYTES = byteArrayOf(0x1B, 0x61, 0x01)

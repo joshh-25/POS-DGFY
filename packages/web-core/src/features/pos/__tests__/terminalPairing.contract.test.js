@@ -33,7 +33,7 @@ describe('POS terminal pairing contract', () => {
 
   it('resumes a locked open shift through the DGFY POS session instead of a tenant-local cashier password', () => {
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
-    expect(terminalPageDialogLayerSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
+    expect(terminalPageDialogLayerSource).toContain('cashierTakeoverUnlock ? handleCashierTakeoverSubmit : (cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit)');
     expect(terminalPageDialogLayerSource).toContain('Terminal password is not required.');
     expect(terminalPageSource).toContain('loginDgfyAccount({');
     expect(terminalPageSource).toContain('startDgfyPosSession({');
@@ -45,6 +45,28 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageDialogLayerSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
     expect(terminalPageSource).toContain("const signedInShiftResume = terminalUnlockMode === 'resume_shift'");
     expect(terminalPageDialogLayerSource).toContain("? 'Resume Shift'");
+  });
+
+  it('offers a separate incoming-cashier takeover path from the locked shift modal', () => {
+    expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_takeover')");
+    expect(terminalPageSource).toContain("createIdempotencyKey('pos-cashier-takeover')");
+    expect(terminalPageSource).toContain('takeOverPosRegister({');
+    expect(terminalPageSource).toContain('user_id: cashierUser.user_id');
+    expect(terminalPageDialogLayerSource).toContain('Another cashier taking over?');
+    expect(terminalPageDialogLayerSource).toContain('POS Cashier PIN');
+    expect(terminalPageDialogLayerSource).toContain('Attendance starts automatically when takeover succeeds.');
+    expect(terminalPageDialogLayerSource).toContain('no active break');
+    expect(terminalPageDialogLayerSource).toContain('Take over register');
+    expect(terminalPageDialogLayerSource).toContain('Back to Resume Shift');
+  });
+
+  it('preserves the open register shift while the incoming operator session takes control', () => {
+    expect(terminalPageSource).toContain('shiftSnapshot: {');
+    expect(terminalPageSource).toContain('const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {');
+    expect(terminalPageSource).toContain('preserveShiftContext: preservedShiftContext');
+    expect(terminalPageSource).toContain('takeoverShiftContextRef.current = normalizedPreservedShiftContext;');
+    expect(terminalPageSource).toContain('const preservedTakeoverContext = takeoverShiftContextRef.current;');
+    expect(terminalPageSource).toContain('terminal_id: sanitizeTerminalId(activeTerminalId) || undefined');
   });
 
   it('keeps a successful cashier close in a secure post-shift Day Close handoff while preserving admin navigation', () => {

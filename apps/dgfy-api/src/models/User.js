@@ -36,6 +36,23 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(255),
     allowNull: true
   },
+  pos_cashier_pin_hash: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  pos_cashier_pin_failed_attempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  pos_cashier_pin_locked_until: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  pos_cashier_pin_changed_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   role: {
     type: DataTypes.ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo'),
     defaultValue: 'staff'

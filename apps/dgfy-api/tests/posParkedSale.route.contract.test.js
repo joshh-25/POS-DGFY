@@ -25,11 +25,11 @@ const runValidator = (validator, source, value) => {
 
 describe('parked sale POS route contract', () => {
     it('exposes POS-scoped create, list, claim, re-park, and cancel endpoints with existing permissions', () => {
-        expect(routeSource).toContain("router.post('/parked-sales', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateCreatePosParkedSale, posController.createParkedSale);");
+        expect(routeSource).toContain("router.post('/parked-sales', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateCreatePosParkedSale, posController.requireActiveOperatorForMutation, posController.createParkedSale);");
         expect(routeSource).toContain("router.get('/parked-sales', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateListPosParkedSales, posController.listParkedSales);");
-        expect(routeSource).toContain("router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateClaimPosParkedSale, posController.claimParkedSale);");
-        expect(routeSource).toContain("router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateReparkPosParkedSale, posController.reparkParkedSale);");
-        expect(routeSource).toContain("router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateParkedSaleIdParam, validateCancelPosParkedSale, posController.cancelParkedSale);");
+        expect(routeSource).toContain("router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateClaimPosParkedSale, posController.requireActiveOperatorForMutation, posController.claimParkedSale);");
+        expect(routeSource).toContain("router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateReparkPosParkedSale, posController.requireActiveOperatorForMutation, posController.reparkParkedSale);");
+        expect(routeSource).toContain("router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateCancelPosParkedSale, posController.requireActiveOperatorForMutation, posController.cancelParkedSale);");
     });
 
     it('validates the lifecycle payloads and strips unsupported top-level fields', () => {

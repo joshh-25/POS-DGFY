@@ -30,6 +30,10 @@ import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
 
 const REPORT_SECTIONS = [
   { id: 'daily', label: 'Daily Report' },
+  { id: 'attendance', label: 'Attendance' },
+  { id: 'cashiers', label: 'Cashier Sales' },
+  { id: 'registers', label: 'Registers' },
+  { id: 'handoffs', label: 'Handoffs' },
   { id: 'monthly', label: 'Monthly Report' },
   { id: 'yearly', label: 'Yearly Report' },
   { id: 'comparison', label: 'Sales Comparison' },
@@ -38,6 +42,10 @@ const REPORT_SECTIONS = [
 
 const REPORT_SECTION_GRANULARITY = {
   daily: 'daily',
+  attendance: 'daily',
+  cashiers: 'daily',
+  registers: 'daily',
+  handoffs: 'daily',
   monthly: 'monthly',
   yearly: 'yearly',
   comparison: 'weekly',
@@ -355,6 +363,8 @@ function PosReportsAnalyticsWorkspace({
   const yearlyReport = reportData?.yearly_report || {};
   const comparisonReport = reportData?.sales_comparison || {};
   const profitLoss = reportData?.profit_loss || {};
+  const cashierLifecycle = reportData?.cashier_lifecycle || {};
+  const isLifecycleSection = ['attendance', 'cashiers', 'registers', 'handoffs'].includes(activeSection);
 
   const trendSeries = useMemo(() => {
     if (activeSection === 'monthly') return monthlyReport.sales_trend || [];
@@ -670,7 +680,7 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
-          <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+          {!isLifecycleSection ? <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
             <SectionCard title={activeSection === 'comparison' ? 'Comparison Trend' : activeSection === 'yearly' ? 'Yearly Breakdown' : activeSection === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -706,7 +716,7 @@ function PosReportsAnalyticsWorkspace({
                 </ResponsiveContainer>
               </div>
             </SectionCard>
-          </div>
+          </div> : null}
 
           {activeSection === 'daily' ? (
             <div className="space-y-4">
@@ -830,31 +840,30 @@ function PosReportsAnalyticsWorkspace({
                               {money(entry.summary?.pos_profit_loss, currencySymbol)}
                             </span>
                           </div>
-                          <p className="mt-2 text-xs font-medium text-slate-500">{entry.shift_ids?.length || 0} shifts, {entry.summary?.total_transactions || 0} transactions</p>
+                          <p className="mt-2 text-xs font-medium text-slate-500">{entry.summary?.total_transactions || 0} transactions attributed to this cashier</p>
                           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                            <p className="font-semibold text-slate-500">Expected cash<br /><span className="font-black text-slate-950">{money(entry.shift_money?.expected_cash_amount, currencySymbol)}</span></p>
-                            <p className="font-semibold text-slate-500">Cash after shift<br /><span className="font-black text-slate-950">{money(entry.shift_money?.closing_cash_amount, currencySymbol)}</span></p>
-                            <p className="font-semibold text-slate-500">Variance<br /><span className={Number(entry.shift_money?.cash_variance_amount || 0) === 0 ? 'font-black text-slate-950' : 'font-black text-rose-700'}>{money(entry.shift_money?.cash_variance_amount, currencySymbol)}</span></p>
-                            <p className="font-semibold text-slate-500">Closed shifts<br /><span className="font-black text-slate-950">{entry.shift_money?.closed_shift_count || 0}</span></p>
+                            <p className="font-semibold text-slate-500">Gross sales<br /><span className="font-black text-slate-950">{money(entry.summary?.gross_sales, currencySymbol)}</span></p>
+                            <p className="font-semibold text-slate-500">Net sales<br /><span className="font-black text-slate-950">{money(entry.summary?.net_sales, currencySymbol)}</span></p>
                           </div>
+                          <p className="mt-3 text-[11px] font-semibold text-slate-500">Drawer variance is shown under Registers, never assigned to an uncounted relief cashier.</p>
                         </div>
                       ))}
                     </div>
                     <div className="space-y-3">
                       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Shifts</p>
-                      {(dailyReport.shift_summary || []).slice(0, 5).map((entry) => (
-                        <div key={`shift-${entry.shift_id || entry.terminal_id || entry.business_date}`} className="rounded-xl border border-slate-200 px-3 py-3">
+                      {(cashierLifecycle.registers || []).slice(0, 5).map((entry) => (
+                        <div key={`shift-${(entry.shift_ids || []).join('-') || entry.opening_cashier_id}`} className="rounded-xl border border-slate-200 px-3 py-3">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-black text-slate-950">{entry.terminal_id || 'Terminal'}</p>
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${deltaTone(entry.summary?.pos_profit_loss)}`}>
-                              {money(entry.summary?.pos_profit_loss, currencySymbol)}
+                            <p className="text-sm font-black text-slate-950">Register {(entry.shift_ids || []).join(', ') || '-'}</p>
+                            <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${deltaTone(entry.variance_amount)}`}>
+                              {money(entry.variance_amount, currencySymbol)}
                             </span>
                           </div>
                           <p className="mt-2 text-xs font-medium text-slate-500">
-                            {entry.business_date || 'No business date'} • {entry.summary?.total_transactions || 0} transactions
+                            Opened by {entry.opening_cashier_name || 'Legacy cashier'} • {entry.closed_shift_count || 0} closed
                           </p>
                           <p className="mt-2 text-xs font-semibold text-slate-500">
-                            Closing cash: <span className="font-black text-slate-950">{entry.status === 'closed' ? money(entry.closing_cash_amount, currencySymbol) : 'Open shift'}</span>
+                            Expected: <span className="font-black text-slate-950">{money(entry.expected_cash_amount, currencySymbol)}</span> • Counted: <span className="font-black text-slate-950">{entry.closing_cash_amount == null ? 'Open shift' : money(entry.closing_cash_amount, currencySymbol)}</span>
                           </p>
                         </div>
                       ))}
@@ -878,6 +887,103 @@ function PosReportsAnalyticsWorkspace({
                   />
                 </SectionCard>
               </div>
+            </div>
+          ) : null}
+
+          {activeSection === 'attendance' ? (
+            <SectionCard title="Attendance and Breaks">
+              <p className="mb-3 text-xs font-semibold text-slate-500">Worked minutes equal elapsed duty minutes minus recorded breaks. This is attendance evidence, not payroll.</p>
+              <DataTable
+                columns={[
+                  { key: 'cashier_name', label: 'Cashier' },
+                  { key: 'duty_type', label: 'Duty', render: (row) => String(row.duty_type || '').replace(/_/g, ' ') },
+                  { key: 'status', label: 'Status' },
+                  { key: 'started_at', label: 'Time In', render: (row) => printDateTime(row.started_at) },
+                  { key: 'ended_at', label: 'Time Out', render: (row) => row.ended_at ? printDateTime(row.ended_at) : 'Active' },
+                  { key: 'break_minutes', label: 'Break', align: 'right', render: (row) => `${Number(row.break_minutes || 0)} min` },
+                  { key: 'worked_minutes', label: 'Worked', align: 'right', render: (row) => `${Number(row.worked_minutes || 0)} min` }
+                ]}
+                rows={cashierLifecycle.attendance?.rows || []}
+                emptyMessage="No attendance sessions were recorded for these filters."
+              />
+            </SectionCard>
+          ) : null}
+
+          {activeSection === 'cashiers' ? (
+            <div className="space-y-4">
+              <SectionCard title="Cashier Sales Reconciliation">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <MetricCard label="Cashier Net Sales" value={money(cashierLifecycle.reconciliation?.cashier_net_sales, currencySymbol)} />
+                  <MetricCard label="Register Transaction Net" value={money(cashierLifecycle.reconciliation?.register_transaction_net_sales, currencySymbol)} />
+                  <MetricCard label="Difference" value={money(cashierLifecycle.reconciliation?.difference, currencySymbol)} tone={cashierLifecycle.reconciliation?.reconciled ? 'positive' : 'negative'} />
+                </div>
+              </SectionCard>
+              <SectionCard title="Sales by Actual Cashier">
+                <DataTable
+                  columns={[
+                    { key: 'cashier_name', label: 'Cashier' },
+                    { key: 'transactions', label: 'Transactions', align: 'right', render: (row) => row.summary?.total_transactions || 0 },
+                    { key: 'gross_sales', label: 'Gross Sales', align: 'right', render: (row) => money(row.summary?.gross_sales, currencySymbol) },
+                    { key: 'net_sales', label: 'Net Sales', align: 'right', render: (row) => money(row.summary?.net_sales, currencySymbol) },
+                    { key: 'notice', label: 'Attribution', render: () => 'Authenticated operator; legacy rows are disclosed in transaction detail' }
+                  ]}
+                  rows={dailyReport.cashier_summary || []}
+                  emptyMessage="No cashier sales were recorded for these filters."
+                />
+              </SectionCard>
+            </div>
+          ) : null}
+
+          {activeSection === 'registers' ? (
+            <SectionCard title="Register and Drawer Reconciliation">
+              <p className="mb-3 text-xs font-semibold text-slate-500">These totals belong to the continuous register/drawer lifecycle. They are not individual relief-cashier variance.</p>
+              <DataTable
+                columns={[
+                  { key: 'shift_ids', label: 'Register Shifts', render: (row) => (row.shift_ids || []).join(', ') || '-' },
+                  { key: 'opening_cashier_name', label: 'Opening Cashier' },
+                  { key: 'opening_float_amount', label: 'Opening Float', align: 'right', render: (row) => money(row.opening_float_amount, currencySymbol) },
+                  { key: 'cash_sales_amount', label: 'Cash Sales', align: 'right', render: (row) => money(row.cash_sales_amount, currencySymbol) },
+                  { key: 'expected_cash_amount', label: 'Expected', align: 'right', render: (row) => money(row.expected_cash_amount, currencySymbol) },
+                  { key: 'closing_cash_amount', label: 'Counted', align: 'right', render: (row) => row.closing_cash_amount == null ? 'Open' : money(row.closing_cash_amount, currencySymbol) },
+                  { key: 'variance_amount', label: 'Variance', align: 'right', render: (row) => row.variance_amount == null ? '-' : money(row.variance_amount, currencySymbol) }
+                ]}
+                rows={cashierLifecycle.registers || []}
+                emptyMessage="No register shifts were recorded for these filters."
+              />
+            </SectionCard>
+          ) : null}
+
+          {activeSection === 'handoffs' ? (
+            <div className="space-y-4">
+              <SectionCard title="Operator Sessions">
+                <DataTable
+                  columns={[
+                    { key: 'cashier_name', label: 'Operator' },
+                    { key: 'terminal_id', label: 'Terminal' },
+                    { key: 'shift_id', label: 'Register Shift' },
+                    { key: 'started_at', label: 'Started', render: (row) => printDateTime(row.started_at) },
+                    { key: 'ended_at', label: 'Ended', render: (row) => row.ended_at ? printDateTime(row.ended_at) : 'Active' },
+                    { key: 'ended_reason', label: 'End Reason', render: (row) => row.ended_reason || '-' }
+                  ]}
+                  rows={cashierLifecycle.operators?.rows || []}
+                  emptyMessage="No operator sessions were recorded for these filters."
+                />
+              </SectionCard>
+              <SectionCard title="Drawer Handoff Timeline">
+                <DataTable
+                  columns={[
+                    { key: 'event_at', label: 'Event Time', render: (row) => printDateTime(row.event_at) },
+                    { key: 'event_type', label: 'Event', render: (row) => String(row.event_type || '').replace(/_/g, ' ') },
+                    { key: 'outgoing_operator_name', label: 'Outgoing', render: (row) => row.outgoing_operator_name || '-' },
+                    { key: 'incoming_operator_name', label: 'Incoming', render: (row) => row.incoming_operator_name || '-' },
+                    { key: 'custody_mode', label: 'Custody', render: (row) => String(row.custody_mode || '').replace(/_/g, ' ') },
+                    { key: 'counted_cash_amount', label: 'Counted', align: 'right', render: (row) => row.counted_cash_amount == null ? 'Not counted' : money(row.counted_cash_amount, currencySymbol) },
+                    { key: 'variance_amount', label: 'Variance', align: 'right', render: (row) => row.variance_amount == null ? 'Not attributed' : money(row.variance_amount, currencySymbol) }
+                  ]}
+                  rows={cashierLifecycle.handoffs?.rows || []}
+                  emptyMessage="No shared-access or counted handoffs were recorded for these filters."
+                />
+              </SectionCard>
             </div>
           ) : null}
 
@@ -931,7 +1037,7 @@ function PosReportsAnalyticsWorkspace({
             </SectionCard>
           ) : null}
 
-          <SectionCard title={activeSection === 'daily' ? 'Top-Selling Items' : activeSection === 'monthly' ? 'Best-Selling Items' : activeSection === 'yearly' ? 'Yearly Best Sellers' : 'Top Items'}>
+          {!isLifecycleSection ? <SectionCard title={activeSection === 'daily' ? 'Top-Selling Items' : activeSection === 'monthly' ? 'Best-Selling Items' : activeSection === 'yearly' ? 'Yearly Best Sellers' : 'Top Items'}>
             <DataTable
               columns={[
                 { key: 'item_name', label: 'Item' },
@@ -953,7 +1059,7 @@ function PosReportsAnalyticsWorkspace({
                   : (dailyReport.top_items || [])}
               emptyMessage="No top-item activity found for the selected filters."
             />
-          </SectionCard>
+          </SectionCard> : null}
           </div>
         </div>
       )}
