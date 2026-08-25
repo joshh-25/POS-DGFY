@@ -93,7 +93,7 @@ import {
 } from '../utils/terminalIdentity.js';
 import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
-  isPosOperatorAuthorityOwnedByUser,
+  isPosOperatorAuthorityValid,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -2946,13 +2946,9 @@ export default function TerminalPage() {
   const operatorScopeKey = `${shiftState?.shift?.location_id || operatingLocationId || ''}:${sanitizeTerminalId(activeTerminalId)}:${activeShiftId || ''}`;
   const operatorAuthorityPending = Boolean(activeShiftId)
     && (operatorAuthorityState.scopeKey !== operatorScopeKey || operatorAuthorityState.loading);
-  const operatorAuthorityOwnedByCurrentUser = isPosOperatorAuthorityOwnedByUser({
-    authorityValid: operatorAuthorityState.valid,
-    operatorUserId: operatorAuthorityState.operatorUser?.user_id,
-    authenticatedUserId: terminalUser?.user_id
-  });
+  const operatorAuthorityValid = isPosOperatorAuthorityValid({ authorityValid: operatorAuthorityState.valid });
   const checkoutOperatorLocked = Boolean(activeShiftId)
-    && (operatorAuthorityPending || (operatorAuthorityState.required && !operatorAuthorityOwnedByCurrentUser));
+    && (operatorAuthorityPending || (operatorAuthorityState.required && !operatorAuthorityValid));
   const activeShiftOwnerLabel = String(
     operatorAuthorityState.operatorUser?.username
     || operatorAuthorityState.operatorUser?.email
@@ -3080,11 +3076,7 @@ export default function TerminalPage() {
         scopeKey,
         loading: false,
         required: true,
-        valid: isPosOperatorAuthorityOwnedByUser({
-          authorityValid: payload?.authority_valid === true,
-          operatorUserId: payload?.operator_user?.user_id,
-          authenticatedUserId: terminalUser?.user_id
-        }),
+        valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
         operatorUser: payload?.operator_user || null,
         errorMessage: initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : '')
       });
@@ -3102,11 +3094,7 @@ export default function TerminalPage() {
       scopeKey: operatorScopeKey,
       loading: false,
       required: true,
-      valid: isPosOperatorAuthorityOwnedByUser({
-        authorityValid: payload?.authority_valid === true,
-        operatorUserId: payload?.operator_user?.user_id,
-        authenticatedUserId: terminalUser?.user_id
-      }),
+      valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
       operatorUser: payload?.operator_user || null,
       errorMessage: ''
     });
@@ -3952,8 +3940,6 @@ export default function TerminalPage() {
         return;
       }
 
-      activateDgfyTenantSession(posSession);
-      setTerminalUser(cashierUser);
       await resumePosCashier({
         idempotency_key: createIdempotencyKey('pos-break-resume'),
         terminal_id: terminalId,
@@ -4054,8 +4040,6 @@ export default function TerminalPage() {
         return;
       }
 
-      activateDgfyTenantSession(posSession);
-      setTerminalUser(cashierUser);
       const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {
         shift: shiftState?.shift || null,
         shiftState: {

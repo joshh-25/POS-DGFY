@@ -347,7 +347,6 @@ export const requireActiveOperatorForMutation = async (req, res, next) => {
         const result = await authorizePosOperatorMutationUseCase({
             authorityToken: getCookie(req, SESSION_COOKIE_NAMES.posOperatorAuthority),
             tenantId: tenantIdForOperator(req),
-            authenticatedUserId: req.user?.user_id,
             scope: operatorScope(req),
             operationKey,
             operationType

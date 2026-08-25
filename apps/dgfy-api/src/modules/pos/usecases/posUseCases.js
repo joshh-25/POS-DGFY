@@ -3486,6 +3486,12 @@ export const buildCheckoutPosUseCase = ({
                             applyingUserId: normalizedUserId,
                             allowSelfApproval: employeeDiscountSelfApprovalEnabled
                         });
+                    } else if (parsePositiveInt(activeApprover.user_id) === normalizedUserId) {
+                        throw new DomainError(
+                            DomainErrorCode.AUTHORIZATION_FAILED,
+                            'Employees cannot approve their own discount.',
+                            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+                        );
                     }
                     itemApplication.manager_approval_id = activeApprover.user_id;
                     itemApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
@@ -3510,7 +3516,9 @@ export const buildCheckoutPosUseCase = ({
                     const verifiedApprover = await verifyPosDiscountApprover({
                         approver,
                         pin: approval?.manager_pin,
-                        employeeUserId: itemApplication.employee_user_id,
+                        employeeUserId: itemApplication.discount_type === 'employee'
+                            ? itemApplication.employee_user_id
+                            : normalizedUserId,
                         employeeDirectoryId: itemApplication.employee_directory_id,
                         employeeEmail: itemApplication.employee_email,
                         allowSelfApproval: itemApplication.discount_type === 'employee'

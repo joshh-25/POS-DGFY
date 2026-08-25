@@ -87,15 +87,7 @@ export const resolveCashierRegisterEntryMode = ({
     : 'takeover'
 );
 
-export const isPosOperatorAuthorityOwnedByUser = ({
-  authorityValid = false,
-  operatorUserId = null,
-  authenticatedUserId = null
-} = {}) => (
-  authorityValid === true
-  && normalizePositiveInteger(operatorUserId) === normalizePositiveInteger(authenticatedUserId)
-  && Boolean(normalizePositiveInteger(operatorUserId))
-);
+export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
 
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
@@ -105,8 +97,7 @@ export const shouldRestorePosOperatorAuthority = ({
 } = {}) => {
   if (alreadyAttempted || !normalizePositiveInteger(authenticatedUserId)) return false;
 
-  // A valid authority token that belongs to another user is a real cashier
-  // mismatch, not a recoverable browser-session gap. Only a missing/invalid
-  // authority session should be refreshed through the backend resume flow.
+  // Only a missing or invalid authority session should be refreshed through the
+  // backend resume flow; a valid scoped authority remains usable as-is.
   return authorityValid !== true || !normalizePositiveInteger(operatorUserId);
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isPosOperatorAuthorityOwnedByUser,
+  isPosOperatorAuthorityValid,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -128,20 +128,8 @@ describe('POS terminal shift entry decision', () => {
     })).toBe('takeover');
   });
 
-  it('accepts operator authority only for the currently authenticated user', () => {
-    expect(isPosOperatorAuthorityOwnedByUser({
-      authorityValid: true,
-      operatorUserId: 12,
-      authenticatedUserId: 12
-    })).toBe(true);
-  });
-
-  it('rejects valid operator authority left behind by a different signed-in account', () => {
-    expect(isPosOperatorAuthorityOwnedByUser({
-      authorityValid: true,
-      operatorUserId: 12,
-      authenticatedUserId: 27
-    })).toBe(false);
+  it('accepts a valid scoped operator authority independent of the DGFY session identity', () => {
+    expect(isPosOperatorAuthorityValid({ authorityValid: true })).toBe(true);
   });
 
   it('restores a missing operator authority session for an authenticated cashier', () => {
@@ -153,7 +141,7 @@ describe('POS terminal shift entry decision', () => {
     })).toBe(true);
   });
 
-  it('does not silently replace valid authority owned by another cashier', () => {
+  it('does not replace a valid scoped authority session', () => {
     expect(shouldRestorePosOperatorAuthority({
       authorityValid: true,
       operatorUserId: 12,

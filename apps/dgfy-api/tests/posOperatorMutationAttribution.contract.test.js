@@ -33,7 +33,7 @@ describe('Phase 160 POS operator mutation attribution contract', () => {
 
     test('protected operations are leased and released around the HTTP mutation lifecycle', () => {
         const handlers = read('../src/modules/pos/controllers/posHandlers.js');
-        expect(handlers).toContain('authenticatedUserId: req.user?.user_id');
+        expect(handlers).not.toContain('authenticatedUserId: req.user?.user_id');
         expect(handlers).toContain('operationKey');
         expect(handlers).toContain('releasePosOperatorMutationUseCase');
         expect(handlers).toContain("res.once('finish', releaseProtectedOperation)");

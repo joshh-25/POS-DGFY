@@ -665,7 +665,7 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
         }
     };
 
-    const authorizeMutation = async ({ authorityToken = '', tenantId = null, authenticatedUserId = null, scope = {}, operationKey = '', operationType = '' } = {}) => {
+    const authorizeMutation = async ({ authorityToken = '', tenantId = null, scope = {}, operationKey = '', operationType = '' } = {}) => {
         try {
             const resolvedScope = resolveScope({ scope });
             const feature = await resolveMutationFeature({ locationId: resolvedScope.locationId });
@@ -690,12 +690,6 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
                 });
             }
             const claims = verifyAuthorityOrThrow(authorityService, authorityToken);
-            const normalizedAuthenticatedUserId = parsePositiveInt(authenticatedUserId);
-            if (!normalizedAuthenticatedUserId || Number(claims.user_id) !== normalizedAuthenticatedUserId) {
-                throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'Sign in as the active cashier before using this register.', 403, {
-                    reason_code: 'POS_OPERATOR_IDENTITY_MISMATCH'
-                });
-            }
             if (normalizeTenant(claims.tenant_id) !== normalizeTenant(tenantId)
                 || normalizeTerminal(claims.terminal_id) !== resolvedScope.terminalId
                 || Number(claims.location_id) !== resolvedScope.locationId

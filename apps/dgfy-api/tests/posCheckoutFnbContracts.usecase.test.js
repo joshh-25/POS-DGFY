@@ -226,6 +226,79 @@ describe('POS checkout F&B contracts', () => {
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ['direct PIN approval', false],
+        ['trusted split-payment approval', true]
+    ])('blocks a cashier from self-approving a manual item discount through %s', async (_label, trusted) => {
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Coffee',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 20,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift({ cashierId: 12 })),
+            getTerminalShiftById: jest.fn(),
+            findActiveDiscountRuleByType: jest.fn().mockResolvedValue({ id: 7, type: 'manual', is_active: true }),
+            findActiveDiscountApproverById: jest.fn().mockResolvedValue({
+                user_id: 12,
+                username: 'Cashier Approver',
+                role: 'manager',
+                is_active: true,
+                can_authorize_discounts: true,
+                pos_approval_pin_hash: await bcrypt.hash('1234', 4)
+            })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() }
+        });
+        const payload = {
+            idempotency_key: `manual-item-self-approval-${trusted ? 'trusted' : 'pin'}`,
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            document_context: 'non_fiscal',
+            payment_type: 'cash',
+            order_method: 'pickup',
+            lines: [{
+                item_id: 1,
+                quantity: 1,
+                item_discount: {
+                    discount_type: 'manual',
+                    method: 'percentage',
+                    rate: 15,
+                    approver_user_id: 12
+                },
+                ...(trusted ? {} : {
+                    item_discount_approval: { approver_user_id: 12, manager_pin: '1234' }
+                })
+            }]
+        };
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload,
+            trustedItemDiscountApprovals: trusted ? [{
+                item_id: 1,
+                discount_type: 'manual',
+                approver_user_id: 12,
+                approved_at: '2026-08-25T12:00:00.000Z',
+                operator_user_id: 12
+            }] : null
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('DISCOUNT_SELF_APPROVAL_BLOCKED');
+    });
+
     it('persists an approved item-only discount and keeps global discount separate', async () => {
         let createdTransaction = null;
         const posRepository = {
