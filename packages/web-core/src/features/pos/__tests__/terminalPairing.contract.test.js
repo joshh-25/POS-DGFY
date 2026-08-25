@@ -47,17 +47,23 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageDialogLayerSource).toContain("? 'Resume Shift'");
   });
 
-  it('offers a separate incoming-cashier takeover path from the locked shift modal', () => {
+  it('uses one cashier sign-in modal to resume the owner or take over as another cashier', () => {
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_takeover')");
+    expect(terminalPageSource).toContain('resolveCashierRegisterEntryMode({');
+    expect(terminalPageSource).toContain("if (entryMode === 'resume')");
+    expect(terminalPageSource).toContain('resumePosCashier({');
     expect(terminalPageSource).toContain("createIdempotencyKey('pos-cashier-takeover')");
     expect(terminalPageSource).toContain('takeOverPosRegister({');
     expect(terminalPageSource).toContain('user_id: cashierUser.user_id');
     expect(terminalPageDialogLayerSource).toContain('Another cashier taking over?');
-    expect(terminalPageDialogLayerSource).toContain('POS Cashier PIN');
-    expect(terminalPageDialogLayerSource).toContain('Attendance starts automatically when takeover succeeds.');
-    expect(terminalPageDialogLayerSource).toContain('no active break');
-    expect(terminalPageDialogLayerSource).toContain('Take over register');
+    expect(terminalPageDialogLayerSource).toContain('POS Cashier PIN <span');
+    expect(terminalPageDialogLayerSource).toContain('(different cashier only)');
+    expect(terminalPageDialogLayerSource).toContain('The shift owner resumes automatically.');
+    expect(terminalPageDialogLayerSource).toContain('Continue to POS');
     expect(terminalPageDialogLayerSource).toContain('Back to Resume Shift');
+    expect(terminalPageSource).toContain('const activeOperator = operatorAuthorityState.operatorUser;');
+    expect(terminalPageSource).toContain('cashierId: Number(activeOperator?.user_id || shiftState?.shift?.cashier_id || 0) || null');
+    expect(terminalPageSource).toContain("cashierEmail: String(activeOperator?.email || shiftState?.shift?.cashier?.email || '').trim()");
   });
 
   it('preserves the open register shift while the incoming operator session takes control', () => {

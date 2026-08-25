@@ -15,19 +15,29 @@ const money = (value) => Number(value || 0).toFixed(2);
 export default function EmployeeCreditPaymentPanel({
     selectedEmployee,
     onSelectEmployee,
+    onPrefillEmployee,
+    onClearPrefill,
     lookupLoading,
     account,
     totalDue,
-    locationId = null
+    locationId = null,
+    preferredEmployeeId = null,
+    prefillEnabled = true,
+    prefillLocked = false,
+    prefillBlockedReason = ''
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [options, setOptions] = useState([]);
     const [optionsLoading, setOptionsLoading] = useState(true);
     const [optionsError, setOptionsError] = useState('');
+    const [prefillNotice, setPrefillNotice] = useState('');
     const [refreshKey, setRefreshKey] = useState(0);
     const requestSequence = useRef(0);
+    const prefillRequestSequence = useRef(0);
+    const prefillAttemptRef = useRef('');
     const employeePickerRef = useRef(null);
+    const normalizedPreferredEmployeeId = Number(preferredEmployeeId) || null;
 
     useEffect(() => {
         const requestId = requestSequence.current + 1;
@@ -53,6 +63,75 @@ export default function EmployeeCreditPaymentPanel({
         }, search ? 250 : 0);
         return () => window.clearTimeout(timer);
     }, [locationId, refreshKey, search]);
+
+    useEffect(() => {
+        if (!prefillEnabled) return;
+        if (prefillLocked) {
+            setPrefillNotice(normalizedPreferredEmployeeId || prefillBlockedReason
+                ? 'The cashier-selected Employee Credit account is being kept.'
+                : '');
+            return;
+        }
+        if (prefillBlockedReason) {
+            prefillAttemptRef.current = '';
+            setPrefillNotice(prefillBlockedReason);
+            onClearPrefill?.();
+            return;
+        }
+        if (normalizedPreferredEmployeeId) return;
+        prefillAttemptRef.current = '';
+        setPrefillNotice('');
+        onClearPrefill?.();
+    }, [normalizedPreferredEmployeeId, onClearPrefill, prefillBlockedReason, prefillEnabled, prefillLocked]);
+
+    useEffect(() => {
+        const requestId = prefillRequestSequence.current + 1;
+        prefillRequestSequence.current = requestId;
+        if (!prefillEnabled || prefillLocked || Boolean(prefillBlockedReason) || !normalizedPreferredEmployeeId) {
+            return undefined;
+        }
+        const attemptKey = `${Number(locationId) || 'all'}:${normalizedPreferredEmployeeId}:${refreshKey}`;
+        if (prefillAttemptRef.current === attemptKey) return undefined;
+        prefillAttemptRef.current = attemptKey;
+        void fetchEmployeeCreditCheckoutOptions({
+            employeeId: normalizedPreferredEmployeeId,
+            locationId,
+            limit: 1
+        }).then((rows) => {
+            if (prefillRequestSequence.current !== requestId) return;
+            const preferredOption = (Array.isArray(rows) ? rows : []).find((option) => (
+                Number(option?.employee_id) === normalizedPreferredEmployeeId
+            ));
+            if (!preferredOption?.is_active || !preferredOption?.account_configured || !preferredOption?.is_eligible) {
+                onClearPrefill?.();
+                setPrefillNotice('The discount employee has no active, eligible Employee Credit account at this location. Select an account manually.');
+                return;
+            }
+            setPrefillNotice('Employee Credit matched the selected employee discount. Review the account before confirming payment.');
+            if (Number(selectedEmployee?.employee_id) !== normalizedPreferredEmployeeId) {
+                void onPrefillEmployee?.(preferredOption);
+            }
+        }).catch((error) => {
+            if (prefillRequestSequence.current !== requestId) return;
+            onClearPrefill?.();
+            setPrefillNotice(error?.response?.data?.message || 'Employee Credit could not verify the selected discount employee. Select an account manually.');
+        });
+        return () => {
+            if (prefillRequestSequence.current === requestId) {
+                prefillRequestSequence.current += 1;
+            }
+        };
+    }, [
+        locationId,
+        normalizedPreferredEmployeeId,
+        onClearPrefill,
+        onPrefillEmployee,
+        prefillEnabled,
+        prefillBlockedReason,
+        prefillLocked,
+        refreshKey,
+        selectedEmployee?.employee_id
+    ]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -194,6 +273,12 @@ export default function EmployeeCreditPaymentPanel({
                         </div>
                     ) : null}
                 </div>
+
+                {prefillNotice ? (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold leading-4 text-blue-800" data-testid="employee-credit-prefill-notice">
+                        {prefillNotice}
+                    </div>
+                ) : null}
 
                 {selectedEmployee ? (
                     <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs space-y-2 shadow-xs">

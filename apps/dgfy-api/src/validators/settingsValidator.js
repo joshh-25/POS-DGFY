@@ -520,6 +520,7 @@ export const updateSettingsSchema = Joi.object({
   pos_fiscal_buyer_details_required: Joi.boolean().optional(),
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
+  pos_employee_discount_self_approval_enabled: Joi.boolean().optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
   pos_terminal_registry: posTerminalRegistrySchema.optional(),
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
@@ -696,6 +697,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_fiscal_buyer_details_required: Joi.boolean(),
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
+    pos_employee_discount_self_approval_enabled: Joi.boolean(),
     pos_order_method_fees: posOrderMethodFeesSchema,
     pos_terminal_registry: posTerminalRegistrySchema,
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({

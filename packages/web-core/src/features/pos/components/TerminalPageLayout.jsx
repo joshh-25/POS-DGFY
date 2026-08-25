@@ -136,6 +136,11 @@ export default function TerminalPageLayout({
     handleSelectViewMode,
     settingsEntryViewMode = 'settings_profile',
     handleLock,
+    handleCashierSignIn = () => {},
+    checkoutOperatorLocked = false,
+    checkoutOperatorLoading = false,
+    activeShiftOwnerLabel = 'the current cashier',
+    onOperatorAuthorityChange = () => {},
     setDrawerOpen,
     effectiveSidebarCollapsed = false,
     setSidebarCollapsed = () => {},
@@ -368,16 +373,18 @@ export default function TerminalPageLayout({
     : IS_DGFY_POS_SURFACE
       ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
-  const handleOperatorAuthorityChange = useCallback((operatorState) => {
+  const handleShiftOperatorAuthorityChange = useCallback((operatorState) => {
     setOperatorGuard({
       scopeKey: operatorScopeKey,
       required: true,
       valid: operatorState?.authority_valid === true
     });
-  }, [operatorScopeKey]);
-  const operatorMutationLocked = operatorGuard.scopeKey === operatorScopeKey
+    onOperatorAuthorityChange(operatorState);
+  }, [onOperatorAuthorityChange, operatorScopeKey]);
+  const shiftOperatorMutationLocked = operatorGuard.scopeKey === operatorScopeKey
     && operatorGuard.required
     && !operatorGuard.valid;
+  const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
   const workspacePaneClassName = isCheckoutWorkspaceMode
@@ -723,8 +730,23 @@ export default function TerminalPageLayout({
           compact
           onBreakAndLock={handleLock}
           locked={locked}
-          onOperatorAuthorityChange={handleOperatorAuthorityChange}
+          onOperatorAuthorityChange={handleShiftOperatorAuthorityChange}
         />
+      ) : null}
+
+      {CHECKOUT_WORKSPACE_MODES.has(posViewMode) && checkoutOperatorLocked ? (
+        <div className="mx-2 mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950 shadow-sm sm:mx-4 lg:mx-6" role="alert" data-testid="pos-cashier-sign-in-guard">
+          <span>
+            {checkoutOperatorLoading
+              ? 'Verifying the active cashier for this register...'
+              : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`}
+          </span>
+          {!checkoutOperatorLoading ? (
+            <button type="button" onClick={handleCashierSignIn} className="h-8 rounded-lg bg-[#1A4E8D] px-3 text-[11px] font-extrabold text-white hover:bg-[#143F73]">
+              Cashier Sign In
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {operatorMutationLocked ? (

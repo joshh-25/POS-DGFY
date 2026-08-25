@@ -30,7 +30,13 @@ vi.mock('../components/PosCheckoutDetailsSlot.jsx', () => ({
 }));
 
 vi.mock('../components/EmployeeCreditPaymentPanel.jsx', () => ({
-    default: () => <div>Employee credit payment</div>
+    default: ({ preferredEmployeeId, prefillBlockedReason }) => (
+        <div
+            data-testid="employee-credit-payment-panel"
+            data-preferred-employee-id={preferredEmployeeId || ''}
+            data-prefill-blocked-reason={prefillBlockedReason || ''}
+        >Employee credit payment</div>
+    )
 }));
 
 const createViewModel = (overrides = {}) => ({
@@ -75,6 +81,35 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('passes the saved item-discount employee to Employee Credit and blocks ambiguous matches', async () => {
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            isEmployeeCreditPayment: true,
+            paymentType: 'employee_credit',
+            safeCart: [{
+                item_id: 7,
+                item_discount: { discount_type: 'employee', employee_directory_id: 44 }
+            }]
+        })} />);
+
+        const paymentPanel = await screen.findByTestId('employee-credit-payment-panel');
+        expect(paymentPanel.getAttribute('data-preferred-employee-id')).toBe('44');
+        expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toBe('');
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            isEmployeeCreditPayment: true,
+            paymentType: 'employee_credit',
+            safeCart: [
+                { item_id: 7, item_discount: { discount_type: 'employee', employee_directory_id: 44 } },
+                { item_id: 8, item_discount: { discount_type: 'employee', employee_directory_id: 45 } }
+            ]
+        })} />);
+
+        expect(paymentPanel.getAttribute('data-preferred-employee-id')).toBe('');
+        expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toContain('Different employees');
+    });
+
     it('disables backdrop blur only inside the iMin wrapper', () => {
         const { unmount } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
 
@@ -128,5 +163,20 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
             customerPaymentChange: 50,
             isCustomerPaymentSufficient: true
         });
+    });
+
+    it('uses the payment method color on the selector and payment summary', () => {
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        expect(screen.getByLabelText('Payment Type').className).toContain('bg-amber-100');
+        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('Cash').className).toContain('text-amber-950');
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            paymentType: 'gcash'
+        })} />);
+
+        expect(screen.getByLabelText('Payment Type').className).toContain('bg-blue-100');
+        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('GCash').className).toContain('text-blue-950');
     });
 });

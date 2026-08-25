@@ -132,27 +132,60 @@ describe('POS governed discount policy', () => {
         expect(result.promo.discountAmount).toBe(10);
     });
 
-    test('canonicalizes employee identity from an active user record', async () => {
-        const result = await resolvePosGovernedDiscount({
+    test('rejects legacy POS-user employee identities', async () => {
+        await expect(resolvePosGovernedDiscount({
             draft: { type: 'employee', customer_name: 'Employee Buyer', employee_id: '7', employee_name: 'Spoofed', method: 'percentage', rate: 50 },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type],
             findActiveEmployee: async () => ({ user_id: 7, username: 'cashier-seven' })
-        });
-
-        expect(result.application).toMatchObject({ employee_id: '7', employee_name: 'cashier-seven', rate: 15 });
+        })).rejects.toMatchObject({ details: { reason_code: 'EMPLOYEE_DIRECTORY_ID_REQUIRED' } });
     });
 
-    test('allows employee discounts without an employee ID', async () => {
+    test('canonicalizes employee code from the Employee Directory without coercing 001 to POS user 1', async () => {
+        let legacyUserLookupCalled = false;
         const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                employee_directory_id: 14,
+                employee_id: '001',
+                employee_name: 'Spoofed',
+                method: 'percentage',
+                rate: 50
+            },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule: async (type) => rules[type],
+            findActiveEmployeeDirectory: async () => ({
+                employee_id: 14,
+                employee_code: '001',
+                full_name: 'Joshua Guto',
+                email: 'joshua@example.com'
+            }),
+            findActiveEmployee: async () => {
+                legacyUserLookupCalled = true;
+                return { user_id: 1, username: 'wrong-user' };
+            }
+        });
+
+        expect(legacyUserLookupCalled).toBe(false);
+        expect(result.application).toMatchObject({
+            employee_directory_id: 14,
+            employee_id: '001',
+            employee_name: 'Joshua Guto',
+            employee_email: 'joshua@example.com',
+            employee_user_id: null,
+            rate: 15
+        });
+    });
+
+    test('rejects free-text employee discounts without an Employee Directory ID', async () => {
+        await expect(resolvePosGovernedDiscount({
             draft: { type: 'employee', method: 'percentage', rate: 50, employee_name: 'Employee Name Only' },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type]
-        });
-
-        expect(result.application).toMatchObject({ employee_id: null, employee_name: 'Employee Name Only', rate: 15 });
+        })).rejects.toMatchObject({ details: { reason_code: 'EMPLOYEE_DIRECTORY_ID_REQUIRED' } });
     });
 
     test('requires customer name for non-statutory promo discounts', async () => {
@@ -168,14 +201,25 @@ describe('POS governed discount policy', () => {
         })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_CUSTOMER_NAME_REQUIRED' } });
     });
 
-    test('requires employee name for employee discounts before resolving the employee', async () => {
-        await expect(resolvePosGovernedDiscount({
-            draft: { type: 'employee', employee_id: '7' },
+    test('uses the registered employee name even when the client omits it', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: { type: 'employee', employee_directory_id: 14 },
             preparedLines,
             subtotalAmount: 180,
             findActiveRule: async (type) => rules[type],
-            findActiveEmployee: async () => ({ user_id: 7, username: 'cashier-seven' })
-        })).rejects.toMatchObject({ details: { reason_code: 'EMPLOYEE_NAME_REQUIRED' } });
+            findActiveEmployeeDirectory: async () => ({
+                employee_id: 14,
+                employee_code: '001',
+                full_name: 'Joshua Guto',
+                email: 'joshua@example.com'
+            })
+        });
+
+        expect(result.application).toMatchObject({
+            employee_directory_id: 14,
+            employee_id: '001',
+            employee_name: 'Joshua Guto'
+        });
     });
 
     test('requires customer name for manual discounts while preserving existing manual controls', async () => {
@@ -208,12 +252,17 @@ describe('POS governed discount policy', () => {
             draft: {
                 type: 'employee',
                 customer_name: 'Employee Buyer',
-                employee_name: 'Employee Name',
+                employee_directory_id: 14,
                 eligible_item_ids: [2]
             },
             preparedLines,
             subtotalAmount: 180,
-            findActiveRule: async (type) => rules[type]
+            findActiveRule: async (type) => rules[type],
+            findActiveEmployeeDirectory: async () => ({
+                employee_id: 14,
+                employee_code: '001',
+                full_name: 'Employee Name'
+            })
         });
 
         expect(result.application.lines).toEqual([{ item_id: 2 }]);

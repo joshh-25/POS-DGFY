@@ -118,7 +118,7 @@ export default function PosAttendancePanel({
   useEffect(() => {
     if (!canView) return undefined;
     refresh();
-  }, [canView, refresh]);
+  }, [canView, refresh, shiftId]);
 
   useEffect(() => {
     if (!canView || compact) return undefined;

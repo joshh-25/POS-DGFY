@@ -2456,13 +2456,42 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async listActiveDiscountEmployees(options = {}) {
+        const Employee = dbStore.get('Employee');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const rows = await Employee.findAll({
+            where: { is_active: true },
+            attributes: ['employee_id', 'employee_code', 'full_name', 'location_id'],
+            include: [{
+                model: TenantLocation,
+                as: 'location',
+                attributes: ['location_id', 'name'],
+                required: false
+            }],
+            order: [['full_name', 'ASC'], ['employee_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findActiveDiscountEmployeeById(employeeId, options = {}) {
+        const Employee = dbStore.get('Employee');
+        const row = await Employee.findOne({
+            where: { employee_id: employeeId, is_active: true },
+            attributes: ['employee_id', 'employee_code', 'full_name', 'email', 'location_id'],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
     async listActiveDiscountApprovers(options = {}) {
         const User = dbStore.get('User');
         const rows = await User.findAll({
             where: buildVisibleWhere({
                 is_active: true
             }),
-            attributes: ['user_id', 'username', 'role', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'email', 'role', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
             order: [['username', 'ASC']],
             transaction: options.transaction
         });
@@ -2483,7 +2512,7 @@ export const posRepository = {
         const User = dbStore.get('User');
         const row = await User.findOne({
             where: buildVisibleWhere({ user_id: userId, is_active: true }),
-            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
             transaction: options.transaction
         });
         return serializeDiscountAuthorizer(row);

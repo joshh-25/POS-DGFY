@@ -624,11 +624,14 @@ const MERCHANT_TENDER_METHODS = [
   { key: 'bank_transfer', label: 'Bank transfer' }
 ];
 
-function MerchantTenderReconciliationPanel({ shiftId, disabled = false }) {
+function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disabled = false }) {
   const emptyObserved = { gcash: '', maya: '', card: '', bank_transfer: '' };
   const [state, setState] = useState({ loading: true, saving: false, data: null, error: '' });
   const [observed, setObserved] = useState(emptyObserved);
   const [reviewNote, setReviewNote] = useState('');
+  const employeeCredit = (Array.isArray(salesSummary?.payment_breakdown) ? salesSummary.payment_breakdown : [])
+    .find((entry) => String(entry?.payment_type || '').trim().toLowerCase() === 'employee_credit') || {};
+  const employeeCreditCount = Number(employeeCredit.count || 0);
 
   const load = useCallback(async () => {
     if (!shiftId) return;
@@ -683,7 +686,7 @@ function MerchantTenderReconciliationPanel({ shiftId, disabled = false }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-[12px] font-black text-[#0F172A]">Store-owned tender reconciliation</p>
-          <p className="mt-1 text-[11px] leading-4 text-[#475569]">Compare the POS ledger with the store QR, card terminal, and bank account. This review never calls PayMongo or changes sales.</p>
+          <p className="mt-1 text-[11px] leading-4 text-[#475569]">Compare the POS ledger with the store QR, card terminal, and bank account. Employee Credit is shown read-only because it is an internal receivable. This review never calls PayMongo or changes sales.</p>
         </div>
         <Button type="button" variant="outline" className="h-8 bg-white px-3 text-[11px] font-bold" onClick={() => void load()} disabled={state.loading || state.saving || disabled}>
           <RefreshCcw className={`mr-1.5 h-3.5 w-3.5 ${state.loading ? 'animate-spin' : ''}`} /> Refresh
@@ -705,6 +708,14 @@ function MerchantTenderReconciliationPanel({ shiftId, disabled = false }) {
                     <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
                   </tr>
                 ))}
+                <tr className="border-t border-blue-200 bg-white/60" data-testid="employee-credit-reconciliation-row">
+                  <td className="py-2 font-bold text-slate-800">
+                    Employee Credit <span className="block text-[10px] font-medium text-slate-500">Internal receivable · {employeeCreditCount} transaction{employeeCreditCount === 1 ? '' : 's'}</span>
+                  </td>
+                  <td className="py-2 font-bold text-[#1A4E8D]">PHP {money(employeeCredit.amount)}</td>
+                  <td className="py-2 text-slate-500">Not applicable</td>
+                  <td className="py-2 text-right text-slate-500">Not applicable</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1562,6 +1573,7 @@ function ShiftControlsWorkspace({
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
                 shiftId={activeShift.pos_terminal_shift_id}
+                salesSummary={shiftState.salesSummary}
                 disabled={locked || !isOnline}
               />
             ) : null}
@@ -1588,10 +1600,10 @@ function ShiftControlsWorkspace({
                 variant="outline"
                 className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
                 onClick={handleViewShiftSummary}
-                disabled={shiftActionLoading.close || locked}
+                disabled={shiftActionLoading.close || shiftActionLoading.summary || locked}
               >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                View Shift Summary
+                {shiftActionLoading.summary ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <BarChart3 className="mr-2 h-4 w-4" />}
+                {shiftActionLoading.summary ? 'Refreshing Summary...' : 'View Shift Summary'}
               </Button>
               <Button
                 type="button"
@@ -5355,6 +5367,7 @@ function SettingsWorkspace({
     settingsAccessPin: '',
     clearSettingsAccessPin: false,
     discountProfiles: [],
+    employeeDiscountSelfApprovalEnabled: false,
     posReceiptMetadataPendingReview: null,
     pettyCashSymbol: 'PHP',
     pettyCashAmount: 0,
@@ -5809,6 +5822,7 @@ function SettingsWorkspace({
         settingsAccessPin: '',
         clearSettingsAccessPin: false,
         discountProfiles: normalizeDiscountProfiles(discountProfiles),
+        employeeDiscountSelfApprovalEnabled: settingsPayload?.pos_employee_discount_self_approval_enabled?.value === true,
         posReceiptMetadataPendingReview: settingsPayload?.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
           ? settingsPayload.pos_receipt_metadata_pending_changes.value
           : null,
@@ -6235,6 +6249,7 @@ function SettingsWorkspace({
         pos_fiscal_buyer_details_required: posForm.fiscalBuyerDetailsRequired === true,
         pos_receipt_footer_message: String(posForm.receiptFooterMessage || '').trim(),
         pos_discount_profiles: posDiscountProfiles,
+        pos_employee_discount_self_approval_enabled: posForm.employeeDiscountSelfApprovalEnabled === true,
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
@@ -7824,6 +7839,25 @@ function SettingsWorkspace({
                   No discount presets configured yet.
                 </div>
               ) : null}
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="min-w-0">
+                  <Label htmlFor="pos-employee-discount-self-approval" className="text-[12px] font-black text-amber-950">
+                    Allow employee discount self-approval
+                  </Label>
+                  <p className="mt-1 text-[11px] font-semibold leading-relaxed text-amber-800">
+                    When enabled, the cashier receiving an Employee discount may authorize it with their own configured POS approval PIN. Every self-approval is recorded in the transaction audit. Other discount types still require their normal authorization.
+                  </p>
+                </div>
+                <Switch
+                  id="pos-employee-discount-self-approval"
+                  checked={posForm.employeeDiscountSelfApprovalEnabled === true}
+                  onCheckedChange={(checked) => setPosForm((current) => ({
+                    ...current,
+                    employeeDiscountSelfApprovalEnabled: Boolean(checked)
+                  }))}
+                  disabled={locked || loading}
+                />
+              </div>
             </div>
           </div>
 

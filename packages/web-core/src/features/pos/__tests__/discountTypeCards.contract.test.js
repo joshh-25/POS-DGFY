@@ -57,7 +57,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('Promo Code');
     expect(discountModalContent).toContain("discountDraft.type !== 'employee'");
     expect(discountModalContent).toContain('Employee Name <span className="text-rose-500">*</span>');
-    expect(discountModalContent).toContain('Employee ID <span className="font-medium text-slate-400">(optional)</span>');
+    expect(discountModalContent).toContain('Employee ID</label>');
     expect(discountModalContent).toContain("discountDraft.type === 'manual'");
     expect(discountModalContent).toContain('Discount Rate');
     expect(discountModalContent).toContain('employeeDiscountRateOptions.map');
@@ -73,10 +73,12 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).not.toContain("type === 'manual' && discountDraft.reason.trim().length < 3");
     expect(checkoutRenderContent).not.toContain('Enter a reason of at least 3 characters for this manual discount.');
     expect(checkoutRenderContent).toContain("discount_type: type");
-    expect(checkoutRenderContent).toContain('const parsedEmployeeUserId = type === \'employee\'');
-    expect(checkoutRenderContent).toContain('const employeeUserId = Number.isInteger(parsedEmployeeUserId) && parsedEmployeeUserId > 0');
-    expect(checkoutRenderContent).toContain('employee_user_id: employeeUserId');
-    expect(checkoutRenderContent).toContain("type === 'employee' && !discountDraft.employee_name.trim()");
+    expect(checkoutRenderContent).toContain('usePosDiscountDirectory');
+    expect(checkoutRenderContent).toContain('employee_directory_id: type === \'employee\'');
+    expect(checkoutRenderContent).not.toContain('Number(discountDraft.employee_id)');
+    expect(checkoutRenderContent).toContain("type === 'employee' && !(Number(discountDraft.employee_directory_id) > 0)");
+    expect(discountModalContent).toContain('Select registered employee');
+    expect(discountModalContent).toContain('readOnly');
     expect(checkoutRenderContent).toContain('verifyPosDiscountApproval');
     expect(checkoutRenderContent).toContain('const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);');
     expect(checkoutRenderContent).toContain('const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0');

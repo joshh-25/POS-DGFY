@@ -472,6 +472,14 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     it('persists the verified manager identity for an employee discount', async () => {
         const cashier = await createCashier();
+        const employee = await models.Employee.create({
+            employee_code: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+            full_name: cashier.username,
+            email: cashier.email,
+            location_id: cashier.posTestLocationId,
+            is_active: true,
+            created_by: cashier.user_id
+        });
         const approver = await models.User.create({
             username: `manager_${crypto.randomUUID().slice(0, 8)}`,
             email: `manager_${crypto.randomUUID().slice(0, 8)}@pos.test`,
@@ -492,7 +500,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 rate: 10,
                 customer_name: 'Employee Buyer',
                 employee_name: 'Untrusted Name',
-                employee_id: String(cashier.user_id),
+                employee_id: 'SPOOFED-CODE',
+                employee_directory_id: employee.employee_id,
                 approver_user_id: approver.user_id,
                 manager_pin: '2468',
                 reason: 'Staff meal'
@@ -513,7 +522,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         });
         expect(discount.manager_approval_id).toBe(approver.user_id);
         expect(discount.manager_approved_at).toBeInstanceOf(Date);
-        expect(discount.employee_id).toBe(String(cashier.user_id));
+        expect(discount.employee_id).toBe(employee.employee_code);
         expect(discount.employee_name).toBe(cashier.username);
         expect(discount.self_approved).toBe(false);
         expect(Number(discount.discount_amount)).toBe(9.5);
@@ -521,7 +530,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(transaction.total_amount)).toBe(85.5);
         expect(audit.user_id).toBe(cashier.user_id);
         expect(typeof audit.changes === 'string' ? JSON.parse(audit.changes) : audit.changes).toEqual(expect.objectContaining({
-            selected_employee_id: String(cashier.user_id),
+            selected_employee_id: employee.employee_code,
             selected_employee_name: cashier.username,
             applied_by_user_id: cashier.user_id,
             approved_by_user_id: approver.user_id,
@@ -535,6 +544,14 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     it('requires an authorized employee PIN even when the cashier is an admin', async () => {
         const adminOperator = await createCashier({ role: 'admin' });
+        const employee = await models.Employee.create({
+            employee_code: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+            full_name: adminOperator.username,
+            email: adminOperator.email,
+            location_id: adminOperator.posTestLocationId,
+            is_active: true,
+            created_by: adminOperator.user_id
+        });
         const product = await createFinishedGood({ current_stock: 10 });
 
         const checkoutResult = await checkoutAsCashier(adminOperator, {
@@ -547,7 +564,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 rate: 10,
                 customer_name: 'Employee Buyer',
                 employee_name: 'Admin employee',
-                employee_id: String(adminOperator.user_id)
+                employee_directory_id: employee.employee_id
             },
             lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
         });

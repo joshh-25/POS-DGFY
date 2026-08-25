@@ -10,6 +10,7 @@ vi.mock('../../services/employeeCreditService.js', () => ({
 }));
 
 const eligibleEmployee = {
+    employee_id: 44,
     account_code: 'ec-44',
     account_configured: true,
     is_eligible: true,
@@ -78,5 +79,39 @@ describe('usePosEmployeeCreditWorkflow', () => {
         expect(result.current.employeeCreditAccount).toBe(null);
         expect(result.current.selectedEmployeeCreditOption).toBe(null);
         expect(result.current.employeeCreditAccountCode).toBe('');
+    });
+
+    it('clears a discount-prefilled account without clearing a later manual selection', async () => {
+        const { result } = renderHook(() => usePosEmployeeCreditWorkflow());
+
+        await act(async () => {
+            await result.current.handlePrefillEmployeeCredit(eligibleEmployee);
+        });
+        act(() => {
+            expect(result.current.clearDiscountEmployeeCreditPrefill()).toBe(true);
+        });
+        expect(result.current.selectedEmployeeCreditOption).toBe(null);
+
+        const manualEmployee = {
+            ...eligibleEmployee,
+            employee_id: 45,
+            account_code: 'ec-45',
+            employee_name: 'Manual Employee'
+        };
+        await act(async () => {
+            await result.current.handleSelectEmployeeCredit(manualEmployee);
+        });
+        act(() => {
+            expect(result.current.clearDiscountEmployeeCreditPrefill()).toBe(false);
+        });
+        expect(result.current.selectedEmployeeCreditOption).toBe(manualEmployee);
+        expect(result.current.employeeCreditAccountCode).toBe('EC-45');
+
+        let prefillApplied;
+        await act(async () => {
+            prefillApplied = await result.current.handlePrefillEmployeeCredit(eligibleEmployee);
+        });
+        expect(prefillApplied).toBe(false);
+        expect(result.current.selectedEmployeeCreditOption).toBe(manualEmployee);
     });
 });
