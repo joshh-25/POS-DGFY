@@ -185,7 +185,7 @@ this doc's or `backend-absorption.md`'s "leave alone" lists, or ask.
 
 An automatic guard exists so a stray old-path file doesn't silently reach `develop`:
 `.husky/pre-commit` blocks staging anything under `apps/dgfy-web/`, `frontend/`, or
-`backend/`, and `pr-quality-checks.yml`'s `repository-quality` job runs the same check
+`backend/`, and `promotion-quality-gate.yml`'s `repository-quality` job runs the same check
 (`npm run report:frontend-split-sync:post-merge`) in CI. If either fires on a file you
 believe genuinely belongs at that path (a historical doc, an ADR), that's a false
 positive worth flagging — the guard only inspects real source trees, not `docs/`.

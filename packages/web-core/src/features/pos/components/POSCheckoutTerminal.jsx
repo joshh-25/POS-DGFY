@@ -1,9 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
-import {
-    fetchPosDiscountApprovers,
-    verifyPosDiscountApproval
-} from '../services/posService';
+import { verifyPosDiscountApproval } from '../services/posService';
 import {
     TERMINAL_QUEUE_STATUS,
     hydrateTerminalOperationQueueStore
@@ -15,6 +12,7 @@ import { usePosEmployeeCreditWorkflow } from '../hooks/usePosEmployeeCreditWorkf
 import { usePosFinancialWorkflow } from '../hooks/usePosFinancialWorkflow.js';
 import { usePosHistoryVoidWorkflow } from '../hooks/usePosHistoryVoidWorkflow.js';
 import { usePosCheckoutWorkflow } from '../hooks/usePosCheckoutWorkflow.js';
+import { usePosDiscountDirectory } from '../hooks/usePosDiscountDirectory.js';
 import { usePosReceiptHardwareWorkflow } from '../hooks/usePosReceiptHardwareWorkflow.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
@@ -122,9 +120,12 @@ export default function POSCheckoutTerminal({
         employeeCreditAccountCode,
         employeeCreditAccount,
         selectedEmployeeCreditOption,
+        employeeCreditSelectionSource,
         employeeCreditLookupLoading,
         resetEmployeeCredit,
-        handleSelectEmployeeCredit
+        handleSelectEmployeeCredit,
+        handlePrefillEmployeeCredit,
+        clearDiscountEmployeeCreditPrefill
     } = usePosEmployeeCreditWorkflow();
     const [discountProfiles, setDiscountProfiles] = useState([]);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
@@ -137,7 +138,6 @@ export default function POSCheckoutTerminal({
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const discountApprovalRef = useRef(null);
     const itemDiscountApprovalRef = useRef(new Map());
-    const itemDiscountApproversRequestedRef = useRef(false);
     const [discountApplying, setDiscountApplying] = useState(false);
     const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
@@ -156,8 +156,13 @@ export default function POSCheckoutTerminal({
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
     const [lowStockDisplayThreshold, setLowStockDisplayThreshold] = useState(DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD);
     const [commercialPromoConfig, setCommercialPromoConfig] = useState([]);
-    const [discountApprovers, setDiscountApprovers] = useState([]);
-    const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
+    const {
+        discountApprovers,
+        discountEmployees,
+        discountApproversLoading,
+        discountEmployeesLoading,
+        loadDiscountDirectory
+    } = usePosDiscountDirectory({ autoLoad: Boolean(itemOptionsLineKey) });
     const posHardware = usePosHardware({ enabled: Boolean(terminalUser) });
     const [imagePreview, setImagePreview] = useState(null);
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
@@ -373,6 +378,7 @@ export default function POSCheckoutTerminal({
         queuedCheckouts,
         discountDraft
     });
+    const safeDiscountEmployees = toArray(discountEmployees);
     const isCartLineSeniorPwdEligible = (line) => (
         isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
@@ -622,7 +628,7 @@ export default function POSCheckoutTerminal({
         externalReceiptTransactionId,
         onExternalReceiptHydrated,
         externalHistoryQuery,
-        onExternalHistoryHydrated
+        onExternalHistoryHydrated, onFinancialMutationCompleted: onCheckoutCompleted
     });
 
     usePosCartDraft({
@@ -892,26 +898,6 @@ export default function POSCheckoutTerminal({
         }
     }, [manualDiscountAmountInput, manualDiscountRateInput, selectedDiscountProfile]);
 
-    useEffect(() => {
-        if (!itemOptionsLineKey || safeDiscountApprovers.length > 0 || itemDiscountApproversRequestedRef.current) return undefined;
-        let mounted = true;
-        itemDiscountApproversRequestedRef.current = true;
-        setDiscountApproversLoading(true);
-        fetchPosDiscountApprovers()
-            .then((approvers) => {
-                if (mounted) setDiscountApprovers(toArray(approvers));
-            })
-            .catch(() => {
-                if (mounted) toast.error('Unable to load discount approvers.');
-            })
-            .finally(() => {
-                if (mounted) setDiscountApproversLoading(false);
-            });
-        return () => {
-            mounted = false;
-        };
-    }, [itemOptionsLineKey, safeDiscountApprovers.length]);
-
     const saveItemOptions = async ({ note, selections, item_discount: itemDiscount }) => {
         const lineKey = itemOptionsLineKey;
         const currentLine = safeCart.find((line) => getLineKey(line) === lineKey);
@@ -946,8 +932,8 @@ export default function POSCheckoutTerminal({
                 toast.error('Enter a promo code for this item discount.');
                 return false;
             }
-            if (discountType === 'employee' && !String(itemDiscount.employee_name || '').trim()) {
-                toast.error('Employee name is required for an employee discount.');
+            if (discountType === 'employee' && !(Number(itemDiscount.employee_directory_id) > 0)) {
+                toast.error('Select a registered employee for this employee discount.');
                 return false;
             }
             if (!['senior', 'pwd', 'promo'].includes(discountType) && method === 'percentage' && (!Number.isFinite(rate) || rate <= 0 || rate > 100)) {
@@ -969,6 +955,7 @@ export default function POSCheckoutTerminal({
                 && String(currentDiscount.id_number || '') === String(itemDiscount.id_number || '').trim()
                 && String(currentDiscount.employee_name || '') === String(itemDiscount.employee_name || '').trim()
                 && String(currentDiscount.employee_id || '') === String(itemDiscount.employee_id || '').trim()
+                && Number(currentDiscount.employee_directory_id || 0) === Number(itemDiscount.employee_directory_id || 0)
                 && String(currentDiscount.promo_code || '') === String(itemDiscount.promo_code || '').trim().toUpperCase()
                 && String(currentDiscount.reason || '') === String(itemDiscount.reason || '').trim();
             let approval = itemDiscountApprovalRef.current.get(lineKey);
@@ -981,10 +968,17 @@ export default function POSCheckoutTerminal({
                     const verifiedApprover = await verifyPosDiscountApproval({
                         discount_type: discountType,
                         approver_user_id: approverId,
-                        manager_pin: String(itemDiscount.manager_pin || '').trim()
+                        manager_pin: String(itemDiscount.manager_pin || '').trim(),
+                        employee_directory_id: discountType === 'employee'
+                            ? Number(itemDiscount.employee_directory_id) || null
+                            : null
                     });
                     approval = {
                         approver_user_id: verifiedApprover?.user_id || approverId,
+                        employee_directory_id: discountType === 'employee'
+                            ? Number(itemDiscount.employee_directory_id) || null
+                            : null,
+                        self_approved: verifiedApprover?.self_approved === true,
                         manager_pin: String(itemDiscount.manager_pin || '').trim()
                     };
                     itemDiscountApprovalRef.current.set(lineKey, approval);
@@ -1005,11 +999,15 @@ export default function POSCheckoutTerminal({
                 id_number: String(itemDiscount.id_number || '').trim().slice(0, 100) || null,
                 employee_name: String(itemDiscount.employee_name || '').trim().slice(0, 255) || null,
                 employee_id: String(itemDiscount.employee_id || '').trim().slice(0, 100) || null,
+                employee_directory_id: discountType === 'employee'
+                    ? Number(itemDiscount.employee_directory_id) || null
+                    : null,
                 promo_code: String(itemDiscount.promo_code || '').trim().toUpperCase().slice(0, 40) || null,
                 reason: String(itemDiscount.reason || '').trim().slice(0, 500) || null,
                 approver_user_id: Number(approval.approver_user_id),
                 approver_name: String(approver?.username || '').trim() || null,
-                approved_at: currentDiscount?.approved_at || new Date().toISOString()
+                approved_at: currentDiscount?.approved_at || new Date().toISOString(),
+                self_approved: approval.self_approved === true
             };
         } else {
             itemDiscountApprovalRef.current.delete(lineKey);
@@ -1038,29 +1036,26 @@ export default function POSCheckoutTerminal({
         if (returnToCheckout) {
             setCheckoutConfirmModalOpen(false);
         }
-        const employeeCreditDiscountName = String(
-            selectedEmployeeCreditOption?.employee_name
-            || employeeCreditAccount?.employee_name
-            || ''
-        ).trim();
-        const employeeCreditDiscountId = String(
-            selectedEmployeeCreditOption?.employee_code
-            || ''
-        ).trim();
+        const employeeCreditDirectoryId = Number(selectedEmployeeCreditOption?.employee_id) || null;
+        const employeeCreditDiscountName = employeeCreditDirectoryId
+            ? String(selectedEmployeeCreditOption?.employee_name || '').trim()
+            : '';
+        const employeeCreditDiscountId = employeeCreditDirectoryId
+            ? String(selectedEmployeeCreditOption?.employee_code || '').trim()
+            : '';
         const draftToOpen = appliedDiscount
             ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' }
             : {
                 ...EMPTY_DISCOUNT_DRAFT,
                 employee_name: employeeCreditDiscountName,
-                employee_id: employeeCreditDiscountId
+                employee_id: employeeCreditDiscountId,
+                employee_directory_id: employeeCreditDirectoryId ? String(employeeCreditDirectoryId) : ''
             };
         setShowDiscountPin(false);
         setDiscountDraft(draftToOpen);
         setDiscountModalOpen(true);
-        setDiscountApproversLoading(true);
         try {
-            const approvers = await fetchPosDiscountApprovers();
-            setDiscountApprovers(approvers);
+            const { approvers } = await loadDiscountDirectory();
             if (!appliedDiscount) {
                 const shiftCashierId = Number(activeShiftCashierId);
                 const shiftCashierApprover = Number.isInteger(shiftCashierId) && shiftCashierId > 0
@@ -1073,11 +1068,8 @@ export default function POSCheckoutTerminal({
             }
             setDiscountDraft(draftToOpen);
         } catch (error) {
-            setDiscountApprovers([]);
             setDiscountDraft(draftToOpen);
-            toast.error(error?.response?.data?.message || 'Failed to load POS discount approvers.');
-        } finally {
-            setDiscountApproversLoading(false);
+            toast.error(error?.response?.data?.message || 'Failed to load POS discount employees.');
         }
     };
 
@@ -1098,8 +1090,8 @@ export default function POSCheckoutTerminal({
             toast.error('Enter the authorizing employee PIN.');
             return;
         }
-        if (type === 'employee' && !discountDraft.employee_name.trim()) {
-            toast.error('Employee name is required.');
+        if (type === 'employee' && !(Number(discountDraft.employee_directory_id) > 0)) {
+            toast.error('Select a registered employee.');
             return;
         }
         if (!statutory && type !== 'employee' && !discountDraft.customer_name.trim()) {
@@ -1137,17 +1129,13 @@ export default function POSCheckoutTerminal({
         }
         setDiscountApplying(true);
         try {
-            const parsedEmployeeUserId = type === 'employee'
-                ? Number(discountDraft.employee_id)
-                : null;
-            const employeeUserId = Number.isInteger(parsedEmployeeUserId) && parsedEmployeeUserId > 0
-                ? parsedEmployeeUserId
-                : null;
             const verifiedApprover = await verifyPosDiscountApproval({
                 discount_type: type,
                 approver_user_id: approvalUserId,
                 manager_pin: discountDraft.manager_pin,
-                employee_user_id: employeeUserId
+                employee_directory_id: type === 'employee'
+                    ? Number(discountDraft.employee_directory_id) || null
+                    : null
             });
             const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', voucher: 'Voucher Discount', manual: 'Other Discount' };
             const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
@@ -1191,6 +1179,9 @@ export default function POSCheckoutTerminal({
                 amount: !['promo', 'voucher'].includes(type) && discountDraft.method === 'fixed' ? amount : null,
                 promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
                 voucher_code: type === 'voucher' ? String(discountDraft.voucher_code || '').trim().toUpperCase() : discountDraft.voucher_code,
+                employee_directory_id: type === 'employee'
+                    ? Number(discountDraft.employee_directory_id) || null
+                    : null,
                 approver_user_id: governedDiscountApproverUserId,
                 approver_name: verifiedApprover?.username || null,
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
@@ -1199,7 +1190,10 @@ export default function POSCheckoutTerminal({
             discountApprovalRef.current = {
                 discount_type: type,
                 approver_user_id: governedDiscountApproverUserId,
-                employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) || null : null,
+                employee_directory_id: type === 'employee'
+                    ? Number(discountDraft.employee_directory_id) || null
+                    : null,
+                self_approved: verifiedApprover?.self_approved === true,
                 manager_pin: String(discountDraft.manager_pin || '').trim()
             };
             setSelectedDiscountProfile('');
@@ -1295,6 +1289,7 @@ export default function POSCheckoutTerminal({
         checkoutLoading,
         checkoutPaneClassName,
         clearAppliedDiscount,
+        clearDiscountEmployeeCreditPrefill,
         clearSaleConfirmOpen,
         closeDiscountModal,
         closeReceiptPreviewModal,
@@ -1311,6 +1306,7 @@ export default function POSCheckoutTerminal({
         customerPaymentShortfall,
         discountApplying,
         discountApproversLoading,
+        discountEmployeesLoading,
         discountDraft,
         discountModalOpen,
         discountPreviewTotals,
@@ -1323,6 +1319,7 @@ export default function POSCheckoutTerminal({
         editingQuantityItemId,
         employeeCreditAccount,
         employeeCreditLookupLoading,
+        employeeCreditSelectionSource,
         employeeDiscountRateOptions,
         flyImageToCheckoutBar,
         folderButtonClassName,
@@ -1355,6 +1352,7 @@ export default function POSCheckoutTerminal({
         handleParkedSaleClaimed,
         handlePrintOrder,
         handlePrintReceipt,
+        handlePrefillEmployeeCredit,
         handleQtyButtonPointerCancel,
         handleQtyButtonPointerDown,
         handleQtyButtonPointerMove,
@@ -1447,6 +1445,7 @@ export default function POSCheckoutTerminal({
         safeCart,
         safeCatalog,
         safeDiscountApprovers,
+        safeDiscountEmployees,
         safeEligibleDiscountItemIds,
         safeEligibleDiscountItems,
         saveItemOptions,

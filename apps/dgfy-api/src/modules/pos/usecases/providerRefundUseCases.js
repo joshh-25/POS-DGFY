@@ -136,7 +136,7 @@ const assertProviderRefundCompliance = async ({ terminalId, user }) => {
     return result.data.decision;
 };
 
-const assertOwnedOpenShift = ({ shift, actorUserId, terminalId, locationId }) => {
+const assertOwnedOpenShift = ({ shift, actorUserId, shiftOwnerUserId = actorUserId, terminalId, locationId }) => {
     if (!shift || String(shift.status || '').toLowerCase() !== 'open') {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -144,7 +144,7 @@ const assertOwnedOpenShift = ({ shift, actorUserId, terminalId, locationId }) =>
             { statusCode: 422, details: { reason_code: 'POS_SHIFT_NOT_OPEN' } }
         );
     }
-    if (Number(shift.cashier_id) !== actorUserId) {
+    if (Number(shift.cashier_id) !== shiftOwnerUserId) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'Only the cashier who owns the open shift can record a provider refund',
@@ -426,6 +426,7 @@ export const buildProviderRefundPosTransactionUseCase = ({
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const activeShiftId = parsePositiveInt(payload?.shift_id);
         const terminalId = String(payload?.terminal_id || '').trim().toUpperCase() || null;
         const locationId = parsePositiveInt(payload?.terminal_location_id);
@@ -476,7 +477,13 @@ export const buildProviderRefundPosTransactionUseCase = ({
             const shift = activeShiftId
                 ? await posRepository.getTerminalShiftById(activeShiftId, { transaction, lock: true })
                 : null;
-            if (activeShiftId) assertOwnedOpenShift({ shift, actorUserId, terminalId, locationId });
+            if (activeShiftId) assertOwnedOpenShift({
+                shift,
+                actorUserId,
+                shiftOwnerUserId: parsePositiveInt(user?.register_shift_owner_user_id) || actorUserId,
+                terminalId,
+                locationId
+            });
             const complianceDecision = await assertProviderRefundCompliance({ terminalId, user });
             const existingByIdempotency = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
                 normalizedTransactionId,
@@ -523,7 +530,8 @@ export const buildProviderRefundPosTransactionUseCase = ({
                 complianceDecision,
                 adjustment: replayPendingAdjustment,
                 providerCallAllowed: !replayPendingAdjustment,
-                providerRefundMarker: buildProviderRefundMarker({ transactionId: normalizedTransactionId, idempotencyKey })
+                providerRefundMarker: buildProviderRefundMarker({ transactionId: normalizedTransactionId, idempotencyKey }),
+                operatorSessionId
             };
             await transaction.commit();
             transaction = null;
@@ -582,6 +590,7 @@ export const buildProviderRefundPosTransactionUseCase = ({
                 provider_event_id: null,
                 metadata: {
                     evidence_scope: 'pos_online_provider_refund',
+                    operator_session_id: operatorSessionId,
                     provider_payment_id: prepared.transactionDetails.paymentReference,
                     payment_session_reference: prepared.transactionDetails.sessionReference,
                     provider_refund_marker: prepared.providerRefundMarker,
@@ -608,6 +617,7 @@ export const buildProviderRefundPosTransactionUseCase = ({
                 reason,
                 changes: {
                     event: 'pos_provider_refund_pending',
+                    operator_session_id: operatorSessionId,
                     transaction_id: normalizedTransactionId,
                     provider: PROVIDER,
                     provider_payment_id: prepared.transactionDetails.paymentReference,
@@ -835,6 +845,7 @@ const finalizeProviderRefund = async ({
                 failure_reason: state === 'failed' ? 'PayMongo reported refund failure.' : null,
                 metadata: {
                     ...(storedAdjustment.metadata || {}),
+                    operator_session_id: prepared.operatorSessionId || null,
                     provider_call_state: state === 'completed' ? 'completed' : (state === 'failed' ? 'failed' : 'pending'),
                     provider_refund_status: normalizedProviderStatus,
                     provider_refund_id: providerRefundId,
@@ -861,6 +872,7 @@ const finalizeProviderRefund = async ({
             reason,
             changes: {
                 event: state === 'completed' ? 'pos_provider_refund_completed' : (state === 'pending' ? 'pos_provider_refund_pending' : 'pos_provider_refund_failed'),
+                operator_session_id: prepared.operatorSessionId || null,
                 transaction_id: prepared.transaction.pos_transaction_id,
                 provider: PROVIDER,
                 provider_payment_id: prepared.transactionDetails.paymentReference,
@@ -922,6 +934,7 @@ const finalizeProviderRefundFailure = async ({
                 failure_reason: String(error?.message || 'Provider refund failed').slice(0, 500),
                 metadata: {
                     ...(adjustment.metadata || {}),
+                    operator_session_id: prepared.operatorSessionId || null,
                     provider_call_state: retryable ? 'retryable' : 'failed',
                     financial_outcome: failedOutcome
                 }
@@ -945,6 +958,7 @@ const finalizeProviderRefundFailure = async ({
             reason,
             changes: {
                 event: retryable ? 'pos_provider_refund_retryable_failure' : 'pos_provider_refund_failed',
+                operator_session_id: prepared.operatorSessionId || null,
                 transaction_id: prepared.transaction.pos_transaction_id,
                 provider: PROVIDER,
                 provider_payment_id: prepared.transactionDetails.paymentReference,

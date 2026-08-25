@@ -11,12 +11,16 @@ import {
   fetchPosTransactionById,
   fetchPosParkedSales,
   fetchCurrentTerminalShift,
+  fetchCurrentPosOperator,
   fetchCashierShiftHistory,
   fetchPosDayCloseReadiness,
   fetchTerminalTodayDashboard,
   closePosDay,
   openPosDeviceDrawer,
   openTerminalShift,
+  startPosCashierBreak,
+  resumePosCashier,
+  takeOverPosRegister,
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
   collectCashPickupOrder,
@@ -89,9 +93,12 @@ import {
 } from '../utils/terminalIdentity.js';
 import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
+  isPosOperatorAuthorityValid,
   resolveActiveShiftResumeDecision,
+  resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
-  resolveTerminalShiftEntryDecision
+  resolveTerminalShiftEntryDecision,
+  shouldRestorePosOperatorAuthority
 } from '../utils/terminalShiftEntryDecision.js';
 import {
   buildTenantSetupSearch,
@@ -131,6 +138,7 @@ import {
   safeLocalStorageRemove,
   safeLocalStorageSet
 } from '../utils/posTerminalStorage.js';
+import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -161,8 +169,6 @@ const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
-const TABLET_TERMINAL_MIN_WIDTH_PX = 768;
-const TABLET_TERMINAL_MAX_WIDTH_PX = 1279;
 
 const buildTerminalBusinessSettings = (settings = {}) => ({
   pos_registered_name: String(settings?.pos_registered_name?.value || '').trim(),
@@ -483,6 +489,10 @@ export default function TerminalPage() {
     settingsAccessPinEnabled: false
   });
   const terminalMetaHydratedForSessionRef = useRef(false);
+  // A takeover changes the active operator, not the immutable shift owner.
+  // Keep the already-authorized shift snapshot available while owner-scoped
+  // read endpoints catch up to the operator authority cookie.
+  const takeoverShiftContextRef = useRef(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -521,6 +531,11 @@ export default function TerminalPage() {
     identifier: '',
     password: ''
   });
+  const [cashierTakeoverForm, setCashierTakeoverForm] = useState({
+    identifier: '',
+    password: '',
+    pin: ''
+  });
   const [adminReauthContext, setAdminReauthContext] = useState(() => readStoredAdminLockContext());
   const [adminReauthForm, setAdminReauthForm] = useState(() => {
     const context = readStoredAdminLockContext();
@@ -558,6 +573,15 @@ export default function TerminalPage() {
     cashSummary: null,
     salesSummary: null
   });
+  const [operatorAuthorityState, setOperatorAuthorityState] = useState({
+    scopeKey: '',
+    loading: false,
+    required: false,
+    valid: true,
+    operatorUser: null,
+    errorMessage: ''
+  });
+  const operatorAuthorityRecoveryAttemptRef = useRef('');
   const [cashierHistoryState, setCashierHistoryState] = useState({
     loading: false,
     cashier: null,
@@ -589,6 +613,7 @@ export default function TerminalPage() {
     open: false,
     switchLocation: false,
     cashEvent: false,
+    summary: false,
     close: false,
     zReading: false,
     staleRecovery: false
@@ -734,8 +759,11 @@ export default function TerminalPage() {
   });
   const [isTabletLayout, setIsTabletLayout] = useState(() => {
     if (!IS_DGFY_POS_SURFACE || typeof window === 'undefined') return false;
-    return window.innerWidth >= TABLET_TERMINAL_MIN_WIDTH_PX
-      && window.innerWidth <= TABLET_TERMINAL_MAX_WIDTH_PX;
+    return isPosTabletViewport({
+      viewportWidth: window.innerWidth,
+      isDgfyPosSurface: IS_DGFY_POS_SURFACE,
+      windowObj: window
+    });
   });
 
   useEffect(() => {
@@ -864,6 +892,8 @@ export default function TerminalPage() {
 
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
+  const canViewAttendance = hasPermission('pos:attendance:view');
+  const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
@@ -1278,6 +1308,34 @@ export default function TerminalPage() {
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
       ? Number(operatingLocationIdOverride || operatingLocationId)
       : null;
+    const preservedTakeoverContext = takeoverShiftContextRef.current;
+    const preservedTakeoverLocationId = Number(
+      preservedTakeoverContext?.locationId || preservedTakeoverContext?.shift?.location_id || 0
+    );
+    if (
+      preservedTakeoverContext?.shift
+      && preservedTakeoverContext.terminalId === terminalId
+      && (!scopedOperatingLocationId || preservedTakeoverLocationId === scopedOperatingLocationId)
+    ) {
+      const preservedShiftState = preservedTakeoverContext.shiftState || {};
+      const preservedDashboard = preservedTakeoverContext.todayDashboard || {};
+      setShiftState({
+        loading: false,
+        shift: preservedTakeoverContext.shift,
+        cashSummary: preservedShiftState.cashSummary || null,
+        salesSummary: preservedShiftState.salesSummary || null
+      });
+      setTodayDashboard({
+        loading: false,
+        businessDate: preservedDashboard.businessDate || null,
+        salesSummary: preservedDashboard.salesSummary || null
+      });
+      return {
+        shift: preservedTakeoverContext.shift,
+        cashSummary: preservedShiftState.cashSummary || null,
+        salesSummary: preservedShiftState.salesSummary || null
+      };
+    }
     setShiftState((prev) => ({ ...prev, loading: true }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
@@ -1518,7 +1576,8 @@ export default function TerminalPage() {
     try {
       const params = {
         shift_id: activeQueueShiftId,
-        location_id: activeQueueLocationId
+        location_id: activeQueueLocationId,
+        terminal_id: sanitizeTerminalId(activeTerminalId) || undefined
       };
       const payload = await fetchIncomingOnlineOrders(params, {
         skipGlobalErrorToast: silent === true,
@@ -1558,6 +1617,7 @@ export default function TerminalPage() {
       }
     }
   }, [
+    activeTerminalId,
     canViewPos,
     isOnline,
     locked,
@@ -1946,19 +2006,49 @@ export default function TerminalPage() {
     }
   }, [printZReading, refreshDayCloseReadiness, zReadingClosePin]);
 
-  const handleViewShiftSummary = useCallback(() => {
+  const handleViewShiftSummary = useCallback(async () => {
     if (!shiftState?.shift) {
       toast.error('Open a shift before viewing its sales summary.');
       return;
     }
-    setClosedShiftReportAutoPrint(false);
-    setClosedShiftReport({
-      shift: shiftState.shift,
-      cash_summary: shiftState.cashSummary || {},
-      sales_summary: shiftState.salesSummary || {}
-    });
-    setClosedShiftReportOpen(true);
-  }, [shiftState.cashSummary, shiftState.salesSummary, shiftState.shift]);
+    const terminalId = sanitizeTerminalId(activeTerminalId || shiftState.shift.terminal_id);
+    if (!terminalId) {
+      toast.error('Select a terminal before viewing its sales summary.');
+      return;
+    }
+
+    setShiftActionLoading((previous) => ({ ...previous, summary: true }));
+    try {
+      const shiftLocationId = Number(shiftState.shift.location_id || operatingLocationId);
+      const currentShiftResult = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        ...(Number.isInteger(shiftLocationId) && shiftLocationId > 0 ? { location_id: shiftLocationId } : {})
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (!currentShiftResult?.shift) {
+        toast.error('The active shift is no longer available. Refresh the Shift screen.');
+        return;
+      }
+      const freshShiftState = {
+        loading: false,
+        shift: currentShiftResult.shift,
+        cashSummary: currentShiftResult.cash_summary || null,
+        salesSummary: currentShiftResult.sales_summary || null
+      };
+      takeoverShiftContextRef.current = null;
+      setShiftState(freshShiftState);
+      setClosedShiftReportAutoPrint(false);
+      setClosedShiftReport({
+        shift: freshShiftState.shift,
+        cash_summary: freshShiftState.cashSummary || {},
+        sales_summary: freshShiftState.salesSummary || {}
+      });
+      setClosedShiftReportOpen(true);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to refresh the current shift summary. Try again.');
+    } finally {
+      setShiftActionLoading((previous) => ({ ...previous, summary: false }));
+    }
+  }, [activeTerminalId, operatingLocationId, shiftState.shift]);
 
   const handleViewCashierHistoryShift = useCallback((record) => {
     if (!record?.shift) {
@@ -2380,6 +2470,7 @@ export default function TerminalPage() {
         setCashierUnlockSession(null);
         setCashierResumeContext(null);
         setCashierResumeForm({ identifier: '', password: '' });
+        setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
         setAdminReauthContext(null);
         setAdminReauthForm({ identifier: '', password: '' });
         setTerminalUnlockRequired(false);
@@ -2662,6 +2753,7 @@ export default function TerminalPage() {
       setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
+      setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
       setTerminalUnlockRequired(false);
       setTerminalUnlockModalOpen(false);
       setDrawerOpen(true);
@@ -2850,14 +2942,164 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
+  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  const operatorScopeKey = `${shiftState?.shift?.location_id || operatingLocationId || ''}:${sanitizeTerminalId(activeTerminalId)}:${activeShiftId || ''}`;
+  const operatorAuthorityPending = Boolean(activeShiftId)
+    && (operatorAuthorityState.scopeKey !== operatorScopeKey || operatorAuthorityState.loading);
+  const operatorAuthorityValid = isPosOperatorAuthorityValid({ authorityValid: operatorAuthorityState.valid });
+  const checkoutOperatorLocked = Boolean(activeShiftId)
+    && (operatorAuthorityPending || (operatorAuthorityState.required && !operatorAuthorityValid));
+  const activeShiftOwnerLabel = String(
+    operatorAuthorityState.operatorUser?.username
+    || operatorAuthorityState.operatorUser?.email
+    || shiftState?.shift?.cashier?.username
+    || shiftState?.shift?.cashier?.email
+    || shiftState?.shift?.cashier_name
+    || 'the current cashier'
+  ).trim();
+
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
+    if (checkoutOperatorLocked) {
+      return operatorAuthorityPending
+        ? 'Verifying the active cashier for this register.'
+        : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`;
+    }
     return '';
-  }, [canTransactPos, locked, shiftState.shift]);
+  }, [activeShiftOwnerLabel, canTransactPos, checkoutOperatorLocked, locked, operatorAuthorityPending, shiftState.shift]);
 
-  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  useEffect(() => {
+    let cancelled = false;
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const locationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
+    const shiftId = Number(activeShiftId || 0);
+    const scopeKey = `${locationId || ''}:${terminalId}:${shiftId || ''}`;
+
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0 || !Number.isInteger(shiftId) || shiftId <= 0) {
+      setOperatorAuthorityState({
+        scopeKey,
+        loading: false,
+        required: false,
+        valid: true,
+        operatorUser: null,
+        errorMessage: ''
+      });
+      return undefined;
+    }
+
+    if (locked || !isOnline || !apiReachable) {
+      setOperatorAuthorityState((previous) => {
+        if (!locked && previous.scopeKey === scopeKey && !previous.loading) {
+          return previous;
+        }
+        return {
+          scopeKey,
+          loading: false,
+          required: true,
+          valid: false,
+          operatorUser: null,
+          errorMessage: locked ? '' : 'Reconnect to verify the active cashier.'
+        };
+      });
+      return undefined;
+    }
+
+    setOperatorAuthorityState((previous) => ({
+      ...previous,
+      scopeKey,
+      loading: true,
+      required: true,
+      valid: false,
+      errorMessage: ''
+    }));
+    const authorityParams = {
+      terminal_id: terminalId,
+      location_id: locationId,
+      shift_id: shiftId
+    };
+    const recoveryKey = `${scopeKey}:${Number(terminalUser?.user_id || 0)}`;
+
+    const resolveAuthority = async () => {
+      let payload = null;
+      let initialError = null;
+      try {
+        payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch (error) {
+        initialError = error;
+      }
+
+      const reasonCode = String(
+        initialError?.response?.data?.details?.reason_code
+        || initialError?.response?.data?.error?.details?.reason_code
+        || initialError?.response?.data?.error_code
+        || ''
+      ).trim();
+      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
+      const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
+      const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
+        authorityValid: payload?.authority_valid === true,
+        operatorUserId: payload?.operator_user?.user_id,
+        authenticatedUserId: terminalUser?.user_id,
+        alreadyAttempted
+      });
+
+      if (shouldRecover) {
+        operatorAuthorityRecoveryAttemptRef.current = recoveryKey;
+        try {
+          await resumePosCashier({
+            idempotency_key: createIdempotencyKey('pos-operator-authority-recovery'),
+            ...authorityParams
+          }, SUPPRESS_GLOBAL_ERROR_TOAST);
+          payload = await fetchCurrentPosOperator(authorityParams, SUPPRESS_GLOBAL_ERROR_TOAST);
+          initialError = null;
+        } catch (recoveryError) {
+          initialError = recoveryError;
+        }
+      }
+
+      if (cancelled) return;
+      if (featureDisabled) {
+        setOperatorAuthorityState({
+          scopeKey,
+          loading: false,
+          required: false,
+          valid: true,
+          operatorUser: null,
+          errorMessage: ''
+        });
+        return;
+      }
+
+      setOperatorAuthorityState({
+        scopeKey,
+        loading: false,
+        required: true,
+        valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
+        operatorUser: payload?.operator_user || null,
+        errorMessage: initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : '')
+      });
+    };
+
+    void resolveAuthority();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShiftId, activeTerminalId, apiReachable, isOnline, locked, operatingLocationId, shiftState?.shift?.location_id, terminalUser?.user_id]);
+
+  const handleOperatorAuthorityChange = useCallback((payload) => {
+    setOperatorAuthorityState({
+      scopeKey: operatorScopeKey,
+      loading: false,
+      required: true,
+      valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
+      operatorUser: payload?.operator_user || null,
+      errorMessage: ''
+    });
+  }, [operatorScopeKey, terminalUser?.user_id]);
+
   const companySwitchBlockedReason = activeShiftId
     ? 'Close the active shift before switching companies.'
     : '';
@@ -3048,7 +3290,10 @@ export default function TerminalPage() {
     }
   }, []);
 
-  const completeTerminalUnlock = async (selectedTerminalId, { operatingLocationIdOverride = null } = {}) => {
+  const completeTerminalUnlock = async (
+    selectedTerminalId,
+    { operatingLocationIdOverride = null, preserveShiftContext = null } = {}
+  ) => {
     blurActiveTerminalEditor();
     if (typeof window !== 'undefined') {
       if (selectedTerminalId) {
@@ -3075,20 +3320,51 @@ export default function TerminalPage() {
         ? Number(operatingLocationIdOverride)
         : undefined
     });
-    await hydrateUser({ suppressGlobalErrors: true });
-    await Promise.all([
-      hydrateTerminalMeta({ suppressGlobalErrors: true }),
-      refreshTenantLocations({ suppressGlobalErrors: true }),
-      refreshOperationalContext({
-        terminalIdOverride: selectedTerminalId,
-        operatingLocationIdOverride,
-        suppressGlobalErrors: true
-      })
-    ]);
+    const normalizedPreservedShiftContext = preserveShiftContext?.shift
+      ? {
+        terminalId: selectedTerminalId,
+        locationId: Number(operatingLocationIdOverride || preserveShiftContext.locationId || preserveShiftContext.shift.location_id || 0),
+        shift: preserveShiftContext.shift,
+        shiftState: preserveShiftContext.shiftState || {},
+        todayDashboard: preserveShiftContext.todayDashboard || {}
+      }
+      : null;
+    if (normalizedPreservedShiftContext) {
+      takeoverShiftContextRef.current = normalizedPreservedShiftContext;
+      setLocked(false);
+      setDrawerOpen(false);
+      setShiftState({
+        loading: false,
+        shift: normalizedPreservedShiftContext.shift,
+        cashSummary: normalizedPreservedShiftContext.shiftState.cashSummary || null,
+        salesSummary: normalizedPreservedShiftContext.shiftState.salesSummary || null
+      });
+      setTodayDashboard({
+        loading: false,
+        businessDate: normalizedPreservedShiftContext.todayDashboard.businessDate || null,
+        salesSummary: normalizedPreservedShiftContext.todayDashboard.salesSummary || null
+      });
+      await Promise.all([
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true })
+      ]);
+    } else {
+      await hydrateUser({ suppressGlobalErrors: true });
+      await Promise.all([
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true }),
+        refreshOperationalContext({
+          terminalIdOverride: selectedTerminalId,
+          operatingLocationIdOverride,
+          suppressGlobalErrors: true
+        })
+      ]);
+    }
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
     setCashierUnlockSession(null);
     setCashierResumeContext(null);
     setCashierResumeForm({ identifier: '', password: '' });
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
     setAdminReauthContext(null);
     setAdminReauthForm({ identifier: '', password: '' });
     setTerminalUnlockRequired(false);
@@ -3590,6 +3866,10 @@ export default function TerminalPage() {
       setDrawerOpen(true);
       return;
     }
+    if (!isOnline) {
+      toast.error('Reconnect before resuming this shift. The server must end the break before POS selling is restored.');
+      return;
+    }
 
     setSubmitting(true);
     setUnlockFailure(null);
@@ -3660,8 +3940,12 @@ export default function TerminalPage() {
         return;
       }
 
-      activateDgfyTenantSession(posSession);
-      setTerminalUser(cashierUser);
+      await resumePosCashier({
+        idempotency_key: createIdempotencyKey('pos-break-resume'),
+        terminal_id: terminalId,
+        location_id: cashierResumeContext.locationId,
+        shift_id: cashierResumeContext.shiftId
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: cashierResumeContext.locationId
       });
@@ -3671,6 +3955,200 @@ export default function TerminalPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCashierTakeoverSubmit = async (event) => {
+    event.preventDefault();
+    const identifier = String(cashierTakeoverForm.identifier || '').trim();
+    const password = String(cashierTakeoverForm.password || '');
+    const pin = String(cashierTakeoverForm.pin || '').trim();
+
+    if (!identifier || !password) {
+      toast.error('Cashier email and password are required to continue.');
+      return;
+    }
+    if (!cashierResumeContext?.shiftId) {
+      toast.error('No open shift was found for takeover. Please sign in again.');
+      setTerminalUnlockModalOpen(false);
+      setDrawerOpen(true);
+      return;
+    }
+    if (!isOnline) {
+      toast.error('Reconnect before taking over this register. The server must verify the cashier and current shift.');
+      return;
+    }
+    if (!identifier.includes('@')) {
+      toast.error('Enter the incoming cashier DGFY email used for this company membership.');
+      return;
+    }
+
+    setSubmitting(true);
+    setUnlockFailure(null);
+    try {
+      const tenantId = String(cashierResumeContext.tenantId || '').trim();
+      const terminalId = sanitizeTerminalId(cashierResumeContext.terminalId || activeTerminalId);
+      const locationId = Number(cashierResumeContext.locationId || operatingLocationId || 0);
+      const shiftId = Number(cashierResumeContext.shiftId || 0);
+      if (!tenantId || !terminalId || !Number.isInteger(locationId) || locationId <= 0 || !Number.isInteger(shiftId) || shiftId <= 0) {
+        throw createTerminalLoginError('The locked shift is missing its company, location, or terminal session. Sign in again.');
+      }
+
+      const loginResult = await loginDgfyAccount({
+        email: identifier,
+        password,
+        remember_device: false
+      });
+      const dgfyToken = String(loginResult?.token || '').trim();
+      if (!dgfyToken) {
+        throw createTerminalLoginError('Unable to start the incoming cashier session. Sign in again.');
+      }
+
+      const posSession = await startDgfyPosSession({
+        tenantId,
+        terminalId
+      }, dgfyToken, { activate: false });
+      const cashierUser = await fetchCurrentUser(
+        SUPPRESS_GLOBAL_ERROR_TOAST,
+        {
+          token: posSession?.token,
+          companyToken: posSession?.company?.token,
+          installSession: false
+        }
+      );
+      if (!cashierUser) {
+        throw createTerminalLoginError('The incoming cashier company session could not be verified. Sign in again.');
+      }
+
+      if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
+        clearDgfySession();
+        clearClientSession({
+          reason: 'logout',
+          broadcast: true,
+          emitAuthEvents: true,
+          redirectTo: null
+        });
+        toast.error('This login is not an active cashier account for the selected company.');
+        return;
+      }
+
+      const entryMode = resolveCashierRegisterEntryMode({
+        shiftCashierId: cashierResumeContext.cashierId,
+        authenticatedCashierId: cashierUser.user_id
+      });
+      if (entryMode === 'takeover' && !/^[0-9]{4,12}$/.test(pin)) {
+        toast.error('A different cashier must enter their 4 to 12 digit POS cashier PIN.');
+        return;
+      }
+
+      const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {
+        shift: shiftState?.shift || null,
+        shiftState: {
+          cashSummary: shiftState?.cashSummary || null,
+          salesSummary: shiftState?.salesSummary || null
+        },
+        todayDashboard: {
+          businessDate: todayDashboard?.businessDate || null,
+          salesSummary: todayDashboard?.salesSummary || null
+        },
+        locationId
+      };
+      if (entryMode === 'resume') {
+        await resumePosCashier({
+          idempotency_key: createIdempotencyKey('pos-cashier-resume'),
+          terminal_id: terminalId,
+          location_id: locationId,
+          shift_id: shiftId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } else {
+        await takeOverPosRegister({
+          idempotency_key: createIdempotencyKey('pos-cashier-takeover'),
+          user_id: cashierUser.user_id,
+          pin,
+          terminal_id: terminalId,
+          location_id: locationId,
+          shift_id: shiftId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      }
+      await completeTerminalUnlock(terminalId, {
+        operatingLocationIdOverride: locationId,
+        preserveShiftContext: preservedShiftContext
+      });
+      toast.success(entryMode === 'resume'
+        ? 'Cashier verified. Shift resumed.'
+        : 'Cashier verified. Register takeover completed.');
+    } catch (error) {
+      const message = error?.response?.data?.message
+        || error?.response?.data?.error?.message
+        || error?.message
+        || 'Unable to take over this register.';
+      toast.error(message);
+      setUnlockFailure({
+        message,
+        method: String(error?.config?.method || '').toUpperCase(),
+        requestPath: String(error?.config?.url || '').trim(),
+        status: error?.response?.status || null,
+        ref: createTerminalErrorRef()
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenCashierTakeover = () => {
+    setUnlockFailure(null);
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+    setCashierResumeContext((previous) => ({ ...(previous || {}), returnToResumeAllowed: true }));
+    setTerminalUnlockMode('cashier_takeover');
+  };
+
+  const handleCashierSignIn = useCallback(() => {
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const locationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
+    const shiftId = Number(activeShiftId || 0);
+    const activeOperator = operatorAuthorityState.operatorUser;
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0 || !Number.isInteger(shiftId) || shiftId <= 0) {
+      toast.error('The active register shift is unavailable. Refresh POS and try again.');
+      return;
+    }
+
+    setUnlockFailure(null);
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+    setCashierResumeContext({
+      shiftId,
+      cashierId: Number(activeOperator?.user_id || shiftState?.shift?.cashier_id || 0) || null,
+      cashierEmail: String(activeOperator?.email || shiftState?.shift?.cashier?.email || '').trim(),
+      cashierUsername: String(activeOperator?.username || shiftState?.shift?.cashier?.username || shiftState?.shift?.cashier_name || '').trim(),
+      terminalId,
+      locationId,
+      tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
+      companyToken: String(getCompanyToken() || '').trim(),
+      returnToResumeAllowed: false,
+      shiftSnapshot: {
+        shift: shiftState?.shift || null,
+        shiftState: {
+          cashSummary: shiftState?.cashSummary || null,
+          salesSummary: shiftState?.salesSummary || null
+        },
+        todayDashboard: {
+          businessDate: todayDashboard?.businessDate || null,
+          salesSummary: todayDashboard?.salesSummary || null
+        },
+        locationId
+      }
+    });
+    setStoredTerminalLock(true);
+    setStoredTerminalLockReason('terminal_reunlock');
+    setLocked(true);
+    setDrawerOpen(false);
+    setTerminalUnlockRequired(false);
+    setTerminalUnlockMode('cashier_takeover');
+    setTerminalUnlockModalOpen(true);
+  }, [activeShiftId, activeTerminalId, cashierUnlockSession?.tenantId, formData.dgfyTenantId, operatingLocationId, operatorAuthorityState.operatorUser, shiftState, terminalUser?.company?.id, todayDashboard]);
+
+  const handleBackToCashierResume = () => {
+    setUnlockFailure(null);
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+    setTerminalUnlockMode('cashier_resume');
   };
 
   const handleAdminReauthSubmit = async (event) => {
@@ -4005,7 +4483,8 @@ export default function TerminalPage() {
     const hasOpenShift = Boolean(activeShiftId) && !forceLogin;
     const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;
     const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
-    const activeShiftCashierId = Number(shiftState?.shift?.cashier_id || terminalUser?.user_id || 0);
+    const activeOperator = operatorAuthorityState.operatorUser;
+    const activeShiftCashierId = Number(activeOperator?.user_id || shiftState?.shift?.cashier_id || terminalUser?.user_id || 0);
     const activeShiftLocationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
     const activeCompanyToken = String(getCompanyToken() || '').trim();
     const activeDgfyToken = String(getStoredDgfyToken() || '').trim();
@@ -4014,7 +4493,38 @@ export default function TerminalPage() {
     setDgfyAdminBypassActive(false);
     setAdminShiftPromptSkipped(false);
 
+    if (hasOpenShift && !adminLock) {
+      if (!isOnline) {
+        toast.error('Reconnect before starting a break. The server must record the break before this terminal locks.');
+        return;
+      }
+      try {
+        await startPosCashierBreak({
+          idempotency_key: createIdempotencyKey('pos-break-lock'),
+          location_id: activeShiftLocationId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch (error) {
+        const reasonCode = String(
+          error?.response?.data?.details?.reason_code
+          || error?.response?.data?.errors?.reason_code
+          || error?.response?.data?.error?.details?.reason_code
+          || error?.response?.data?.error?.errors?.reason_code
+          || error?.response?.data?.error_code
+          || ''
+        ).trim();
+        if (reasonCode === 'POS_ATTENDANCE_FEATURE_DISABLED' || reasonCode === 'POS_ATTENDANCE_ALREADY_ACTIVE') {
+          // Legacy locations keep the existing lock behavior when attendance is off.
+          // An already-open break is also safe to lock: the resume flow closes it
+          // atomically before restoring cashier operator authority.
+        } else {
+          toast.error(error?.response?.data?.message || 'The break could not be started. The terminal stayed unlocked.');
+          return;
+        }
+      }
+    }
+
     if (adminLock) {
+      takeoverShiftContextRef.current = null;
       setStoredTerminalLock(true);
       setStoredTerminalLockReason('full_auth');
       setStoredAdminLockContext(null);
@@ -4025,6 +4535,7 @@ export default function TerminalPage() {
       setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
+      setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
       setDgfyPosState({
         authenticated: false,
         account: null,
@@ -4076,17 +4587,32 @@ export default function TerminalPage() {
       setCashierResumeContext({
         shiftId: activeShiftId,
         cashierId: Number.isInteger(activeShiftCashierId) && activeShiftCashierId > 0 ? activeShiftCashierId : null,
-        cashierEmail: String(terminalUser?.email || '').trim(),
-        cashierUsername: String(terminalUser?.username || '').trim(),
+        cashierEmail: String(activeOperator?.email || terminalUser?.email || '').trim(),
+        cashierUsername: String(activeOperator?.username || terminalUser?.username || '').trim(),
         terminalId: selectedTerminalId,
         locationId: Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 ? activeShiftLocationId : null,
         tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
-        companyToken: activeCompanyToken
+        companyToken: activeCompanyToken,
+        shiftSnapshot: {
+          shift: shiftState?.shift || null,
+          shiftState: {
+            cashSummary: shiftState?.cashSummary || null,
+            salesSummary: shiftState?.salesSummary || null
+          },
+          todayDashboard: {
+            businessDate: todayDashboard?.businessDate || null,
+            salesSummary: todayDashboard?.salesSummary || null
+          },
+          locationId: Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0
+            ? activeShiftLocationId
+            : null
+        }
       });
       setCashierResumeForm({
         identifier: String(terminalUser?.email || terminalUser?.username || '').trim(),
         password: ''
       });
+      setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
       clearBrowserSession();
       setLocked(true);
       setDrawerOpen(false);
@@ -4108,6 +4634,7 @@ export default function TerminalPage() {
     }
 
     setStoredTerminalLock(true);
+    takeoverShiftContextRef.current = null;
     setStoredTerminalLockReason('full_auth');
     setStoredAdminLockContext(null);
     setTenantSetupModalOpen(false);
@@ -4115,6 +4642,7 @@ export default function TerminalPage() {
     setCashierUnlockSession(null);
     setCashierResumeContext(null);
     setCashierResumeForm({ identifier: '', password: '' });
+    setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
     setAdminReauthContext(null);
     setAdminReauthForm({ identifier: '', password: '' });
     setDgfyPosState({
@@ -4336,7 +4864,7 @@ export default function TerminalPage() {
       toast.success('Cash drawer event recorded.');
       if (payload.event_type === 'cash_in') {
         try {
-          const iminDrawerResult = openDrawerWithIminBridge();
+          const iminDrawerResult = await openDrawerWithIminBridge();
           if (!iminDrawerResult.handled) {
             await openPosDeviceDrawer({
               idempotency_key: createIdempotencyKey('pos-cash-event-drawer'),
@@ -4435,12 +4963,18 @@ export default function TerminalPage() {
       payload
     };
 
+    if (!isOnline && canOperateAttendance) {
+      toast.error('Reconnect before closing this shift. Attendance Time Out must be confirmed by the server.');
+      return;
+    }
+
     if (!isOnline) {
       await enqueueTerminalOperationIntent(queueEntry, 'offline');
       setCloseShiftConfirmOpen(false);
       const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(`You are offline. Shift close was queued and cashier login is required for the next shift (${pendingCount} queued).`);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
+      takeoverShiftContextRef.current = null;
       setShiftState({
         loading: false,
         shift: null,
@@ -4488,6 +5022,7 @@ export default function TerminalPage() {
         toast.success('Shift closed successfully.');
         setCloseShiftConfirmOpen(false);
         setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
+        takeoverShiftContextRef.current = null;
         setShiftState({
           loading: false,
           shift: null,
@@ -4504,6 +5039,7 @@ export default function TerminalPage() {
       toast.success('Shift closed successfully. Review the branch Day Close status before leaving the terminal.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
+      takeoverShiftContextRef.current = null;
       setShiftState({
         loading: false,
         shift: null,
@@ -4556,6 +5092,7 @@ export default function TerminalPage() {
           `Shift close was queued after a connectivity issue. Cashier login is required for the next shift (${pendingCount} queued).`
         );
         setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
+        takeoverShiftContextRef.current = null;
         setShiftState({
           loading: false,
           shift: null,
@@ -5073,6 +5610,7 @@ export default function TerminalPage() {
   }, [incomingOrderDetail, isOnline, printOnlineOrderReceiptById]);
 
   const handleCheckoutCompleted = useCallback(async (completedTransaction = null) => {
+    takeoverShiftContextRef.current = null;
     await refreshOperationalContext();
     setReportRefreshKey((previous) => previous + 1);
     if (String(completedTransaction?.payment_type || '').trim().toLowerCase() === 'employee_credit') {
@@ -5337,9 +5875,11 @@ export default function TerminalPage() {
     const handleResize = () => {
       const viewportWidth = window.innerWidth;
       setIsDesktopWide(viewportWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
-      setIsTabletLayout(IS_DGFY_POS_SURFACE
-        && viewportWidth >= TABLET_TERMINAL_MIN_WIDTH_PX
-        && viewportWidth <= TABLET_TERMINAL_MAX_WIDTH_PX);
+      setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletViewport({
+        viewportWidth,
+        isDgfyPosSurface: IS_DGFY_POS_SURFACE,
+        windowObj: window
+      }));
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -5479,6 +6019,7 @@ export default function TerminalPage() {
   }, [refreshOperationalContext]);
 
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
+  const cashierTakeoverUnlock = terminalUnlockMode === 'cashier_takeover';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
   const signedInShiftResume = terminalUnlockMode === 'resume_shift';
 
@@ -5612,6 +6153,8 @@ function PosRestorationLoadingScreen() {
               cashierResumeContext,
               cashierResumeForm,
               cashierResumeUnlock,
+              cashierTakeoverForm,
+              cashierTakeoverUnlock,
               cashierUnlockSession,
               closeShiftConfirmOpen,
               closeShiftBlocker,
@@ -5624,7 +6167,10 @@ function PosRestorationLoadingScreen() {
               getNextTenantSetupStep,
               getPreviousTenantSetupStep,
               handleAdminReauthSubmit,
+              handleBackToCashierResume,
               handleCashierResumeSubmit,
+              handleCashierTakeoverSubmit,
+              handleOpenCashierTakeover,
               handleCloseDay,
               handleCollectCash,
               handleSettleBalance,
@@ -5676,6 +6222,7 @@ function PosRestorationLoadingScreen() {
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
+              setCashierTakeoverForm,
               setCloseShiftConfirmOpen,
               setClosedShiftReport,
               setClosedShiftReportAutoPrint,
@@ -5745,6 +6292,8 @@ function PosRestorationLoadingScreen() {
           isDesktopWide={isDesktopWide}
           isTabletLayout={isTabletLayout}
           canViewPos={canViewPos}
+          canViewAttendance={canViewAttendance}
+          canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
@@ -5798,6 +6347,11 @@ function PosRestorationLoadingScreen() {
               : 'settings_profile'
           }
           handleLock={handleLock}
+          handleCashierSignIn={handleCashierSignIn}
+          checkoutOperatorLocked={checkoutOperatorLocked}
+          checkoutOperatorLoading={operatorAuthorityPending}
+          activeShiftOwnerLabel={activeShiftOwnerLabel}
+          onOperatorAuthorityChange={handleOperatorAuthorityChange}
           setDrawerOpen={setDrawerOpen}
           effectiveSidebarCollapsed={effectiveSidebarCollapsed}
           isCheckoutWorkspaceMode={isCheckoutWorkspaceMode}

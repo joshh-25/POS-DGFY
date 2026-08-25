@@ -7,6 +7,7 @@ import { noPrinterResult } from '../posHardwareContract.js';
 export const noopDriver = {
     id: 'none',
     label: 'No printer configured',
+    capabilities: Object.freeze([]),
     async getStatus() {
         return { available: false, printersDetected: 0, raw: null };
     },

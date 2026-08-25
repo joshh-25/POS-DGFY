@@ -13,6 +13,7 @@ import {
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 import { getPosTextSizeScale } from '../utils/posTextSizePreference.js';
+import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 import {
     buildCatalogRequestKey,
     buildCatalogRequestParams,
@@ -85,6 +86,7 @@ export const usePosCatalogWorkflow = ({
     const [search, setSearch] = useState('');
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
+    const [catalogCapacityViewport, setCatalogCapacityViewport] = useState(null);
     const [catalogGridLayout, setCatalogGridLayout] = useState({
         columns: 1,
         rows: 1,
@@ -102,7 +104,6 @@ export const usePosCatalogWorkflow = ({
     const catalogRequestSequenceRef = useRef(0);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
-    const catalogCapacityViewportRef = useRef(null);
     const folderStripRef = useRef(null);
     const folderStripDragStateRef = useRef(null);
     const folderStripDragMovedRef = useRef(false);
@@ -112,6 +113,10 @@ export const usePosCatalogWorkflow = ({
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
     const catalogImageFailuresDirtyRef = useRef(false);
+
+    const catalogCapacityViewportRef = useCallback((viewport) => {
+        setCatalogCapacityViewport((current) => (current === viewport ? current : viewport));
+    }, []);
 
     const setCatalogImageErrors = useCallback((nextOrUpdater) => {
         setCatalogImageErrorsState((previous) => {
@@ -307,24 +312,16 @@ export const usePosCatalogWorkflow = ({
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
-        if (typeof window.matchMedia !== 'function') return undefined;
-
-        const tabletMedia = window.matchMedia(
-            isDgfyPosSurface
-                ? '(min-width: 640px) and (max-width: 1023px)'
-                : '(min-width: 768px) and (max-width: 1279px)'
-        );
-        const syncTabletViewport = (event) => {
-            setIsTabletViewport(Boolean(event.matches));
+        const syncTabletViewport = () => {
+            setIsTabletViewport(isPosTabletViewport({
+                viewportWidth: window.innerWidth,
+                isDgfyPosSurface,
+                windowObj: window
+            }));
         };
-        syncTabletViewport(tabletMedia);
-
-        if (typeof tabletMedia.addEventListener === 'function') {
-            tabletMedia.addEventListener('change', syncTabletViewport);
-            return () => tabletMedia.removeEventListener('change', syncTabletViewport);
-        }
-        tabletMedia.addListener(syncTabletViewport);
-        return () => tabletMedia.removeListener(syncTabletViewport);
+        syncTabletViewport();
+        window.addEventListener('resize', syncTabletViewport);
+        return () => window.removeEventListener('resize', syncTabletViewport);
     }, [isDgfyPosSurface]);
 
     const catalogPageSize = getCatalogPageSize(catalogGridLayout.pageSize);
@@ -535,7 +532,7 @@ export const usePosCatalogWorkflow = ({
 
     useEffect(() => {
         if (typeof window === 'undefined' || currentViewMode !== 'checkout') return undefined;
-        const viewport = catalogCapacityViewportRef.current;
+        const viewport = catalogCapacityViewport;
         if (!viewport) return undefined;
 
         let animationFrameId = null;
@@ -598,7 +595,7 @@ export const usePosCatalogWorkflow = ({
                 window.cancelAnimationFrame(animationFrameId);
             }
         };
-    }, [currentViewMode, isDgfyPosSurface, isTabletViewport, sidebarCollapsed]);
+    }, [catalogCapacityViewport, currentViewMode, isDgfyPosSurface, isTabletViewport, sidebarCollapsed]);
 
     useEffect(() => {
         setCatalogPage(1);
@@ -615,10 +612,10 @@ export const usePosCatalogWorkflow = ({
     }, [catalogPage, totalCatalogPages]);
 
     useEffect(() => {
-        const viewport = catalogCapacityViewportRef.current;
+        const viewport = catalogCapacityViewport;
         if (!viewport) return;
         viewport.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [catalogPage, search, selectedFolderId, selectedLocationId]);
+    }, [catalogCapacityViewport, catalogPage, search, selectedFolderId, selectedLocationId]);
 
     useEffect(() => {
         if (!selectedFolderId) return;

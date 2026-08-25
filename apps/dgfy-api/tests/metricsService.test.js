@@ -1,6 +1,7 @@
 import {
     recordHttpErrorMetrics,
     recordHttpRequestMetrics,
+    recordPosCashierLifecycleSignal,
     renderPrometheusMetrics,
     resetMetricsForTests
 } from '../src/services/metricsService.js';
@@ -44,5 +45,14 @@ describe('metricsService', () => {
         expect(text).toContain('status_class="5xx"');
         expect(text).toContain('error_code="STORE_CATALOG_RUNTIME_ERROR"');
         expect(text).not.toContain('request_id=');
+    });
+
+    it('renders bounded POS cashier lifecycle operational signals', () => {
+        recordPosCashierLifecycleSignal({ signal: 'operator_takeover', outcome: 'failure', reason: 'PIN_LOCKED' });
+        const text = renderPrometheusMetrics();
+        expect(text).toContain('sku_pos_cashier_lifecycle_signals_total');
+        expect(text).toContain('signal="operator_takeover"');
+        expect(text).toContain('outcome="failure"');
+        expect(text).toContain('reason="PIN_LOCKED"');
     });
 });

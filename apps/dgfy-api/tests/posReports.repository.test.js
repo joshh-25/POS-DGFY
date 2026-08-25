@@ -6,6 +6,9 @@ const mockLineFindAll = jest.fn();
 const mockItemFolderFindAll = jest.fn();
 const mockShiftFindAll = jest.fn();
 const mockAdjustmentFindAll = jest.fn();
+const mockAttendanceFindAll = jest.fn();
+const mockOperatorFindAll = jest.fn();
+const mockHandoffFindAll = jest.fn();
 const mockSequelize = {
     fn: jest.fn((...args) => ({ fn: args })),
     col: jest.fn((name) => ({ col: name }))
@@ -21,6 +24,10 @@ const PosCashDrawerEventModel = { modelName: 'PosCashDrawerEvent' };
 const PosTransactionDiscountModel = { modelName: 'PosTransactionDiscount' };
 const PosTransactionDiscountLineModel = { modelName: 'PosTransactionDiscountLine' };
 const PosTransactionAdjustmentModel = { modelName: 'PosTransactionAdjustment', findAll: mockAdjustmentFindAll };
+const EmployeeAttendanceSessionModel = { modelName: 'EmployeeAttendanceSession', findAll: mockAttendanceFindAll };
+const EmployeeBreakSegmentModel = { modelName: 'EmployeeBreakSegment' };
+const PosTerminalOperatorSessionModel = { modelName: 'PosTerminalOperatorSession', findAll: mockOperatorFindAll };
+const PosDrawerHandoffEventModel = { modelName: 'PosDrawerHandoffEvent', findAll: mockHandoffFindAll };
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
@@ -48,6 +55,14 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return PosTransactionDiscountLineModel;
                 case 'PosTransactionAdjustment':
                     return PosTransactionAdjustmentModel;
+                case 'EmployeeAttendanceSession':
+                    return EmployeeAttendanceSessionModel;
+                case 'EmployeeBreakSegment':
+                    return EmployeeBreakSegmentModel;
+                case 'PosTerminalOperatorSession':
+                    return PosTerminalOperatorSessionModel;
+                case 'PosDrawerHandoffEvent':
+                    return PosDrawerHandoffEventModel;
                 default:
                     return null;
             }
@@ -69,6 +84,9 @@ describe('posRepository reports analytics', () => {
         mockShiftFindAll.mockResolvedValue([]);
         mockLineFindAll.mockResolvedValue([{ post_close_voided_item_count: 0 }]);
         mockAdjustmentFindAll.mockResolvedValue([]);
+        mockAttendanceFindAll.mockResolvedValue([]);
+        mockOperatorFindAll.mockResolvedValue([]);
+        mockHandoffFindAll.mockResolvedValue([]);
     });
 
     it('computes POS profit/loss using cost snapshot first and IMS fallback second', async () => {
@@ -319,6 +337,95 @@ describe('posRepository reports analytics', () => {
                 })
             })
         }));
+    });
+
+    it('keeps attendance, actual operators, shared access, and register variance independently reconcilable', async () => {
+        mockFindAll.mockResolvedValue([{
+            pos_transaction_id: 451,
+            invoice_number: 'INV-451',
+            operator_session_id: 701,
+            created_at: '2026-08-24T04:30:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 100,
+            discount_amount: 0,
+            service_fee_amount: 0,
+            restaurant_service_charge_amount: 0,
+            vat_amount: 0,
+            total_amount: 100,
+            payment_type: 'cash',
+            payment_breakdown: [{ payment_type: 'cash', amount: 100 }],
+            order_source: 'in_store',
+            order_method: 'dine_in',
+            cashier_id: 22,
+            cashier: { user_id: 22, username: 'Cashier B' },
+            shift_id: 81,
+            shift: { pos_terminal_shift_id: 81, business_date: '2026-08-24', terminal_id: 'POS-01', location_id: 12 },
+            lines: [{ line_id: 991, item_id: 1, quantity: 1, cost_snapshot: 20, line_subtotal: 100, item: { item_id: 1, name: 'Meal', sku_code: 'MEAL-1', category: 'product', cost_per_unit: 20 } }]
+        }]);
+        mockShiftFindAll.mockResolvedValue([{
+            pos_terminal_shift_id: 81,
+            business_date: '2026-08-24',
+            terminal_id: 'POS-01',
+            location_id: 12,
+            cashier_id: 11,
+            status: 'closed',
+            opening_float_amount: 500,
+            expected_cash_amount: 600,
+            closing_cash_amount: 595,
+            cash_variance_amount: -5,
+            cashier: { user_id: 11, username: 'Cashier A' },
+            cashEvents: []
+        }]);
+        mockAttendanceFindAll.mockResolvedValue([{
+            employee_attendance_session_id: 301,
+            user_id: 11,
+            location_id: 12,
+            duty_type: 'regular',
+            status: 'closed',
+            started_at: '2026-08-23T23:00:00.000Z',
+            ended_at: '2026-08-24T07:00:00.000Z',
+            user: { user_id: 11, username: 'Cashier A' },
+            breakSegments: [{ employee_break_segment_id: 401, status: 'closed', started_at: '2026-08-24T04:00:00.000Z', ended_at: '2026-08-24T05:00:00.000Z' }]
+        }]);
+        mockOperatorFindAll.mockResolvedValue([{
+            pos_terminal_operator_session_id: 701,
+            pos_terminal_shift_id: 81,
+            terminal_id: 'POS-01',
+            location_id: 12,
+            user_id: 22,
+            status: 'ended',
+            started_at: '2026-08-24T04:00:00.000Z',
+            ended_at: '2026-08-24T05:00:00.000Z',
+            ended_reason: 'relief_complete',
+            operator: { user_id: 22, username: 'Cashier B' }
+        }]);
+        mockHandoffFindAll.mockResolvedValue([{
+            pos_drawer_handoff_event_id: 901,
+            pos_terminal_shift_id: 81,
+            terminal_id: 'POS-01',
+            location_id: 12,
+            event_type: 'shared_relief_start',
+            custody_mode: 'shared_access',
+            outgoing_operator_user_id: 11,
+            incoming_operator_user_id: 22,
+            outgoingOperator: { user_id: 11, username: 'Cashier A' },
+            incomingOperator: { user_id: 22, username: 'Cashier B' },
+            expected_cash_amount: null,
+            counted_cash_amount: null,
+            variance_amount: null,
+            event_at: '2026-08-24T04:00:00.000Z'
+        }]);
+
+        const result = await posRepository.getReportsOverview({ date_from: '2026-08-24', date_to: '2026-08-24', location_id: 12 });
+
+        expect(result.daily_report.cashier_summary[0]).toEqual(expect.objectContaining({ cashier_id: 22, cashier_name: 'Cashier B' }));
+        expect(result.daily_report.transaction_rows[0]).toEqual(expect.objectContaining({ operator_session_id: 701, attribution_type: 'authenticated_operator' }));
+        expect(result.cashier_lifecycle.attendance.rows[0]).toEqual(expect.objectContaining({ break_minutes: 60, worked_minutes: 420 }));
+        expect(result.cashier_lifecycle.operators.rows[0]).toEqual(expect.objectContaining({ cashier_name: 'Cashier B', shift_id: 81 }));
+        expect(result.cashier_lifecycle.handoffs.rows[0]).toEqual(expect.objectContaining({ variance_attribution: 'shared_drawer_no_individual_variance' }));
+        expect(result.cashier_lifecycle.registers[0]).toEqual(expect.objectContaining({ opening_cashier_name: 'Cashier A', variance_amount: -5 }));
+        expect(result.cashier_lifecycle.reconciliation).toEqual(expect.objectContaining({ difference: 0, reconciled: true }));
     });
 
     it('normalizes refunded sales as refunds/voids deductions and applies category filter', async () => {

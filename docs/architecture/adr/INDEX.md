@@ -53,7 +53,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-01-08 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
-| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
+| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-02-24 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `amended` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
@@ -66,7 +66,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0041 | [Hospitality Mode PMS And Stay Management](0041-hospitality-mode-pms-stay-management.md) | `accepted` | hospitality_mode_pms_stay_management | 2026-11-19 | 0 |
 | 0042 | [BIR RMO 24-2023 Fiscal Document and Accreditation Closure](0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md) | `accepted` | bir_rmo_24_2023_fiscal_document_and_accreditation_closure | 2026-12-01 | 0 |
 | 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2026-12-19 | 0 |
-| 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `accepted` | pos_terminal_device_pairing | 2026-12-28 | 0 |
+| 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `amended` | pos_terminal_device_pairing | 2027-02-24 | 0 |
 | 0045 | [Shared POS Receipt Renderer](0045-shared-pos-receipt-renderer.md) | `accepted` | shared_pos_receipt_renderer | 2027-01-23 | 0 |
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
 | 0047 | [Platform Admin Identity and Page RBAC](0047-platform-admin-identity-and-page-rbac.md) | `accepted` | platform_admin_identity_rbac | 2027-01-28 | 0 |
@@ -95,6 +95,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
+| 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `accepted` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
 
 ## Renumbered (collision stubs)
 

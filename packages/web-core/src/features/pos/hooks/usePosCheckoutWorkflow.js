@@ -48,6 +48,7 @@ import {
     resolveCheckoutReplayErrorDetails
 } from '../utils/posCheckoutTerminalQueue.js';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
+import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 
 /**
  * Owns checkout submission, offline replay, parked-sale ownership, split-payment
@@ -175,6 +176,19 @@ export const usePosCheckoutWorkflow = ({
     splitPaymentSummaryChangeAmount = 0,
 } = {}) => {
     const splitPaymentReturnToCheckoutRef = useRef(false);
+    const schedulePostCheckoutTask = useCallback((task) => {
+        // Let React commit the receipt/payment-complete UI before a legacy
+        // synchronous JavascriptInterface call can occupy the WebView thread.
+        // Do not chain whole checkout tasks: the native bridge already orders
+        // physical commands, while audit and refresh calls may finish independently.
+        setTimeout(() => {
+            Promise.resolve()
+                .then(task)
+                .catch((error) => {
+                    toast.error(error?.message || 'Payment completed, but a post-checkout task failed.');
+                });
+        }, 0);
+    }, []);
 
     const handleSplitPaymentOpenChange = useCallback((nextOpen) => {
         setSplitPaymentDialogOpen(nextOpen);
@@ -735,6 +749,9 @@ export const usePosCheckoutWorkflow = ({
                     amount: appliedDiscount.amount == null ? null : Number(appliedDiscount.amount),
                     customer_name: appliedDiscount.customer_name || null,
                     id_number: appliedDiscount.id_number || null,
+                    employee_name: appliedDiscount.employee_name || null,
+                    employee_id: appliedDiscount.employee_id || null,
+                    employee_directory_id: Number(appliedDiscount.employee_directory_id) || null,
                     approver_user_id: appliedDiscount.approver_user_id || null,
                     approver_name: appliedDiscount.approver_name || null,
                     promo_code: appliedDiscount.promo_code || null,
@@ -771,6 +788,7 @@ export const usePosCheckoutWorkflow = ({
                     id_number: line.item_discount.id_number || null,
                     employee_name: line.item_discount.employee_name || null,
                     employee_id: line.item_discount.employee_id || null,
+                    employee_directory_id: Number(line.item_discount.employee_directory_id) || null,
                     promo_code: line.item_discount.promo_code || null,
                     reason: line.item_discount.reason || null,
                     approver_user_id: line.item_discount.approver_user_id || null,
@@ -1100,7 +1118,24 @@ export const usePosCheckoutWorkflow = ({
         kitchenNotes
     ]);
 
-    const handleCheckout = useCallback(async () => {
+    const handleCheckout = useCallback(async (paymentSnapshot = null) => {
+        const hasPaymentSnapshot = paymentSnapshot && typeof paymentSnapshot === 'object'
+            && paymentSnapshot.customerPaymentAmount !== undefined;
+        const requestedCustomerPaymentAmount = hasPaymentSnapshot
+            ? Number(paymentSnapshot.customerPaymentAmount || 0)
+            : Number(customerPaymentAmount || 0);
+        const requestedCustomerPaymentChange = hasPaymentSnapshot
+            ? Number(paymentSnapshot.customerPaymentChange || 0)
+            : Number(customerPaymentChange || 0);
+        const effectiveCustomerPaymentAmount = Number.isFinite(requestedCustomerPaymentAmount) && requestedCustomerPaymentAmount >= 0
+            ? requestedCustomerPaymentAmount
+            : 0;
+        const effectiveCustomerPaymentChange = Number.isFinite(requestedCustomerPaymentChange) && requestedCustomerPaymentChange >= 0
+            ? requestedCustomerPaymentChange
+            : 0;
+        const effectiveCustomerPaymentSufficient = hasPaymentSnapshot
+            ? paymentSnapshot.isCustomerPaymentSufficient === true
+            : isCustomerPaymentSufficient;
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
             return;
@@ -1113,7 +1148,7 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Add at least one item before checkout.');
             return;
         }
-        if (!isCustomerPaymentSufficient) {
+        if (!effectiveCustomerPaymentSufficient) {
             toast.error(isEmployeeCreditPayment
                 ? 'Verify an active, eligible employee account with enough available balance.'
                 : `${customerPaymentFieldLabel} must cover the total due.`);
@@ -1145,8 +1180,8 @@ export const usePosCheckoutWorkflow = ({
                 : undefined,
             payment_type: paymentType,
             payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
-            cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined,
-            change_amount: isCashPayment ? Number(customerPaymentChange || 0) : undefined,
+            cash_received: isCashPayment ? effectiveCustomerPaymentAmount : undefined,
+            change_amount: isCashPayment ? effectiveCustomerPaymentChange : undefined,
             employee_credit: isEmployeeCreditPayment ? {
                 account_code: employeeCreditAccountCode.trim().toUpperCase()
             } : undefined,
@@ -1167,7 +1202,9 @@ export const usePosCheckoutWorkflow = ({
             discount_approval: appliedDiscount && discountApprovalRef?.current ? {
                 discount_type: appliedDiscount.type,
                 approver_user_id: appliedDiscount.approver_user_id,
-                employee_user_id: appliedDiscount.type === 'employee' ? Number(appliedDiscount.employee_id) || null : null,
+                employee_directory_id: appliedDiscount.type === 'employee'
+                    ? Number(appliedDiscount.employee_directory_id) || null
+                    : null,
                 manager_pin: discountApprovalRef.current.manager_pin
             } : undefined,
             governed_discount: appliedDiscount ? {
@@ -1201,6 +1238,7 @@ export const usePosCheckoutWorkflow = ({
                         id_number: line.item_discount.id_number || null,
                         employee_name: line.item_discount.employee_name || null,
                         employee_id: line.item_discount.employee_id || null,
+                        employee_directory_id: Number(line.item_discount.employee_directory_id) || null,
                         promo_code: line.item_discount.promo_code || null,
                         reason: line.item_discount.reason || null,
                         approver_user_id: line.item_discount.approver_user_id || null
@@ -1208,6 +1246,9 @@ export const usePosCheckoutWorkflow = ({
                     ...(itemDiscountApprovalRef?.current?.get(getLineKey(line))?.manager_pin ? {
                         item_discount_approval: {
                             approver_user_id: itemDiscountApprovalRef.current.get(getLineKey(line)).approver_user_id,
+                            employee_directory_id: line.item_discount.discount_type === 'employee'
+                                ? Number(line.item_discount.employee_directory_id) || null
+                                : null,
                             manager_pin: itemDiscountApprovalRef.current.get(getLineKey(line)).manager_pin
                         }
                     } : {})
@@ -1333,70 +1374,10 @@ export const usePosCheckoutWorkflow = ({
             return;
         }
 
+        let data;
         setCheckoutLoading(true);
         try {
-            const data = await createPosCheckout(payload);
-            setLastReceipt(data?.transaction || null);
-            setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
-            setCart([]);
-            itemDiscountApprovalRef?.current?.clear?.();
-            setActiveParkedSale(null);
-            setSelectedDiscountProfile('');
-            setManualDiscountRateInput('');
-            setManualDiscountAmountInput('');
-            setAppliedDiscount(null);
-            if (discountApprovalRef) discountApprovalRef.current = null;
-            setAffiliateCodeInput('');
-            setCustomerPaymentAmountInput('');
-            setCustomerPaymentAmountAutoFilled(false);
-            setCheckoutConfirmModalOpen(false);
-            setReceiptPreviewSource('order_preview');
-            setReceiptPreviewModalOpen(true);
-            if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(data?.transaction || null);
-            try {
-                if (posHardware?.driverId === 'imin_native') {
-                    const completedTransaction = data?.transaction || null;
-                    const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
-                    const printOutcome = await posHardware.printReceipt({
-                        transaction: completedTransaction,
-                        businessSettings: receiptSettings,
-                        receiptContract,
-                        openDrawerAfterPrint: isCashPayment,
-                        shiftId: activeShiftId,
-                        transactionId: completedTransaction?.pos_transaction_id,
-                        terminalId: normalizedTerminalId,
-                        reason: 'checkout_auto_print'
-                    });
-                    if (printOutcome.success) {
-                        toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
-                    } else if (isCashPayment) {
-                        const drawerOutcome = await posHardware.openDrawer({
-                            shiftId: activeShiftId,
-                            transactionId: completedTransaction?.pos_transaction_id,
-                            terminalId: normalizedTerminalId,
-                            reason: 'checkout_auto_open_drawer'
-                        });
-                        if (drawerOutcome.success) toast.success('Cash drawer opened.');
-                    }
-                }
-            } catch (hardwareError) {
-                toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
-            }
-            toast.success(
-                data?.idempotent_replay
-                    ? `Replayed (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
-                    : `Done (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
-            );
-            if (data?.terminal_identity_policy?.warning?.message) {
-                toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
-            }
-            await markTerminalOperationReplayed(payload.idempotency_key, {
-                resolution_source: 'network_success',
-                resolution_note: 'Checkout completed while online'
-            });
-            await syncQueuedCheckoutsState();
-            loadCatalog();
-            loadHistory(historyPage);
+            data = await createPosCheckout(payload);
         } catch (error) {
             if (!error?.response) {
                 if (appliedDiscount) {
@@ -1419,9 +1400,95 @@ export const usePosCheckoutWorkflow = ({
             if (compliancePolicyBlocker?.actionTarget) {
                 toast.message(`Resolve blocker in ${compliancePolicyBlocker.actionTarget}`);
             }
+            return;
         } finally {
             setCheckoutLoading(false);
         }
+
+        const completedTransaction = data?.transaction || null;
+        const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
+
+        // The server commit is the payment-completion boundary. Reveal the receipt
+        // immediately; hardware, audit, queue cleanup, and refreshes are follow-up work.
+        setLastReceipt(completedTransaction);
+        setLastReceiptContract(receiptContract);
+        setCart([]);
+        itemDiscountApprovalRef?.current?.clear?.();
+        setActiveParkedSale(null);
+        setSelectedDiscountProfile('');
+        setManualDiscountRateInput('');
+        setManualDiscountAmountInput('');
+        setAppliedDiscount(null);
+        if (discountApprovalRef) discountApprovalRef.current = null;
+        setAffiliateCodeInput('');
+        setCustomerPaymentAmountInput('');
+        setCustomerPaymentAmountAutoFilled(false);
+        setCheckoutConfirmModalOpen(false);
+        setReceiptPreviewSource('order_preview');
+        setReceiptPreviewModalOpen(true);
+        if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(completedTransaction);
+        toast.success(
+            data?.idempotent_replay
+                ? `Replayed (${receiptContract?.label || 'receipt loaded'})`
+                : `Done (${receiptContract?.label || 'receipt ready'})`
+        );
+        if (data?.terminal_identity_policy?.warning?.message) {
+            toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
+        }
+
+        schedulePostCheckoutTask(async () => {
+            try {
+                if (posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)) {
+                    const printOutcome = await posHardware.printReceipt({
+                        transaction: completedTransaction,
+                        businessSettings: receiptSettings,
+                        receiptContract,
+                        openDrawerAfterPrint: isCashPayment,
+                        shiftId: activeShiftId,
+                        transactionId: completedTransaction?.pos_transaction_id,
+                        terminalId: normalizedTerminalId,
+                        reason: 'checkout_auto_print'
+                    });
+                    if (printOutcome.success) {
+                        toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
+                    } else if (
+                        isCashPayment
+                        && printOutcome.reasonCode !== 'IMIN_COMMAND_TIMEOUT'
+                        && printOutcome.raw?.hardware?.mayHaveExecuted === false
+                        && printOutcome.raw?.hardware?.drawerOpened !== true
+                    ) {
+                        const drawerOutcome = await posHardware.openDrawer({
+                            shiftId: activeShiftId,
+                            transactionId: completedTransaction?.pos_transaction_id,
+                            terminalId: normalizedTerminalId,
+                            reason: 'checkout_auto_open_drawer'
+                        });
+                        if (drawerOutcome.success) toast.success('Cash drawer opened.');
+                        else toast.error(drawerOutcome.message || 'Receipt printing and cash drawer opening failed.');
+                    } else {
+                        toast.error(printOutcome.message || 'Checkout completed, but receipt printing failed.');
+                    }
+                }
+            } catch (hardwareError) {
+                toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
+            }
+
+            try {
+                await markTerminalOperationReplayed(payload.idempotency_key, {
+                    resolution_source: 'network_success',
+                    resolution_note: 'Checkout completed while online'
+                });
+                await syncQueuedCheckoutsState();
+            } catch {
+                toast.error('Payment completed, but the local checkout queue status could not refresh.');
+            }
+
+            try {
+                await Promise.all([loadCatalog(), loadHistory(historyPage)]);
+            } catch {
+                toast.error('Payment completed, but the latest catalog or sales history could not refresh.');
+            }
+        });
     }, [
         activeParkedSale,
         activeShiftId,
@@ -1436,6 +1503,7 @@ export const usePosCheckoutWorkflow = ({
         customerPaymentChange,
         customerPaymentFieldLabel,
         discountApprovalRef,
+        schedulePostCheckoutTask,
         enqueueCheckoutIntent,
         employeeCreditAccountCode,
         governedDiscountTotals,

@@ -10,7 +10,21 @@ const approvalError = (message, reasonCode, statusCode = 422) => {
     });
 };
 
-export const verifyPosDiscountApprover = async ({ approver, pin, employeeUserId = null }) => {
+const normalizedEmail = (value) => String(value || '').trim().toLowerCase();
+const positiveInt = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
+
+export const verifyPosDiscountApprover = async ({
+    approver,
+    pin,
+    employeeUserId = null,
+    employeeDirectoryId = null,
+    employeeEmail = '',
+    allowSelfApproval = false,
+    applyingUserId = null
+}) => {
     if (!approver || approver.is_active !== true || approver.deleted_at) {
         approvalError('Select an active POS discount approver.', 'DISCOUNT_APPROVER_INACTIVE');
     }
@@ -42,13 +56,34 @@ export const verifyPosDiscountApprover = async ({ approver, pin, employeeUserId 
     if (!/^[0-9]{4,12}$/.test(normalizedPin) || !await bcrypt.compare(normalizedPin, pinHash)) {
         approvalError('Invalid POS approval PIN.', 'DISCOUNT_APPROVER_PIN_INVALID', 403);
     }
-    if (employeeUserId && Number(employeeUserId) === Number(approver.user_id)) {
+    const beneficiaryMatchesApprover = Boolean(
+        (employeeUserId && Number(employeeUserId) === Number(approver.user_id))
+        || (normalizedEmail(employeeEmail)
+            && normalizedEmail(employeeEmail) === normalizedEmail(approver.email))
+    );
+    const approverIsApplyingUser = positiveInt(applyingUserId) === positiveInt(approver.user_id);
+    if (positiveInt(employeeDirectoryId) && approverIsApplyingUser && !normalizedEmail(employeeEmail)) {
+        approvalError(
+            'The selected employee needs an email before self-approval can be verified.',
+            'DISCOUNT_SELF_APPROVAL_IDENTITY_UNVERIFIED',
+            403
+        );
+    }
+    if (beneficiaryMatchesApprover && allowSelfApproval !== true) {
         approvalError('Employees cannot approve their own discount.', 'DISCOUNT_SELF_APPROVAL_BLOCKED', 403);
+    }
+    if (beneficiaryMatchesApprover && !approverIsApplyingUser) {
+        approvalError(
+            'Self-approval must be completed by the authenticated cashier receiving the discount.',
+            'DISCOUNT_SELF_APPROVAL_ACTOR_MISMATCH',
+            403
+        );
     }
     return {
         user_id: Number(approver.user_id),
         username: String(approver.username || '').trim(),
-        role
+        role,
+        self_approved: beneficiaryMatchesApprover && approverIsApplyingUser
     };
 };
 

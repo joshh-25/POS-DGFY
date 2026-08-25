@@ -11,6 +11,7 @@ import {
 } from '../../services/api/servicesApi.js';
 
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+export const POS_ATTENDANCE_CONFIG_CHANGED_EVENT = 'dgfy:pos-attendance-config-changed';
 
 const getRegisteredTerminalHeaders = (terminalId = '') => {
     const storedTerminalId = typeof window !== 'undefined'
@@ -37,6 +38,16 @@ export const assignPosItemOptionGroups = assignItemOptionGroups;
 export const fetchPosSettingsBootstrap = async (requestConfig = {}) => {
     const response = await api.get('/mobile-pos/bootstrap/settings', requestConfig);
     return response.data?.data?.settings || {};
+};
+
+export const fetchPosCashierAttendanceConfig = async () => {
+    const response = await api.get('/pos/attendance/config');
+    return response.data?.data || null;
+};
+
+export const updatePosCashierAttendanceConfig = async (payload) => {
+    const response = await api.put('/pos/attendance/config', payload);
+    return response.data?.data || null;
 };
 
 export const scanPosBarcode = async (payload = {}) => {
@@ -156,6 +167,11 @@ export const fetchPosDiscountApprovers = async () => {
     return response.data?.data?.approvers || [];
 };
 
+export const fetchPosDiscountEmployees = async () => {
+    const response = await api.get('/pos/discount-employees');
+    return response.data?.data?.employees || [];
+};
+
 export const verifyPosDiscountApproval = async (payload = {}) => {
     const response = await api.post('/pos/discount-approvals/verify', payload);
     return response.data?.data?.approver || null;
@@ -235,13 +251,14 @@ export const fetchPosDeviceStatus = async () => {
 // client_driver_id/client_result — see posDeviceUseCases.js). The physical
 // action already happened and was already surfaced to the cashier, so this
 // call must not raise a second toast or a second failed-print analytics event.
-export const printPosReceipt = async (payload = {}, { silent = false } = {}) => {
+export const printPosReceipt = async (payload = {}, { silent = false, timeoutMs } = {}) => {
     try {
         const response = await api.post('/pos/device/print-receipt', payload, {
             headers: payload?.terminal_id
                 ? { 'x-pos-terminal-id': payload.terminal_id }
                 : undefined,
-            skipGlobalErrorToast: silent || undefined
+            skipGlobalErrorToast: silent || undefined,
+            timeout: timeoutMs
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
@@ -271,13 +288,14 @@ export const printPosReceipt = async (payload = {}, { silent = false } = {}) => 
     }
 };
 
-export const printPosShiftSummary = async (shiftId, payload = {}, { silent = false } = {}) => {
+export const printPosShiftSummary = async (shiftId, payload = {}, { silent = false, timeoutMs } = {}) => {
     try {
         const response = await api.post(`/pos/terminal/shifts/${shiftId}/print-summary`, payload, {
             headers: payload?.terminal_id
                 ? { 'x-pos-terminal-id': payload.terminal_id }
                 : undefined,
-            skipGlobalErrorToast: silent || undefined
+            skipGlobalErrorToast: silent || undefined,
+            timeout: timeoutMs
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
@@ -304,13 +322,14 @@ export const printPosShiftSummary = async (shiftId, payload = {}, { silent = fal
     }
 };
 
-export const printPosZReading = async (businessDate, payload = {}, { silent = false } = {}) => {
+export const printPosZReading = async (businessDate, payload = {}, { silent = false, timeoutMs } = {}) => {
     const normalizedDate = String(businessDate || '').trim();
     if (!normalizedDate) throw new Error('Business date is required to print the Z-reading.');
     try {
         const response = await api.post(`/pos/z-reading/${normalizedDate}/print`, payload, {
             headers: getRegisteredTerminalHeaders(payload?.terminal_id),
-            skipGlobalErrorToast: silent || undefined
+            skipGlobalErrorToast: silent || undefined,
+            timeout: timeoutMs
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
@@ -337,13 +356,14 @@ export const printPosZReading = async (businessDate, payload = {}, { silent = fa
     }
 };
 
-export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {}) => {
+export const openPosDeviceDrawer = async (payload = {}, { silent = false, timeoutMs } = {}) => {
     try {
         const response = await api.post('/pos/device/open-drawer', payload, {
             headers: payload?.terminal_id
                 ? { 'x-pos-terminal-id': payload.terminal_id }
                 : undefined,
-            skipGlobalErrorToast: silent || undefined
+            skipGlobalErrorToast: silent || undefined,
+            timeout: timeoutMs
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
@@ -380,6 +400,7 @@ export const authorizePosDrawerOpen = async (payload = {}) => {
 };
 
 const CLIENT_RESULT_AUDIT_MAX_ATTEMPTS = 3;
+const CLIENT_RESULT_AUDIT_TIMEOUT_MS = 5_000;
 
 const shouldRetryClientResultAudit = (error) => {
     const status = Number(error?.response?.status || 0);
@@ -414,7 +435,7 @@ export const reportPosDeviceClientResult = async ({
                 drawer_authorization_token: drawerAuthorizationToken || undefined,
                 client_driver_id: driverId,
                 client_result: result
-            }, { silent: true });
+            }, { silent: true, timeoutMs: CLIENT_RESULT_AUDIT_TIMEOUT_MS });
         }
 
         if (operation === 'print_shift_summary') {
@@ -424,7 +445,7 @@ export const reportPosDeviceClientResult = async ({
                 reason: reason || 'client_driver_report',
                 client_driver_id: driverId,
                 client_result: result
-            }, { silent: true });
+            }, { silent: true, timeoutMs: CLIENT_RESULT_AUDIT_TIMEOUT_MS });
         }
 
         if (operation === 'print_z_reading') {
@@ -435,7 +456,7 @@ export const reportPosDeviceClientResult = async ({
                 reason: reason || 'client_driver_report',
                 client_driver_id: driverId,
                 client_result: result
-            }, { silent: true });
+            }, { silent: true, timeoutMs: CLIENT_RESULT_AUDIT_TIMEOUT_MS });
         }
 
         return printPosReceipt({
@@ -445,7 +466,7 @@ export const reportPosDeviceClientResult = async ({
             reason: reason || 'client_driver_report',
             client_driver_id: driverId,
             client_result: result
-        }, { silent: true });
+        }, { silent: true, timeoutMs: CLIENT_RESULT_AUDIT_TIMEOUT_MS });
     };
 
     let lastError = null;
@@ -503,6 +524,101 @@ export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {})
     const response = await api.get('/pos/terminal/shifts/current', { params, ...requestConfig });
     return response.data?.data;
 };
+
+export const fetchCurrentPosCashierAttendance = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/attendance/current', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const timeInPosCashierAttendance = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/time-in', payload, requestConfig);
+    return response.data?.data;
+};
+
+export const timeOutPosCashierAttendance = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/time-out', payload, requestConfig);
+    return response.data?.data;
+};
+
+export const startPosCashierBreak = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/breaks/start', payload, requestConfig);
+    return response.data?.data;
+};
+
+export const endPosCashierBreak = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/breaks/end', payload, requestConfig);
+    return response.data?.data;
+};
+
+export const resumePosCashier = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/terminal/operator/resume', payload, {
+        ...requestConfig,
+        headers: {
+            ...getRegisteredTerminalHeaders(payload?.terminal_id),
+            ...(requestConfig.headers || {})
+        }
+    });
+    return response.data?.data;
+};
+
+export const startPosCashierReliefDuty = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/relief/start', payload, requestConfig);
+    return response.data?.data;
+};
+
+export const endPosCashierReliefDuty = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/attendance/relief/end', payload, requestConfig);
+    return response.data?.data;
+};
+
+const operatorRequestConfig = (terminalId, requestConfig = {}) => ({
+    ...requestConfig,
+    headers: {
+        ...getRegisteredTerminalHeaders(terminalId),
+        ...(requestConfig.headers || {})
+    }
+});
+
+export const fetchCurrentPosOperator = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/operator/current', {
+        params,
+        ...operatorRequestConfig(params.terminal_id, requestConfig)
+    });
+    return response.data?.data;
+};
+
+export const fetchEligiblePosOperators = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/operator/eligible', {
+        params,
+        ...operatorRequestConfig(params.terminal_id, requestConfig)
+    });
+    return response.data?.data;
+};
+
+const mutatePosOperator = async (path, payload = {}, requestConfig = {}) => {
+    const response = await api.post(path, payload, operatorRequestConfig(payload.terminal_id, requestConfig));
+    return response.data?.data;
+};
+
+export const takeOverPosRegister = (payload = {}, requestConfig = {}) => (
+    mutatePosOperator('/pos/terminal/operator/takeover', payload, requestConfig)
+);
+
+export const returnPosRegister = (payload = {}, requestConfig = {}) => (
+    mutatePosOperator('/pos/terminal/operator/return', payload, requestConfig)
+);
+
+export const startPosSharedRelief = (payload = {}, requestConfig = {}) => (
+    mutatePosOperator('/pos/terminal/operator/shared-relief/start', payload, requestConfig)
+);
+
+export const endPosSharedRelief = (payload = {}, requestConfig = {}) => (
+    mutatePosOperator('/pos/terminal/operator/shared-relief/end', payload, requestConfig)
+);
+
+export const countedPosCustodyHandoff = (payload = {}, requestConfig = {}) => (
+    mutatePosOperator('/pos/terminal/operator/handoff/count', payload, requestConfig)
+);
 
 export const fetchCashierShiftHistory = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/terminal/shifts/history', {
@@ -790,6 +906,8 @@ export const fetchFiscalLedgerIntegrity = async (params = {}) => {
 
 export default {
     fetchPosCatalog,
+    fetchPosCashierAttendanceConfig,
+    updatePosCashierAttendanceConfig,
     scanPosBarcode,
     createPosCheckout,
     createPosParkedSale,

@@ -310,6 +310,83 @@ describe('POS checkout discount policy validator', () => {
         expect(req.validatedData.discount_approval.discount_type).toBe('voucher');
     });
 
+    it('accepts canonical Employee Directory identity for sale and item discounts', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-directory-employee-123',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                governed_discount: {
+                    type: 'employee',
+                    employee_directory_id: 14,
+                    employee_name: 'Joshua Guto',
+                    employee_id: '001',
+                    method: 'percentage',
+                    rate: 15
+                },
+                discount_approval: {
+                    approver_user_id: 7,
+                    manager_pin: '1234',
+                    employee_directory_id: 14,
+                    discount_type: 'employee'
+                },
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    sale_price: 100,
+                    item_discount: {
+                        discount_type: 'employee',
+                        employee_directory_id: 14,
+                        employee_name: 'Joshua Guto',
+                        employee_id: '001',
+                        method: 'percentage',
+                        rate: 15
+                    },
+                    item_discount_approval: {
+                        approver_user_id: 7,
+                        manager_pin: '1234',
+                        employee_directory_id: 14,
+                        discount_type: 'employee'
+                    }
+                }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.governed_discount.employee_directory_id).toBe(14);
+        expect(req.validatedData.lines[0].item_discount.employee_directory_id).toBe(14);
+    });
+
+    it('rejects an employee discount that is not linked to the Employee Directory', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-unregistered-employee-123',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                governed_discount: {
+                    type: 'employee',
+                    employee_name: 'Free Text Employee',
+                    employee_id: '001',
+                    method: 'percentage',
+                    rate: 15
+                },
+                lines: [{ item_id: 1, quantity: 1, sale_price: 100 }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
     it('rejects a voucher_code longer than 40 characters, matching the fiscal audit column width', () => {
         const req = {
             body: {

@@ -97,6 +97,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'reports'");
   });
 
+  it('limits the attendance banner and break action to the Shift workspace', () => {
+    expect(terminalPageLayoutContent).toContain("const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);");
+    expect(terminalPageLayoutContent).toContain('{!locked && SHIFT_WORKSPACE_MODES.has(posViewMode) ? (');
+    expect(terminalPageLayoutContent).not.toContain('{!locked ? (\n        <PosAttendancePanel');
+  });
+
   it('keeps the online queue out of Services while retaining it for MSME/counter POS', () => {
     expect(terminalPageContent).toContain('isPosOnlineOrderQueueEnabled');
     expect(terminalPageContent).toContain('workflowMode,\n    posDefaults: modePosDefaults');
@@ -160,7 +166,7 @@ describe('POS terminal view-mode contracts', () => {
   it('uses the iMin drawer bridge before the USB bridge for cash-in events', () => {
     expect(terminalPageContent).toContain("import { openDrawerWithIminBridge } from '../utils/iminHardwareBridge.js';");
     expect(terminalPageContent).toContain(
-      "const iminDrawerResult = openDrawerWithIminBridge();\n          if (!iminDrawerResult.handled) {\n            await openPosDeviceDrawer({"
+      "const iminDrawerResult = await openDrawerWithIminBridge();\n          if (!iminDrawerResult.handled) {\n            await openPosDeviceDrawer({"
     );
   });
 
@@ -304,7 +310,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('blurs all non-login POS shell surfaces while locked', () => {
-    expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
+    expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
     expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
     expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';");
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
@@ -618,12 +624,22 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('exposes a current shift summary action without auto-printing it', () => {
-    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(() => {');
+    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(async () => {');
+    expect(terminalPageContent).toContain('const currentShiftResult = await fetchCurrentTerminalShift({');
+    expect(terminalPageContent).toContain("summary: false");
+    expect(terminalOperationsWorkspaceContent).toContain("'Refreshing Summary...'");
     expect(terminalPageContent).toContain('setClosedShiftReportAutoPrint(false);');
     expect(terminalPageContent).toContain("title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}");
     expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
     expect(terminalSidebarPanelContent).toContain('View Shift Summary');
+  });
+
+  it('refreshes financial summaries after void mutations without a manual browser refresh', () => {
+    expect(posCheckoutTerminalContent).toContain('onFinancialMutationCompleted: onCheckoutCompleted');
+    expect(posHistoryVoidWorkflowContent).toContain("await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });");
+    expect(terminalPageContent).toContain('takeoverShiftContextRef.current = null;');
+    expect(terminalPageContent).toContain('await refreshOperationalContext();');
   });
 
   it('separates sales revenue from opening cash and expected drawer cash', () => {
@@ -686,7 +702,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).not.toContain('const handleCheckout = ');
     expect(posCheckoutTerminalContent).not.toContain('const handleParkAndNewSale = ');
     expect(posCheckoutTerminalContent).not.toContain('const replayQueuedCheckouts = ');
-    expect(posCheckoutWorkflowContent).toContain('const handleCheckout = useCallback(async () => {');
+    expect(posCheckoutWorkflowContent).toContain('const handleCheckout = useCallback(async (paymentSnapshot = null) => {');
     expect(posCheckoutWorkflowContent).toContain('const handleParkAndNewSale = useCallback(async (nameOverride = null) => {');
     expect(posCheckoutWorkflowContent).toContain('const replayQueuedCheckouts = useCallback(async');
     expect(posCheckoutWorkflowContent).toContain('const handleReverseSplitPaymentAndStartNew = useCallback(async');

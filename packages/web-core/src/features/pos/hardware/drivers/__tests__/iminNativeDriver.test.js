@@ -17,6 +17,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     delete globalThis.window;
 });
 
@@ -93,6 +94,125 @@ describe('iminNativeDriver', () => {
 
         expect(outcome.success).toBe(true);
         expect(outcome.auditConfirmed).toBe(true);
+    });
+
+    it('printReceipt(): awaits the new non-blocking APK callback without using the synchronous bridge', async () => {
+        const eventTarget = new EventTarget();
+        const printReceipt = vi.fn(() => ({ success: true }));
+        let completeNativePrint;
+        const printReceiptWithLogoAsync = vi.fn((requestId) => {
+            completeNativePrint = () => {
+                const event = new Event('dgfy:imin-command-result');
+                Object.defineProperty(event, 'detail', {
+                    value: {
+                        requestId,
+                        result: JSON.stringify({ success: true, message: 'Receipt printed asynchronously.' })
+                    }
+                });
+                eventTarget.dispatchEvent(event);
+            };
+            return { success: true, accepted: true };
+        });
+        eventTarget.iMinBridge = {
+            isIminWrapper: () => true,
+            printReceipt,
+            printReceiptWithLogoAsync
+        };
+        globalThis.window = eventTarget;
+
+        const outcomePromise = iminNativeDriver.printReceipt({
+            transaction: { pos_transaction_id: 2, lines: [] }
+        });
+        await Promise.resolve();
+
+        expect(printReceiptWithLogoAsync).toHaveBeenCalledTimes(1);
+        expect(printReceipt).not.toHaveBeenCalled();
+        expect(reportPosDeviceClientResult).not.toHaveBeenCalled();
+
+        completeNativePrint();
+        const outcome = await outcomePromise;
+
+        expect(outcome).toEqual(expect.objectContaining({
+            success: true,
+            auditConfirmed: true,
+            message: 'Receipt printed asynchronously.'
+        }));
+    });
+
+    it('printReceipt(): returns an uncertain timeout without repeating the physical command', async () => {
+        vi.useFakeTimers();
+        const eventTarget = new EventTarget();
+        const printReceipt = vi.fn(() => ({ success: true }));
+        const printReceiptWithLogoAsync = vi.fn(() => ({ success: true, accepted: true }));
+        eventTarget.iMinBridge = {
+            isIminWrapper: () => true,
+            printReceipt,
+            printReceiptWithLogoAsync
+        };
+        globalThis.window = eventTarget;
+
+        const outcomePromise = iminNativeDriver.printReceipt({
+            transaction: { pos_transaction_id: 3, lines: [] }
+        });
+        await vi.advanceTimersByTimeAsync(30_000);
+        const outcome = await outcomePromise;
+
+        expect(printReceiptWithLogoAsync).toHaveBeenCalledTimes(1);
+        expect(printReceipt).not.toHaveBeenCalled();
+        expect(outcome.success).toBe(false);
+        expect(outcome.reasonCode).toBe('IMIN_COMMAND_TIMEOUT');
+        expect(reportPosDeviceClientResult).toHaveBeenCalledTimes(1);
+    });
+
+    it('printOrderTicket(): uses the generic asynchronous text-print callback when available', async () => {
+        const eventTarget = new EventTarget();
+        const printReceipt = vi.fn(() => ({ success: true }));
+        const printReceiptAsync = vi.fn((requestId) => {
+            queueMicrotask(() => {
+                const event = new Event('dgfy:imin-command-result');
+                Object.defineProperty(event, 'detail', {
+                    value: {
+                        requestId,
+                        result: JSON.stringify({ success: true, message: 'Order ticket printed asynchronously.' })
+                    }
+                });
+                eventTarget.dispatchEvent(event);
+            });
+            return { success: true, accepted: true };
+        });
+        eventTarget.iMinBridge = {
+            isIminWrapper: () => true,
+            printReceipt,
+            printReceiptAsync
+        };
+        globalThis.window = eventTarget;
+
+        const outcome = await iminNativeDriver.printOrderTicket({
+            cart: [{ item_id: 1, item_name: 'Coffee', quantity: 1 }]
+        });
+
+        expect(outcome.success).toBe(true);
+        expect(outcome.message).toBe('Order ticket printed asynchronously.');
+        expect(printReceiptAsync).toHaveBeenCalledTimes(1);
+        expect(printReceipt).not.toHaveBeenCalled();
+    });
+
+    it('printShiftSummary(): prints through the supported text command and reports the real result', async () => {
+        withBridge({
+            printReceipt: () => ({ success: false, message: 'Printer paper is unavailable.' })
+        });
+
+        const outcome = await iminNativeDriver.printShiftSummary({
+            shiftSummary: {},
+            shiftId: 12,
+            terminalId: 'COUNTER-01'
+        });
+
+        expect(outcome.success).toBe(false);
+        expect(outcome.reasonCode).toBe('IMIN_PRINT_FAILED');
+        expect(reportPosDeviceClientResult).toHaveBeenCalledWith(
+            expect.objectContaining({ operation: 'print_shift_summary' })
+        );
     });
 
     it('printReceipt(): records both receipt and drawer audits for a cash sale with an active shift', async () => {

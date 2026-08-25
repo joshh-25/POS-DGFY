@@ -6,6 +6,8 @@ import dbStore from '../../../utils/dbStore.js';
 
 const PAYMENT_METHODS = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer']);
 const ALLOCATION_OUTCOMES = new Set(['pending', 'successful', 'failed']);
+const GOVERNED_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher']);
+const ITEM_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const MAX_SNAPSHOT_BYTES = 512 * 1024;
 const SECRET_KEY_PATTERN = /(password|passwd|pin|token|secret|authorization|access[_-]?token|refresh[_-]?token)/i;
@@ -91,6 +93,7 @@ const normalizeSnapshot = (snapshot) => {
         delete normalized.governed_discount.approval_proof;
         delete normalized.governed_discount.approval_verified;
     }
+    delete normalized.item_discount_approval_proofs;
     if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > MAX_SNAPSHOT_BYTES) {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'snapshot is too large', { statusCode: 422 });
     }
@@ -102,7 +105,7 @@ const extractDiscountApprovalInput = (snapshot) => {
         ? snapshot.governed_discount
         : null;
     const discountType = String(governedDiscount?.type || '').trim().toLowerCase();
-    if (!['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType)) return null;
+    if (!GOVERNED_DISCOUNT_TYPES.has(discountType)) return null;
 
     const managerPin = String(governedDiscount?.manager_pin || '').trim();
     if (!managerPin) return null;
@@ -110,27 +113,78 @@ const extractDiscountApprovalInput = (snapshot) => {
     return {
         discount_type: discountType,
         approver_user_id: toPositiveInt(governedDiscount?.approver_user_id),
-        employee_user_id: discountType === 'employee' ? toPositiveInt(governedDiscount?.employee_id) : null,
+        employee_user_id: discountType === 'employee' ? toPositiveInt(governedDiscount?.employee_user_id) : null,
+        employee_directory_id: discountType === 'employee' ? toPositiveInt(governedDiscount?.employee_directory_id) : null,
         manager_pin: managerPin
     };
 };
 
-const buildDiscountApprovalProof = ({ snapshot }) => {
+const extractItemDiscountApprovalInputs = (snapshot) => (
+    (Array.isArray(snapshot?.lines) ? snapshot.lines : []).map((line) => {
+        const itemId = toPositiveInt(line?.item_id);
+        const itemDiscount = isPlainObject(line?.item_discount) ? line.item_discount : null;
+        const approval = isPlainObject(line?.item_discount_approval) ? line.item_discount_approval : null;
+        const discountType = String(itemDiscount?.discount_type || itemDiscount?.type || '').trim().toLowerCase();
+        const managerPin = String(approval?.manager_pin || '').trim();
+        if (!itemId || !ITEM_DISCOUNT_TYPES.has(discountType) || !managerPin) return null;
+        return {
+            item_id: itemId,
+            discount_type: discountType,
+            approver_user_id: toPositiveInt(approval?.approver_user_id || itemDiscount?.approver_user_id),
+            employee_directory_id: discountType === 'employee'
+                ? toPositiveInt(approval?.employee_directory_id || itemDiscount?.employee_directory_id)
+                : null,
+            manager_pin: managerPin
+        };
+    }).filter(Boolean)
+);
+
+const buildDiscountApprovalProof = ({ snapshot, verifiedApproval = null }) => {
     const governedDiscount = isPlainObject(snapshot?.governed_discount)
         ? snapshot.governed_discount
         : null;
     const discountType = String(governedDiscount?.type || '').trim().toLowerCase();
-    const approverUserId = toPositiveInt(governedDiscount?.approver_user_id);
-    if (!['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType) || !approverUserId) return null;
+    const approverUserId = toPositiveInt(verifiedApproval?.approver_user_id);
+    if (!GOVERNED_DISCOUNT_TYPES.has(discountType) || !approverUserId) return null;
 
     return {
         version: 1,
         discount_type: discountType,
         approver_user_id: approverUserId,
-        employee_user_id: discountType === 'employee' ? toPositiveInt(governedDiscount?.employee_id) : null,
-        self_approved: false,
-        approved_at: new Date().toISOString()
+        employee_user_id: discountType === 'employee' ? toPositiveInt(verifiedApproval?.employee_user_id) : null,
+        employee_directory_id: discountType === 'employee' ? toPositiveInt(verifiedApproval?.employee_directory_id) : null,
+        self_approved: discountType === 'employee' && verifiedApproval?.self_approved === true,
+        approved_at: verifiedApproval?.approved_at || new Date().toISOString(),
+        operator_user_id: toPositiveInt(verifiedApproval?.operator_user_id)
     };
+};
+
+const buildItemDiscountApprovalProofs = ({ snapshot, verifiedApprovals = [] }) => {
+    const itemDiscountByItemId = new Map((Array.isArray(snapshot?.lines) ? snapshot.lines : []).map((line) => [
+        toPositiveInt(line?.item_id),
+        isPlainObject(line?.item_discount) ? line.item_discount : null
+    ]).filter(([itemId, itemDiscount]) => itemId && itemDiscount));
+    return (Array.isArray(verifiedApprovals) ? verifiedApprovals : []).map((approval) => {
+        const itemId = toPositiveInt(approval?.item_id);
+        const discountType = String(approval?.discount_type || '').trim().toLowerCase();
+        const draft = itemDiscountByItemId.get(itemId);
+        const draftType = String(draft?.discount_type || draft?.type || '').trim().toLowerCase();
+        const approverUserId = toPositiveInt(approval?.approver_user_id);
+        if (!itemId || !ITEM_DISCOUNT_TYPES.has(discountType) || discountType !== draftType || !approverUserId) {
+            return null;
+        }
+        return {
+            version: 1,
+            item_id: itemId,
+            discount_type: discountType,
+            approver_user_id: approverUserId,
+            employee_user_id: discountType === 'employee' ? toPositiveInt(approval?.employee_user_id) : null,
+            employee_directory_id: discountType === 'employee' ? toPositiveInt(approval?.employee_directory_id) : null,
+            self_approved: discountType === 'employee' && approval?.self_approved === true,
+            approved_at: approval?.approved_at || new Date().toISOString(),
+            operator_user_id: toPositiveInt(approval?.operator_user_id)
+        };
+    }).filter(Boolean);
 };
 
 const attachDiscountApprovalProof = (snapshot, proof) => {
@@ -144,6 +198,12 @@ const attachDiscountApprovalProof = (snapshot, proof) => {
     };
 };
 
+const attachItemDiscountApprovalProofs = (snapshot, proofs) => (
+    Array.isArray(proofs) && proofs.length > 0
+        ? { ...snapshot, item_discount_approval_proofs: proofs }
+        : snapshot
+);
+
 const extractTrustedDiscountApproval = (snapshot) => {
     const proof = isPlainObject(snapshot?.governed_discount?.approval_proof)
         ? snapshot.governed_discount.approval_proof
@@ -151,16 +211,40 @@ const extractTrustedDiscountApproval = (snapshot) => {
     if (Number(proof?.version) !== 1) return null;
     const discountType = String(proof.discount_type || '').trim().toLowerCase();
     const approverUserId = toPositiveInt(proof.approver_user_id);
-    if (!['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType) || !approverUserId) return null;
+    if (!GOVERNED_DISCOUNT_TYPES.has(discountType) || !approverUserId) return null;
 
     return {
         discount_type: discountType,
         approver_user_id: approverUserId,
         employee_user_id: discountType === 'employee' ? toPositiveInt(proof.employee_user_id) : null,
+        employee_directory_id: discountType === 'employee' ? toPositiveInt(proof.employee_directory_id) : null,
         self_approved: proof.self_approved === true,
-        approved_at: proof.approved_at || null
+        approved_at: proof.approved_at || null,
+        operator_user_id: toPositiveInt(proof.operator_user_id)
     };
 };
+
+const extractTrustedItemDiscountApprovals = (snapshot) => (
+    (Array.isArray(snapshot?.item_discount_approval_proofs)
+        ? snapshot.item_discount_approval_proofs
+        : []).map((proof) => {
+        if (Number(proof?.version) !== 1) return null;
+        const itemId = toPositiveInt(proof.item_id);
+        const discountType = String(proof.discount_type || '').trim().toLowerCase();
+        const approverUserId = toPositiveInt(proof.approver_user_id);
+        if (!itemId || !ITEM_DISCOUNT_TYPES.has(discountType) || !approverUserId) return null;
+        return {
+            item_id: itemId,
+            discount_type: discountType,
+            approver_user_id: approverUserId,
+            employee_user_id: discountType === 'employee' ? toPositiveInt(proof.employee_user_id) : null,
+            employee_directory_id: discountType === 'employee' ? toPositiveInt(proof.employee_directory_id) : null,
+            self_approved: proof.self_approved === true,
+            approved_at: proof.approved_at || null,
+            operator_user_id: toPositiveInt(proof.operator_user_id)
+        };
+    }).filter(Boolean)
+);
 
 const normalizeTerminalId = (value) => {
     const terminalId = String(value || '').trim().toUpperCase();
@@ -187,6 +271,7 @@ const paymentError = (code, message, statusCode, details = undefined) => (
 
 const resolveOwnedOpenShift = async ({ posRepository, payload = {}, user, transaction }) => {
     const userId = toPositiveInt(user?.user_id || user?.id);
+    const shiftOwnerUserId = toPositiveInt(user?.register_shift_owner_user_id) || userId;
     if (!userId) throw paymentError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required.', 401);
 
     const shiftId = toPositiveInt(payload.shift_id);
@@ -201,8 +286,8 @@ const resolveOwnedOpenShift = async ({ posRepository, payload = {}, user, transa
             reason_code: 'POS_SHIFT_NOT_OPEN'
         });
     }
-    if (toPositiveInt(shift.cashier_id) !== userId) {
-        throw paymentError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the shift cashier may collect this payment.', 403, {
+    if (toPositiveInt(shift.cashier_id) !== shiftOwnerUserId) {
+        throw paymentError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the active register operator may collect this payment.', 403, {
             reason_code: 'POS_SHIFT_OWNER_REQUIRED'
         });
     }
@@ -341,6 +426,7 @@ export const buildCreatePosPaymentSessionUseCase = ({ posRepository, quotePosChe
         }
 
         const discountApproval = extractDiscountApprovalInput(payload.snapshot);
+        const itemDiscountApprovals = extractItemDiscountApprovalInputs(payload.snapshot);
         const snapshot = normalizeSnapshot(payload.snapshot);
 
         transaction = await beginTransaction();
@@ -400,7 +486,8 @@ export const buildCreatePosPaymentSessionUseCase = ({ posRepository, quotePosChe
             user,
             transaction,
             quoteOnly: true,
-            discountApproval
+            discountApproval,
+            itemDiscountApprovals
         });
         if (!quoteResult?.success) {
             throw quoteResult?.error || paymentError(DomainErrorCode.CONFLICT, 'POS payment total could not be validated.', 409);
@@ -410,9 +497,18 @@ export const buildCreatePosPaymentSessionUseCase = ({ posRepository, quotePosChe
         if (totalAmount <= 0) {
             throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'The server-calculated payment total must be greater than 0.', 422);
         }
-        const persistedSnapshot = attachDiscountApprovalProof(
-            snapshot,
-            buildDiscountApprovalProof({ snapshot })
+        const persistedSnapshot = attachItemDiscountApprovalProofs(
+            attachDiscountApprovalProof(
+                snapshot,
+                buildDiscountApprovalProof({
+                    snapshot,
+                    verifiedApproval: quoteResult.data?.quote?.discount_approval
+                })
+            ),
+            buildItemDiscountApprovalProofs({
+                snapshot,
+                verifiedApprovals: quoteResult.data?.quote?.item_discount_approvals
+            })
         );
 
         const created = await posRepository.createPosPaymentSession({
@@ -975,6 +1071,7 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
     }));
 
     const trustedDiscountApproval = extractTrustedDiscountApproval(sourceSnapshot);
+    const trustedItemDiscountApprovals = extractTrustedItemDiscountApprovals(sourceSnapshot);
     const checkoutPayload = {
         ...sourceSnapshot,
         ...(isPlainObject(sourceSnapshot.governed_discount)
@@ -1002,6 +1099,7 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
     delete checkoutPayload.paid_amount;
     delete checkoutPayload.remaining_amount;
     delete checkoutPayload.idempotency_key_input;
+    delete checkoutPayload.item_discount_approval_proofs;
     if (isPlainObject(checkoutPayload.governed_discount)) {
         delete checkoutPayload.governed_discount.approval_proof;
         delete checkoutPayload.governed_discount.approval_verified;
@@ -1009,11 +1107,12 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
 
     return {
         checkoutPayload,
-        trustedDiscountApproval
+        trustedDiscountApproval,
+        trustedItemDiscountApprovals
     };
 };
 
-export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutPosUseCase }) => async ({ paymentSessionId, payload = {}, user }) => {
+export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutPosUseCase }) => async ({ paymentSessionId, payload = {}, user, operatorSessionId = null }) => {
     let transaction = null;
     try {
         const normalizedId = toPositiveInt(paymentSessionId);
@@ -1072,8 +1171,10 @@ export const buildCompletePosPaymentSessionUseCase = ({ posRepository, checkoutP
             payload: completionPayload.checkoutPayload,
             userId: scope.userId,
             user,
+            operatorSessionId,
             transaction,
             trustedDiscountApproval: completionPayload.trustedDiscountApproval,
+            trustedItemDiscountApprovals: completionPayload.trustedItemDiscountApprovals,
             beforeCommit: async ({ transactionId }) => {
                 completedSession = await posRepository.updatePosPaymentSession(normalizedId, {
                     status: 'completed',

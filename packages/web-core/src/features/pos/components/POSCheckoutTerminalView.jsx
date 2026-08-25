@@ -47,25 +47,23 @@ import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/po
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
-import { formatQuantity, formatSplitPaymentMethod, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
+import { formatQuantity, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
+import { POSCheckoutConfirmDialog } from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
 
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
-const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const ServiceOptionsModal = lazyWithChunkRetry(() => import('./ServiceOptionsModal.jsx').then(({ ServiceOptionsModal: Component }) => ({ default: Component })));
 const POSParkedSalesDialog = lazyWithChunkRetry(() => import('./POSParkedSalesDialog.jsx'));
 const POSSplitPaymentWorkflow = lazyWithChunkRetry(() => import('./POSSplitPaymentWorkflow.jsx'));
 const ItemOptionsDialog = lazyWithChunkRetry(() => import('./ItemOptionsDialog.jsx'));
 const BillRequestDialog = lazyWithChunkRetry(() => import('./BillRequestDialog.jsx'));
 const PosAddToCartToastContainer = lazyWithChunkRetry(() => import('./PosAddToCartToastContainer.jsx').then(({ PosAddToCartToastContainer: Component }) => ({ default: Component })));
-const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
 const PosCurrentSaleActions = lazyWithChunkRetry(() => import('./PosCurrentSaleActions.jsx').then(({ PosCurrentSaleActions: Component }) => ({ default: Component })));
 const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
-const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];
 const DISCOUNT_TYPE_OPTIONS = [
     { value: 'employee', label: 'Employee', icon: BadgeCheck },
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
@@ -141,7 +139,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         appliedDiscount,
         availableCategories,
         billRequestDraft,
-        billRequestPrinting,
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
@@ -169,7 +166,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogViewportClassName,
         catalogViewportRef,
         checkoutBlockedReason,
-        checkoutConfirmModalOpen,
         checkoutDiscountLabel,
         checkoutGridClassName,
         checkoutLoading,
@@ -185,13 +181,9 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
         currentViewMode,
-        customerPaymentAmountInput,
-        customerPaymentAmountAutoFilled,
-        customerPaymentChange,
-        customerPaymentFieldLabel,
-        customerPaymentShortfall,
         discountApplying,
         discountApproversLoading,
+        discountEmployeesLoading,
         discountDraft,
         discountModalOpen,
         discountPreviewTotals,
@@ -202,8 +194,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         drawerAuthorizationSubmitting,
         drawerOpening,
         editingQuantityItemId,
-        employeeCreditAccount,
-        employeeCreditLookupLoading,
         employeeDiscountRateOptions,
         flyImageToCheckoutBar,
         folderButtonClassName,
@@ -211,8 +201,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         globalDiscountAmount,
         governedDiscountTotals,
         handleApplyGovernedDiscount,
-        handleBillRequest,
-        handleCancelCheckout,
         handleCartQtyButtonPointerCancel,
         handleCartQtyButtonPointerDown,
         handleCartQtyButtonPointerMove,
@@ -220,7 +208,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleCatalogPageChange,
         handleCatalogSwipeEnd,
         handleCatalogSwipeStart,
-        handleCheckout,
         handleCompletePreparedSplitPayment,
         handleConfirmServiceOptions,
         handleDismissToast,
@@ -243,12 +230,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleReverseSplitPaymentAndStartNew,
         handleSearchBackspaceEnd,
         handleSearchBackspaceStart,
-        handleSelectEmployeeCredit,
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
         historyRefundWorkflow,
-        hasSplitPaymentSummary,
         headerParkedSalesHistorySlot,
         historyCashierName,
         historyDateFrom,
@@ -263,9 +248,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historyStatus,
         imagePreview,
         isCartLineSeniorPwdEligible,
-        isCashPayment,
-        isCheckoutWorkflowValid,
-        isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
         isPrinterAvailable,
@@ -275,7 +257,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         itemOptionsItemDiscount,
         itemOptionsLine,
         itemOptionsLineKey,
-        kitchenNotes,
         lastReceipt,
         lastReceiptContract,
         lastReceiptPendingSync,
@@ -302,16 +283,13 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         parkLoading,
         parkSaleNameDialogOpen,
         parkSaleNameInput,
-        parkedSaleReleaseLoading,
         parkedSalesDialogOpen,
-        paymentType,
         posActionsBlocked,
         posFoldersError,
         posFoldersLoading,
         posHardware,
         posPresentationBundle,
         posReportActionLabel,
-        posWorkflow,
         qtyMeterState,
         quantityInputValue,
         queuedCheckoutBlockedCount,
@@ -324,36 +302,27 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         removeCartLine,
         replayingQueuedCheckouts,
         resetCurrentSaleForNewSale,
-        resetEmployeeCredit,
         safeCart,
         safeCatalog,
         safeDiscountApprovers,
+        safeDiscountEmployees,
         safeEligibleDiscountItemIds,
         safeEligibleDiscountItems,
         saveItemOptions,
         search,
         selectedDiscount,
-        selectedEmployeeCreditOption,
         selectedFolderId,
         selectedLocationId,
         serviceOptionsLoadingItemId,
         serviceOptionsModal,
-        servicesClientName,
-        servicesDateTime,
-        servicesNotes,
-        servicesProvider,
-        servicesResource,
         sessionLocked,
         setActiveParkedSale,
         setAffiliateCodeInput,
         setBillRequestDraft,
         setCatalogImageErrors,
-        setCheckoutConfirmModalOpen,
         setClearSaleConfirmOpen,
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
-        setCustomerPaymentAmountInput,
-        setCustomerPaymentAmountAutoFilled,
         setDiscountDraft,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,
@@ -370,29 +339,20 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setHistoryStatus,
         setImagePreview,
         setItemOptionsLineKey,
-        setKitchenNotes,
         setMobileCheckoutPanelOpen,
         setMobileSearchExpanded,
-        setOrderMethod,
         setParkSaleNameDialogOpen,
         setParkSaleNameInput,
         setParkedSalesDialogOpen,
-        setPaymentType,
         setQuantityInputValue,
         setReceiptPaperWidth,
         setReceiptPreviewSource,
         setSearch,
         setSelectedFolderId,
         setServiceOptionsModal,
-        setServicesClientName,
-        setServicesDateTime,
-        setServicesNotes,
-        setServicesProvider,
-        setServicesResource,
         setSetupSnapshotModalOpen,
         setShowDiscountPin,
         setSplitPaymentCancelModalOpen,
-        setTableNumber,
         setupCurrency,
         setupMeta,
         setupSnapshotModalOpen,
@@ -402,15 +362,9 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         splitPaymentCancelModalOpen,
         splitPaymentCheckoutContext,
         splitPaymentDialogOpen,
-        splitPaymentReady,
         splitPaymentStorageScopeKey,
-        splitPaymentSummaryAllocations,
-        splitPaymentSummaryChangeAmount,
-        splitPaymentSummaryPaidAmount,
-        splitPaymentSummaryRemainingAmount,
         splitPaymentWorkflowVersion,
         submitDrawerAuthorization,
-        tableNumber,
         terminalUser,
         toggleFolderFilter,
         totalCatalogPages,
@@ -1904,14 +1858,37 @@ return (
                                         <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
                                         <div className="relative">
                                             <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
+                                            <select
+                                                aria-label="Employee Name"
+                                                value={discountDraft.employee_directory_id || ''}
+                                                disabled={discountEmployeesLoading}
+                                                onChange={(event) => {
+                                                    const selected = safeDiscountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
+                                                    setDiscountDraft((previous) => ({
+                                                        ...previous,
+                                                        employee_directory_id: selected ? String(selected.employee_id) : '',
+                                                        employee_name: selected?.full_name || '',
+                                                        employee_id: selected?.employee_code || ''
+                                                    }));
+                                                }}
+                                                className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
+                                            >
+                                                <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
+                                                {safeDiscountEmployees.map((employee) => (
+                                                    <option key={employee.employee_id} value={employee.employee_id}>
+                                                        {employee.full_name} ({employee.employee_code} · {employee.location_name})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                         </div>
+                                        {!discountEmployeesLoading && safeDiscountEmployees.length === 0 && <p className="mt-1 text-xs font-medium text-amber-700">No active registered employees are available.</p>}
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID <span className="font-medium text-slate-400">(optional)</span></label>
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID</label>
                                         <div className="relative">
                                             <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Employee ID" value={discountDraft.employee_id} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_id: e.target.value }))} />
+                                            <Input readOnly className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-xs font-medium" placeholder="Auto-filled" value={discountDraft.employee_id} />
                                         </div>
                                     </div>
                                 </div>
@@ -2058,336 +2035,7 @@ return (
                 </DialogContent>
             </Dialog>
 
-            <Dialog
-                open={checkoutConfirmModalOpen}
-                onOpenChange={(nextOpen) => {
-                    if (nextOpen) {
-                        setCheckoutConfirmModalOpen(true);
-                        return;
-                    }
-                    void handleCancelCheckout();
-                }}
-            >
-                <DialogContent className="pos-checkout-confirm-dialog flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
-                    <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
-                                    <ShieldCheck className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <DialogTitle id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
-                                        Confirm Checkout
-                                    </DialogTitle>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleCancelCheckout}
-                                disabled={checkoutLoading || splitPaymentCancelLoading || parkedSaleReleaseLoading}
-                                className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none disabled:opacity-50"
-                                aria-label="Close checkout confirmation"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                    </DialogHeader>
-
-                    <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-                        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" data-testid="pos-checkout-order-settings">
-                            <Suspense fallback={<div className="h-10 animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
-                                <PosCheckoutDetailsSlot
-                                    presentationBundle={posPresentationBundle}
-                                    posWorkflow={posWorkflow}
-                                    orderMethod={orderMethod}
-                                    setOrderMethod={setOrderMethod}
-                                    tableNumber={tableNumber}
-                                    setTableNumber={setTableNumber}
-                                    kitchenNotes={kitchenNotes}
-                                    setKitchenNotes={setKitchenNotes}
-                                    servicesClientName={servicesClientName}
-                                    setServicesClientName={setServicesClientName}
-                                    servicesDateTime={servicesDateTime}
-                                    setServicesDateTime={setServicesDateTime}
-                                    servicesProvider={servicesProvider}
-                                    setServicesProvider={setServicesProvider}
-                                    servicesResource={servicesResource}
-                                    setServicesResource={setServicesResource}
-                                    servicesNotes={servicesNotes}
-                                    setServicesNotes={setServicesNotes}
-                                    paymentTypeField={!hasSplitPaymentSummary ? (
-                                        <label className="block text-[11px] font-medium text-slate-500">
-                                            Payment Type
-                                            <select
-                                                value={paymentType}
-                                                onChange={(event) => {
-                                                    setPaymentType(event.target.value);
-                                                    resetEmployeeCredit();
-                                                    setCustomerPaymentAmountInput(money(cartTotal));
-                                                    setCustomerPaymentAmountAutoFilled(true);
-                                                }}
-                                                disabled={posActionsBlocked || checkoutLoading}
-                                                className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
-                                            >
-                                                <option value="cash">Cash</option>
-                                                <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
-                                                <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
-                                                <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
-                                                <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
-                                                <option value="employee_credit">Employee Credit</option>
-                                            </select>
-                                        </label>
-                                    ) : null}
-                                    disabled={posActionsBlocked || checkoutLoading}
-                                />
-                            </Suspense>
-                        </div>
-
-                        {hasSplitPaymentSummary && (
-                            <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3" data-testid="pos-checkout-split-payment-summary">
-                                <div>
-                                    <p className="text-[11px] font-black uppercase tracking-wide text-[#1A4E8D]">Payment Summary</p>
-                                    <p className="mt-1 text-xs font-medium text-slate-600">Payment methods received for this sale.</p>
-                                </div>
-                                <div className="space-y-2" data-testid="pos-checkout-split-payment-methods">
-                                    {splitPaymentSummaryAllocations.map((allocation, index) => {
-                                        const paymentMethod = String(allocation?.payment_method || '').trim().toLowerCase();
-                                        const appliedAmount = round4(allocation?.applied_amount);
-                                        const cashTendered = round4(allocation?.cash_tendered ?? appliedAmount);
-                                        const displayedAmount = paymentMethod === 'cash' ? cashTendered : appliedAmount;
-                                        const cashChange = round4(allocation?.change_amount);
-                                        const hasCashAdjustment = paymentMethod === 'cash' && cashTendered !== appliedAmount;
-                                        return (
-                                            <div key={`${paymentMethod || 'payment'}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2" data-testid={`pos-checkout-split-payment-method-${index + 1}`}>
-                                                <div className="flex items-center justify-between gap-3 text-sm">
-                                                    <span className="font-extrabold text-slate-800">{formatSplitPaymentMethod(paymentMethod)}</span>
-                                                    <span className="font-black text-[#1A4E8D]">PHP {money(displayedAmount)}</span>
-                                                </div>
-                                                {hasCashAdjustment && (
-                                                    <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                                                        Applied PHP {money(appliedAmount)} · Change PHP {money(cashChange)}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="grid grid-cols-3 gap-2" data-testid="pos-checkout-split-payment-totals">
-                                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
-                                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Paid</p>
-                                        <p className="mt-1 text-sm font-black text-emerald-800">PHP {money(splitPaymentSummaryPaidAmount)}</p>
-                                    </div>
-                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
-                                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Remaining</p>
-                                        <p className="mt-1 text-sm font-black text-amber-800">PHP {money(splitPaymentSummaryRemainingAmount)}</p>
-                                    </div>
-                                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2" data-testid="pos-checkout-split-payment-change">
-                                        <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700">Change</p>
-                                        <p className="mt-1 text-sm font-black text-sky-800">PHP {money(splitPaymentSummaryChangeAmount)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {isEmployeeCreditPayment && (
-                            <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">Loading employee credit...</div>}>
-                                <EmployeeCreditPaymentPanel
-                                    selectedEmployee={selectedEmployeeCreditOption}
-                                    onSelectEmployee={handleSelectEmployeeCredit}
-                                    lookupLoading={employeeCreditLookupLoading}
-                                    account={employeeCreditAccount}
-                                    totalDue={cartTotal}
-                                    locationId={selectedLocationId}
-                                />
-                            </Suspense>
-                        )}
-
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="pos-checkout-sale-summary">
-                            <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">Sale Summary</p>
-                            <div className="mt-2 space-y-2 text-[13px]">
-                                <div className="flex justify-between gap-3">
-                                    <span className="text-[#334155]">Total Sales (before discount)</span>
-                                    <span className="font-extrabold tabular-nums text-[#0F172A]">PHP {money(cartSubtotal)}</span>
-                                </div>
-                                <div className="flex items-start justify-between gap-3" data-testid="pos-checkout-discount-summary">
-                                    <div className="min-w-0">
-                                        <span className="block truncate text-[#334155]">
-                                            Discount{calculatedDiscountAmount > 0 && checkoutDiscountLabel ? ` (${checkoutDiscountLabel})` : ''}
-                                        </span>
-                                        {calculatedDiscountAmount > 0 && <span className="mt-0.5 block text-[11px] font-medium text-slate-500">Applied to this sale</span>}
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        <span className={`font-extrabold tabular-nums ${calculatedDiscountAmount > 0 ? 'text-rose-600' : 'text-[#0F172A]'}`}>
-                                            {calculatedDiscountAmount > 0 ? `-PHP ${money(calculatedDiscountAmount)}` : 'PHP 0.00'}
-                                        </span>
-                                        {calculatedDiscountAmount > 0 ? (
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openDiscountModal({ returnToCheckout: true })}
-                                                    disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
-                                                    className="flex h-7 items-center gap-1 rounded-lg px-1.5 text-[11px] font-bold text-[#1A4E8D] transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                    aria-label={`Edit ${checkoutDiscountLabel}`}
-                                                    title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Edit discount'}
-                                                    data-testid="pos-edit-checkout-discount"
-                                                >
-                                                    <Pencil className="h-3.5 w-3.5" />
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={clearAppliedDiscount}
-                                                    disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
-                                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                                    aria-label={`Remove ${checkoutDiscountLabel}`}
-                                                    title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Remove discount'}
-                                                    data-testid="pos-remove-checkout-discount"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                </div>
-                                {governedDiscountTotals.vatRemoved > 0 && (
-                                    <div className="flex justify-between gap-3">
-                                        <span className="text-[#334155]">VAT Removed</span>
-                                        <span className="font-extrabold tabular-nums text-rose-600">-PHP {money(governedDiscountTotals.vatRemoved)}</span>
-                                    </div>
-                                )}
-                                {calculatedDiscountAmount === 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => openDiscountModal({ returnToCheckout: true })}
-                                        disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
-                                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-left text-[11px] font-bold text-[#1A4E8D] transition-colors hover:border-[#1A4E8D] hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-50"
-                                        data-testid="pos-checkout-add-discount"
-                                    >
-                                        <Tag className="h-3.5 w-3.5" />
-                                        Add Discount
-                                        <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                                    </button>
-                                )}
-                                <div className="border-t border-dashed border-slate-200 pt-2">
-                                    <div className="flex justify-between gap-3">
-                                        <span className="font-extrabold text-[#334155]">Total Due</span>
-                                        <span className="font-black tabular-nums text-[#1A4E8D]">PHP {money(cartTotal)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {!isEmployeeCreditPayment && !splitPaymentReady && (
-                            <div className="space-y-2" data-testid="pos-checkout-payment-summary">
-                                <label htmlFor="pos-customer-payment-amount" className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
-                                    {customerPaymentFieldLabel}
-                                </label>
-                                {isCashPayment && (
-                                    <div className="grid grid-cols-3 gap-2" data-testid="pos-cash-payment-suggestions">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setCustomerPaymentAmountInput(money(cartTotal));
-                                                setCustomerPaymentAmountAutoFilled(true);
-                                            }}
-                                            disabled={checkoutLoading}
-                                            className="col-span-3 h-8 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-extrabold text-emerald-700 transition-colors hover:border-emerald-500 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                            data-testid="pos-cash-payment-exact"
-                                        >
-                                            Exact Amount · PHP {money(cartTotal)}
-                                        </button>
-                                        {CASH_PAYMENT_SUGGESTIONS.map((amount) => (
-                                            <button
-                                                key={amount}
-                                                type="button"
-                                                onClick={() => {
-                                                    setCustomerPaymentAmountInput(String(amount));
-                                                    setCustomerPaymentAmountAutoFilled(false);
-                                                }}
-                                                disabled={checkoutLoading}
-                                                className="h-8 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-extrabold text-[#1A4E8D] transition-colors hover:border-[#1A4E8D] hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                                data-testid={`pos-cash-payment-suggestion-${amount}`}
-                                            >
-                                                PHP {amount.toLocaleString('en-US')}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                <Input
-                                    id="pos-customer-payment-amount"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={customerPaymentAmountInput}
-                                    onChange={(event) => {
-                                        setCustomerPaymentAmountInput(event.target.value);
-                                        setCustomerPaymentAmountAutoFilled(false);
-                                    }}
-                                    onFocus={() => {
-                                        if (customerPaymentAmountAutoFilled) {
-                                            setCustomerPaymentAmountInput('');
-                                            setCustomerPaymentAmountAutoFilled(false);
-                                        }
-                                    }}
-                                    placeholder="0.00"
-                                    className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
-                                />
-                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
-                                    <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-[#64748B]">Payment Summary</p>
-                                    <div className="flex justify-between gap-2">
-                                        <span className="text-[#334155]">Payment Method</span>
-                                        <span className="font-bold text-[#1A4E8D]">{formatSplitPaymentMethod(paymentType)}</span>
-                                    </div>
-                                    <div className="flex justify-between gap-2">
-                                        <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
-                                        <span className="font-bold text-emerald-700">PHP {money(customerPaymentChange)}</span>
-                                    </div>
-                                    <div className="mt-2 flex justify-between gap-2">
-                                        <span className="text-[#334155]">Remaining Balance</span>
-                                        <span className={`font-bold ${customerPaymentShortfall > 0 ? 'text-rose-700' : 'text-[#0F172A]'}`}>
-                                            PHP {money(customerPaymentShortfall)}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                    </div>
-
-                    <DialogFooter className="shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleBillRequest}
-                            disabled={posActionsBlocked || checkoutLoading || billRequestPrinting || splitPaymentCancelLoading || parkedSaleReleaseLoading || safeCart.length === 0 || !isPrinterAvailable}
-                            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                            title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
-                            data-testid="pos-bill-request-button"
-                        >
-                            {billRequestPrinting ? 'Printing…' : 'Bill Request'}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handlePrintOrder}
-                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isPrinterAvailable}
-                            title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
-                            className="h-10 rounded-lg border border-[#1A4E8D] bg-white px-2 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                            Print Order
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : handleCheckout}
-                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !isCustomerPaymentSufficient)}
-                            className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
-                        >
-                            {checkoutLoading ? 'Processing...' : (splitPaymentReady ? 'Confirm Sale' : 'Confirm')}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <POSCheckoutConfirmDialog viewModel={viewModel} />
 
             <POSCheckoutTerminalReceiptDialogs
                 splitPaymentCancelModalOpen={splitPaymentCancelModalOpen}
@@ -2615,6 +2263,8 @@ return (
                         globalDiscount={itemOptionsGlobalDiscount}
                         discountApprovers={safeDiscountApprovers}
                         discountApproversLoading={discountApproversLoading}
+                        discountEmployees={safeDiscountEmployees}
+                        discountEmployeesLoading={discountEmployeesLoading}
                         defaultDiscountApprover={activeShiftCashierApprover}
                         onClose={() => setItemOptionsLineKey(null)}
                         onSave={saveItemOptions}

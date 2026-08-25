@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Info, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
@@ -13,6 +13,7 @@ import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
 import IminTerminalFeedback from './IminTerminalFeedback.jsx';
 import PosTextSizeControl from './PosTextSizeControl.jsx';
+import PosAttendancePanel from './PosAttendancePanel.jsx';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -24,6 +25,7 @@ const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);
 const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
 const AuditWorkspacePanel = lazyWithChunkRetry(loadAuditWorkspacePanel);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
+const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
 // A prefetch failure must be silent -- this isn't a real load, it's an idle
 // or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
 // load+retry when the workspace is really rendered.
@@ -84,6 +86,8 @@ export default function TerminalPageLayout({
     isDesktopWide,
     isTabletLayout = false,
     canViewPos,
+    canViewAttendance = false,
+    canOperateAttendance = false,
     canViewAudit = false,
     onboardingRestricted = false,
     canCreateItems = false,
@@ -132,6 +136,11 @@ export default function TerminalPageLayout({
     handleSelectViewMode,
     settingsEntryViewMode = 'settings_profile',
     handleLock,
+    handleCashierSignIn = () => {},
+    checkoutOperatorLocked = false,
+    checkoutOperatorLoading = false,
+    activeShiftOwnerLabel = 'the current cashier',
+    onOperatorAuthorityChange = () => {},
     setDrawerOpen,
     effectiveSidebarCollapsed = false,
     setSidebarCollapsed = () => {},
@@ -224,6 +233,7 @@ export default function TerminalPageLayout({
     handleUseDifferentAccount = null,
     handleLegacyLogin = null
 }) {
+  const [operatorGuard, setOperatorGuard] = useState({ scopeKey: '', required: false, valid: true });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
@@ -233,6 +243,7 @@ export default function TerminalPageLayout({
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
+  const operatorScopeKey = `${operatingLocationId || ''}:${normalizedActiveTerminalId}:${activeShiftId || ''}`;
   const incomingOrders = useMemo(() => (
     showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
       ? incomingOrdersState.orders
@@ -362,7 +373,19 @@ export default function TerminalPageLayout({
     : IS_DGFY_POS_SURFACE
       ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
-  const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  const handleShiftOperatorAuthorityChange = useCallback((operatorState) => {
+    setOperatorGuard({
+      scopeKey: operatorScopeKey,
+      required: true,
+      valid: operatorState?.authority_valid === true
+    });
+    onOperatorAuthorityChange(operatorState);
+  }, [onOperatorAuthorityChange, operatorScopeKey]);
+  const shiftOperatorMutationLocked = operatorGuard.scopeKey === operatorScopeKey
+    && operatorGuard.required
+    && !operatorGuard.valid;
+  const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
+  const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
   const workspacePaneClassName = isCheckoutWorkspaceMode
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
@@ -696,6 +719,41 @@ export default function TerminalPageLayout({
 
       <IminTerminalFeedback />
       <PosUpdateNotice />
+      {!locked && SHIFT_WORKSPACE_MODES.has(posViewMode) ? (
+        <PosAttendancePanel
+          locationId={operatingLocationId}
+          terminalId={activeTerminalId}
+          shiftId={activeShiftId}
+          isOnline={isOnline}
+          canView={canViewAttendance}
+          canOperate={canOperateAttendance}
+          compact
+          onBreakAndLock={handleLock}
+          locked={locked}
+          onOperatorAuthorityChange={handleShiftOperatorAuthorityChange}
+        />
+      ) : null}
+
+      {CHECKOUT_WORKSPACE_MODES.has(posViewMode) && checkoutOperatorLocked ? (
+        <div className="mx-2 mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950 shadow-sm sm:mx-4 lg:mx-6" role="alert" data-testid="pos-cashier-sign-in-guard">
+          <span>
+            {checkoutOperatorLoading
+              ? 'Verifying the active cashier for this register...'
+              : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`}
+          </span>
+          {!checkoutOperatorLoading ? (
+            <button type="button" onClick={handleCashierSignIn} className="h-8 rounded-lg bg-[#1A4E8D] px-3 text-[11px] font-extrabold text-white hover:bg-[#143F73]">
+              Cashier Sign In
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {operatorMutationLocked ? (
+        <div className="mx-2 mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 sm:mx-4 lg:mx-6" role="alert">
+          POS selling is locked. A timed-in cashier must take over this register with their PIN.
+        </div>
+      ) : null}
 
       <div
         ref={workspacePaneRef}

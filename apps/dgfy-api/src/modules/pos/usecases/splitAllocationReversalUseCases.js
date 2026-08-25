@@ -66,13 +66,13 @@ const buildFinancialOutcome = ({ amount, state, method, ownership }) => ({
     currency: 'PHP'
 });
 
-const assertOwnedOpenShift = ({ shift, actorUserId, terminalId, locationId }) => {
+const assertOwnedOpenShift = ({ shift, actorUserId, shiftOwnerUserId = actorUserId, terminalId, locationId }) => {
     if (!shift || String(shift.status || '').toLowerCase() !== 'open') {
         throw reversalError(DomainErrorCode.VALIDATION_FAILED, 'An open cashier shift is required for this allocation reversal.', 422, {
             reason_code: 'POS_SHIFT_NOT_OPEN'
         });
     }
-    if (Number(shift.cashier_id) !== actorUserId) {
+    if (Number(shift.cashier_id) !== shiftOwnerUserId) {
         throw reversalError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the cashier who owns the open shift can record this allocation reversal.', 403, {
             reason_code: 'POS_REFUND_SHIFT_OWNER_REQUIRED'
         });
@@ -269,7 +269,13 @@ const resolveScope = async ({ posRepository, payload, user, existing, tender, tr
     const shift = shiftId
         ? await posRepository.getTerminalShiftById(shiftId, { transaction, lock: true })
         : null;
-    if (shiftId) assertOwnedOpenShift({ shift, actorUserId, terminalId, locationId });
+    if (shiftId) assertOwnedOpenShift({
+        shift,
+        actorUserId,
+        shiftOwnerUserId: parsePositiveInt(user?.register_shift_owner_user_id) || actorUserId,
+        terminalId,
+        locationId
+    });
     return {
         actorUserId,
         shiftId,
@@ -335,6 +341,7 @@ export const buildSplitAllocationReversalUseCase = ({ posRepository, providerRec
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const normalizedAllocationId = parsePositiveInt(allocationId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const reason = String(payload.reason || '').trim();
         const idempotencyKey = String(payload.idempotency_key || '').trim();
         const completionConfirmed = payload.completion_confirmed === true;
@@ -520,6 +527,7 @@ export const buildSplitAllocationReversalUseCase = ({ posRepository, providerRec
                 completed_at: reversalStatus === 'succeeded' ? now : null,
                 metadata: {
                     evidence_scope: 'pos_split_allocation_reversal',
+                    operator_session_id: operatorSessionId,
                     payment_session_id: Number(context.session.pos_payment_session_id),
                     payment_session_reference: context.session.session_reference,
                     payment_allocation_id: normalizedAllocationId,
@@ -581,6 +589,7 @@ export const buildSplitAllocationReversalUseCase = ({ posRepository, providerRec
                     event: reversalStatus === 'succeeded'
                         ? 'pos_split_allocation_refund_completed'
                         : 'pos_split_allocation_external_refund_pending',
+                    operator_session_id: operatorSessionId,
                     transaction_id: normalizedTransactionId,
                     payment_session_id: Number(context.session.pos_payment_session_id),
                     payment_allocation_id: normalizedAllocationId,

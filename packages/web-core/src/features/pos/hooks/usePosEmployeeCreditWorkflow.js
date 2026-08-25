@@ -13,6 +13,7 @@ export const usePosEmployeeCreditWorkflow = () => {
     const [selectedEmployeeCreditOption, setSelectedEmployeeCreditOption] = useState(null);
     const [employeeCreditLookupLoading, setEmployeeCreditLookupLoading] = useState(false);
     const employeeCreditValidationSequenceRef = useRef(0);
+    const employeeCreditSelectionSourceRef = useRef(null);
 
     const resetEmployeeCredit = useCallback(() => {
         setEmployeeCreditAccountCode('');
@@ -20,9 +21,10 @@ export const usePosEmployeeCreditWorkflow = () => {
         setSelectedEmployeeCreditOption(null);
         setEmployeeCreditLookupLoading(false);
         employeeCreditValidationSequenceRef.current += 1;
+        employeeCreditSelectionSourceRef.current = null;
     }, []);
 
-    const handleSelectEmployeeCredit = useCallback(async (employeeOption) => {
+    const handleSelectEmployeeCredit = useCallback(async (employeeOption, { source = 'manual' } = {}) => {
         const accountCode = String(employeeOption?.account_code || '').trim().toUpperCase();
         const sameSelectedAccount = Boolean(
             accountCode
@@ -34,12 +36,14 @@ export const usePosEmployeeCreditWorkflow = () => {
         // Keep verified account evidence visible instead of resetting it.
         if (sameSelectedAccount) {
             setSelectedEmployeeCreditOption(employeeOption || null);
+            employeeCreditSelectionSourceRef.current = source;
             return;
         }
 
         const requestId = employeeCreditValidationSequenceRef.current + 1;
         employeeCreditValidationSequenceRef.current = requestId;
         setSelectedEmployeeCreditOption(employeeOption || null);
+        employeeCreditSelectionSourceRef.current = source;
         setEmployeeCreditAccountCode(accountCode);
         setEmployeeCreditAccount(null);
         setEmployeeCreditLookupLoading(false);
@@ -73,6 +77,17 @@ export const usePosEmployeeCreditWorkflow = () => {
         }
     }, [employeeCreditAccount, employeeCreditAccountCode, employeeCreditLookupLoading]);
 
+    const handlePrefillEmployeeCredit = useCallback((employeeOption) => {
+        if (employeeCreditSelectionSourceRef.current === 'manual' && selectedEmployeeCreditOption) return false;
+        return handleSelectEmployeeCredit(employeeOption, { source: 'discount' });
+    }, [handleSelectEmployeeCredit, selectedEmployeeCreditOption]);
+
+    const clearDiscountEmployeeCreditPrefill = useCallback(() => {
+        if (employeeCreditSelectionSourceRef.current !== 'discount') return false;
+        resetEmployeeCredit();
+        return true;
+    }, [resetEmployeeCredit]);
+
     return {
         employeeCreditAccountCode,
         setEmployeeCreditAccountCode,
@@ -82,9 +97,12 @@ export const usePosEmployeeCreditWorkflow = () => {
         setSelectedEmployeeCreditOption,
         employeeCreditLookupLoading,
         setEmployeeCreditLookupLoading,
+        employeeCreditSelectionSource: employeeCreditSelectionSourceRef.current,
         employeeCreditValidationSequenceRef,
         resetEmployeeCredit,
-        handleSelectEmployeeCredit
+        handleSelectEmployeeCredit,
+        handlePrefillEmployeeCredit,
+        clearDiscountEmployeeCreditPrefill
     };
 };
 

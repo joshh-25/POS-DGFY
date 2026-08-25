@@ -59,6 +59,18 @@ export const authorizePosShiftMutation = ({
         };
     }
 
+    const registerShiftOwnerUserId = toPositiveInteger(actorUser?.register_shift_owner_user_id);
+    const operatorSessionId = toPositiveInteger(actorUser?.operator_session_id);
+    if (operatorSessionId && registerShiftOwnerUserId === shiftCashierId) {
+        return {
+            authorization_mode: 'active_operator',
+            actor_user_id: actorUserId,
+            shift_cashier_id: shiftCashierId,
+            operator_session_id: operatorSessionId,
+            override_reason: null
+        };
+    }
+
     if (!isMasterAdmin(actorUser)) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,

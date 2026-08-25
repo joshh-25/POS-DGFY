@@ -81,7 +81,7 @@ const assertExternalRefundCompliance = async ({ terminalId, user }) => {
     return result.data.decision;
 };
 
-const assertOwnedOpenShift = ({ shift, actorUserId, terminalId, locationId }) => {
+const assertOwnedOpenShift = ({ shift, actorUserId, shiftOwnerUserId = actorUserId, terminalId, locationId }) => {
     if (!shift || String(shift.status || '').toLowerCase() !== 'open') {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -89,7 +89,7 @@ const assertOwnedOpenShift = ({ shift, actorUserId, terminalId, locationId }) =>
             { statusCode: 422, details: { reason_code: 'POS_SHIFT_NOT_OPEN' } }
         );
     }
-    if (Number(shift.cashier_id) !== actorUserId) {
+    if (Number(shift.cashier_id) !== shiftOwnerUserId) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'Only the cashier who owns the open shift can record external reversal evidence',
@@ -130,6 +130,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const activeShiftId = parsePositiveInt(payload?.shift_id);
         const terminalId = String(payload?.terminal_id || '').trim().toUpperCase() || null;
         const locationId = parsePositiveInt(payload?.terminal_location_id);
@@ -317,6 +318,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
                 assertOwnedOpenShift({
                     shift,
                     actorUserId,
+                    shiftOwnerUserId: parsePositiveInt(user?.register_shift_owner_user_id) || actorUserId,
                     terminalId,
                     locationId
                 });
@@ -356,6 +358,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
                 completed_at: completionConfirmed ? recordedAt : null,
                 metadata: {
                     evidence_scope: 'walk_in_pos_merchant_owned_external_reversal',
+                    operator_session_id: operatorSessionId,
                     payment_status_before_reversal: paymentStatus,
                     transaction_shift_id: parsePositiveInt(existing.shift_id),
                     actor_shift_id: activeShiftId || null,
@@ -399,6 +402,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
                     event: completionConfirmed
                         ? 'pos_external_refund_completed'
                         : 'pos_external_refund_pending',
+                    operator_session_id: operatorSessionId,
                     invoice_number: existing.invoice_number || null,
                     transaction_id: normalizedTransactionId,
                     amount,

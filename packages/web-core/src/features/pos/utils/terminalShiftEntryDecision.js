@@ -76,3 +76,28 @@ export const resolveStoredShiftUnlockMode = ({
   if (lockReason === 'shift_start_required' && activeShift) return 'resume_shift';
   return 'shift_start';
 };
+
+export const resolveCashierRegisterEntryMode = ({
+  shiftCashierId = null,
+  authenticatedCashierId = null
+} = {}) => (
+  normalizePositiveInteger(shiftCashierId) === normalizePositiveInteger(authenticatedCashierId)
+    && normalizePositiveInteger(shiftCashierId)
+    ? 'resume'
+    : 'takeover'
+);
+
+export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
+
+export const shouldRestorePosOperatorAuthority = ({
+  authorityValid = false,
+  operatorUserId = null,
+  authenticatedUserId = null,
+  alreadyAttempted = false
+} = {}) => {
+  if (alreadyAttempted || !normalizePositiveInteger(authenticatedUserId)) return false;
+
+  // Only a missing or invalid authority session should be refreshed through the
+  // backend resume flow; a valid scoped authority remains usable as-is.
+  return authorityValid !== true || !normalizePositiveInteger(operatorUserId);
+};

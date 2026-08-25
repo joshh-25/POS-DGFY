@@ -256,6 +256,7 @@ const normalizeBusinessDateInput = (value) => {
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toCurrencyCents = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
 const fromCurrencyCents = (value) => round4((Number(value) || 0) / 100);
+const normalizedEmail = (value) => String(value || '').trim().toLowerCase();
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const normalizeTrustedDiscountApproval = (approval = null) => {
@@ -268,8 +269,10 @@ const normalizeTrustedDiscountApproval = (approval = null) => {
         discount_type: discountType,
         approver_user_id: approverUserId,
         employee_user_id: discountType === 'employee' ? parsePositiveInt(approval.employee_user_id) : null,
+        employee_directory_id: discountType === 'employee' ? parsePositiveInt(approval.employee_directory_id) : null,
         self_approved: approval.self_approved === true,
-        approved_at: approval.approved_at || null
+        approved_at: approval.approved_at || null,
+        operator_user_id: parsePositiveInt(approval.operator_user_id)
     };
 };
 
@@ -278,9 +281,97 @@ const trustedDiscountApprovalMatches = (approval, governedDraft, governedApplica
     if (approval.discount_type !== governedApplication.type) return false;
     if (approval.approver_user_id !== parsePositiveInt(governedDraft.approver_user_id)) return false;
     if (approval.discount_type === 'employee') {
+        if (approval.employee_directory_id || parsePositiveInt(governedApplication.employee_directory_id)) {
+            return approval.employee_directory_id === parsePositiveInt(governedApplication.employee_directory_id);
+        }
         return approval.employee_user_id === parsePositiveInt(governedApplication.employee_id);
     }
     return true;
+};
+const normalizeTrustedItemDiscountApprovals = (approvals = null) => {
+    if (!Array.isArray(approvals)) return new Map();
+    return new Map(approvals.map((approval) => {
+        if (!isPlainObject(approval)) return [null, null];
+        const itemId = parsePositiveInt(approval.item_id);
+        const discountType = String(approval.discount_type || '').trim().toLowerCase();
+        const approverUserId = parsePositiveInt(approval.approver_user_id);
+        if (!itemId || !['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType) || !approverUserId) {
+            return [null, null];
+        }
+        return [itemId, {
+            item_id: itemId,
+            discount_type: discountType,
+            approver_user_id: approverUserId,
+            employee_user_id: discountType === 'employee' ? parsePositiveInt(approval.employee_user_id) : null,
+            employee_directory_id: discountType === 'employee' ? parsePositiveInt(approval.employee_directory_id) : null,
+            self_approved: approval.self_approved === true,
+            approved_at: approval.approved_at || null,
+            operator_user_id: parsePositiveInt(approval.operator_user_id)
+        }];
+    }).filter(([itemId, approval]) => itemId && approval));
+};
+const trustedItemDiscountApprovalMatches = (approval, draft, application) => {
+    if (!approval || !draft || !application) return false;
+    if (approval.item_id !== parsePositiveInt(application.item_id)) return false;
+    if (approval.discount_type !== application.discount_type) return false;
+    if (approval.approver_user_id !== parsePositiveInt(draft.approver_user_id)) return false;
+    if (approval.discount_type === 'employee') {
+        return approval.employee_directory_id === parsePositiveInt(application.employee_directory_id);
+    }
+    return true;
+};
+const assertTrustedEmployeeApprovalIdentity = ({
+    approval,
+    application,
+    approver,
+    applyingUserId,
+    allowSelfApproval
+}) => {
+    const approverUserId = parsePositiveInt(approver?.user_id);
+    const applyingUserIdNormalized = parsePositiveInt(applyingUserId);
+    const beneficiaryMatchesApprover = Boolean(
+        (parsePositiveInt(application?.employee_user_id)
+            && parsePositiveInt(application.employee_user_id) === approverUserId)
+        || (normalizedEmail(application?.employee_email)
+            && normalizedEmail(application.employee_email) === normalizedEmail(approver?.email))
+    );
+    if (parsePositiveInt(application?.employee_directory_id)
+        && applyingUserIdNormalized === approverUserId
+        && !normalizedEmail(application?.employee_email)) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The selected employee needs an email before self-approval can be verified.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_IDENTITY_UNVERIFIED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover !== (approval?.self_approved === true)) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The saved discount approval no longer matches the employee identity.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_IDENTITY_CHANGED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover && allowSelfApproval !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Employees cannot approve their own discount.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover && applyingUserIdNormalized !== approverUserId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Self-approval must be completed by the authenticated cashier receiving the discount.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_ACTOR_MISMATCH' } }
+        );
+    }
+    if (approval?.operator_user_id && approval.operator_user_id !== applyingUserIdNormalized) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The saved discount approval belongs to a different cashier session.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_OPERATOR_MISMATCH' } }
+        );
+    }
 };
 const normalizeJsonObject = (value, fallback = {}) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return value;
@@ -577,6 +668,10 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
             if (dateFrom > dateTo) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
             }
+            const rangeDays = Math.round((new Date(`${dateTo}T00:00:00.000Z`) - new Date(`${dateFrom}T00:00:00.000Z`)) / 86400000) + 1;
+            if (rangeDays > 366) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'POS report range cannot exceed 366 days', { statusCode: 422 });
+            }
             return baseUseCase({
                 query: {
                     ...scopePosReportQueryToActor({ query, user }),
@@ -601,7 +696,30 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
         const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
-        const rows = [
+        const lifecycle = overviewResult.data?.cashier_lifecycle || {};
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
+        const lifecycleRows = section === 'attendance'
+            ? [
+                ['Cashier', 'Duty Type', 'Status', 'Started At', 'Ended At', 'Break Minutes', 'Worked Minutes', 'Location'],
+                ...(lifecycle.attendance?.rows || []).map((row) => [row.cashier_name, row.duty_type, row.status, row.started_at, row.ended_at, row.break_minutes, row.worked_minutes, row.location_id])
+            ]
+            : section === 'cashiers'
+                ? [
+                    ['Cashier', 'Transactions', 'Gross Sales', 'Net Sales', 'Operator Attribution'],
+                    ...cashierRows.map((row) => [row.cashier_name, row.summary?.total_transactions, row.summary?.gross_sales, row.summary?.net_sales, 'Authenticated operator where operator_session_id exists; otherwise legacy cashier snapshot'])
+                ]
+                : section === 'registers'
+                    ? [
+                        ['Opening Cashier', 'Shift IDs', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance', 'Notice'],
+                        ...(lifecycle.registers || []).map((row) => [row.opening_cashier_name, (row.shift_ids || []).join('|'), row.opening_float_amount, row.cash_sales_amount, row.cash_in_total, row.cash_out_total, row.expected_cash_amount, row.closing_cash_amount, row.variance_amount, row.attribution_notice])
+                    ]
+                    : section === 'handoffs'
+                        ? [
+                            ['Event At', 'Terminal', 'Shift', 'Type', 'Custody Mode', 'Outgoing', 'Incoming', 'Expected Cash', 'Counted Cash', 'Variance', 'Attribution'],
+                            ...(lifecycle.handoffs?.rows || []).map((row) => [row.event_at, row.terminal_id, row.shift_id, row.event_type, row.custody_mode, row.outgoing_operator_name, row.incoming_operator_name, row.expected_cash_amount, row.counted_cash_amount, row.variance_amount, row.variance_attribution])
+                        ]
+                        : null;
+        const rows = lifecycleRows || [
             ['Metric', 'Value'],
             ['Gross Sales', summary.gross_sales || 0],
             ['Net Sales', summary.net_sales || 0],
@@ -636,7 +754,6 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
                 row.net_sales || 0
             ])
         ];
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         return ok({
             filename: `pos-${section}-report.csv`,
             content_type: 'text/csv; charset=utf-8',
@@ -1704,6 +1821,8 @@ const assertOpenShiftForPosMutation = async ({
     shiftId = null,
     terminalId = null,
     locationId = null,
+    authorizedOperatorUserId = null,
+    shiftOwnerCashierId = null,
     transaction = null,
     lock = true
 } = {}) => {
@@ -1717,6 +1836,7 @@ const assertOpenShiftForPosMutation = async ({
     }
 
     const normalizedShiftId = parsePositiveInt(shiftId);
+    const normalizedShiftOwnerCashierId = parsePositiveInt(shiftOwnerCashierId) || normalizedCashierId;
     if (shiftId != null && !normalizedShiftId) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -1730,14 +1850,16 @@ const assertOpenShiftForPosMutation = async ({
         ? await posRepository.getTerminalShiftById(normalizedShiftId, options)
         : await posRepository.findOpenTerminalShift({
             terminalId: terminalId || null,
-            cashierId: normalizedCashierId,
+            cashierId: normalizedShiftOwnerCashierId,
             locationId: locationId || null
         }, options);
 
     if (!shift || shift.status !== 'open') {
         throw buildShiftClosedError();
     }
-    if (Number(shift.cashier_id) !== normalizedCashierId) {
+    const normalizedAuthorizedOperatorUserId = parsePositiveInt(authorizedOperatorUserId);
+    if (Number(shift.cashier_id) !== normalizedShiftOwnerCashierId
+        && normalizedAuthorizedOperatorUserId !== normalizedCashierId) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'Shift does not belong to the authenticated cashier.',
@@ -1864,6 +1986,27 @@ const getPosSettings = async () => unwrapApplicationResultOrThrow(
     'Failed to retrieve POS setup settings'
 );
 
+const POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING = 'pos_employee_discount_self_approval_enabled';
+
+export const buildListPosDiscountEmployeesUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const rows = await posRepository.listActiveDiscountEmployees();
+            return ok({
+                employees: rows.map((row) => ({
+                    employee_id: Number(row.employee_id),
+                    employee_code: String(row.employee_code || '').trim(),
+                    full_name: String(row.full_name || '').trim(),
+                    location_id: parsePositiveInt(row.location_id),
+                    location_name: String(row.location?.name || '').trim() || 'All branches / unassigned'
+                }))
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS discount employees'));
+        }
+    };
+};
+
 export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
     return async () => {
         try {
@@ -1885,17 +2028,34 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
 };
 
 export const buildVerifyPosDiscountApprovalUseCase = ({ posRepository }) => {
-    return async ({ payload = {} } = {}) => {
+    return async ({ payload = {}, user = null } = {}) => {
         try {
             const approverId = parsePositiveInt(payload.approver_user_id);
             if (!approverId) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'approver_user_id is required', { statusCode: 422 });
             }
+            const discountType = String(payload.discount_type || '').trim().toLowerCase();
+            const employeeDirectoryId = parsePositiveInt(payload.employee_directory_id);
+            const employee = employeeDirectoryId
+                ? await posRepository.findActiveDiscountEmployeeById(employeeDirectoryId)
+                : null;
+            if (employeeDirectoryId && !employee) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Employee does not match an active registered employee.', {
+                    statusCode: 422,
+                    details: { reason_code: 'EMPLOYEE_DIRECTORY_NOT_FOUND' }
+                });
+            }
+            const settings = await getPosSettings();
             const approver = await posRepository.findActiveDiscountApproverById(approverId);
             const verified = await verifyPosDiscountApprover({
                 approver,
                 pin: payload.manager_pin,
-                employeeUserId: parsePositiveInt(payload.employee_user_id)
+                employeeUserId: parsePositiveInt(payload.employee_user_id),
+                employeeDirectoryId,
+                employeeEmail: employee?.email,
+                allowSelfApproval: discountType === 'employee'
+                    && settingBoolean(settings, POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING),
+                applyingUserId: parsePositiveInt(user?.user_id)
             });
             return ok({ approver: verified });
         } catch (error) {
@@ -2546,17 +2706,30 @@ export const buildCheckoutPosUseCase = ({
         payload,
         userId,
         user,
+        operatorSessionId = null,
         transaction: providedTransaction = null,
         beforeCommit = null,
         quoteOnly = false,
         discountApproval = null,
-        trustedDiscountApproval = null
+        trustedDiscountApproval = null,
+        itemDiscountApprovals = null,
+        trustedItemDiscountApprovals = null
     }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'userId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        const normalizedOperatorSessionId = operatorSessionId == null
+            ? null
+            : parsePositiveInt(operatorSessionId);
+        if (operatorSessionId != null && !normalizedOperatorSessionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'operatorSessionId must be a positive integer when provided',
                 { statusCode: 400 }
             ));
         }
@@ -2577,6 +2750,17 @@ export const buildCheckoutPosUseCase = ({
                     isPlainObject(line?.item_discount_approval) ? line.item_discount_approval : null
                 ])
                 .filter(([itemId]) => Number.isInteger(itemId) && itemId > 0)
+        );
+        if (Array.isArray(itemDiscountApprovals)) {
+            itemDiscountApprovals.forEach((approval) => {
+                const itemId = parsePositiveInt(approval?.item_id);
+                if (itemId && isPlainObject(approval)) {
+                    itemDiscountApprovalByItemId.set(itemId, approval);
+                }
+            });
+        }
+        const trustedItemDiscountApprovalByItemId = normalizeTrustedItemDiscountApprovals(
+            trustedItemDiscountApprovals
         );
         if (lines.length === 0) {
             return fail(new DomainError(
@@ -2696,6 +2880,7 @@ export const buildCheckoutPosUseCase = ({
                     id_number: String(payload.governed_discount.id_number || '').trim() || null,
                     employee_name: String(payload.governed_discount.employee_name || '').trim() || null,
                     employee_id: String(payload.governed_discount.employee_id || '').trim() || null,
+                    employee_directory_id: parsePositiveInt(payload.governed_discount.employee_directory_id),
                     approver_user_id: parsePositiveInt(payload.governed_discount.approver_user_id),
                     reason: String(payload.governed_discount.reason || '').trim() || null,
                     promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
@@ -2741,6 +2926,7 @@ export const buildCheckoutPosUseCase = ({
                                 id_number: String(line.item_discount.id_number || '').trim() || null,
                                 employee_name: String(line.item_discount.employee_name || '').trim() || null,
                                 employee_id: String(line.item_discount.employee_id || '').trim() || null,
+                                employee_directory_id: parsePositiveInt(line.item_discount.employee_directory_id),
                                 promo_code: String(line.item_discount.promo_code || '').trim().toUpperCase() || null,
                                 reason: String(line.item_discount.reason || '').trim().slice(0, 500) || null,
                                 approver_user_id: parsePositiveInt(line.item_discount.approver_user_id)
@@ -2857,6 +3043,7 @@ export const buildCheckoutPosUseCase = ({
             };
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
+                operator_session_id: normalizedOperatorSessionId,
                 terminal_id: normalizedTerminalId || null,
                 location_id: enforcedCheckoutLocationId,
                 restaurant_service_charge: normalizeRestaurantServiceChargeInput({
@@ -2967,15 +3154,54 @@ export const buildCheckoutPosUseCase = ({
                 });
             }
 
+            let operatorSession = null;
+            if (normalizedOperatorSessionId) {
+                if (typeof posRepository.getTerminalOperatorSessionById !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'POS operator-session persistence is unavailable.',
+                        { statusCode: 500 }
+                    );
+                }
+                operatorSession = await posRepository.getTerminalOperatorSessionById(normalizedOperatorSessionId, {
+                    transaction,
+                    lock: true
+                });
+                const operatorExpired = operatorSession?.authority_expires_at
+                    && new Date(operatorSession.authority_expires_at).getTime() <= Date.now();
+                if (!operatorSession
+                    || operatorSession.status !== 'active'
+                    || operatorSession.revoked_at
+                    || operatorExpired
+                    || Number(operatorSession.user_id) !== normalizedUserId
+                    || (normalizedTerminalId && String(operatorSession.terminal_id) !== String(normalizedTerminalId))
+                    || (enforcedCheckoutLocationId && Number(operatorSession.location_id) !== Number(enforcedCheckoutLocationId))) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'The active cashier authority is no longer valid for this checkout.',
+                        { statusCode: 403, details: { reason_code: 'POS_OPERATOR_AUTHORITY_INVALID' } }
+                    );
+                }
+            }
+
             const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: normalizedUserId,
-                shiftId: payload.shift_id,
+                shiftId: payload.shift_id || operatorSession?.pos_terminal_shift_id,
                 terminalId: normalizedTerminalId || null,
                 locationId: enforcedCheckoutLocationId || null,
+                authorizedOperatorUserId: operatorSession?.user_id || null,
                 transaction,
                 lock: true
             });
+            if (operatorSession
+                && Number(operatorSession.pos_terminal_shift_id) !== Number(activeShift.pos_terminal_shift_id)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'The active cashier authority does not match this register shift.',
+                    { statusCode: 403, details: { reason_code: 'POS_OPERATOR_SHIFT_MISMATCH' } }
+                );
+            }
             const normalizedShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
             if (!shiftLocationId) {
@@ -3212,26 +3438,13 @@ export const buildCheckoutPosUseCase = ({
             subtotalAmount = round4(subtotalAmount);
             const itemDiscountApplications = [];
             let itemPromoResolution = null;
+            const employeeDiscountSelfApprovalEnabled = settingBoolean(
+                discountSettings,
+                POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING
+            );
             for (const line of preparedLines) {
                 if (!line.item_discount_draft) continue;
                 const approval = itemDiscountApprovalByItemId.get(Number(line.item_id));
-                const approverId = parsePositiveInt(
-                    line.item_discount_draft.approver_user_id
-                    || approval?.approver_user_id
-                );
-                if (!approverId) {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'An authorized employee PIN is required for every item discount.',
-                        { statusCode: 422, details: { reason_code: 'ITEM_DISCOUNT_APPROVER_REQUIRED', item_id: line.item_id } }
-                    );
-                }
-                const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
-                const verifiedApprover = await verifyPosDiscountApprover({
-                    approver,
-                    pin: approval?.manager_pin,
-                    employeeUserId: normalizedUserId
-                });
                 const itemApplication = await resolvePosItemDiscount({
                     draft: line.item_discount_draft,
                     itemId: line.item_id,
@@ -3240,11 +3453,83 @@ export const buildCheckoutPosUseCase = ({
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
-                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
+                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction }),
+                    findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction })
                 });
-                itemApplication.manager_approval_id = verifiedApprover.user_id;
-                itemApplication.manager_approval_name = verifiedApprover.username || null;
-                itemApplication.manager_approved_at = new Date();
+                const trustedApproval = trustedItemDiscountApprovalByItemId.get(Number(line.item_id));
+                const trustedApprovalMatches = trustedItemDiscountApprovalMatches(
+                    trustedApproval,
+                    line.item_discount_draft,
+                    itemApplication
+                );
+                if (trustedApprovalMatches) {
+                    const activeApprover = await posRepository.findActiveDiscountApproverById(
+                        trustedApproval.approver_user_id,
+                        { transaction }
+                    );
+                    const activeApproverRole = String(activeApprover?.role || '').trim().toLowerCase();
+                    const activeApproverAuthorized = activeApprover?.can_authorize_discounts === true
+                        || activeApprover?.is_master_admin === true
+                        || ['admin', 'manager'].includes(activeApproverRole);
+                    if (!activeApprover || activeApproverAuthorized !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'The saved item discount approver is no longer active.',
+                            { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_INACTIVE', item_id: line.item_id } }
+                        );
+                    }
+                    if (itemApplication.discount_type === 'employee') {
+                        assertTrustedEmployeeApprovalIdentity({
+                            approval: trustedApproval,
+                            application: itemApplication,
+                            approver: activeApprover,
+                            applyingUserId: normalizedUserId,
+                            allowSelfApproval: employeeDiscountSelfApprovalEnabled
+                        });
+                    } else if (parsePositiveInt(activeApprover.user_id) === normalizedUserId) {
+                        throw new DomainError(
+                            DomainErrorCode.AUTHORIZATION_FAILED,
+                            'Employees cannot approve their own discount.',
+                            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+                        );
+                    }
+                    itemApplication.manager_approval_id = activeApprover.user_id;
+                    itemApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
+                    const approvedAt = trustedApproval.approved_at ? new Date(trustedApproval.approved_at) : null;
+                    itemApplication.manager_approved_at = approvedAt && !Number.isNaN(approvedAt.getTime())
+                        ? approvedAt
+                        : new Date();
+                    itemApplication.self_approved = trustedApproval.self_approved === true;
+                } else {
+                    const approverId = parsePositiveInt(
+                        line.item_discount_draft.approver_user_id
+                        || approval?.approver_user_id
+                    );
+                    if (!approverId) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'An authorized employee PIN is required for every item discount.',
+                            { statusCode: 422, details: { reason_code: 'ITEM_DISCOUNT_APPROVER_REQUIRED', item_id: line.item_id } }
+                        );
+                    }
+                    const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
+                    const verifiedApprover = await verifyPosDiscountApprover({
+                        approver,
+                        pin: approval?.manager_pin,
+                        employeeUserId: itemApplication.discount_type === 'employee'
+                            ? itemApplication.employee_user_id
+                            : normalizedUserId,
+                        employeeDirectoryId: itemApplication.employee_directory_id,
+                        employeeEmail: itemApplication.employee_email,
+                        allowSelfApproval: itemApplication.discount_type === 'employee'
+                            && employeeDiscountSelfApprovalEnabled,
+                        applyingUserId: normalizedUserId
+                    });
+                    itemApplication.manager_approval_id = verifiedApprover.user_id;
+                    itemApplication.manager_approval_name = verifiedApprover.username || null;
+                    itemApplication.manager_approved_at = new Date();
+                    itemApplication.self_approved = verifiedApprover.self_approved === true;
+                }
                 if (!itemPromoResolution && itemApplication.promo_application?.applied) {
                     itemPromoResolution = itemApplication.promo_application;
                 }
@@ -3298,7 +3583,7 @@ export const buildCheckoutPosUseCase = ({
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
-                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction }),
+                    findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction }),
                     redeemVoucher
                 })
                 : null;
@@ -3324,6 +3609,7 @@ export const buildCheckoutPosUseCase = ({
                     approver_user_id: parsePositiveInt(discountApproval.approver_user_id),
                     manager_pin: String(discountApproval.manager_pin || '').trim(),
                     employee_user_id: parsePositiveInt(discountApproval.employee_user_id),
+                    employee_directory_id: parsePositiveInt(discountApproval.employee_directory_id),
                     discount_type: String(discountApproval.discount_type || '').trim().toLowerCase()
                 }
                 : (isPlainObject(payload.discount_approval)
@@ -3331,6 +3617,7 @@ export const buildCheckoutPosUseCase = ({
                         approver_user_id: parsePositiveInt(payload.discount_approval.approver_user_id),
                         manager_pin: String(payload.discount_approval.manager_pin || '').trim(),
                         employee_user_id: parsePositiveInt(payload.discount_approval.employee_user_id),
+                        employee_directory_id: parsePositiveInt(payload.discount_approval.employee_directory_id),
                         discount_type: String(payload.discount_approval.discount_type || '').trim().toLowerCase()
                     }
                     : null);
@@ -3362,6 +3649,15 @@ export const buildCheckoutPosUseCase = ({
                     governedApplication
                 );
                 if (trustedApprovalMatches) {
+                    if (governedApplication.type === 'employee'
+                        && normalizedTrustedDiscountApproval.self_approved === true
+                        && employeeDiscountSelfApprovalEnabled !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.AUTHORIZATION_FAILED,
+                            'Employees cannot approve their own discount.',
+                            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+                        );
+                    }
                     const activeApprover = await posRepository.findActiveDiscountApproverById(
                         normalizedTrustedDiscountApproval.approver_user_id,
                         { transaction }
@@ -3377,6 +3673,15 @@ export const buildCheckoutPosUseCase = ({
                             { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_INACTIVE' } }
                         );
                     }
+                    if (governedApplication.type === 'employee') {
+                        assertTrustedEmployeeApprovalIdentity({
+                            approval: normalizedTrustedDiscountApproval,
+                            application: governedApplication,
+                            approver: activeApprover,
+                            applyingUserId: normalizedUserId,
+                            allowSelfApproval: employeeDiscountSelfApprovalEnabled
+                        });
+                    }
                     governedApplication.manager_approval_id = activeApprover.user_id;
                     governedApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
                     const approvedAt = normalizedTrustedDiscountApproval.approved_at
@@ -3385,7 +3690,7 @@ export const buildCheckoutPosUseCase = ({
                     governedApplication.manager_approved_at = approvedAt && !Number.isNaN(approvedAt.getTime())
                         ? approvedAt
                         : new Date();
-                    governedApplication.self_approved = false;
+                    governedApplication.self_approved = normalizedTrustedDiscountApproval.self_approved === true;
                 } else {
                     const approverId = parsePositiveInt(
                         governedDraft.approver_user_id
@@ -3402,12 +3707,19 @@ export const buildCheckoutPosUseCase = ({
                     const verifiedApprover = await verifyPosDiscountApprover({
                         approver,
                         pin: normalizedDiscountApproval?.manager_pin || governedDraft.manager_pin,
-                        employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
+                        employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_user_id : null,
+                        employeeDirectoryId: governedApplication.type === 'employee'
+                            ? governedApplication.employee_directory_id
+                            : null,
+                        employeeEmail: governedApplication.type === 'employee' ? governedApplication.employee_email : null,
+                        allowSelfApproval: governedApplication.type === 'employee'
+                            && employeeDiscountSelfApprovalEnabled,
+                        applyingUserId: normalizedUserId
                     });
                     governedApplication.manager_approval_id = verifiedApprover.user_id;
                     governedApplication.manager_approval_name = verifiedApprover.username || null;
                     governedApplication.manager_approved_at = new Date();
-                    governedApplication.self_approved = false;
+                    governedApplication.self_approved = verifiedApprover.self_approved === true;
                 }
             }
             // #712: a voucher's per-line discounts are already authoritative (computed once inside
@@ -3493,7 +3805,26 @@ export const buildCheckoutPosUseCase = ({
                         discount_amount: discountAmount,
                         service_fee_amount: serviceFeeAmount,
                         restaurant_service_charge_amount: restaurantServiceChargeAmount,
-                        total_amount: totalAmount
+                        total_amount: totalAmount,
+                        discount_approval: governedApplication ? {
+                            discount_type: governedApplication.type,
+                            approver_user_id: governedApplication.manager_approval_id || null,
+                            employee_user_id: governedApplication.employee_user_id || null,
+                            employee_directory_id: governedApplication.employee_directory_id || null,
+                            self_approved: governedApplication.self_approved === true,
+                            approved_at: governedApplication.manager_approved_at || null,
+                            operator_user_id: normalizedUserId
+                        } : null,
+                        item_discount_approvals: itemDiscountApplications.map((application) => ({
+                            item_id: application.item_id,
+                            discount_type: application.discount_type,
+                            approver_user_id: application.manager_approval_id || null,
+                            employee_user_id: application.employee_user_id || null,
+                            employee_directory_id: application.employee_directory_id || null,
+                            self_approved: application.self_approved === true,
+                            approved_at: application.manager_approved_at || null,
+                            operator_user_id: normalizedUserId
+                        }))
                     }
                 });
             }
@@ -3636,6 +3967,7 @@ export const buildCheckoutPosUseCase = ({
                     idempotency_key: idempotencyKey,
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
+                    operator_session_id: normalizedOperatorSessionId,
                     shift_id: normalizedShiftId || null,
                     terminal_id: normalizedTerminalId || null,
                     order_source: 'in_store',
@@ -3771,6 +4103,9 @@ export const buildCheckoutPosUseCase = ({
                         selected_employee_id: governedApplication.type === 'employee'
                             ? governedApplication.employee_id || null
                             : null,
+                        selected_employee_directory_id: governedApplication.type === 'employee'
+                            ? governedApplication.employee_directory_id || null
+                            : null,
                         selected_employee_name: governedApplication.type === 'employee'
                             ? governedApplication.employee_name || null
                             : null,
@@ -3815,6 +4150,7 @@ export const buildCheckoutPosUseCase = ({
                             original_line_total: round4(Number(line.quantity || 0) * Number(line.sale_price || 0)),
                             final_line_total: round4(line.global_discount_base_amount || 0),
                             selected_employee_id: snapshot.employee_id || null,
+                            selected_employee_directory_id: snapshot.employee_directory_id || null,
                             selected_employee_name: snapshot.employee_name || null,
                             applied_by_user_id: normalizedUserId,
                             applied_by_name: String(user?.username || '').trim() || null,
@@ -3825,7 +4161,8 @@ export const buildCheckoutPosUseCase = ({
                             authorized_at: snapshot.approved_at || null,
                             approved_by_user_id: snapshot.approver_user_id || null,
                             approved_by_name: snapshot.approver_name || null,
-                            approved_at: snapshot.approved_at || null
+                            approved_at: snapshot.approved_at || null,
+                            self_approved: snapshot.self_approved === true
                         }
                     }, { transaction });
                 }
@@ -4140,6 +4477,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const reason = String(payload.reason || '').trim();
         const hasShiftIdPayload = Object.prototype.hasOwnProperty.call(payload || {}, 'shift_id')
             && payload.shift_id != null
@@ -4203,6 +4541,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     shiftId: activeShiftId,
                     terminalId: activeTerminalId,
                     locationId: terminalLocationId,
+                    shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                    authorizedOperatorUserId: user?.register_shift_owner_user_id ? actorUserId : null,
                     transaction,
                     lock: true
                 });
@@ -4357,6 +4697,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 completed_at: voidedAt,
                 metadata: {
                     evidence_scope: 'internal_void_only',
+                    operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
                     payment_status_before_void: paymentStatusBeforeVoid,
                     transaction_shift_id: transactionShiftId,
@@ -4384,6 +4725,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 reason,
                 changes: {
                     event: 'pos_transaction_voided',
+                    operator_session_id: operatorSessionId,
                     status: 'voided',
                     reason,
                     invoice_number: existing.invoice_number || null,
@@ -6435,7 +6777,8 @@ const buildCashierHistorySalesSummary = async ({ posRepository, shiftId, shift }
 export const buildOpenTerminalShiftUseCase = ({
     posRepository,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
-    resolveLocationScope = resolvePosOperationalLocationScope
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    onShiftOpened = null
 }) => {
     return async ({ payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -6601,11 +6944,22 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
+                const lifecycle = typeof onShiftOpened === 'function'
+                    ? await onShiftOpened({
+                        shift: existing,
+                        user,
+                        payload,
+                        requestId: idempotencyKey,
+                        tenantId,
+                        transaction
+                    })
+                    : null;
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
                     terminal_identity_policy: terminalPolicyContext,
-                    shift: toSerializable(existing)
+                    shift: toSerializable(existing),
+                    ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
                 };
                 await persistOperationReplay({
                     posRepository,
@@ -6678,11 +7032,22 @@ export const buildOpenTerminalShiftUseCase = ({
                 { transaction }
             );
 
+            const lifecycle = typeof onShiftOpened === 'function'
+                ? await onShiftOpened({
+                    shift: hydratedCreated || created,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    tenantId,
+                    transaction
+                })
+                : null;
             const replayPayload = {
                 reused_existing: false,
                 compliance_decision: complianceDecision,
                 terminal_identity_policy: terminalPolicyContext,
-                shift: toSerializable(hydratedCreated || created)
+                shift: toSerializable(hydratedCreated || created),
+                ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6951,6 +7316,7 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 event: 'shift_location_switched',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     from_location_id: sourceLocationId,
                     to_location_id: enforcedTargetLocationId,
@@ -7041,7 +7407,7 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 // Terminal context never grants ownership of another cashier's
                 // drawer. Admin monitoring is exposed through a separate
                 // read-only endpoint below.
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: requestedLocationId
             });
 
@@ -7322,6 +7688,7 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 event: 'cash_drawer_event_recorded',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     cash_drawer_event_id: created.pos_cash_drawer_event_id || null,
                     event_type: eventType,
@@ -7418,7 +7785,57 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
+const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+    const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
+        ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
+        : [];
+    if (sessions.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Complete or cancel ${sessions.length} in-flight payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
+                active_payment_session_count: sessions.length,
+                shift_id: Number(shiftId),
+                sessions: sessions.map((session) => ({
+                    pos_payment_session_id: Number(session.pos_payment_session_id),
+                    session_reference: session.session_reference,
+                    status: session.status
+                }))
+            }
+        }
+    );
+};
+
+const assertNoInFlightOperatorMutationForShift = async ({ posRepository, shiftId, transaction }) => {
+    const mutation = typeof posRepository.findInFlightOperatorMutationForShift === 'function'
+        ? await posRepository.findInFlightOperatorMutationForShift(shiftId, {
+            staleBefore: new Date(Date.now() - (5 * 60 * 1000)),
+            transaction,
+            lock: true
+        })
+        : null;
+    if (!mutation) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Wait for the active cashier operation to finish before closing this shift.',
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_OPERATOR_MUTATION_IN_FLIGHT',
+                operator_session_id: Number(mutation.pos_terminal_operator_session_id),
+                operation_type: mutation.protected_operation_type || null,
+                shift_id: Number(shiftId)
+            }
+        }
+    );
+};
+
+export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
@@ -7499,6 +7916,16 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -7522,6 +7949,15 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
 
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -7534,6 +7970,14 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_closed',
+                    transaction,
+                    at: new Date()
+                });
+            }
             const shiftLocationId = parsePositiveInt(shiftPayload?.location_id);
             const remainingOpenShifts = shiftLocationId
                 ? await posRepository.listOpenTerminalShiftsForLocation(
@@ -7545,6 +7989,7 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 compliance_decision: complianceDecision,
                 shift_authorization: shiftAuthorization,
                 shift: toSerializable(closed),
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 cash_summary: {
                     ...summary,
                     closing_cash_amount: closingCashAmount,
@@ -7612,6 +8057,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
 
 export const buildForceCloseStaleTerminalShiftUseCase = ({
     posRepository,
+    revokeOperatorSessionsForTerminal = null,
+    onShiftClosing = null,
     now = () => new Date(),
     staleAfterHours = resolvePosStaleShiftHours()
 }) => {
@@ -7700,6 +8147,16 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -7724,6 +8181,15 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -7736,10 +8202,19 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_force_closed',
+                    transaction,
+                    at: recoveredAt
+                });
+            }
 
             const replayPayload = {
                 compliance_decision: complianceDecision,
                 recovery_authorization: recoveryAuthorization,
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 shift: toSerializable(closed),
                 cash_summary: {
                     ...summary,
@@ -7840,7 +8315,7 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;
@@ -7917,6 +8392,8 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 posRepository,
                 cashierId: normalizedUserId,
                 shiftId,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.operator_session_id ? normalizedUserId : null,
                 lock: false
             });
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
@@ -8181,6 +8658,8 @@ const buildCollectCashOnlineOrderUseCase = ({
                 cashierId,
                 terminalId,
                 locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
                 transaction,
                 lock: true
             });
@@ -8213,6 +8692,7 @@ const buildCollectCashOnlineOrderUseCase = ({
                 action: 'UPDATE',
                 changes: {
                     event: `${orderLabel}_cash_collected`,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_type: 'cash',
                     payment_timing: paymentTiming,
                     payment_status: 'paid',
@@ -8454,6 +8934,8 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
                 cashierId,
                 terminalId,
                 locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
                 transaction,
                 lock: true
             });
@@ -8534,6 +9016,7 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
                 action: 'UPDATE',
                 changes: {
                     event: 'order_balance_settled',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_method: paymentMethod,
                     payment_provider: isCashSettlement ? null : 'merchant_owned',
                     manual_payment_received: manualPaymentReceived,

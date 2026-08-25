@@ -39,6 +39,15 @@ class ReceiptLogoProvider(
         clockMs = clockMs
     )
 
+    // Built-in iMin printing accepts a Bitmap instead of ESC/POS raster bytes.
+    // Cache a compact PNG representation and decode a caller-owned Bitmap for
+    // each print so the caller can recycle it safely after the SDK call.
+    private val bitmapCache = TtlLruCache<String, ByteArray>(
+        maxSize = CACHE_MAX_ENTRIES,
+        ttlMs = POSITIVE_TTL_MS,
+        clockMs = clockMs
+    )
+
     // Short negative cache so a broken/unreachable icon URL doesn't add a network
     // timeout to every single receipt for the rest of the shift.
     private val failureCache = TtlLruCache<String, Boolean>(
@@ -50,12 +59,24 @@ class ReceiptLogoProvider(
     // The bundled drawable never changes at runtime, so decode/scale/encode it once
     // instead of on every fallback (the pre-fix code re-decoded it on every print).
     private val fallbackRasterBytes: ByteArray? by lazy { decodeFallback() }
+    private val fallbackBitmapBytes: ByteArray? by lazy { decodeFallbackBitmapBytes() }
 
     fun resolveRasterBytes(logoSource: String): ByteArray? {
         val trimmed = logoSource.trim()
         if (trimmed.isEmpty()) return fallbackRasterBytes
 
         successCache.get(trimmed)?.let { return it }
+        bitmapCache.get(trimmed)?.let { encoded ->
+            val bitmap = BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
+                ?: return@let
+            val raster = try {
+                bitmapToEscPosRaster(bitmap)
+            } finally {
+                bitmap.recycle()
+            }
+            successCache.put(trimmed, raster)
+            return raster
+        }
         if (failureCache.get(trimmed) == true) return fallbackRasterBytes
 
         val bitmap = try {
@@ -93,6 +114,44 @@ class ReceiptLogoProvider(
         return raster
     }
 
+    fun resolveBitmap(logoSource: String): Bitmap? {
+        val trimmed = logoSource.trim()
+        val encoded = if (trimmed.isEmpty()) {
+            fallbackBitmapBytes
+        } else {
+            bitmapCache.get(trimmed) ?: run {
+                if (failureCache.get(trimmed) == true) return@run fallbackBitmapBytes
+                val source = try {
+                    downloadBitmap(trimmed)
+                } catch (exception: Exception) {
+                    Log.w(TAG, "Failed to download receipt logo from $trimmed", exception)
+                    null
+                }
+                if (source == null) {
+                    failureCache.put(trimmed, true)
+                    return@run fallbackBitmapBytes
+                }
+
+                val scaled = scaleBitmapToWidth(source, RECEIPT_LOGO_WIDTH_DOTS)
+                if (scaled !== source) source.recycle()
+                val bytes = try {
+                    bitmapToPngBytes(scaled)
+                } finally {
+                    scaled.recycle()
+                }
+                if (bytes == null) {
+                    failureCache.put(trimmed, true)
+                    fallbackBitmapBytes
+                } else {
+                    bitmapCache.put(trimmed, bytes)
+                    bytes
+                }
+            }
+        } ?: return null
+
+        return BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
+    }
+
     private fun decodeFallback(): ByteArray? {
         val source = BitmapFactory.decodeResource(appContext.resources, R.drawable.dgfy_receipt_logo)
             ?: return null
@@ -103,6 +162,18 @@ class ReceiptLogoProvider(
 
         return try {
             bitmapToEscPosRaster(scaled)
+        } finally {
+            scaled.recycle()
+        }
+    }
+
+    private fun decodeFallbackBitmapBytes(): ByteArray? {
+        val source = BitmapFactory.decodeResource(appContext.resources, R.drawable.dgfy_receipt_logo)
+            ?: return null
+        val scaled = scaleBitmapToWidth(source, RECEIPT_LOGO_WIDTH_DOTS)
+        if (scaled !== source) source.recycle()
+        return try {
+            bitmapToPngBytes(scaled)
         } finally {
             scaled.recycle()
         }
@@ -160,6 +231,12 @@ class ReceiptLogoProvider(
                 output.toByteArray()
             }
         }
+
+        private fun bitmapToPngBytes(bitmap: Bitmap): ByteArray? =
+            ByteArrayOutputStream().use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) return null
+                output.toByteArray()
+            }
 
         private fun isDarkPixel(pixel: Int): Boolean {
             val alpha = Color.alpha(pixel)

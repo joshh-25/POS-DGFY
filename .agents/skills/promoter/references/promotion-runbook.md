@@ -34,9 +34,16 @@ gh pr merge <N> --merge   # never --squash — see SKILL.md
 
 ## Leg 2 — `staging` → `main`
 
-Before cutting the branch: run `npm run gate:release:local` against the target SHA and confirm the
-tenant-schema sync report is clean against **production** tenant databases (not staging's) — see
-`../SKILL.md`'s "Pre-`main` gates" section. Do not proceed past a failing gate.
+Before cutting the branch: run `npm run gate:release:local` against the target SHA, and dispatch the
+tenant-schema report against **production** (not staging's) — see `../SKILL.md`'s "Pre-`main` gates"
+section. Do not proceed past a failing gate.
+
+```bash
+gh workflow run tenant-schema-report.yml -f environment=PROD
+# poll:
+gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
+gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
+```
 
 ```bash
 git fetch origin

@@ -1,4 +1,12 @@
 import { posRepository } from './repositories/posRepository.js';
+export { createPosCashierAttendanceRepository } from './repositories/posCashierAttendanceRepository.js';
+export {
+    serializeEmployeeAttendanceSession,
+    serializeEmployeeBreakSegment,
+    serializePosDrawerHandoffEvent,
+    serializePosTerminalOperatorSession,
+    serializePosTransactionOperatorAttribution
+} from './serializers/posCashierAttendanceSerializers.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
 import {
     inventoryStockCommandService,
@@ -25,6 +33,7 @@ import {
     buildListPosCatalogUseCase,
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
+    buildListPosDiscountEmployeesUseCase,
     buildListPosDiscountApproversUseCase,
     buildVerifyPosDiscountApprovalUseCase,
     buildListPosTransactionsUseCase,
@@ -123,6 +132,22 @@ import {
 } from './usecases/merchantTenderReconciliationUseCases.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import posDrawerAuthorizationService from './services/posDrawerAuthorizationService.js';
+import { createPosCashierAttendanceRepository } from './repositories/posCashierAttendanceRepository.js';
+import { createPosCashierAttendanceConfigRepository } from './repositories/posCashierAttendanceConfigRepository.js';
+import { createPosCashierAttendanceUseCases } from './usecases/posCashierAttendanceUseCases.js';
+import { createPosCashierLifecycleUseCases } from './usecases/posCashierLifecycleUseCases.js';
+import { createPosCashierAttendanceConfigUseCases } from './usecases/posCashierAttendanceConfigUseCases.js';
+import { resolveMovementLocation, assertLocationAccess } from '../../services/locationInventoryService.js';
+import { resolvePosCashierAttendanceFeature, requirePosCashierAttendanceFeature } from './services/posCashierAttendanceFeature.js';
+import posOperatorAuthorityService from './services/posOperatorAuthorityService.js';
+import { createPosOperatorAuthorityUseCases } from './usecases/posOperatorAuthorityUseCases.js';
+
+const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
+const posCashierLifecycleUseCases = createPosCashierLifecycleUseCases({
+    repository: posCashierAttendanceRepository,
+    resolveFeature: resolvePosCashierAttendanceFeature,
+    authorityService: posOperatorAuthorityService
+});
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
@@ -140,6 +165,7 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     completeClaimedPosParkedSaleUseCase
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
+export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({ posRepository });
@@ -217,7 +243,10 @@ export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     posRepository,
     imageStorage: posCatalogImageStorage
 });
-export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({
+    posRepository,
+    onShiftOpened: posCashierLifecycleUseCases.onShiftOpened
+});
 export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
 export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
 export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
@@ -225,8 +254,19 @@ export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocati
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
-export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
-export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
+const revokePosOperatorSessionsForTerminal = ({ terminalId, reason, transaction, at }) => (
+    posCashierAttendanceRepository.revokeOperatorSessionsForTerminal({ terminalId, reason, transaction, at })
+);
+export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({
+    posRepository,
+    revokeOperatorSessionsForTerminal: revokePosOperatorSessionsForTerminal,
+    onShiftClosing: posCashierLifecycleUseCases.onShiftClosing
+});
+export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({
+    posRepository,
+    revokeOperatorSessionsForTerminal: revokePosOperatorSessionsForTerminal,
+    onShiftClosing: posCashierLifecycleUseCases.onShiftClosing
+});
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
 export const listOnlineOrderHistoryUseCase = buildListOnlineOrderHistoryUseCase({ posRepository });
@@ -277,6 +317,66 @@ export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     deviceDriver: posDeviceDriver,
     authorizationService: posDrawerAuthorizationService
 });
+const posCashierAttendanceUseCases = createPosCashierAttendanceUseCases({
+    repository: posCashierAttendanceRepository,
+    resolveLocation: resolveMovementLocation,
+    assertLocationAccess,
+    resolveFeature: requirePosCashierAttendanceFeature,
+    resolveReadFeature: resolvePosCashierAttendanceFeature,
+    revokeOperatorSessionsForUser: ({ userId, reason, transaction, at }) => posCashierAttendanceRepository.revokeOperatorSessionsForUser({ userId, reason, transaction, at })
+});
+const posCashierAttendanceConfigUseCases = createPosCashierAttendanceConfigUseCases({
+    repository: createPosCashierAttendanceConfigRepository()
+});
+export const getPosCashierAttendanceConfigUseCase = posCashierAttendanceConfigUseCases.getConfig;
+export const updatePosCashierAttendanceConfigUseCase = posCashierAttendanceConfigUseCases.updateConfig;
+export const getCurrentPosCashierAttendanceUseCase = posCashierAttendanceUseCases.getCurrentAttendance;
+export const timeInPosCashierAttendanceUseCase = posCashierAttendanceUseCases.timeIn;
+export const timeOutPosCashierAttendanceUseCase = posCashierAttendanceUseCases.timeOut;
+export const startPosCashierBreakUseCase = posCashierAttendanceUseCases.startBreak;
+export const endPosCashierBreakUseCase = posCashierAttendanceUseCases.endBreak;
+export const startPosCashierReliefDutyUseCase = posCashierAttendanceUseCases.startReliefDuty;
+export const endPosCashierReliefDutyUseCase = posCashierAttendanceUseCases.endReliefDuty;
+export const correctPosCashierAttendanceUseCase = posCashierAttendanceUseCases.correctAttendance;
+const posOperatorPinRateLimiter = (() => {
+    const failures = new Map();
+    const keyState = (key) => failures.get(key) || { count: 0, lockedUntil: 0 };
+    return {
+        isLocked: (key, at = Date.now()) => keyState(key).lockedUntil > at,
+        registerFailure: (key, at = Date.now()) => {
+            const state = keyState(key);
+            state.count += 1;
+            if (state.count >= 5) state.lockedUntil = at + (15 * 60 * 1000);
+            failures.set(key, state);
+        },
+        clear: (key) => failures.delete(key)
+    };
+})();
+const posOperatorAuthorityUseCases = createPosOperatorAuthorityUseCases({
+    repository: posCashierAttendanceRepository,
+    resolveFeature: requirePosCashierAttendanceFeature,
+    resolveMutationFeature: resolvePosCashierAttendanceFeature,
+    authorityService: posOperatorAuthorityService,
+    rateLimiter: posOperatorPinRateLimiter,
+    ensureAttendanceForTakeover: posCashierLifecycleUseCases.ensureAttendanceForTakeover
+});
+export const enrollPosCashierPinUseCase = posOperatorAuthorityUseCases.setPin;
+export const resetPosCashierPinUseCase = posOperatorAuthorityUseCases.resetPin;
+export const takeOverPosRegisterUseCase = posOperatorAuthorityUseCases.takeOver;
+export const returnPosRegisterUseCase = posOperatorAuthorityUseCases.returnRegister;
+export const startPosSharedReliefUseCase = posOperatorAuthorityUseCases.startSharedRelief;
+export const endPosSharedReliefUseCase = posOperatorAuthorityUseCases.endSharedRelief;
+export const countedPosCustodyHandoffUseCase = posOperatorAuthorityUseCases.countedHandoff;
+export const getCurrentPosOperatorUseCase = posOperatorAuthorityUseCases.getCurrent;
+export const listEligiblePosOperatorsUseCase = posOperatorAuthorityUseCases.listEligible;
+export const authorizePosOperatorMutationUseCase = posOperatorAuthorityUseCases.authorizeMutation;
+export const releasePosOperatorMutationUseCase = posOperatorAuthorityUseCases.releaseMutation;
+export const endPosOperatorSessionUseCase = posOperatorAuthorityUseCases.end;
+export const resumePosCashierUseCase = posCashierLifecycleUseCases.resume;
+export const revokePosOperatorSessionsForUser = posOperatorAuthorityUseCases.revokeForUser;
+// Keep the repository-backed revocation adapter available to close/unpair paths and export the
+// policy use case for callers that need the same behavior outside a shift close transaction.
+export { revokePosOperatorSessionsForTerminal };
 export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });

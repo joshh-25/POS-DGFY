@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
+const mockListPosDiscountEmployeesUseCase = jest.fn();
 const mockListPosDiscountApproversUseCase = jest.fn();
 const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
@@ -79,12 +80,23 @@ const mockCancelPosPaymentSessionUseCase = jest.fn();
 const mockCompletePosPaymentSessionUseCase = jest.fn();
 const mockGetMerchantTenderReconciliationUseCase = jest.fn();
 const mockReviewMerchantTenderReconciliationUseCase = jest.fn();
+const mockGetCurrentPosCashierAttendanceUseCase = jest.fn();
+const mockGetPosCashierAttendanceConfigUseCase = jest.fn();
+const mockUpdatePosCashierAttendanceConfigUseCase = jest.fn();
+const mockTimeInPosCashierAttendanceUseCase = jest.fn();
+const mockTimeOutPosCashierAttendanceUseCase = jest.fn();
+const mockStartPosCashierBreakUseCase = jest.fn();
+const mockEndPosCashierBreakUseCase = jest.fn();
+const mockStartPosCashierReliefDutyUseCase = jest.fn();
+const mockEndPosCashierReliefDutyUseCase = jest.fn();
+const mockCorrectPosCashierAttendanceUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: mockListPosCatalogUseCase,
     scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
+    listPosDiscountEmployeesUseCase: mockListPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase: mockListPosDiscountApproversUseCase,
     verifyPosDiscountApprovalUseCase: mockVerifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
@@ -159,6 +171,30 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     completePosPaymentSessionUseCase: mockCompletePosPaymentSessionUseCase,
     getMerchantTenderReconciliationUseCase: mockGetMerchantTenderReconciliationUseCase,
     reviewMerchantTenderReconciliationUseCase: mockReviewMerchantTenderReconciliationUseCase,
+    getCurrentPosCashierAttendanceUseCase: mockGetCurrentPosCashierAttendanceUseCase,
+    getPosCashierAttendanceConfigUseCase: mockGetPosCashierAttendanceConfigUseCase,
+    updatePosCashierAttendanceConfigUseCase: mockUpdatePosCashierAttendanceConfigUseCase,
+    timeInPosCashierAttendanceUseCase: mockTimeInPosCashierAttendanceUseCase,
+    timeOutPosCashierAttendanceUseCase: mockTimeOutPosCashierAttendanceUseCase,
+    startPosCashierBreakUseCase: mockStartPosCashierBreakUseCase,
+    endPosCashierBreakUseCase: mockEndPosCashierBreakUseCase,
+    startPosCashierReliefDutyUseCase: mockStartPosCashierReliefDutyUseCase,
+    endPosCashierReliefDutyUseCase: mockEndPosCashierReliefDutyUseCase,
+    correctPosCashierAttendanceUseCase: mockCorrectPosCashierAttendanceUseCase,
+    enrollPosCashierPinUseCase: jest.fn(),
+    resetPosCashierPinUseCase: jest.fn(),
+    takeOverPosRegisterUseCase: jest.fn(),
+    returnPosRegisterUseCase: jest.fn(),
+    startPosSharedReliefUseCase: jest.fn(),
+    endPosSharedReliefUseCase: jest.fn(),
+    countedPosCustodyHandoffUseCase: jest.fn(),
+    getCurrentPosOperatorUseCase: jest.fn(),
+    listEligiblePosOperatorsUseCase: jest.fn(),
+    authorizePosOperatorMutationUseCase: jest.fn(),
+    releasePosOperatorMutationUseCase: jest.fn(),
+    endPosOperatorSessionUseCase: jest.fn(),
+    revokePosOperatorSessionsForTerminal: jest.fn(),
+    resumePosCashierUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000
 }));
 
@@ -352,7 +388,8 @@ describe('posHandlers transport contracts', () => {
                 terminal_id: 'POS-01'
             }),
             userId: 4,
-            user: expect.objectContaining({ user_id: 4 })
+            user: expect.objectContaining({ user_id: 4 }),
+            operatorSessionId: null
         });
         expect(res.status).toHaveBeenCalledWith(201);
         expect(res.json).toHaveBeenCalledWith({

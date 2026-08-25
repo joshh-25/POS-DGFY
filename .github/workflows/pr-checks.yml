@@ -74,10 +74,27 @@ env:
 # deleted). A permanently-skipped job is still a row in every PR's Checks
 # tab with nothing to say -- pure clutter, and it invites the false read
 # that something is actually being checked. Removed outright 2026-08-14
-# (#416); both reusable workflows are untouched and still runnable by hand
-# from the Actions tab (pr-quality-checks.yml / pr-android-build-checks.yml,
-# now `workflow_dispatch`-triggered) whenever a full test run or an Android
-# build-check is actually wanted, without paying for either on every PR.
+# (#416); pr-android-build-checks.yml is still `workflow_dispatch`-only,
+# runnable by hand from the Actions tab whenever an Android build-check is
+# actually wanted, without paying for it on every PR.
+#
+# 2026-08-25 (PR #1003): this PR's own head commit re-added a `quality-checks:`
+# job block right here, unconditional and unfiltered by path -- exactly the
+# every-PR cost the paragraph directly above it describes removing. Reverted
+# in the same PR before merge; the block never ran as part of develop's
+# history. If quality-checks is ever genuinely re-wired on purpose, it needs
+# its own PR that says so in the title/body and updates this comment plus
+# scripts/check-pr-quality-workflow.js's expectations -- not a side effect of
+# an unrelated feature PR.
+#
+# #1018/#1008 Phase 3 (this repo's own answer to the paragraph directly above): the former
+# pr-quality-checks.yml, renamed promotion-quality-gate.yml, is genuinely re-wired on purpose --
+# but NOT as a job added to this file. It triggers itself, on its own `pull_request: branches:
+# [staging, main]`, gated by its own `gate` job to only the `to-staging/*`/`release/*` promotion
+# PRs specifically. This file (pr-checks.yml) still runs on every `develop`/`staging`/`main` PR
+# and stays exactly as cheap as the paragraphs above describe -- the promotion-time gate is a
+# fully separate workflow file precisely so it never becomes a row in an ordinary feature PR's
+# Checks tab.
 jobs:
   changes:
     # Drafts aren't merge candidates -- skip the whole pipeline rather than

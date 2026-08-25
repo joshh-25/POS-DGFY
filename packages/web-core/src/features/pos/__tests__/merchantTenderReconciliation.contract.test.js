@@ -22,6 +22,14 @@ describe('merchant-owned tender reconciliation UI contract', () => {
     expect(workspaceSource).toContain('hasVariance && reviewNote.trim().length < 8');
   });
 
+  it('shows Employee Credit as a read-only internal receivable instead of an observed external tender', () => {
+    expect(workspaceSource).toContain('data-testid="employee-credit-reconciliation-row"');
+    expect(workspaceSource).toContain('Employee Credit is shown read-only because it is an internal receivable.');
+    expect(workspaceSource).toContain('salesSummary={shiftState.salesSummary}');
+    expect(workspaceSource).toContain("=== 'employee_credit'");
+    expect(workspaceSource).not.toContain("{ key: 'employee_credit'");
+  });
+
   it('uses shift-scoped read and append-review endpoints', () => {
     expect(serviceSource).toContain('fetchMerchantTenderReconciliation');
     expect(serviceSource).toContain('reviewMerchantTenderReconciliation');

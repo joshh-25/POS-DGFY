@@ -140,7 +140,20 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      # #1014: measured live against PROD's actual d8ff7d5c boot (2026-08-25). Two sequential,
+      # full-tenant-sweep costs dominate startup, not one: the entrypoint's `sync-tenant-schemas.js
+      # --mode repair-apply` (~1.6s/tenant, gated on TENANT_SCHEMA_MUTATION_APPROVED -- confirmed
+      # still `true` on PROD) plus server.js's own blocking pre-listen() tenant preflight
+      # (`auditTenantSchemaReadiness`, mode=report, ~0.38s/tenant -- this one is UNCONDITIONAL in
+      # production regardless of the mutation flag, see tenantSchemaPreflightRequired). Combined
+      # ~1.98s/tenant + ~7s fixed Node/landlord-audit overhead measured against 49 active tenants
+      # (~104s observed, listen() at T+104.3s). The prior 30s start_period declared the container
+      # unhealthy at ~T+90s, 14s before the port even opened -- a false alarm, not a real failure.
+      # 300s covers the measured formula out to ~145 tenants (~3x current count) with margin, so
+      # this doesn't need revisiting on every routine tenant signup -- only once growth approaches
+      # that range. Once past start_period, failing checks still count toward `retries` as normal;
+      # this only widens the startup grace window, not steady-state failure detection.
+      start_period: 300s
 
   dgfy-ims:
     image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}

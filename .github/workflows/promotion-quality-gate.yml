@@ -1,14 +1,34 @@
-name: PR Quality Checks
+name: Promotion Quality Gate
 
-# No longer wired into pr-checks.yml (removed 2026-08-14, #416 -- it was
-# permanently `if: false` there since #338/#345 found its first full run
-# took ~14min and it isn't path-filtered, so it would run unconditionally on
-# every PR). Kept runnable by hand from the Actions tab via workflow_dispatch
-# for whenever a full lint+test pass against a branch is actually wanted,
-# without paying for it on every PR. `workflow_call` stays too, in case a
-# future caller wants it path-gated or otherwise conditional again -- see
-# #345's reframe for the current thinking on when/whether that should happen.
+# Renamed from pr-quality-checks.yml (#1018/#1008 Phase 3). Was `workflow_dispatch`-only since
+# 2026-08-14 (#416) -- permanently `if: false` in pr-checks.yml before that, since #338/#345 found
+# its first full run took ~14min and it isn't path-filtered, so wiring it into every PR reproduced
+# that cost on every push. #1015/#1016 (this epic's earlier phases) cut the backend test matrix
+# from ~19.6min to ~2-4min and made the local release gate instrumented/selectable -- the thing
+# that made this workflow too expensive to run automatically no longer holds at the old cost, so
+# #927 ("where does this run in the promotion flow") is answered here: **once per promotion PR
+# into `staging`/`main`, not per PR into `develop`.** The `pr-` prefix stopped fitting the moment
+# that became true -- this file is not "a PR check", it's the CI-side half of the promotion gate,
+# with `npm run gate:release:local` (invoked by `promoter`, see .agents/skills/promoter/SKILL.md)
+# as the complementary local half. Deliberately NOT wired into `pr-checks.yml` or made to run on
+# every PR into `develop` -- that would reproduce exactly the cost #416 removed it to avoid; the
+# `gate` job below is what keeps this scoped to promotion PRs specifically.
+#
+# `workflow_call`/`workflow_dispatch` stay for the same reasons they always did: a future caller
+# wanting this path-gated differently, and a manual full run against an arbitrary branch without
+# waiting for a real promotion PR to open. Both bypass the `gate` job's promotion check entirely
+# (see its own comment) -- that's intentional, matching how the original `workflow_dispatch` always
+# ran unconditionally by hand.
 on:
+  pull_request:
+    branches:
+      - staging
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   workflow_call:
     inputs: &runner_labels_input
       runner_labels_json:
@@ -23,9 +43,57 @@ on:
   workflow_dispatch:
     inputs: *runner_labels_input
 
+concurrency:
+  # pull_request.number is unset for workflow_dispatch/workflow_call -- github.run_id is always
+  # unique, so it falls back to "never cancel/collide with itself" for those triggers instead of
+  # erroring on a blank group key.
+  group: promotion-quality-gate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
+  # Decides whether this run is a real promotion PR. Mirrors
+  # scripts/check-compliance-impact.js:219-222's PROMOTION_HEAD_PREFIX_BY_BASE literally (base
+  # staging -> head prefix to-staging/, base main -> head prefix release/) rather than inventing a
+  # second detection mechanism -- that file can't be `require()`d for its constant (it's a
+  # run-to-completion script with no module.exports, not a module), so the two prefix pairs are
+  # kept in sync by hand; scripts/check-pr-quality-workflow.js asserts both files still contain the
+  # same literals so a future edit to one that isn't mirrored here fails CI instead of drifting
+  # silently. A `workflow_dispatch`/`workflow_call` trigger always proceeds unconditionally -- same
+  # behavior this workflow always had for those triggers, no promotion check applies to a manual
+  # run or a reusable-workflow caller.
+  gate:
+    runs-on: ['sieitz-runner']
+    timeout-minutes: 2
+    outputs:
+      is_promotion: ${{ steps.check.outputs.is_promotion }}
+    steps:
+      - name: Determine whether this is a promotion PR
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally"
+            exit 0
+          fi
+          case "$BASE_REF" in
+            staging)
+              case "$HEAD_REF" in to-staging/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              ;;
+            main)
+              case "$HEAD_REF" in release/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              ;;
+          esac
+          echo "is_promotion=false" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE_REF head=$HEAD_REF does not match a known promotion head prefix -- skipping quality jobs"
+
   dgfy-api-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
     services:
       mysql:
@@ -154,7 +222,9 @@ jobs:
           retention-days: 5
 
   migration-runner-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     services:
       mysql:
@@ -202,7 +272,9 @@ jobs:
   # and node_modules-free); the 7th, storefrontErrorMessages.test.js, is
   # storefront's own local test.
   frontend-ims-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -235,7 +307,9 @@ jobs:
           ../../packages/web-core/src/config/__tests__/permissionsFrontendParity.test.js
 
   frontend-pos-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -256,7 +330,9 @@ jobs:
         run: npm run lint
 
   frontend-storefront-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -304,7 +380,9 @@ jobs:
           retention-days: 5
 
   repository-quality:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true'
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

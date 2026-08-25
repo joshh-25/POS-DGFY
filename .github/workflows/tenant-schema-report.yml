@@ -1,0 +1,168 @@
+name: Tenant Schema Report
+
+# Manually-dispatched, read-only production tenant-schema-sync report -- fills the gap named in
+# #1017: #1007's own design already states this report is the ONE gate that is never skippable,
+# regardless of urgency, because it's what would have caught the #858/#639-class crash-loop risk
+# (a tenant missing required tables entirely crash-loops the whole shared API on next restart,
+# since the boot-time tenant preflight is unconditional and all-or-nothing under
+# NODE_ENV=production -- see server.js's runTenantSchemaPreflight()). But until this workflow,
+# running it required manual SSH into the target host and `docker compose exec` by hand, so in
+# practice it was never run -- confirmed absent from both PR #858 and PR #1006 (#1009).
+#
+# Modeled directly on verify-deployment.yml (#514), which already proves the exact SSH +
+# `docker compose exec -T dgfy-api <command>` pattern this needs, including the OpenVPN-on-a-
+# self-hosted-runner hazard (never bring up a tunnel into a network the runner is already on) and
+# the per-GitHub-Environment SSH_PRIVATE_KEY/SSH_TARGET/DOCKER_DIR secret pattern. See that
+# workflow's own header comment for the full rationale on VPN gating and the self-hosted-runner
+# network topology; not re-derived here.
+#
+# READ-ONLY, unconditionally: this workflow only ever dispatches `sync-tenant-schemas.js` with
+# `--mode report`. `report` needs no TENANT_SCHEMA_MUTATION_APPROVED (that gate exists only for
+# `repair-apply`/`alter`, see assertTenantSchemaMutationModeAllowed in the script itself) and
+# performs no writes -- one landlord DB query for active tenants, then a per-tenant
+# INFORMATION_SCHEMA inspection. There is no input here that can select a different --mode; that's
+# deliberate, not an oversight (#1017's "Must hold" section) -- a write-capable mode must never be
+# reachable through this workflow.
+#
+# Dispatching this is a read action, same classification `verifier`'s own SKILL.md already gives
+# dispatching verify-deployment.yml -- not a deploy-dispatch checkpoint under `implement`'s
+# checkpoint policy ("read-only checks... are fine -- nothing that changes server state runs
+# unattended").
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to report against (resolves SSH_PRIVATE_KEY/SSH_TARGET/DOCKER_DIR from that GitHub Environment). PROD is the one that matters -- #1007 names it never-skippable; DEV/STAGING exist to test this workflow itself without touching prod.
+        type: choice
+        options:
+          - PROD
+          - STAGING
+          - DEV
+        default: PROD
+        required: true
+      vpn_required:
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see verify-deployment.yml's header comment
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ['sieitz-runner']
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Write OpenVPN config
+        if: inputs.vpn_required
+        env:
+          OVPN_CONFIG: ${{ secrets.OVPN_CONFIG }}
+        run: |
+          printf '%s\n' "$OVPN_CONFIG" > /tmp/client.ovpn
+
+      - name: Install OpenVPN
+        if: inputs.vpn_required
+        run: |
+          sudo apt update
+          sudo apt install -y openvpn openvpn-systemd-resolved
+
+      - name: Connect to VPN
+        if: inputs.vpn_required
+        uses: kota65535/github-openvpn-connect-action@v2
+        with:
+          config_file: /tmp/client.ovpn
+          username: ${{ secrets.OVPN_USERNAME }}
+          password: ${{ secrets.OVPN_PASSWORD }}
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${SSH_TARGET#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run tenant-schema report inside the dgfy-api container
+        id: report
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
+        run: |
+          set -euo pipefail
+
+          # --report-file writes JSON inside the container; the file never leaves it -- the report
+          # is already printed to stdout in full (runTenantSchemaSync's own
+          # `console.log(JSON.stringify(report, null, 2))`), which `docker compose exec -T`
+          # streams straight back over SSH into this job's log, so a second copy step isn't needed.
+          # --fail-on-error makes the script's own exit code carry the verdict: nonzero whenever
+          # failed_tenant_count > 0, so this step (and the job) fails exactly when the report finds
+          # a real problem, not on any transport hiccup alone.
+          cat > /tmp/remote-report.sh <<'REMOTE_SCRIPT'
+          set -uo pipefail
+          cd "$DOCKER_DIR" || exit 1
+          docker compose exec -T dgfy-api \
+            node scripts/sync-tenant-schemas.js --mode report --fail-on-error
+          REMOTE_SCRIPT
+
+          if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+               "DOCKER_DIR='$DOCKER_DIR' bash -s" \
+               < /tmp/remote-report.sh > /tmp/report-output.log 2>&1; then
+            echo "result=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/report-output.log
+
+      - name: Write step summary
+        if: always()
+        run: |
+          # The script's own JSON report is the last JSON-looking blob in the log -- pull
+          # summary.tenants_total/succeeded/failed out with a small inline node parse when
+          # possible; fall back to "see raw transcript" if the shape ever changes rather than
+          # failing the summary step over a parsing mismatch.
+          SUMMARY_LINE="$(node -e '
+            const fs = require("fs");
+            const text = fs.readFileSync("/tmp/report-output.log", "utf8");
+            const start = text.lastIndexOf("{\n  \"generated_at\"");
+            if (start === -1) { console.log(""); process.exit(0); }
+            try {
+              const report = JSON.parse(text.slice(start));
+              console.log(`tenants_total=${report.summary.tenants_total} succeeded=${report.summary.succeeded} failed=${report.summary.failed}`);
+            } catch {
+              console.log("");
+            }
+          ' 2>/dev/null || true)"
+
+          {
+            echo "### Tenant schema report -- ${{ inputs.environment }}"
+            echo ""
+            echo "**Result: ${{ steps.report.outputs.result || 'FAIL (no result recorded -- workflow error before the report step completed)' }}**"
+            if [ -n "$SUMMARY_LINE" ]; then
+              echo ""
+              echo "$SUMMARY_LINE"
+            fi
+            echo ""
+            echo "<details><summary>Raw report transcript</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/report-output.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the run on a bad result
+        if: steps.report.outputs.result != 'PASS'
+        run: |
+          echo "::error::Tenant schema report failed for ${{ inputs.environment }} -- see the step summary for the report transcript (failed_tenant_count > 0, or a transport/SSH error)."
+          exit 1
+
+      - name: Clean up deploy credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/client.ovpn

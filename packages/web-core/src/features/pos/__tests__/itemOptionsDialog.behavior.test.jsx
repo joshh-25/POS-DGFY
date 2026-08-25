@@ -45,6 +45,7 @@ describe('ItemOptionsDialog', () => {
         id_number: '',
         employee_name: '',
         employee_id: '',
+        employee_directory_id: '',
         promo_code: '',
         reason: '',
         approver_user_id: '7',
@@ -97,7 +98,7 @@ describe('ItemOptionsDialog', () => {
     expect(screen.getByText(/configured Senior\/PWD discount rate is verified by the server/i)).toBeDefined();
   });
 
-  it('defaults the employee and authorizing employee to the active shift cashier', () => {
+  it('defaults only the authorizing employee to the active shift cashier', () => {
     render(
       <ItemOptionsDialog
         open
@@ -112,7 +113,40 @@ describe('ItemOptionsDialog', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Employee' }));
 
-    expect(screen.getByLabelText(/Employee name/).value).toBe('Cashier');
+    expect(screen.getByLabelText(/Employee name/).value).toBe('');
     expect(screen.getByRole('combobox', { name: 'Authorizing employee' }).value).toBe('7');
+  });
+
+  it('selects a registered employee and auto-fills the employee code', () => {
+    const onSave = vi.fn();
+    render(
+      <ItemOptionsDialog
+        open
+        line={{ item_name: 'Burger', quantity: 1, sale_price: 150, modifier_groups: [], line_modifiers: [] }}
+        discountEmployees={[{
+          employee_id: 14,
+          employee_code: '001',
+          full_name: 'Joshua Guto',
+          location_name: 'Masu Cafe',
+        }]}
+        discountApprovers={[{ user_id: 7, username: 'Manager' }]}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Employee' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Employee name' }), { target: { value: '14' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Authorizing employee' }), { target: { value: '7' } });
+    fireEvent.change(screen.getByLabelText('Approval PIN'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(screen.getByLabelText('Employee ID').value).toBe('001');
+    expect(onSave.mock.calls[0][0].item_discount).toMatchObject({
+      employee_directory_id: '14',
+      employee_name: 'Joshua Guto',
+      employee_id: '001',
+    });
   });
 });

@@ -130,6 +130,28 @@ describe('usePosHistoryVoidWorkflow', () => {
         expect(result.current.voidingTransactionId).toBe(null);
     });
 
+    it('refreshes the parent financial context after a successful void', async () => {
+        const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: 42,
+            onFinancialMutationCompleted
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                { pos_transaction_id: 7 },
+                'Correct duplicate sale'
+            );
+        });
+
+        expect(onFinancialMutationCompleted).toHaveBeenCalledWith(expect.objectContaining({
+            pos_transaction_id: 7,
+            status: 'voided'
+        }));
+    });
+
     it('blocks a cashier void when the cashier has no open shift', async () => {
         const { result } = renderHistory({
             canVoidTransactions: true,

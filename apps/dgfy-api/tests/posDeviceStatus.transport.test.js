@@ -10,6 +10,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: jest.fn(),
     scanPosBarcodeUseCase: jest.fn(),
     checkoutPosUseCase: jest.fn(),
+    listPosDiscountEmployeesUseCase: jest.fn(),
     listPosDiscountApproversUseCase: jest.fn(),
     verifyPosDiscountApprovalUseCase: jest.fn(),
     listPosTransactionsUseCase: jest.fn(),
@@ -82,10 +83,34 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     completePosPaymentSessionUseCase: jest.fn(),
     getMerchantTenderReconciliationUseCase: jest.fn(),
     reviewMerchantTenderReconciliationUseCase: jest.fn(),
+    getPosCashierAttendanceConfigUseCase: jest.fn(),
+    updatePosCashierAttendanceConfigUseCase: jest.fn(),
+    getCurrentPosCashierAttendanceUseCase: jest.fn(),
+    timeInPosCashierAttendanceUseCase: jest.fn(),
+    timeOutPosCashierAttendanceUseCase: jest.fn(),
+    startPosCashierBreakUseCase: jest.fn(),
+    endPosCashierBreakUseCase: jest.fn(),
+    startPosCashierReliefDutyUseCase: jest.fn(),
+    endPosCashierReliefDutyUseCase: jest.fn(),
+    correctPosCashierAttendanceUseCase: jest.fn(),
     // Phase 148 (#825): this module mock enumerates every named export modules/pos/index.js
     // provides, so a new use case has to be declared here too or the route wiring under test
     // fails to construct.
     recordOrderBalancePaymentUseCase: jest.fn(),
+    enrollPosCashierPinUseCase: jest.fn(),
+    resetPosCashierPinUseCase: jest.fn(),
+    takeOverPosRegisterUseCase: jest.fn(),
+    returnPosRegisterUseCase: jest.fn(),
+    startPosSharedReliefUseCase: jest.fn(),
+    endPosSharedReliefUseCase: jest.fn(),
+    countedPosCustodyHandoffUseCase: jest.fn(),
+    getCurrentPosOperatorUseCase: jest.fn(),
+    listEligiblePosOperatorsUseCase: jest.fn(),
+    authorizePosOperatorMutationUseCase: jest.fn(),
+    releasePosOperatorMutationUseCase: jest.fn(),
+    endPosOperatorSessionUseCase: jest.fn(),
+    revokePosOperatorSessionsForTerminal: jest.fn(),
+    resumePosCashierUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000
 }));
 
@@ -94,7 +119,13 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 }));
 
 jest.unstable_mockModule('../src/utils/browserSessionCookies.js', () => ({
-    setTenantSessionCookies: jest.fn()
+    setTenantSessionCookies: jest.fn(),
+    setBearerSessionCookie: jest.fn(),
+    clearSessionCookie: jest.fn(),
+    getCookie: jest.fn(),
+    SESSION_COOKIE_NAMES: {
+        posOperatorAuthority: 'sku_pos_operator_authority'
+    }
 }));
 
 let getDeviceStatus;

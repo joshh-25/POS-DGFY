@@ -90,6 +90,106 @@ describe('EmployeeCreditPaymentPanel', () => {
     expect(screen.getByText('PHP 205.00')).toBeTruthy();
   });
 
+  it('prefills the eligible Employee Credit account linked to the sale-level employee discount', async () => {
+    const onSelectEmployee = vi.fn();
+    const onPrefillEmployee = vi.fn();
+    const onClearPrefill = vi.fn();
+    const { rerender } = render(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={null}
+        onSelectEmployee={onSelectEmployee}
+        onPrefillEmployee={onPrefillEmployee}
+        onClearPrefill={onClearPrefill}
+        lookupLoading={false}
+        account={null}
+        totalDue={125}
+        locationId={3}
+        preferredEmployeeId={44}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onPrefillEmployee).toHaveBeenCalledWith(eligibleEmployee);
+    });
+    expect(fetchEmployeeCreditCheckoutOptions).toHaveBeenCalledWith({
+      employeeId: 44,
+      locationId: 3,
+      limit: 1
+    });
+    expect(onSelectEmployee).not.toHaveBeenCalled();
+    expect(screen.getByTestId('employee-credit-prefill-notice').textContent).toContain('Review the account');
+
+    rerender(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={eligibleEmployee}
+        onSelectEmployee={onSelectEmployee}
+        onPrefillEmployee={onPrefillEmployee}
+        onClearPrefill={onClearPrefill}
+        lookupLoading={false}
+        account={null}
+        totalDue={125}
+        locationId={3}
+        preferredEmployeeId={null}
+      />
+    );
+    await waitFor(() => {
+      expect(onClearPrefill).toHaveBeenCalled();
+    });
+  });
+
+  it('does not prefill an unavailable Employee Credit account', async () => {
+    const onPrefillEmployee = vi.fn();
+    const onClearPrefill = vi.fn();
+    fetchEmployeeCreditCheckoutOptions.mockResolvedValue([{
+      ...eligibleEmployee,
+      is_eligible: false
+    }]);
+
+    render(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={null}
+        onSelectEmployee={() => {}}
+        onPrefillEmployee={onPrefillEmployee}
+        onClearPrefill={onClearPrefill}
+        lookupLoading={false}
+        account={null}
+        totalDue={125}
+        locationId={3}
+        preferredEmployeeId={44}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onClearPrefill).toHaveBeenCalled();
+    });
+    expect(onPrefillEmployee).not.toHaveBeenCalled();
+    expect(screen.getByTestId('employee-credit-prefill-notice').textContent).toContain('no active, eligible');
+  });
+
+  it('keeps a cashier-selected Employee Credit account instead of replacing it', async () => {
+    const onPrefillEmployee = vi.fn();
+    render(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={{ ...eligibleEmployee, employee_id: 45, employee_name: 'Cashier Choice' }}
+        onSelectEmployee={() => {}}
+        onPrefillEmployee={onPrefillEmployee}
+        onClearPrefill={() => {}}
+        lookupLoading={false}
+        account={{ employee_name: 'Cashier Choice' }}
+        totalDue={125}
+        locationId={3}
+        preferredEmployeeId={44}
+        prefillLocked
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('employee-credit-prefill-notice').textContent).toContain('cashier-selected');
+    });
+    expect(onPrefillEmployee).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: /Cashier Choice/ })).toBeTruthy();
+  });
+
   it('searches from the employee field and keeps the result list scrollable', async () => {
     const user = userEvent.setup();
     const initialOptions = Array.from({ length: 6 }, (_, index) => ({

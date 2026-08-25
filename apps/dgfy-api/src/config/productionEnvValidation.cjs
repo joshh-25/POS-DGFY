@@ -1,5 +1,5 @@
 const VALID_PROFILES = new Set(['shared', 'vps']);
-const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'];
+const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET'];
 const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx|dummy|sample)/i;
 const DEFAULT_ADMIN_USERNAME = 'skupervisor';
 const DEFAULT_ADMIN_PASSWORD_HASH = '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK';
