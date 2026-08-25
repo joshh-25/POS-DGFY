@@ -109,6 +109,7 @@ const buildFixture = () => {
         transactionFactory,
         setAttendance(value) { attendance = value; },
         setBreak(value) { activeBreak = value; },
+        setOperator(value) { operator = value; },
         getAttendance() { return attendance; },
         getBreak() { return activeBreak; },
         getOperator() { return operator; }
@@ -232,6 +233,73 @@ describe('POS automatic cashier shift lifecycle', () => {
         expect(retry.success).toBe(true);
         expect(retry.data.idempotent_resume).toBe(true);
         expect(retry.data.authority_token).toBe('authority-90');
+    });
+
+    test('resuming the shift owner restores a missing operator session', async () => {
+        const fixture = buildFixture();
+        fixture.setAttendance({
+            employee_attendance_session_id: 12,
+            user_id: 1,
+            location_id: 7,
+            status: 'open',
+            started_at: new Date(Date.now() - 60_000)
+        });
+
+        const result = await dbStore.run({
+            sequelize: { transaction: fixture.transactionFactory }
+        }, () => fixture.useCases.resume({
+            terminalId: 'REG-1',
+            locationId: 7,
+            shiftId: 55,
+            user,
+            tenantId: 'tenant-1',
+            requestId: 'restore-owner-55'
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({
+            resumed: true,
+            recovered_missing_operator: true,
+            authority_token: 'authority-90'
+        });
+        expect(fixture.getOperator()).toMatchObject({
+            pos_terminal_shift_id: 55,
+            user_id: 1,
+            status: 'active'
+        });
+        expect(fixture.transactions[0].finished).toBe('commit');
+    });
+
+    test('missing operator recovery does not let a different cashier claim the shift', async () => {
+        const fixture = buildFixture();
+        const otherCashier = {
+            ...user,
+            user_id: 2,
+            username: 'cashier-2',
+            email: 'cashier-2@example.com'
+        };
+        fixture.setAttendance({
+            employee_attendance_session_id: 22,
+            user_id: 2,
+            location_id: 7,
+            status: 'open'
+        });
+
+        const result = await dbStore.run({
+            sequelize: { transaction: fixture.transactionFactory }
+        }, () => fixture.useCases.resume({
+            terminalId: 'REG-1',
+            locationId: 7,
+            shiftId: 55,
+            user: otherCashier,
+            tenantId: 'tenant-1',
+            requestId: 'reject-other-55'
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('POS_OPERATOR_NOT_ON_BREAK');
+        expect(fixture.getOperator()).toBeNull();
+        expect(fixture.transactions[0].finished).toBe('rollback');
     });
 
     test('closing a shift ends an active break and attendance before register close commits', async () => {

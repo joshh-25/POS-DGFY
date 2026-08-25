@@ -89,6 +89,38 @@ export const resolveCashierRegisterEntryMode = ({
 
 export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
 
+// The operator-authority endpoints are wired to the *throwing* feature resolver
+// (apps/dgfy-api/src/modules/pos/index.js:357), so a location with the attendance
+// lifecycle switched off answers POS_ATTENDANCE_FEATURE_DISABLED -- never the
+// POS_OPERATOR_FEATURE_DISABLED this client used to look for alone. Both mean the
+// same thing to the terminal: the register is not under operator authority, and the
+// API's own mutation path already falls back to legacy behaviour.
+export const POS_OPERATOR_FEATURE_DISABLED_REASON_CODES = Object.freeze([
+  'POS_OPERATOR_FEATURE_DISABLED',
+  'POS_ATTENDANCE_FEATURE_DISABLED'
+]);
+
+export const isPosOperatorFeatureDisabledReason = (reasonCode = '') => (
+  POS_OPERATOR_FEATURE_DISABLED_REASON_CODES.includes(String(reasonCode || '').trim())
+);
+
+export const buildScopedCashierRequestConfig = ({ token = '', companyToken = '' } = {}) => {
+  const normalizedToken = String(token || '').trim();
+  const normalizedCompanyToken = String(companyToken || '').trim();
+  if (!normalizedToken || !normalizedCompanyToken) {
+    throw new Error('The cashier company session could not be verified. Sign in again.');
+  }
+
+  return {
+    skipAuthRefresh: true,
+    skipGlobalErrorToast: true,
+    headers: {
+      Authorization: `Bearer ${normalizedToken}`,
+      'x-company-token': normalizedCompanyToken
+    }
+  };
+};
+
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
   operatorUserId = null,

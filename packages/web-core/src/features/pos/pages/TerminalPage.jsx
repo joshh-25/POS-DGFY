@@ -93,7 +93,9 @@ import {
 } from '../utils/terminalIdentity.js';
 import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
+  buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
+  isPosOperatorFeatureDisabledReason,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -3036,7 +3038,7 @@ export default function TerminalPage() {
         || initialError?.response?.data?.error_code
         || ''
       ).trim();
-      const featureDisabled = reasonCode === 'POS_OPERATOR_FEATURE_DISABLED';
+      const featureDisabled = isPosOperatorFeatureDisabledReason(reasonCode);
       const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
       const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
         authorityValid: payload?.authority_valid === true,
@@ -3909,6 +3911,10 @@ export default function TerminalPage() {
       if (!cashierUser) {
         throw createTerminalLoginError('The cashier company session could not be verified. Sign in again.');
       }
+      const cashierRequestConfig = buildScopedCashierRequestConfig({
+        token: posSession?.token,
+        companyToken: posSession?.company?.token
+      });
 
       if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
         clearDgfySession();
@@ -3945,7 +3951,7 @@ export default function TerminalPage() {
         terminal_id: terminalId,
         location_id: cashierResumeContext.locationId,
         shift_id: cashierResumeContext.shiftId
-      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      }, cashierRequestConfig);
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: cashierResumeContext.locationId
       });
@@ -4018,6 +4024,10 @@ export default function TerminalPage() {
       if (!cashierUser) {
         throw createTerminalLoginError('The incoming cashier company session could not be verified. Sign in again.');
       }
+      const cashierRequestConfig = buildScopedCashierRequestConfig({
+        token: posSession?.token,
+        companyToken: posSession?.company?.token
+      });
 
       if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
         clearDgfySession();
@@ -4058,7 +4068,7 @@ export default function TerminalPage() {
           terminal_id: terminalId,
           location_id: locationId,
           shift_id: shiftId
-        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+        }, cashierRequestConfig);
       } else {
         await takeOverPosRegister({
           idempotency_key: createIdempotencyKey('pos-cashier-takeover'),
@@ -4067,7 +4077,7 @@ export default function TerminalPage() {
           terminal_id: terminalId,
           location_id: locationId,
           shift_id: shiftId
-        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+        }, cashierRequestConfig);
       }
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: locationId,
