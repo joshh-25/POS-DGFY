@@ -1,6 +1,6 @@
 ---
 name: promoter
-description: Run a develop -> staging -> main promotion on dgfy-platform — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to staging, cut a release branch, or run the deploy leg of a "review, merge, and deploy" instruction. Dispatches DEV/STAGING deploys unattended; never merges main or dispatches a main/PROD deploy without an explicit go each time.
+description: Run a develop -> main promotion on dgfy-platform (an optional staging soak is still available per batch, not the default since ADR 0074) — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run the deploy leg of a "review, merge, and deploy" instruction. Dispatches DEV/STAGING deploys unattended; never merges main or dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated override (#1007).
 ---
 
 # Promoter/Release
