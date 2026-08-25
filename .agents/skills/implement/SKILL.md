@@ -100,12 +100,15 @@ of these triggers actually firing (or correctly not firing) in practice.
    `## Testing Evidence` at minimum), linking the issue with `Closes #N` or `Refs #N` per
    `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. Then set the board card to `For Review` — see
    "Board transitions" below.
+   When the formatter validates the active session, put its `Opened by (..., worker)` output first
+   under `## Summary`; otherwise omit the attribution line.
 6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
    PR: read the newest `## Review` comment (`gh pr view <N> --comments`), address every row marked
    `blocker`, then reply in the same thread naming which `RF-` IDs were fixed and, for any
    deliberately left unfixed, why — don't fix silently and leave the comment looking unanswered.
    `should-fix` and `nit` rows are judgment calls, not required, but say what was done with them
    too rather than ignoring them without comment. Push once addressed.
+   Start that reply with `Addressed (..., worker)` only if current-session attribution validates.
 7. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
 
 If a task surfaces work outside this PR's own scope (a correction, a bug, a gap), hand it to `pm`

@@ -85,6 +85,8 @@ Worker (or a human) can parse it mechanically:
 ```markdown
 ## Review — <APPROVE | BLOCK | COMMENT>
 
+Review (<verified model>, pr-reviewer)
+
 | ID | Severity | Location | Finding | Proposed fix |
 |----|----------|----------|---------|--------------|
 | RF-1 | blocker | apps/dgfy-api/src/x.js:42 | <what's wrong> | <concrete diff or exact instruction> |
@@ -95,6 +97,9 @@ Worker (or a human) can parse it mechanically:
 ```
 
 Rules for filling this in:
+
+- Put `Review (..., pr-reviewer)` immediately below the verdict heading only when the
+  attribution formatter validates this runtime's current session. Never guess or use `unknown-AI`.
 
 - **Every finding gets a concrete proposed fix**, not a bare complaint — a line or two of exact
   instruction or a small diff snippet, specific enough that a Worker doesn't have to reopen the
