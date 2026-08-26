@@ -14,7 +14,12 @@ vi.mock('sonner', () => ({
   }
 }));
 
-import { emitIminPosFeedback, posToast } from '../iminRuntimeFeedback.js';
+import {
+  emitIminPosFeedback,
+  IMIN_PERFORMANCE_CLASS,
+  installIminPerformanceProfile,
+  posToast
+} from '../iminRuntimeFeedback.js';
 
 describe('POS runtime feedback', () => {
   beforeEach(() => {
@@ -45,5 +50,22 @@ describe('POS runtime feedback', () => {
     expect(dispatchEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
       detail: expect.objectContaining({ duration: null })
     }));
+  });
+
+  it('installs the low-effects profile only for the iMin wrapper runtime', () => {
+    const add = vi.fn();
+    const bridgeWindow = {
+      iMinBridge: { isIminWrapper: () => true },
+      document: { documentElement: { classList: { add } } }
+    };
+
+    expect(installIminPerformanceProfile(bridgeWindow)).toBe(true);
+    expect(add).toHaveBeenCalledWith(IMIN_PERFORMANCE_CLASS);
+
+    add.mockClear();
+    expect(installIminPerformanceProfile({
+      document: { documentElement: { classList: { add } } }
+    })).toBe(false);
+    expect(add).not.toHaveBeenCalled();
   });
 });
