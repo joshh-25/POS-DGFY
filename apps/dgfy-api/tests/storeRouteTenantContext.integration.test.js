@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
+import { AsyncLocalStorage } from 'async_hooks';
 import express from 'express';
 import request from 'supertest';
-import dbStore from '../src/utils/dbStore.js';
 
 const mockHandlers = {
     listStoreCatalog: jest.fn((req, res) => res.status(200).json({ success: true })),
@@ -38,6 +38,31 @@ const mockHandlers = {
 };
 
 jest.unstable_mockModule('../src/controllers/storeController.js', () => mockHandlers);
+
+// #1022: this file's dbStore.run/getStore need to stay real (routeTokenBridge below relies on
+// AsyncLocalStorage-scoped tenant context propagating through the real requireTenantContext
+// middleware), but dbStore.get('SystemSetting') must not fall through to dbStore.js's own
+// documented fallback -- the real, unmocked model. The 4th test ("aligned and non-default")
+// reaches past requireTenantContext into requireWorkflowCapability
+// (workflowCapabilitySettingsCache.js's resolveWorkflowCapabilitySettings), which is fail-closed
+// by design: a SystemSetting.findAll() that throws (DB_HOST/DB_PORT pinned unreachable, the fast
+// tier's default, #1015) becomes next(error) -> a 500, never a silent grant. Mocking findAll to
+// resolve empty gives the documented defaults (DEFAULT_WORKFLOW_MODE, no capability overlays) --
+// 'storefront' is held by every mode (workflowModeCapability.js's own comment), so the gate grants
+// as the first three tests already implicitly assume it would.
+const storage = new AsyncLocalStorage();
+const systemSettingFindAll = jest.fn().mockResolvedValue([]);
+const mockSystemSetting = { findAll: systemSettingFindAll };
+
+jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
+    default: {
+        run: (store, callback) => storage.run(store, callback),
+        getStore: () => storage.getStore(),
+        get: (modelName) => (modelName === 'SystemSetting' ? mockSystemSetting : undefined)
+    }
+}));
+
+const dbStore = (await import('../src/utils/dbStore.js')).default;
 
 let storeRouter;
 
@@ -78,6 +103,7 @@ beforeAll(async () => {
 describe('store route tenant context integration', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        systemSettingFindAll.mockResolvedValue([]);
     });
 
     it('rejects track request when x-company-token is missing', async () => {
