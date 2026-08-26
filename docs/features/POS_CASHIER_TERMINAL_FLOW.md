@@ -1,22 +1,30 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-26
 
 ## Scope
 
-This document describes how a DGFY-invited `cashier` operates inside the POS terminal after the invitation is accepted, how POS login works when the DGFY account can access multiple companies, and what the cashier can and cannot do by default.
+This document describes the standalone POS cashier flow, multi-company DGFY
+login, role-default permissions, and the Phase 171 target contract for switching
+the active terminal operator. Operator eligibility is capability-based: an
+owner, administrator, manager, or invited cashier may sell when the tenant-local
+profile has `pos:transact`, `pos:attendance:operate`, allowed location scope,
+valid attendance state, and a configured personal POS PIN. Phase 171 is a
+documentation contract; later phases must implement and prove the target
+switching behavior.
 
 Authoritative references:
 
 - `docs/architecture/adr/0026-browser-session-cookie-authority.md`
 - `docs/architecture/adr/0028-dgfy-account-company-switching.md`
-- `backend/src/config/permissions.js`
-- `backend/src/routes/dgfy.js`
-- `backend/src/routes/pos.js`
-- `frontend/src/features/pos/pages/TerminalPage.jsx`
-- `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
-- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
+- `apps/dgfy-api/src/config/permissions.js`
+- `apps/dgfy-api/src/routes/dgfy.js`
+- `apps/dgfy-api/src/routes/pos.js`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
+- `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
 
 ## Before the cashier can use POS
@@ -28,6 +36,11 @@ Authoritative references:
 5. The system creates or activates the tenant-local cashier authorization profile.
 6. The cashier signs in using the DGFY account credentials. No separate POS-only password is created by the invitation flow.
 
+An owner, founder, administrator, or manager with an active tenant membership
+does not need a second cashier-role invitation solely to become a POS operator.
+The Phase 171 target flow still requires the operator permissions, location and
+attendance eligibility, and personal PIN defined below.
+
 ## Default cashier permissions
 
 The default backend `cashier` role grants:
@@ -35,10 +48,18 @@ The default backend `cashier` role grants:
 - `items:view`
 - `pos:view`
 - `pos:transact`
+- `pos:attendance:view`
+- `pos:attendance:operate`
+- `pos:employee_credit:use`
 - `pos:shift_close`
 - `pos:reprint`
 
-This means the cashier can view POS items, operate checkout, view POS history/receipts, close their terminal shift, and reprint receipts. It does not grant user management, settings management, reports management, cash drawer adjustment, location switching, price override, voiding, fiscal terminal management, eSales management, or close-day/Z-reading authority.
+This means the cashier can view POS items, operate checkout, manage their own
+attendance/break state, use governed Employee Credit tender, view POS
+history/receipts, close their terminal shift, and reprint receipts. It does not
+grant user management, settings management, reports management, cash drawer
+adjustment, location switching, price override, voiding, fiscal terminal
+management, eSales management, or close-day/Z-reading authority.
 
 ## Normal cashier operating flow
 
@@ -163,10 +184,35 @@ Expected POS behavior:
 
 ## Lock and resume behavior
 
-- If a cashier locks the terminal while a shift is still open, the terminal stores a resume context for that shift.
-- Only the cashier who opened the active shift can resume it.
-- If another cashier signs in while the first cashier's shift is still open, the UI blocks continuation and instructs the operator to close the current shift first.
-- After shift close, cashier login is required before the next shift can begin.
+The following is the Phase 171 target contract. It does not claim that the
+current runtime already implements the complete flow.
+
+- The DGFY account initially signs in and selects the company and terminal. That
+  cookie-backed browser identity remains unchanged during routine operator
+  switches.
+- Locking an open register preserves its shift, opening float, drawer ledger,
+  and resume context.
+- The standalone POS shows eligible operators for the active tenant, location,
+  terminal, and shift. The selected operator enters only their personal POS PIN;
+  the switch does not ask for that operator's DGFY email and password again.
+- The server authorizes by capability, not by a hard-coded cashier role. Owners,
+  administrators, managers, and invited cashiers are eligible only when they
+  have active membership, `pos:transact`, `pos:attendance:operate`, location
+  access, valid attendance/no active break, and a configured non-locked POS PIN.
+- Selecting the current operator resumes their authority. Selecting a different
+  eligible operator performs an auditable takeover and starts attendance only
+  under the separately governed lifecycle rules.
+- A takeover does not close or replace the register shift. Ordinary switching
+  records shared-drawer access; counted custody remains a separate handoff.
+- An active cart must be parked or cancelled before switching. In-flight
+  payment, refund, void, cash-drawer, or other protected mutations block the
+  transition and cannot be interrupted.
+- Failed PINs, stale eligibility, concurrent switches, replay, cross-tenant or
+  cross-location targets, and version mismatch fail closed with generic user
+  errors and auditable server evidence.
+- IMS is excluded from this operator-switch feature. Shared-code changes in a
+  later implementation phase may require an IMS regression build only.
+- After shift close, cashier/operator sign-in is required before the next shift can begin.
 - Closing or replaying a shift close may print through a configured physical
   printer, but it must not open the browser print dialog automatically when no
   printer is available. The saved post-shift handoff provides an explicit
