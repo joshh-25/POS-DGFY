@@ -19,6 +19,18 @@ export const isIminWrapperRuntime = (windowObj = typeof window !== 'undefined' ?
   }
 };
 
+export const IMIN_PERFORMANCE_CLASS = 'dgfy-imin-performance';
+
+export const installIminPerformanceProfile = (
+  windowObj = typeof window !== 'undefined' ? window : null
+) => {
+  const root = windowObj?.document?.documentElement;
+  if (!root?.classList || !isIminWrapperRuntime(windowObj)) return false;
+
+  root.classList.add(IMIN_PERFORMANCE_CLASS);
+  return true;
+};
+
 export const emitIminPosFeedback = (
   {
     tone = 'info',

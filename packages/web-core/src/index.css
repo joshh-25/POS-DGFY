@@ -745,6 +745,32 @@ body.pos-receipt-print-mode {
   overscroll-behavior: none;
 }
 
+/*
+ * The production iMin wrapper runs a fixed Chrome 80-84 WebView. Full-screen
+ * backdrop filters force that device to repaint and composite the complete POS
+ * workspace behind every dialog, drawer, and lock overlay. The runtime marker
+ * is installed only by apps/dgfy-pos, so browser POS, IMS, and Storefront keep
+ * their normal blur and motion treatment.
+ */
+html.dgfy-imin-performance [data-dialog-overlay="true"],
+html.dgfy-imin-performance [class~="backdrop-blur-sm"],
+html.dgfy-imin-performance [class~="backdrop-blur-md"],
+html.dgfy-imin-performance [class~="backdrop-blur-lg"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dgfy-imin-performance .animate-pos-overlay-fade-in,
+html.dgfy-imin-performance .animate-pos-card-scale-up,
+html.dgfy-imin-performance .animate-pos-illustration-float {
+  animation: none !important;
+}
+
+html.dgfy-imin-performance [class~="transition-all"] {
+  transition-property: transform, opacity !important;
+  transition-duration: 100ms !important;
+}
+
 .pos-receipt-print-shell {
   height: 100vh;
   height: 100dvh;
