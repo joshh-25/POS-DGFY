@@ -1,4 +1,6 @@
+import { jest } from '@jest/globals';
 import { createPosOperatorAuthorityUseCases } from '../src/modules/pos/usecases/posOperatorAuthorityUseCases.js';
+import { assertPosAttendanceLifecyclePermission } from '../src/modules/pos/services/posAttendancePermissionPolicy.js';
 
 const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
     const users = new Map([
@@ -68,6 +70,7 @@ const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
         repository,
         resolveFeature: async () => ({ enabled: featureEnabled }),
         authorityService,
+        assertAttendancePermission: assertPosAttendanceLifecyclePermission,
         runTransaction: async (work) => work({}),
         comparePin: async (candidate, hash) => candidate === pin && ['hash-a', 'hash-b'].includes(hash),
         hashPin: async (candidate) => `hashed:${candidate}`,
@@ -329,5 +332,59 @@ describe('Phase 159 POS operator authority use cases', () => {
         expect(result.success).toBe(true);
         expect(result.data.authority_refreshed).toBe(true);
         expect(result.data.authority_token).toBe('authority-10');
+    });
+
+    // #1045: a stale per-user permission snapshot (missing pos:attendance:view /
+    // pos:attendance:operate) must not 403 getCurrent when the location's
+    // attendance feature is off -- the feature verdict has to be reached and win.
+    const staleUser = { user_id: 1, username: 'alice', permissions: ['pos:view', 'pos:transact'] };
+
+    test('getCurrent unlocks a stale-permission user when the feature is disabled', async () => {
+        const { useCases, repository } = buildFixture({ featureEnabled: false });
+        const tokenSpy = jest.spyOn(repository, 'findOperatorByAuthorityTokenHash');
+
+        const result = await useCases.getCurrent({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            user: staleUser
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('POS_OPERATOR_FEATURE_DISABLED');
+        // Ordering assertion: the permission check must never even run when the
+        // feature is off, so no token/session lookup happens past the feature resolve.
+        expect(tokenSpy).not.toHaveBeenCalled();
+    });
+
+    test('getCurrent still denies a stale-permission user when the feature is enabled', async () => {
+        const { useCases, repository } = buildFixture({ featureEnabled: true });
+        const tokenSpy = jest.spyOn(repository, 'findOperatorByAuthorityTokenHash');
+
+        const result = await useCases.getCurrent({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            user: staleUser
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('POS_ATTENDANCE_PERMISSION_REQUIRED');
+        expect(tokenSpy).not.toHaveBeenCalled();
+    });
+
+    test('getCurrent succeeds for a permitted user when the feature is enabled', async () => {
+        const { useCases } = buildFixture({ featureEnabled: true });
+        const permittedUser = { user_id: 1, username: 'alice', permissions: ['pos:attendance:view', 'pos:attendance:operate'] };
+
+        const result = await useCases.getCurrent({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            user: permittedUser
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.authority_valid).toBe(true);
     });
 });

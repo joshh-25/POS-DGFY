@@ -9,16 +9,6 @@ const positiveInt = (value) => {
 const plain = (value) => value?.get ? value.get({ plain: true }) : value;
 const now = () => new Date();
 const normalizeKey = (value, fallback) => String(value || fallback).trim().slice(0, 120);
-const permissionsOf = (user) => {
-    if (Array.isArray(user?.permissions)) return user.permissions;
-    if (typeof user?.permissions !== 'string') return [];
-    try {
-        const parsed = JSON.parse(user.permissions);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-};
 
 const lifecycleError = (message, statusCode = 409, details = {}) => new DomainError(
     DomainErrorCode.CONFLICT,
@@ -34,18 +24,6 @@ const fail = (error) => ({
         ? error
         : new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Cashier resume failed.', { statusCode: 500 })
 });
-
-const assertLifecyclePermission = (user) => {
-    if (user?.is_master_admin === true) return;
-    const permissions = new Set(permissionsOf(user));
-    if (!permissions.has('pos:attendance:view') || !permissions.has('pos:attendance:operate')) {
-        throw new DomainError(
-            DomainErrorCode.AUTHORIZATION_FAILED,
-            'Cashier attendance permissions are missing. Sign out and sign in again after the permission update.',
-            { statusCode: 403, details: { reason_code: 'POS_ATTENDANCE_PERMISSION_REQUIRED' } }
-        );
-    }
-};
 
 const audit = async ({ repository, user, row, eventType, action, shift, requestId, changes, transaction }) => {
     if (typeof repository.createAuditLog !== 'function') return;
@@ -162,8 +140,17 @@ const resolveEmployeeId = async ({ repository, user, transaction }) => {
 export const createPosCashierLifecycleUseCases = ({
     repository,
     resolveFeature,
-    authorityService
+    authorityService,
+    // #1045: injected rather than statically imported from ../services/, so this
+    // module stays free of a direct usecase -> services import (architecture
+    // guardrail `usecaseLayerLeak`). The composition root (modules/pos/index.js)
+    // wires this to the shared posAttendancePermissionPolicy.js, the same
+    // function posOperatorAuthorityUseCases.getCurrent uses, so the requirement
+    // and reason code cannot drift between the two routes.
+    assertAttendancePermission
 } = {}) => {
+    const assertLifecyclePermission = (user) => assertAttendancePermission(user);
+
     const ensureAttendanceForTakeover = async ({ shift, user, payload = {}, requestId, transaction } = {}) => {
         const locationId = positiveInt(shift?.location_id);
         if (!locationId) throw lifecycleError('A location is required before a cashier can take over this register.', 422);

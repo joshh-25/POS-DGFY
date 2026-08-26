@@ -154,6 +154,26 @@ export const isPosOperatorAuthorityUnavailableError = (error) => {
     && (!requestPath || requestPath.includes(POS_OPERATOR_CURRENT_ROUTE));
 };
 
+// #1045: a stale per-user permission snapshot (missing pos:attendance:view /
+// pos:attendance:operate) 403s on both /terminal/operator/current and
+// .../resume, on a location where the attendance feature IS enabled. That is
+// not "authority unavailable" (the feature-disabled set above) and retrying
+// the resume call would just 403 again identically -- it needs its own
+// classification so the caller can skip the doomed retry and show an
+// actionable reason instead of misnaming the signed-in user as the blocker.
+export const POS_ATTENDANCE_PERMISSION_DENIED_REASON_CODES = Object.freeze([
+  'POS_ATTENDANCE_PERMISSION_REQUIRED',
+  'PERMISSION_DENIED'
+]);
+
+export const isPosAttendancePermissionDeniedReason = (reasonCode = '') => (
+  POS_ATTENDANCE_PERMISSION_DENIED_REASON_CODES.includes(String(reasonCode || '').trim())
+);
+
+export const isPosOperatorPermissionDeniedError = (error) => (
+  isPosAttendancePermissionDeniedReason(readOperatorReasonCode(error))
+);
+
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
   operatorUserId = null,

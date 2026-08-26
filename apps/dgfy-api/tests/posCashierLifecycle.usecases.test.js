@@ -1,5 +1,7 @@
+import { jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
 import { createPosCashierLifecycleUseCases } from '../src/modules/pos/usecases/posCashierLifecycleUseCases.js';
+import { assertPosAttendanceLifecyclePermission } from '../src/modules/pos/services/posAttendancePermissionPolicy.js';
 
 const user = {
     user_id: 1,
@@ -17,7 +19,15 @@ const shift = {
     status: 'open'
 };
 
-const buildFixture = () => {
+// #1045: a real-world stale permission snapshot -- provisioned before
+// pos:attendance:view/operate shipped -- non-empty, so resolveEffectivePermissions
+// (apps/dgfy-api/src/utils/userPermissions.js) does not fall back to role defaults.
+const staleUser = {
+    ...user,
+    permissions: ['pos:view', 'pos:transact']
+};
+
+const buildFixture = ({ featureEnabled = true } = {}) => {
     let attendance = null;
     let activeBreak = null;
     let operator = null;
@@ -83,8 +93,9 @@ const buildFixture = () => {
 
     const useCases = createPosCashierLifecycleUseCases({
         repository,
-        resolveFeature: async ({ locationId }) => ({ enabled: true, location_id: locationId }),
-        authorityService
+        resolveFeature: async ({ locationId }) => ({ enabled: featureEnabled, location_id: locationId }),
+        authorityService,
+        assertAttendancePermission: assertPosAttendanceLifecyclePermission
     });
 
     const transactionFactory = async () => {
@@ -300,6 +311,53 @@ describe('POS automatic cashier shift lifecycle', () => {
         expect(result.error.details?.reason_code).toBe('POS_OPERATOR_NOT_ON_BREAK');
         expect(fixture.getOperator()).toBeNull();
         expect(fixture.transactions[0].finished).toBe('rollback');
+    });
+
+    // #1045: the register-owner regression case. A stale permission snapshot must
+    // not block resume on a location where the attendance feature is off -- the
+    // feature verdict has to be reached and win before the permission check runs.
+    test('resume succeeds for a stale-permission user when the feature is disabled', async () => {
+        const fixture = buildFixture({ featureEnabled: false });
+        const shiftSpy = jest.spyOn(fixture.repository, 'findOpenTerminalShift');
+
+        const result = await dbStore.run({
+            sequelize: { transaction: fixture.transactionFactory }
+        }, () => fixture.useCases.resume({
+            terminalId: 'REG-1',
+            locationId: 7,
+            shiftId: 55,
+            user: staleUser,
+            tenantId: 'tenant-1',
+            requestId: 'feature-disabled-stale-user'
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({ resumed: false, authority_token: null });
+        // Ordering assertion: the permission check must never even run when the
+        // feature is off, so no repository access happens past the feature resolve.
+        expect(shiftSpy).not.toHaveBeenCalled();
+    });
+
+    // Fail-closed counterpart: once the feature IS enabled, the same stale user
+    // must still be denied, with the actionable reason code intact.
+    test('resume still denies a stale-permission user when the feature is enabled', async () => {
+        const fixture = buildFixture({ featureEnabled: true });
+        const shiftSpy = jest.spyOn(fixture.repository, 'findOpenTerminalShift');
+
+        const result = await dbStore.run({
+            sequelize: { transaction: fixture.transactionFactory }
+        }, () => fixture.useCases.resume({
+            terminalId: 'REG-1',
+            locationId: 7,
+            shiftId: 55,
+            user: staleUser,
+            tenantId: 'tenant-1',
+            requestId: 'feature-enabled-stale-user'
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('POS_ATTENDANCE_PERMISSION_REQUIRED');
+        expect(shiftSpy).not.toHaveBeenCalled();
     });
 
     test('closing a shift ends an active break and attendance before register close commits', async () => {

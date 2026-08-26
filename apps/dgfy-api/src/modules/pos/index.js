@@ -139,6 +139,7 @@ import { createPosCashierLifecycleUseCases } from './usecases/posCashierLifecycl
 import { createPosCashierAttendanceConfigUseCases } from './usecases/posCashierAttendanceConfigUseCases.js';
 import { resolveMovementLocation, assertLocationAccess } from '../../services/locationInventoryService.js';
 import { resolvePosCashierAttendanceFeature, requirePosCashierAttendanceFeature } from './services/posCashierAttendanceFeature.js';
+import { assertPosAttendanceLifecyclePermission } from './services/posAttendancePermissionPolicy.js';
 import posOperatorAuthorityService from './services/posOperatorAuthorityService.js';
 import { createPosOperatorAuthorityUseCases } from './usecases/posOperatorAuthorityUseCases.js';
 
@@ -146,7 +147,10 @@ const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
 const posCashierLifecycleUseCases = createPosCashierLifecycleUseCases({
     repository: posCashierAttendanceRepository,
     resolveFeature: resolvePosCashierAttendanceFeature,
-    authorityService: posOperatorAuthorityService
+    authorityService: posOperatorAuthorityService,
+    // #1045: shared with posOperatorAuthorityUseCases below so both routes
+    // enforce the identical pos:attendance:* requirement and reason code.
+    assertAttendancePermission: assertPosAttendanceLifecyclePermission
 });
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
@@ -358,7 +362,9 @@ const posOperatorAuthorityUseCases = createPosOperatorAuthorityUseCases({
     resolveMutationFeature: resolvePosCashierAttendanceFeature,
     authorityService: posOperatorAuthorityService,
     rateLimiter: posOperatorPinRateLimiter,
-    ensureAttendanceForTakeover: posCashierLifecycleUseCases.ensureAttendanceForTakeover
+    ensureAttendanceForTakeover: posCashierLifecycleUseCases.ensureAttendanceForTakeover,
+    // #1045: same shared policy as posCashierLifecycleUseCases above.
+    assertAttendancePermission: assertPosAttendanceLifecyclePermission
 });
 export const enrollPosCashierPinUseCase = posOperatorAuthorityUseCases.setPin;
 export const resetPosCashierPinUseCase = posOperatorAuthorityUseCases.resetPin;

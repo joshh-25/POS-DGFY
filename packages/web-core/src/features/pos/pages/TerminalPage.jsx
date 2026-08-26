@@ -96,6 +96,7 @@ import {
   buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
   isPosOperatorAuthorityUnavailableError,
+  isPosOperatorPermissionDeniedError,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -2965,12 +2966,16 @@ export default function TerminalPage() {
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
     if (checkoutOperatorLocked) {
-      return operatorAuthorityPending
-        ? 'Verifying the active cashier for this register.'
-        : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`;
+      if (operatorAuthorityPending) return 'Verifying the active cashier for this register.';
+      // #1045: a known, specific failure reason (e.g. a missing attendance
+      // permission on the signed-in account) takes priority over the generic
+      // owner-name banner, which can otherwise misname the signed-in user as
+      // the blocker when the authority check never identified another owner.
+      if (operatorAuthorityState.errorMessage) return operatorAuthorityState.errorMessage;
+      return `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`;
     }
     return '';
-  }, [activeShiftOwnerLabel, canTransactPos, checkoutOperatorLocked, locked, operatorAuthorityPending, shiftState.shift]);
+  }, [activeShiftOwnerLabel, canTransactPos, checkoutOperatorLocked, locked, operatorAuthorityPending, operatorAuthorityState.errorMessage, shiftState.shift]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3033,8 +3038,12 @@ export default function TerminalPage() {
       }
 
       const operatorAuthorityUnavailable = isPosOperatorAuthorityUnavailableError(initialError);
+      // #1045: a permission-denied 403 (stale attendance-permission snapshot) means
+      // the resume call would 403 identically -- skip the guaranteed-failing retry
+      // rather than issuing it on the terminal's critical path.
+      const operatorAuthorityPermissionDenied = isPosOperatorPermissionDeniedError(initialError);
       const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
-      const shouldRecover = !operatorAuthorityUnavailable && shouldRestorePosOperatorAuthority({
+      const shouldRecover = !operatorAuthorityUnavailable && !operatorAuthorityPermissionDenied && shouldRestorePosOperatorAuthority({
         authorityValid: payload?.authority_valid === true,
         operatorUserId: payload?.operator_user?.user_id,
         authenticatedUserId: terminalUser?.user_id,
@@ -3074,7 +3083,13 @@ export default function TerminalPage() {
         required: true,
         valid: isPosOperatorAuthorityValid({ authorityValid: payload?.authority_valid === true }),
         operatorUser: payload?.operator_user || null,
-        errorMessage: initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : '')
+        // #1045: a permission-denied 403 gets its own actionable message -- the
+        // generic fallback below would otherwise render as "Register is assigned
+        // to <this same signed-in user>", which misnames the account itself as
+        // the blocker instead of naming the actual cause.
+        errorMessage: operatorAuthorityPermissionDenied
+          ? 'This account is missing cashier attendance permissions. Ask an admin to update the role, then sign out and sign in again.'
+          : (initialError?.response?.data?.message || (initialError ? 'Unable to verify the active cashier.' : ''))
       });
     };
 
