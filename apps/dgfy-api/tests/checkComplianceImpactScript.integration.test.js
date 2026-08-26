@@ -46,33 +46,22 @@ ${classification}
 `;
 
 const runCheck = ({ changedFiles = [], stagedFiles = [], args = [] } = {}) => {
+    // #1063 root cause: this suite runs inside real GitHub Actions PR jobs, so an un-isolated
+    // spawn inherits the runner's own GITHUB_BASE_REF/GITHUB_HEAD_REF. On a real promotion PR
+    // those can match isAggregatePromotionPr()'s exemption shape and silently skip the
+    // classification-floor check these tests assert on. Deleted (not just overwritten with '')
+    // so isolation doesn't depend on isAggregatePromotionPr()'s current falsy-check behavior.
+    const env = { ...process.env };
+    delete env.GITHUB_BASE_REF;
+    delete env.GITHUB_HEAD_REF;
+
     return spawnSync(
         process.execPath,
         ['scripts/check-compliance-impact.js', ...args],
         {
             cwd: repoRoot,
             env: {
-                ...process.env,
-                // #1063 root cause: this suite runs inside real GitHub Actions PR jobs, which always
-                // carry the runner's own GITHUB_BASE_REF/GITHUB_HEAD_REF for the PR actually being
-                // checked -- not a fixture value this test controls. check-compliance-impact.js's
-                // isAggregatePromotionPr() reads those two vars directly from process.env, so an
-                // un-isolated spawn inherits them from whatever PR this test suite happens to be
-                // running inside. On an ordinary develop-targeting PR that never matches
-                // PROMOTION_HEAD_PREFIX_BY_BASE, so it was invisible -- but on a real to-staging/*
-                // -> staging or release/* -> main promotion PR's own dgfy-api-quality job, the
-                // inherited values legitimately match the promotion-exemption shape, so the spawned
-                // script silently skips the exact classification-floor check these tests assert on,
-                // independent of anything this test file actually passes it. Confirmed by
-                // reproducing locally: unset, this suite passes; with GITHUB_BASE_REF=main
-                // GITHUB_HEAD_REF=release/2026-08-26 exported (mirroring a real release/* PR), the
-                // two classification-floor assertions below fail exactly as seen on PR #1066 CI.
-                // Cleared here (not just inherited-then-overridden) so this suite's own outcome
-                // never depends on which PR happens to be running it -- none of the tests in this
-                // file exercise the aggregate-promotion exemption itself, so there is no coverage
-                // lost by isolating it out.
-                GITHUB_BASE_REF: '',
-                GITHUB_HEAD_REF: '',
+                ...env,
                 COMPLIANCE_CHANGED_FILES: changedFiles.join('\n'),
                 COMPLIANCE_STAGED_FILES: stagedFiles.join('\n')
             },
