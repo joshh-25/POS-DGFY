@@ -95,7 +95,7 @@ import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
   buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
-  isPosOperatorFeatureDisabledReason,
+  isPosOperatorAuthorityUnavailableError,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -3032,15 +3032,9 @@ export default function TerminalPage() {
         initialError = error;
       }
 
-      const reasonCode = String(
-        initialError?.response?.data?.details?.reason_code
-        || initialError?.response?.data?.error?.details?.reason_code
-        || initialError?.response?.data?.error_code
-        || ''
-      ).trim();
-      const featureDisabled = isPosOperatorFeatureDisabledReason(reasonCode);
+      const operatorAuthorityUnavailable = isPosOperatorAuthorityUnavailableError(initialError);
       const alreadyAttempted = operatorAuthorityRecoveryAttemptRef.current === recoveryKey;
-      const shouldRecover = !featureDisabled && shouldRestorePosOperatorAuthority({
+      const shouldRecover = !operatorAuthorityUnavailable && shouldRestorePosOperatorAuthority({
         authorityValid: payload?.authority_valid === true,
         operatorUserId: payload?.operator_user?.user_id,
         authenticatedUserId: terminalUser?.user_id,
@@ -3062,7 +3056,7 @@ export default function TerminalPage() {
       }
 
       if (cancelled) return;
-      if (featureDisabled) {
+      if (operatorAuthorityUnavailable) {
         setOperatorAuthorityState({
           scopeKey,
           loading: false,

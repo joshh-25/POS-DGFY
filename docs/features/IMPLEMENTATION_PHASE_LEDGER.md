@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -9344,9 +9344,71 @@ Phase 170 is eligible after this completion.
 
 ---
 
-### Planning Record (2026-08-25)
+## Phase 170 - POS Operator Authority Version-Skew Compatibility (#1045)
 
-- Phase 156 through Phase 169 are `completed`. Phase 170 is the next eligible phase.
+### Initiative and release
+
+Rolling-version compatibility and reason-code unification for POS operator authority, building on
+Phase 169's production hotfix back-port.
+
+### Objective and scope
+
+- Preserve legacy shift-owner selling only when operator authority is explicitly feature-disabled
+  (`POS_OPERATOR_FEATURE_DISABLED` or `POS_ATTENDANCE_FEATURE_DISABLED`) or the exact
+  current-operator route is absent during a mixed-version local/deployment window.
+- Unify the client's operator-unavailable classification behind a single call-site helper
+  (`isPosOperatorAuthorityUnavailableError`) that composes the existing feature-disabled
+  reason-code set rather than re-deriving it.
+- Keep arbitrary authorization, permission, domain, terminal, location, shift, attendance, and
+  unrelated route failures fail-closed.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-26.
+
+### Dependencies
+
+- Phase 169 completed.
+- ADR 0026, ADR 0031, and ADR 0073.
+- Incident issue #1045; production hotfix PR #1046; PR #1053 review finding RF-1.
+
+### Acceptance and validation evidence
+
+- [x] Feature-disabled and exact route-missing current-operator responses enter legacy mode
+  without issuing a second doomed resume request; unrelated 404, permission, and operator-domain
+  failures remain fail-closed.
+- [x] `POS_ATTENDANCE_FEATURE_DISABLED` is recognized by the same call-site classifier used for
+  `POS_OPERATOR_FEATURE_DISABLED`, closing the promotion-conflict gap flagged on PR #1053.
+- [x] Shared POS decision/contract suites pass, including the added attendance-disabled and
+  route-skew cases.
+- [x] API syntax, architecture/controller guardrails, compliance/docs checks, diff safety, and
+  POS/SKUpervisor/Storefront production builds passed.
+
+### Implementation links
+
+- Issue #1045 / PR #1053 / production hotfix PR #1046 / PR #1054 (back-ported as Phase 169 via
+  PR #1057)
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
+- `docs/compliance/impact-declarations/2026-08-25-pos-employee-discount-and-operator-hardening.md`
+
+### Next eligible phase
+
+Phase 171 is eligible after this completion.
+
+### Residual validation note
+
+The optional frontend budget gate remains red on the existing SKUpervisor `TerminalPage` chunk:
+the untouched `develop` baseline is 133.89 KB against a 128 KB budget, while this branch is
+134.97 KB. The 1.08 KB delta is the scoped compatibility classifier and tests do not mask the
+pre-existing 5.89 KB baseline overage; budget remediation remains outside issue #1045.
+
+---
+
+### Planning Record (2026-08-26)
+
+- Phase 156 through Phase 170 are `completed`. Phase 171 is the next eligible phase.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
