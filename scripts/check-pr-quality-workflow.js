@@ -275,7 +275,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log('[pr-quality-workflow] OK. Blocking promotion quality gate contains all required gates.');
+  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates and matches the sanctioned #1063 shape (skipped on the staging leg, advisory everywhere it runs).');
 }
 
 if (require.main === module) {
