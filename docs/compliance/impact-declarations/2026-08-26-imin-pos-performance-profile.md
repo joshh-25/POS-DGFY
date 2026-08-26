@@ -13,7 +13,7 @@ rollback_note: Revert the iMin runtime marker, scoped low-effects CSS, and defer
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-26T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1030-IMIN-POS-PERFORMANCE-PROFILE
+preflight_request_ref: NOT-EXECUTED-1058-IMIN-POS-PERFORMANCE-PROFILE
 ---
 
 # iMin POS Runtime Performance Profile
