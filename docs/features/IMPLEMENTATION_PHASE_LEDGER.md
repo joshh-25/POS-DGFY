@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-25
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -9298,9 +9298,55 @@ POS employee-discount hardening follow-up for PR #1033.
 
 ---
 
+## Phase 169 - Production POS Cashier Authority Recovery (#1045)
+
+### Initiative and release
+
+Production hotfix for POS operator-authority recovery on `main`.
+
+### Objective and scope
+
+- Restore a missing operator session only when the authenticated cashier is the exact owner of the open register shift and still has active attendance at that location.
+- Bind manual resume/takeover mutations to the separately verified cashier session without replacing the active DGFY browser identity.
+- Preserve fail-closed takeover, terminal, location, shift, attendance, permission, and scoped HttpOnly operator-authority checks.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-25.
+
+### Dependencies
+
+- Phase 168 completed.
+- ADR 0026, ADR 0031, and ADR 0073.
+- Incident issue #1045.
+
+### Acceptance and validation evidence
+
+- [x] Missing operator recovery succeeds for the authenticated shift owner with active attendance.
+- [x] A different cashier cannot claim a missing operator session through resume.
+- [x] Manual resume/takeover request configuration uses the verified cashier access/company tokens, disables auth refresh, and does not install the cashier session as DGFY browser identity.
+- [x] Backend lifecycle/operator suites: 3 suites, 28 tests passed.
+- [x] Shared POS decision/contract suites: 2 files, 79 tests passed.
+- [x] API syntax, architecture guardrails, and POS/SKUpervisor/Storefront production builds passed.
+
+### Implementation links
+
+- Issue #1045
+- `apps/dgfy-api/src/modules/pos/usecases/posCashierLifecycleUseCases.js`
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
+- `docs/compliance/impact-declarations/2026-08-25-pos-employee-discount-and-operator-hardening.md`
+
+### Next eligible phase
+
+Phase 170 is eligible after this completion.
+
+---
+
 ### Planning Record (2026-08-25)
 
-- Phase 156 through Phase 167 are `completed`. Phase 168 is in progress.
+- Phase 156 through Phase 169 are `completed`. Phase 170 is the next eligible phase.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
