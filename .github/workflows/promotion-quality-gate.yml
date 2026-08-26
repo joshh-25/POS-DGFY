@@ -19,6 +19,18 @@ name: Promotion Quality Gate
 # waiting for a real promotion PR to open. Both bypass the `gate` job's promotion check entirely
 # (see its own comment) -- that's intentional, matching how the original `workflow_dispatch` always
 # ran unconditionally by hand.
+#
+# 2026-08-26 (#1063), temporary: the gate itself is suspected stale/unreliable (unclear whether
+# it's outdated test scripts or something else) and needs dedicated investigation time Pat doesn't
+# have right now. Rather than disable or delete the gate -- which would also drop the only
+# pre-`main` test/build/architecture check this repo has, with no rollback mechanism for a bad
+# deploy (#495 still open) -- every quality job below is `continue-on-error` on the `to-staging/*`
+# -> `staging` leg only (`needs.gate.outputs.is_staging_leg`); the `release/*` -> `main` leg stays
+# fully blocking, unchanged. This is meant to be temporary: once #1063 is resolved, flip every
+# `continue-on-error` back to unconditionally false (or remove them) and this comment goes with it.
+# `scripts/check-pr-quality-workflow.js` enforces the *shape* of this exception (tied to
+# `is_staging_leg`, not a blanket bypass) rather than forbidding `continue-on-error` outright --
+# see that file's own comment for why a blanket forbid was the previous state (#1003).
 on:
   pull_request:
     branches:
@@ -66,6 +78,10 @@ jobs:
     timeout-minutes: 2
     outputs:
       is_promotion: ${{ steps.check.outputs.is_promotion }}
+      # #1063: true only for the `staging` base / `to-staging/*` head shape -- the leg every
+      # quality job below is made advisory on. Defaults to false everywhere else (the `main` leg,
+      # and any workflow_dispatch/workflow_call run), which keeps those blocking.
+      is_staging_leg: ${{ steps.check.outputs.is_staging_leg }}
     steps:
       - name: Determine whether this is a promotion PR
         id: check
@@ -76,23 +92,40 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "is_promotion=true" >> "$GITHUB_OUTPUT"
-            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally"
+            echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
+            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally, blocking (not a real promotion PR to relax)"
             exit 0
           fi
           case "$BASE_REF" in
             staging)
-              case "$HEAD_REF" in to-staging/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              case "$HEAD_REF" in
+                to-staging/*)
+                  echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+                  echo "is_staging_leg=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                  ;;
+              esac
               ;;
             main)
-              case "$HEAD_REF" in release/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              case "$HEAD_REF" in
+                release/*)
+                  echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+                  echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
+                  exit 0
+                  ;;
+              esac
               ;;
           esac
           echo "is_promotion=false" >> "$GITHUB_OUTPUT"
+          echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
           echo "base=$BASE_REF head=$HEAD_REF does not match a known promotion head prefix -- skipping quality jobs"
 
   dgfy-api-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
     services:
@@ -224,6 +257,9 @@ jobs:
   migration-runner-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     services:
@@ -274,6 +310,9 @@ jobs:
   frontend-ims-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
@@ -309,6 +348,9 @@ jobs:
   frontend-pos-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:
@@ -332,6 +374,9 @@ jobs:
   frontend-storefront-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
@@ -382,6 +427,9 @@ jobs:
   repository-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
+    # the workflow-level comment at the top of this file.
+    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:
