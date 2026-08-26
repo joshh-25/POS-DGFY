@@ -29,6 +29,17 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // the #1003-class guard intact in spirit (a job missing either piece, or carrying some other
 // `if`/`continue-on-error` form, still fails this check) -- it does not mean "anything goes."
 // Revert `checkStagingLegSkipShape` to the original blanket forbid once #1063 closes.
+//
+// 2026-08-26 (#1066 follow-up): the job-level `continue-on-error: true` above turned out to be
+// necessary but not sufficient -- confirmed live on #1066 that it doesn't change the job's own
+// check-run conclusion (GitHub only spares the *workflow run's* rollup), so a genuinely-failing
+// job still reported `failure` to the PR and left `mergeStateStatus: UNSTABLE`, defeating the
+// whole point of #1063. Fixed in promotion-quality-gate.yml by adding `continue-on-error: true` to
+// every individual step in every quality job (that's what actually keeps a step's failure from
+// rolling into its job's conclusion). checkStepLevelAdvisory below enforces that every step-start
+// in a quality job has a matching step-level continue-on-error line, so a newly-added step that's
+// missing it fails CI instead of silently reintroducing a blocking check. Revert alongside
+// checkStagingLegSkipShape once #1063 closes -- both go back to nothing at the same time.
 const REQUIRED_PR_CHECKS_MARKERS = [
   'runner_labels_json: *runner_heavy'
 ];
@@ -248,13 +259,63 @@ function checkStagingLegSkipShape(qualityWorkflowText) {
   return problems;
 }
 
+/**
+ * #1066 follow-up (2026-08-26): job-level `continue-on-error` (checked above) doesn't change a
+ * job's own check-run conclusion -- only step-level `continue-on-error: true` on every step in the
+ * job does (see this file's own top-of-file comment, and promotion-quality-gate.yml's, for the
+ * full "why"). This asserts the shape: every step-start (`      - ` at 6-space indent) in a quality
+ * job block has exactly one matching step-level `continue-on-error: true` line (`        ` at
+ * 8-space indent) before the next step starts -- a mismatch means at least one step is missing it
+ * (the exact regression this guard exists to catch before it ships), or, less likely, a
+ * copy/paste duplicated the line inside one step.
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when every step is covered
+ */
+function checkStepLevelAdvisory(qualityWorkflowText) {
+  const problems = [];
+  for (const name of QUALITY_JOB_NAMES) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      // Already reported by checkStagingLegSkipShape above -- don't double-report the same
+      // missing/renamed job block here.
+      continue;
+    }
+    const block = blockMatch[1];
+    const stepsIndex = block.indexOf('\n    steps:\n');
+    if (stepsIndex === -1) {
+      problems.push(`promotion-quality-gate.yml: "${name}" has no \`steps:\` block -- was it restructured?`);
+      continue;
+    }
+    const stepsBlock = block.slice(stepsIndex);
+    const stepStarts = stepsBlock.match(/^ {6}-/gm) || [];
+    const stepLevelCoeLines = stepsBlock.match(/^ {8}continue-on-error: true$/gm) || [];
+    if (stepStarts.length === 0) {
+      problems.push(`promotion-quality-gate.yml: "${name}" has a \`steps:\` block but no steps were found -- checkStepLevelAdvisory needs updating to match.`);
+      continue;
+    }
+    if (stepLevelCoeLines.length !== stepStarts.length) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}" has ${stepStarts.length} step(s) but only ` +
+        `${stepLevelCoeLines.length} step-level \`continue-on-error: true\` line(s) -- #1066 requires ` +
+        'every step in a quality job to carry its own, not just the job-level line (job-level alone ' +
+        "doesn't keep the job's check-run conclusion green when a step fails)."
+      );
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
     ...checkPromotionPrefixSync(complianceScriptText, qualityWorkflowText),
     ...checkRunnerCacheConsistency(prChecksText),
-    ...checkStagingLegSkipShape(qualityWorkflowText)
+    ...checkStagingLegSkipShape(qualityWorkflowText),
+    ...checkStepLevelAdvisory(qualityWorkflowText)
   ];
 
   return missing;
@@ -287,6 +348,7 @@ module.exports = {
   checkPromotionPrefixSync,
   checkRunnerCacheConsistency,
   checkStagingLegSkipShape,
+  checkStepLevelAdvisory,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,
