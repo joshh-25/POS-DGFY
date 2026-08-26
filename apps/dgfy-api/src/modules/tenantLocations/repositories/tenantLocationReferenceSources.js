@@ -149,6 +149,27 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        // #1022: added by b86b01704 ("feat(pos): add cashier attendance and operator authority")
+        // but never added here -- caught by tests/tenantLocationReferenceSources.coverage.test.js,
+        // which diffs every direct TenantLocation.belongsTo association in models/index.js against
+        // this manifest.
+        key: 'posTerminalOperatorSessions',
+        label: 'POS terminal operator sessions',
+        modelName: 'PosTerminalOperatorSession',
+        association: 'PosTerminalOperatorSession.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        // #1022: same gap as posTerminalOperatorSessions above, same commit.
+        key: 'posDrawerHandoffEvents',
+        label: 'POS drawer handoff events',
+        modelName: 'PosDrawerHandoffEvent',
+        association: 'PosDrawerHandoffEvent.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'posShiftLocationTransitions',
         label: 'POS shift location transitions',
         modelName: 'PosShiftLocationTransition',
@@ -187,6 +208,16 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'employees',
         modelName: 'Employee',
         association: 'Employee.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        // #1022: same gap as posTerminalOperatorSessions/posDrawerHandoffEvents above, same
+        // b86b01704 commit.
+        key: 'employeeAttendanceSessions',
+        label: 'employee attendance sessions',
+        modelName: 'EmployeeAttendanceSession',
+        association: 'EmployeeAttendanceSession.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },
