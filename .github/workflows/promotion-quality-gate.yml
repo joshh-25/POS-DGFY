@@ -22,15 +22,20 @@ name: Promotion Quality Gate
 #
 # 2026-08-26 (#1063), temporary: the gate itself is suspected stale/unreliable (unclear whether
 # it's outdated test scripts or something else) and needs dedicated investigation time Pat doesn't
-# have right now. Rather than disable or delete the gate -- which would also drop the only
-# pre-`main` test/build/architecture check this repo has, with no rollback mechanism for a bad
-# deploy (#495 still open) -- every quality job below is `continue-on-error` on the `to-staging/*`
-# -> `staging` leg only (`needs.gate.outputs.is_staging_leg`); the `release/*` -> `main` leg stays
-# fully blocking, unchanged. This is meant to be temporary: once #1063 is resolved, flip every
-# `continue-on-error` back to unconditionally false (or remove them) and this comment goes with it.
-# `scripts/check-pr-quality-workflow.js` enforces the *shape* of this exception (tied to
-# `is_staging_leg`, not a blanket bypass) rather than forbidding `continue-on-error` outright --
-# see that file's own comment for why a blanket forbid was the previous state (#1003).
+# have right now. Two different relaxations, by leg:
+#   - `to-staging/*` -> `staging` (the optional soak leg): every quality job below is skipped
+#     entirely (`if: ... && needs.gate.outputs.is_staging_leg != 'true'`) -- no runner time spent,
+#     no results at all on this leg until #1063 is resolved.
+#   - `release/*` -> `main` (the default `develop -> main` promotion, and the `staging -> main` leg
+#     of the optional soak), plus any `workflow_dispatch`/`workflow_call` run: every quality job
+#     still runs in full, but `continue-on-error: true` -- a red run no longer blocks the merge.
+# Net effect: there is currently no leg where a red run from this workflow blocks a promotion --
+# said plainly rather than glossed over. This is meant to be temporary: once #1063 is resolved,
+# drop the `is_staging_leg` exclusion from every `if:` and flip every `continue-on-error` back to
+# unconditionally false (or remove it), and this comment goes with it.
+# `scripts/check-pr-quality-workflow.js` enforces the *shape* of this exception (the exact `if:`
+# and `continue-on-error:` pair below, not a blanket bypass) -- see that file's own comment for why
+# a blanket forbid of `continue-on-error` was the previous state (#1003).
 on:
   pull_request:
     branches:
@@ -79,7 +84,7 @@ jobs:
     outputs:
       is_promotion: ${{ steps.check.outputs.is_promotion }}
       # #1063: true only for the `staging` base / `to-staging/*` head shape -- the leg every
-      # quality job below is made advisory on. Defaults to false everywhere else (the `main` leg,
+      # quality job below is skipped entirely on. Defaults to false everywhere else (the `main` leg,
       # and any workflow_dispatch/workflow_call run), which keeps those blocking.
       is_staging_leg: ${{ steps.check.outputs.is_staging_leg }}
     steps:
@@ -122,10 +127,11 @@ jobs:
 
   dgfy-api-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
     services:
@@ -256,10 +262,11 @@ jobs:
 
   migration-runner-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     services:
@@ -309,10 +316,11 @@ jobs:
   # storefront's own local test.
   frontend-ims-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
@@ -347,10 +355,11 @@ jobs:
 
   frontend-pos-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:
@@ -373,10 +382,11 @@ jobs:
 
   frontend-storefront-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     steps:
@@ -426,10 +436,11 @@ jobs:
 
   repository-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
-    # #1063: advisory on the develop->staging soak leg only, blocking everywhere else -- see
-    # the workflow-level comment at the top of this file.
-    continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}
+    # #1063: skipped entirely on the develop->staging soak leg; runs (advisory only, see
+    # continue-on-error below) everywhere else -- see the workflow-level comment at the top of
+    # this file.
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
     steps:

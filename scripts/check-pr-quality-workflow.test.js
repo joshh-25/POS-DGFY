@@ -3,8 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   checkPromotionPrefixSync,
-  checkContinueOnErrorShape,
-  SANCTIONED_CONTINUE_ON_ERROR_EXPR,
+  checkStagingLegSkipShape,
+  SANCTIONED_SKIP_STAGING_IF,
+  SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES
 } = require('./check-pr-quality-workflow');
 
@@ -94,20 +95,21 @@ test('checkPromotionPrefixSync: PROMOTION_HEAD_PREFIX_BY_BASE missing entirely i
   assert.match(problems[0], /could not find PROMOTION_HEAD_PREFIX_BY_BASE/);
 });
 
-// #1063 (2026-08-26): checkContinueOnErrorShape replaced the old blanket "continue-on-error
-// anywhere in this file is forbidden" check with a shape-aware one -- every quality job must carry
-// continue-on-error, and it must be tied to is_staging_leg specifically, not a blanket bypass.
-// Builds a synthetic workflow body with one small job block per real job name rather than loading
-// the actual file, so these cases stay independent of unrelated edits to the real jobs' steps.
+// #1063 (2026-08-26): checkStagingLegSkipShape replaced the old blanket "continue-on-error
+// anywhere in this file is forbidden" check with a shape-aware one -- every quality job must skip
+// entirely on the develop->staging leg (via its `if:`) and be unconditionally advisory
+// (`continue-on-error: true`) on every leg it does run on. Builds a synthetic workflow body with
+// one small job block per real job name rather than loading the actual file, so these cases stay
+// independent of unrelated edits to the real jobs' steps.
 
-function buildWorkflowWithContinueOnError(continueOnErrorLineFor) {
+function buildWorkflowWithJobLines(linesFor) {
   const jobs = QUALITY_JOB_NAMES.map((name) => {
-    const line = continueOnErrorLineFor(name);
+    const { ifLine = SANCTIONED_SKIP_STAGING_IF, coeLine = SANCTIONED_CONTINUE_ON_ERROR } = linesFor(name) || {};
     return [
       `  ${name}:`,
       '    needs: gate',
-      "    if: needs.gate.outputs.is_promotion == 'true'",
-      ...(line ? [`    ${line}`] : []),
+      ...(ifLine ? [`    ${ifLine}`] : []),
+      ...(coeLine ? [`    ${coeLine}`] : []),
       '    runs-on: ubuntu-latest',
       '    steps:',
       '      - run: echo noop'
@@ -116,47 +118,46 @@ function buildWorkflowWithContinueOnError(continueOnErrorLineFor) {
   return `\n${jobs.join('\n\n')}\n`;
 }
 
-test('checkContinueOnErrorShape: sanctioned per-job conditional form on every job reports no problems', () => {
-  const text = buildWorkflowWithContinueOnError(
-    () => `continue-on-error: ${SANCTIONED_CONTINUE_ON_ERROR_EXPR}`
-  );
-  assert.deepEqual(checkContinueOnErrorShape(text), []);
+test('checkStagingLegSkipShape: sanctioned skip-if + unconditional continue-on-error on every job reports no problems', () => {
+  const text = buildWorkflowWithJobLines(() => ({}));
+  assert.deepEqual(checkStagingLegSkipShape(text), []);
 });
 
-test('checkContinueOnErrorShape: a blanket continue-on-error: true is caught, not treated as sanctioned', () => {
-  const text = buildWorkflowWithContinueOnError(() => 'continue-on-error: true');
-  const problems = checkContinueOnErrorShape(text);
+test('checkStagingLegSkipShape: an `if:` that does not exclude the staging leg is caught', () => {
+  const text = buildWorkflowWithJobLines(() => ({ ifLine: "if: needs.gate.outputs.is_promotion == 'true'" }));
+  const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
-  problems.forEach((problem) => assert.match(problem, /must be exactly/));
+  problems.forEach((problem) => assert.match(problem, /`if:` must be exactly/));
 });
 
-test('checkContinueOnErrorShape: a differently-worded condition (not tied to is_staging_leg) is caught', () => {
-  const text = buildWorkflowWithContinueOnError(
-    () => "continue-on-error: ${{ needs.gate.outputs.is_promotion == 'true' }}"
-  );
-  const problems = checkContinueOnErrorShape(text);
+test('checkStagingLegSkipShape: a job missing `if:` entirely is caught', () => {
+  const text = buildWorkflowWithJobLines((name) => (name === 'repository-quality' ? { ifLine: null } : {}));
+  const problems = checkStagingLegSkipShape(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"repository-quality"'s `if:` must be exactly/);
+  assert.match(problems[0], /found: none/);
+});
+
+test('checkStagingLegSkipShape: a conditional continue-on-error (tied to is_staging_leg) is caught -- must be unconditional now', () => {
+  const text = buildWorkflowWithJobLines(() => ({
+    coeLine: "continue-on-error: ${{ needs.gate.outputs.is_staging_leg == 'true' }}"
+  }));
+  const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
-  problems.forEach((problem) => assert.match(problem, /must be exactly/));
+  problems.forEach((problem) => assert.match(problem, /`continue-on-error:` must be exactly/));
 });
 
-test('checkContinueOnErrorShape: a quality job missing continue-on-error entirely is caught', () => {
-  const text = buildWorkflowWithContinueOnError((name) =>
-    name === 'repository-quality' ? null : `continue-on-error: ${SANCTIONED_CONTINUE_ON_ERROR_EXPR}`
-  );
-  const problems = checkContinueOnErrorShape(text);
+test('checkStagingLegSkipShape: a job missing continue-on-error entirely is caught', () => {
+  const text = buildWorkflowWithJobLines((name) => (name === 'dgfy-api-quality' ? { coeLine: null } : {}));
+  const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"repository-quality" is missing continue-on-error/);
+  assert.match(problems[0], /"dgfy-api-quality"'s `continue-on-error:` must be exactly/);
+  assert.match(problems[0], /found: none/);
 });
 
-test('checkContinueOnErrorShape: sanctioned on the staging leg, unconditionally false hardcoded elsewhere still passes as long as it matches exactly', () => {
-  // A job that hardcodes `continue-on-error: false` (rather than the conditional expression) does
-  // NOT match the sanctioned expression string and should still be flagged -- false is blocking,
-  // which is safe in itself, but silently diverging from the one sanctioned expression is still a
-  // drift this check exists to catch (e.g. it would hide a job nobody actually wired for #1063).
-  const text = buildWorkflowWithContinueOnError((name) =>
-    name === 'dgfy-api-quality' ? 'continue-on-error: false' : `continue-on-error: ${SANCTIONED_CONTINUE_ON_ERROR_EXPR}`
-  );
-  const problems = checkContinueOnErrorShape(text);
+test('checkStagingLegSkipShape: hardcoded continue-on-error: false is still flagged (drift from the sanctioned line, even though it is itself blocking-safe)', () => {
+  const text = buildWorkflowWithJobLines((name) => (name === 'frontend-pos-quality' ? { coeLine: 'continue-on-error: false' } : {}));
+  const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"dgfy-api-quality"'s continue-on-error must be exactly/);
+  assert.match(problems[0], /"frontend-pos-quality"'s `continue-on-error:` must be exactly/);
 });
