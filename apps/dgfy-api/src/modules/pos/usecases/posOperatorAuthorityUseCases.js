@@ -542,7 +542,15 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
         authorityService,
         hashPin = (pin) => bcrypt.hash(pin, 12),
         runTransaction: executeTransaction = runTransaction,
-        now = nowDate
+        now = nowDate,
+        // #1045: injected rather than statically imported from ../services/, so
+        // this module stays free of a direct usecase -> services import
+        // (architecture guardrail `usecaseLayerLeak`). The composition root
+        // (modules/pos/index.js) wires this to the shared
+        // posAttendancePermissionPolicy.js, the same function
+        // posCashierLifecycleUseCases uses, so the requirement and reason code
+        // cannot drift between the two routes.
+        assertAttendancePermission
     } = dependencies;
     const takeover = buildTransition({ dependencies, reason: 'takeover' });
     const sharedReliefStart = buildTransition({
@@ -611,9 +619,14 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
         }
     };
 
-    const getCurrent = async ({ authorityToken = '', tenantId = null, scope = {} } = {}) => {
+    const getCurrent = async ({ authorityToken = '', tenantId = null, scope = {}, user = null } = {}) => {
         try {
             await requireFeature({ resolveFeature, locationId: parsePositiveInt(scope.locationId) });
+            // Ordering is load-bearing (#1045): the feature verdict must win over the
+            // permission verdict, so a location with the attendance lifecycle disabled
+            // answers 404 POS_ATTENDANCE_FEATURE_DISABLED (which the terminal already
+            // knows to unlock on) rather than a 403 it cannot interpret.
+            assertAttendancePermission(user);
             if (!authorityToken) return ok({ operator_session: null, authority_valid: false });
             const claims = verifyAuthorityOrThrow(authorityService, authorityToken);
             if (normalizeTenant(claims.tenant_id) !== normalizeTenant(tenantId)

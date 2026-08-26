@@ -368,10 +368,17 @@ export const checkPermission = (requiredPermission) => {
       return next();
     }
 
+    // #1045: additive only (message/required unchanged) — gives callers a
+    // machine-readable reason code instead of forcing them to parse `message`.
     return res.status(403).json({
       success: false,
       message: 'Access denied: Insufficient permissions',
-      required: requiredPermission
+      required: requiredPermission,
+      error_code: 'PERMISSION_DENIED',
+      errors: {
+        reason_code: 'PERMISSION_DENIED',
+        required_permission: requiredPermission
+      }
     });
   };
 };

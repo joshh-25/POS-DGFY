@@ -739,7 +739,11 @@ export default function TerminalPageLayout({
           <span>
             {checkoutOperatorLoading
               ? 'Verifying the active cashier for this register...'
-              : `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`}
+              // #1045: render the same reason TerminalPage already resolved
+              // (which prefers a specific actionable message over the generic
+              // owner-name text) instead of reconstructing a second, competing
+              // copy of this string here.
+              : (checkoutBlockedReason || `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`)}
           </span>
           {!checkoutOperatorLoading ? (
             <button type="button" onClick={handleCashierSignIn} className="h-8 rounded-lg bg-[#1A4E8D] px-3 text-[11px] font-extrabold text-white hover:bg-[#143F73]">

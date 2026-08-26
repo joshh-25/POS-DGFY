@@ -28,7 +28,13 @@ import {
   setAnalyticsContext
 } from '../../../packages/web-core/src/observability/analyticsClient.js';
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
+import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
+
+// The fixed Chrome 80-84 iMin WebView pays a large full-screen compositing
+// cost for backdrop blur. Install one POS-only marker before React mounts so
+// every shared and hand-built modal gets the same low-effects profile.
+installIminPerformanceProfile();
 
 // Vite's own dynamic-import helper (__vitePreload) fires this event on a
 // chunk-load failure -- it's the only thing that catches the idle-time
