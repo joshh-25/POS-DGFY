@@ -1,8 +1,11 @@
 #!/bin/bash
 # .claude/hooks/session-start.sh
-# SKU Inventory Manager — Session Initialization Hook
-# Implements DOCUMENTATION_GUIDE.md §5.4
-# Run at the start of every AI session to snapshot project state.
+# DGFY Platform — Session Initialization Hook
+# NOTE (#365): this script is not currently registered in .claude/settings.json's SessionStart
+# hooks (only record-ai-attribution.js and inject-ai-attribution-context.js are) — it does not
+# run automatically today. Kept and fixed as a manual dev-diagnostics script; run it by hand with
+# `bash .claude/hooks/session-start.sh` if you want the snapshot below.
+# Run at the start of an AI session to snapshot project state.
 #
 # Design rules:
 #   - Each section is independently non-blocking (|| true on optional checks)
@@ -21,7 +24,7 @@ ENV_FILE="$BACKEND_DIR/.env"
 
 # ─── Header ──────────────────────────────────────────────────────────────────
 echo ""
-echo "🚀 SKU Inventory Manager — Session Start"
+echo "🚀 DGFY Platform — Session Start"
 echo "══════════════════════════════════════════════"
 echo "   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "══════════════════════════════════════════════"
@@ -267,10 +270,10 @@ if command -v git &>/dev/null; then
     echo "$_recent" | grep -q "^packages/web-core/src/services/" && echo "   🔌 API service layer changes  — ref: packages/web-core/src/services/"
 
     # Backend
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: backend/src/routes/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/controllers/" && echo "   🎮 Backend controller changes — ref: backend/src/controllers/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/models/"      && echo "   🗂️  Backend model changes      — ref: backend/src/models/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/services/"    && echo "   ⚙️  Backend service changes    — ref: backend/src/services/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: apps/dgfy-api/src/routes/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/controllers/" && echo "   🎮 Backend controller changes — ref: apps/dgfy-api/src/controllers/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/models/"      && echo "   🗂️  Backend model changes      — ref: apps/dgfy-api/src/models/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/services/"    && echo "   ⚙️  Backend service changes    — ref: apps/dgfy-api/src/services/"
     echo "$_recent" | grep -q "^apps/dgfy-migration-runner/migrations/"      && echo "   🗃️  DB migrations changed      — run: cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate"
     echo "$_recent" | grep -q "^apps/dgfy-api/tests/"           && echo "   🧪 Test changes               — run: cd apps/dgfy-api && npm test"
 
@@ -318,5 +321,5 @@ echo "    /start-dev       # PM2 dev start"
 echo "    /deploy          # Production deployment"
 echo ""
 echo "══════════════════════════════════════════════"
-echo "📖 Reference: CLAUDE.md · TROUBLESHOOTING.md · docs/"
+echo "📖 Reference: AGENTS.md · CLAUDE.md · TROUBLESHOOTING.md · docs/"
 echo ""
