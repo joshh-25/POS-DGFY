@@ -46,13 +46,22 @@ ${classification}
 `;
 
 const runCheck = ({ changedFiles = [], stagedFiles = [], args = [] } = {}) => {
+    // #1063 root cause: this suite runs inside real GitHub Actions PR jobs, so an un-isolated
+    // spawn inherits the runner's own GITHUB_BASE_REF/GITHUB_HEAD_REF. On a real promotion PR
+    // those can match isAggregatePromotionPr()'s exemption shape and silently skip the
+    // classification-floor check these tests assert on. Deleted (not just overwritten with '')
+    // so isolation doesn't depend on isAggregatePromotionPr()'s current falsy-check behavior.
+    const env = { ...process.env };
+    delete env.GITHUB_BASE_REF;
+    delete env.GITHUB_HEAD_REF;
+
     return spawnSync(
         process.execPath,
         ['scripts/check-compliance-impact.js', ...args],
         {
             cwd: repoRoot,
             env: {
-                ...process.env,
+                ...env,
                 COMPLIANCE_CHANGED_FILES: changedFiles.join('\n'),
                 COMPLIANCE_STAGED_FILES: stagedFiles.join('\n')
             },
