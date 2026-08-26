@@ -766,7 +766,15 @@ html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
 html.dgfy-imin-performance .animate-pos-card-scale-up,
 html.dgfy-imin-performance .animate-pos-illustration-float,
-html.dgfy-imin-performance .animate-float {
+html.dgfy-imin-performance .animate-float,
+html.dgfy-imin-performance .animate-shimmer,
+html.dgfy-imin-performance .animate-pulse-ring,
+html.dgfy-imin-performance .animate-spin-slow,
+html.dgfy-imin-performance .animate-spin-reverse,
+html.dgfy-imin-performance [class~="animate-ping"],
+html.dgfy-imin-performance .dot-1,
+html.dgfy-imin-performance .dot-2,
+html.dgfy-imin-performance .dot-3 {
   animation: none !important;
 }
 

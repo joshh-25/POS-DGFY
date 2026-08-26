@@ -35,6 +35,17 @@ describe('iMin POS performance profile contract', () => {
     expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-float');
   });
 
+  it('disables every continuously-looping animation on the item-save-in-flight overlay', () => {
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-shimmer');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-pulse-ring');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-spin-slow');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-spin-reverse');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="animate-ping"]');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .dot-1');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .dot-2');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .dot-3');
+  });
+
   it('keeps search typing urgent while catalog requests follow the deferred query', () => {
     expect(catalogWorkflowSource).toContain('const deferredSearch = useDeferredValue(search);');
     expect(catalogWorkflowSource).toContain('buildCatalogRequestKey(deferredSearch, selectedLocationId)');
