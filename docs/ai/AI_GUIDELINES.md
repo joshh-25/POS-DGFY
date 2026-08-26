@@ -2,7 +2,7 @@
 > **Last Updated:** May 8, 2026
 > **Tool Count:** 66
 
-This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
+This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the DGFY platform (SKUpervisor is the IMS app's own codename — see `apps/dgfy-ims` — not the platform name).
 
 > **Note:** For the complete auto-generated tool reference, see [generated/AI_CAPABILITIES.md](../generated/AI_CAPABILITIES.md).
 
