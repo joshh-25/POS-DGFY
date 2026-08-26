@@ -7,7 +7,7 @@ workflow modes (retail, F&B, services, hospitality, food manufacturing,
 MSME, and more), not a single-vertical SKU tool.
 **Status**: Active development
 # CLAUDE.md - DGFY Platform Context
-> **Last reviewed:** 2026-08-09 (targeted identity/navigation refresh; the
+> **Last reviewed:** 2026-08-26 (#365 targeted stale-reference pass; the
 > rest of this file predates the multi-vertical/workflow-mode architecture
 > below and is not fully current — verify anything load-bearing against the
 > docs in "Mandatory Lookup Order" and `docs/ai/CLAUDE.md`'s own later
@@ -15,9 +15,12 @@ MSME, and more), not a single-vertical SKU tool.
 
 ## Mandatory Lookup Order
 
-This file (`docs/ai/CLAUDE.md`) is a working-context supplement, not the
-top of the documentation hierarchy. Before implementing anything
-non-trivial, follow the same lookup order every other doc in this repo
+**`AGENTS.md` is the actual top of the hierarchy** — it's what root
+`CLAUDE.md` auto-loads (`@AGENTS.md`), and it's canonical. This file
+(`docs/ai/CLAUDE.md`) is a working-context supplement one level below it,
+not the top of the documentation hierarchy itself. Before implementing
+anything non-trivial, read `AGENTS.md` first, then follow the same lookup
+order every other doc in this repo
 points to:
 
 1. `docs/START_HERE.md` — canonical entry point and folder usage guide.
@@ -241,45 +244,20 @@ design. Once the cutover in that runbook has executed:
 
 # 🛠️ Common Commands
 
-## Production (PM2 - Recommended)
-The project uses PM2 for process management in production:
+## Production / Staging deploys (#365: PM2 commands removed here)
+This section used to recommend `pm2 restart all` / `scripts/deploy.sh` / `scripts/deploy-remote.sh`
+for production, and a manual PM2 `ecosystem.config.cjs` invocation for staging. That's the ADR-0030
+signed-controller/PM2 model, which `docs/ops/DEPLOYMENT_GUIDE.md` (line 94 of that file) itself now
+states is superseded — current production secret handling and deploy run through `docker compose`
+via `.github/workflows/publish-platform.yml`, not PM2. Rather than restate specific deploy commands
+here (risk of the same drift), see the actual current, authoritative process:
 
-```bash
-# Restart all services (backend + frontend)
-pm2 restart all
+- `docs/ops/RELEASE_CANDIDATE_POLICY.md` — the authoritative release/promotion policy.
+- `AGENTS.md`'s `promoter` and `incident-responder` role skills — the actual DEV/STAGING/PROD
+  deploy-dispatch procedure (`deploy.yml`, `deploy-main.yml`, `publish-platform.yml`).
 
-# View running processes
-pm2 list
-
-# View logs
-pm2 logs
-
-# Full deployment (pulls code, installs deps, builds, migrates, restarts)
-./scripts/deploy.sh
-
-# Remote Deployment Trigger (from local machine)
-bash scripts/deploy-remote.sh
-```
-
-## Staging (PM2 - Manual)
-`staging.dgfy.ph` runs the IMS (SKUpervisor) app against a separate backend.
-Staging is **not** deployed by `deploy.sh` — manage it manually.
-
-```bash
-# Start staging processes (first time or after ecosystem.config.cjs changes)
-pm2 start ecosystem.config.cjs --only sku-staging-backend,sku-staging-frontend --env staging
-pm2 save
-
-# Restart staging only
-pm2 restart sku-staging-backend sku-staging-frontend
-
-# Verify staging health
-curl -fsS http://127.0.0.1:5002/health
-curl -fsS http://127.0.0.1:5183
-```
-
-Port map: staging backend → `5002`, staging IMS frontend → `5183`.
-See `docs/ops/DEPLOYMENT_GUIDE.md` § Staging Environment for full setup runbook.
+Do not run `scripts/deploy.sh`, `scripts/deploy-remote.sh`, or PM2 process commands based on this
+file — see `docs/ops/DEPLOYMENT_GUIDE.md`'s own superseded-model notice for why.
 
 ## Development (Local testing only)
 > ⚠️ These commands are for local development only. Use PM2 commands for production.
@@ -328,122 +306,15 @@ node apps/dgfy-api/scripts/sync-tenant-schemas.js
 
 ---
 
-## 📂 Project Structure at a Glance
-
-```
-SKU-Inventory-Manager/                    # Monorepo root
-├── packages/web-core/                     # @sieitzz/web-core — shared frontend trunk
-│   ├── Components/                       # React components by feature (shared by all 3 apps)
-│   │   ├── dashboard/                    # Dashboard widgets
-│   │   ├── items/                        # Item/SKU management
-│   │   ├── po/                           # Purchase Orders
-│   │   ├── jo/                           # Job Orders
-│   │   ├── movements/                    # Stock movements
-│   │   ├── products/                     # Product creation wizard
-│   │   ├── suppliers/                    # Supplier management + Item Coverage
-│   │   ├── users/                        # User management
-│   │   ├── ui/                           # Shadcn UI components
-│   │   ├── data/                         # dummyData.js (dev only)
-│   │   └── utils/                        # fifoCalculations.js
-│   ├── Pages/                            # DGFY auth pages only (the rest moved to dgfy-ims)
-│   │   ├── DgfyAuthPage.jsx
-│   │   ├── DgfyCompanySelect.jsx
-│   │   ├── RegisterCompany.jsx
-│   │   └── CompanyRegistrationStatus.jsx
-│   ├── src/
-│   │   ├── features/                     # Feature modules (pos/, sales/, inventory/, …)
-│   │   ├── services/                     # API service layer
-│   │   │   ├── api.js                    # Axios instance
-│   │   │   ├── itemService.js
-│   │   │   ├── userService.js
-│   │   │   └── settingsService.js
-│   │   └── store/                        # Zustand stores
-│   ├── vite/                             # sentryViteConfig.js, webCoreRuntimeDeps.js
-│   └── package.json                      # No build step, no node_modules, no lockfile
-│
-├── apps/dgfy-ims/                         # IMS (SKUpervisor) app — dev port 5173, image dgfy-ims
-│   ├── Pages/                            # Page components (routed)
-│   │   ├── Dashboard.jsx
-│   │   ├── Login.jsx
-│   │   ├── Register.jsx
-│   │   ├── Settings.jsx
-│   │   └── admin/FeedbackDashboard.jsx   # Admin feedback dashboard
-│   ├── src/main.jsx                      # Vite entry point
-│   ├── Layout.jsx                        # Main layout wrapper
-│   ├── package.json
-│   ├── package-lock.json                 # Per-app lockfile
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── index.html
-│
-├── apps/dgfy-pos/                         # POS app — dev port 5174, image dgfy-pos
-│   ├── desktop/pos-electron/             # Electron shell
-│   ├── src/main.jsx
-│   ├── package.json / package-lock.json
-│   ├── vite.config.js
-│   └── index.html
-│
-├── apps/dgfy-storefront/                  # Customer storefront — dev port 5175, image dgfy-storefront
-│   ├── src/
-│   │   ├── StorefrontApp.jsx
-│   │   ├── modes/                        # retail, fnb, services, hospitality, simple
-│   │   └── checkout/
-│   ├── package.json / package-lock.json
-│   ├── vite.config.js
-│   └── index.html
-│
-├── apps/dgfy-api/                         # The app (source of truth; formerly backend/)
-│   ├── src/
-│   │   ├── routes/                       # Express routes
-│   │   │   ├── auth.js
-│   │   │   ├── items.js
-│   │   │   ├── users.js
-│   │   │   ├── purchaseOrders.js
-│   │   │   ├── jobOrders.js
-│   │   │   ├── stockMovements.js
-│   │   │   ├── suppliers.js
-│   │   │   └── settings.js
-│   │   ├── controllers/                  # Business logic
-│   │   │   ├── authController.js
-│   │   │   ├── adminAuthController.js     # Developer portal auth
-│   │   │   ├── userController.js
-│   │   │   └── settingsController.js
-│   │   ├── models/                       # Sequelize models
-│   │   │   ├── Item.js
-│   │   │   ├── User.js
-│   │   │   ├── PurchaseOrder.js
-│   │   │   └── ...
-│   │   ├── middleware/
-│   │   │   ├── auth.js                   # JWT authentication
-│   │   │   └── errorHandler.js
-│   │   ├── services/                     # Complex operations
-│   │   │   ├── authService.js
-│   │   │   ├── userService.js
-│   │   │   └── settingsService.js
-│   │   ├── validators/                   # Input validation
-│   │   └── server.js                     # Express app entry
-│   ├── .env                              # Environment variables
-│   └── package.json
-│
-├── apps/dgfy-migration-runner/            # Migration domain: migrations/, seeders/, database-setup.sql
-│
-├── apps/dgfy-android-bridge/              # Android hosts (formerly android/)
-│   └── imin-wrapper/                      # iMin WebView wrapper; built via scripts/build-android-release.sh
-│
-├── docs/                                 # Documentation
-│   └── QUICK_REFERENCE.md
-
-├── .claude/                              # Claude Code config
-│   └── hooks/
-│       └── session-start.sh
-├── package.json                          # Root monorepo config
-├── docker-compose.yml
-└── CLAUDE.md                             # This file
-```
-
----
-
 ## 🔑 Key Components Reference
+
+> **#365 note:** a second, duplicate "Project Structure at a Glance" section used to live here. It
+> was redundant with the accurate structure block earlier in this file ("📂 Project Structure") and
+> was itself stale (root labeled `SKU-Inventory-Manager/`, `docker-compose.yml` shown at repo root
+> — actually `infrastructure/docker/docker-compose.yml` — and a `.claude/` listing showing only
+> `hooks/session-start.sh`, omitting the hooks actually registered in `.claude/settings.json` and
+> `.claude/agents/`/`.claude/skills/`). Removed rather than fixed in place — see the earlier
+> "📂 Project Structure" section for the current, accurate tree.
 
 ### Frontend Components
 
@@ -589,7 +460,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `docs/api/specification.md` - All endpoint details
 - `docs/api/integration-guide.md` - Frontend-backend integration
 - `docs/architecture/system-architecture.md` - System architecture diagrams
-- `docs/AI_GUIDELINES.md` - AI Assistant capabilities, limitations, and workflows
+- `docs/ai/AI_GUIDELINES.md` - AI Assistant capabilities, limitations, and workflows
 
 ---
 
