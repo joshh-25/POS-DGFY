@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -154,12 +154,40 @@ full, and #1007's mechanism (Decision 9 above, defined in `docs/ops/RELEASE_CAND
 for its own narrower, unrelated retro-verification checklist (confirming PR #858's specific
 promotion was sound) — unaffected by this ADR either way.
 
+## Amendments
+
+### 2026-08-26 — `promotion-quality-gate.yml` no longer runs at all on the optional soak leg (#1063)
+
+- Clause amended: **Decision 3** (`[default]` tier per ADR 0039). The clause it amends: "`
+  promotion-quality-gate.yml`'s `staging`/`to-staging/*` trigger stays as-is — dormant under the new
+  default, still functional if the optional path is used." That's no longer accurate on its own —
+  restated here rather than left silently stale.
+- Change: `promotion-quality-gate.yml` is suspected stale/unreliable and needs dedicated
+  investigation time (#1063). Until that's resolved: every quality job in the workflow is skipped
+  entirely (not just non-blocking) when triggered via `to-staging/*` → `staging` — i.e. the optional
+  soak path Decision 3 describes as "still functional" currently runs with **no** quality-gate
+  signal at all, not a degraded one. On the `release/*` → `main` leg (and the default two-stage
+  path this ADR's own Decision 1 established), the workflow still runs in full but is
+  unconditionally `continue-on-error` — visible, not blocking.
+- Reason: same as `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-26 amendment, which is the
+  authoritative record of the full rationale and exit condition — not duplicated here. This ADR's
+  amendment exists only so Decision 3's own claim about the CI trigger doesn't go stale in place.
+- Scope check against this ADR's `[binding]` clauses, confirmed unaffected: Decision 6 (production
+  tenant-schema report) and Decision 8 (`AGENTS.md` Merge Safety, never-`--squash`, the
+  `release/<label>` head-cut rule) are untouched — this amendment only concerns
+  `promotion-quality-gate.yml`'s own blocking behavior, a `[default]`-tier detail, not any
+  `[binding]` control.
+- Not a prerequisite for, or triggered by, #495/#639 — same standing-risk framing as this ADR's own
+  Consequences section already states.
+- PR: #1064. Tracked as #1063.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
 not define), #1019 (the doc retirement this ADR's Decision 10 executes), #1008 (parent epic), #1018
 / PR #1036 (the CI quality gate that makes this affordable), #860 / PR #858 (the concrete precedent
 and the risk this ADR answers directly), #639, #495, #408, #409, #927 (resolved, unaffected),
-`docs/ops/RELEASE_CANDIDATE_POLICY.md` (the executable policy this ADR governs),
+#1063 / PR #1064 (the amendment above), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (the executable
+policy this ADR governs),
 `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` (superseded, the model
 `NO_STAGING_RELEASE_STANDARD.md` described).

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -265,8 +265,8 @@ Retire staging..." amendment below for history**:
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018); a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut; **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
-| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too). Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | DEV (or STAGING) |
+| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018) — **temporarily `continue-on-error` as of 2026-08-26, see the amendment below (#1063): it runs and is visible, but does not block**; a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut; **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | DEV (or STAGING) |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -366,3 +366,35 @@ naming who authorized it and why — not a revival of ADR 0030's cryptographic s
 
 `.agents/skills/promoter/SKILL.md`'s own checkpoint table carries the executable form of this row —
 read it there for the actual procedure, not just this summary.
+
+### 2026-08-26: `promotion-quality-gate.yml` no longer blocks any promotion leg (#1063)
+
+Pat's call: `promotion-quality-gate.yml` itself is suspected stale/unreliable — unclear whether it's
+outdated test scripts or something else — and needs dedicated investigation time that isn't
+available right now. Rather than disable or delete the gate outright (which would drop the only
+pre-`main` test/build/architecture check this repo has, with no rollback mechanism for a bad deploy
+— #495 still open), it's split into two different relaxations by leg — **stated plainly: as a
+result, no promotion leg is currently blocked by a red run of this workflow**:
+
+- **`to-staging/*` → `staging` (the optional, non-default soak — see "Flow" above)**: every quality
+  job is **skipped entirely**, gated on the workflow's own `is_staging_leg` output. No runner time
+  spent, no results produced on this leg at all.
+- **`release/*` → `main` (the default `develop → main` promotion, and the `staging → main` leg of
+  the optional soak)**: every quality job still **runs in full**, but is unconditionally
+  `continue-on-error` — a red run is visible in the Checks tab but no longer blocks the merge. This
+  is the leg that gates production, so a red run here is worth reading even though it won't stop
+  anything.
+- `scripts/check-pr-quality-workflow.js`'s guard (built after #1003, when a `quality-checks:` job
+  was briefly re-added unconditional and unfiltered) is updated to match: it no longer forbids
+  `continue-on-error` outright, but it does enforce the *shape* — every quality job must carry both
+  the staging-leg skip condition and the unconditional `continue-on-error: true`, exactly, so a
+  further undocumented drift still fails CI.
+
+**This is temporary, not a standing policy change.** The exit condition: once #1063's investigation
+confirms the gate is healthy (or fixes what was actually wrong), drop the staging-leg skip
+condition and flip every `continue-on-error` back to unconditionally false (or remove them
+entirely), and update this section accordingly. Until then, treat a red `promotion-quality-gate.yml`
+run on the `→ main` leg as a real signal worth reading, not proof of nothing — advisory means it
+doesn't block the merge, not that it's noise. Nothing else in this document changes: `gate:release:
+local`, the production tenant-schema report, and `AGENTS.md`'s Merge Safety hard stop are unrelated
+controls and stay exactly as mandatory as before.
