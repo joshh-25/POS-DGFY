@@ -15,9 +15,20 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // wired-but-disabled. Dropped that half of the assertion accordingly.
 // `requiredQualityMarkers` below is the half that actually matters and
 // stays fully enforced: promotion-quality-gate.yml itself must keep every real
-// gate and must never be continue-on-error, whether it's invoked
-// automatically (a real promotion PR), manually (workflow_dispatch), or via
-// a workflow_call caller.
+// gate and, until 2026-08-25 (#1003), was required to never be
+// continue-on-error at all, whether invoked automatically (a real promotion
+// PR), manually (workflow_dispatch), or via a workflow_call caller.
+//
+// 2026-08-26 (#1063), temporary: two deliberate relaxations now exist, checked by
+// checkStagingLegSkipShape below rather than the old blanket forbid:
+//   - every quality job's `if:` must additionally exclude the staging leg
+//     (`&& needs.gate.outputs.is_staging_leg != 'true'`) -- skipped entirely there.
+//   - every quality job must carry `continue-on-error: true` -- advisory (never blocking) on
+//     every leg it does run on (release/*->main, and any workflow_dispatch/workflow_call).
+// Net effect, stated plainly: no leg currently has a blocking run of this workflow. This keeps
+// the #1003-class guard intact in spirit (a job missing either piece, or carrying some other
+// `if`/`continue-on-error` form, still fails this check) -- it does not mean "anything goes."
+// Revert `checkStagingLegSkipShape` to the original blanket forbid once #1063 closes.
 const REQUIRED_PR_CHECKS_MARKERS = [
   'runner_labels_json: *runner_heavy'
 ];
@@ -29,6 +40,7 @@ const REQUIRED_QUALITY_MARKERS = [
   // drift apart.
   'gate:',
   'is_promotion',
+  'is_staging_leg',
   'to-staging/*',
   'release/*',
   'needs: gate',
@@ -158,17 +170,92 @@ function checkRunnerCacheConsistency(prChecksText) {
   return problems;
 }
 
+// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines --
+// skipped entirely on the staging soak leg, unconditionally advisory everywhere it does run.
+const SANCTIONED_SKIP_STAGING_IF =
+  "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
+const SANCTIONED_CONTINUE_ON_ERROR = 'continue-on-error: true';
+
+// The six jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
+// filtering REQUIRED_QUALITY_MARKERS, which also holds non-job-name strings) so this function
+// reads as "here are the jobs" rather than "here's a marker list that happens to include them."
+const QUALITY_JOB_NAMES = [
+  'dgfy-api-quality',
+  'migration-runner-quality',
+  'frontend-ims-quality',
+  'frontend-pos-quality',
+  'frontend-storefront-quality',
+  'repository-quality'
+];
+
+/**
+ * #1063 (2026-08-26), temporary: replaces the old blanket "continue-on-error anywhere in this
+ * file is forbidden" check. That blanket form is what #1003 needed (a `quality-checks:` job had
+ * been re-added unconditional and unfiltered -- any continue-on-error at all was suspect). Now
+ * that a deliberate, on-purpose relaxation exists -- skip entirely on the develop->staging leg,
+ * advisory (continue-on-error) on every leg it does run on -- forbidding the substring outright
+ * would just fail on the legitimate case, so this checks the *shape* instead: every quality job
+ * must carry both the staging-skip `if:` and an unconditional `continue-on-error: true`, exactly.
+ * A job missing either line, carrying more than one of either, or using some other `if`/
+ * `continue-on-error` form all still fail this check -- that's what keeps a further, undocumented
+ * drift (e.g. someone re-narrowing the skip to only some jobs, or reintroducing a blocking job by
+ * accident) from slipping back in unnoticed. Revert this back to the original blanket forbid once
+ * #1063 closes and both lines are removed from every job.
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when every quality job's shape is sanctioned
+ */
+function checkStagingLegSkipShape(qualityWorkflowText) {
+  const problems = [];
+  for (const name of QUALITY_JOB_NAMES) {
+    // Job block = from "  <name>:\n" up to (not including) the next top-level (2-space-indented)
+    // job header, or end of file. Mirrors checkPromotionPrefixSync's own "bounded slice, not an
+    // open-ended proximity window" reasoning above.
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${name}:" job block -- was it renamed or ` +
+        'restructured? checkStagingLegSkipShape needs updating to match.'
+      );
+      continue;
+    }
+    const block = blockMatch[1];
+
+    // Anchored to exactly 4-space (job-level) indentation, not `\s*` -- a quality job's steps
+    // legitimately carry their own step-level `if:`/`continue-on-error:` lines at deeper
+    // indentation (e.g. `if: always()` on an upload-artifact step, or the whitespace-check step's
+    // `if: github.event_name == 'pull_request'`), which must not be mistaken for the job-level one.
+    const ifLines = block.match(/^ {4}if:.*$/gm) || [];
+    if (ifLines.length !== 1 || ifLines[0].trim() !== SANCTIONED_SKIP_STAGING_IF) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}"'s \`if:\` must be exactly ` +
+        `\`${SANCTIONED_SKIP_STAGING_IF}\` (found: ${ifLines.length === 0 ? 'none' : ifLines.map((l) => `\`${l.trim()}\``).join(', ')}) ` +
+        '-- #1063 requires every quality job to skip entirely on the develop->staging soak leg.'
+      );
+    }
+
+    const coeLines = block.match(/^ {4}continue-on-error:.*$/gm) || [];
+    if (coeLines.length !== 1 || coeLines[0].trim() !== SANCTIONED_CONTINUE_ON_ERROR) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}"'s \`continue-on-error:\` must be exactly ` +
+        `\`${SANCTIONED_CONTINUE_ON_ERROR}\` (found: ${coeLines.length === 0 ? 'none' : coeLines.map((l) => `\`${l.trim()}\``).join(', ')}) ` +
+        '-- #1063 requires every quality job to be unconditionally advisory on every leg it runs on.'
+      );
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
     ...checkPromotionPrefixSync(complianceScriptText, qualityWorkflowText),
-    ...checkRunnerCacheConsistency(prChecksText)
+    ...checkRunnerCacheConsistency(prChecksText),
+    ...checkStagingLegSkipShape(qualityWorkflowText)
   ];
-
-  if (qualityWorkflowText.includes('continue-on-error')) {
-    missing.push('promotion-quality-gate.yml:continue-on-error is forbidden for blocking quality gates');
-  }
 
   return missing;
 }
@@ -188,7 +275,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log('[pr-quality-workflow] OK. Blocking promotion quality gate contains all required gates.');
+  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates and matches the sanctioned #1063 shape (skipped on the staging leg, advisory everywhere it runs).');
 }
 
 if (require.main === module) {
@@ -199,6 +286,10 @@ module.exports = {
   checkPrQualityWorkflow,
   checkPromotionPrefixSync,
   checkRunnerCacheConsistency,
+  checkStagingLegSkipShape,
+  SANCTIONED_SKIP_STAGING_IF,
+  SANCTIONED_CONTINUE_ON_ERROR,
+  QUALITY_JOB_NAMES,
   REQUIRED_PR_CHECKS_MARKERS,
   REQUIRED_QUALITY_MARKERS
 };
