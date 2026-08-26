@@ -168,7 +168,9 @@ promotion was sound) — unaffected by this ADR either way.
   soak path Decision 3 describes as "still functional" currently runs with **no** quality-gate
   signal at all, not a degraded one. On the `release/*` → `main` leg (and the default two-stage
   path this ADR's own Decision 1 established), the workflow still runs in full but is
-  unconditionally `continue-on-error` — visible, not blocking.
+  unconditionally `continue-on-error` — not blocking (the 2026-08-26 #1066 correction below revises
+  "visible" specifically: under the step-level fix a red run reports as a green check-run by
+  design, so "visible" now means a deduped comment on #1063, not the Checks tab).
 - Reason: same as `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-26 amendment, which is the
   authoritative record of the full rationale and exit condition — not duplicated here. This ADR's
   amendment exists only so Decision 3's own claim about the CI trigger doesn't go stale in place.
@@ -180,6 +182,57 @@ promotion was sound) — unaffected by this ADR either way.
 - Not a prerequisite for, or triggered by, #495/#639 — same standing-risk framing as this ADR's own
   Consequences section already states.
 - PR: #1064. Tracked as #1063.
+
+### 2026-08-26 — correction: job-level `continue-on-error` didn't clear `mergeStateStatus` (#1066)
+
+- Clause amended: this ADR's own amendment immediately above, which asserted Decision 8
+  (`AGENTS.md` Merge Safety) was "untouched" by the prior change. True of the rule itself, false in
+  practice — confirmed live on PR #1066 that the prior shape (job-level `continue-on-error: true`
+  only) did not clear `mergeStateStatus`, and so did not actually let a promotion PR satisfy
+  Decision 8's `mergeStateStatus: CLEAN` requirement despite this workflow's advisory design intent.
+- Change: `promotion-quality-gate.yml` now carries `continue-on-error: true` on every individual
+  step within each quality job, not just at job level — that's the mechanism GitHub Actions actually
+  uses to keep a job's own check-run conclusion (and therefore `mergeStateStatus`) green regardless
+  of an internal failure; job-level alone only spares the workflow run's own rollup. Full rationale:
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-26 correction entry (authoritative record, not
+  duplicated here). A new job in the same workflow (`report-advisory-failures`) records each real
+  per-step outcome from `steps.<id>.outcome` (the pre-override result — the one field that actually
+  survives `continue-on-error`, exposed as a per-job `outputs.real_failures`) and posts it as a
+  deduped comment on #1063, so the now-hidden signal isn't lost entirely — not the Actions Jobs API,
+  whose `steps[].conclusion` is post-override and would never report a failure this workflow now
+  swallows (see the second correction below).
+- Scope check, confirmed unaffected: Decision 8 itself is not weakened or reinterpreted — it still
+  requires `mergeStateStatus: CLEAN` before any merge, unconditionally. What changed is only whether
+  `promotion-quality-gate.yml`'s advisory design can actually produce that state, a `[default]`-tier
+  implementation detail, not the `[binding]` control itself.
+- PR: #1068. Refs #1063, #1066.
+
+### 2026-08-26 — second correction: the Actions API and the service-container gap (#1066 round 2)
+
+- Clause amended: the correction immediately above, on two counts — one what it said, one what it
+  left unaddressed.
+- Change 1 (what it said): the amendment above originally described `report-advisory-failures` as
+  re-deriving real per-step outcomes "from the Actions API." That mechanism never worked —
+  `steps[].conclusion` via the Actions Jobs API is the *post-override* value (matches the
+  `conclusion` context, not `outcome`); a step with `continue-on-error: true` that genuinely fails
+  still reports `conclusion: "success"` there. Caught by pr-reviewer on PR #1068's own review round
+  and confirmed independently against this repo's run `32620370627`. Fixed in the same PR before
+  merge: each quality job now records `steps.<id>.outcome` (the pre-override result) directly into
+  its own job output, consumed by `report-advisory-failures` via `needs.<job>.outputs.real_failures`
+  — no Actions API call involved in detection at all. The text above is corrected to match rather
+  than left describing the mechanism that never worked.
+- Change 2 (what it left unaddressed): the first #1066 fix left the `mysql`/`redis` `services:`
+  blocks on `dgfy-api-quality`/`migration-runner-quality` as a documented "known, accepted residual
+  gap" — GitHub's own service-container provisioning happens before any step runs, outside
+  continue-on-error's reach at any level, so a failing container could still leave one of those two
+  jobs' check-run red. pr-reviewer correctly refused a PR-body declaration as a substitute for
+  fixing it. Both `services:` blocks are replaced with ordinary steps (start/wait/stop the same
+  containers via `docker run`), which the existing continue-on-error and reporting mechanism already
+  covers like any other step — no new Decision-level exception needed. Full detail in the workflow
+  file's own top-of-file comment, not duplicated here.
+- Scope check, confirmed unaffected: same as the correction above — Decision 8 itself is untouched;
+  this closes the gap between the advisory *design* and what it could actually produce.
+- PR: #1068. Refs #1063, #1066.
 
 ## Related
 
