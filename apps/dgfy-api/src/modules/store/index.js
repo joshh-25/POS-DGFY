@@ -59,7 +59,13 @@ export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
     requireCommerceQrphConfig,
     requireCommercePaymentConfig,
     paymongoMode: getPayMongoMode(),
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    // #926: same four flags storeCheckoutPaymentSessionUseCase already receives below, so the
+    // catalog's advertised payment_capabilities agree with what checkout will actually accept.
+    directPaymentRequired: storefrontDirectPaymentRequired,
+    directGcashEnabled: storefrontDirectGcashEnabled,
+    directMayaEnabled: storefrontDirectMayaEnabled,
+    directCardEnabled: storefrontDirectCardEnabled
 });
 export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
 export const listStoreLocationsUseCase = buildListStoreLocationsUseCase({ storeRepository });

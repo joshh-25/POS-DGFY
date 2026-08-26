@@ -1919,7 +1919,16 @@ const resolveStorefrontPaymentCapabilities = async ({
     requireCommerceQrphConfig,
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     paymongoMode,
-    revenueSharingEnabled
+    revenueSharingEnabled,
+    // #926: when direct-only mode is required, the checkout use case (~line 3623) rejects
+    // card/gcash/maya unless their own direct*Enabled flag is on -- but this function never
+    // received these flags at all, so the catalog kept advertising those methods as available
+    // even when checkout would reject them. Mirrors buildStoreCheckoutPaymentSessionUseCase's own
+    // param shape so both use cases agree on the same four inputs.
+    directPaymentRequired = false,
+    directGcashEnabled = false,
+    directMayaEnabled = false,
+    directCardEnabled = false
 }) => {
     const supportsHostedCapabilityLookup = typeof paymongoService?.getPaymentMethodCapabilities === 'function';
     const paymentTypes = supportsHostedCapabilityLookup
@@ -1997,6 +2006,35 @@ const resolveStorefrontPaymentCapabilities = async ({
             };
         }
 
+        // #926: direct-only mode gate, applied last so it overrides whatever the provider-method
+        // lookup above advertised -- matches the checkout use case's own directMethodUnavailable
+        // check (same file, buildStoreCheckoutPaymentSessionUseCase) so advertise and enforce
+        // agree. Only card/gcash/maya have a direct-payment path today; grab_pay/shopeepay/qrph
+        // are untouched by this flag.
+        if (directPaymentRequired) {
+            if (!directGcashEnabled && capabilities.gcash) {
+                capabilities.gcash = {
+                    enabled: false,
+                    environment: paymongoMode,
+                    reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE'
+                };
+            }
+            if (!directMayaEnabled && capabilities.maya) {
+                capabilities.maya = {
+                    enabled: false,
+                    environment: paymongoMode,
+                    reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE'
+                };
+            }
+            if (!directCardEnabled && capabilities.card) {
+                capabilities.card = {
+                    enabled: false,
+                    environment: paymongoMode,
+                    reason_code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE'
+                };
+            }
+        }
+
         return capabilities;
     } catch (error) {
         logger.warn('Storefront payment capability readiness check failed', {
@@ -2053,7 +2091,13 @@ export const buildListStoreCatalogUseCase = ({
     paymongoMode = 'test',
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault,
-    downpaymentSettingsRepository = null
+    downpaymentSettingsRepository = null,
+    // #926: threaded through to resolveStorefrontPaymentCapabilities so the catalog agrees with
+    // what buildStoreCheckoutPaymentSessionUseCase will actually accept.
+    directPaymentRequired = false,
+    directGcashEnabled = false,
+    directMayaEnabled = false,
+    directCardEnabled = false
 }) => {
     // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
     // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
@@ -2091,7 +2135,11 @@ export const buildListStoreCatalogUseCase = ({
                     requireCommerceQrphConfig,
                     requireCommercePaymentConfig,
                     paymongoMode,
-                    revenueSharingEnabled
+                    revenueSharingEnabled,
+                    directPaymentRequired,
+                    directGcashEnabled,
+                    directMayaEnabled,
+                    directCardEnabled
                 }),
                 resolveStorefrontPaymentMode({
                     downpaymentSettingsRepository,
@@ -3629,7 +3677,12 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 throw new DomainError(
                     DomainErrorCode.SERVICE_UNAVAILABLE,
                     'The selected online payment method is not configured for direct PayMongo authorization.',
-                    { statusCode: 503, details: { code: 'DIRECT_PAYMENT_NOT_READY' } }
+                    // #1022: aligned with resolveStorefrontPaymentCapabilities's own
+                    // 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE' reason_code (added for #926, same
+                    // direct-payment-required family) instead of the stale, inconsistent
+                    // 'DIRECT_PAYMENT_NOT_READY'; payment_type was previously missing from details
+                    // entirely.
+                    { statusCode: 503, details: { code: 'DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE', payment_type: requestedPaymentType } }
                 );
             }
             const missingConfig = requestedPaymentType === 'qrph'
