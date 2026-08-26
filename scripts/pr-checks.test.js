@@ -146,6 +146,7 @@ test('classifyCiUnavailability does NOT flag a check that is merely still runnin
         check_runs: [{ name: 'dgfy-api-build-check', status: 'in_progress', started_at: new Date(now - 5 * 60000).toISOString() }],
       }),
       tryBillingFallback: () => null,
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'operational' }], incidents: [] }),
     }
   );
   assert.equal(result.reason, 'healthy');
@@ -170,6 +171,51 @@ test('classifyCiUnavailability returns healthy when nothing verifies unavailabil
       fetchRunners: () => ({ runners: [{ status: 'online' }] }),
       fetchCheckRuns: () => ({ check_runs: [{ name: 'x', status: 'completed', conclusion: 'success' }] }),
       tryBillingFallback: () => null,
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'operational' }], incidents: [] }),
+    }
+  );
+  assert.equal(result.reason, 'healthy');
+});
+
+test('classifyCiUnavailability returns github_platform_outage when GitHub Status reports Actions non-operational (#1077)', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchGithubStatus: () => ({
+        components: [{ name: 'Actions', status: 'major_outage' }],
+        incidents: [{ name: 'Actions and Pages Incident', status: 'investigating' }],
+      }),
+    }
+  );
+  assert.equal(result.reason, 'github_platform_outage');
+  assert.match(result.evidence, /major_outage/);
+  assert.match(result.evidence, /Actions and Pages Incident/);
+});
+
+test('classifyCiUnavailability falls through to healthy when GitHub Status reports Actions operational', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'operational' }], incidents: [] }),
+    }
+  );
+  assert.equal(result.reason, 'healthy');
+});
+
+test('classifyCiUnavailability falls through to healthy (not a crash) when the status fetch itself fails', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchGithubStatus: () => null,
     }
   );
   assert.equal(result.reason, 'healthy');

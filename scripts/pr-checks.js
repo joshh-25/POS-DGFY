@@ -20,11 +20,19 @@
 //
 // This is NOT a routine CI bypass. classifyCiUnavailability() must report
 // `healthy` (and refuse to post) when none of runner_offline /
-// queue_starvation / billing_allocation_failure actually holds -- that
-// refusal is the entire property separating this tool from turning the
-// checks off. See AGENTS.md's Merge Safety section for the bounded
-// exception this evidence is allowed to authorize (develop/staging only,
-// never main).
+// queue_starvation / billing_allocation_failure / github_platform_outage
+// actually holds -- that refusal is the entire property separating this tool
+// from turning the checks off. See AGENTS.md's Merge Safety section for the
+// bounded exception this evidence is allowed to authorize (develop/staging
+// only, never main).
+//
+// github_platform_outage (#1077, added 2026-08-27): a check-suite can fail
+// to be created at all -- not just sit stuck -- during a live GitHub-side
+// Actions incident. queue_starvation can't see this (it only inspects
+// check-runs that already exist); confirmed live via zero check-suites on a
+// real PR's head commit while githubstatus.com reported the Actions
+// component at Major Outage. Verified against the public status API, last
+// after the other three (cheapest/most repo-specific signals first).
 
 const fs = require('fs');
 const path = require('path');
@@ -195,6 +203,25 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
   const billingReport = tryBillingFallback();
   if (billingReport && billingReport.status === 'pass') {
     return { reason: 'billing_allocation_failure', evidence: 'verified GitHub billing allocation failure (see scripts/collect-github-actions-unavailability.js)' };
+  }
+
+  // Public, unauthenticated endpoint -- curl, not `gh api`, and tolerant of
+  // any failure (offline dev box, DNS hiccup, githubstatus.com itself down):
+  // captureJson/captureStdout already return null on a non-zero exit or bad
+  // JSON, so this fails safe straight through to `healthy` below rather than
+  // throwing. Never claim an outage we couldn't actually confirm.
+  const fetchGithubStatus = deps.fetchGithubStatus || (() => captureJson('curl', ['-s', '--max-time', '5', 'https://www.githubstatus.com/api/v2/summary.json']));
+  const statusSummary = fetchGithubStatus();
+  const actionsComponent = statusSummary && Array.isArray(statusSummary.components)
+    ? statusSummary.components.find((c) => c.name === 'Actions')
+    : null;
+  if (actionsComponent && actionsComponent.status && actionsComponent.status !== 'operational') {
+    const incident = Array.isArray(statusSummary.incidents) ? statusSummary.incidents[0] : null;
+    const incidentNote = incident ? ` (incident: "${incident.name}", status ${incident.status})` : '';
+    return {
+      reason: 'github_platform_outage',
+      evidence: `githubstatus.com reports Actions component status="${actionsComponent.status}"${incidentNote}`,
+    };
   }
 
   return { reason: 'healthy', evidence: 'no verified unavailability condition found' };
