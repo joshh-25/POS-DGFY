@@ -85,7 +85,9 @@ jobs:
       is_promotion: ${{ steps.check.outputs.is_promotion }}
       # #1063: true only for the `staging` base / `to-staging/*` head shape -- the leg every
       # quality job below is skipped entirely on. Defaults to false everywhere else (the `main` leg,
-      # and any workflow_dispatch/workflow_call run), which keeps those blocking.
+      # and any workflow_dispatch/workflow_call run) -- those still run the jobs in full, but every
+      # job is also unconditionally `continue-on-error: true` (see each job below), so they run
+      # advisory too, not blocking.
       is_staging_leg: ${{ steps.check.outputs.is_staging_leg }}
     steps:
       - name: Determine whether this is a promotion PR
@@ -98,7 +100,7 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "is_promotion=true" >> "$GITHUB_OUTPUT"
             echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
-            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally, blocking (not a real promotion PR to relax)"
+            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally, not the staging leg (jobs still run advisory via continue-on-error, same as every other non-staging-leg run)"
             exit 0
           fi
           case "$BASE_REF" in
