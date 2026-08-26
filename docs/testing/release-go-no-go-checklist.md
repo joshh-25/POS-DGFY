@@ -14,7 +14,8 @@ topic: pre_promotion_local_gate
 `npm run gate:release:local` (`scripts/gate-release-local.js`) **is** the pre-promotion quality
 gate for this repository. The working model: junior-dev PRs get the cheap, path-filtered checks in
 `pr-checks.yml`; Pat runs this full pass himself, on his own machine or VM, post-merge, before
-promoting `develop` work to `staging` or `main`.
+promoting `develop` work to `main` — or to `staging` first, if a promoter chooses the optional soak
+(ADR 0074, 2026-08-25; `staging` is no longer the default promotion leg).
 
 **Invoke this gate. Do not reinvent test execution or rebuild a parallel gate for this purpose.**
 This document exists so that doesn't happen again — see #345 and #330, which is exactly the
@@ -149,10 +150,12 @@ produces a trustworthy verdict" reading, not on a literal "returns pass" reading
 
 ## What actually gates a release today
 
-The authoritative document for release flow is `docs/ops/RELEASE_CANDIDATE_POLICY.md`. Summary:
+The authoritative document for release flow is `docs/ops/RELEASE_CANDIDATE_POLICY.md`. Summary
+(**updated 2026-08-25, ADR 0074/#980 — `staging` dropped from the default path**):
 
 ```text
-feature branch -> develop -> staging -> release/<label> -> main
+feature branch -> develop -> release/<label> -> main                              (default)
+feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main   (optional soak)
 ```
 
 Merging a PR into `main` no longer deploys production by itself (as of 2026-08-14, #417) —
@@ -166,11 +169,15 @@ the merge.
 was removed entirely 2026-08-14 (#416, after sitting paused over #345's ~14min unfiltered run). An
 ordinary `develop`-bound PR is still gated only by path-filtered Docker build checks. **Since #1018
 (2026-08-25)**, the full test matrix also runs automatically in CI — `promotion-quality-gate.yml`
-(renamed from `pr-quality-checks.yml`) triggers itself on `to-staging/*`/`release/*` promotion PRs
-specifically, not on every PR. This is **complementary** to `gate:release:local`, not a replacement
-for it — run `gate:release:local` before every `staging`/`main` promotion regardless; it is not
-optional polish on top of CI, and it's the promoter's own pre-flight (runs before the promotion
-branch is even cut), which the CI run alone can't substitute for.
+(renamed from `pr-quality-checks.yml`) triggers itself on `release/*` promotion PRs into `main`
+(the default path since ADR 0074), and still also on `to-staging/*` PRs into `staging` for anyone
+using the optional soak. This is **complementary** to `gate:release:local`, not a replacement for
+it — run `gate:release:local` against the exact target SHA before every `develop -> main` promotion
+regardless (before `staging -> main`, if the optional soak was used); it is not optional polish on
+top of CI, and it's the promoter's own pre-flight (runs before the promotion branch is even cut),
+which the CI run alone can't substitute for. The one exception is #1007's phrase-gated expedited
+override, which may skip this specific gate — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+2026-08-25 amendment.
 
 ### Authorization boundary
 
@@ -181,9 +188,10 @@ authorization tags, or a `master`-branch promotion model. `docs/architecture/adr
 describes that model but was never implemented for this repository and is registered
 `status: superseded` / `authority_level: historical` — do not cite it, and do not re-add its gates
 here. `docs/ops/RELEASE_CANDIDATE_POLICY.md` explicitly supersedes it. For the same reason,
-`docs/ops/NO_STAGING_RELEASE_STANDARD.md` (also ADR-0030-dependent) and its associated PowerShell
-gate wrappers (`gate:release:no-staging:qa-env`, `gate:release:prod-contracts:env`, drill/deploy
-scripts under `scripts/*.ps1`) are not part of this gate and are not must-pass here.
+`docs/ops/NO_STAGING_RELEASE_STANDARD.md` (also ADR-0030-dependent, and — as of 2026-08-25, #1019 —
+formally marked `status: superseded`) and its associated PowerShell gate wrappers
+(`gate:release:no-staging:qa-env`, `gate:release:prod-contracts:env`, drill/deploy scripts under
+`scripts/*.ps1`) are not part of this gate and are not must-pass here.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
@@ -213,7 +221,11 @@ Date-specific snapshots are archived under:
   this repository (#339), was deleted 2026-08-14 (#417) — no longer applicable.
 - `docs/ops/RELEASE_CANDIDATE_POLICY.md` still describes `quality-checks` as blocking (it isn't,
   currently — see above); worth a follow-up correction there.
-- `docs/ops/NO_STAGING_RELEASE_STANDARD.md` still assumes the ADR-0030 signed controller model.
+- **Resolved 2026-08-25 (#1019):** `docs/ops/NO_STAGING_RELEASE_STANDARD.md` is now formally
+  `status: superseded` (previously had no frontmatter at all), pointing at
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, so it no longer contradicts the actual override mechanisms
+  (`incident-responder`'s and `promoter`'s #1007 override) by asserting "there is no unsigned
+  emergency bypass."
 - #238 proposes promoting `npm run audit:dependencies` from this local gate into PR CI — that would
   move cost back onto the cheap per-PR tier this doc's two-tier model depends on. Needs an explicit
   decision from Pat, not a default.

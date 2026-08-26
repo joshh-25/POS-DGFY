@@ -4,10 +4,14 @@ name: Build & Deploy Platform
 # build-develop.yml, build-staging.yml, build-manual.yml, and
 # build-beta-manual.yml (all deleted 2026-08-14, #417). PROD stays on its
 # own workflow -- see deploy-main.yml -- rather than being folded in here:
-# a mistake there restarts the shared dgfy-api that BOTH beta.dgfy.ph and
-# dgfy.ph depend on, with no approval gate available on GitHub Free, so it
-# gets a separate, more deliberate dispatch entry rather than a dropdown
-# option buried in this one.
+# a mistake there restarts the shared dgfy-api that dgfy.ph's production
+# traffic depends on (beta.dgfy.ph retired 2026-08-23, #329/#895 -- not "both"
+# beta and prod anymore), with no approval gate available on GitHub Free, so
+# it gets a separate, more deliberate dispatch entry rather than a dropdown
+# option buried in this one. That reasoning is independent of beta ever
+# having existed -- it's about not burying a no-approval-gate PROD dispatch
+# in the same dropdown DEV/STAGING casually dispatches from, so the split
+# stays even though beta is gone (considered and confirmed, #1041).
 #
 # Every push-triggered build/deploy in the repo is gone as of #419. Pat's
 # own framing: "we'll remove the auto-triggers. We'll manually trigger them
@@ -16,11 +20,17 @@ name: Build & Deploy Platform
 # acceptable under this model -- accountability is on-demand (via
 # scripts/integrate-prs.js or whoever's manual build fails), not automatic.
 #
-# `components` originally had a fourth option, `auto`, that read a revision
-# label off the currently-deployed image and rebuilt only what changed since
-# then. Dropped 2026-08-14 (#420) -- Pat's own pushback: "why do we still
-# have change detection on the manual deploy, when we're supposed to be able
-# to pick which platforms to build and push?"
+# The old `components` input (a single-select choice: all/backend/frontend/
+# dgfy-ims/dgfy-pos/dgfy-storefront) originally had a fourth option, `auto`,
+# that read a revision label off the currently-deployed image and rebuilt
+# only what changed since then. Dropped 2026-08-14 (#420) -- Pat's own
+# pushback: "why do we still have change detection on the manual deploy,
+# when we're supposed to be able to pick which platforms to build and push?"
+# `components` itself was replaced 2026-08-25 (#1050) by the four per-image
+# `build_*` booleans below, all defaulting true -- the single-select choice
+# made building e.g. backend and one frontend app in the same dispatch
+# impossible (you'd need two separate dispatches); booleans let you uncheck
+# just what you don't need, same "pick which platforms" intent as above.
 #
 # There used to be a separate `environment` choice input (DEV/STAGING/BETA)
 # alongside the branch selector every workflow_dispatch already has, plus a
@@ -45,23 +55,27 @@ name: Build & Deploy Platform
 on:
   workflow_dispatch:
     inputs:
-      components:
+      build_api:
         description: >-
-          Which images to build/push. backend = api + migration-runner
-          together, never separately -- compose's depends_on:
-          service_completed_successfully means a mismatched pair (new api
-          schema expectations against an old migration set, or vice versa)
-          is a real failure mode, not just caution. frontend = all 3 frontend
-          apps; dgfy-ims/dgfy-pos/dgfy-storefront build just one.
-        type: choice
-        options:
-          - all
-          - backend
-          - frontend
-          - dgfy-ims
-          - dgfy-pos
-          - dgfy-storefront
-        default: all
+          Build/push dgfy-api and dgfy-migration-runner (always paired --
+          compose's depends_on: service_completed_successfully means a
+          mismatched pair, new api schema expectations against an old
+          migration set or vice versa, is a real failure mode, not just
+          caution). Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_ims:
+        description: Build/push the dgfy-ims image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_pos:
+        description: Build/push the dgfy-pos image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_storefront:
+        description: Build/push the dgfy-storefront image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -118,10 +132,10 @@ jobs:
       # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
       # runners needed would have it tunnel into itself.
       vpn_required: false
-      build_api: ${{ inputs.components == 'all' || inputs.components == 'backend' }}
-      build_frontend_ims: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims' }}
-      build_frontend_pos: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos' }}
-      build_frontend_storefront: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront' }}
+      build_api: ${{ inputs.build_api }}
+      build_frontend_ims: ${{ inputs.build_frontend_ims }}
+      build_frontend_pos: ${{ inputs.build_frontend_pos }}
+      build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
     secrets: inherit
     permissions:

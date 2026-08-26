@@ -131,6 +131,6 @@ A merge adoption gate passing locally is not enough to call production complete.
 - `docs/START_HERE.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-- `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+- `docs/ops/RELEASE_CANDIDATE_POLICY.md` (`docs/ops/NO_STAGING_RELEASE_STANDARD.md` is superseded by it)
 - `docs/ops/STOREFRONT_PR_ADOPTION_HANDOFF.md`
 - `docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json`

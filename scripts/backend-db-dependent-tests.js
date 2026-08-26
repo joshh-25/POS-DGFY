@@ -60,6 +60,14 @@ module.exports = [
   'tests/tenantProvisioning.storefrontBootstrap.test.js',
   'tests/tenantProvisioning.test.js',
   'tests/tenantProvisioningAdminUserId.test.js',
+  // Added alongside #1022's tenantHandler mock-drift fix -- this file's own SyntaxError (a stale
+  // mock missing two exports added by 84109da50/#916) was masking that it unconditionally imports
+  // the real `src/models/index.js` (unmocked) and performs real `User.create()` writes. Once the
+  // mock is fixed the module loads, and confirmed empirically: with DB_HOST/DB_PORT pinned
+  // unreachable (the fast tier's default), it throws SequelizeConnectionRefusedError directly --
+  // exactly the empirical proof this file's own header describes for the three files heuristics
+  // alone missed.
+  'tests/toctou_integration.test.js',
   'tests/token_refresh_race.test.js',
   'tests/token_refresh_race_integration.test.js',
   'tests/voidMovement.supertest.test.js',

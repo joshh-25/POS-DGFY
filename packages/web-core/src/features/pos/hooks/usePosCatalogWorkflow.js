@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getFolders } from '@/services/itemService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { fetchPosCatalog } from '../services/posService';
@@ -84,6 +84,10 @@ export const usePosCatalogWorkflow = ({
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
     const [search, setSearch] = useState('');
+    // Keep the controlled search field urgent while the large catalog tree and
+    // network query follow at concurrent priority. This is especially visible
+    // on the fixed Chrome 80-84 iMin WebView when typing or holding backspace.
+    const deferredSearch = useDeferredValue(search);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const [catalogCapacityViewport, setCatalogCapacityViewport] = useState(null);
@@ -188,7 +192,7 @@ export const usePosCatalogWorkflow = ({
             setCatalogRefreshing(false);
             return;
         }
-        const requestKey = buildCatalogRequestKey(search, selectedLocationId);
+        const requestKey = buildCatalogRequestKey(deferredSearch, selectedLocationId);
         if (catalogRequestInFlightKeyRef.current === requestKey) return;
         catalogRequestInFlightKeyRef.current = requestKey;
         const requestSequence = catalogRequestSequenceRef.current + 1;
@@ -198,10 +202,10 @@ export const usePosCatalogWorkflow = ({
         setCatalogRefreshing(!isInitialLoad);
         setCatalogError('');
         try {
-            const data = await fetchPosCatalog(buildCatalogRequestParams(search, selectedLocationId));
+            const data = await fetchPosCatalog(buildCatalogRequestParams(deferredSearch, selectedLocationId));
             if (catalogRequestSequenceRef.current !== requestSequence) return;
             setCatalog(data || []);
-            if (!search) {
+            if (!deferredSearch) {
                 saveCatalogSnapshot(data || []);
             }
         } catch (error) {
@@ -234,7 +238,7 @@ export const usePosCatalogWorkflow = ({
                 catalogRequestInFlightKeyRef.current = '';
             }
         }
-    }, [canViewHistory, offlineSnapshotScope, saveCatalogSnapshot, search, selectedLocationId, sessionLocked, setLowStockDisplayThreshold, setReceiptSettings]);
+    }, [canViewHistory, deferredSearch, offlineSnapshotScope, saveCatalogSnapshot, selectedLocationId, sessionLocked, setLowStockDisplayThreshold, setReceiptSettings]);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {
@@ -603,7 +607,7 @@ export const usePosCatalogWorkflow = ({
 
     useEffect(() => {
         setCatalogPage(1);
-    }, [search, selectedFolderId, selectedLocationId]);
+    }, [deferredSearch, selectedFolderId, selectedLocationId]);
 
     useEffect(() => {
         if (catalogPage > totalCatalogPages) {
@@ -615,7 +619,7 @@ export const usePosCatalogWorkflow = ({
         const viewport = catalogCapacityViewport;
         if (!viewport) return;
         viewport.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [catalogCapacityViewport, catalogPage, search, selectedFolderId, selectedLocationId]);
+    }, [catalogCapacityViewport, catalogPage, deferredSearch, selectedFolderId, selectedLocationId]);
 
     useEffect(() => {
         if (!selectedFolderId) return;

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -46,25 +46,33 @@ anything beyond dispatch access.
 
 ## Flow
 
+**Default, since #980/ADR 0074 (2026-08-25):**
+
 ```text
-feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main
+feature branch -> develop -> release/<label> -> main
 ```
 
 1. Feature branches PR into `develop`. Ordinary PR checks apply
    (`pr-checks.yml`).
-2. A **staging-candidate** branch — `to-staging/<label>`, e.g. `to-staging/2026-08-16` — is cut
-   fresh from `origin/develop` at the exact commit being promoted, whenever a batch of work is
-   ready to qualify together. It carries no new commits of its own; it exists only to be a PR
-   head. Cut it fresh each time, never reused — the same pattern as `release/<label>` below, not
-   a separate one.
-3. `to-staging/<label>` PRs into `staging`. Once its checks pass and it is merged, `staging`
-   reflects that commit.
-4. A **release candidate** branch — `release/<label>`, e.g.
-   `release/2026-07-30` — is cut from `staging` at the exact commit being
-   promoted. It carries no new commits of its own; it exists only to be a PR
-   head. Cut it fresh each time from `origin/staging`, never reused.
-5. `release/<label>` PRs into `main`. Once its checks pass and it is merged,
-   production is live at that commit.
+2. A **release candidate** branch — `release/<label>`, e.g. `release/2026-08-25` — is cut fresh from
+   `origin/develop` at the exact commit being promoted, whenever a batch of work is ready to ship.
+   It carries no new commits of its own; it exists only to be a PR head. Cut it fresh each time,
+   never reused.
+3. `release/<label>` PRs into `main`. Once its checks pass and it is merged, production is live at
+   that commit (once someone dispatches `deploy-main.yml` — see "The one fact that matters" above).
+
+**Optional, non-default: a `staging` soak first.** The three-stage flow this document described
+before 2026-08-25 still works and is not deleted — a promoter may still choose to cut
+`to-staging/<label>` fresh from `origin/develop`, PR it into `staging`, and only then cut
+`release/<label>` from `origin/staging` instead of `origin/develop`, before merging into `main`.
+Nothing requires this; it exists for a promoter who judges a specific batch risky enough to want a
+`staging` soak before it ships. See ADR 0074 for why this wasn't removed outright, and its Decision
+4 for the explicit statement that `staging` is refreshed on demand only — it is not kept
+automatically current, so treat it as possibly stale before relying on it for anything.
+
+```text
+feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main   (optional)
+```
 
 `release/*` and `to-staging/*` are both already in
 `.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes`, so neither kind of promotion
@@ -204,6 +212,10 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed
   on `staging` for several days before it was ported back to `develop` as
   part of this same change. Worth an audit of what else has diverged.
+- **Accepted, not solved (2026-08-25, ADR 0074):** with `staging` no longer part of the default
+  promotion path, it has no automatic anti-rot mechanism — it will drift stale between whatever
+  on-demand refreshes a promoter actually does. If `staging`'s accuracy ever needs to be guaranteed
+  rather than best-effort, that's new scope, not something this document or ADR 0074 already solves.
 
 ## Amendments
 
@@ -246,13 +258,15 @@ verification runs *after* a merge or a deploy, against whatever environment actu
 then, with a defined response if it fails — it is never a precondition on the merge that produced
 it.
 
-Applying that split to what this repo actually has:
+Applying that split to what this repo actually has — **updated 2026-08-25 (#980/ADR 0074) for the
+two-stage default; the original three-stage version of this table is preserved in the "2026-08-25:
+Retire staging..." amendment below for history**:
 
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → staging` promotion | merge gate for the promotion PR, plus a **preflight sweep** | `npm run gate:release:local` (the 25-min test-matrix gate, per `docs/testing/release-go-no-go-checklist.md`), the CI-side `promotion-quality-gate.yml` run triggered automatically by the `to-staging/*` PR itself (#1018), **and** a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices — see the protocol doc) for every `NOT-EXECUTED-*` declaration in the batch, reconciling each declaration's front matter via its own small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before the promotion branch is cut. `.agents/skills/promoter/SKILL.md` owns the executable form of this step | DEV (or STAGING) — not production |
-| `staging → main` | merge gate | `gate:release:local` on the release SHA, the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018), the tenant-schema report (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases, the go/no-go checklist's remaining non-technical blockers. **No `NOT-EXECUTED-*` declaration may reach this leg** — the promotion-time sweep above must already have cleared it | none beyond what's already required |
+| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018) — **temporarily `continue-on-error` as of 2026-08-26, see the amendment below (#1063): it runs and records real failures as a comment on #1063, but does not block, and (since the #1066 correction below) does not show red in the Checks tab either**; a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut; **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | DEV (or STAGING) |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -287,3 +301,172 @@ in the Checks tab to anyone reviewing it without needing local/SSH access to rep
 expected to run for every promotion; neither substitutes for the other. See the workflow's own
 header comment and `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section for the
 executable form.
+
+### 2026-08-25: Retire `staging` from the default promotion path, and an expedited override (#980/#1007, ADR 0074)
+
+Full reasoning and the decision record: `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`.
+Summarized here as the executable consequence for this policy document.
+
+**What changed.** The default flow (see "Flow" above) drops from three stages to two:
+`feature → develop → release/<label> → main`. `release/<label>` is now cut from `origin/develop`,
+not `origin/staging`. The `staging` *environment* stays; the `staging` *branch*'s
+`to-staging/<label>` mechanism stays too, as a non-default option a promoter may still choose per
+batch — see "Flow" above. `staging` is refreshed on demand only (a manual fast-forward, not a PR);
+there is no automatic anti-rot mechanism, named as an accepted gap, not a solved one (ADR 0074
+Decision 4).
+
+**The original three-stage compliance ladder**, preserved here for history rather than deleted (it
+governed every promotion from 2026-08-22 through 2026-08-24):
+
+| Stage | Gate type | What ran | Environment needed |
+|---|---|---|---|
+| `develop → staging` promotion | merge gate + preflight sweep | `gate:release:local`, `promotion-quality-gate.yml` via `to-staging/*`, the live compliance preflight sweep | DEV (or STAGING) |
+| `staging → main` | merge gate | `gate:release:local` on the release SHA, `promotion-quality-gate.yml` via `release/*`, the production tenant-schema report | none beyond required |
+
+Both checks (preflight sweep, tenant-schema report) now land on the single `develop → main` leg —
+see the updated ladder table above.
+
+**#1007's expedited override.** `promoter` carries a second, narrow, phrase-gated exception to
+merge `main` — parallel to, and independent of, `incident-responder`'s existing override, mirroring
+its shape (phrase-gated, restated every invocation, logged before acting) but with its own trigger:
+a business-urgency "we critically need this shipped now" request from Pat, not necessarily a
+production incident. "Signed review," per #1007's own resolved reading, means an explicit,
+attributable, logged authorization — Pat's real-time phrase plus a comment on the promotion PR/issue
+naming who authorized it and why — not a revival of ADR 0030's cryptographic signing model.
+
+- **Skippable, only under this override, only on Pat's explicit real-time phrase given in the
+  moment (never a standing pre-authorization, never inferred from urgency alone):**
+  - `npm run gate:release:local` for the `develop → main` promotion PR.
+  - The live compliance preflight sweep (`NOT-EXECUTED-*` declarations may reach `main` when this
+    override is invoked — the only case where that's not itself a blocker).
+  - (The `staging` soak was already non-default per ADR 0074 — this override doesn't change that,
+    it's already skippable by default.)
+- **Never skippable, under this override or any other circumstance:**
+  - The production tenant-schema report (`tenant-schema-report.yml`, #1017) — this is the specific
+    control that would have caught the #860/#639-class crash-loop risk; ADR 0074 Decision 6.
+  - `AGENTS.md`'s Merge Safety hard stop (no `in_progress`/`queued` check, `mergeStateStatus: CLEAN`).
+  - The never-`--squash` rule.
+  - The `release/<label>` cut-from-`origin/develop` head-cut rule (the #426 incident this guards
+    against).
+- **Every invocation**, matching `incident-responder`'s own discipline exactly: (1) restate the
+  standing "gate:release:local and the preflight sweep are normally required" rule out loud before
+  acting, so it is visibly not being silently skipped; (2) post a comment on the promotion PR (or the
+  tracking issue if no PR exists yet) logging the override — timestamp, the phrase given, what's
+  being skipped — before the merge happens, not after.
+- **Retro-verification is part of "done," not a follow-up**, mirroring #860's own checklist for
+  PR #858: run the skipped `gate:release:local` against the merged SHA afterward and file/annotate
+  any real failures (a findings issue, not a revert); confirm the tenant-schema report (already run
+  pre-merge, since it's never skippable) stayed clean after `deploy-main.yml` actually ships it;
+  if `staging` is now more than a trivial number of commits behind, note it rather than silently
+  leaving it stale indefinitely.
+- **#495 (no rollback) and #639 (schema repair disarmed) are accepted standing risk for this
+  override too** — unchanged from ADR 0074's own Consequences: neither is a prerequisite, and
+  neither is made worse by this override specifically, since the tenant-schema report stays
+  mandatory regardless of what else is skipped.
+
+`.agents/skills/promoter/SKILL.md`'s own checkpoint table carries the executable form of this row —
+read it there for the actual procedure, not just this summary.
+
+### 2026-08-26: `promotion-quality-gate.yml` no longer blocks any promotion leg (#1063)
+
+Pat's call: `promotion-quality-gate.yml` itself is suspected stale/unreliable — unclear whether it's
+outdated test scripts or something else — and needs dedicated investigation time that isn't
+available right now. Rather than disable or delete the gate outright (which would drop the only
+pre-`main` test/build/architecture check this repo has, with no rollback mechanism for a bad deploy
+— #495 still open), it's split into two different relaxations by leg — **stated plainly: as a
+result, no promotion leg is currently blocked by a red run of this workflow**:
+
+- **`to-staging/*` → `staging` (the optional, non-default soak — see "Flow" above)**: every quality
+  job is **skipped entirely**, gated on the workflow's own `is_staging_leg` output. No runner time
+  spent, no results produced on this leg at all.
+- **`release/*` → `main` (the default `develop → main` promotion, and the `staging → main` leg of
+  the optional soak)**: every quality job still **runs in full**, but is unconditionally
+  `continue-on-error` — a red run no longer blocks the merge. This is the leg that gates production,
+  so a real failure here is still worth reading even though it won't stop anything — see the
+  2026-08-26 #1066 correction below for exactly where that signal actually lands (a comment on
+  #1063, not the Checks tab).
+- `scripts/check-pr-quality-workflow.js`'s guard (built after #1003, when a `quality-checks:` job
+  was briefly re-added unconditional and unfiltered) is updated to match: it no longer forbids
+  `continue-on-error` outright, but it does enforce the *shape* — every quality job must carry both
+  the staging-leg skip condition and the unconditional `continue-on-error: true`, exactly, so a
+  further undocumented drift still fails CI.
+
+**This is temporary, not a standing policy change.** The exit condition: once #1063's investigation
+confirms the gate is healthy (or fixes what was actually wrong), drop the staging-leg skip
+condition and flip every `continue-on-error` back to unconditionally false (or remove them
+entirely), and update this section accordingly. Until then, treat a red `promotion-quality-gate.yml`
+run on the `→ main` leg as a real signal worth reading, not proof of nothing — advisory means it
+doesn't block the merge, not that it's noise. `gate:release:local` and the production tenant-schema
+report are unrelated controls and stay exactly as mandatory as before — see the correction
+immediately below for `AGENTS.md`'s Merge Safety hard stop, which this entry originally, and
+wrongly, also called unaffected.
+
+### 2026-08-26 correction: the shape above didn't actually clear `mergeStateStatus` (#1066)
+
+The entry above claimed `AGENTS.md`'s Merge Safety hard stop (`mergeStateStatus: CLEAN` required)
+was "unrelated" and "stays exactly as mandatory as before." That's true of the *rule* — it wasn't
+touched — but false of whether the shape above could actually satisfy it. Confirmed live on PR
+#1066 (`gh api .../actions/runs/<id>/jobs`): a **job-level** `continue-on-error: true` only spares
+the *workflow run's own conclusion*. The individual job/check-run this workflow publishes to the PR
+still reports its real `conclusion: failure` when a step inside it fails, and GitHub computes a PR's
+`mergeStateStatus` from each check run's own conclusion, not from the workflow's rollup. Net effect
+that actually happened: `dgfy-api-quality` legitimately failed on #1066 (a real regression in
+`checkComplianceImpactScript.integration.test.js`'s regulatory-floor assertion, unrelated to this
+mechanism — tracked separately, Refs #1063), the job-level `continue-on-error` did nothing to change
+that job's check-run conclusion, and the PR sat `mergeStateStatus: UNSTABLE` — which trips the Merge
+Safety hard stop exactly as if this workflow had never been made advisory at all.
+
+**Fix:** every step inside every quality job now *also* carries its own `continue-on-error: true` —
+GitHub Actions only rolls a step's failure into the job's own conclusion when that specific step
+lacks it, which is the actual mechanism for a job's check-run to report `success` regardless of what
+happens inside it. `scripts/check-pr-quality-workflow.js`'s guard is extended
+(`checkStepLevelAdvisory`) to assert every step in every quality job carries this, so a newly-added
+step missing it fails CI instead of silently reintroducing a blocking check.
+
+**Said plainly, a further loss of signal, accepted deliberately and temporarily:** this means a real
+infra hiccup inside one of these jobs (a transient `npm ci` network failure, a step-level container
+wait timeout) now also reports green, not just a genuine test/lint/build failure. To avoid losing
+that signal entirely, a new job in the same workflow (`report-advisory-failures`) records the real
+per-step outcome and posts it as a comment on #1063 (deduped per commit SHA) whenever a real failure
+occurred — so the finding is still recorded somewhere a human can pick up later, even though the
+check itself now shows green. This is *not* a substitute for #1063's own root-cause investigation,
+and it does not change the exit condition above.
+
+### 2026-08-26 second correction: the Actions API mechanism and the service-container gap (#1066 round 2)
+
+Two more things the entries above got wrong or left incomplete, both caught by `pr-reviewer`'s
+second review round on PR #1068:
+
+- **The reporting mechanism above never actually worked as described.** "Re-derives the real
+  per-step outcome from the Actions API" (previous paragraph) meant the Actions Jobs API's
+  `steps[].conclusion` field — but that field is the *post-override* value (it matches the workflow
+  `conclusion` context, not `outcome`), so a step with `continue-on-error: true` that genuinely fails
+  still reports `conclusion: "success"` there. Confirmed independently against this repo's own run
+  `32620370627`. The Jobs-API approach was dead code that would never have detected any of the
+  failures this workflow now swallows. **Fixed:** each quality job now records
+  `steps.<id>.outcome` (the pre-override result — the one field that actually survives
+  `continue-on-error`) directly into its own job output (`outputs.real_failures`), and
+  `report-advisory-failures` reads that via `needs.<job>.outputs.real_failures` — no Actions API call
+  involved in detection at all.
+- **The `mysql`/`redis` `services:` blocks were left as a documented "accepted residual gap"
+  instead of fixed.** GitHub's own service-container provisioning happens during job *provisioning*,
+  before any step — including an `if: always()` one — runs, so no continue-on-error at any level
+  reaches it; a failing container could still leave `dgfy-api-quality` or `migration-runner-quality`
+  check-run red and `mergeStateStatus: UNSTABLE`, same as before the #1066 fix above. A PR-body
+  declaration that this was "accepted" is not a substitute for fixing it — `pr-reviewer` correctly
+  refused it as such. **Fixed:** both `services:` blocks are replaced with ordinary steps (start the
+  containers, wait on the same health checks, stop them) that the existing continue-on-error and
+  reporting mechanism already covers like any other step. Every long-running step across the whole
+  workflow also picked up its own `timeout-minutes` in the same pass — a job-level timeout is the
+  same shape of gap (nothing survives it either), just less obvious than a service container.
+
+**What can still turn a check-run non-green, after both fixes, said plainly:** the `gate` job's own
+step failing (a different, also-named failure mode — every quality job below is skipped rather than
+shown red, not silently swallowed), the `report-advisory-failures` job envelope itself (its one step
+is `continue-on-error`, the job is not), a job-level `timeout-minutes` expiry as a last-resort
+backstop, workflow/job cancellation (this workflow's own `concurrency: cancel-in-progress: true`),
+and runner unavailability (a queued job is a pending check, which `AGENTS.md`'s Merge Safety rule
+treats as a hard stop too). None of these are addressed by either fix; named here rather than
+implied away. For the record: GitHub's own service-container provisioning has never actually failed
+in this workflow's run history as of this writing — the #1066 round-2 fix closes a real mechanism
+gap that had not yet been observed to fire, not an incident postmortem.

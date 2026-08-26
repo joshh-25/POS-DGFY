@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-26
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -9344,9 +9344,252 @@ Phase 170 is eligible after this completion.
 
 ---
 
-### Planning Record (2026-08-25)
+## Phase 170 - POS Operator Authority Version-Skew Compatibility (#1045)
 
-- Phase 156 through Phase 169 are `completed`. Phase 170 is the next eligible phase.
+### Initiative and release
+
+Rolling-version compatibility and reason-code unification for POS operator authority, building on
+Phase 169's production hotfix back-port.
+
+### Objective and scope
+
+- Preserve legacy shift-owner selling only when operator authority is explicitly feature-disabled
+  (`POS_OPERATOR_FEATURE_DISABLED` or `POS_ATTENDANCE_FEATURE_DISABLED`) or the exact
+  current-operator route is absent during a mixed-version local/deployment window.
+- Unify the client's operator-unavailable classification behind a single call-site helper
+  (`isPosOperatorAuthorityUnavailableError`) that composes the existing feature-disabled
+  reason-code set rather than re-deriving it.
+- Keep arbitrary authorization, permission, domain, terminal, location, shift, attendance, and
+  unrelated route failures fail-closed.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-26.
+
+### Dependencies
+
+- Phase 169 completed.
+- ADR 0026, ADR 0031, and ADR 0073.
+- Incident issue #1045; production hotfix PR #1046; PR #1053 review finding RF-1.
+
+### Acceptance and validation evidence
+
+- [x] Feature-disabled and exact route-missing current-operator responses enter legacy mode
+  without issuing a second doomed resume request; unrelated 404, permission, and operator-domain
+  failures remain fail-closed.
+- [x] `POS_ATTENDANCE_FEATURE_DISABLED` is recognized by the same call-site classifier used for
+  `POS_OPERATOR_FEATURE_DISABLED`, closing the promotion-conflict gap flagged on PR #1053.
+- [x] Shared POS decision/contract suites pass, including the added attendance-disabled and
+  route-skew cases.
+- [x] API syntax, architecture/controller guardrails, compliance/docs checks, diff safety, and
+  POS/SKUpervisor/Storefront production builds passed.
+
+### Implementation links
+
+- Issue #1045 / PR #1053 / production hotfix PR #1046 / PR #1054 (back-ported as Phase 169 via
+  PR #1057)
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
+- `docs/compliance/impact-declarations/2026-08-25-pos-employee-discount-and-operator-hardening.md`
+
+### Next eligible phase
+
+Phase 171 is eligible after this completion.
+
+### Residual validation note
+
+The optional frontend budget gate remains red on the existing SKUpervisor `TerminalPage` chunk:
+the untouched `develop` baseline is 133.89 KB against a 128 KB budget, while this branch is
+134.97 KB. The 1.08 KB delta is the scoped compatibility classifier and tests do not mask the
+pre-existing 5.89 KB baseline overage; budget remediation remains outside issue #1045.
+
+---
+
+## Phase 171 - Standalone POS Operator Sign-In Contract (#1052)
+
+### Initiative and release
+
+Standalone POS cashier/operator switching refactor contract.
+
+### Objective and scope
+
+- Freeze a capability-based operator sign-in flow in which the existing DGFY browser session
+  establishes company/terminal context and an eligible operator uses a personal POS PIN.
+- Preserve one continuous register shift, opening float, drawer ledger, and server-attributed
+  operator history across routine resume/takeover transitions.
+- Exclude IMS product behavior while retaining a conditional IMS regression build only if a later
+  runtime phase changes shared `packages/web-core` files.
+- Define security, concurrency, cart, protected-operation, custody, version-skew, QA, and rollout
+  boundaries for separately approved delivery phases.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-26.
+
+### Dependencies
+
+- Phase 170 completed on `develop`.
+- Issue #1052 and ADR 0026, ADR 0031, ADR 0044, ADR 0065, and ADR 0073.
+
+### Acceptance and validation evidence
+
+- [x] ADR 0073 records personal-PIN, capability-based operator switching without replacing DGFY
+  browser identity or weakening its binding authorization and cash-custody clauses.
+- [x] The authoritative terminal flow distinguishes initial DGFY sign-in from the planned routine
+  operator sign-in and does not claim the target flow is already deployed.
+- [x] Owners/admins with `pos:transact`, `pos:attendance:operate`, location, attendance, and PIN
+  eligibility can operate; a hard-coded `role === cashier` gate is not part of the target contract.
+- [x] Cart, protected operation, concurrency, idempotency, lockout, generic error, shared-drawer,
+  counted-custody, and mixed-version risks have required mitigations.
+- [x] IMS is excluded from product scope; conditional shared-code regression validation is not an
+  IMS feature commitment.
+- [x] Documentation, ADR, architecture, compliance, and diff-safety checks passed.
+
+### Implementation links
+
+- Issue #1052; follows the completed compatibility work in PR #1053
+- `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
+- `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
+- `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
+
+### Next eligible phase
+
+Phase 172 is eligible for separate approval after Phase 171 reaches `develop`.
+
+---
+
+## Phase 172 - POS Operator Eligibility and PIN Authority
+
+### Objective and scope
+
+Implement one server-authoritative resume/takeover policy that validates active membership,
+`pos:transact`, `pos:attendance:operate`, location, attendance/break state, terminal/shift scope,
+and personal PIN before issuing operator authority without changing DGFY browser identity. Preserve
+authenticated self-enrollment and administrator reset paths that do not require an already-active
+operator session.
+
+### Status
+
+- `planned`
+
+### Dependencies
+
+- Phase 171 completed and merged to `develop`; explicit implementation approval.
+
+### Acceptance and validation evidence
+
+- [ ] Atomic same-operator resume and different-operator takeover use the same eligibility policy.
+- [ ] Rate limiting, lockout, generic failures, audit evidence, idempotency, and one-current-operator
+  concurrency invariants pass focused backend tests.
+- [ ] A first eligible operator can enroll a personal PIN under `pos:attendance:operate`, and an
+  authorized administrator can reset one under `users:manage`, without circular operator authority.
+- [ ] Cross-tenant, cross-location, inactive membership, missing permission, invalid attendance,
+  invalid PIN, and stale terminal/shift requests fail closed.
+
+### Next eligible phase
+
+Phase 173 becomes eligible after Phase 172 completes.
+
+---
+
+## Phase 173 - Standalone POS Operator-Switch UI
+
+### Objective and scope
+
+Replace the repeated target DGFY credential and role-string gate with an eligible-operator picker
+and personal-PIN sign-in flow in standalone POS while preserving initial DGFY company/terminal
+authentication.
+
+### Status
+
+- `planned`
+
+### Dependencies
+
+- Phase 172 completed; explicit implementation approval.
+
+### Acceptance and validation evidence
+
+- [ ] Current operator can resume and a different eligible operator can take over without closing
+  the register or changing DGFY browser identity.
+- [ ] Non-empty carts require park/cancel and protected operations visibly block switching.
+- [ ] Loading, offline, error, lockout, accessibility, responsive, and duplicate-submit states pass
+  focused standalone POS tests.
+- [ ] IMS receives no operator-switch UI or product behavior; if shared runtime files change, its
+  build passes only as a regression gate.
+
+### Next eligible phase
+
+Phase 174 becomes eligible after Phase 173 completes.
+
+---
+
+## Phase 174 - Operator-Switch Security, Concurrency, and Compatibility Hardening
+
+### Objective and scope
+
+Prove replay, rapid double-submit, stale eligibility, concurrent devices, protected operations,
+cart handling, PIN lockout, audit evidence, and bounded mixed-version behavior across the Phase
+172-173 contract.
+
+### Status
+
+- `planned`
+
+### Dependencies
+
+- Phases 172-173 completed; explicit implementation approval.
+
+### Acceptance and validation evidence
+
+- [ ] Exactly one operator remains current after concurrent resume/takeover attempts.
+- [ ] No failed transition changes the register, opening float, drawer ledger, cart, attendance,
+  DGFY identity, or operator authority partially.
+- [ ] Compatibility telemetry and a dated fallback-removal condition are documented and tested.
+
+### Next eligible phase
+
+Phase 175 becomes eligible after Phase 174 completes.
+
+---
+
+## Phase 175 - Standalone POS Operator-Switch End-to-End Proof and Rollout
+
+### Objective and scope
+
+Verify and release the two-operator standalone POS workflow with transaction attribution,
+shared-drawer disclosure, counted-custody separation, restore/rollback, accessibility, monitoring,
+and production proof.
+
+### Status
+
+- `planned`
+
+### Dependencies
+
+- Phase 174 completed; explicit rollout approval and normal release policy.
+
+### Acceptance and validation evidence
+
+- [ ] A deterministic owner/admin/cashier capability matrix and two-operator selling scenario pass
+  through the standalone POS with server/database attribution proof.
+- [ ] Regression, security, accessibility, performance, rollback, monitoring, and deployment gates
+  pass without adding IMS product behavior.
+- [ ] Production verification proves the deployed commit and records removal readiness for any
+  temporary version-skew fallback.
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 175 completes.
+
+---
+
+### Planning Record (2026-08-26)
+
+- Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
+  next eligible phase after explicit approval and Phase 171 merge.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.

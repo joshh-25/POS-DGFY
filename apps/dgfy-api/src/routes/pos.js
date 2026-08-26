@@ -150,9 +150,15 @@ router.post('/attendance/corrections', checkPermission(PERMISSIONS.POS.actions.M
 // and remain inaccessible while the lifecycle flag is disabled.
 router.post('/operator/pin/enroll', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), validateCashierPin, posController.enrollCashierPin);
 router.post('/operator/pin/reset', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateCashierPin, posController.resetCashierPin);
-router.get('/terminal/operator/current', checkPermission(PERMISSIONS.POS.actions.VIEW_ATTENDANCE), posController.requirePairedTerminal, validateOperatorCurrentQuery, posController.getCurrentOperator);
+// #1045: permission is enforced INSIDE the use case, after the attendance-feature
+// resolve (posOperatorAuthorityUseCases.js getCurrent, posCashierLifecycleUseCases.js
+// resume), so a location with pos_cashier_attendance_lifecycle_v1 disabled answers
+// POS_ATTENDANCE_FEATURE_DISABLED instead of a bare 403 the terminal reads as "another
+// cashier owns this register." Do not re-add checkPermission here — see the two
+// use cases above for the fail-closed check that replaces it.
+router.get('/terminal/operator/current', posController.requirePairedTerminal, validateOperatorCurrentQuery, posController.getCurrentOperator);
 router.get('/terminal/operator/eligible', checkPermission(PERMISSIONS.POS.actions.VIEW_ATTENDANCE), posController.requirePairedTerminal, validateOperatorCurrentQuery, posController.listEligibleOperators);
-router.post('/terminal/operator/resume', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateCashierResume, posController.resumeCashier);
+router.post('/terminal/operator/resume', posController.requirePairedTerminal, validateCashierResume, posController.resumeCashier);
 router.post('/terminal/operator/takeover', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateOperatorTransition, posController.takeOverRegister);
 router.post('/terminal/operator/return', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateOperatorTransition, posController.returnRegister);
 router.post('/terminal/operator/shared-relief/start', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateOperatorTransition, posController.startSharedRelief);

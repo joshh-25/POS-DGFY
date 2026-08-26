@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildScopedCashierRequestConfig,
+  isPosAttendancePermissionDeniedReason,
   isPosOperatorAuthorityValid,
+  isPosOperatorAuthorityUnavailableError,
   isPosOperatorFeatureDisabledReason,
+  isPosOperatorPermissionDeniedError,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -165,6 +168,121 @@ describe('POS terminal shift entry decision', () => {
       token: '',
       companyToken: 'tenant-company-token'
     })).toThrow('The cashier company session could not be verified. Sign in again.');
+  });
+
+  it.each([
+    ['top-level feature code', {
+      response: {
+        status: 404,
+        data: { error_code: 'POS_OPERATOR_FEATURE_DISABLED' }
+      }
+    }],
+    ['details feature code', {
+      response: {
+        status: 404,
+        data: { errors: { reason_code: 'POS_OPERATOR_FEATURE_DISABLED' } }
+      }
+    }],
+    ['attendance feature-disabled code', {
+      response: {
+        status: 404,
+        data: { error_code: 'POS_ATTENDANCE_FEATURE_DISABLED' }
+      }
+    }],
+    ['route-level mixed-version response', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 404,
+        data: {
+          message: 'Route /api/v1/pos/terminal/operator/current?terminal_id=COUNTER-01&location_id=1&shift_id=1 not found'
+        }
+      }
+    }]
+  ])('uses legacy operator behavior for an unavailable operator API: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityUnavailableError(error)).toBe(true);
+  });
+
+  it.each([
+    ['unrelated missing route', {
+      config: { url: '/pos/terminal/shifts/current' },
+      response: {
+        status: 404,
+        data: { message: 'Route /api/v1/pos/terminal/shifts/current not found' }
+      }
+    }],
+    ['operator domain failure', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 404,
+        data: {
+          error_code: 'RESOURCE_NOT_FOUND',
+          errors: { reason_code: 'POS_OPERATOR_SHIFT_NOT_OPEN' },
+          message: 'The register shift is no longer open.'
+        }
+      }
+    }],
+    ['authorization failure', {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 403,
+        data: { error_code: 'AUTHORIZATION_FAILED' }
+      }
+    }]
+  ])('keeps operator enforcement for a real failure: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityUnavailableError(error)).toBe(false);
+  });
+
+  // #1045: a stale per-user permission snapshot (missing pos:attendance:view /
+  // pos:attendance:operate) 403s on a feature-ENABLED location -- distinct from
+  // the feature-disabled set above, which never reaches this account at all.
+  it.each([
+    ['POS_ATTENDANCE_PERMISSION_REQUIRED', 'POS_ATTENDANCE_PERMISSION_REQUIRED'],
+    ['PERMISSION_DENIED', 'PERMISSION_DENIED'],
+    ['padded whitespace', ' POS_ATTENDANCE_PERMISSION_REQUIRED ']
+  ])('recognizes a permission-denied reason code: %s', (_label, reasonCode) => {
+    expect(isPosAttendancePermissionDeniedReason(reasonCode)).toBe(true);
+  });
+
+  it.each([
+    ['a feature-disabled code', 'POS_ATTENDANCE_FEATURE_DISABLED'],
+    ['an unrelated code', 'POS_OPERATOR_SHIFT_NOT_OPEN'],
+    ['empty string', ''],
+    ['undefined', undefined]
+  ])('does not classify %s as permission-denied', (_label, reasonCode) => {
+    expect(isPosAttendancePermissionDeniedReason(reasonCode)).toBe(false);
+  });
+
+  it('reads a permission-denied reason code from the API error shape', () => {
+    const error = {
+      config: { url: '/pos/terminal/operator/current' },
+      response: {
+        status: 403,
+        data: {
+          error_code: 'AUTHORIZATION_FAILED',
+          errors: { reason_code: 'POS_ATTENDANCE_PERMISSION_REQUIRED' },
+          message: 'Cashier attendance permissions are missing. Sign out and sign in again after the permission update.'
+        }
+      }
+    };
+    expect(isPosOperatorPermissionDeniedError(error)).toBe(true);
+    // A permission-denied error is never also "authority unavailable" -- if it
+    // were, the recovery effect would incorrectly unlock the terminal instead
+    // of surfacing the actionable reason.
+    expect(isPosOperatorAuthorityUnavailableError(error)).toBe(false);
+  });
+
+  it('reads a permission-denied reason code from the bare checkPermission 403 shape', () => {
+    const error = {
+      response: {
+        status: 403,
+        data: {
+          error_code: 'PERMISSION_DENIED',
+          errors: { reason_code: 'PERMISSION_DENIED', required_permission: 'pos:attendance:view' },
+          message: 'Access denied: Insufficient permissions'
+        }
+      }
+    };
+    expect(isPosOperatorPermissionDeniedError(error)).toBe(true);
   });
 
   it('restores a missing operator authority session for an authenticated cashier', () => {

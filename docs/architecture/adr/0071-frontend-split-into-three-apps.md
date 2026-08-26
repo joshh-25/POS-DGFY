@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-15
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-25
 review_by: 2027-02-15
 applies_to: repository_layout
 topic: frontend_split_into_three_apps
@@ -163,6 +163,33 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   `frontend` image itself is deliberately not renamed since it has no `apps/*` directory and is
   already scheduled for deletion once this same cutover bakes.
 - PR: (this PR, issue #928).
+
+### 2026-08-25 — deploy-main.yml's frontend chain drops serialization (supersedes the 2026-08-23 rejection)
+
+- Clause amended: **Consequences item 3** (untagged, `default` tier per ADR 0039), specifically the
+  2026-08-23 amendment's own "what's unchanged" paragraph above, which considered and rejected
+  dropping serialization when the chain shrank from 6 jobs to 3.
+- Change: that rejection was made without re-checking either the real root cause of #427's GHCR
+  secondary-rate-limit incident or current image sizes. #433 (closed the day after #427, same
+  2026-08-14 window) found and fixed the actual cause: all three build workflows were also pushing
+  a redundant, full `mode=max` registry cache image to GHCR on every build, roughly doubling push
+  volume — not the two/three frontend jobs running in parallel per se. That fix (already shipped,
+  still in place) removed the real pressure; the `deploy-main.yml` `needs:` chain was a second,
+  never-independently-re-justified safeguard layered on top of it. Live evidence the parallel path
+  is safe: `deployment-orchestrator.yml` (the DEV/STAGING equivalent) has run these same three
+  builds fully in parallel, no `needs:` chain at all, on every dispatch since the frontend split,
+  with no rate-limit recurrence across the last 8 dispatches (the one failure was an unrelated stale
+  server-compose guard, not GHCR). Current image sizes are modest (~27–33 MB compressed each,
+  confirmed directly against GHCR) — not the "large" pre-split combined-image pushes #427's original
+  incident described. `deploy-main.yml`'s `frontend-ims-prod`/`frontend-pos-prod`/
+  `frontend-storefront-prod` jobs now run independently, matching DEV/STAGING parity.
+- What's unchanged: the core decision this ADR governs (one image per app, `deploy-main.yml`/
+  `deployment-orchestrator.yml` running per-app jobs) — only the serialization within
+  `deploy-main.yml`'s frontend job group is removed. The runner pool is still only 2 self-hosted
+  runners (`vm-openproject`, `vm-sieitzstaging`), so this is a bounded wall-clock win (roughly a
+  couple of minutes), not a 3x speedup — the third job simply queues for a free runner. If a GHCR
+  rate limit does recur, reverting is a one-line `needs:` re-add per job.
+- PR: (this PR, issue #1041).
 
 ## Future Direction
 

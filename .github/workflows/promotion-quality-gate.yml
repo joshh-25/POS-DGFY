@@ -19,6 +19,92 @@ name: Promotion Quality Gate
 # waiting for a real promotion PR to open. Both bypass the `gate` job's promotion check entirely
 # (see its own comment) -- that's intentional, matching how the original `workflow_dispatch` always
 # ran unconditionally by hand.
+#
+# 2026-08-26 (#1063), temporary: the gate itself is suspected stale/unreliable (unclear whether
+# it's outdated test scripts or something else) and needs dedicated investigation time Pat doesn't
+# have right now. Two different relaxations, by leg:
+#   - `to-staging/*` -> `staging` (the optional soak leg): every quality job below is skipped
+#     entirely (`if: ... && needs.gate.outputs.is_staging_leg != 'true'`) -- no runner time spent,
+#     no results at all on this leg until #1063 is resolved.
+#   - `release/*` -> `main` (the default `develop -> main` promotion, and the `staging -> main` leg
+#     of the optional soak), plus any `workflow_dispatch`/`workflow_call` run: every quality job
+#     still runs in full.
+# Net effect: there is currently no leg where a red run from this workflow blocks a promotion on a
+# real step-level failure -- said plainly rather than glossed over. See the 2026-08-26 #1066
+# corrections below for what "blocks" means precisely, and for the narrow set of things (job-
+# envelope failures, cancellation, runner unavailability) that remain genuinely outside this file's
+# control. This is meant to be temporary: once #1063 is resolved, drop the `is_staging_leg`
+# exclusion from every `if:` and remove every `continue-on-error` (job- and step-level both), and
+# this whole comment block.
+# `scripts/check-pr-quality-workflow.js` enforces the *shape* of this exception (the exact `if:`
+# and `continue-on-error:` pairs below, not a blanket bypass) -- see that file's own comment for why
+# a blanket forbid of `continue-on-error` was the previous state (#1003).
+#
+# 2026-08-26 (#1066, RF-1/RF-2 pr-reviewer findings on PR #1068), two corrections:
+#
+# 1. Job-level `continue-on-error: true` alone (the original #1063/#1064 shape, still present below)
+#    does NOT make a red run show green, and does not clear a PR's `mergeStateStatus`. Confirmed
+#    live on PR #1066 (`gh api .../actions/runs/<id>/jobs`): job-level `continue-on-error` only
+#    spares the *workflow run's own conclusion* -- the individual job/check-run this workflow
+#    publishes to the PR still reports its real `conclusion: failure` when a step inside it fails,
+#    and GitHub computes `mergeStateStatus` from each check run's own conclusion, not the workflow's
+#    rollup. Fix: every step inside every quality job below now *also* carries its own
+#    `continue-on-error: true` -- GitHub Actions only rolls a step's failure into the job's own
+#    conclusion when that specific step lacks it, which is the actual mechanism for a job's
+#    check-run to report `success` regardless of what happens inside it. The job-level line stays
+#    too (harmless, keeps `scripts/check-pr-quality-workflow.js`'s original shape guard intact) but
+#    was never sufficient by itself.
+#
+# 2. The first attempt at a `report-advisory-failures` job (below) tried to re-derive real failures
+#    from the Actions Jobs API's `steps[].conclusion` field. pr-reviewer (PR #1068, RF-1) caught
+#    that this is wrong and confirmed it independently against this repo's own run `32620370627`:
+#    `steps[].conclusion` is the *post-override* value (matches the `conclusion` context, not
+#    `outcome`) -- a step with `continue-on-error: true` that genuinely fails still reports
+#    `conclusion: "success"` via that API. The Jobs-API approach was therefore dead code that would
+#    never detect any of the failures this workflow now swallows. Fixed: each quality job now has a
+#    "Record real per-step outcomes" step (`if: always()`) that reads `steps.<id>.outcome` (the
+#    *pre-override* raw result -- the one field that actually survives `continue-on-error`) for each
+#    of its own steps by explicit id, and exposes a job output (`real_failures`) that
+#    `report-advisory-failures` reads directly via `needs.<job>.outputs.real_failures` -- no Actions
+#    API call needed for detection at all anymore.
+#
+# 3. (RF-2, pr-reviewer's second PR #1068 blocker) The prior version of this file left the
+#    `mysql`/`redis` `services:` blocks on `dgfy-api-quality`/`migration-runner-quality` as a
+#    documented "known, accepted residual gap" -- GitHub's own service-container health check
+#    happens during job *provisioning*, before any step (even `if: always()`) runs, so no
+#    continue-on-error at any level could reach it, and a failing container still left the job's
+#    check-run red. The reviewer correctly refused a PR-body "accepted" declaration as a substitute
+#    for actually fixing it. Fix: both `services:` blocks are replaced with ordinary steps
+#    ("Start service containers" / "Wait for service containers" / "Stop service containers") that
+#    do the same docker run + health-check-polling `services:` did internally, but as steps this
+#    file's own continue-on-error and record_outcomes mechanism can absorb and report like any
+#    other. Confirmed safe against a same-host port collision: only one runner in this repo carries
+#    the `sieitz-lg` label and a self-hosted runner runs one job at a time (`gh api
+#    repos/.../actions/runners`), so the two jobs below can never contend for the fixed 3306/6379
+#    ports -- ephemeral per-run ports would be unneeded complexity here. `start_services` also
+#    sweeps any same-labelled leftover container before starting new ones, which `services:` itself
+#    had no way to do -- a real (if never yet observed) hazard given this workflow's own
+#    `concurrency: cancel-in-progress: true` (below) can kill a job mid-container-lifetime. Every
+#    step in both jobs, and every long-running step across the rest of this file, now also carries
+#    its own `timeout-minutes` (a **job**-level timeout kills the job with no continue-on-error
+#    reaching it either -- the same shape of gap as the service containers, just less obvious).
+#
+# **What can still turn a check-run non-green, said plainly rather than glossed over:** after the
+# fix above, no *user step*, *service container*, or *step timeout* can. What remains outside any
+# continue-on-error's reach: the `gate` job's own step failing (its outputs stay empty and every
+# quality job below is skipped rather than shown red -- a different, also-named failure mode, not a
+# silent gap, see that job's own comment), the `report-advisory-failures` job envelope itself (its
+# one step is continue-on-error, the job is not), a job-level `timeout-minutes` expiry as a
+# last-resort backstop once a step's own timeout has already been exceeded, workflow/job
+# cancellation (this file's own `concurrency: cancel-in-progress: true` -- benign in the normal case
+# since the cancelled check-run belongs to the superseded SHA, not the PR's current head), and
+# runner unavailability (a queued job is a pending check, not a red one, but AGENTS.md's Merge
+# Safety rule treats a pending check as a hard stop too). None of these are addressed by this fix;
+# naming them here is the difference between "accepted in a PR body" (what the reviewer correctly
+# rejected) and "documented where the governed claim actually lives." For the record: GitHub's own
+# `Initialize containers` step has never actually failed in this workflow's run history as of this
+# writing -- this fix closes a real mechanism gap that had not yet been observed to fire, not an
+# incident postmortem.
 on:
   pull_request:
     branches:
@@ -34,7 +120,7 @@ on:
       runner_labels_json:
         description: >-
           JSON array passed to runs-on for quality jobs. Pinned to sieitz-lg
-          (#923) -- dgfy-api-quality (2 service containers, 4GB heap) and
+          (#923) -- dgfy-api-quality (2 docker-run mysql/redis containers, 4GB heap) and
           frontend-quality (3 sequential vite builds + playwright chromium)
           are the two heaviest jobs in the repo.
         required: false
@@ -66,9 +152,22 @@ jobs:
     timeout-minutes: 2
     outputs:
       is_promotion: ${{ steps.check.outputs.is_promotion }}
+      # #1063: true only for the `staging` base / `to-staging/*` head shape -- the leg every
+      # quality job below is skipped entirely on. Defaults to false everywhere else (the `main` leg,
+      # and any workflow_dispatch/workflow_call run) -- those still run the jobs in full, but every
+      # step in every job carries its own `continue-on-error: true` (2026-08-26 #1066 correction --
+      # see the workflow-level comment above; job-level alone doesn't achieve this), so they run
+      # advisory too, not blocking.
+      is_staging_leg: ${{ steps.check.outputs.is_staging_leg }}
     steps:
+      # 2026-08-26 (#1066 follow-up): this step is now also continue-on-error, closing the last
+      # user-controllable step in the workflow that wasn't. If it genuinely fails, its outputs stay
+      # empty, every quality job's `if:` above evaluates false, and the PR shows no quality
+      # check-runs at all this run -- a different failure mode than a red one, named honestly rather
+      # than left as a silent gap; see the workflow-level comment.
       - name: Determine whether this is a promotion PR
         id: check
+        continue-on-error: true
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
@@ -76,50 +175,118 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "is_promotion=true" >> "$GITHUB_OUTPUT"
-            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally"
+            echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
+            echo "not a pull_request event ($EVENT_NAME) -- proceeding unconditionally, not the staging leg (jobs still run advisory via continue-on-error, same as every other non-staging-leg run)"
             exit 0
           fi
           case "$BASE_REF" in
             staging)
-              case "$HEAD_REF" in to-staging/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              case "$HEAD_REF" in
+                to-staging/*)
+                  echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+                  echo "is_staging_leg=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                  ;;
+              esac
               ;;
             main)
-              case "$HEAD_REF" in release/*) echo "is_promotion=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+              case "$HEAD_REF" in
+                release/*)
+                  echo "is_promotion=true" >> "$GITHUB_OUTPUT"
+                  echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
+                  exit 0
+                  ;;
+              esac
               ;;
           esac
           echo "is_promotion=false" >> "$GITHUB_OUTPUT"
+          echo "is_staging_leg=false" >> "$GITHUB_OUTPUT"
           echo "base=$BASE_REF head=$HEAD_REF does not match a known promotion head prefix -- skipping quality jobs"
 
   dgfy-api-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough) -- including the mysql/redis containers below, now started and
+    # waited-on as ordinary steps rather than the runner's own `services:` mechanism, so they're
+    # covered too (2026-08-26 #1066 follow-up, see that same comment).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: testpassword
-          MYSQL_DATABASE: sku_inventory_manager_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword"
-          --health-interval=10s --health-timeout=5s --health-retries=12
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s --health-timeout=5s --health-retries=12
+    outputs:
+      # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
+      # continue-on-error) by the "Record real per-step outcomes" step below -- consumed directly by
+      # report-advisory-failures via needs.dgfy-api-quality.outputs.real_failures, not the Actions
+      # API (whose steps[].conclusion is post-override and would never show a failure here).
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      # #1066 RF-2: mysql/redis used to be GitHub's built-in `services:` containers, provisioned by
+      # the runner-generated "Initialize containers" step BEFORE any user step (even an
+      # `if: always()` one) runs -- no continue-on-error, job- or step-level, reaches that phase, so
+      # a container failing its own health check still left this job's check-run red regardless of
+      # every other fix in this file. Replaced with explicit steps so container start/wait is itself
+      # a step continue-on-error can absorb and record_outcomes can report. Same images/env/ports/
+      # health commands as the services: blocks they replace. Only one runner in this repo carries
+      # the sieitz-lg label and a self-hosted runner runs one job at a time (confirmed live via
+      # `gh api repos/.../actions/runners`), so dgfy-api-quality and migration-runner-quality can
+      # never contend for the fixed 3306/6379 ports -- ephemeral ports would be unneeded complexity
+      # here. The one real hazard `services:` had no defence against: `concurrency:
+      # cancel-in-progress: true` (see top of file) can kill a running job mid-container-lifetime,
+      # leaking a container that still holds the port for the next run -- start_services below
+      # sweeps by label before starting anything, which is strictly more robust than what it
+      # replaces, not just non-blocking.
+      - name: Start service containers
+        id: start_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker ps -aq --filter "label=dgfy-ci-quality-gate=1" | xargs -r docker rm -f
+          docker run -d --name "$MYSQL_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -e MYSQL_ROOT_PASSWORD=testpassword \
+            -e MYSQL_DATABASE=sku_inventory_manager_test \
+            -p 3306:3306 \
+            mysql:8.0
+          docker run -d --name "$REDIS_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -p 6379:6379 \
+            redis:7-alpine
+
+      - name: Wait for service containers
+        id: wait_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          for _ in $(seq 1 12); do
+            docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword && mysql_ready=1 && break
+            sleep 10
+          done
+          for _ in $(seq 1 12); do
+            docker exec "$REDIS_CONTAINER" redis-cli ping && redis_ready=1 && break
+            sleep 10
+          done
+          [ -n "${mysql_ready:-}" ] && [ -n "${redis_ready:-}" ]
+
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
@@ -128,16 +295,30 @@ jobs:
             apps/dgfy-migration-runner/package-lock.json
 
       - name: Install API dependencies
+        id: install_api_deps
         working-directory: apps/dgfy-api
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Install migration-runner dependencies
+        id: install_migration_runner_deps
         working-directory: apps/dgfy-migration-runner
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Prepare test schema
+        id: prepare_test_schema
+        # #1066 RF-2: skip rather than cascade into a confusing connection-refused failure if the
+        # replacement containers above never came up -- wait_services.outcome already recorded the
+        # real cause; this and the other three DB-touching steps below would otherwise all report
+        # their own (misleading, redundant) failure for the same one root cause.
+        if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-migration-runner
         run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        continue-on-error: true
+        timeout-minutes: 10
         env:
           NODE_ENV: test
           DB_HOST: 127.0.0.1
@@ -150,20 +331,33 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Enforce modular architecture guardrails
+        id: enforce_arch_guardrails
         working-directory: apps/dgfy-api
         run: npm run check:architecture-guardrails
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Enforce controller architecture boundaries
+        id: enforce_controller_boundaries
         working-directory: apps/dgfy-api
         run: npm run check:controller-boundaries
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run API lint
+        id: run_api_lint
         working-directory: apps/dgfy-api
         run: npm run lint
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run dgfy-api test matrix
+        id: run_test_matrix
+        if: steps.wait_services.outcome == 'success'
         working-directory: .
         run: node scripts/run-backend-test-matrix.js
+        continue-on-error: true
+        timeout-minutes: 30
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
@@ -178,6 +372,8 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Run F&B contracts with open-handle diagnostics
+        id: run_fnb_contracts
+        if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-api
         run: >-
           npm test -- --detectOpenHandles --runTestsByPath
@@ -186,6 +382,8 @@ jobs:
           tests/storeFnbModifiers.usecases.test.js
           tests/fnbModifierCondition.migration.test.js
           tests/storeValidator.fnbModifiers.test.js
+        continue-on-error: true
+        timeout-minutes: 10
         env:
           NODE_ENV: test
           DB_HOST: 127.0.0.1
@@ -199,8 +397,12 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Audit required indexes
+        id: audit_indexes
+        if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-api
         run: npm run audit:indexes
+        continue-on-error: true
+        timeout-minutes: 10
         env:
           NODE_ENV: test
           DB_HOST: 127.0.0.1
@@ -213,47 +415,141 @@ jobs:
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Upload API test-matrix evidence
+        id: upload_test_matrix_evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: dgfy-api-test-matrix-${{ github.sha }}
           path: .tmp/release-gates/${{ github.sha }}/backend-test-matrix/**
           if-no-files-found: ignore
           retention-days: 5
 
+      - name: Stop service containers
+        id: stop_services
+        if: always()
+        continue-on-error: true
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        # Best-effort teardown, deliberately not part of STEP_OUTCOMES below: `docker rm -f` on a
+        # container that already exited or was already removed by another cleanup path returns a
+        # non-zero exit that has nothing to do with this job's real result -- reporting it to #1063
+        # would be exactly the false-positive noise this whole mechanism exists to avoid. `|| true`
+        # on each removal keeps this step itself from ever reporting `failure`.
+        run: |
+          docker rm -f "$MYSQL_CONTAINER" 2>/dev/null || true
+          docker rm -f "$REDIS_CONTAINER" 2>/dev/null || true
+
+      # #1066 RF-1: steps.<id>.outcome is the pre-override raw result -- the one field that still
+      # says "failure" even when that same step's continue-on-error swallowed it for the job's own
+      # conclusion. Explicit id-by-id (GitHub Actions has no "list every step in this job" runtime
+      # enumeration), one line per step above. Container start/wait are now steps too (RF-2, no
+      # longer a runner-generated "Initialize containers" phase outside continue-on-error's reach --
+      # see the workflow-level comment) so they're included below; stop_services is deliberately
+      # excluded, see its own comment.
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Start service containers|${{ steps.start_services.outcome }}
+            Wait for service containers|${{ steps.wait_services.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install API dependencies|${{ steps.install_api_deps.outcome }}
+            Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
+            Prepare test schema|${{ steps.prepare_test_schema.outcome }}
+            Enforce modular architecture guardrails|${{ steps.enforce_arch_guardrails.outcome }}
+            Enforce controller architecture boundaries|${{ steps.enforce_controller_boundaries.outcome }}
+            Run API lint|${{ steps.run_api_lint.outcome }}
+            Run dgfy-api test matrix|${{ steps.run_test_matrix.outcome }}
+            Run F&B contracts with open-handle diagnostics|${{ steps.run_fnb_contracts.outcome }}
+            Audit required indexes|${{ steps.audit_indexes.outcome }}
+            Upload API test-matrix evidence|${{ steps.upload_test_matrix_evidence.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
   migration-runner-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough) -- including the mysql container below, now started and
+    # waited-on as an ordinary step rather than the runner's own `services:` mechanism, so it's
+    # covered too (2026-08-26 #1066 follow-up, see that same comment).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
-    timeout-minutes: 15
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: testpassword
-          MYSQL_DATABASE: sku_inventory_manager_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword"
-          --health-interval=10s --health-timeout=5s --health-retries=12
+    timeout-minutes: 20
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      # #1066 RF-2: see dgfy-api-quality's identical comment above -- same replacement, same
+      # reasoning, one fewer container (no redis here).
+      - name: Start service containers
+        id: start_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-migrun-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker ps -aq --filter "label=dgfy-ci-quality-gate=1" | xargs -r docker rm -f
+          docker run -d --name "$MYSQL_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -e MYSQL_ROOT_PASSWORD=testpassword \
+            -e MYSQL_DATABASE=sku_inventory_manager_test \
+            -p 3306:3306 \
+            mysql:8.0
+
+      - name: Wait for service containers
+        id: wait_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-migrun-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          for _ in $(seq 1 12); do
+            docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword && mysql_ready=1 && break
+            sleep 10
+          done
+          [ -n "${mysql_ready:-}" ]
+
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/dgfy-migration-runner/package-lock.json
 
       - name: Install migration-runner dependencies
+        id: install_migration_runner_deps
         working-directory: apps/dgfy-migration-runner
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Apply migrations against a fresh MySQL schema
+        id: apply_migrations
+        if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-migration-runner
         run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        continue-on-error: true
+        timeout-minutes: 10
         env:
           NODE_ENV: test
           DB_HOST: 127.0.0.1
@@ -262,6 +558,36 @@ jobs:
           DB_NAME_TEST: sku_inventory_manager_test
           DB_USER: root
           DB_PASSWORD: testpassword
+
+      - name: Stop service containers
+        id: stop_services
+        if: always()
+        continue-on-error: true
+        env:
+          MYSQL_CONTAINER: dgfy-ci-migrun-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f "$MYSQL_CONTAINER" 2>/dev/null || true
+
+      # See dgfy-api-quality's identical comment above for why stop_services is excluded here too.
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Start service containers|${{ steps.start_services.outcome }}
+            Wait for service containers|${{ steps.wait_services.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
+            Apply migrations against a fresh MySQL schema|${{ steps.apply_migrations.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
 
   # Split into one job per app (issue #322 Phase 6 -- previously one
   # frontend-quality job against the monolith apps/dgfy-web). The F&B
@@ -273,29 +599,51 @@ jobs:
   # storefront's own local test.
   frontend-ims-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/dgfy-ims/package-lock.json
 
       - name: Install dgfy-ims dependencies
+        id: install_ims_deps
         working-directory: apps/dgfy-ims
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Run dgfy-ims lint
+        id: run_ims_lint
         working-directory: apps/dgfy-ims
         run: npm run lint
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run shared F&B contract tests
+        id: run_shared_fnb_contract_tests
         working-directory: apps/dgfy-ims
+        continue-on-error: true
+        timeout-minutes: 5
         run: >-
           npx vitest run
           ../../packages/web-core/src/features/fnb/__tests__/kitchenQueueDisplay.test.js
@@ -306,71 +654,160 @@ jobs:
           ../../packages/web-core/src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
           ../../packages/web-core/src/config/__tests__/permissionsFrontendParity.test.js
 
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
+            Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
+            Run shared F&B contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
   frontend-pos-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/dgfy-pos/package-lock.json
 
       - name: Install dgfy-pos dependencies
+        id: install_pos_deps
         working-directory: apps/dgfy-pos
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Run dgfy-pos lint
+        id: run_pos_lint
         working-directory: apps/dgfy-pos
         run: npm run lint
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
+            Run dgfy-pos lint|${{ steps.run_pos_lint.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
 
   frontend-storefront-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/dgfy-storefront/package-lock.json
 
       - name: Install dgfy-storefront dependencies
+        id: install_storefront_deps
         working-directory: apps/dgfy-storefront
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
       - name: Run dgfy-storefront lint
+        id: run_storefront_lint
         working-directory: apps/dgfy-storefront
         run: npm run lint
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run storefront vitest suite
+        id: run_storefront_vitest
         working-directory: apps/dgfy-storefront
         run: npx vitest run
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Build dgfy-storefront
+        id: build_storefront
         working-directory: apps/dgfy-storefront
         run: npm run build
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Install Playwright Chromium
+        id: install_playwright
         working-directory: apps/dgfy-storefront
         run: npx playwright install --with-deps chromium
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run deterministic F&B browser contract
+        id: run_fnb_browser_contract
         working-directory: apps/dgfy-storefront
         run: npm run test:e2e:fnb-contract
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Upload F&B browser evidence
+        id: upload_fnb_browser_evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: fnb-playwright-contract-${{ github.sha }}
           path: |
@@ -379,34 +816,89 @@ jobs:
           if-no-files-found: ignore
           retention-days: 5
 
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install dgfy-storefront dependencies|${{ steps.install_storefront_deps.outcome }}
+            Run dgfy-storefront lint|${{ steps.run_storefront_lint.outcome }}
+            Run storefront vitest suite|${{ steps.run_storefront_vitest.outcome }}
+            Build dgfy-storefront|${{ steps.build_storefront.outcome }}
+            Install Playwright Chromium|${{ steps.install_playwright.outcome }}
+            Run deterministic F&B browser contract|${{ steps.run_fnb_browser_contract.outcome }}
+            Upload F&B browser evidence|${{ steps.upload_fnb_browser_evidence.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
   repository-quality:
     needs: gate
-    if: needs.gate.outputs.is_promotion == 'true'
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: package-lock.json
 
       - name: Install repository dependencies
+        id: install_repo_deps
         run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
 
-      - name: Validate blocking PR quality workflow contract
-        run: npm run check:pr-quality-workflow
+      # Name corrected 2026-08-26 (#1066 follow-up): this workflow's own quality checks stopped
+      # being blocking under #1063, so "blocking" in this step's name was stale -- the contract it
+      # validates (the sanctioned #1063 if:/continue-on-error: shape) isn't about blocking either.
+      # Also now runs its own regression tests (RF-4): check:pr-quality-workflow was previously the
+      # only thing that ran the validator; test:pr-quality-workflow existed in package.json but had
+      # no call site, so its fixtures -- including the checkAdvisoryFailureReportingShape negative
+      # cases added alongside this comment -- never actually ran anywhere.
+      - name: Validate PR quality workflow contract
+        id: validate_pr_quality_workflow
+        run: npm run check:pr-quality-workflow && npm run test:pr-quality-workflow
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run governed documentation lint
+        id: run_docs_lint
         run: npm run lint:docs
+        continue-on-error: true
+        timeout-minutes: 5
 
       - name: Run compatibility-seam contract gate
+        id: run_compat_seams
         run: npm run check:compat-seams
+        continue-on-error: true
+        timeout-minutes: 5
 
       # Guards the retired backend/frontend/android/apps-dgfy-web paths (issue
       # #914): a develop-based in-flight branch's PR could otherwise silently
@@ -416,7 +908,10 @@ jobs:
       # docs/architecture/backend-absorption.md's changelog). --strict fails
       # this step, not just warns.
       - name: Check retired-path resurrection
+        id: check_retired_path_resurrection
         run: npm run report:frontend-split-sync:post-merge
+        continue-on-error: true
+        timeout-minutes: 5
 
       # PR-context only: github.event.pull_request.{base,head}.sha don't
       # exist under a plain workflow_dispatch run (this workflow is no
@@ -424,9 +919,129 @@ jobs:
       # block comment above), so skip cleanly there instead of diffing two
       # empty SHAs.
       - name: Check changed-file whitespace
+        id: check_whitespace
         if: github.event_name == 'pull_request'
         shell: bash
+        continue-on-error: true
+        timeout-minutes: 5
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: git diff --check "${BASE_SHA}...${HEAD_SHA}"
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install repository dependencies|${{ steps.install_repo_deps.outcome }}
+            Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
+            Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
+            Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
+            Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
+            Check changed-file whitespace|${{ steps.check_whitespace.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
+  # 2026-08-26 (#1066 follow-up), added alongside the step-level continue-on-error fix above: since
+  # every quality job's own `conclusion` now always reads success (that's the whole point of the fix
+  # -- see the workflow-level comment), a red run's signal would otherwise be lost the moment nobody
+  # happens to open this specific run by hand. This job reads each quality job's own `real_failures`
+  # output (set by that job's own "Record real per-step outcomes" step, from steps.<id>.outcome --
+  # NOT the Actions API's steps[].conclusion, which is post-override and would never show a failure
+  # here; see the workflow-level comment's #1066 RF-1 note for why the first version of this job was
+  # wrong) and files it where it won't be lost: one comment on #1063 (already the standing tracking
+  # issue for "this gate is unreliable, needs investigation"), not a new issue per run -- avoids
+  # issue-spam across retries while still leaving a paper trail to pick up later. Deduped per commit
+  # SHA (skips if #1063 already carries a comment for this SHA) so a re-run or a `workflow_dispatch`
+  # retry against the same commit doesn't pile up duplicates. The reporting step itself carries
+  # `continue-on-error: true` (#1066 RF-2) so a `gh` API hiccup here doesn't turn this job's own
+  # check-run red -- the one thing this job must never do is become a new blocking check itself.
+  report-advisory-failures:
+    needs:
+      - gate
+      - dgfy-api-quality
+      - migration-runner-quality
+      - frontend-ims-quality
+      - frontend-pos-quality
+      - frontend-storefront-quality
+      - repository-quality
+    if: >-
+      always() && needs.gate.outputs.is_promotion == 'true' &&
+      needs.gate.outputs.is_staging_leg != 'true'
+    runs-on: ['sieitz-runner']
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Report real quality-job failures on #1063
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_URL: ${{ github.event.pull_request.html_url || '' }}
+          DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}
+          MIGRATION_RUNNER_FAILURES: ${{ needs.migration-runner-quality.outputs.real_failures }}
+          IMS_FAILURES: ${{ needs.frontend-ims-quality.outputs.real_failures }}
+          POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
+          STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
+          REPOSITORY_FAILURES: ${{ needs.repository-quality.outputs.real_failures }}
+        run: |
+          set -uo pipefail
+
+          FAILURES=""
+          add_if_present() {
+            local job_name="$1" value="$2"
+            if [ -n "$value" ]; then
+              FAILURES="${FAILURES}- **${job_name}**: ${value}
+          "
+            fi
+          }
+          add_if_present "dgfy-api-quality" "$DGFY_API_FAILURES"
+          add_if_present "migration-runner-quality" "$MIGRATION_RUNNER_FAILURES"
+          add_if_present "frontend-ims-quality" "$IMS_FAILURES"
+          add_if_present "frontend-pos-quality" "$POS_FAILURES"
+          add_if_present "frontend-storefront-quality" "$STOREFRONT_FAILURES"
+          add_if_present "repository-quality" "$REPOSITORY_FAILURES"
+
+          if [ -z "$FAILURES" ]; then
+            echo "No real step failures reported by any quality job this run -- nothing to report."
+            exit 0
+          fi
+
+          # --jq is gh's own bundled jq engine -- no standalone jq binary dependency.
+          ALREADY_REPORTED=$(gh issue view 1063 --json comments \
+            --jq ".comments[] | select(.body | contains(\"sha=${HEAD_SHA}\")) | .id" | head -1)
+          if [ -n "$ALREADY_REPORTED" ]; then
+            echo "Already reported for sha=${HEAD_SHA} (comment ${ALREADY_REPORTED}) -- skipping duplicate."
+            exit 0
+          fi
+
+          {
+            echo "<!-- promotion-quality-gate-advisory-failure sha=${HEAD_SHA} run=${RUN_ID} -->"
+            echo "### promotion-quality-gate advisory failure(s) -- \`${HEAD_SHA}\`"
+            echo
+            echo "These quality jobs are advisory (\`continue-on-error: true\` on every step, #1066"
+            echo "correction) so this run did not block the merge -- but real steps failed. Filed"
+            echo "here automatically so it isn't lost; not a substitute for #1063's own root-cause."
+            echo
+            echo "Run: https://github.com/${REPO}/actions/runs/${RUN_ID}"
+            if [ -n "$PR_URL" ]; then
+              echo "PR: ${PR_URL}"
+            fi
+            echo
+            echo "$FAILURES"
+          } > /tmp/advisory-failure-comment.md
+
+          gh issue comment 1063 --body-file /tmp/advisory-failure-comment.md

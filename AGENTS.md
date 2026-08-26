@@ -108,9 +108,11 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
-- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end,
-  cutting the intermediate promotion branch itself. Dispatches DEV/STAGING deploys unattended;
-  never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time.
+- **Promoter/Release** (#331/#512) — runs a `develop → main` promotion end to end (default since
+  ADR 0074/#980, 2026-08-25; an optional `develop → staging → main` soak is still available per
+  batch), cutting the promotion branch(es) itself. Dispatches DEV/STAGING deploys unattended;
+  never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time, except a
+  second, narrow, phrase-gated override (#1007) — see "The #1007 promoter override" below.
   @.agents/skills/promoter/SKILL.md
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
@@ -139,9 +141,53 @@ per its own merge policy) → `promoter` cuts/promotes and dispatches the DEV/ST
 (unattended) → the moment `main` is the actual target, the chain **stops**, restates the
 never-merge-`main` rule out loud, and hands the physical merge to Pat — every time, not just until
 he says go once. This is unchanged from the standing rule already in `implement` and `pr-reviewer`,
-with one narrow exception: `incident-responder`'s phrase-gated override
-(`.agents/skills/incident-responder/SKILL.md`), which supersedes this file's earlier "no exception"
-framing *only* for that role, *only* mid-incident, *only* on Pat's explicit real-time phrase.
+with **two** narrow exceptions, neither a standing pre-authorization: `incident-responder`'s
+phrase-gated override (`.agents/skills/incident-responder/SKILL.md`), which supersedes this file's
+earlier "no exception" framing *only* for that role, *only* mid-incident, *only* on Pat's explicit
+real-time phrase; and `promoter`'s own #1007 expedited-promotion override, defined in full
+immediately below, which supersedes it *only* for that role, *only* for Pat's business-urgency
+call (not necessarily an incident), *only* on his explicit real-time phrase.
+
+### The #1007 promoter override — a second, narrower `main`-merge exception
+
+Added 2026-08-25 (#1007/#980, ADR 0074, PR #1042). Written out in full here rather than left to
+live only in a skill file, matching the principle the Merge Safety carve-out above already states
+outright ("this file's own Surface precedence calls that a bug"). The executable procedure and the
+copy-pasteable commands live in `.agents/skills/promoter/SKILL.md` and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment — this section is the binding
+statement those two documents must conform to, not a summary that can drift from them.
+
+- **Scope.** Pat's own business-urgency call — "we critically need this shipped now" — not
+  necessarily a production incident (that case is `incident-responder`'s separate override above).
+  Only `promoter` may invoke it, and only for a `develop → main` promotion (the default path since
+  ADR 0074).
+- **The phrase gate.** Only on Pat's explicit real-time phrase, given in the moment the override is
+  actually invoked — never inferred from urgency alone, never a standing pre-authorization from a
+  prior invocation. Every single invocation, not just the first: (1) restate the standing "these
+  gates are normally required" rule out loud, so it is visibly not being silently skipped;
+  (2) post a comment on the promotion PR (or the tracking issue if no PR exists yet) logging the
+  authorization — timestamp, the phrase given, exactly what's being skipped — **before** the merge,
+  not after.
+- **Skippable, only under this override:**
+  - `npm run gate:release:local` for the promotion PR.
+  - The live compliance preflight sweep (`docs/compliance/request-time-preflight-protocol.md`) —
+    the one case where a `NOT-EXECUTED-*` declaration may legitimately reach `main`, logged and
+    authorized, not silent.
+- **Never skippable, under this override or any other circumstance:**
+  - The production tenant-schema-sync report (`tenant-schema-report.yml`, #1017), checked against
+    **production** tenant databases specifically — the control that would have caught the
+    #860/#639-class crash-loop risk this repo has already seen once.
+  - This file's own Merge Safety hard stop (no `in_progress`/`queued` check, `mergeStateStatus:
+    CLEAN`).
+  - The never-`--squash` rule.
+  - The `release/<label>` cut-from-`origin/develop` (or `origin/staging`, if the optional soak was
+    used) head-cut rule — the #426 incident this guards against.
+- **First live invocation is report-only**, regardless of outcome, matching the calibration already
+  used for every other role in this roster — produce the plan and let Pat confirm before it runs
+  unattended even with his phrase given.
+- **#495 (no rollback) and #639 (schema repair disarmed) are accepted standing risk for this
+  override, not a prerequisite** — unchanged by whether the override is invoked, since the
+  tenant-schema report stays mandatory regardless of what else is skipped.
 
 **Why this is main-session sequencing, not literal nesting.** A Claude Code subagent's tool
 allowlist has no Agent tool (`pr-reviewer`'s is `Read, Grep, Glob, Bash`) — it cannot itself invoke

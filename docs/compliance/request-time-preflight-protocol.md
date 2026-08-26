@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-25
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -120,17 +120,24 @@ live call was never realistic, and #884 named the consequence: every
 state for a `develop`-targeting PR.** It is not a defect and `pr-reviewer`
 should not raise it as a should-fix at that stage (see
 `.agents/skills/pr-reviewer/SKILL.md`, "Compliance"). The real preflight runs
-once per promotion batch, as part of the `develop → staging` leg, against a
-**deployed non-production host — DEV is sufficient**. The endpoint evaluates
-the change *proposal* carried in the declaration's `impact_declaration`
-payload against the policy engine; it does not need the change's code to be
-running anywhere, so DEV's currently-deployed version is irrelevant and
-production is never required. `.agents/skills/promoter/SKILL.md` owns the
-executable form of this sweep; `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
-2026-08-22 amendment owns the ladder this sits in.
+once per promotion batch, before `release/<label>` is cut — since ADR 0074/#980
+(2026-08-25), that means the `develop → main` leg by default, or the
+`develop → staging` leg first if a promoter chooses the optional soak for that
+batch — against a **deployed non-production host — DEV is sufficient**. The
+endpoint evaluates the change *proposal* carried in the declaration's
+`impact_declaration` payload against the policy engine; it does not need the
+change's code to be running anywhere, so DEV's currently-deployed version is
+irrelevant and production is never required. `.agents/skills/promoter/SKILL.md`
+owns the executable form of this sweep; `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+2026-08-22 amendment (superseded in part by its 2026-08-25 amendment) owns the
+ladder this sits in.
 
-**No `NOT-EXECUTED-*` declaration may reach the `staging → main` leg** — the
-promotion-time sweep must have reconciled every one in the batch first.
+**No `NOT-EXECUTED-*` declaration may reach `main`** — the promotion-time sweep
+must have reconciled every one in the batch first, unless `promoter`'s #1007
+phrase-gated expedited override is explicitly invoked for that specific
+promotion (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment — the
+one case where a `NOT-EXECUTED-*` declaration may legitimately still reach
+`main`, logged and authorized, not silent).
 
 Recipe (adapted from the worked example in
 `docs/compliance/impact-declarations/2026-08-07-pos-sentry-independent-debugging.md`,
@@ -155,7 +162,8 @@ declaration's `preflight_result` / `preflight_reason_code` / `preflight_run_at`
 `RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port amendment already requires
 for anything landing on `develop` outside the normal feature-PR path; this is
 regulator-facing evidence and gets the same review, not an exception. Merge
-that PR before the `to-staging/<label>` branch is cut. If the response is
+that PR before `release/<label>` is cut (or before `to-staging/<label>`, if
+the optional soak is used for this batch). If the response is
 `breach` or `review_required`, do not write `no_breach` — record the actual
 result and treat the change as blocked from promotion pending review, per the
 Mandatory Workflow above.
