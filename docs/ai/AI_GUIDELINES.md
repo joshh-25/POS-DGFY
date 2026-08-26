@@ -394,9 +394,9 @@ The AI Assistant respects the user's permissions:
 
 | File | Purpose |
 |------|---------|
-| `backend/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
-| `backend/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
-| `backend/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
+| `apps/dgfy-api/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
+| `apps/dgfy-api/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
+| `apps/dgfy-api/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
 | `packages/web-core/Components/users/PermissionMatrix.jsx` | UI for editing granular permissions |
 | `packages/web-core/Components/users/UserManagementModal.jsx` | User CRUD, role dropdown, permission editor |
 

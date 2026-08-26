@@ -260,7 +260,8 @@ Do not run `scripts/deploy.sh`, `scripts/deploy-remote.sh`, or PM2 process comma
 file — see `docs/ops/DEPLOYMENT_GUIDE.md`'s own superseded-model notice for why.
 
 ## Development (Local testing only)
-> ⚠️ These commands are for local development only. Use PM2 commands for production.
+> ⚠️ These commands are for local development only. Production/staging deploy is not PM2 — see
+> "Production / Staging deploys" above.
 
 ```bash
 # Install dependencies (one-time setup — root + all three frontend apps + api + migration runner)
@@ -287,16 +288,17 @@ npm run test:frontend      # or: cd apps/dgfy-ims && npm test
 
 ## Database
 ```bash
-# Migrations (handled automatically by deploy.sh)
+# Migrations — run manually here for local dev; the current deploy pipeline (docker-compose/GHA,
+# see "Production / Staging deploys" above) handles this in CI/CD, not the retired deploy.sh
 cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate
 
-# Sync tenant schemas (handled automatically by deploy.sh)
+# Sync tenant schemas — same caveat, local-dev use only
 node apps/dgfy-api/scripts/sync-tenant-schemas.js
 ```
 
 # 🔗 Documentation Links
 - [Detailed API Spec](docs/api/specification.md)
-- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [Deployment Guide](../ops/DEPLOYMENT_GUIDE.md)
 - [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
 - [Quick Reference](docs/reference/QUICK_REFERENCE.md)
 - [Store Templates & Profiles (system reference)](docs/features/STORE_TEMPLATES_AND_PROFILES.md)
