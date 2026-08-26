@@ -95,7 +95,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
-| 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `accepted` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
+| 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
+| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 4 |
 
 ## Renumbered (collision stubs)
 
