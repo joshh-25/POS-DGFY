@@ -192,7 +192,7 @@ Phase 157-162 implementations must prove at minimum:
   register shift, opening float, drawer custody, and counted-handoff rules are
   unchanged.
 
-### 2026-08-26: Standalone POS Operator Sign-In Contract (Phase 170)
+### 2026-08-26: Standalone POS Operator Sign-In Contract (Phase 171)
 
 This amendment replaces only the default takeover orchestration that required
 the incoming operator to create a second DGFY browser login. The binding
@@ -226,7 +226,7 @@ above remain unchanged.
   operator-switch UI, feature behavior, or rollout obligation. A later runtime
   change to shared `packages/web-core` code may still require an IMS build as a
   regression gate, not as an IMS deliverable.
-- Phase 170 freezes documentation and implementation boundaries only. Runtime
+- Phase 171 freezes documentation and implementation boundaries only. Runtime
   delivery, hardening, end-to-end proof, rollout, and deployment require later
   separately approved phases.
 

@@ -6,11 +6,11 @@ Last reviewed: 2026-08-26
 ## Scope
 
 This document describes the standalone POS cashier flow, multi-company DGFY
-login, role-default permissions, and the Phase 170 target contract for switching
+login, role-default permissions, and the Phase 171 target contract for switching
 the active terminal operator. Operator eligibility is capability-based: an
 owner, administrator, manager, or invited cashier may sell when the tenant-local
 profile has `pos:transact`, `pos:attendance:operate`, allowed location scope,
-valid attendance state, and a configured personal POS PIN. Phase 170 is a
+valid attendance state, and a configured personal POS PIN. Phase 171 is a
 documentation contract; later phases must implement and prove the target
 switching behavior.
 
@@ -38,7 +38,7 @@ Authoritative references:
 
 An owner, founder, administrator, or manager with an active tenant membership
 does not need a second cashier-role invitation solely to become a POS operator.
-The Phase 170 target flow still requires the operator permissions, location and
+The Phase 171 target flow still requires the operator permissions, location and
 attendance eligibility, and personal PIN defined below.
 
 ## Default cashier permissions
@@ -184,7 +184,7 @@ Expected POS behavior:
 
 ## Lock and resume behavior
 
-The following is the Phase 170 target contract. It does not claim that the
+The following is the Phase 171 target contract. It does not claim that the
 current runtime already implements the complete flow.
 
 - The DGFY account initially signs in and selects the company and terminal. That

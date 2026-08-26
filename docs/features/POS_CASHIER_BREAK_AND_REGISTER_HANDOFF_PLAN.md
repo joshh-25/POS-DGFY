@@ -24,7 +24,7 @@ shift, add a second opening float, close the drawer, or duplicate an existing at
 A scheduled change of cash custodian uses a counted handoff while the same register shift remains
 open.
 
-This plan originated in Phases 156-165 and is extended by the Phase 170
+This plan originated in Phases 156-165 and is extended by the Phase 171
 standalone POS operator sign-in contract in
 `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`. The ledger remains authoritative
 for intervening completed phases. Future delivery slices are intentionally
@@ -456,7 +456,7 @@ continue the open register without pretending to resume the opening cashier's sh
 - Focused/shared frontend tests, existing operator-authority API tests, all three frontend builds,
   architecture checks, and a rendered verification path pass before tenant activation.
 
-## Phase 170 - Standalone POS Operator Sign-In Contract
+## Phase 171 - Standalone POS Operator Sign-In Contract
 
 ### Planning Packet
 
@@ -464,7 +464,7 @@ continue the open register without pretending to resume the opening cashier's sh
 - Domain: standalone POS web/fullstack
 - Source material: issue #1052, production cashier-authority evidence, ADR 0073, and the existing
   terminal flow
-- Readiness: Phase 170 is ready and documentation-only; runtime slices remain `planned`
+- Readiness: Phase 171 is ready and documentation-only; runtime slices remain `planned`
 
 ### Objective
 
@@ -493,10 +493,10 @@ over the open register without closing its shift or re-entering a second DGFY pa
 
 | Phase | Slice | Outcome | Owner role | Dependencies | Ready? |
 | --- | --- | --- | --- | --- | --- |
-| 171 | Server eligibility and PIN authority | One atomic, rate-limited resume/takeover policy validates capabilities, preserves a non-circular PIN enrollment path, and issues operator authority without replacing DGFY identity. | Backend | Phase 170 | Planned; approval required |
-| 172 | Standalone POS operator-switch UI | Eligible-operator picker and personal-PIN flow replace the repeated DGFY credential/role gate in standalone POS. | Frontend | Phase 171 | Planned; approval required |
-| 173 | Security, concurrency, and compatibility hardening | Replay, double-submit, stale eligibility, protected-operation, cart, lockout, idempotency, and mixed-version cases fail safely. | Backend + frontend | Phases 171-172 | Planned; approval required |
-| 174 | POS-only end-to-end proof and rollout | Two-operator selling, attribution, shared drawer, restore, rollback, accessibility, and production verification are evidenced. | QA + release | Phase 173 | Planned; approval required |
+| 172 | Server eligibility and PIN authority | One atomic, rate-limited resume/takeover policy validates capabilities, preserves a non-circular PIN enrollment path, and issues operator authority without replacing DGFY identity. | Backend | Phase 171 | Planned; approval required |
+| 173 | Standalone POS operator-switch UI | Eligible-operator picker and personal-PIN flow replace the repeated DGFY credential/role gate in standalone POS. | Frontend | Phase 172 | Planned; approval required |
+| 174 | Security, concurrency, and compatibility hardening | Replay, double-submit, stale eligibility, protected-operation, cart, lockout, idempotency, and mixed-version cases fail safely. | Backend + frontend | Phases 172-173 | Planned; approval required |
+| 175 | POS-only end-to-end proof and rollout | Two-operator selling, attribution, shared drawer, restore, rollback, accessibility, and production verification are evidenced. | QA + release | Phase 174 | Planned; approval required |
 
 ### Main Risks and Required Mitigations
 
@@ -512,14 +512,14 @@ over the open register without closing its shift or re-entering a second DGFY pa
 | PIN guessing or operator enumeration exposes staff. | Use generic failures, rate limits, lockout, audit events, minimum PIN policy, and no secret/browser-readable PIN storage. |
 | Shared `web-core` changes accidentally alter IMS. | Keep IMS out of product acceptance; when shared runtime files change, run its build only as a regression gate and add no IMS UX. |
 
-### Phase 170 Exclusions
+### Phase 171 Exclusions
 
 - No backend, frontend, database, test, migration, feature-flag, or deployment change.
 - No IMS product behavior or UI.
 - No counted custody implementation, payroll, scheduling, biometrics, or multi-drawer expansion.
-- No runtime removal of the current DGFY credential/role gate; that belongs to Phases 171-172.
+- No runtime removal of the current DGFY credential/role gate; that belongs to Phases 172-173.
 
-### Phase 170 Acceptance Gates
+### Phase 171 Acceptance Gates
 
 - ADR 0073 records the standalone POS PIN/capability contract without weakening binding identity,
   operator-session, attendance, or cash-custody clauses.
@@ -578,12 +578,11 @@ authority. No implementation phase may bypass these governance gates.
 
 ## Current State and Next Move
 
-- Current repository phase: Phase 170, `completed` on 2026-08-26 as a documentation/governance
+- Current repository phase: Phase 171, `completed` on 2026-08-26 as a documentation/governance
   contract only.
-- Planned initiative: Phases 171-174 deliver the server policy, standalone POS UI, hardening, and
-  POS-only end-to-end rollout proof. None is approved for implementation by Phase 170.
-- Next eligible phase: Phase 171, server eligibility and PIN authority, after explicit approval
-  and after the stacked Phase 169 dependency reaches `develop`.
+- Planned initiative: Phases 172-175 deliver the server policy, standalone POS UI, hardening, and
+  POS-only end-to-end rollout proof. None is approved for implementation by Phase 171.
+- Next eligible phase: Phase 172, server eligibility and PIN authority, after explicit approval.
 - Phase 157 evidence includes the additive migration, tenant schema registry, model associations,
   repository/serializer foundation, and focused persistence tests. Phase 158 evidence now includes
   the lifecycle implementation, migration rollback/re-apply, focused backend/frontend tests, and

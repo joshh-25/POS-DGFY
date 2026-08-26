@@ -89,6 +89,21 @@ export const resolveCashierRegisterEntryMode = ({
 
 export const isPosOperatorAuthorityValid = ({ authorityValid = false } = {}) => authorityValid === true;
 
+// The operator-authority endpoints are wired to the *throwing* feature resolver
+// (apps/dgfy-api/src/modules/pos/index.js:357), so a location with the attendance
+// lifecycle switched off answers POS_ATTENDANCE_FEATURE_DISABLED -- never the
+// POS_OPERATOR_FEATURE_DISABLED this client used to look for alone. Both mean the
+// same thing to the terminal: the register is not under operator authority, and the
+// API's own mutation path already falls back to legacy behaviour.
+export const POS_OPERATOR_FEATURE_DISABLED_REASON_CODES = Object.freeze([
+  'POS_OPERATOR_FEATURE_DISABLED',
+  'POS_ATTENDANCE_FEATURE_DISABLED'
+]);
+
+export const isPosOperatorFeatureDisabledReason = (reasonCode = '') => (
+  POS_OPERATOR_FEATURE_DISABLED_REASON_CODES.includes(String(reasonCode || '').trim())
+);
+
 export const buildScopedCashierRequestConfig = ({ token = '', companyToken = '' } = {}) => {
   const normalizedToken = String(token || '').trim();
   const normalizedCompanyToken = String(companyToken || '').trim();
@@ -106,7 +121,6 @@ export const buildScopedCashierRequestConfig = ({ token = '', companyToken = '' 
   };
 };
 
-const POS_OPERATOR_FEATURE_DISABLED = 'POS_OPERATOR_FEATURE_DISABLED';
 const POS_OPERATOR_CURRENT_ROUTE = '/pos/terminal/operator/current';
 
 const readOperatorReasonCode = (error) => String(
@@ -117,9 +131,12 @@ const readOperatorReasonCode = (error) => String(
   || ''
 ).trim();
 
+// Composes the shared feature-disabled reason-code set above rather than
+// re-deriving it, so this call-site classifier stays a superset of it instead
+// of a second, competing implementation (dgfy-platform#1053 RF-1).
 export const isPosOperatorAuthorityUnavailableError = (error) => {
   if (!error) return false;
-  if (readOperatorReasonCode(error) === POS_OPERATOR_FEATURE_DISABLED) return true;
+  if (isPosOperatorFeatureDisabledReason(readOperatorReasonCode(error))) return true;
 
   const status = Number(error?.response?.status || 0);
   const message = String(error?.response?.data?.message || '').trim();

@@ -3,6 +3,7 @@ import {
   buildScopedCashierRequestConfig,
   isPosOperatorAuthorityValid,
   isPosOperatorAuthorityUnavailableError,
+  isPosOperatorFeatureDisabledReason,
   resolveActiveShiftResumeDecision,
   resolveCashierRegisterEntryMode,
   resolveStoredShiftUnlockMode,
@@ -134,6 +135,18 @@ describe('POS terminal shift entry decision', () => {
     expect(isPosOperatorAuthorityValid({ authorityValid: true })).toBe(true);
   });
 
+  it('recognizes both the operator and attendance feature-disabled reason codes', () => {
+    expect(isPosOperatorFeatureDisabledReason('POS_OPERATOR_FEATURE_DISABLED')).toBe(true);
+    expect(isPosOperatorFeatureDisabledReason('POS_ATTENDANCE_FEATURE_DISABLED')).toBe(true);
+    expect(isPosOperatorFeatureDisabledReason(' POS_ATTENDANCE_FEATURE_DISABLED ')).toBe(true);
+  });
+
+  it('does not treat an unrelated or missing reason code as feature-disabled', () => {
+    expect(isPosOperatorFeatureDisabledReason('POS_OPERATOR_SCOPE_MISMATCH')).toBe(false);
+    expect(isPosOperatorFeatureDisabledReason('')).toBe(false);
+    expect(isPosOperatorFeatureDisabledReason(undefined)).toBe(false);
+  });
+
   it('binds cashier lifecycle requests to the verified cashier session without refreshing as the DGFY account', () => {
     expect(buildScopedCashierRequestConfig({
       token: ' cashier-access-token ',
@@ -166,6 +179,12 @@ describe('POS terminal shift entry decision', () => {
       response: {
         status: 404,
         data: { errors: { reason_code: 'POS_OPERATOR_FEATURE_DISABLED' } }
+      }
+    }],
+    ['attendance feature-disabled code', {
+      response: {
+        status: 404,
+        data: { error_code: 'POS_ATTENDANCE_FEATURE_DISABLED' }
       }
     }],
     ['route-level mixed-version response', {

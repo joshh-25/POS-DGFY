@@ -9298,43 +9298,41 @@ POS employee-discount hardening follow-up for PR #1033.
 
 ---
 
-## Phase 169 - Production POS Cashier Authority Recovery and Version-Skew Compatibility (#1045)
+## Phase 169 - Production POS Cashier Authority Recovery (#1045)
 
 ### Initiative and release
 
-Production hotfix adoption and rolling-version compatibility for POS operator authority.
+Production hotfix for POS operator-authority recovery on `main`.
 
 ### Objective and scope
 
 - Restore a missing operator session only when the authenticated cashier is the exact owner of the open register shift and still has active attendance at that location.
 - Bind manual resume/takeover mutations to the separately verified cashier session without replacing the active DGFY browser identity.
-- Preserve legacy shift-owner selling only when operator authority is explicitly feature-disabled or the exact current-operator route is absent during a mixed-version local/deployment window.
-- Keep arbitrary authorization, permission, domain, terminal, location, shift, attendance, and unrelated route failures fail-closed.
+- Preserve fail-closed takeover, terminal, location, shift, attendance, permission, and scoped HttpOnly operator-authority checks.
 
 ### Status
 
 - `completed`
-- Started and completed: 2026-08-26.
+- Started and completed: 2026-08-25.
 
 ### Dependencies
 
 - Phase 168 completed.
 - ADR 0026, ADR 0031, and ADR 0073.
-- Incident issue #1045 and production hotfix PR #1046.
+- Incident issue #1045.
 
 ### Acceptance and validation evidence
 
 - [x] Missing operator recovery succeeds for the authenticated shift owner with active attendance.
 - [x] A different cashier cannot claim a missing operator session through resume.
 - [x] Manual resume/takeover request configuration uses the verified cashier access/company tokens, disables auth refresh, and does not install the cashier session as DGFY browser identity.
-- [x] Feature-disabled and exact route-missing current-operator responses enter legacy mode without issuing a second doomed resume request; unrelated 404, permission, and operator-domain failures remain fail-closed.
-- [x] Backend lifecycle/operator suites: 3 suites, 25 tests passed.
-- [x] Shared POS decision/contract suites: 2 files, 32 tests passed.
-- [x] API syntax, architecture/controller guardrails, compliance/docs checks, diff safety, and POS/SKUpervisor/Storefront production builds passed.
+- [x] Backend lifecycle/operator suites: 3 suites, 28 tests passed.
+- [x] Shared POS decision/contract suites: 2 files, 79 tests passed.
+- [x] API syntax, architecture guardrails, and POS/SKUpervisor/Storefront production builds passed.
 
 ### Implementation links
 
-- Issue #1045 / production hotfix PR #1046
+- Issue #1045
 - `apps/dgfy-api/src/modules/pos/usecases/posCashierLifecycleUseCases.js`
 - `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
 - `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
@@ -9343,6 +9341,61 @@ Production hotfix adoption and rolling-version compatibility for POS operator au
 ### Next eligible phase
 
 Phase 170 is eligible after this completion.
+
+---
+
+## Phase 170 - POS Operator Authority Version-Skew Compatibility (#1045)
+
+### Initiative and release
+
+Rolling-version compatibility and reason-code unification for POS operator authority, building on
+Phase 169's production hotfix back-port.
+
+### Objective and scope
+
+- Preserve legacy shift-owner selling only when operator authority is explicitly feature-disabled
+  (`POS_OPERATOR_FEATURE_DISABLED` or `POS_ATTENDANCE_FEATURE_DISABLED`) or the exact
+  current-operator route is absent during a mixed-version local/deployment window.
+- Unify the client's operator-unavailable classification behind a single call-site helper
+  (`isPosOperatorAuthorityUnavailableError`) that composes the existing feature-disabled
+  reason-code set rather than re-deriving it.
+- Keep arbitrary authorization, permission, domain, terminal, location, shift, attendance, and
+  unrelated route failures fail-closed.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-26.
+
+### Dependencies
+
+- Phase 169 completed.
+- ADR 0026, ADR 0031, and ADR 0073.
+- Incident issue #1045; production hotfix PR #1046; PR #1053 review finding RF-1.
+
+### Acceptance and validation evidence
+
+- [x] Feature-disabled and exact route-missing current-operator responses enter legacy mode
+  without issuing a second doomed resume request; unrelated 404, permission, and operator-domain
+  failures remain fail-closed.
+- [x] `POS_ATTENDANCE_FEATURE_DISABLED` is recognized by the same call-site classifier used for
+  `POS_OPERATOR_FEATURE_DISABLED`, closing the promotion-conflict gap flagged on PR #1053.
+- [x] Shared POS decision/contract suites pass, including the added attendance-disabled and
+  route-skew cases.
+- [x] API syntax, architecture/controller guardrails, compliance/docs checks, diff safety, and
+  POS/SKUpervisor/Storefront production builds passed.
+
+### Implementation links
+
+- Issue #1045 / PR #1053 / production hotfix PR #1046 / PR #1054 (back-ported as Phase 169 via
+  PR #1057)
+- `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
+- `packages/web-core/src/features/pos/utils/terminalShiftEntryDecision.js`
+- `docs/compliance/impact-declarations/2026-08-25-pos-employee-discount-and-operator-hardening.md`
+
+### Next eligible phase
+
+Phase 171 is eligible after this completion.
 
 ### Residual validation note
 
@@ -9353,7 +9406,7 @@ pre-existing 5.89 KB baseline overage; budget remediation remains outside issue 
 
 ---
 
-## Phase 170 - Standalone POS Operator Sign-In Contract (#1052)
+## Phase 171 - Standalone POS Operator Sign-In Contract (#1052)
 
 ### Initiative and release
 
@@ -9377,8 +9430,7 @@ Standalone POS cashier/operator switching refactor contract.
 
 ### Dependencies
 
-- Phase 169 completed on the stacked source branch; PR #1053 must merge to `develop` before this
-  phase PR can merge.
+- Phase 170 completed on `develop`.
 - Issue #1052 and ADR 0026, ADR 0031, ADR 0044, ADR 0065, and ADR 0073.
 
 ### Acceptance and validation evidence
@@ -9397,18 +9449,18 @@ Standalone POS cashier/operator switching refactor contract.
 
 ### Implementation links
 
-- Issue #1052 and dependency PR #1053
+- Issue #1052; follows the completed compatibility work in PR #1053
 - `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`
 - `docs/features/POS_CASHIER_TERMINAL_FLOW.md`
 - `docs/features/POS_CASHIER_BREAK_AND_REGISTER_HANDOFF_PLAN.md`
 
 ### Next eligible phase
 
-Phase 171 is eligible for separate approval after Phase 170 reaches `develop`.
+Phase 172 is eligible for separate approval after Phase 171 reaches `develop`.
 
 ---
 
-## Phase 171 - POS Operator Eligibility and PIN Authority
+## Phase 172 - POS Operator Eligibility and PIN Authority
 
 ### Objective and scope
 
@@ -9424,7 +9476,7 @@ operator session.
 
 ### Dependencies
 
-- Phase 170 completed and merged to `develop`; explicit implementation approval.
+- Phase 171 completed and merged to `develop`; explicit implementation approval.
 
 ### Acceptance and validation evidence
 
@@ -9438,11 +9490,11 @@ operator session.
 
 ### Next eligible phase
 
-Phase 172 becomes eligible after Phase 171 completes.
+Phase 173 becomes eligible after Phase 172 completes.
 
 ---
 
-## Phase 172 - Standalone POS Operator-Switch UI
+## Phase 173 - Standalone POS Operator-Switch UI
 
 ### Objective and scope
 
@@ -9456,7 +9508,7 @@ authentication.
 
 ### Dependencies
 
-- Phase 171 completed; explicit implementation approval.
+- Phase 172 completed; explicit implementation approval.
 
 ### Acceptance and validation evidence
 
@@ -9470,17 +9522,17 @@ authentication.
 
 ### Next eligible phase
 
-Phase 173 becomes eligible after Phase 172 completes.
+Phase 174 becomes eligible after Phase 173 completes.
 
 ---
 
-## Phase 173 - Operator-Switch Security, Concurrency, and Compatibility Hardening
+## Phase 174 - Operator-Switch Security, Concurrency, and Compatibility Hardening
 
 ### Objective and scope
 
 Prove replay, rapid double-submit, stale eligibility, concurrent devices, protected operations,
 cart handling, PIN lockout, audit evidence, and bounded mixed-version behavior across the Phase
-171-172 contract.
+172-173 contract.
 
 ### Status
 
@@ -9488,7 +9540,7 @@ cart handling, PIN lockout, audit evidence, and bounded mixed-version behavior a
 
 ### Dependencies
 
-- Phases 171-172 completed; explicit implementation approval.
+- Phases 172-173 completed; explicit implementation approval.
 
 ### Acceptance and validation evidence
 
@@ -9499,11 +9551,11 @@ cart handling, PIN lockout, audit evidence, and bounded mixed-version behavior a
 
 ### Next eligible phase
 
-Phase 174 becomes eligible after Phase 173 completes.
+Phase 175 becomes eligible after Phase 174 completes.
 
 ---
 
-## Phase 174 - Standalone POS Operator-Switch End-to-End Proof and Rollout
+## Phase 175 - Standalone POS Operator-Switch End-to-End Proof and Rollout
 
 ### Objective and scope
 
@@ -9517,7 +9569,7 @@ and production proof.
 
 ### Dependencies
 
-- Phase 173 completed; explicit rollout approval and normal release policy.
+- Phase 174 completed; explicit rollout approval and normal release policy.
 
 ### Acceptance and validation evidence
 
@@ -9530,14 +9582,14 @@ and production proof.
 
 ### Next eligible phase
 
-The next repository phase is allocated from the authoritative ledger after Phase 174 completes.
+The next repository phase is allocated from the authoritative ledger after Phase 175 completes.
 
 ---
 
 ### Planning Record (2026-08-26)
 
-- Phase 156 through Phase 170 are `completed`. Phases 171-174 are `planned`, and Phase 171 is the
-  next eligible phase after explicit approval and Phase 170 merge.
+- Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
+  next eligible phase after explicit approval and Phase 171 merge.
 - Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
   rollback/re-apply rehearsals, focused persistence tests, existing POS
   regression tests, and architecture/compliance/docs/schema gates.
