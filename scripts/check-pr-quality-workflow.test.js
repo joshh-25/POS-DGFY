@@ -256,12 +256,28 @@ function buildQualityJobWithReportingShape(name, {
   ].join('\n');
 }
 
-function buildReporterJob(jobNames, { missingNeeds = [], missingEnvRefs = [], missingCoe = false } = {}) {
+function envVarNameFor(jobName) {
+  return `${jobName.toUpperCase().replace(/-/g, '_')}_FAILURES`;
+}
+
+function buildReporterJob(jobNames, {
+  missingNeeds = [],
+  missingEnvRefs = [],
+  missingCoe = false,
+  mismatchedAddIfPresentVarFor = []
+} = {}) {
   const needsList = ['gate', ...jobNames.filter((n) => !missingNeeds.includes(n))];
   const envLines = jobNames
     .filter((n) => !missingEnvRefs.includes(n))
-    .map((n) => `          ${n.toUpperCase().replace(/-/g, '_')}_FAILURES: \${{ needs.${n}.outputs.real_failures }}`);
-  const addLines = jobNames.map((n) => `          add_if_present "${n}" "$X"`);
+    .map((n) => `          ${envVarNameFor(n)}: \${{ needs.${n}.outputs.real_failures }}`);
+  // Matches the real reporter's actual shape: add_if_present "<job>" "$<the var that job's
+  // real_failures was assigned to above>" -- unless the test deliberately asks for a mismatch
+  // (RF-5's own reproduction: a swapped/misspelled variable there).
+  const addLines = jobNames.map((n) => (
+    mismatchedAddIfPresentVarFor.includes(n)
+      ? `          add_if_present "${n}" "$WRONG_VAR_NAME"`
+      : `          add_if_present "${n}" "$${envVarNameFor(n)}"`
+  ));
   return [
     `  ${REPORTER_JOB_NAME}:`,
     '    needs:',
@@ -319,11 +335,29 @@ test('checkAdvisoryFailureReportingShape: reporter missing one needs: entry is c
 test('checkAdvisoryFailureReportingShape: reporter missing one env: input is caught', () => {
   const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { missingEnvRefs: ['dgfy-api-quality'] })}\n`;
   const problems = checkAdvisoryFailureReportingShape(text);
-  assert.equal(problems.filter((p) => /must reference `needs\.dgfy-api-quality\.outputs\.real_failures` exactly once \(found 0\)/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /must reference `needs\.dgfy-api-quality\.outputs\.real_failures` exactly once, assigned to an env var \(found 0\)/.test(p)).length, 1);
 });
 
 test('checkAdvisoryFailureReportingShape: reporter step missing continue-on-error is caught', () => {
   const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { missingCoe: true })}\n`;
   const problems = checkAdvisoryFailureReportingShape(text);
   assert.equal(problems.filter((p) => /single step must carry exactly one step-level `continue-on-error: true`/.test(p)).length, 1);
+});
+
+// #1066 RF-5 (2026-08-26, pr-reviewer third round): two read-only mutations against the real
+// workflow file returned no findings before this fix -- duplicating a valid steps.<id>.outcome
+// line, and swapping an add_if_present call's variable to another job's. Both are now checked.
+
+test('checkAdvisoryFailureReportingShape: a duplicated STEP_OUTCOMES reference to the same step id is caught', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality', { stepOutcomesIds: ['checkout', 'setup_node', 'run_lint', 'run_lint'] })}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
+  const problems = checkAdvisoryFailureReportingShape(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /STEP_OUTCOMES references `steps\.run_lint\.outcome` 2 times/);
+});
+
+test('checkAdvisoryFailureReportingShape: add_if_present using a different job\'s variable is caught, not silently accepted', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { mismatchedAddIfPresentVarFor: ['dgfy-api-quality'] })}\n`;
+  const problems = checkAdvisoryFailureReportingShape(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /does not match the env var needs\.dgfy-api-quality\.outputs\.real_failures is actually assigned to/);
 });

@@ -450,17 +450,33 @@ function checkAdvisoryFailureReportingShape(qualityWorkflowText) {
         'step was restructured.'
       );
     }
+    // #1066 RF-5 (2026-08-26, pr-reviewer third round): counted via `.includes()` before this,
+    // which only asks "does this id appear at least once" -- a duplicated reference (e.g. a
+    // copy/paste that lists steps.run_api_lint.outcome twice and never adds the newer step's id) is
+    // structurally the same shape of bug as a missing one, and reads exactly as harmless in a diff.
+    // Count occurrences per id instead of a boolean presence check.
     const referencedIds = [...stepOutcomesText.matchAll(/steps\.(\S+)\.outcome/g)].map((m) => m[1]);
+    const referencedCounts = referencedIds.reduce((acc, id) => {
+      acc[id] = (acc[id] || 0) + 1;
+      return acc;
+    }, {});
 
     for (const id of expectedIds) {
-      if (!referencedIds.includes(id)) {
+      const count = referencedCounts[id] || 0;
+      if (count === 0) {
         problems.push(
           `promotion-quality-gate.yml: "${name}"'s STEP_OUTCOMES is missing \`steps.${id}.outcome\` -- ` +
           `a failure in step "${id}" would be silently absorbed and never reported to #1063.`
         );
+      } else if (count > 1) {
+        problems.push(
+          `promotion-quality-gate.yml: "${name}"'s STEP_OUTCOMES references \`steps.${id}.outcome\` ` +
+          `${count} times -- exactly one line per step id is expected; a duplicate usually means ` +
+          'another step\'s id was never added.'
+        );
       }
     }
-    for (const id of referencedIds) {
+    for (const id of Object.keys(referencedCounts)) {
       if (!expectedIds.includes(id)) {
         problems.push(
           `promotion-quality-gate.yml: "${name}"'s STEP_OUTCOMES references \`steps.${id}.outcome\`, ` +
@@ -478,19 +494,45 @@ function checkAdvisoryFailureReportingShape(qualityWorkflowText) {
           'outputs.real_failures would not be available via needs.<job>.outputs.real_failures.'
         );
       }
-      const envRefs = reporterBlock.match(
-        new RegExp(`\\$\\{\\{\\s*needs\\.${name}\\.outputs\\.real_failures\\s*\\}\\}`, 'g')
-      ) || [];
-      if (envRefs.length !== 1) {
+
+      // The env var this job's needs.<job>.outputs.real_failures is actually assigned to (e.g.
+      // `DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}` -> "DGFY_API_FAILURES").
+      const envVarMatch = reporterBlock.match(
+        new RegExp(`(\\w+):\\s*\\$\\{\\{\\s*needs\\.${name}\\.outputs\\.real_failures\\s*\\}\\}`)
+      );
+      const envRefs = envVarMatch
+        ? reporterBlock.match(new RegExp(`\\$\\{\\{\\s*needs\\.${name}\\.outputs\\.real_failures\\s*\\}\\}`, 'g')) || []
+        : [];
+      if (!envVarMatch || envRefs.length !== 1) {
         problems.push(
           `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" must reference ` +
-          `\`needs.${name}.outputs.real_failures\` exactly once (found ${envRefs.length}).`
+          `\`needs.${name}.outputs.real_failures\` exactly once, assigned to an env var (found ${envRefs.length}).`
         );
       }
-      if (!new RegExp(`add_if_present\\s+"${name}"`).test(reporterBlock)) {
+
+      // #1066 RF-5: the prior version only checked that SOME `add_if_present "<job>" ...` call
+      // existed, not that its second argument is the SAME env var this job's real_failures output
+      // was assigned to above. A swapped or misspelled variable there -- e.g. reading
+      // dgfy-api-quality's failures into DGFY_API_FAILURES but passing $POS_FAILURES into
+      // add_if_present "dgfy-api-quality" -- reported no problem before this fix, and would be
+      // materially worse at runtime than a merely-missing entry: the reporter script runs under
+      // `set -uo pipefail`, so referencing an unset/misspelled variable name aborts the whole
+      // reporter step, silently dropping every other job's real failures for that run too, not
+      // just this one job's.
+      const addIfPresentMatch = reporterBlock.match(
+        new RegExp(`add_if_present\\s+"${name}"\\s+"\\$(\\w+)"`)
+      );
+      if (!addIfPresentMatch) {
         problems.push(
           `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" has no \`add_if_present "${name}" ...\` ` +
           `call -- "${name}"'s failures would be read into an env var but never actually reported.`
+        );
+      } else if (envVarMatch && addIfPresentMatch[1] !== envVarMatch[1]) {
+        problems.push(
+          `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}"'s \`add_if_present "${name}" ` +
+          `"$${addIfPresentMatch[1]}"\` does not match the env var needs.${name}.outputs.real_failures ` +
+          `is actually assigned to ("$${envVarMatch[1]}") -- a swapped or misspelled variable here ` +
+          'silently drops (or aborts reporting) this job\'s real failures instead of surfacing them.'
         );
       }
     }
