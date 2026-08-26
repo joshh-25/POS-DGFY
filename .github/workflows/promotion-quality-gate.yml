@@ -265,11 +265,11 @@ jobs:
           MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
           REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          for i in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword && mysql_ready=1 && break
             sleep 10
           done
-          for i in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             docker exec "$REDIS_CONTAINER" redis-cli ping && redis_ready=1 && break
             sleep 10
           done
@@ -515,7 +515,7 @@ jobs:
         env:
           MYSQL_CONTAINER: dgfy-ci-migrun-mysql-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          for i in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword && mysql_ready=1 && break
             sleep 10
           done
