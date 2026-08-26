@@ -46,11 +46,19 @@ Major because this change affects POS discount authorization, cashier/operator i
 - POS and SKUpervisor production builds are required because both consume the shared POS package.
 - Architecture, controller-boundary, documentation, compatibility, tenant-schema, compliance, lint, and diff-safety gates are required before handoff.
 
-## Update 2026-08-26: Cashier Authority Recovery and Version-Skew Compatibility (#1045)
+## Update 2026-08-25: Production Cashier Authority Recovery (#1045)
 
-- The existing operator-authority classification governs issue #1045 and production hotfix PR #1046. No compliance surface, statutory calculation, payment allocation, receipt, tax, or inventory rule is added or relaxed.
+- The existing operator-authority preflight and classification also govern the production follow-up in issue #1045. No compliance surface, statutory calculation, payment allocation, receipt, tax, or inventory rule is added or relaxed.
 - When the opening cashier still has active attendance but the operator-session row is missing, the backend may reconstruct authority only for that exact shift owner. A different authenticated cashier remains fail-closed and must use the explicit takeover flow.
 - Manual cashier resume and takeover send the lifecycle mutation with the separately verified cashier company session without installing that session as the active DGFY browser identity.
-- A frontend may preserve the pre-operator legacy shift-owner flow only when the API explicitly reports `POS_OPERATOR_FEATURE_DISABLED` or the exact `/pos/terminal/operator/current` route is absent. Authentication, authorization, permission, operator-domain, and unrelated route failures remain fail-closed.
-- Focused verification passed: 25 backend lifecycle/operator tests, 32 shared POS decision/contract tests, API syntax, and POS/SKUpervisor/Storefront production builds.
+- Focused verification passed: 28 backend lifecycle/operator tests, 79 shared POS decision/contract tests, API syntax, architecture guardrails, and POS/SKUpervisor/Storefront production builds.
+- Rollback is a code revert of the recovery branch. No migration or persisted-data transformation is introduced.
+
+## Update 2026-08-26: Cashier Authority Recovery and Version-Skew Compatibility (#1045)
+
+- The existing operator-authority classification governs issue #1045, production hotfix PR #1046, and the attendance-reason-code back-port PR #1054/#1057. No compliance surface, statutory calculation, payment allocation, receipt, tax, or inventory rule is added or relaxed.
+- When the opening cashier still has active attendance but the operator-session row is missing, the backend may reconstruct authority only for that exact shift owner. A different authenticated cashier remains fail-closed and must use the explicit takeover flow.
+- Manual cashier resume and takeover send the lifecycle mutation with the separately verified cashier company session without installing that session as the active DGFY browser identity.
+- A frontend may preserve the pre-operator legacy shift-owner flow only when the API explicitly reports `POS_OPERATOR_FEATURE_DISABLED` or `POS_ATTENDANCE_FEATURE_DISABLED` (the shared feature-disabled reason-code set), or the exact `/pos/terminal/operator/current` route is absent. Authentication, authorization, permission, operator-domain, and unrelated route failures remain fail-closed.
+- Focused verification passed: shared POS decision/contract tests, API syntax, and POS/SKUpervisor/Storefront production builds (exact counts in PR #1053's testing evidence).
 - Rollback is a code revert of the recovery and compatibility branch. No migration or persisted-data transformation is introduced.
