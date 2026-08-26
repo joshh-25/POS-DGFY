@@ -395,6 +395,39 @@ confirms the gate is healthy (or fixes what was actually wrong), drop the stagin
 condition and flip every `continue-on-error` back to unconditionally false (or remove them
 entirely), and update this section accordingly. Until then, treat a red `promotion-quality-gate.yml`
 run on the `→ main` leg as a real signal worth reading, not proof of nothing — advisory means it
-doesn't block the merge, not that it's noise. Nothing else in this document changes: `gate:release:
-local`, the production tenant-schema report, and `AGENTS.md`'s Merge Safety hard stop are unrelated
-controls and stay exactly as mandatory as before.
+doesn't block the merge, not that it's noise. `gate:release:local` and the production tenant-schema
+report are unrelated controls and stay exactly as mandatory as before — see the correction
+immediately below for `AGENTS.md`'s Merge Safety hard stop, which this entry originally, and
+wrongly, also called unaffected.
+
+### 2026-08-26 correction: the shape above didn't actually clear `mergeStateStatus` (#1066)
+
+The entry above claimed `AGENTS.md`'s Merge Safety hard stop (`mergeStateStatus: CLEAN` required)
+was "unrelated" and "stays exactly as mandatory as before." That's true of the *rule* — it wasn't
+touched — but false of whether the shape above could actually satisfy it. Confirmed live on PR
+#1066 (`gh api .../actions/runs/<id>/jobs`): a **job-level** `continue-on-error: true` only spares
+the *workflow run's own conclusion*. The individual job/check-run this workflow publishes to the PR
+still reports its real `conclusion: failure` when a step inside it fails, and GitHub computes a PR's
+`mergeStateStatus` from each check run's own conclusion, not from the workflow's rollup. Net effect
+that actually happened: `dgfy-api-quality` legitimately failed on #1066 (a real regression in
+`checkComplianceImpactScript.integration.test.js`'s regulatory-floor assertion, unrelated to this
+mechanism — tracked separately, Refs #1063), the job-level `continue-on-error` did nothing to change
+that job's check-run conclusion, and the PR sat `mergeStateStatus: UNSTABLE` — which trips the Merge
+Safety hard stop exactly as if this workflow had never been made advisory at all.
+
+**Fix:** every step inside every quality job now *also* carries its own `continue-on-error: true` —
+GitHub Actions only rolls a step's failure into the job's own conclusion when that specific step
+lacks it, which is the actual mechanism for a job's check-run to report `success` regardless of what
+happens inside it. `scripts/check-pr-quality-workflow.js`'s guard is extended
+(`checkStepLevelAdvisory`) to assert every step in every quality job carries this, so a newly-added
+step missing it fails CI instead of silently reintroducing a blocking check.
+
+**Said plainly, a further loss of signal, accepted deliberately and temporarily:** this means a real
+infra hiccup inside one of these jobs (a transient `npm ci` network failure, a service-container
+health-check timeout) now also reports green, not just a genuine test/lint/build failure. To avoid
+losing that signal entirely, a new job in the same workflow (`report-advisory-failures`) re-derives
+the real per-step outcome from the Actions API after the fact and posts it as a comment on #1063
+(deduped per commit SHA) whenever a real failure occurred — so the finding is still recorded
+somewhere a human can pick up later, even though the check itself now shows green. This is *not* a
+substitute for #1063's own root-cause investigation, and it does not change the exit condition
+above.

@@ -181,6 +181,27 @@ promotion was sound) — unaffected by this ADR either way.
   Consequences section already states.
 - PR: #1064. Tracked as #1063.
 
+### 2026-08-26 — correction: job-level `continue-on-error` didn't clear `mergeStateStatus` (#1066)
+
+- Clause amended: this ADR's own amendment immediately above, which asserted Decision 8
+  (`AGENTS.md` Merge Safety) was "untouched" by the prior change. True of the rule itself, false in
+  practice — confirmed live on PR #1066 that the prior shape (job-level `continue-on-error: true`
+  only) did not clear `mergeStateStatus`, and so did not actually let a promotion PR satisfy
+  Decision 8's `mergeStateStatus: CLEAN` requirement despite this workflow's advisory design intent.
+- Change: `promotion-quality-gate.yml` now carries `continue-on-error: true` on every individual
+  step within each quality job, not just at job level — that's the mechanism GitHub Actions actually
+  uses to keep a job's own check-run conclusion (and therefore `mergeStateStatus`) green regardless
+  of an internal failure; job-level alone only spares the workflow run's own rollup. Full rationale:
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-26 correction entry (authoritative record, not
+  duplicated here). A new job in the same workflow (`report-advisory-failures`) re-derives real
+  per-step outcomes from the Actions API and posts them as a deduped comment on #1063, so the
+  now-hidden signal isn't lost entirely.
+- Scope check, confirmed unaffected: Decision 8 itself is not weakened or reinterpreted — it still
+  requires `mergeStateStatus: CLEAN` before any merge, unconditionally. What changed is only whether
+  `promotion-quality-gate.yml`'s advisory design can actually produce that state, a `[default]`-tier
+  implementation detail, not the `[binding]` control itself.
+- PR: TBD. Refs #1063, #1066.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
