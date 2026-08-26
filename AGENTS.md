@@ -69,12 +69,17 @@ a skill file (this file's own Surface precedence calls that a bug):
 
 - **Base is `develop` or `staging`. Never `main`** — no exception, matching every other role's
   absolute rule on `main`.
-- **Unavailability is verified, not assumed**, as exactly one of three classified reasons:
+- **Unavailability is verified, not assumed**, as exactly one of four classified reasons:
   `runner_offline` (every runner non-`online`, `gh api repos/:repo/actions/runners`),
   `queue_starvation` (runners online, but this SHA's checks sit `queued`/`in_progress` past a
-  threshold or were `cancelled` without a conclusion), or `billing_allocation_failure` (the existing
-  verified reason, via `scripts/collect-github-actions-unavailability.js`). A check that is merely
-  *slow but progressing* is none of these and does not qualify.
+  threshold or were `cancelled` without a conclusion), `billing_allocation_failure` (the existing
+  verified reason, via `scripts/collect-github-actions-unavailability.js`), or
+  `github_platform_outage` (added 2026-08-27, #1077 — GitHub's own status API,
+  `https://www.githubstatus.com/api/v2/summary.json`, reports the Actions component
+  non-`operational`; distinct from the other three because no check-run object is ever created at
+  all in this case — confirmed live via zero `check-suites` on a PR's head commit during a real
+  GitHub-side Actions outage, a state `queue_starvation`'s check-run-based detection can't see).
+  A check that is merely *slow but progressing* is none of these and does not qualify.
 - **The `## Local CI` comment is posted before the merge**, never after, and states its own
   overall result plus a non-empty "Not reproduced locally" list — never silently substituting for
   CI.
