@@ -30,6 +30,8 @@ while preserving the immediate controlled input value.
 - Standalone POS startup installs one iMin-only document marker after the native bridge is
   confirmed and before React mounts.
 - Shared POS CSS removes backdrop blur and paint-heavy overlay animation only under that marker.
+- The low-effects profile also covers high-blur (`xl` through `3xl`) cards and the shared
+  `animate-float` utility used by the item-customization save overlay.
 - POS Catalog keeps typing and deletion urgent while its existing request debounce and result
   rendering follow React's deferred query value.
 - Browser POS, IMS, and Storefront keep their existing visual effects and search behavior.
@@ -46,6 +48,8 @@ while preserving the immediate controlled input value.
 
 - Focused Vitest coverage passes for the runtime marker, low-effects CSS contract, catalog search
   deferral, shared dialog behavior, checkout dialog behavior, and item customization behavior.
+- The CSS contract explicitly asserts the high-blur selectors and shared float-animation override
+  so new item-save overlay variants cannot silently escape the iMin profile.
 - The standalone POS Vite production build passes with the Chrome 80 compatibility gate enabled.
 - Architecture guardrails, controller boundaries, compliance contracts, and `git diff --check`
   pass.

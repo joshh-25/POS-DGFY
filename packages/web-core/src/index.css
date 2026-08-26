@@ -755,14 +755,18 @@ body.pos-receipt-print-mode {
 html.dgfy-imin-performance [data-dialog-overlay="true"],
 html.dgfy-imin-performance [class~="backdrop-blur-sm"],
 html.dgfy-imin-performance [class~="backdrop-blur-md"],
-html.dgfy-imin-performance [class~="backdrop-blur-lg"] {
+html.dgfy-imin-performance [class~="backdrop-blur-lg"],
+html.dgfy-imin-performance [class~="backdrop-blur-xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-2xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
 html.dgfy-imin-performance .animate-pos-card-scale-up,
-html.dgfy-imin-performance .animate-pos-illustration-float {
+html.dgfy-imin-performance .animate-pos-illustration-float,
+html.dgfy-imin-performance .animate-float {
   animation: none !important;
 }
 

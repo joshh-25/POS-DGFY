@@ -27,8 +27,12 @@ describe('iMin POS performance profile contract', () => {
     expect(sharedStyles).toContain('html.dgfy-imin-performance [data-dialog-overlay="true"]');
     expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-sm"]');
     expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-md"]');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-xl"]');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-2xl"]');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-3xl"]');
     expect(sharedStyles).toContain('backdrop-filter: none !important;');
     expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-pos-overlay-fade-in');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance .animate-float');
   });
 
   it('keeps search typing urgent while catalog requests follow the deferred query', () => {
