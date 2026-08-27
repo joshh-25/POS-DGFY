@@ -98,6 +98,41 @@ describe('POS governed discount calculator', () => {
         expect(result.total_amount).toBe(277);
     });
 
+    test('applies a non-statutory discount only to the selected quantity', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 2, sale_price: 100, vat_type_snapshot: 'vatable' }],
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 15,
+                lines: [{ item_id: 1, eligible_quantity: 0.5 }]
+            }
+        });
+
+        expect(result.discount_amount).toBe(7.5);
+        expect(result.lines[0].eligible_quantity).toBe(0.5);
+        expect(result.total_amount).toBe(192.5);
+    });
+
+    test('uses line_ref to discount only one of two cart lines with the same item ID', () => {
+        const result = calculatePosDiscount({
+            lines: [
+                { line_ref: 'coffee-hot', item_id: 1, quantity: 1, sale_price: 100 },
+                { line_ref: 'coffee-cold', item_id: 1, quantity: 1, sale_price: 150 }
+            ],
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 10,
+                lines: [{ line_ref: 'coffee-hot', item_id: 1, eligible_quantity: 1 }]
+            }
+        });
+
+        expect(result.discount_amount).toBe(10);
+        expect(result.lines.map((line) => line.discount_amount)).toEqual([10, 0]);
+        expect(result.total_amount).toBe(240);
+    });
+
     test('still applies an explicit maximum discount amount', () => {
         const result = calculatePosDiscount({
             lines: [{ item_id: 1, quantity: 1, sale_price: 100, vat_type_snapshot: 'vatable' }],

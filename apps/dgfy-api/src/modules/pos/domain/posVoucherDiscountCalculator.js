@@ -27,9 +27,16 @@ const centavosToPeso = (value) => round4(Number(value || 0) / 100);
 // (camelCase fields: `item_id`, `quantity`, `discountCentavos`, `eligible`), and
 // `voucher.discountCentavos`, the ledger-authoritative aggregate.
 export const buildVoucherGovernedCalculation = ({ lines = [], voucher }) => {
-    const allocationByItemId = new Map(
-        (voucher?.lineAllocations || []).map((allocation) => [Number(allocation.item_id), allocation])
-    );
+    const allocations = Array.isArray(voucher?.lineAllocations) ? voucher.lineAllocations : [];
+    const allocationByLineRef = new Map(allocations
+        .map((allocation) => [String(allocation?.line_ref || '').trim(), allocation])
+        .filter(([lineRef]) => lineRef));
+    const legacyAllocations = allocations.filter((allocation) => !String(allocation?.line_ref || '').trim());
+    const legacyAllocationsByItemId = new Map();
+    legacyAllocations.forEach((allocation) => {
+        const itemId = Number(allocation?.item_id);
+        legacyAllocationsByItemId.set(itemId, [...(legacyAllocationsByItemId.get(itemId) || []), allocation]);
+    });
     const normalizedLines = lines.map((line) => ({
         ...line,
         quantity: Math.max(0, Number(line.quantity) || 0),
@@ -38,8 +45,12 @@ export const buildVoucherGovernedCalculation = ({ lines = [], voucher }) => {
     const subtotalAmount = round4(normalizedLines.reduce((sum, line) => sum + line.global_discount_base_amount, 0));
 
     const calculatedLines = normalizedLines.map((line) => {
-        const allocation = allocationByItemId.get(Number(line.item_id));
-        const isEligible = Boolean(allocation?.eligible);
+        const lineRef = String(line?.line_ref || '').trim();
+        const allocation = (lineRef && allocationByLineRef.get(lineRef))
+            || legacyAllocationsByItemId.get(Number(line.item_id))?.shift()
+            || null;
+        const allocationMatchesLine = allocation && Number(allocation.item_id) === Number(line.item_id);
+        const isEligible = Boolean(allocationMatchesLine && allocation.eligible);
         const eligibleQuantity = isEligible ? Math.max(0, Number(allocation.quantity) || 0) : 0;
         const globalUnitPrice = line.quantity > 0 ? line.global_discount_base_amount / line.quantity : 0;
         const grossEligibleAmount = round4(eligibleQuantity * globalUnitPrice);

@@ -6,6 +6,8 @@ import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateMobilePosCatalogBootstrapQuery,
     validateMobilePosCheckoutSync,
+    validateMobilePosTransactionCheckpointQuery,
+    validateMobilePosVoidSync,
     validateMobilePosItemSync,
     validateMobilePosShiftSync,
     validateMobilePosHardwareEventSync,
@@ -27,11 +29,13 @@ router.use(posLimiter);
 router.get('/bootstrap/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateMobilePosCatalogBootstrapQuery, mobilePosController.getCatalogBootstrap);
 router.get('/bootstrap/settings', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), mobilePosController.getSettingsBootstrap);
 router.get('/bootstrap/device-policy', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), mobilePosController.getDevicePolicy);
+router.get('/sync/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateMobilePosTransactionCheckpointQuery, mobilePosController.getTransactionCheckpoint);
 
 // Sync (Channel A, ledger) is where the free-tier daily cap applies. All
 // four routes share the same limiter instance, so the 2/day budget is one
 // shared quota per business across a whole sync round, not per-endpoint.
 router.post('/sync/checkouts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckoutSync, mobilePosController.syncCheckouts);
+router.post('/sync/voids', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validateMobilePosVoidSync, mobilePosController.syncVoids);
 
 // Item/catalog sync is NOT behind mobilePosFreeSyncLimiter - unlike the
 // transaction ledger above, item CRUD has never been plan-tier gated

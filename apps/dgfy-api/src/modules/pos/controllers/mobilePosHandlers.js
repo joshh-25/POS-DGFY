@@ -2,7 +2,9 @@ import {
     getMobilePosCatalogBootstrapUseCase,
     getMobilePosSettingsBootstrapUseCase,
     getMobilePosDevicePolicyUseCase,
+    getMobilePosTransactionCheckpointUseCase,
     syncMobilePosCheckoutsUseCase,
+    syncMobilePosVoidsUseCase,
     syncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase,
     syncMobilePosHardwareEventsUseCase,
@@ -88,6 +90,38 @@ export const syncCheckouts = async (req, res, next) => {
     }
 };
 
+export const getTransactionCheckpoint = async (req, res, next) => {
+    try {
+        const result = await getMobilePosTransactionCheckpointUseCase({
+            query: req.validatedQuery || req.query || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => buildSuccessPayload(result),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const syncVoids = async (req, res, next) => {
+    try {
+        const result = await syncMobilePosVoidsUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => buildSuccessPayload(result, 'Mobile POS void sync processed'),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const syncItems = async (req, res, next) => {
     try {
         const result = await syncMobilePosItemsUseCase({
@@ -156,7 +190,9 @@ export default {
     getCatalogBootstrap,
     getSettingsBootstrap,
     getDevicePolicy,
+    getTransactionCheckpoint,
     syncCheckouts,
+    syncVoids,
     syncItems,
     syncShifts,
     syncHardwareEvents,

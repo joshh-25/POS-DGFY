@@ -3337,9 +3337,6 @@ export const posRepository = {
         if (searchConditions.length > 0) {
             whereAnd.push({ [Op.or]: searchConditions });
         }
-        if (whereAnd.length > 0) {
-            where[Op.and] = whereAnd;
-        }
         const locationId = Number.parseInt(filters.location_id, 10);
         if (Number.isInteger(locationId) && locationId > 0) {
             where.location_id = locationId;
@@ -3351,9 +3348,28 @@ export const posRepository = {
             if (filters.date_to) where.created_at[Op.lte] = toDateEnd(filters.date_to);
         }
 
+        const updatedAfter = filters.updated_after ? new Date(filters.updated_after) : null;
+        const updatedAfterId = toPositiveInt(filters.updated_after_id);
+        if (updatedAfter && !Number.isNaN(updatedAfter.getTime())) {
+            whereAnd.push({
+                [Op.or]: [
+                    { updated_at: { [Op.gt]: updatedAfter } },
+                    ...(updatedAfterId ? [{
+                        [Op.and]: [
+                            { updated_at: updatedAfter },
+                            { pos_transaction_id: { [Op.gt]: updatedAfterId } }
+                        ]
+                    }] : [])
+                ]
+            });
+        }
+        if (whereAnd.length > 0) where[Op.and] = whereAnd;
+
+        const mobileCheckpoint = filters.mobile_checkpoint === true;
+
         const { rows, count } = await PosTransaction.findAndCountAll({
             where,
-            include: [
+            include: mobileCheckpoint ? buildTransactionInclude() : [
                 {
                     model: dbStore.get('User'),
                     as: 'cashier',
@@ -3395,7 +3411,9 @@ export const posRepository = {
                 }
             ],
             distinct: true,
-            order: [['created_at', 'DESC']],
+            order: mobileCheckpoint
+                ? [['updated_at', 'ASC'], ['pos_transaction_id', 'ASC']]
+                : [['created_at', 'DESC']],
             limit,
             offset
         });

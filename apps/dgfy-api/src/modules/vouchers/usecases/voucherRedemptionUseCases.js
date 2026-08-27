@@ -122,6 +122,7 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
     }
 
     const benefitLines = (lines || []).map((line) => ({
+        line_ref: String(line?.line_ref || '').trim() || null,
         item_id: line.item_id,
         quantity: line.quantity,
         baseUnitPriceCentavos: toCentavos(line.sale_price),
