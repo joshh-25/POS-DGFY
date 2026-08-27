@@ -297,14 +297,13 @@ node apps/dgfy-api/scripts/sync-tenant-schemas.js
 ```
 
 # 🔗 Documentation Links
-- [Detailed API Spec](docs/api/specification.md)
+- [Detailed API Spec](../api/specification.md)
 - [Deployment Guide](../ops/DEPLOYMENT_GUIDE.md)
-- [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
-- [Quick Reference](docs/reference/QUICK_REFERENCE.md)
-- [Store Templates & Profiles (system reference)](docs/features/STORE_TEMPLATES_AND_PROFILES.md)
-- [Store Templates Developer Handoff (how to extend)](docs/development/STORE_TEMPLATES_HANDOFF.md)
-- [Mode Development Playbook](docs/development/MODE_DEVELOPMENT_PLAYBOOK.md)
-```
+- [Nested Products Guide](../features/NESTED_PRODUCTS.md)
+- [Quick Reference](../reference/QUICK_REFERENCE.md)
+- [Store Templates & Profiles (system reference)](../features/STORE_TEMPLATES_AND_PROFILES.md)
+- [Store Templates Developer Handoff (how to extend)](../development/STORE_TEMPLATES_HANDOFF.md)
+- [Mode Development Playbook](../development/MODE_DEVELOPMENT_PLAYBOOK.md)
 
 ---
 
