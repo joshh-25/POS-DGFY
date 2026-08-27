@@ -89,6 +89,7 @@
     "smoke:pos-local": "cd apps/dgfy-api && npm run smoke:pos-local",
     "smoke:pos-terminal-ui": "node scripts/smoke-pos-terminal-ui.js",
     "smoke:dgfy-access-ui": "node scripts/smoke-dgfy-access-ui.js",
+    "smoke:guest-checkout-gate": "node scripts/smoke-guest-checkout-gate-ui.js",
     "qa:fnb-readiness": "node scripts/run-fnb-readiness-gate.js",
     "check:architecture": "cd apps/dgfy-api && npm run check:architecture-guardrails && npm run check:controller-boundaries",
     "check:architecture:dgfy-api": "cd apps/dgfy-api && npm run check:architecture-guardrails && npm run check:controller-boundaries",
