@@ -179,4 +179,27 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(screen.getByLabelText('Payment Type').className).toContain('bg-blue-100');
         expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('GCash').className).toContain('text-blue-950');
     });
+
+    it('removes the applied checkout discount from the sale summary', () => {
+        const viewModel = createViewModel({
+            calculatedDiscountAmount: 25,
+            checkoutDiscountLabel: 'Employee Discount'
+        });
+
+        render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
+
+        fireEvent.click(screen.getByTestId('pos-remove-checkout-discount'));
+
+        expect(viewModel.clearAppliedDiscount).toHaveBeenCalledTimes(1);
+    });
+
+    it('delegates the close action to checkout cancellation', () => {
+        const viewModel = createViewModel();
+
+        render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close checkout confirmation' }));
+
+        expect(viewModel.handleCancelCheckout).toHaveBeenCalledTimes(1);
+    });
 });

@@ -1,0 +1,79 @@
+const isEligibleSeniorPwdValue = (value) => value === true || value === 1 || value === '1';
+
+export const isStatutoryDiscountType = (type) => (
+    ['senior', 'pwd'].includes(String(type || '').trim().toLowerCase())
+);
+
+export const getSelectableDiscountLines = (cart, type, isEligible = (line) => (
+    isEligibleSeniorPwdValue(line?.senior_pwd_discount_eligible)
+)) => {
+    const lines = Array.isArray(cart) ? cart : [];
+    return isStatutoryDiscountType(type)
+        ? lines.filter((line) => isEligible(line))
+        : lines;
+};
+
+export const getDiscountLineRef = (line, index = 0) => String(
+    line?.line_key || line?.line_id || `item-${Number(line?.item_id) || 'unknown'}-${index}`
+).trim();
+
+export const buildDiscountItemSelection = ({
+    cart = [],
+    type,
+    draft = {},
+    isEligible,
+    selectAllWhenEmpty = true,
+    selectedLineRefs = null
+} = {}) => {
+    const selectableLines = getSelectableDiscountLines(cart, type, isEligible);
+    const selectableEntries = selectableLines.map((line) => ({
+        line,
+        lineRef: getDiscountLineRef(line, cart.indexOf(line)),
+        itemId: Number(line?.item_id)
+    })).filter((entry) => entry.lineRef && Number.isInteger(entry.itemId) && entry.itemId > 0);
+    const selectableRefs = new Set(selectableEntries.map((entry) => entry.lineRef));
+    const selectableIds = new Set(selectableEntries.map((entry) => entry.itemId));
+    const draftEntries = Array.isArray(draft.eligible_items) ? draft.eligible_items : [];
+    const existingByLineRef = new Map(draftEntries
+        .map((entry) => [String(entry?.line_ref || '').trim(), entry])
+        .filter(([lineRef]) => selectableRefs.has(lineRef)));
+    const legacyByItemId = new Map(draftEntries
+        .filter((entry) => !String(entry?.line_ref || '').trim())
+        .map((entry) => [Number(entry?.item_id), entry])
+        .filter(([itemId]) => selectableIds.has(itemId)));
+    const legacySelectedIds = new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : [])
+        .map(Number)
+        .filter((itemId) => selectableIds.has(itemId)));
+    const explicitRefs = Array.isArray(selectedLineRefs)
+        ? selectedLineRefs.map((value) => String(value || '').trim()).filter((lineRef) => selectableRefs.has(lineRef))
+        : null;
+    const hasExplicitSelection = explicitRefs !== null
+        || existingByLineRef.size > 0
+        || legacyByItemId.size > 0
+        || Array.isArray(draft.eligible_item_ids);
+    const selectedRefs = explicitRefs !== null
+        ? explicitRefs
+        : existingByLineRef.size > 0
+            ? [...existingByLineRef.keys()]
+            : legacyByItemId.size > 0 || legacySelectedIds.size > 0
+                ? selectableEntries
+                    .filter((entry) => legacyByItemId.has(entry.itemId) || legacySelectedIds.has(entry.itemId))
+                    .map((entry) => entry.lineRef)
+                : hasExplicitSelection && selectAllWhenEmpty === false
+                    ? []
+                    : selectableEntries.map((entry) => entry.lineRef);
+    const selectedRefSet = new Set(selectedRefs);
+    const selectedItems = selectableEntries.filter((entry) => selectedRefSet.has(entry.lineRef)).map(({ line, lineRef, itemId }) => {
+        const quantity = Number(line?.quantity || 0);
+        const existingEntry = existingByLineRef.get(lineRef) || legacyByItemId.get(itemId);
+        const existingQuantity = Number(existingEntry?.eligible_quantity);
+        const eligibleQuantity = Number.isFinite(existingQuantity) && existingQuantity > 0
+            ? Math.min(existingQuantity, quantity)
+            : quantity;
+        return { line_ref: lineRef, item_id: itemId, eligible_quantity: eligibleQuantity };
+    }).filter((entry) => entry.eligible_quantity > 0);
+    return {
+        eligible_item_ids: [...new Set(selectedItems.map((entry) => entry.item_id))],
+        eligible_items: selectedItems
+    };
+};

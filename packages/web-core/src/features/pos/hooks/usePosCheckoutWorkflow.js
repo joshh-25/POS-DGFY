@@ -49,6 +49,7 @@ import {
     resolveCheckoutReplayErrorDetails
 } from '../utils/posCheckoutTerminalQueue.js';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
+import { getDiscountLineRef } from '../utils/posDiscountSelection.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 
 /**
@@ -321,9 +322,29 @@ export const usePosCheckoutWorkflow = ({
         await replayQueuedCheckouts({ toastIfEmpty: true });
     }, [onManualUniversalSync, replayQueuedCheckouts]);
 
-    const resetCurrentSaleForNewSale = useCallback(() => {
-        setCart([]);
-        itemDiscountApprovalRef?.current?.clear?.();
+    const resetDiscountState = useCallback(({ closeModal = true } = {}) => {
+        setSelectedDiscountProfile('');
+        setManualDiscountMode('none');
+        setManualDiscountRateInput('');
+        setManualDiscountAmountInput('');
+        setAppliedDiscount(null);
+        if (discountApprovalRef) discountApprovalRef.current = null;
+        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        if (closeModal) setDiscountModalOpen(false);
+        setShowDiscountPin(false);
+    }, [
+        discountApprovalRef,
+        setAppliedDiscount,
+        setDiscountDraft,
+        setDiscountModalOpen,
+        setManualDiscountAmountInput,
+        setManualDiscountMode,
+        setManualDiscountRateInput,
+        setSelectedDiscountProfile,
+        setShowDiscountPin
+    ]);
+
+    const resetCheckoutModalState = useCallback(({ closeModal = true } = {}) => {
         setOrderMethod(posWorkflow.allowedMethods?.[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
         setTableNumber('');
         setKitchenNotes('');
@@ -334,69 +355,61 @@ export const usePosCheckoutWorkflow = ({
         setServicesNotes('');
         setPaymentType('cash');
         resetEmployeeCredit();
-        setSelectedDiscountProfile('');
-        setManualDiscountMode('none');
-        setManualDiscountRateInput('');
-        setManualDiscountAmountInput('');
-        setAppliedDiscount(null);
-        if (discountApprovalRef) discountApprovalRef.current = null;
-        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        resetDiscountState();
         splitPaymentReturnToCheckoutRef.current = false;
-        setDiscountModalOpen(false);
-        setShowDiscountPin(false);
         setAffiliateCodeInput('');
         setCustomerPaymentAmountInput('');
         setCustomerPaymentAmountAutoFilled(false);
-        setCheckoutConfirmModalOpen(false);
-        setParkedSalePayContext(null);
-        setItemOptionsLineKey(null);
-        setServiceOptionsModal({ open: false, item: null, groups: [] });
+        if (closeModal) setCheckoutConfirmModalOpen(false);
     }, [
-        discountApprovalRef,
-        itemDiscountApprovalRef,
         posWorkflow,
         resetEmployeeCredit,
+        resetDiscountState,
         setAffiliateCodeInput,
-        setAppliedDiscount,
-        setCart,
         setCheckoutConfirmModalOpen,
         setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
-        setDiscountDraft,
-        setDiscountModalOpen,
-        setItemOptionsLineKey,
         setKitchenNotes,
-        setManualDiscountAmountInput,
-        setManualDiscountMode,
-        setManualDiscountRateInput,
         setOrderMethod,
-        setParkedSalePayContext,
         setPaymentType,
-        setSelectedDiscountProfile,
-        setServiceOptionsModal,
         setServicesClientName,
         setServicesDateTime,
         setServicesNotes,
         setServicesProvider,
         setServicesResource,
-        setShowDiscountPin,
         setTableNumber
     ]);
 
-    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () => {
+    const resetCurrentSaleForNewSale = useCallback(() => {
+        setCart([]);
+        itemDiscountApprovalRef?.current?.clear?.();
+        resetCheckoutModalState();
+        setParkedSalePayContext(null);
+        setItemOptionsLineKey(null);
+        setServiceOptionsModal({ open: false, item: null, groups: [] });
+    }, [
+        itemDiscountApprovalRef,
+        resetCheckoutModalState,
+        setCart,
+        setItemOptionsLineKey,
+        setParkedSalePayContext,
+        setServiceOptionsModal
+    ]);
+
+    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async ({ sessionEnd = false } = {}) => {
         const parkedSaleId = Number(activeParkedSale?.pos_parked_sale_id);
         const snapshot = activeParkedSale?.snapshot;
         if (!parkedSaleId || parkedSaleReleaseLoading) return false;
         if (!activeShiftId || !normalizedTerminalId) {
-            toast.error('Open the active POS shift before cancelling parked-sale editing.');
+            if (!sessionEnd) toast.error('Open the active POS shift before cancelling parked-sale editing.');
             return false;
         }
         if (!snapshot || !Array.isArray(snapshot.lines) || snapshot.lines.length === 0) {
-            toast.error('Unable to return this parked sale because its original items are unavailable.');
+            if (!sessionEnd) toast.error('Unable to return this parked sale because its original items are unavailable.');
             return false;
         }
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
+            if (!sessionEnd) toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
             return false;
         }
 
@@ -415,10 +428,10 @@ export const usePosCheckoutWorkflow = ({
             clearPosCartDraft(offlineSnapshotScope, activeShiftId);
             setActiveParkedSale(null);
             resetCurrentSaleForNewSale();
-            toast.info(`${parkedSaleLabel} remains available for the next cashier. Editing was cancelled because all items were removed.`);
+            if (!sessionEnd) toast.info(`${parkedSaleLabel} remains available for the next cashier. Editing was cancelled because all items were removed.`);
             return true;
         } catch (error) {
-            toast.error(error?.response?.data?.message || error?.message || 'Unable to release this parked sale. The current items were kept.');
+            if (!sessionEnd) toast.error(error?.response?.data?.message || error?.message || 'Unable to release this parked sale. The current items were kept.');
             return false;
         } finally {
             setParkedSaleReleaseLoading(false);
@@ -994,7 +1007,7 @@ export const usePosCheckoutWorkflow = ({
             if (parkedSalePayContext && activeParkedSale?.pos_parked_sale_id) {
                 await releaseClaimedParkedSaleAfterPayCancel();
             } else {
-                setCheckoutConfirmModalOpen(false);
+                resetCheckoutModalState();
             }
             return;
         }
@@ -1012,14 +1025,14 @@ export const usePosCheckoutWorkflow = ({
                 reason: 'Cashier cancelled split-payment checkout before payment was recorded.'
             });
             clearSplitPaymentState();
-            setCheckoutConfirmModalOpen(false);
+            resetCheckoutModalState();
             toast.success('Split-payment draft cancelled. New checkout ready.');
         } catch (error) {
             toast.error(error?.response?.data?.message || error?.message || 'Unable to cancel the split-payment draft.');
         } finally {
             setSplitPaymentCancelLoading(false);
         }
-    }, [activeParkedSale?.pos_parked_sale_id, activeShiftId, clearSplitPaymentState, normalizedTerminalId, parkedSalePayContext, releaseClaimedParkedSaleAfterPayCancel, selectedLocationId, setCheckoutConfirmModalOpen, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations.length]);
+    }, [activeParkedSale?.pos_parked_sale_id, activeShiftId, clearSplitPaymentState, normalizedTerminalId, parkedSalePayContext, releaseClaimedParkedSaleAfterPayCancel, resetCheckoutModalState, selectedLocationId, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations.length]);
 
     const handleKeepSplitPaymentAndClose = useCallback(() => {
         setSplitPaymentCancelModalOpen(false);
@@ -1051,14 +1064,14 @@ export const usePosCheckoutWorkflow = ({
             });
             clearSplitPaymentState();
             setSplitPaymentCancelModalOpen(false);
-            setCheckoutConfirmModalOpen(false);
+            resetCheckoutModalState();
             toast.success('Split payment reversed and cancelled. New checkout ready.');
         } catch (error) {
             toast.error(error?.response?.data?.message || error?.message || 'Unable to reverse the split payment. Review the saved payment and try again.');
         } finally {
             setSplitPaymentCancelLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, selectedLocationId, setCheckoutConfirmModalOpen, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations]);
+    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, resetCheckoutModalState, selectedLocationId, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations]);
 
     const handleCompletePreparedSplitPayment = useCallback(async (preparedSession = null) => {
         const sessionToComplete = preparedSession || splitPaymentSession;
@@ -1255,7 +1268,8 @@ export const usePosCheckoutWorkflow = ({
             fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
             fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
             restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
-            lines: safeCart.map((line) => ({
+            lines: safeCart.map((line, index) => ({
+                line_ref: getDiscountLineRef(line, index),
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
@@ -1599,6 +1613,8 @@ export const usePosCheckoutWorkflow = ({
         handleManualUniversalSync,
         openCheckoutConfirmModal,
         openSplitPaymentModal,
+        resetDiscountState,
+        resetCheckoutModalState,
         resetCurrentSaleForNewSale,
         cancelActiveParkedSaleEditingAfterCartEmpty,
         validateParkedSaleForResume,

@@ -20,6 +20,11 @@ import {
     toValidPercentage,
     VAT_RATE
 } from '../posCheckoutTerminalUtils.js';
+import {
+    buildDiscountItemSelection,
+    getSelectableDiscountLines,
+    isStatutoryDiscountType
+} from '../posDiscountSelection.js';
 
 describe('POS checkout terminal pure utilities', () => {
     it('keeps money, quantity, percentage, and payment labels deterministic', () => {
@@ -80,6 +85,79 @@ describe('POS checkout terminal pure utilities', () => {
         expect(statutory.discountAmount).toBe(20);
         expect(statutory.total).toBe(80);
         expect(VAT_RATE).toBe(0.12);
+
+        const partialEmployee = calculateGovernedDiscount([
+            { line_key: 'a', item_id: 1, quantity: 2, sale_price: 100 }
+        ], {
+            type: 'employee',
+            method: 'percentage',
+            rate: 15,
+            eligible_item_ids: [1],
+            eligible_items: [{ item_id: 1, eligible_quantity: 0.5 }]
+        });
+        expect(partialEmployee.discountAmount).toBe(7.5);
+        expect(partialEmployee.lines[0].eligible_quantity).toBe(0.5);
+        expect(partialEmployee.total).toBe(192.5);
+    });
+
+    it('selects all discount items by default and preserves unchecked exclusions', () => {
+        const cart = [
+            { item_id: 1, quantity: 2, senior_pwd_discount_eligible: true },
+            { item_id: 2, quantity: 1, senior_pwd_discount_eligible: true },
+            { item_id: 3, quantity: 1, senior_pwd_discount_eligible: false }
+        ];
+
+        expect(isStatutoryDiscountType('pwd')).toBe(true);
+        expect(getSelectableDiscountLines(cart, 'pwd')).toHaveLength(2);
+        expect(getSelectableDiscountLines(cart, 'employee')).toHaveLength(3);
+
+        const allItems = buildDiscountItemSelection({ cart, type: 'employee' });
+        expect(allItems.eligible_item_ids).toEqual([1, 2, 3]);
+        expect(allItems.eligible_items).toEqual([
+            { line_ref: 'item-1-0', item_id: 1, eligible_quantity: 2 },
+            { line_ref: 'item-2-1', item_id: 2, eligible_quantity: 1 },
+            { line_ref: 'item-3-2', item_id: 3, eligible_quantity: 1 }
+        ]);
+
+        const excluded = buildDiscountItemSelection({
+            cart,
+            type: 'employee',
+            draft: { eligible_item_ids: [1, 3] }
+        });
+        expect(excluded.eligible_item_ids).toEqual([1, 3]);
+
+        const noneSelected = buildDiscountItemSelection({
+            cart,
+            type: 'employee',
+            draft: { eligible_item_ids: [] },
+            selectAllWhenEmpty: false
+        });
+        expect(noneSelected.eligible_item_ids).toEqual([]);
+        expect(noneSelected.eligible_items).toEqual([]);
+    });
+
+    it('discounts only the selected cart line when duplicate lines share an item ID', () => {
+        const duplicateLines = [
+            { line_key: 'coffee-hot', item_id: 1, quantity: 1, sale_price: 100 },
+            { line_key: 'coffee-cold', item_id: 1, quantity: 1, sale_price: 150 }
+        ];
+        const selection = buildDiscountItemSelection({
+            cart: duplicateLines,
+            type: 'employee',
+            selectedLineRefs: ['coffee-hot']
+        });
+
+        expect(selection.eligible_items).toEqual([
+            { line_ref: 'coffee-hot', item_id: 1, eligible_quantity: 1 }
+        ]);
+        const calculation = calculateGovernedDiscount(duplicateLines, {
+            type: 'employee',
+            method: 'percentage',
+            rate: 10,
+            ...selection
+        });
+        expect(calculation.discountAmount).toBe(10);
+        expect(calculation.lines.map((line) => line.discount_amount)).toEqual([10, 0]);
     });
 
     it('normalizes setup and compliance messages without throwing on malformed input', () => {

@@ -207,6 +207,7 @@ export default function TerminalPageLayout({
     handleRetryQueuedOperation = () => {},
     handleResolveQueuedOperation = () => {},
     handleCheckoutCompleted,
+    onCheckoutLifecycleChange = null,
     setPosViewMode,
     modeChangeNotice = null,
     dismissModeChangeNotice = () => {},
@@ -907,6 +908,7 @@ export default function TerminalPageLayout({
                 onCheckoutCompleted={handleCheckoutCompleted}
                 viewMode={posViewMode}
                 onViewModeChange={setPosViewMode}
+                onCheckoutLifecycleChange={onCheckoutLifecycleChange}
                 modalOnly={!isCheckoutWorkspaceMode}
                 externalReceiptTransactionId={receiptRequestId}
                 externalHistoryQuery={historyRequestQuery}

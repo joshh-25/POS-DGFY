@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { Receipt, X } from 'lucide-react';
+import { Printer, Receipt, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -120,11 +120,10 @@ export function POSCheckoutTerminalReceiptDialogs({
     setReceiptPaperWidth,
     setReceiptPreviewSource,
     posActionsBlocked,
-    openInPosReport,
-    posReportActionLabel,
     receiptPrinting,
     isPrinterAvailable,
     handlePrintReceipt,
+    handlePrintOrder,
     OrderPreviewView
 }) {
     return (
@@ -282,21 +281,24 @@ export function POSCheckoutTerminalReceiptDialogs({
                             )}
                             <Button
                                 type="button"
-                                variant="outline"
-                                data-testid="pos-receipt-modal-open-pos-report"
-                                disabled={posActionsBlocked || !lastReceipt}
-                                onClick={openInPosReport}
-                            >
-                                {posReportActionLabel}
-                            </Button>
-                            <Button
-                                type="button"
                                 disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
                                 title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                                 onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
                                 className="h-9 rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 {receiptPrinting ? 'Printing...' : 'Print'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                data-testid="pos-receipt-modal-print-order"
+                                disabled={posActionsBlocked || !lastReceipt || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                onClick={() => handlePrintOrder(lastReceipt)}
+                                className="h-9 rounded-lg border border-[#1A4E8D] bg-white px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                Print Order
                             </Button>
                         </div>
                     </DialogFooter>

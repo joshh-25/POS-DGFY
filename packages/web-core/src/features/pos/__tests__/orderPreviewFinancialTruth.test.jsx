@@ -19,14 +19,21 @@ describe('POS order preview financial truth', () => {
       delivery_fee: 30,
       vat_amount: 10.71,
       total_amount: 111,
+      amount_paid: 111,
       discount: { discount_type: 'promo', promo_code: 'SAVE20' },
       lines: [{ line_id: 1, item_id: 10, quantity: 1, sale_price: 100, line_subtotal: 100, item: { name: 'Meal' } }]
     }} />);
 
-    expect(screen.getByText('Promo (SAVE20)')).toBeTruthy();
-    expect(screen.queryByText('DGFY convenience fee')).toBeNull();
-    expect(screen.getByText('Delivery Fee')).toBeTruthy();
+    expect(screen.getByText('Discount')).toBeTruthy();
+    expect(screen.getByText('Discount').className).toContain('text-rose-600');
+    expect(screen.getByText('20.00').className).toContain('text-rose-600');
+    expect(screen.getByText('Total Payment')).toBeTruthy();
     expect(screen.getByText('111.00')).toBeTruthy();
+    expect(screen.queryByText('Meal')).toBeNull();
+    expect(screen.queryByText('Order Summary')).toBeNull();
+    expect(screen.queryByText('Status')).toBeNull();
+    expect(screen.queryByText('DGFY convenience fee')).toBeNull();
+    expect(screen.queryByText('Delivery Fee')).toBeNull();
     expect(screen.queryByText('Tax')).toBeNull();
   });
 
@@ -37,13 +44,48 @@ describe('POS order preview financial truth', () => {
       payment_type: 'cash',
       subtotal_amount: 400,
       total_amount: 400,
+      amount_paid: 400,
       cash_received: 500,
       change_amount: 100,
       lines: []
     }} />);
 
     expect(screen.getByText('Change')).toBeTruthy();
+    expect(screen.getByText('Change').className).toContain('text-blue-600');
     expect(screen.getByText('100.00')).toBeTruthy();
+    expect(screen.getByText('100.00').className).toContain('text-blue-600');
+  });
+
+  it.each([
+    ['default zero', { amount_paid: 0 }],
+    ['missing amount', {}]
+  ])('uses the completed order total when amount_paid is %s', (_label, paymentFields) => {
+    render(<OrderPreviewView transaction={{
+      invoice_number: 'INV-COMPLETE',
+      status: 'completed',
+      payment_status: 'paid',
+      subtotal_amount: 150,
+      total_amount: 150,
+      lines: [],
+      ...paymentFields
+    }} />);
+
+    expect(screen.getAllByText('150.00')).toHaveLength(2);
+  });
+
+  it('uses amount_paid for a genuinely partial payment', () => {
+    render(<OrderPreviewView transaction={{
+      invoice_number: 'INV-PARTIAL',
+      status: 'completed',
+      payment_status: 'partially_paid',
+      subtotal_amount: 400,
+      total_amount: 400,
+      amount_paid: 125,
+      balance_due: 275,
+      lines: []
+    }} />);
+
+    expect(screen.getByText('125.00')).toBeTruthy();
   });
 
   it.each([

@@ -10,6 +10,19 @@ import {
     inferReceiptContract
 } from '../utils/posCheckoutTerminalUtils.js';
 
+const buildOrderTicketCart = (transaction) => {
+    const lines = Array.isArray(transaction?.lines) ? transaction.lines : [];
+    return lines.map((line) => ({
+        ...line,
+        item_name: line?.item_name_snapshot || line?.item?.name || line?.name,
+        quantity: line?.quantity ?? line?.qty ?? 0,
+        fnb_special_instructions: line?.fnb_special_instructions
+            || line?.special_instructions
+            || line?.notes
+            || ''
+    }));
+};
+
 export const usePosReceiptHardwareWorkflow = ({
     activeShiftId = null,
     terminalUser = null,
@@ -145,22 +158,29 @@ export const usePosReceiptHardwareWorkflow = ({
         }
     }, [cartTotal, isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, safeCart, setCheckoutConfirmModalOpen, tableNumber]);
 
-    const handlePrintOrder = useCallback(async () => {
-        if (safeCart.length === 0) {
+    const handlePrintOrder = useCallback(async (transaction = null) => {
+        const orderCart = transaction ? buildOrderTicketCart(transaction) : safeCart;
+        if (orderCart.length === 0) {
             toast.error('Add at least one item before printing an order.');
             return;
         }
 
+        const printOrderMethod = transaction?.order_method || orderMethod;
+        const printFnbContext = transaction?.fnb_metadata || normalizedFnbContext;
+        const printTableNumber = transaction?.fnb_table_label_snapshot || tableNumber;
+        const printOrderNotes = transaction?.special_instructions || kitchenNotes;
         const outcome = await posHardware.printOrderTicket({
-            cart: safeCart,
+            cart: orderCart,
             terminalId: normalizedTerminalId,
-            orderMethod,
+            orderMethod: printOrderMethod,
             fnbContext: buildFnbPrintContext({
-                fnbContext: normalizedFnbContext,
-                tableNumber,
-                orderMethod
+                fnbContext: printFnbContext,
+                tableNumber: printTableNumber,
+                orderMethod: printOrderMethod
             }),
-            orderNotes: isFnbWorkflow
+            orderNotes: transaction
+                ? printOrderNotes
+                : isFnbWorkflow
                 ? buildFnbGlobalOrderNote({ kitchenNotes })
                 : kitchenNotes
         });

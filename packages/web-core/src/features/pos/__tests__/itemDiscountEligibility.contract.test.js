@@ -32,18 +32,22 @@ describe('item Senior/PWD discount eligibility controls', () => {
     const checkoutTerminal = [
       readFrontendFile('src/features/pos/components/POSCheckoutTerminal.jsx'),
       readFrontendFile('src/features/pos/components/POSCheckoutTerminalView.jsx'),
+      readFrontendFile('src/features/pos/utils/posDiscountSelection.js'),
     ].join('\n');
     const cartWorkflow = readFrontendFile('src/features/pos/hooks/usePosCartWorkflow.js');
     const checkoutWorkflow = readFrontendFile('src/features/pos/hooks/usePosCheckoutWorkflow.js');
 
     expect(cartWorkflow).toContain('isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible)');
     expect(checkoutTerminal).toContain('isCartLineSeniorPwdEligible');
-    expect(checkoutTerminal).toContain('safeCart.filter(isCartLineSeniorPwdEligible)');
+    expect(checkoutTerminal).toContain('getSelectableDiscountLines(safeCart, discountDraft.type, isCartLineSeniorPwdEligible)');
     expect(checkoutTerminal).toContain('No eligible items are in this cart.');
     expect(checkoutTerminal).toContain('remove and re-add it to this cart.');
-    expect(checkoutTerminal).toContain('Eligible quantity for ${line.item_name}');
+    expect(checkoutTerminal).toContain('data-testid="pos-discount-select-all"');
+    expect(checkoutTerminal).toContain('Uncheck items with no discount');
+    expect(checkoutTerminal).toContain('Discount quantity for ${line.item_name}');
     expect(checkoutTerminal).toContain('eligible_quantity: eligibleQuantity');
-    expect(checkoutTerminal).toContain('eligible_items: statutory ? safeEligibleDiscountItems : []');
+    expect(checkoutTerminal).toContain('eligible_items: selectedDiscountItems.filter');
+    expect(checkoutTerminal).toContain('line_ref: lineRef');
     expect(checkoutWorkflow).toContain('senior_pwd_discount_eligible: line.senior_pwd_discount_eligible === true');
   });
 });

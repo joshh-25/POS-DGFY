@@ -120,7 +120,9 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('const discountReturnToCheckoutRef = useRef(false);');
         expect(checkoutSource).toContain('setCheckoutConfirmModalOpen(false);');
         expect(checkoutSource).toContain('setCheckoutConfirmModalOpen(true);');
-        expect(checkoutSource).toContain('onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : closeDiscountModal())}');
+        expect(checkoutSource).toContain('onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}');
+        expect(checkoutSource).toContain('const handleCloseDiscountModal = () => {');
+        expect(checkoutSource).toContain('closeDiscountModal();');
         expect(checkoutSource).not.toContain('splitPaymentDiscountBlocked');
         expect(checkoutSource).toContain('splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}');
     });
