@@ -3,6 +3,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     createPosCheckout,
     createPosParkedSale,
+    fetchPosCatalog,
     reparkPosParkedSale,
     cancelPosPaymentAllocation,
     cancelPosPaymentSession,
@@ -176,6 +177,7 @@ export const usePosCheckoutWorkflow = ({
     splitPaymentSummaryChangeAmount = 0,
 } = {}) => {
     const splitPaymentReturnToCheckoutRef = useRef(false);
+    const parkedSaleResumeCatalogRef = useRef({ parkedSaleId: null, catalog: [] });
     const schedulePostCheckoutTask = useCallback((task) => {
         // Let React commit the receipt/payment-complete UI before a legacy
         // synchronous JavascriptInterface call can occupy the WebView thread.
@@ -508,13 +510,34 @@ export const usePosCheckoutWorkflow = ({
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
-        const [{ validateParkedSaleResume }, { validateFnbModifierSelections }] = await Promise.all([
+        const [{
+            getParkedSaleCatalogLookupQueries,
+            mergeParkedSaleCatalogResults,
+            validateParkedSaleResume
+        }, { validateFnbModifierSelections }] = await Promise.all([
             import('../utils/posParkedSaleResume.js'),
             import('../utils/fnbModifierValidation.js')
         ]);
+        const lookupQueries = getParkedSaleCatalogLookupQueries({ parkedSale });
+        let resumeCatalog = safeCatalog;
+        if (lookupQueries.length > 0) {
+            try {
+                const lookupResults = await Promise.all(lookupQueries.map((search) => fetchPosCatalog({
+                    search,
+                    limit: 200,
+                    ...(selectedLocationId ? { location_id: selectedLocationId } : {})
+                })));
+                resumeCatalog = mergeParkedSaleCatalogResults(safeCatalog, lookupResults, parkedSale);
+            } catch {
+                return {
+                    ok: false,
+                    message: 'Unable to refresh the catalog items required by this parked sale. Check the connection and try again.'
+                };
+            }
+        }
         const validation = validateParkedSaleResume({
             parkedSale,
-            catalog: safeCatalog,
+            catalog: resumeCatalog,
             locationId: selectedLocationId,
             allowedOrderMethods: posWorkflow.allowedMethods,
             discountProfiles: toArray(discountProfiles),
@@ -561,6 +584,10 @@ export const usePosCheckoutWorkflow = ({
                 message: `This parked sale needs review before it can be resumed: ${validation.conflicts.slice(0, 3).join(' ')}`
             };
         }
+        parkedSaleResumeCatalogRef.current = {
+            parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
+            catalog: resumeCatalog
+        };
         return { ok: true };
     }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
 
@@ -570,7 +597,11 @@ export const usePosCheckoutWorkflow = ({
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
             : {};
-        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: safeCatalog });
+        const validatedCatalog = parkedSaleResumeCatalogRef.current.parkedSaleId === Number(claimedSale?.pos_parked_sale_id)
+            ? parkedSaleResumeCatalogRef.current.catalog
+            : safeCatalog;
+        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
+        parkedSaleResumeCatalogRef.current = { parkedSaleId: null, catalog: [] };
         const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
         const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
             ? snapshot.discount_context
