@@ -10,6 +10,7 @@
 export function useRetailOrderPageProps({
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
+  guestCheckoutAllowed,
   cart,
   cartCount,
   cartImageErrors,
@@ -87,6 +88,7 @@ export function useRetailOrderPageProps({
   return {
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,

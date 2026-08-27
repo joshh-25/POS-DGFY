@@ -18,6 +18,7 @@ import {
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   cart = [],
   cartCount = 0,
   cartImageErrors,
@@ -157,6 +158,7 @@ export function SimpleCheckoutRoutePage({
         <div style={stepGridStyle}>
           <SimpleCheckoutCustomerStep
             canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+            guestCheckoutAllowed={guestCheckoutAllowed}
             guestCheckoutOtpCode={guestCheckoutOtpCode}
             guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
             guestCheckoutOtpError={guestCheckoutOtpError}
@@ -204,6 +206,7 @@ export function SimpleCheckoutRoutePage({
           <SimpleCheckoutFulfillmentStep
             canAddPinnedLocation={canAddPinnedLocation}
             canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+            guestCheckoutAllowed={guestCheckoutAllowed}
             customerPin={customerPin}
             deliveryLocationAction={deliveryLocationAction}
             deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
