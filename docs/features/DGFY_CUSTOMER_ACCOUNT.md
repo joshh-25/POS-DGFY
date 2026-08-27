@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-07-13
+last_reviewed: 2026-08-27
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -98,7 +98,7 @@ Legacy IMS/POS users who were accepted before the DGFY-only migration but do not
 
 Storefront order checkout and Services booking use a shared guest-or-account entry flow before step 1:
 
-- The inline entry gate offers `Create DGFY Account` and `Continue as Guest`, plus a smaller inline `Log in` action for existing DGFY accounts.
+- The inline entry gate offers `Create DGFY Account` and `Continue as Guest`, plus a smaller inline `Log in` action for existing DGFY accounts. `Continue as Guest` is conditional on the per-store `storefront_guest_checkout_enabled` setting (default `true`; disabled by default for newly-provisioned Retail-mode tenants, per Settings > Storefront Access). When a merchant disables it, the guest option is hidden and the backend rejects checkout/booking for any store customer without a linked DGFY account (`GUEST_CHECKOUT_DISABLED`). `Create DGFY Account` and `Log in` remain unconditional.
 - Successful authentication returns the customer to the same storefront draft and resumes at step 1 of the active flow.
 - Authenticated checkout displays read-only account name, contact number, and email instead of asking the customer to re-enter those values.
 - Guest checkout shows split `First Name` and `Last Name` fields, then submits the unchanged backend payload shape with a merged `customer_name`.

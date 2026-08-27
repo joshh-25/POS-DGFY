@@ -35,9 +35,16 @@ export const buildAccessPolicyStorePatch = (accessPolicy = null) => {
     inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
     access_capabilities: accessPolicy.access_capabilities,
     access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
-    customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
+    customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
+    guest_checkout_enabled: accessPolicy.guest_checkout_enabled
   };
 };
+
+// #622: fail OPEN on the client -- a missing/undefined value (an older cached SPA build served
+// against a newer or older API) must never trap a customer in an un-completable guest flow. The
+// server (assertGuestCheckoutAllowed, apps/dgfy-api) is the authority and fails closed; this is
+// only a UI convenience to hide the guest path when the merchant has explicitly disabled it.
+export const isGuestCheckoutAllowed = (store = null) => store?.guest_checkout_enabled !== false;
 
 export const shouldClearStorefrontCart = ({
   cart = [],

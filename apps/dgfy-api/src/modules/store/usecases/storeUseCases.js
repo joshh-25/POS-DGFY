@@ -42,7 +42,7 @@ import {
     verifyStoreCancelProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
-import { assertGuestCheckoutProof } from '../utils/storeGuestCheckoutProof.js';
+import { assertGuestCheckoutAllowed, assertGuestCheckoutProof } from '../utils/storeGuestCheckoutProof.js';
 import { normalizeIntakeFormSchema } from '../../shared/utils/intakeFormSchema.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -79,7 +79,7 @@ import {
     resolveCommercialPromoApplication
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
-import { STOREFRONT_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
+import { STOREFRONT_ORDER_METHODS, ORDER_METHOD_LOCATION_SUPPORT_KEYS } from '../../shared/constants/orderMethods.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
@@ -105,12 +105,6 @@ export const getHostedPaymentMethodType = (paymentType) => (
     HOSTED_PAYMENT_METHOD_TYPES[String(paymentType || '').trim().toLowerCase()] || null
 );
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
-const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
-    delivery: 'supports_delivery',
-    pickup: 'supports_pickup',
-    takeout: 'supports_pickup',
-    dine_in: 'supports_dine_in'
-});
 const TRACKING_PIN_PREFIX = 'SK';
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 const TRACKING_PIN_RANDOM_LENGTH = 6;
@@ -566,7 +560,7 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) =
         );
     }
 
-    const supportKey = ORDER_METHOD_LOCATION_SUPPORT_MAP[orderMethod] || null;
+    const supportKey = ORDER_METHOD_LOCATION_SUPPORT_KEYS[orderMethod] || null;
     if (supportKey && location?.[supportKey] === false) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -1818,6 +1812,7 @@ const resolveCheckoutContext = async ({
     return {
         normalized,
         settings,
+        accessPolicy,
         location,
         storefront_open: storefrontOpen,
         estimated_wait_minutes: estimatedWaitMinutes,
@@ -3055,6 +3050,11 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: resolved.accessPolicy?.guest_checkout_enabled,
+                storeCustomer: normalizedStoreCustomer
+            });
+
             assertGuestCheckoutProof({
                 tenantId: normalizedTenantId,
                 email: normalized.customer_email,
@@ -3839,6 +3839,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_POLICY_UNRESOLVED' } }
                 );
             }
+
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: resolved.accessPolicy?.guest_checkout_enabled,
+                storeCustomer
+            });
 
             assertGuestCheckoutProof({
                 tenantId,

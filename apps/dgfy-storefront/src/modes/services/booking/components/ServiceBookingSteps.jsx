@@ -25,6 +25,7 @@ export function ServiceBookingStepAccount({
   isMobileViewport,
   isDgfyCustomerSignedIn,
   canUseGuestCheckoutFlow,
+  guestCheckoutAllowed = true,
   missingCustomerInformation,
   accountStepComplete,
   bookingFieldPlan,
@@ -122,7 +123,13 @@ export function ServiceBookingStepAccount({
         </section>
       ) : renderGuestCheckoutEntry({
         title: referenceStyle ? 'How would you like to continue?' : 'Continue to your booking',
-        description: referenceStyle ? 'No account is needed to complete this booking.' : 'Create an account or continue as guest to continue this booking.',
+        // #622: the referenceStyle copy "No account is needed" is actively wrong once the
+        // merchant disables guest checkout -- branch both variants on guestCheckoutAllowed the
+        // same way the "Continue as Guest" button itself is gated (PR #1095 RF-3, caught by
+        // rendered-UI proof).
+        description: guestCheckoutAllowed
+          ? (referenceStyle ? 'No account is needed to complete this booking.' : 'Create an account or continue as guest to continue this booking.')
+          : 'This store requires a DGFY account to complete a booking. Create one or log in to continue.',
         layoutVariant: referenceStyle ? 'services-reference' : 'default',
         resumeTarget: {
           checkoutTab: 'checkout',

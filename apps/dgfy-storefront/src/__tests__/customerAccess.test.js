@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAccessPolicyStorePatch,
   canUseBooking,
   canUseCheckout,
   canUseProductCart,
   canViewCatalog,
   getAccessCapabilities,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  isGuestCheckoutAllowed
 } from '../shared/model/customerAccess.js';
 
 describe('store customer access helpers', () => {
@@ -83,5 +85,31 @@ describe('store customer access helpers', () => {
         checkout: false
       }
     })).toBe('This Storefront action is not available right now.');
+  });
+
+  // #622
+  describe('isGuestCheckoutAllowed', () => {
+    it('fails open when the store or the field is missing (older cached SPA vs. newer/older API)', () => {
+      expect(isGuestCheckoutAllowed(null)).toBe(true);
+      expect(isGuestCheckoutAllowed({})).toBe(true);
+      expect(isGuestCheckoutAllowed({ guest_checkout_enabled: undefined })).toBe(true);
+    });
+
+    it('respects an explicit true', () => {
+      expect(isGuestCheckoutAllowed({ guest_checkout_enabled: true })).toBe(true);
+    });
+
+    it('is the only value that disallows guest checkout: an explicit false', () => {
+      expect(isGuestCheckoutAllowed({ guest_checkout_enabled: false })).toBe(false);
+    });
+  });
+
+  it('carries guest_checkout_enabled through the access-policy store patch', () => {
+    expect(buildAccessPolicyStorePatch({
+      effective_customer_access_mode: 'transaction',
+      guest_checkout_enabled: false
+    })).toEqual(expect.objectContaining({
+      guest_checkout_enabled: false
+    }));
   });
 });

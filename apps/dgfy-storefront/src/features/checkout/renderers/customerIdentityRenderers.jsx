@@ -39,7 +39,8 @@ export function createCustomerIdentityRenderers({
   handleCancelGuestDetailsEditor,
   handleApplyGuestDetails,
   openCheckoutAuthFlow,
-  setGuestCheckoutUnlocked
+  setGuestCheckoutUnlocked,
+  guestCheckoutAllowed = true
 }) {
   const renderGuestIdentityFields = ({
     title = 'Guest Details',
@@ -162,7 +163,9 @@ export function createCustomerIdentityRenderers({
 
   const renderGuestCheckoutEntry = ({
     title = 'Continue to your order',
-    description = 'Create an account or continue as guest to continue your order.',
+    description = guestCheckoutAllowed
+      ? 'Create an account or continue as guest to continue your order.'
+      : 'This store requires a DGFY account to check out. Create one or log in to continue.',
     resumeTarget = {},
     layoutVariant = 'default'
   } = {}) => {
@@ -180,18 +183,25 @@ export function createCustomerIdentityRenderers({
       >
         Create DGFY Account
       </button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#58717a' }}>
-        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#58717a' }}>{isServicesReference ? 'OR' : 'or'}</span>
-        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-      </div>
-      <button
-        type="button"
-        onClick={() => setGuestCheckoutUnlocked(true)}
-        style={{ minHeight: isServicesReference ? 51 : 46, borderRadius: 12, border: `1px solid ${checkoutAccent}`, background: '#fff', color: checkoutAccent, fontWeight: isServicesReference ? 800 : 700, fontSize: isServicesReference ? 16 : undefined, cursor: 'pointer', fontFamily: servicesBodyFont }}
-      >
-        Continue as Guest
-      </button>
+      {/* #622: guest checkout entirely hidden -- not just OTP-gated -- when the merchant has
+          disabled it for this store. The server (assertGuestCheckoutAllowed) is the authority;
+          this only keeps a disabled merchant from being offered a path the backend will reject. */}
+      {guestCheckoutAllowed ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#58717a' }}>
+            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#58717a' }}>{isServicesReference ? 'OR' : 'or'}</span>
+            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setGuestCheckoutUnlocked(true)}
+            style={{ minHeight: isServicesReference ? 51 : 46, borderRadius: 12, border: `1px solid ${checkoutAccent}`, background: '#fff', color: checkoutAccent, fontWeight: isServicesReference ? 800 : 700, fontSize: isServicesReference ? 16 : undefined, cursor: 'pointer', fontFamily: servicesBodyFont }}
+          >
+            Continue as Guest
+          </button>
+        </>
+      ) : null}
       {!isServicesReference ? <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b' }}>
         Already have an account?{' '}
         <button

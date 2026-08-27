@@ -1,6 +1,11 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapTenantLocationUseCaseError } from './tenantLocationUseCaseError.js';
+import dbStore from '../../../utils/dbStore.js';
+import {
+    isCustomerAccessModesEnabled,
+    resolveAccessPolicyFromSettings
+} from '../../shared/utils/customerAccessPolicy.js';
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -40,6 +45,63 @@ const assertPrimaryStateValid = (payload) => {
             { statusCode: 422 }
         );
     }
+};
+
+// #1093: mirrors storeUseCases.js's own currentTenantAccessContext() -- reading tenant-context
+// metadata off dbStore's AsyncLocalStorage (not a model), the same precedent already established
+// there for the identical isCustomerAccessModesEnabled() call.
+const currentTenantAccessContext = () => {
+    const store = dbStore.getStore?.() || {};
+    return {
+        tenantId: store.tenantId,
+        tenantToken: store.tenantToken,
+        tenantName: store.tenantName
+    };
+};
+
+// #1093 (per-store delivery/pickup toggle). A location with neither delivery nor
+// pickup enabled has no way to receive online orders at all -- but only when the store is
+// actually in transaction mode; a dine-in-only restaurant expresses "no online orders" via
+// customer_access_mode: 'catalog', not by disabling both of these (see ADR 0017; the storefront
+// checkout axis is delivery/pickup only, never dine_in -- packages/shared-constants/src/
+// orderMethods.js's STOREFRONT_FULFILLMENT_ORDER_METHODS).
+//
+// Only rejects a TRANSITION into a *reachable* both-off state -- an inactive location is never
+// reachable by storefront checkout at all, so it's exempt regardless of its supports_* values
+// (clause 1 below). A tenant whose location was ALREADY active and both-off before this guard
+// landed must still be able to save an unrelated field on it without getting newly blocked
+// (clause 2) -- but only "unrelated" in the narrow sense of "was already active and already
+// both-off"; activating a previously-inactive both-off location is itself the transition into a
+// reachable-but-unfulfillable state and must go through the check (#1093 review, RF-2 -- the
+// settings-side guards in customerAccessModeFulfillmentPolicy.js only ever query active
+// locations, so an inactive both-off location can otherwise slip through both directions of this
+// invariant by switching customer_access_mode to transaction while inactive, then activating).
+// A tenant already sitting at active-both-off in transaction mode (pre-dating this guard, clause
+// 2) has its storefront checkout degrade gracefully instead (checkoutRules.js's
+// `no_fulfillment_method` block reason).
+const assertFulfillmentMethodAvailable = async ({ tenantLocationRepository, previous = null, next }) => {
+    const nextBothOff = next.supports_delivery === false && next.supports_pickup === false;
+    if (!nextBothOff) return;
+    if (next.is_active !== true) return; // clause 1: not reachable, regardless of prior state
+
+    const wasAlreadyActiveAndBothOff = previous
+        ? previous.is_active === true
+            && previous.supports_delivery === false
+            && previous.supports_pickup === false
+        : false;
+    if (wasAlreadyActiveAndBothOff) return; // clause 2: genuinely unrelated edit, not a new activation
+
+    const settings = await tenantLocationRepository.getCustomerAccessModeSettings();
+    const accessPolicy = resolveAccessPolicyFromSettings(settings, {
+        featureEnabled: isCustomerAccessModesEnabled(currentTenantAccessContext())
+    });
+    if (accessPolicy.effective_customer_access_mode !== 'transaction') return;
+
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'At least one of delivery or pickup must stay enabled while this store accepts online orders (Transaction mode). To stop taking online orders instead, switch Customer Access Mode to Catalog Only.',
+        { statusCode: 422 }
+    );
 };
 
 const ensureSingleActivePrimary = async ({
@@ -115,6 +177,11 @@ export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository }) =
         try {
             const normalized = normalizePayload(payload);
             assertPrimaryStateValid(normalized);
+            await assertFulfillmentMethodAvailable({
+                tenantLocationRepository,
+                previous: null,
+                next: normalized
+            });
             await ensureNameNotTaken({
                 repository: tenantLocationRepository,
                 name: normalized.name
@@ -215,6 +282,11 @@ export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository }) =
 
                 const merged = normalizePayload({ ...existing, ...payload });
                 assertPrimaryStateValid(merged);
+                await assertFulfillmentMethodAvailable({
+                    tenantLocationRepository,
+                    previous: existing,
+                    next: merged
+                });
                 if (merged.name && merged.name !== existing.name) {
                     await ensureNameNotTaken({
                         repository: tenantLocationRepository,

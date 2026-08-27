@@ -75,16 +75,22 @@ import {
   isItemAvailable,
   trimAddressCountrySuffix
 } from './shared/model/storefrontCatalogModel.js';
-import { DGFY_BRAND_NAME } from './shared/model/storefrontConstants.js';
+import { DGFY_BRAND_NAME, ORDER_METHOD_OPTIONS } from './shared/model/storefrontConstants.js';
+import { STOREFRONT_FULFILLMENT_ORDER_METHODS } from '@sieitzz/shared-constants/orderMethods';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
 import { buildCartSignature } from './shared/model/cartSignature.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
   canUseCheckout,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  isGuestCheckoutAllowed
 } from './shared/model/customerAccess.js';
 import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
+import {
+  buildStorefrontOrderMethodOptions,
+  resolveLocationFulfillmentSupport
+} from './shared/model/storefrontOrderMethodOptions.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
@@ -388,6 +394,12 @@ const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
+// #1093: the ecommerce fulfillment axis's candidate set -- delivery/pickup only, never
+// dine_in/takeout. Availability (which of these a resolved location actually supports) is
+// layered on top via buildStorefrontOrderMethodOptions, not baked in here.
+const STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS = ORDER_METHOD_OPTIONS.filter(
+  (option) => STOREFRONT_FULFILLMENT_ORDER_METHODS.includes(option.value)
+);
 
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
@@ -1045,7 +1057,8 @@ export default function StorefrontApp() {
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const isSimpleOrderSubpage = isSimpleMode && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
-  const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
+  const guestCheckoutAllowed = isGuestCheckoutAllowed(selectedStore);
+  const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked && guestCheckoutAllowed;
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
     canOpen: canOpenTrackingDrawer,
@@ -1369,6 +1382,7 @@ export default function StorefrontApp() {
     setCustomerAddress,
     setRememberCustomerDetails,
     setGuestCheckoutUnlocked,
+    guestCheckoutAllowed,
     // `openCheckoutAuthFlow`/`handleRequestGuestCheckoutOtp` are declared later in this
     // component (they depend on state that in turn depends on this hook), so they can
     // only be handed to the hook as lazy getters - the same forward-reference idiom
@@ -1967,8 +1981,10 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     quoteResult,
     selectedStore,
+    selectedLocationId,
     serviceAppointmentAt,
     serviceCartLines,
+    storeLocations,
     storefrontClosedByHours
   });
   useEffect(() => {
@@ -2005,6 +2021,24 @@ export default function StorefrontApp() {
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
     setOrderMethod('pickup');
   }, [isSimpleMode, orderMethod]);
+  // #1093: if the currently selected order method isn't actually offered at the resolved
+  // fulfillment location (e.g. the customer switches to a delivery-only branch while
+  // `orderMethod` is still 'pickup', or the default 'delivery' isn't available at all), snap to
+  // the first method the location does support. Mirrors the isSimpleMode correction above;
+  // scoped to the ecommerce modes that submit real checkout (fnb/simple/retail) -- the
+  // placeholder default-mode order page has no live checkout path to protect. Re-runs on
+  // selectedLocationId change so switching branches (e.g. Surebiz's delivery-only branch vs. a
+  // both-methods branch) re-derives the available set rather than trusting a stale one.
+  useEffect(() => {
+    if (!isStorePage || !(isFnbMode || isSimpleMode || isRetailMode)) return;
+    const availableMethods = buildStorefrontOrderMethodOptions(
+      STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS,
+      resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+    );
+    if (availableMethods.length === 0) return;
+    if (availableMethods.some((option) => option.value === orderMethod)) return;
+    setOrderMethod(availableMethods[0].value);
+  }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod]);
   useEffect(() => {
     setServicePage(1);
   }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
@@ -3103,7 +3137,10 @@ export default function StorefrontApp() {
   });
   const retailOrderRouteProps = useRetailOrderPageProps({
     canAddPinnedLocation,
+    storeLocations,
+    selectedLocationId,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3178,6 +3215,7 @@ export default function StorefrontApp() {
     applySavedDeliveryLocation,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3466,6 +3504,7 @@ export default function StorefrontApp() {
     applySavedDeliveryLocation,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3960,6 +3999,7 @@ export default function StorefrontApp() {
     bookingTimeSlotOptions,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     catalog,
     catalogError,
     catalogSearch,

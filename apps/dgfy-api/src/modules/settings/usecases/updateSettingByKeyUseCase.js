@@ -58,6 +58,7 @@ import {
 } from './posTerminalRegistrySecrets.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
+import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -159,7 +160,11 @@ const getTenantComplianceSnapshot = () => {
     };
 };
 
-export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
+export const buildUpdateSettingByKeyUseCase = ({
+    settingsRepository,
+    storefrontAssetStorage = null,
+    tenantLocationRepository = null
+}) => {
     return async ({ key, value, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
@@ -233,6 +238,11 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     pending_review_keys: [key]
                 });
             }
+            await assertFulfillmentMethodAvailableForAccessModeTransition({
+                settingsData: { [key]: value },
+                settingsRepository,
+                tenantLocationRepository
+            });
             assertStoreProfileNotClientWritten({ settingsData: { [key]: value } });
             if (key === WORKFLOW_MODE_SETTING_KEY) {
                 if (!isWorkflowMode(value)) {

@@ -23,8 +23,32 @@ describe('store checkout rules', () => {
     expect(getCheckoutBlockReason({ ...base, hasStockViolation: true })).toBe('stock_violation');
     expect(getCheckoutBlockReason({ ...base, selectedStore: { slug: 'demo', storefront_hours_status: { is_open_now: false } } })).toBe('business_hours');
     expect(getCheckoutBlockReason({ ...base, accessCapabilities: { checkout: false, quote: false } })).toBe('access_mode');
+    // #1093: fires only when the caller explicitly says false -- an omitted field (every caller
+    // that predates this change) must not regress to blocking on a check it doesn't know about.
+    expect(getCheckoutBlockReason({ ...base, hasAvailableFulfillmentMethod: false })).toBe('no_fulfillment_method');
+    expect(getCheckoutBlockReason({ ...base })).toBeNull();
     expect(getCheckoutBlockReason({ ...base, quoteResult: null })).toBe('missing_quote');
     expect(getCheckoutBlockReason({ ...base, quoteNeedsRefresh: true })).toBe('stale_quote');
+  });
+
+  // #1093: a store with neither delivery nor pickup enabled at the resolved fulfillment
+  // location shouldn't normally be reachable (the guard in tenantLocationUseCases.js blocks the
+  // transition), but a legacy tenant that pre-dates the guard needs a graceful client-side
+  // degrade instead of an enabled Place Order button with no method that will actually work.
+  describe('no_fulfillment_method', () => {
+    it('blocks product checkout when no fulfillment method is available', () => {
+      expect(getCheckoutBlockReason({ ...base, hasAvailableFulfillmentMethod: false })).toBe('no_fulfillment_method');
+      expect(canCheckout({ ...base, hasAvailableFulfillmentMethod: false })).toBe(false);
+    });
+
+    it('does not block a service-only booking -- fulfillment methods are a product-checkout concern', () => {
+      expect(getCheckoutBlockReason({
+        ...base,
+        hasServiceCart: true,
+        quoteResult: null,
+        hasAvailableFulfillmentMethod: false
+      })).toBeNull();
+    });
   });
 
   it('lets service-only bookings bypass product quote guards', () => {

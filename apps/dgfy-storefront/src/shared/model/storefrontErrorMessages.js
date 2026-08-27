@@ -69,6 +69,9 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
   if (errorCode === 'VALIDATION_FAILED') {
     return normalizeCheckoutValidationMessage(error, fallback);
   }
+  if (reasonCode === 'GUEST_CHECKOUT_DISABLED') {
+    return 'This store requires a DGFY account to check out. Sign in or create an account to continue.';
+  }
   if (errorCode === 'AUTHENTICATION_FAILED' || errorCode === 'AUTHORIZATION_FAILED') {
     return 'Session or permission check failed. Sign in again, then retry.';
   }

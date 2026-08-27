@@ -47,6 +47,7 @@ export function StorefrontCatalogRouteContainer(props) {
     getPreferredBookingTimeForDate,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     catalog,
     catalogError,
     catalogSearch,
@@ -304,6 +305,7 @@ export function StorefrontCatalogRouteContainer(props) {
         getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
         canAddPinnedLocation={canAddPinnedLocation}
         canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+        guestCheckoutAllowed={guestCheckoutAllowed}
         catalog={catalog}
         catalogError={catalogError}
         catalogSearch={catalogSearch}
