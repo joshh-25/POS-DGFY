@@ -28,7 +28,8 @@ import { createCustomerIdentityRenderers } from '../../features/checkout/rendere
  * `useStorefrontSession`), and the checkout/UI-chrome values consumed only
  * by the renderer wiring (`rememberCustomerDetails`, `guestDetailsEditMode`,
  * `isMobileViewport`, `servicesBodyFont`, `servicesDisplayFont`,
- * `customerAddress`, their setters, and `setGuestCheckoutUnlocked`) are NOT
+ * `customerAddress`, their setters, `setGuestCheckoutUnlocked`, and
+ * `guestCheckoutAllowed` (#622, the per-store guest-checkout toggle)) are NOT
  * owned by this hook and are taken as external parameters, unchanged.
  *
  * `getOpenCheckoutAuthFlow`/`getHandleSendGuestCheckoutOtp` are lazy
@@ -68,6 +69,7 @@ export function useGuestCustomerIdentity({
   setCustomerAddress,
   setRememberCustomerDetails,
   setGuestCheckoutUnlocked,
+  guestCheckoutAllowed,
   getOpenCheckoutAuthFlow,
   getHandleSendGuestCheckoutOtp
 }) {
@@ -218,7 +220,8 @@ export function useGuestCustomerIdentity({
     handleApplyGuestDetails,
     handleSendGuestCheckoutOtp: handleSendGuestCheckoutOtpStable,
     openCheckoutAuthFlow: openCheckoutAuthFlowStable,
-    setGuestCheckoutUnlocked
+    setGuestCheckoutUnlocked,
+    guestCheckoutAllowed
   }), [
     hasSavedCustomerDetails,
     savedCustomerDetails,
@@ -252,7 +255,8 @@ export function useGuestCustomerIdentity({
     handleApplyGuestDetails,
     handleSendGuestCheckoutOtpStable,
     openCheckoutAuthFlowStable,
-    setGuestCheckoutUnlocked
+    setGuestCheckoutUnlocked,
+    guestCheckoutAllowed
   ]);
 
   return {

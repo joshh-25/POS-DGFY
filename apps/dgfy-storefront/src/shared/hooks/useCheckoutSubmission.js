@@ -14,7 +14,8 @@ import {
 // `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
 // copy supersedes that inline one; no functional loss, since this is a strict superset.
 import { resolveTrackedTotals } from '../model/trackedTotals.js';
-import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
+import { GUEST_CHECKOUT_DISABLED_MESSAGE, GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
+import { isGuestCheckoutAllowed } from '../model/customerAccess.js';
 import { requiresBillingEmail } from '../../checkout/checkoutValidation.js';
 
 /**
@@ -245,6 +246,12 @@ export function useCheckoutSubmission({
       const message = hasServiceCart
         ? serviceCartValidationIssues[0]?.message || 'Complete the required booking details before continuing.'
         : `Complete required intake question: ${bookingPageMissingRequiredIntake[0].label}`;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!isDgfyCustomerSignedIn && !isGuestCheckoutAllowed(selectedStore)) {
+      const message = GUEST_CHECKOUT_DISABLED_MESSAGE;
       setCheckoutError(message);
       toast.error(message);
       return;
