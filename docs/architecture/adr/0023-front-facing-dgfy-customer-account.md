@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-08
-last_reviewed: 2026-06-11
+last_reviewed: 2026-08-27
 review_by: 2027-01-08
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
@@ -55,3 +55,23 @@ Required validation for this flow:
 5. Historical backfill tests proving dry-run/apply behavior, account matching, unbounded tenant/activity traversal when requested, POS order activity, F&B order activity, Services booking activity, Hospitality reservation activity, and run audit updates.
 6. Storefront build and rendered smoke for the discovery header showing both public account and business-registration actions.
 7. Frontend DGFY auth and discovery account regression tests proving absolute Storefront return URLs receive a one-time handoff token and the Storefront consumes it before rendering guest state.
+
+## Amendments (2026-08-27)
+
+- Clause amended: Decision 11 (untagged; `default` tier per ADR 0039).
+- Clause amended: Consequences item 2 (untagged; `default` tier per ADR 0039).
+- Change: the guest-or-account dual-path gate ("`Create DGFY Account` or `Continue as Guest`")
+  before step 1 is now conditional on a new per-store setting,
+  `storefront_guest_checkout_enabled` (default `true`, in `system_settings`, exposed on
+  `access_policy.guest_checkout_enabled`). When a merchant disables it, the `Continue as Guest`
+  path is hidden from the entry gate and the backend rejects any checkout or Services booking not
+  linked to a DGFY account (`GUEST_CHECKOUT_DISABLED`, 403), for a store customer that isn't
+  DGFY-linked. `Create DGFY Account` and the inline `Log in` action remain unconditional. Decision
+  11's "remains public" (browsing) and the rest of Consequences item 2 (guest browsing) are
+  unaffected — only guest *checkout/booking completion* becomes store-conditional.
+- Reason: #622 (stakeholder request) — a per-store way to require a DGFY account before purchase,
+  e.g. for Retail stores that want a conservative default. New tenants seed a vertical-dependent
+  default at provisioning (disabled for `retail`, enabled otherwise); every tenant provisioned
+  before this shipped has no seeded row and resolves to enabled, so no live storefront's behavior
+  changes on deploy.
+- PR: Refs #622

@@ -9586,6 +9586,66 @@ The next repository phase is allocated from the authoritative ledger after Phase
 
 ---
 
+## Phase 176 - Per-Store Guest Checkout Toggle
+
+### Objective and scope
+
+Add a per-store merchant setting, `storefront_guest_checkout_enabled` (default `true`), that lets
+a merchant require a signed-in DGFY account before a customer can complete storefront checkout or
+a Services booking. Covers all storefront purchase paths (Retail, Simple/MSME, F&B product
+checkout, Services bookings), a fail-closed backend enforcement gate, a fail-open client UI gate
+in the shared guest-or-account entry renderer, an IMS merchant toggle in Settings > Storefront >
+Storefront Access, and a vertical-dependent provisioning default (disabled for `retail`, enabled
+otherwise) for newly-provisioned tenants only.
+
+### Status
+
+- `completed`
+
+### Dependencies
+
+- None. No migration, no tenant-schema-sync entry (`system_settings` is key/value; a missing row
+  resolves to enabled everywhere it's read).
+
+### Acceptance and validation evidence
+
+- [x] `resolveAccessPolicyFromSettings` resolves `guest_checkout_enabled`, defaulting to `true` when
+  unset, so no existing tenant's behavior changes on deploy
+  (`apps/dgfy-api/tests/customerAccessPolicy.test.js`).
+- [x] `assertGuestCheckoutAllowed` rejects a non-DGFY-linked store customer with 403
+  `GUEST_CHECKOUT_DISABLED` when the setting is `false`, and allows a DGFY-linked customer
+  regardless (`apps/dgfy-api/tests/storeGuestCheckoutProof.test.js`, new).
+- [x] The guard is wired into all four checkout/booking use-case call sites (product checkout,
+  payment-session, single booking, batch booking) with no regression across 21 store/service
+  usecase test files (263 tests passing).
+- [x] The settings validator accepts the new key in both the bulk and single-key schemas
+  (`apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js`).
+- [x] The storefront's shared guest-or-account entry renderer hides "Continue as Guest" only when
+  the store has explicitly disabled it, and fails open on a missing/undefined value
+  (`apps/dgfy-storefront/src/__tests__/guestCheckoutEntryGate.test.jsx`, new; `customerAccess.test.js`
+  extended). Full storefront suite (140 files / 754 tests) passes.
+- [x] IMS Settings > Storefront > Storefront Access exposes the "Allow Guest Checkout" toggle,
+  following the existing `storefront_follow_enabled` toggle idiom.
+- [x] `npm run build:skupervisor` and `npm run build:store` both pass (Tier 0).
+- [x] ADR 0023 amended (Decision 11, Consequences item 2 — both `default`-tier, dated `## Amendments`
+  block, no superseding ADR needed) and `docs/features/DGFY_CUSTOMER_ACCOUNT.md` updated to match.
+- [x] Compliance impact declaration filed:
+  `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+  (`major`, `settings,payments`).
+
+### Implementation links
+
+- Issue #622
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md` (`## Amendments (2026-08-27)`)
+- `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+
+### Next eligible phase
+
+Phase 177.
+
+---
+
 ### Planning Record (2026-08-26)
 
 - Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
