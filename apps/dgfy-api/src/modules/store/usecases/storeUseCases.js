@@ -79,7 +79,7 @@ import {
     resolveCommercialPromoApplication
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
-import { STOREFRONT_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
+import { STOREFRONT_ORDER_METHODS, ORDER_METHOD_LOCATION_SUPPORT_KEYS } from '../../shared/constants/orderMethods.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
@@ -105,12 +105,6 @@ export const getHostedPaymentMethodType = (paymentType) => (
     HOSTED_PAYMENT_METHOD_TYPES[String(paymentType || '').trim().toLowerCase()] || null
 );
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
-const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
-    delivery: 'supports_delivery',
-    pickup: 'supports_pickup',
-    takeout: 'supports_pickup',
-    dine_in: 'supports_dine_in'
-});
 const TRACKING_PIN_PREFIX = 'SK';
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 const TRACKING_PIN_RANDOM_LENGTH = 6;
@@ -566,7 +560,7 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) =
         );
     }
 
-    const supportKey = ORDER_METHOD_LOCATION_SUPPORT_MAP[orderMethod] || null;
+    const supportKey = ORDER_METHOD_LOCATION_SUPPORT_KEYS[orderMethod] || null;
     if (supportKey && location?.[supportKey] === false) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
