@@ -18,8 +18,11 @@ const ORDER_METHOD_ICONS = {
 };
 
 // Retail only offers Delivery/Pickup — Dine In/Takeout (from the shared
-// ORDER_METHOD_OPTIONS list, used by dine-in-capable modes) don't apply here.
-const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
+// ORDER_METHOD_OPTIONS list, used by dine-in-capable modes) don't apply here. This is the
+// mode's *candidate* set; #1093's `orderMethodOptions` prop further narrows it to what the
+// resolved fulfillment location actually supports (falls back to this full set if the prop
+// is omitted, so no caller regresses to an empty chooser).
+export const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
   (option) => option.value === 'delivery' || option.value === 'pickup'
 );
 
@@ -58,6 +61,7 @@ export function RetailOrderFulfillmentStep({
   onSpecialInstructionsChange,
   onStartMapPin,
   orderMethod = 'delivery',
+  orderMethodOptions = null,
   pinLocationError = '',
   pinLocationLoading = false,
   scheduleMode = 'asap',
@@ -81,7 +85,7 @@ export function RetailOrderFulfillmentStep({
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-            {RETAIL_ORDER_METHOD_OPTIONS.map((option) => (
+            {(orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS).map((option) => (
               <SelectableOptionCard
                 key={`retail-order-method-${option.value}`}
                 onClick={() => onOrderMethodChange(option.value)}
