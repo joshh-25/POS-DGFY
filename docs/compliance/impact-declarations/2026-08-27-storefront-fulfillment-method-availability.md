@@ -7,7 +7,7 @@ classification: major
 surfaces: payments, settings
 reason_codes_impacted: FULFILLMENT_METHOD_NOT_AVAILABLE
 policy_version: 2026.08.27
-verification_evidence: apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.usecases.test.js (5 passed, new), apps/dgfy-api/tests/settingsCustomerAccessModeFulfillmentGuard.usecases.test.js (8 passed, new), apps/dgfy-api/tests/updateTenantCapabilitiesFulfillmentGuard.usecases.test.js (3 passed, new), apps/dgfy-api/tests/tenantLocationUsecases.applicationResult.test.js (8 passed, unaffected), apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js (4 passed, extended), apps/dgfy-api/tests/storeUsecases.applicationResult.test.js (55 passed, unaffected), apps/dgfy-api/tests/tenantLocationRepository.referenceGuard.test.js + tenantLocationReferenceSources.coverage.test.js (5 passed, unaffected), apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js + settingsValidator.* (7 files, 140 passed, unaffected), apps/dgfy-api/tests/updateTenantCapabilitiesUseCase.rollback.test.js + tenantCapabilitySettings.test.js + adminTenantCapabilities.transport.test.js + adminTenantCapabilityValidator.test.js + listTenantCapabilityAuditLogs.usecase.test.js + tenantCapabilityReadiness.schemaCompatibility.test.js + tenantCapabilityRouteGates.test.js (unaffected), apps/dgfy-storefront/src/shared/model/__tests__/storefrontOrderMethodOptions.test.js (12 passed, new), apps/dgfy-storefront/src/__tests__/checkoutRules.test.js (14 passed, extended), apps/dgfy-storefront/src/__tests__/simpleCheckoutOnlinePayments.contract.test.js + fnbStorefront.contract.test.js + retailCheckoutOnlinePayments.contract.test.js + storefrontClosedHoursMessaging.contract.test.js (48 passed, unaffected), full apps/dgfy-storefront suite (140 files / 760 tests, unaffected), npm run build:store (apps/dgfy-storefront), npm run build:skupervisor (apps/dgfy-ims), npm run check:architecture, npm run check:controller-boundaries, npm run lint:docs
+verification_evidence: apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.usecases.test.js (7 passed, new/extended for RF-2), apps/dgfy-api/tests/settingsCustomerAccessModeFulfillmentGuard.usecases.test.js (8 passed, new), apps/dgfy-api/tests/updateTenantCapabilitiesFulfillmentGuard.usecases.test.js (3 passed, new), apps/dgfy-api/tests/tenantLocationUsecases.applicationResult.test.js (8 passed, unaffected), apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js (4 passed, extended), apps/dgfy-api/tests/storeUsecases.applicationResult.test.js (55 passed, unaffected), apps/dgfy-api/tests/tenantLocationRepository.referenceGuard.test.js + tenantLocationReferenceSources.coverage.test.js (5 passed, unaffected), apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js + settingsValidator.* (7 files, 140 passed, unaffected), apps/dgfy-api/tests/updateTenantCapabilitiesUseCase.rollback.test.js + tenantCapabilitySettings.test.js + adminTenantCapabilities.transport.test.js + adminTenantCapabilityValidator.test.js + listTenantCapabilityAuditLogs.usecase.test.js + tenantCapabilityReadiness.schemaCompatibility.test.js + tenantCapabilityRouteGates.test.js (unaffected), apps/dgfy-storefront/src/shared/model/__tests__/storefrontOrderMethodOptions.test.js (12 passed, new), apps/dgfy-storefront/src/__tests__/checkoutRules.test.js (14 passed, extended), apps/dgfy-storefront/src/__tests__/simpleCheckoutOnlinePayments.contract.test.js + fnbStorefront.contract.test.js + retailCheckoutOnlinePayments.contract.test.js + storefrontClosedHoursMessaging.contract.test.js (48 passed, unaffected), full apps/dgfy-storefront suite (140 files / 760 tests, unaffected), npm run build:store (apps/dgfy-storefront), npm run build:skupervisor (apps/dgfy-ims), npm run check:architecture, npm run check:controller-boundaries, npm run lint:docs
 rollback_note: Revert this commit. The storeUseCases.js change is a pure rename (ORDER_METHOD_LOCATION_SUPPORT_MAP -> the identical map now sourced from packages/shared-constants/src/orderMethods.js as ORDER_METHOD_LOCATION_SUPPORT_KEYS), verified behavior-identical by the full storeUsecases.applicationResult.test.js suite passing unmodified. The tenantLocationUseCases.js/tenantLocationRepository.js/customerAccessModeFulfillmentPolicy.js/updateSettingsUseCase.js/updateSettingByKeyUseCase.js/updateTenantCapabilitiesUseCase.js changes add validation guards plus new read-only settings/location queries -- no schema, migration, or persisted-state change; reverting restores the prior (present) gap where a location could be saved with both delivery and pickup disabled while the store still accepted online orders, in either write direction (location-first or access-mode-first). The Settings.jsx change is UI-only (disables a switch, adds explanatory text) -- no new setting key, no new write path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -65,12 +65,15 @@ the same check to every write path that can move the *effective* `customer_acces
   availability resolver also imports, rather than two independently-maintained copies.
 - `settings` surface, direction 1 (location write) — `apps/dgfy-api/src/modules/tenantLocations/
   usecases/tenantLocationUseCases.js` gains `assertFulfillmentMethodAvailable`: rejects a create,
-  or an update that *transitions into*, a location with both `supports_delivery` and
-  `supports_pickup` false while the store's effective `customer_access_mode` is `transaction`.
-  Does not reject a location already in that state prior to this change (checked against the
-  pre-update row), so no existing tenant's next unrelated save is newly blocked.
-  `apps/dgfy-api/src/modules/tenantLocations/repositories/tenantLocationRepository.js` gains one
-  new read-only method, `getCustomerAccessModeSettings`, mirroring `storeRepository.js`'s existing
+  or an update that *transitions into a reachable* both-off state (`is_active: true` and both
+  `supports_delivery`/`supports_pickup` false), while the store's effective `customer_access_mode`
+  is `transaction`. An inactive location is exempt regardless of its supports_* values (never
+  reachable by checkout); a location already active-and-both-off prior to this change is exempt
+  from an unrelated edit, but **activating** a previously-inactive both-off location is treated as
+  the transition it is, not an unrelated edit (PR #1096 review, RF-2 -- the settings-side guards
+  below only ever see active locations, so this direction closes what RF-1's fix would otherwise
+  still miss). `apps/dgfy-api/src/modules/tenantLocations/repositories/tenantLocationRepository.js`
+  gains one new read-only method, `getCustomerAccessModeSettings`, mirroring `storeRepository.js`'s existing
   `getSettingsByKeys` shape.
 - `settings` surface, direction 2 (access-mode write) — new
   `apps/dgfy-api/src/modules/settings/usecases/customerAccessModeFulfillmentPolicy.js`: a shared,
@@ -122,11 +125,14 @@ the same check to every write path that can move the *effective* `customer_acces
 
 ## Verification Evidence
 
-- `apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.usecases.test.js` — new, 5/5 passing
+- `apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.usecases.test.js` — 7/7 passing
   (location-write direction): rejects a transition into both-off in transaction mode; allows
   delivery-only (Surebiz); allows both-off in Catalog Only mode; allows an unrelated edit to an
-  already-both-off location without even querying access mode; rejects creating a new location
-  with both off in transaction mode.
+  already-active-both-off location without even querying access mode; rejects creating a new
+  location with both off in transaction mode; **RF-2 regression pair** — rejects activating a
+  previously-inactive both-off location while in transaction mode, and allows an unrelated edit to
+  a location that stays inactive and both-off (no access-mode query at all, since it's still
+  unreachable).
 - `apps/dgfy-api/tests/settingsCustomerAccessModeFulfillmentGuard.usecases.test.js` — new, 8/8
   passing (access-mode-write direction, bulk + single-key settings paths): the pure check's own
   transaction/no-transaction/all-fulfillable truth table; rejects switching to `transaction` while
