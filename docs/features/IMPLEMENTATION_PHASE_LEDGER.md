@@ -9582,7 +9582,20 @@ and production proof.
 
 ### Next eligible phase
 
-The next repository phase is allocated from the authoritative ledger after Phase 175 completes.
+The next phase **in the standalone POS operator-switch initiative** is allocated after Phase 175
+completes -- scoped the same way Phase 149's "no next eligible phase" note was scoped to its own
+epic, not to every future ledger entry regardless of initiative. Amended 2026-08-27 (#622, PR
+#1095, reviewer finding RF-1): the original wording ("the next repository phase") read as an
+unconditional global lock and was flagged as contradicting Phase 176 immediately below, which is an
+unrelated, independently-scoped single-issue phase with no dependency on Phases 172-175. Phases
+152-154 already established the precedent this amendment makes explicit: an unrelated single-issue
+phase (frontend app split #322, GHCR image naming #928, backend image tag #913) can take the next
+sequential ledger number while a separate epic's own internal phase chain (the downpayment epic,
+Phases 140-151) is still in flight, because continuous numbering tracks the *ledger*, not any one
+initiative's completion order (`AGENTS.md`'s Continuous Phase Numbering rule: "Releases and
+milestones may group phases, but they do not reset the phase sequence"). Phases 172-175 remain
+`planned` and Phase 172 remains the next-eligible phase *for that initiative specifically*,
+unaffected by Phase 176 landing in between.
 
 ---
 
@@ -9601,7 +9614,9 @@ preference for where this control should live), and a vertical-dependent provisi
 
 ### Status
 
-- `completed`
+- `in_progress` (downgraded from `completed` 2026-08-27, PR #1095 reviewer finding RF-3: rendered
+  UI/interaction proof was not yet performed when this phase was first marked complete — see the
+  unchecked items below for exactly what's outstanding)
 
 ### Dependencies
 
@@ -9619,6 +9634,12 @@ preference for where this control should live), and a vertical-dependent provisi
 - [x] The guard is wired into all four checkout/booking use-case call sites (product checkout,
   payment-session, single booking, batch booking) with no regression across 21 store/service
   usecase test files (263 tests passing).
+- [x] Caller-level proof at all four enforcement sites, not just the isolated decision function
+  (PR #1095 reviewer finding RF-2): `buildStoreCheckoutUseCase`, `buildStoreCheckoutPaymentSessionUseCase`,
+  `buildCreateServiceBookingUseCase`, and `buildCreateServiceBookingBatchUseCase` each asserted to
+  reject a guest 403 `GUEST_CHECKOUT_DISABLED` before any persistence/payment-session side effect,
+  and to still let a DGFY-linked customer through
+  (`apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js`, new, 8/8 passing).
 - [x] The settings validator accepts the new key in both the bulk and single-key schemas
   (`apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js`).
 - [x] The storefront's shared guest-or-account entry renderer hides "Continue as Guest" only when
@@ -9636,6 +9657,29 @@ preference for where this control should live), and a vertical-dependent provisi
 - [x] Compliance impact declaration filed:
   `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
   (`major`, `settings,payments,pos,terminal`).
+- [x] Rendered proof, storefront catalog/cart (partial -- see unchecked items below for what this
+  does NOT cover): against the live local-test Docker stack with real restored tenant data
+  (`shopai-store-745611`), `/tenant-store/shopai-store-745611` renders real catalog content
+  (non-blank, no overlay), "Add" adds an item with a visible toast and an updating cart badge, and
+  the cart drawer renders subtotal/total correctly. Console clean throughout (no errors).
+- [ ] Rendered proof, the guest-vs-account checkout entry gate itself: NOT completed. Clicking
+  "Order & Purchase" against this tenant's live cart consistently reset the cart to empty and
+  bounced back to the catalog view with no checkout API call ever firing (confirmed via network
+  inspection) -- a pre-existing storefront cart/session behavior on this specific tenant's data,
+  reproduced 4 times, unrelated to any code this PR touches (the same symptom appears with the
+  guest gate not yet reachable at all, so it isn't this PR's fail-open/fail-closed logic being
+  exercised one way or the other). Not root-caused; flagged rather than guessed around. The
+  component-level render test (`guestCheckoutEntryGate.test.jsx`, listed above) is the strongest
+  substitute evidence available for the actual gate's show/hide behavior until this is unblocked.
+- [ ] Rendered proof, IMS/POS toggle save-and-rehydrate: NOT completed. Both surfaces are behind an
+  authenticated merchant login, and this session's browser-automation safety rules prohibit
+  entering any password to authenticate, including into a local test environment's own login form
+  -- there is no credential-entry exception for a non-production stack. Needs either Pat or the
+  Verifier/QA role (post-merge, against a deployed environment, per
+  `.agents/skills/verifier/SKILL.md`) to complete this specific check.
+- Reverted cleanly: the `storefront_hours` mutation made to open `shopai-store-745611` for this
+  session's rendered-proof attempt was restored to its exact original value and diffed byte-for-byte
+  against a pre-change backup; no `storefront_guest_checkout_enabled` row was left on any tenant.
 
 ### Implementation links
 
