@@ -181,6 +181,77 @@ describe('tenantLocation fulfillment-method guard (#1093)', () => {
         expect(repository.getCustomerAccessModeSettings).not.toHaveBeenCalled();
     });
 
+    // #1093 review, RF-2: the settings-side guards (customerAccessModeFulfillmentPolicy.js) only
+    // ever query ACTIVE locations, so an inactive both-off location can otherwise slip through
+    // both directions of this invariant -- switch to Catalog, disable both methods on an inactive
+    // location (allowed, unreachable), switch back to Transaction (allowed, the settings guard
+    // never sees an inactive row), then activate that same location while it's still both-off.
+    // The old previousBothOff check saw "both true before, both true after" and treated the
+    // activation as an unrelated edit. It must instead be treated as the transition into a
+    // reachable-but-unfulfillable state.
+    it('rejects activating a previously-inactive both-off location while in transaction mode', async () => {
+        const transaction = createTransactionMock();
+        const inactiveBothOff = baseLocation({
+            is_active: false,
+            supports_delivery: false,
+            supports_pickup: false,
+            name: 'Dormant Branch'
+        });
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn().mockResolvedValue(inactiveBothOff),
+            updateById: jest.fn(),
+            getCustomerAccessModeSettings: jest.fn().mockResolvedValue(transactionModeSettings())
+        };
+
+        const useCase = buildUpdateTenantLocationUseCase({ tenantLocationRepository: repository });
+        const result = await useCase({
+            locationId: 41,
+            payload: { is_active: true }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(repository.updateById).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalled();
+    });
+
+    it('allows an unrelated edit to a location that stays inactive and both-off', async () => {
+        const transaction = createTransactionMock();
+        const inactiveBothOff = baseLocation({
+            is_active: false,
+            is_primary_storefront: false,
+            supports_delivery: false,
+            supports_pickup: false,
+            name: 'Dormant Branch'
+        });
+        const renamed = { ...inactiveBothOff, name: 'Dormant Branch (Renamed)' };
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn()
+                .mockResolvedValueOnce(inactiveBothOff)
+                .mockResolvedValueOnce(renamed),
+            findByName: jest.fn().mockResolvedValue(null),
+            updateById: jest.fn().mockResolvedValue(renamed),
+            clearPrimaryFlags: jest.fn().mockResolvedValue(undefined),
+            // Stays inactive, so the use case's post-write branch calls ensureSingleActivePrimary
+            // instead of clearPrimaryFlags -- unrelated to this guard, just required plumbing.
+            findActivePrimary: jest.fn().mockResolvedValue(null),
+            findPrimaryFallbackCandidate: jest.fn().mockResolvedValue(null),
+            // Not called -- next.is_active !== true short-circuits before any settings lookup.
+            getCustomerAccessModeSettings: jest.fn().mockRejectedValue(new Error('should not be called'))
+        };
+
+        const useCase = buildUpdateTenantLocationUseCase({ tenantLocationRepository: repository });
+        const result = await useCase({
+            locationId: 41,
+            payload: { name: 'Dormant Branch (Renamed)' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.getCustomerAccessModeSettings).not.toHaveBeenCalled();
+    });
+
     it('rejects creating a new location with both methods off in transaction mode', async () => {
         const transaction = createTransactionMock();
         const repository = {

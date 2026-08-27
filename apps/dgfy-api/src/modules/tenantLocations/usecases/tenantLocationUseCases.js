@@ -66,19 +66,30 @@ const currentTenantAccessContext = () => {
 // checkout axis is delivery/pickup only, never dine_in -- packages/shared-constants/src/
 // orderMethods.js's STOREFRONT_FULFILLMENT_ORDER_METHODS).
 //
-// Only rejects a TRANSITION into both-off (previous was not already both-off) -- a tenant that
-// already sits at both-off in transaction mode (pre-dating this guard) must still be able to
-// save an unrelated field on that location without getting newly blocked by a guard added after
-// the fact. That tenant's storefront checkout degrades gracefully instead (checkoutRules.js's
+// Only rejects a TRANSITION into a *reachable* both-off state -- an inactive location is never
+// reachable by storefront checkout at all, so it's exempt regardless of its supports_* values
+// (clause 1 below). A tenant whose location was ALREADY active and both-off before this guard
+// landed must still be able to save an unrelated field on it without getting newly blocked
+// (clause 2) -- but only "unrelated" in the narrow sense of "was already active and already
+// both-off"; activating a previously-inactive both-off location is itself the transition into a
+// reachable-but-unfulfillable state and must go through the check (#1093 review, RF-2 -- the
+// settings-side guards in customerAccessModeFulfillmentPolicy.js only ever query active
+// locations, so an inactive both-off location can otherwise slip through both directions of this
+// invariant by switching customer_access_mode to transaction while inactive, then activating).
+// A tenant already sitting at active-both-off in transaction mode (pre-dating this guard, clause
+// 2) has its storefront checkout degrade gracefully instead (checkoutRules.js's
 // `no_fulfillment_method` block reason).
 const assertFulfillmentMethodAvailable = async ({ tenantLocationRepository, previous = null, next }) => {
     const nextBothOff = next.supports_delivery === false && next.supports_pickup === false;
     if (!nextBothOff) return;
+    if (next.is_active !== true) return; // clause 1: not reachable, regardless of prior state
 
-    const previousBothOff = previous
-        ? previous.supports_delivery === false && previous.supports_pickup === false
+    const wasAlreadyActiveAndBothOff = previous
+        ? previous.is_active === true
+            && previous.supports_delivery === false
+            && previous.supports_pickup === false
         : false;
-    if (previousBothOff) return;
+    if (wasAlreadyActiveAndBothOff) return; // clause 2: genuinely unrelated edit, not a new activation
 
     const settings = await tenantLocationRepository.getCustomerAccessModeSettings();
     const accessPolicy = resolveAccessPolicyFromSettings(settings, {
