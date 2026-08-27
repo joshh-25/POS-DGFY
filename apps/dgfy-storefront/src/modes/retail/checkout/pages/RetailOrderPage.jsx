@@ -90,6 +90,7 @@ export function RetailOrderPage({
   onPaymentElectionChange,
   onPaymentTypeChange,
   orderMethod = 'delivery',
+  orderMethodOptions = null,
   paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
@@ -273,6 +274,7 @@ export function RetailOrderPage({
           <div style={stepGridStyle}>
             <RetailOrderFulfillmentStep
               canAddPinnedLocation={canAddPinnedLocation}
+              orderMethodOptions={orderMethodOptions}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}

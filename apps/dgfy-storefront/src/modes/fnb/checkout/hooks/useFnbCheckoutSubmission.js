@@ -84,6 +84,10 @@ export function useFnbCheckoutSubmission({
       // Phase 142 (#823): checkoutRules.js's own dedicated reason code for a voucher/promo that
       // fully discounts a downpayment-required order to zero -- see that file's comment.
       downpayment_zero_total: 'This order total is fully covered by your discount -- contact the store to place it.',
+      // #1093: the resolved fulfillment location has neither delivery nor pickup enabled --
+      // shouldn't normally be reachable (see checkoutRules.js's own comment), but this store is
+      // the honest, actionable fallback rather than a silent no-op Place Order click.
+      no_fulfillment_method: 'This store is not accepting delivery or pickup orders online right now.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody

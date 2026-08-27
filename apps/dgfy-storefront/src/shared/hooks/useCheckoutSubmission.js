@@ -200,6 +200,15 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
+    if (checkoutBlockReason === 'no_fulfillment_method') {
+      // #1093: mirrors useFnbCheckoutSubmission.js's own copy of this reason code -- shouldn't
+      // normally be reachable (see checkoutRules.js's own comment), but this is the honest,
+      // actionable fallback rather than a silent no-op Place Order click.
+      const message = 'This store is not accepting delivery or pickup orders online right now.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     if (checkoutBlockReason === 'business_hours') {
       setCheckoutError(storefrontClosedMessageBody);
       toast.error(storefrontClosedToastMessage);
