@@ -4,10 +4,10 @@ owner: engineering
 last_reviewed: 2026-08-27
 declaration_id: 2026-08-27-storefront-per-store-guest-checkout-toggle
 classification: major
-surfaces: settings,payments
+surfaces: settings,payments,pos,terminal
 reason_codes_impacted: GUEST_CHECKOUT_DISABLED
 policy_version: 2026.08.27
-verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store
+verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),apps/dgfy-ims full web-core suite (295 files / 1794 passed, incl. posSettingsStrictBinding.contract.test.js and customerAccessModeCards.contract.test.js),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store,npm run build:pos
 rollback_note: Revert this commit. The new setting key defaults to enabled everywhere it is read (customerAccessPolicy.js's DEFAULT_GUEST_CHECKOUT_ENABLED, and the storefront's own isGuestCheckoutAllowed fail-open check), and no existing tenant has a seeded row for it (only newly-provisioned tenants get one, at provisioning time) -- reverting removes the enforcement and the toggle with no persisted-state cleanup needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -54,9 +54,14 @@ enabled when the key is absent.
    submission hooks. Treats a missing/undefined value as allowed so a cached SPA build served
    against a mismatched API version never traps a customer in an un-completable flow — the server
    is the sole authority and fails closed regardless of what the client renders.
-4. **Merchant toggle**: "Allow Guest Checkout" in IMS Settings > Storefront > Storefront Access
-   (`apps/dgfy-ims/Pages/Settings.jsx`), following the existing `storefront_follow_enabled` toggle
-   idiom exactly (default state, label map, tab-scope allowlist, hydrate, save payload, JSX).
+4. **Merchant toggle, in both places the repo already dual-surfaces every storefront setting**:
+   "Allow Guest Checkout" in IMS Settings > Storefront > Storefront Access
+   (`apps/dgfy-ims/Pages/Settings.jsx`), and in the POS app's own terminal settings workspace
+   (`packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`, rendered only
+   by `apps/dgfy-pos` — Pat's own preference, given mid-review, for where this control should live).
+   Both follow the existing `storefront_follow_enabled` toggle idiom exactly (default state, label
+   map, tab-scope allowlist/payload, hydrate, save, JSX) — that key is already dual-surfaced the
+   same way, so this isn't a new pattern.
 5. **Provisioning default**: `tenantProvisioningService.js`'s `seedDefaultCustomerAccessSettings`
    seeds the new key from `resolveDefaultGuestCheckoutEnabledForWorkflowMode(workflowMode)` —
    `false` only for `retail`, `true` otherwise — with **no** `overwriteExisting`, so a re-run of
@@ -78,6 +83,10 @@ Consequences item 2 both described the guest-or-account gate as unconditional; b
   `apps/dgfy-api/src/validators/settingsValidator.js`), IMS Settings UI.
 - `payments` — checkout/booking is the surface being gated; no payment method, provider, or
   capture path is added, changed, or removed.
+- `pos`, `terminal` — `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+  (exact-prefix match at floor `major`/`pos,terminal`) gains the same toggle as a settings-form
+  field. This is the POS terminal's own settings surface (`apps/dgfy-pos`), not POS transaction
+  logic — no POS checkout/sale flow, hardware, or attendance behavior changes.
 
 ## Compliance Preconditions
 
@@ -112,9 +121,14 @@ Consequences item 2 both described the guest-or-account gate as unconditional; b
   `guestCheckoutEntryGate.test.jsx` covering the shared entry-gate renderer's allowed/disallowed/
   fail-open/custom-description states, and extended `customerAccess.test.js` coverage for
   `isGuestCheckoutAllowed` and the `access_policy` store-patch passthrough.
+- `apps/dgfy-ims`'s full `packages/web-core` suite (that's where web-core's own tests run from,
+  per `docs/architecture/frontend-split-sync.md`): 295 files / 1794 tests passing, including
+  `posSettingsStrictBinding.contract.test.js` and `customerAccessModeCards.contract.test.js` —
+  no regression from the new field on `TerminalOperationsWorkspace.jsx`'s `storefrontForm`.
 - `node --check` on every changed `apps/dgfy-api` `.js` file — Tier 0 per
   `.agents/skills/implement/SKILL.md` (`apps/dgfy-api` has no real build step).
-- `npm run build:skupervisor` and `npm run build:store` — both real Vite builds, both green.
+- `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos` — three real Vite
+  builds, all green.
 - A full unfiltered `apps/dgfy-api` Jest run was attempted for broader confidence but hit a JS heap
   OOM (~3.6GB) in this sandbox before completing — a pre-existing environment resource limit
   unrelated to this diff (confirmed: the two DB-dependent provisioning-test failures seen in a
@@ -130,6 +144,7 @@ Consequences item 2 both described the guest-or-account gate as unconditional; b
 - `apps/dgfy-api/src/validators/settingsValidator.js`
 - `apps/dgfy-api/src/services/tenantProvisioningService.js`
 - `apps/dgfy-ims/Pages/Settings.jsx`
+- `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `apps/dgfy-storefront/src/StorefrontApp.jsx`
 - `apps/dgfy-storefront/src/shared/model/customerAccess.js`
 - `apps/dgfy-storefront/src/shared/model/storefrontErrorMessages.js`

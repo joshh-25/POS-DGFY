@@ -9594,9 +9594,10 @@ Add a per-store merchant setting, `storefront_guest_checkout_enabled` (default `
 a merchant require a signed-in DGFY account before a customer can complete storefront checkout or
 a Services booking. Covers all storefront purchase paths (Retail, Simple/MSME, F&B product
 checkout, Services bookings), a fail-closed backend enforcement gate, a fail-open client UI gate
-in the shared guest-or-account entry renderer, an IMS merchant toggle in Settings > Storefront >
-Storefront Access, and a vertical-dependent provisioning default (disabled for `retail`, enabled
-otherwise) for newly-provisioned tenants only.
+in the shared guest-or-account entry renderer, a merchant toggle dual-surfaced in both IMS Settings
+> Storefront > Storefront Access and the POS app's own terminal settings workspace (Pat's
+preference for where this control should live), and a vertical-dependent provisioning default
+(disabled for `retail`, enabled otherwise) for newly-provisioned tenants only.
 
 ### Status
 
@@ -9624,14 +9625,17 @@ otherwise) for newly-provisioned tenants only.
   the store has explicitly disabled it, and fails open on a missing/undefined value
   (`apps/dgfy-storefront/src/__tests__/guestCheckoutEntryGate.test.jsx`, new; `customerAccess.test.js`
   extended). Full storefront suite (140 files / 754 tests) passes.
-- [x] IMS Settings > Storefront > Storefront Access exposes the "Allow Guest Checkout" toggle,
-  following the existing `storefront_follow_enabled` toggle idiom.
-- [x] `npm run build:skupervisor` and `npm run build:store` both pass (Tier 0).
+- [x] IMS Settings > Storefront > Storefront Access, and the POS app's own terminal settings
+  workspace (`TerminalOperationsWorkspace.jsx`, rendered only by `apps/dgfy-pos`), both expose the
+  "Allow Guest Checkout" toggle, following the existing `storefront_follow_enabled` toggle idiom
+  (already dual-surfaced the same way). No regression across `apps/dgfy-ims`'s full `packages/web-core`
+  suite (295 files / 1794 tests).
+- [x] `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos` all pass (Tier 0).
 - [x] ADR 0023 amended (Decision 11, Consequences item 2 — both `default`-tier, dated `## Amendments`
   block, no superseding ADR needed) and `docs/features/DGFY_CUSTOMER_ACCOUNT.md` updated to match.
 - [x] Compliance impact declaration filed:
   `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
-  (`major`, `settings,payments`).
+  (`major`, `settings,payments,pos,terminal`).
 
 ### Implementation links
 
