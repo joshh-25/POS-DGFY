@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-28
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -132,6 +132,35 @@ both Storefront and POS without affecting completed transactions.
     deduction.
 
 ## Amendments
+
+### 2026-08-28 — Unified six-type selector and exact cart-line discount scope
+
+- Clause amended: Decision 9 (untagged, therefore `default` tier per ADR 0039).
+- The POS Apply Discount modal exposes six visible type cards: Employee, Senior
+  Citizen, PWD, Promo, Voucher, and Other. They share one item-selection surface,
+  including Select all and per-line discount quantities; the canonical API value
+  for Other remains `manual`.
+- A selected discount quantity is bound to the exact cart line through the
+  request-only `line_ref`, in addition to `item_id`. The server validates that
+  the line reference and item ID still match before calculating the discount.
+  This prevents one selected line from multiplying across duplicate cart lines
+  that carry the same catalog item ID.
+- Legacy clients may continue to omit `line_ref`. An item-ID-only selection still
+  targets all matching lines, but a quantity-bearing legacy selection is rejected
+  when duplicate matching lines make its intent ambiguous. The server never
+  guesses which duplicate line the cashier intended.
+- `line_ref` is transient checkout input and calculation context. It does not add
+  a database column or change the persisted fiscal allocation schema.
+
+### 2026-08-27 — Signed native statutory-policy exception
+
+ADR 0075 adds one narrow native-mobile exception to the PIN-driven governed
+discount rule. Senior and PWD checkout may be created offline only when the
+request carries an unexpired, server-signed statutory-policy snapshot that
+matches the server's current rules version. The mobile sync boundary verifies
+the signature and version before passing an internal trusted-policy marker to
+checkout. Employee, manual, promo, voucher, and arbitrary discount authority
+remain online-only and continue to require their existing authorization.
 
 ### 2026-08-07 — Explicit payment timing for delivery cash orders
 
