@@ -33,6 +33,16 @@
 // real PR's head commit while githubstatus.com reported the Actions
 // component at Major Outage. Verified against the public status API, last
 // after the other three (cheapest/most repo-specific signals first).
+//
+// RF-1 (PR #1078 review, 2026-08-27): global GitHub Status is necessary but
+// not sufficient -- a degraded/outage Actions component does not mean *this*
+// SHA's checks are actually missing (a completed check run already proves
+// they ran). This reason is gated on affirmative target-SHA evidence first:
+// zero check-runs AND zero check-suites for headSha, the exact zero-suite
+// condition #1077 confirmed live, only *then* is the global status consulted.
+// The cited incident is also matched to the Actions component specifically
+// (githubstatus.com's incidents[] can include unrelated components) rather
+// than assumed to be incidents[0].
 
 const fs = require('fs');
 const path = require('path');
@@ -205,23 +215,52 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
     return { reason: 'billing_allocation_failure', evidence: 'verified GitHub billing allocation failure (see scripts/collect-github-actions-unavailability.js)' };
   }
 
-  // Public, unauthenticated endpoint -- curl, not `gh api`, and tolerant of
-  // any failure (offline dev box, DNS hiccup, githubstatus.com itself down):
-  // captureJson/captureStdout already return null on a non-zero exit or bad
-  // JSON, so this fails safe straight through to `healthy` below rather than
-  // throwing. Never claim an outage we couldn't actually confirm.
-  const fetchGithubStatus = deps.fetchGithubStatus || (() => captureJson('curl', ['-s', '--max-time', '5', 'https://www.githubstatus.com/api/v2/summary.json']));
-  const statusSummary = fetchGithubStatus();
-  const actionsComponent = statusSummary && Array.isArray(statusSummary.components)
-    ? statusSummary.components.find((c) => c.name === 'Actions')
-    : null;
-  if (actionsComponent && actionsComponent.status && actionsComponent.status !== 'operational') {
-    const incident = Array.isArray(statusSummary.incidents) ? statusSummary.incidents[0] : null;
-    const incidentNote = incident ? ` (incident: "${incident.name}", status ${incident.status})` : '';
-    return {
-      reason: 'github_platform_outage',
-      evidence: `githubstatus.com reports Actions component status="${actionsComponent.status}"${incidentNote}`,
-    };
+  // RF-1 gate: only ask "is GitHub down globally" once local evidence shows
+  // nothing was ever created for THIS sha. checkRuns is already fetched above
+  // for the queue_starvation check -- reuse it rather than re-fetching. A
+  // non-empty checkRuns array (even one completed/successful run) proves this
+  // SHA's checks ran, which a global degraded/outage status does not override.
+  if (checkRuns.length === 0) {
+    const fetchCheckSuites = deps.fetchCheckSuites || (() => captureJson('gh', [
+      'api', '-H', 'Accept: application/vnd.github+json',
+      `repos/${REPO_SLUG}/commits/${headSha}/check-suites?per_page=100`,
+    ]));
+    const checkSuitesResponse = fetchCheckSuites();
+    const suitesCount = checkSuitesResponse && typeof checkSuitesResponse.total_count === 'number'
+      ? checkSuitesResponse.total_count
+      : null;
+
+    // suitesCount === 0 only (not `!suitesCount`, which would also match
+    // `null` on a failed/unparseable fetch) -- an unconfirmed fetch must not
+    // silently satisfy the gate.
+    if (suitesCount === 0) {
+      // Public, unauthenticated endpoint -- curl, not `gh api`, and tolerant
+      // of any failure (offline dev box, DNS hiccup, githubstatus.com itself
+      // down): captureJson/captureStdout already return null on a non-zero
+      // exit or bad JSON, so this fails safe straight through to `healthy`
+      // below rather than throwing. Never claim an outage we couldn't
+      // actually confirm.
+      const fetchGithubStatus = deps.fetchGithubStatus || (() => captureJson('curl', ['-s', '--max-time', '5', 'https://www.githubstatus.com/api/v2/summary.json']));
+      const statusSummary = fetchGithubStatus();
+      const actionsComponent = statusSummary && Array.isArray(statusSummary.components)
+        ? statusSummary.components.find((c) => c.name === 'Actions')
+        : null;
+      if (actionsComponent && actionsComponent.status && actionsComponent.status !== 'operational') {
+        // Match the incident that actually lists the Actions component --
+        // incidents[] can carry incidents affecting other components (Pages,
+        // Packages, ...) that have nothing to do with why Actions is down.
+        // Omit the note entirely rather than cite the wrong one.
+        const relevantIncident = Array.isArray(statusSummary.incidents)
+          ? statusSummary.incidents.find((inc) => Array.isArray(inc.components)
+            && inc.components.some((c) => c.id === actionsComponent.id))
+          : null;
+        const incidentNote = relevantIncident ? ` (incident: "${relevantIncident.name}", status ${relevantIncident.status})` : '';
+        return {
+          reason: 'github_platform_outage',
+          evidence: `githubstatus.com reports Actions component status="${actionsComponent.status}"${incidentNote}, and zero check-suites exist for ${headSha}`,
+        };
+      }
+    }
   }
 
   return { reason: 'healthy', evidence: 'no verified unavailability condition found' };

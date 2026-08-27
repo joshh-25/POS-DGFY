@@ -184,9 +184,10 @@ test('classifyCiUnavailability returns github_platform_outage when GitHub Status
       fetchRunners: () => ({ runners: [{ status: 'online' }] }),
       fetchCheckRuns: () => ({ check_runs: [] }),
       tryBillingFallback: () => null,
+      fetchCheckSuites: () => ({ total_count: 0 }),
       fetchGithubStatus: () => ({
-        components: [{ name: 'Actions', status: 'major_outage' }],
-        incidents: [{ name: 'Actions and Pages Incident', status: 'investigating' }],
+        components: [{ id: 'actions-id', name: 'Actions', status: 'major_outage' }],
+        incidents: [{ name: 'Actions and Pages Incident', status: 'investigating', components: [{ id: 'actions-id' }] }],
       }),
     }
   );
@@ -202,6 +203,7 @@ test('classifyCiUnavailability falls through to healthy when GitHub Status repor
       fetchRunners: () => ({ runners: [{ status: 'online' }] }),
       fetchCheckRuns: () => ({ check_runs: [] }),
       tryBillingFallback: () => null,
+      fetchCheckSuites: () => ({ total_count: 0 }),
       fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'operational' }], incidents: [] }),
     }
   );
@@ -215,10 +217,82 @@ test('classifyCiUnavailability falls through to healthy (not a crash) when the s
       fetchRunners: () => ({ runners: [{ status: 'online' }] }),
       fetchCheckRuns: () => ({ check_runs: [] }),
       tryBillingFallback: () => null,
+      fetchCheckSuites: () => ({ total_count: 0 }),
       fetchGithubStatus: () => null,
     }
   );
   assert.equal(result.reason, 'healthy');
+});
+
+// RF-1 (PR #1078 review): a global GitHub Status incident on Actions must not
+// override actual target-SHA evidence that checks ran fine. A completed
+// check run for this SHA is proof CI was not absent, regardless of what
+// githubstatus.com says about Actions elsewhere.
+test('classifyCiUnavailability does NOT report github_platform_outage when the target SHA already has a completed check run (RF-1)', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [{ name: 'dgfy-api-build-check', status: 'completed', conclusion: 'success' }] }),
+      tryBillingFallback: () => null,
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'degraded_performance' }], incidents: [] }),
+    }
+  );
+  assert.equal(result.reason, 'healthy');
+});
+
+// RF-1: zero check-*runs* alone isn't proof nothing was created for this SHA
+// -- a check-suite can exist with no runs yet. The gate requires zero
+// check-suites too before consulting global status.
+test('classifyCiUnavailability does NOT report github_platform_outage when a check-suite exists for the SHA even with zero check-runs (RF-1)', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchCheckSuites: () => ({ total_count: 1 }),
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'major_outage' }], incidents: [] }),
+    }
+  );
+  assert.equal(result.reason, 'healthy');
+});
+
+// RF-1: an unconfirmed check-suites fetch (network failure) must fail safe,
+// not silently satisfy the zero-suites gate.
+test('classifyCiUnavailability does NOT report github_platform_outage when the check-suites fetch itself fails (RF-1)', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchCheckSuites: () => null,
+      fetchGithubStatus: () => ({ components: [{ name: 'Actions', status: 'major_outage' }], incidents: [] }),
+    }
+  );
+  assert.equal(result.reason, 'healthy');
+});
+
+// RF-1: incidents[] can list incidents unrelated to the Actions component
+// (Pages, Packages, ...) -- only cite one that actually names Actions among
+// its affected components, and omit the note rather than guess.
+test('classifyCiUnavailability only cites an incident that actually lists the Actions component (RF-1)', () => {
+  const result = classifyCiUnavailability(
+    { headSha: 'abc123', thresholdMinutes: 20, nowMs: Date.now() },
+    {
+      fetchRunners: () => ({ runners: [{ status: 'online' }] }),
+      fetchCheckRuns: () => ({ check_runs: [] }),
+      tryBillingFallback: () => null,
+      fetchCheckSuites: () => ({ total_count: 0 }),
+      fetchGithubStatus: () => ({
+        components: [{ id: 'actions-id', name: 'Actions', status: 'major_outage' }],
+        incidents: [{ name: 'Unrelated Packages Incident', status: 'investigating', components: [{ id: 'packages-id' }] }],
+      }),
+    }
+  );
+  assert.equal(result.reason, 'github_platform_outage');
+  assert.doesNotMatch(result.evidence, /incident:/);
 });
 
 // --- renderComment --------------------------------------------------------
