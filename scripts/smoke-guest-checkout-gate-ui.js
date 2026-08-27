@@ -49,9 +49,14 @@ const checks = [
       await page.getByRole('button', { name: /Continue as Guest/i }).click();
       await page.waitForTimeout(300);
       const bodyText = await page.locator('body').innerText({ timeout: 10000 });
+      const advancedToGuestDetails = /Guest Details|Step 1: Customer Details/i.test(bodyText);
+      // RF-5: the harness's claimed proof is the transition, not merely "the click didn't throw" --
+      // a click that lands but goes nowhere (wrong selector, dead handler, stale route) must fail
+      // the run, not print PASS. `passed` is the single boolean the failure reducer checks below.
       return {
         interaction: 'clicked "Continue as Guest"',
-        advancedToGuestDetails: /Guest Details|Step 1: Customer Details/i.test(bodyText)
+        advancedToGuestDetails,
+        passed: advancedToGuestDetails === true
       };
     }
   },
@@ -72,28 +77,40 @@ const checks = [
       await page.waitForTimeout(300);
       const url = page.url();
       const bodyText = await page.locator('body').innerText({ timeout: 10000 });
+      const navigatedToAuth = /\/register|\/login/.test(url);
+      const authPageNonblank = bodyText.trim().length > 0;
+      // RF-5: both legs of the proof -- landed on the right route AND that route actually rendered
+      // something -- are required, not just "no exception was thrown."
       return {
         interaction: 'clicked "Create DGFY Account"',
-        navigatedToAuth: /\/register|\/login/.test(url),
+        navigatedToAuth,
         landedUrl: url,
-        authPageNonblank: bodyText.trim().length > 0
+        authPageNonblank,
+        passed: navigatedToAuth === true && authPageNonblank === true
       };
     }
   }
 ];
 
+// RF-5: a tenant's storefront profile/cover image 403s in this local-test env (confirmed via direct
+// network inspection to be /uploads/storefront-assets/<tenant>/profile-.../large.webp -- an
+// unrelated static-asset access-control quirk, nothing to do with the guest-checkout gate this
+// suite proves). Filtering used to match on the console log's bare status text, which had no URL
+// attached and so silently swallowed *every* 403, including one that would actually matter to this
+// flow. Filtering now happens at the response level instead, scoped to this exact documented URL
+// shape, so an unrelated/unexpected 4xx on the target flow still fails the run.
+const KNOWN_BENIGN_RESPONSE = {
+  status: 403,
+  urlPattern: /\/uploads\/storefront-assets\/.*\.(webp|png|jpe?g)(\?.*)?$/i
+};
+
 const normalizeErrors = (errors) => errors.filter((entry) => {
   const text = `${entry.type || ''} ${entry.text || ''}`;
   if (/React Router Future Flag Warning/i.test(text)) return false;
-  if (/Failed to load resource: the server responded with a status of (400|401|404)/i.test(text)) return false;
-  // A tenant's storefront profile/cover image 403s in this local-test env (confirmed via direct
-  // network inspection to be /uploads/storefront-assets/<tenant>/profile-.../large.webp -- an
-  // unrelated static-asset access-control quirk, nothing to do with the guest-checkout gate this
-  // suite proves). Chrome's own "Failed to load resource" console log carries the status but not
-  // the URL, so this can only be matched by status; same ignore-by-pattern convention as the
-  // existing smoke-dgfy-access-ui.js / smoke-pos-terminal-ui.js harnesses use for their own known
-  // non-target noise (400/401/404 there).
-  if (/Failed to load resource: the server responded with a status of 403/i.test(text)) return false;
+  // "Failed to load resource" console lines duplicate what the response-level listener already
+  // captures with a URL attached, and provide no way to scope a filter safely -- drop them from
+  // console-error evidence entirely; HTTP failures are judged from responseFailures instead.
+  if (/Failed to load resource: the server responded with a status of \d+/i.test(text)) return false;
   return true;
 });
 
@@ -114,9 +131,22 @@ const runCheck = async (browser, check, viewport) => {
   });
   page.on('response', (response) => {
     const status = response.status();
-    if (status >= 500) {
-      responseFailures.push({ status, url: response.url(), method: response.request().method() });
-    }
+    if (status < 400) return;
+    const url = response.url();
+    const isKnownBenign = status === KNOWN_BENIGN_RESPONSE.status && KNOWN_BENIGN_RESPONSE.urlPattern.test(url);
+    if (isKnownBenign) return;
+    // RF-5: fail on any 5xx outright, and on a 4xx against this flow's own API surface (the
+    // storefront's store/catalog/checkout/auth endpoints) -- an unexpected 401/403/404 there is
+    // exactly the class of bug this suite exists to catch. A 4xx against something unrelated
+    // (third-party beacon, unrelated asset) is recorded but doesn't fail the run, same convention
+    // already used by scripts/smoke-dgfy-access-ui.js.
+    const relevantToFlow = /\/api\/v1\/store\//i.test(url);
+    responseFailures.push({
+      status,
+      url,
+      method: response.request().method(),
+      relevant: status >= 500 || relevantToFlow
+    });
   });
 
   // Registered before navigation so a catalog response that lands during/just after
@@ -215,11 +245,18 @@ const run = async () => {
     if (entry.consoleErrors.length > 0) {
       failed.push(`${entry.check}.${entry.viewport}.consoleErrors=${entry.consoleErrors.map((e) => e.text).join(' | ')}`);
     }
-    if (entry.responseFailures.length > 0) {
-      failed.push(`${entry.check}.${entry.viewport}.network5xx=${entry.responseFailures.map((f) => `${f.status} ${f.method} ${f.url}`).join(' | ')}`);
+    const relevantResponseFailures = entry.responseFailures.filter((f) => f.relevant);
+    if (relevantResponseFailures.length > 0) {
+      failed.push(`${entry.check}.${entry.viewport}.network=${relevantResponseFailures.map((f) => `${f.status} ${f.method} ${f.url}`).join(' | ')}`);
     }
-    if (entry.interactionResult?.interactionError) {
-      failed.push(`${entry.check}.${entry.viewport}.interactionError=${entry.interactionResult.interactionError}`);
+    // RF-5: the primary-interaction proof is only real if `passed` is explicitly true -- a click
+    // that throws, does nothing, lands on the wrong route, or renders a blank destination must all
+    // fail the run rather than only the (rare) thrown-exception case.
+    if (entry.interactionResult?.passed !== true) {
+      const reason = entry.interactionResult?.interactionError
+        ? `threw: ${entry.interactionResult.interactionError}`
+        : JSON.stringify(entry.interactionResult);
+      failed.push(`${entry.check}.${entry.viewport}.interactionFailed=${reason}`);
     }
     return failed;
   });
