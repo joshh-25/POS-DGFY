@@ -42,7 +42,7 @@ import {
     verifyStoreCancelProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
-import { assertGuestCheckoutProof } from '../utils/storeGuestCheckoutProof.js';
+import { assertGuestCheckoutAllowed, assertGuestCheckoutProof } from '../utils/storeGuestCheckoutProof.js';
 import { normalizeIntakeFormSchema } from '../../shared/utils/intakeFormSchema.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -1818,6 +1818,7 @@ const resolveCheckoutContext = async ({
     return {
         normalized,
         settings,
+        accessPolicy,
         location,
         storefront_open: storefrontOpen,
         estimated_wait_minutes: estimatedWaitMinutes,
@@ -3055,6 +3056,11 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: resolved.accessPolicy?.guest_checkout_enabled,
+                storeCustomer: normalizedStoreCustomer
+            });
+
             assertGuestCheckoutProof({
                 tenantId: normalizedTenantId,
                 email: normalized.customer_email,
@@ -3839,6 +3845,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_POLICY_UNRESOLVED' } }
                 );
             }
+
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: resolved.accessPolicy?.guest_checkout_enabled,
+                storeCustomer
+            });
 
             assertGuestCheckoutProof({
                 tenantId,
