@@ -19,6 +19,7 @@ const compliancePanelPath = path.resolve(__dirname, '../../compliance/components
 const compliancePolicyEnginePath = path.resolve(__dirname, '../../../../../../apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminal.jsx');
 const posCheckoutTerminalViewPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminalView.jsx');
+const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminalReceiptDialogs.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../../pos/components/TerminalPageLayout.jsx');
 const SETTINGS_TARGET_PATTERN = /\/settings\?tab=[a-z]+[^\s'"`)]*/g;
 
@@ -75,6 +76,7 @@ describe('settings deep-link contract', () => {
   it('keeps POS fiscal settings UI wired to backend services and avoids browser prompt reprint flow', () => {
     const settingsContent = fs.readFileSync(settingsPagePath, 'utf8');
     const posContent = fs.readFileSync(posCheckoutTerminalViewPath, 'utf8');
+    const receiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');
 
     expect(settingsContent).toContain('fetchFiscalTerminalRegistrations');
     expect(settingsContent).toContain('fetchFiscalLedgerIntegrity');
@@ -84,10 +86,11 @@ describe('settings deep-link contract', () => {
     expect(settingsContent).toContain('Fiscal Terminal Registration');
     expect(settingsContent).toContain('Fiscal Ledger Integrity');
     expect(settingsContent).toContain('eSales Reporting Packages');
-    expect(posContent).not.toContain('window.prompt');
-    expect(posContent).toContain('Send to Printer');
-    expect(posContent).toContain('handlePrintReceipt');
-    expect(posContent).toContain('lastReceiptPendingSync');
+    expect(`${posContent}\n${receiptDialogsContent}`).not.toContain('window.prompt');
+    expect(receiptDialogsContent).toContain('View Receipt');
+    expect(receiptDialogsContent).toContain('Print Order');
+    expect(receiptDialogsContent).toContain('handlePrintReceipt');
+    expect(receiptDialogsContent).toContain('lastReceiptPendingSync');
   });
 
   it('keeps cross-surface settings targets emitted by policy and POS code resolvable', () => {
