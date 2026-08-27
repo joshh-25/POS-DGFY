@@ -177,7 +177,6 @@ export const usePosCheckoutWorkflow = ({
     splitPaymentSummaryChangeAmount = 0,
 } = {}) => {
     const splitPaymentReturnToCheckoutRef = useRef(false);
-    const parkedSaleResumeCatalogRef = useRef({ parkedSaleId: null, catalog: [] });
     const schedulePostCheckoutTask = useCallback((task) => {
         // Let React commit the receipt/payment-complete UI before a legacy
         // synchronous JavascriptInterface call can occupy the WebView thread.
@@ -510,6 +509,29 @@ export const usePosCheckoutWorkflow = ({
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
+        if (activeParkedSale?.pos_parked_sale_id
+            && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
+            return {
+                ok: false,
+                message: 'Finish, update, or cancel the currently resumed parked sale before opening another one.'
+            };
+        }
+        if (normalizedAction === 'resume'
+            && activeParkedSale?.pos_parked_sale_id
+            && Number(activeParkedSale.pos_parked_sale_id) === Number(parkedSale?.pos_parked_sale_id)) {
+            return {
+                ok: false,
+                message: 'This parked sale is already active in the current cart.'
+            };
+        }
+        if (safeCart.length > 0) {
+            return {
+                ok: false,
+                message: normalizedAction === 'resume'
+                    ? 'Resume requires an empty current sale. Park or clear the current sale first.'
+                    : 'Pay requires an empty current sale. Park or clear the current sale first.'
+            };
+        }
         const [{
             getParkedSaleCatalogLookupQueries,
             mergeParkedSaleCatalogResults,
@@ -555,53 +577,33 @@ export const usePosCheckoutWorkflow = ({
                 return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
             }
         });
-        if (activeParkedSale?.pos_parked_sale_id
-            && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
-            return {
-                ok: false,
-                message: 'Finish, update, or cancel the currently resumed parked sale before opening another one.'
-            };
-        }
-        if (normalizedAction === 'resume'
-            && activeParkedSale?.pos_parked_sale_id
-            && Number(activeParkedSale.pos_parked_sale_id) === Number(parkedSale?.pos_parked_sale_id)) {
-            return {
-                ok: false,
-                message: 'This parked sale is already active in the current cart.'
-            };
-        }
-        if (safeCart.length > 0) {
-            return {
-                ok: false,
-                message: normalizedAction === 'resume'
-                    ? 'Resume requires an empty current sale. Park or clear the current sale first.'
-                    : 'Pay requires an empty current sale. Park or clear the current sale first.'
-            };
-        }
         if (!validation.ok) {
             return {
                 ok: false,
                 message: `This parked sale needs review before it can be resumed: ${validation.conflicts.slice(0, 3).join(' ')}`
             };
         }
-        parkedSaleResumeCatalogRef.current = {
-            parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
-            catalog: resumeCatalog
+        return {
+            ok: true,
+            resumeContext: {
+                parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
+                catalog: resumeCatalog
+            }
         };
-        return { ok: true };
     }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
 
-    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay') => {
+    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay', resumeContext = null) => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
             : {};
-        const validatedCatalog = parkedSaleResumeCatalogRef.current.parkedSaleId === Number(claimedSale?.pos_parked_sale_id)
-            ? parkedSaleResumeCatalogRef.current.catalog
-            : safeCatalog;
+        const claimedSaleId = Number(claimedSale?.pos_parked_sale_id);
+        if (Number(resumeContext?.parkedSaleId) !== claimedSaleId || !Array.isArray(resumeContext?.catalog)) {
+            throw new Error('This parked sale must be revalidated before it can be resumed. Reopen Parked Sales and try again.');
+        }
+        const validatedCatalog = resumeContext.catalog;
         const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
-        parkedSaleResumeCatalogRef.current = { parkedSaleId: null, catalog: [] };
         const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
         const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
             ? snapshot.discount_context
@@ -696,7 +698,6 @@ export const usePosCheckoutWorkflow = ({
         itemDiscountApprovalRef,
         posWorkflow,
         resetEmployeeCredit,
-        safeCatalog,
         setActiveParkedSale,
         setAffiliateCodeInput,
         setAppliedDiscount,

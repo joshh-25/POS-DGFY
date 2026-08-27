@@ -374,14 +374,54 @@ describe('usePosCheckoutWorkflow', () => {
             limit: 200,
             location_id: 2
         });
-        expect(validation).toEqual({ ok: true });
+        expect(validation).toEqual({
+            ok: true,
+            resumeContext: {
+                parkedSaleId: 27,
+                catalog: expect.any(Array)
+            }
+        });
 
         await act(async () => {
-            await result.current.handleParkedSaleClaimed(parkedSale, 'resume');
+            await result.current.handleParkedSaleClaimed(parkedSale, 'resume', validation.resumeContext);
         });
         expect(props.setCart).toHaveBeenCalledWith([
             expect.objectContaining({ item_id: 7, item_name: 'Coffee', quantity: 1 })
         ]);
+    });
+
+    it('rejects local parked-sale blockers before fetching the catalog', async () => {
+        const { result } = renderCheckout();
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume({
+                pos_parked_sale_id: 27,
+                snapshot: {
+                    order_method: 'dine_in',
+                    lines: [{ item_id: 7, item_name: 'Coffee', quantity: 1 }]
+                }
+            }, 'resume');
+        });
+
+        expect(validation).toEqual({
+            ok: false,
+            message: 'Resume requires an empty current sale. Park or clear the current sale first.'
+        });
+        expect(fetchPosCatalog).not.toHaveBeenCalled();
+    });
+
+    it('refuses to hydrate a claimed parked sale without matching validation context', async () => {
+        const { result, props } = renderCheckout({ safeCart: [] });
+
+        await expect(result.current.handleParkedSaleClaimed({
+            pos_parked_sale_id: 28,
+            snapshot: { lines: [{ item_id: 7, item_name: 'Coffee', quantity: 1 }] }
+        }, 'resume', {
+            parkedSaleId: 27,
+            catalog: []
+        })).rejects.toThrow('This parked sale must be revalidated before it can be resumed.');
+        expect(props.setCart).not.toHaveBeenCalled();
     });
 
     it('reports a catalog refresh failure instead of claiming a parked item was removed', async () => {
