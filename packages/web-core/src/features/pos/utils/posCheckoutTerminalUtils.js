@@ -3,6 +3,9 @@ import { matchesPosHistorySearch } from './posHistorySearch.js';
 
 export const money = (value) => Number(value || 0).toFixed(2);
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+export const getCartLineSubtotal = (line) => round4(
+    Number(line?.quantity || 0) * Number(line?.sale_price || 0)
+);
 
 export const SPLIT_PAYMENT_METHOD_LABELS = {
     cash: 'Cash',
