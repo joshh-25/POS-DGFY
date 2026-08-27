@@ -462,6 +462,15 @@ const formatValidationErrorDescription = (apiErrors) => {
     .join(' | ');
 };
 
+// #1093: mirrors the server-side guard in tenantLocationUseCases.js's
+// assertFulfillmentMethodAvailable -- a location can't lose its last enabled
+// delivery/pickup method while the store is in Transaction mode. UI-side lock is a
+// convenience (disables the switch instead of a rejected save); the server guard is
+// the one that's actually authoritative.
+const LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE = 'At least one of Delivery or Pickup must stay '
+  + 'enabled while Customer Access Mode is Transaction. To stop taking online orders instead, '
+  + 'switch Customer Access Mode to Catalog Only.';
+
 const createDefaultLocationForm = () => ({
   name: '',
   address_line: '',
@@ -2361,6 +2370,12 @@ export default function Settings() {
   const maxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMaxMode || 'transaction', 'transaction');
   const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessEffectiveMode || requestedCustomerAccessMode);
+  // #1093: exactly one of delivery/pickup is currently on for the location being edited, and the
+  // store is in Transaction mode -- lock that switch so it can't be turned off and leave the
+  // location with neither. Both-on (nothing to lock) and both-off (already saved that way,
+  // handled by the server's previous-state exemption) are both left alone.
+  const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
+    && locationForm.supports_delivery !== locationForm.supports_pickup;
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
     : 'No platform or registration-stage cap is reducing the requested mode.';
@@ -2973,9 +2988,13 @@ export default function Settings() {
                     <span className="text-sm text-slate-600">Enable delivery orders for this location</span>
                     <Switch
                       checked={locationForm.supports_delivery === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}
                       onCheckedChange={(v) => handleLocationFormChange('supports_delivery', v)}
                     />
                   </div>
+                  {lastFulfillmentMethodLocked && locationForm.supports_delivery === true && (
+                    <p className="text-xs text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Supports Pickup</Label>
@@ -2983,10 +3002,22 @@ export default function Settings() {
                     <span className="text-sm text-slate-600">Enable pickup orders for this location</span>
                     <Switch
                       checked={locationForm.supports_pickup === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}
                       onCheckedChange={(v) => handleLocationFormChange('supports_pickup', v)}
                     />
                   </div>
+                  {lastFulfillmentMethodLocked && locationForm.supports_pickup === true && (
+                    <p className="text-xs text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                  )}
                 </div>
+                {locationForm.supports_delivery === false && locationForm.supports_pickup === false && (
+                  <div className="space-y-2 md:col-span-2">
+                    <p className="text-xs text-amber-700">
+                      This location has neither Delivery nor Pickup enabled -- it cannot receive online orders while
+                      Customer Access Mode is Transaction. Existing storefront checkouts will show it as unavailable.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                     <div>
