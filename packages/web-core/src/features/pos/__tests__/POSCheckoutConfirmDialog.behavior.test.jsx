@@ -126,10 +126,10 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
 
     it('keeps keystrokes local and confirms with the validated payment snapshot', async () => {
         const viewModel = createViewModel();
-        let terminalRenderCount = 0;
+        const terminalRender = vi.fn();
 
         function TerminalHarness() {
-            terminalRenderCount += 1;
+            terminalRender();
             return <POSCheckoutConfirmDialog viewModel={viewModel} />;
         }
 
@@ -145,7 +145,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(paymentInput.value).toBe('50');
         expect(confirmButton.disabled).toBe(true);
         expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
-        expect(terminalRenderCount).toBe(1);
+        expect(terminalRender).toHaveBeenCalledTimes(1);
         expect(viewModel.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
         expect(viewModel.setCustomerPaymentAmountAutoFilled).not.toHaveBeenCalled();
         expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
@@ -153,7 +153,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         fireEvent.change(paymentInput, { target: { value: '150' } });
         expect(confirmButton.disabled).toBe(false);
         expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
-        expect(terminalRenderCount).toBe(1);
+        expect(terminalRender).toHaveBeenCalledTimes(1);
         expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.click(confirmButton);

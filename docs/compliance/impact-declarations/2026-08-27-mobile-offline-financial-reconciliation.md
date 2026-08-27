@@ -47,6 +47,8 @@ and financial sync conflict handling.
 
 - Focused API tests cover signed policy issue/verification, tamper rejection,
   transaction checkpoint cursoring, and per-entry void conflict results.
+- POS checkout dialog regression tests and their render-count contract pass under
+  the shared frontend test and ESLint configuration.
 - Focused mobile tests cover schema migration, settlement policy, checkpoint DTO,
   sync transport/reconciliation, sale atomicity, and shift-summary provenance.
 - TypeScript, architecture, adjacent-test, documentation, lint, controller, and
