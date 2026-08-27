@@ -7,7 +7,7 @@ classification: major
 surfaces: settings,payments,pos,terminal
 reason_codes_impacted: GUEST_CHECKOUT_DISABLED
 policy_version: 2026.08.27
-verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),apps/dgfy-ims full web-core suite (295 files / 1794 passed, incl. posSettingsStrictBinding.contract.test.js and customerAccessModeCards.contract.test.js),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store,npm run build:pos
+verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js (8 passed, new, caller-level proof at all four enforcement sites),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),apps/dgfy-ims full web-core suite (295 files / 1794 passed, incl. posSettingsStrictBinding.contract.test.js and customerAccessModeCards.contract.test.js),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store,npm run build:pos,npm run smoke:guest-checkout-gate (new Playwright rendered-UI harness -- desktop+mobile, both toggle states),IMS/POS toggle save-and-rehydrate verified live against the Docker stack (desktop, database-row-confirmed)
 rollback_note: Revert this commit. The new setting key defaults to enabled everywhere it is read (customerAccessPolicy.js's DEFAULT_GUEST_CHECKOUT_ENABLED, and the storefront's own isGuestCheckoutAllowed fail-open check), and no existing tenant has a seeded row for it (only newly-provisioned tenants get one, at provisioning time) -- reverting removes the enforcement and the toggle with no persisted-state cleanup needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -134,6 +134,29 @@ Consequences item 2 both described the guest-or-account gate as unconditional; b
   unrelated to this diff (confirmed: the two DB-dependent provisioning-test failures seen in a
   targeted run reproduce identically on the pre-change baseline, via a temporary stash-and-rerun).
   Not cited as full-suite evidence; the 21 targeted usecase files above are.
+- `apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js` (new, PR #1095 review
+  finding RF-2): 8/8 passing — caller-level proof at all four enforcement sites
+  (`buildStoreCheckoutUseCase`, `buildStoreCheckoutPaymentSessionUseCase`,
+  `buildCreateServiceBookingUseCase`, `buildCreateServiceBookingBatchUseCase`), not just the
+  isolated decision function: a guest gets 403 `GUEST_CHECKOUT_DISABLED` with the write/
+  payment-session mock never called, and a DGFY-linked customer still succeeds through the same
+  setting.
+- Rendered UI proof (Architecture Governance item 8; PR #1095 review finding RF-3), storefront
+  guest-vs-account entry gate: new committed harness `scripts/smoke-guest-checkout-gate-ui.js`
+  (`npm run smoke:guest-checkout-gate`) against the live local-test Docker stack — page identity,
+  nonblank content, no framework overlay, console health, one primary interaction, desktop
+  (1440x960) and mobile (390x844) viewports, for both the enabled and disabled state on two real
+  tenants. This pass caught and fixed a real bug: every checkout call site was passing a hardcoded
+  description into the shared entry-gate renderer, so the copy never actually reflected the
+  disabled state even though the "Continue as Guest" button correctly did — fixed by threading a
+  `guestCheckoutAllowed` prop through all seven render call sites. Full storefront suite re-run
+  clean after the fix: 140 files / 754 tests.
+- Rendered UI proof (item 8; RF-3), IMS and POS "Allow Guest Checkout" toggle save-and-rehydrate:
+  completed against the live Docker stack with Pat's own authenticated session (never seen or
+  entered by this session) — toggled both directions on both surfaces, confirmed persistence at
+  the database row level after each save and on reload, console clean throughout. Desktop only; a
+  live-window resize to the mobile viewport did not take effect in this environment (same
+  limitation already disclosed for Phase 152/`DOWNPAYMENT.md`), disclosed rather than faked.
 
 ## Changed Files
 
