@@ -9699,6 +9699,26 @@ preference for where this control should live), and a vertical-dependent provisi
   disclosed once for Phase 152/`DOWNPAYMENT.md`, not new here); not pursued further rather than
   faked, per that same precedent's own resolution. Screenshots in
   `.tmp/rendered-qa/merchant-toggle/` (gitignored).
+- [x] **Harness integrity fix (PR #1095 reviewer finding RF-5)**: the rendered-proof harness above
+  (`scripts/smoke-guest-checkout-gate-ui.js`) had two real gaps that could let it print `PASS` on a
+  broken proof. (1) Each `interact()` returned diagnostic fields (`advancedToGuestDetails`,
+  `navigatedToAuth`, `authPageNonblank`) but the failure reducer only checked for a thrown
+  `interactionError` -- a click that landed but produced the wrong outcome would still pass. Fixed
+  by having each `interact()` compute a single explicit `passed` boolean from its own assertions,
+  and changing the reducer to `entry.interactionResult?.passed !== true`. (2) The console-health
+  check ignored every 403 by bare status text (no URL was available on that log line), which could
+  hide a real, relevant 403 alongside the one known-benign storefront-asset 403. Fixed by moving
+  HTTP-failure judgment entirely to the `page.on('response')` listener, which does carry the URL:
+  a 403 is only ignored when it matches the documented `/uploads/storefront-assets/....(webp|png|jpe?g)`
+  shape; any other 4xx against this flow's own `/api/v1/store/...` surface, or any 5xx anywhere, now
+  fails the run. **Negative-run proof, as requested**: temporarily forced `passed: false` on the
+  `enabled` check's interaction (while its own `advancedToGuestDetails` computed `true`, i.e. the
+  click itself worked) and re-ran the harness -- exited 1, `FAIL enabled.desktop.interactionFailed=...,
+  enabled.mobile.interactionFailed=...`, proving the reducer genuinely gates on `passed` rather than
+  only on a thrown exception. Reverted immediately, confirmed `git diff` showed no residual change,
+  and re-ran clean: exit 0, all 4 checks pass, `interactionResult.passed: true` on all of them, one
+  correctly-ignored anonymous `401` on `/api/v1/dgfy/auth/me` visible in the evidence JSON and
+  correctly non-failing (not a target-flow endpoint).
 - **Correction to this ledger's own prior record**: an earlier pass of this rendered-proof work
   claimed "no `storefront_guest_checkout_enabled` row was left on any tenant" after reverting a test
   mutation on `shopai-store-745611`. That claim was checked against the wrong tenant and was wrong

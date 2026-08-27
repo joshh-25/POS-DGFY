@@ -7,7 +7,7 @@ classification: major
 surfaces: settings,payments,pos,terminal
 reason_codes_impacted: GUEST_CHECKOUT_DISABLED
 policy_version: 2026.08.27
-verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js (8 passed, new, caller-level proof at all four enforcement sites),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),apps/dgfy-ims full web-core suite (295 files / 1794 passed, incl. posSettingsStrictBinding.contract.test.js and customerAccessModeCards.contract.test.js),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store,npm run build:pos,npm run smoke:guest-checkout-gate (new Playwright rendered-UI harness -- desktop+mobile, both toggle states),IMS/POS toggle save-and-rehydrate verified live against the Docker stack (desktop, database-row-confirmed)
+verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 passed),apps/dgfy-api/tests/storeGuestCheckoutProof.test.js (5 passed, new),apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js (8 passed, new, caller-level proof at all four enforcement sites),apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js (9 passed),21 store/service usecase test files (263 passed, no regressions),apps/dgfy-storefront full suite (140 files / 754 passed),apps/dgfy-ims full web-core suite (295 files / 1794 passed, incl. posSettingsStrictBinding.contract.test.js and customerAccessModeCards.contract.test.js),node --check on every changed apps/dgfy-api .js file,npm run build:skupervisor,npm run build:store,npm run build:pos,npm run smoke:guest-checkout-gate (new Playwright rendered-UI harness -- desktop+mobile, both toggle states; RF-5: interaction assertions now gate on an explicit passed boolean and console/response 4xx filtering is URL-scoped, negative-run proof exit 1 / positive-run exit 0),IMS/POS toggle save-and-rehydrate verified live against the Docker stack (desktop, database-row-confirmed)
 rollback_note: Revert this commit. The new setting key defaults to enabled everywhere it is read (customerAccessPolicy.js's DEFAULT_GUEST_CHECKOUT_ENABLED, and the storefront's own isGuestCheckoutAllowed fail-open check), and no existing tenant has a seeded row for it (only newly-provisioned tenants get one, at provisioning time) -- reverting removes the enforcement and the toggle with no persisted-state cleanup needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -157,6 +157,16 @@ Consequences item 2 both described the guest-or-account gate as unconditional; b
   the database row level after each save and on reload, console clean throughout. Desktop only; a
   live-window resize to the mobile viewport did not take effect in this environment (same
   limitation already disclosed for Phase 152/`DOWNPAYMENT.md`), disclosed rather than faked.
+- Harness integrity fix (PR #1095 review finding RF-5), `scripts/smoke-guest-checkout-gate-ui.js`:
+  each `interact()` now returns an explicit `passed` boolean computed from its own assertions, and
+  the failure reducer gates on `passed !== true` rather than only on a thrown exception; console-403
+  filtering was replaced with response-level filtering scoped to the documented
+  `/uploads/storefront-assets/....(webp|png|jpe?g)` URL shape, with any other 4xx against this
+  flow's `/api/v1/store/...` surface (or any 5xx) now failing the run. Negative-run proof: forcing
+  `passed: false` on the `enabled` check while its own `advancedToGuestDetails` computed `true`
+  produced exit 1 with `interactionFailed` in the output; reverted, then a clean re-run produced
+  exit 0 with all 4 checks passing and one correctly-ignored, correctly-non-failing anonymous 401
+  on `/api/v1/dgfy/auth/me` visible in the evidence JSON.
 
 ## Changed Files
 
