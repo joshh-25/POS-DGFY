@@ -47,7 +47,7 @@ import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/po
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
-import { formatQuantity, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
+import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
 import { POSCheckoutConfirmDialog } from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
 
@@ -1216,7 +1216,7 @@ return (
                                         <div className="text-[11px] text-slate-500">
                                             <span>Price</span>
                                             <p className="mt-1 h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-[13px] font-extrabold leading-8 text-[#0F172A]">
-                                                {money(line.sale_price)}
+                                                {money(getCartLineSubtotal(line))}
                                             </p>
                                         </div>
                                     </div>
