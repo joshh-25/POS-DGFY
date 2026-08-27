@@ -16,9 +16,9 @@ cd apps/dgfy-storefront && npm run lint && cd ../..
 
 ### 2. Backend Lint Check
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run lint
-cd ..
+cd ../..
 ```
 
 ### 3. Endpoint Verification

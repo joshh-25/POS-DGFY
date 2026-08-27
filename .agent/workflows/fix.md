@@ -7,9 +7,9 @@ description: Automatically fix linting and formatting issues
 
 ### 1. Backend Lint Fix
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run lint -- --fix
-cd ..
+cd ../..
 ```
 
 ### 2. Frontend Lint Fix

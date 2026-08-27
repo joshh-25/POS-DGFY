@@ -1,5 +1,7 @@
 # SKU Inventory Manager - Project Context
 
+> **Archived (#365, 2026-08-26).** Moved out of `.claude/` — a one-off historical status report, not a live agent instruction; the product-name/architecture framing in this document may be stale. `AGENTS.md` is the current, canonical source of truth.
+
 ## Project Overview
 This is a multi-tenant SKU Inventory Manager system with React frontend and Node.js/Express backend, using MySQL database and Redis for caching. It supports distributed database-per-tenant architecture and AI-assisted inventory management.
 
