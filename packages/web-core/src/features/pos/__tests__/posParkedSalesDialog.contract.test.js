@@ -70,7 +70,7 @@ describe('POS parked-sales pay/resume contract', () => {
 
     it('hydrates the checkout only after the server claim succeeds', () => {
         const claimRequest = dialogSource.indexOf('const claimed = await claimPosParkedSale');
-        const claimedCallback = dialogSource.indexOf('await onClaimed(claimed, normalizedAction);', claimRequest);
+        const claimedCallback = dialogSource.indexOf('await onClaimed(claimed, normalizedAction, preflight.resumeContext);', claimRequest);
         const terminalHydration = workflowSource.indexOf('const resumedLines = buildResumedCartLines');
 
         expect(claimedCallback).toBeGreaterThan(claimRequest);

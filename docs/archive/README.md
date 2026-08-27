@@ -25,3 +25,4 @@ Current archived sets:
 - Historical SKU expansion/storefront phased planning snapshots (March 2026): `docs/archive/reference/2026-03/`
 - Dated release go/no-go checklist snapshot (April 2026): `docs/archive/testing/2026-04/`
 - Release go/no-go checklist historical evidence log removed during the #375 rewrite (August 2026): `docs/archive/testing/2026-08/`
+- Loose one-off status/audit notes retired from `.claude/` during #365's stale-agent-surface cleanup (August 2026): `docs/archive/reference/claude-legacy-notes/`

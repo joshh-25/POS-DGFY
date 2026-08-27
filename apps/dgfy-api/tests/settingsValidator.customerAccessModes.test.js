@@ -131,6 +131,33 @@ describe('settings validator customer access modes', () => {
     ]);
   });
 
+  // #622
+  it('accepts the guest checkout toggle in the bulk schema', () => {
+    const req = { body: { storefront_guest_checkout_enabled: false } };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.storefront_guest_checkout_enabled).toBe(false);
+  });
+
+  it('accepts the guest checkout toggle in the single-setting schema', () => {
+    const req = {
+      params: { key: 'storefront_guest_checkout_enabled' },
+      body: { value: false }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.validatedData.value).toBe(false);
+  });
+
   it('normalizes string null review summary placeholders before bulk validation', () => {
     const req = {
       body: {

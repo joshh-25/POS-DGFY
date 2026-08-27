@@ -75,6 +75,55 @@ const resolveCatalogItemForLine = (line, indexes) => {
     return { item: null, reason: 'missing' };
 };
 
+export const getParkedSaleCatalogLookupQueries = ({ parkedSale } = {}) => {
+    const queries = new Set();
+
+    getParkedSaleSnapshotLines(parkedSale).forEach((line) => {
+        const sku = String(line?.sku_code || line?.item_sku || line?.sku || '').trim();
+        const name = String(line?.item_name || line?.name || '').trim();
+        const lookupValue = sku || name;
+        if (lookupValue) queries.add(lookupValue);
+    });
+
+    return [...queries];
+};
+
+export const mergeParkedSaleCatalogResults = (catalog = [], lookupResults = [], parkedSale = null) => {
+    const byId = new Map();
+    const lines = getParkedSaleSnapshotLines(parkedSale);
+    const parkedItemIds = new Set(lines
+        .map((line) => Number(line?.item_id))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0));
+    const parkedSkus = new Set(lines
+        .map((line) => normalizeItemIdentity(line?.sku_code || line?.item_sku || line?.sku))
+        .filter(Boolean));
+    const parkedNames = new Set(lines
+        .map((line) => normalizeItemIdentity(line?.item_name || line?.name))
+        .filter(Boolean));
+
+    toArray(catalog)
+        .filter((item) => {
+            if (lines.length === 0) return true;
+            const itemId = Number(item?.item_id);
+            const sku = normalizeItemIdentity(item?.sku_code);
+            const name = normalizeItemIdentity(item?.name);
+            return !parkedItemIds.has(itemId)
+                && !parkedSkus.has(sku)
+                && !parkedNames.has(name);
+        })
+        .forEach((item) => {
+            const itemId = Number(item?.item_id);
+            if (Number.isInteger(itemId) && itemId > 0) byId.set(itemId, item);
+        });
+
+    toArray(lookupResults).flatMap(toArray).forEach((item) => {
+        const itemId = Number(item?.item_id);
+        if (Number.isInteger(itemId) && itemId > 0) byId.set(itemId, item);
+    });
+
+    return [...byId.values()];
+};
+
 export const getParkedSaleSnapshotLines = (parkedSale = {}) => (
     toArray(parkedSale?.snapshot?.lines)
 );

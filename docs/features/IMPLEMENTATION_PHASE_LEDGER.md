@@ -9582,7 +9582,166 @@ and production proof.
 
 ### Next eligible phase
 
-The next repository phase is allocated from the authoritative ledger after Phase 175 completes.
+The next phase **in the standalone POS operator-switch initiative** is allocated after Phase 175
+completes -- scoped the same way Phase 149's "no next eligible phase" note was scoped to its own
+epic, not to every future ledger entry regardless of initiative. Amended 2026-08-27 (#622, PR
+#1095, reviewer finding RF-1): the original wording ("the next repository phase") read as an
+unconditional global lock and was flagged as contradicting Phase 176 immediately below, which is an
+unrelated, independently-scoped single-issue phase with no dependency on Phases 172-175. Phases
+152-154 already established the precedent this amendment makes explicit: an unrelated single-issue
+phase (frontend app split #322, GHCR image naming #928, backend image tag #913) can take the next
+sequential ledger number while a separate epic's own internal phase chain (the downpayment epic,
+Phases 140-151) is still in flight, because continuous numbering tracks the *ledger*, not any one
+initiative's completion order (`AGENTS.md`'s Continuous Phase Numbering rule: "Releases and
+milestones may group phases, but they do not reset the phase sequence"). Phases 172-175 remain
+`planned` and Phase 172 remains the next-eligible phase *for that initiative specifically*,
+unaffected by Phase 176 landing in between.
+
+---
+
+## Phase 176 - Per-Store Guest Checkout Toggle
+
+### Objective and scope
+
+Add a per-store merchant setting, `storefront_guest_checkout_enabled` (default `true`), that lets
+a merchant require a signed-in DGFY account before a customer can complete storefront checkout or
+a Services booking. Covers all storefront purchase paths (Retail, Simple/MSME, F&B product
+checkout, Services bookings), a fail-closed backend enforcement gate, a fail-open client UI gate
+in the shared guest-or-account entry renderer, a merchant toggle dual-surfaced in both IMS Settings
+> Storefront > Storefront Access and the POS app's own terminal settings workspace (Pat's
+preference for where this control should live), and a vertical-dependent provisioning default
+(disabled for `retail`, enabled otherwise) for newly-provisioned tenants only.
+
+### Status
+
+- `completed` (re-confirmed 2026-08-27 after a second RF-3 round — see the rendered-proof bullets
+  below for the full evidence, including one gap disclosed rather than faked, and the real bug
+  the rendered-proof pass itself caught and fixed)
+
+### Dependencies
+
+- None. No migration, no tenant-schema-sync entry (`system_settings` is key/value; a missing row
+  resolves to enabled everywhere it's read).
+
+### Acceptance and validation evidence
+
+- [x] `resolveAccessPolicyFromSettings` resolves `guest_checkout_enabled`, defaulting to `true` when
+  unset, so no existing tenant's behavior changes on deploy
+  (`apps/dgfy-api/tests/customerAccessPolicy.test.js`).
+- [x] `assertGuestCheckoutAllowed` rejects a non-DGFY-linked store customer with 403
+  `GUEST_CHECKOUT_DISABLED` when the setting is `false`, and allows a DGFY-linked customer
+  regardless (`apps/dgfy-api/tests/storeGuestCheckoutProof.test.js`, new).
+- [x] The guard is wired into all four checkout/booking use-case call sites (product checkout,
+  payment-session, single booking, batch booking) with no regression across 21 store/service
+  usecase test files (263 tests passing).
+- [x] Caller-level proof at all four enforcement sites, not just the isolated decision function
+  (PR #1095 reviewer finding RF-2): `buildStoreCheckoutUseCase`, `buildStoreCheckoutPaymentSessionUseCase`,
+  `buildCreateServiceBookingUseCase`, and `buildCreateServiceBookingBatchUseCase` each asserted to
+  reject a guest 403 `GUEST_CHECKOUT_DISABLED` before any persistence/payment-session side effect,
+  and to still let a DGFY-linked customer through
+  (`apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js`, new, 8/8 passing).
+- [x] The settings validator accepts the new key in both the bulk and single-key schemas
+  (`apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js`).
+- [x] The storefront's shared guest-or-account entry renderer hides "Continue as Guest" only when
+  the store has explicitly disabled it, and fails open on a missing/undefined value
+  (`apps/dgfy-storefront/src/__tests__/guestCheckoutEntryGate.test.jsx`, new; `customerAccess.test.js`
+  extended). Full storefront suite (140 files / 754 tests) passes.
+- [x] IMS Settings > Storefront > Storefront Access, and the POS app's own terminal settings
+  workspace (`TerminalOperationsWorkspace.jsx`, rendered only by `apps/dgfy-pos`), both expose the
+  "Allow Guest Checkout" toggle, following the existing `storefront_follow_enabled` toggle idiom
+  (already dual-surfaced the same way). No regression across `apps/dgfy-ims`'s full `packages/web-core`
+  suite (295 files / 1794 tests).
+- [x] `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos` all pass (Tier 0).
+- [x] ADR 0023 amended (Decision 11, Consequences item 2 — both `default`-tier, dated `## Amendments`
+  block, no superseding ADR needed) and `docs/features/DGFY_CUSTOMER_ACCOUNT.md` updated to match.
+- [x] Compliance impact declaration filed:
+  `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+  (`major`, `settings,payments,pos,terminal`).
+- [x] Rendered proof (Architecture Governance item 8), storefront guest-vs-account checkout entry
+  gate -- root-caused and completed on the retry. The first attempt's bounce turned out not to be a
+  bug: `shopai-store-745611` has `ops_workflow_mode: food_manufacturing`, which
+  `modePresentationRegistry.js` maps to no gate-bearing checkout route at all (falls through to
+  the documented `DefaultOrderPage.jsx` placeholder), and its business hours were closed at test
+  time -- neither is this PR's code. Retried against two zero-mutation-for-enabled tenants whose
+  `ops_workflow_mode` and hours actually qualify (`pat-marketing-314108`, retail;
+  `pat-s-non-existent-kainan-6086e7`, fnb, already carrying a real
+  `storefront_guest_checkout_enabled: false` row). New committed harness
+  `scripts/smoke-guest-checkout-gate-ui.js` (`npm run smoke:guest-checkout-gate`), modelled on the
+  existing `smoke-dgfy-access-ui.js`/`smoke-pos-terminal-ui.js` harnesses: page identity ("Continue
+  to your order" matched), nonblank content, no framework overlay, console health (zero
+  unignored errors), one primary interaction per state (enabled: click "Continue as Guest",
+  advances in-page to the guest details step; disabled: click "Create DGFY Account", navigates
+  in-app to `/register`), and both desktop (1440x960) and mobile (390x844) viewports -- real
+  Playwright viewports, not a live-window resize, so the "when practical" mobile hedge that bit an
+  earlier phase (Phase 152/DOWNPAYMENT.md) didn't apply here. All 4 checks pass; screenshots and the
+  JSON evidence payload are in `.tmp/rendered-qa/guest-checkout-gate/` (gitignored, regenerable via
+  the npm script).
+  **This pass caught and fixed a real bug**: every actual call site of the shared
+  `renderGuestCheckoutEntry` (retail, both Simple steps, both F&B steps, both Services-booking
+  variants) was passing a hardcoded description string, so only the "Continue as Guest" button's
+  presence tracked the toggle -- the copy always read "create an account or continue as guest",
+  even when the merchant had disabled it. Fixed by threading a `guestCheckoutAllowed` prop through
+  each call site (same threading pattern already used for `canUseGuestCheckoutFlow`) so the
+  description branches correctly in all seven render sites, including the `services-reference`
+  layout variant whose disabled-state copy ("No account is needed...") was actively wrong, not just
+  stale. Full storefront suite re-run clean afterward: 140 files / 754 tests.
+- [x] Rendered proof (Architecture Governance item 8), IMS and POS "Allow Guest Checkout" toggle
+  save-and-rehydrate -- completed with Pat's own authenticated session (this session never saw or
+  entered any credential): on `pat-s-non-existent-kainan-6086e7`, toggled on in POS's terminal
+  settings workspace, saved, reloaded, confirmed the checkbox and the underlying setting row both
+  persisted `true`; toggled off, saved, reloaded, confirmed both restored to `false`. Repeated
+  identically on IMS Settings > Storefront > Storefront Access (a dedicated switch with live
+  copy, not a bare checkbox). Both surfaces: page identity, nonblank content, no overlay, console
+  health (zero errors both directions, both apps), and the save-reload round trip itself as the
+  primary interaction -- confirmed at the database row level after every save, not just the UI's
+  own optimistic state. **Desktop only** -- a live-window resize to the mobile viewport did not
+  take effect in this environment (the same "browser resize didn't take effect" limitation already
+  disclosed once for Phase 152/`DOWNPAYMENT.md`, not new here); not pursued further rather than
+  faked, per that same precedent's own resolution. Screenshots in
+  `.tmp/rendered-qa/merchant-toggle/` (gitignored).
+- [x] **Harness integrity fix (PR #1095 reviewer finding RF-5)**: the rendered-proof harness above
+  (`scripts/smoke-guest-checkout-gate-ui.js`) had two real gaps that could let it print `PASS` on a
+  broken proof. (1) Each `interact()` returned diagnostic fields (`advancedToGuestDetails`,
+  `navigatedToAuth`, `authPageNonblank`) but the failure reducer only checked for a thrown
+  `interactionError` -- a click that landed but produced the wrong outcome would still pass. Fixed
+  by having each `interact()` compute a single explicit `passed` boolean from its own assertions,
+  and changing the reducer to `entry.interactionResult?.passed !== true`. (2) The console-health
+  check ignored every 403 by bare status text (no URL was available on that log line), which could
+  hide a real, relevant 403 alongside the one known-benign storefront-asset 403. Fixed by moving
+  HTTP-failure judgment entirely to the `page.on('response')` listener, which does carry the URL:
+  a 403 is only ignored when it matches the documented `/uploads/storefront-assets/....(webp|png|jpe?g)`
+  shape; any other 4xx against this flow's own `/api/v1/store/...` surface, or any 5xx anywhere, now
+  fails the run. **Negative-run proof, as requested**: temporarily forced `passed: false` on the
+  `enabled` check's interaction (while its own `advancedToGuestDetails` computed `true`, i.e. the
+  click itself worked) and re-ran the harness -- exited 1, `FAIL enabled.desktop.interactionFailed=...,
+  enabled.mobile.interactionFailed=...`, proving the reducer genuinely gates on `passed` rather than
+  only on a thrown exception. Reverted immediately, confirmed `git diff` showed no residual change,
+  and re-ran clean: exit 0, all 4 checks pass, `interactionResult.passed: true` on all of them, one
+  correctly-ignored anonymous `401` on `/api/v1/dgfy/auth/me` visible in the evidence JSON and
+  correctly non-failing (not a target-flow endpoint).
+- **Correction to this ledger's own prior record**: an earlier pass of this rendered-proof work
+  claimed "no `storefront_guest_checkout_enabled` row was left on any tenant" after reverting a test
+  mutation on `shopai-store-745611`. That claim was checked against the wrong tenant and was wrong
+  -- a full 45-tenant-database sweep found one residual row, on
+  `pat-s-non-existent-kainan-6086e7` (`false`, timestamped from that earlier session, description
+  "Auto-created by settings update flow"). That tenant was then reused, deliberately, as the fixture
+  for this round's rendered proof above -- its final value (`false`) reflects a real save performed
+  through the actual IMS/POS UI during this verification, not leftover test residue, so it was left
+  as-is rather than deleted out from under Pat's own just-performed action. Every other tenant in
+  the sweep had no row (resolves to the default `true`).
+
+### Implementation links
+
+- Issue #622
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md` (`## Amendments (2026-08-27)`)
+- `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+- `apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js` (new, RF-2)
+- `scripts/smoke-guest-checkout-gate-ui.js` (new, RF-3 rendered proof)
+
+### Next eligible phase
+
+Phase 177.
 
 ---
 

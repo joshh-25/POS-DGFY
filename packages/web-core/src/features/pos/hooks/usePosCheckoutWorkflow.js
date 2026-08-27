@@ -3,6 +3,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     createPosCheckout,
     createPosParkedSale,
+    fetchPosCatalog,
     reparkPosParkedSale,
     cancelPosPaymentAllocation,
     cancelPosPaymentSession,
@@ -508,30 +509,6 @@ export const usePosCheckoutWorkflow = ({
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
-        const [{ validateParkedSaleResume }, { validateFnbModifierSelections }] = await Promise.all([
-            import('../utils/posParkedSaleResume.js'),
-            import('../utils/fnbModifierValidation.js')
-        ]);
-        const validation = validateParkedSaleResume({
-            parkedSale,
-            catalog: safeCatalog,
-            locationId: selectedLocationId,
-            allowedOrderMethods: posWorkflow.allowedMethods,
-            discountProfiles: toArray(discountProfiles),
-            commercialPromoConfig: toArray(commercialPromoConfig),
-            modifierValidator: ({ item, line, locationId }) => {
-                const currentGroups = getFnbModifierGroups(item);
-                const savedModifiers = toArray(line?.line_modifiers);
-                if (savedModifiers.length > 0 && currentGroups.length === 0) {
-                    return 'modifier selections are no longer available.';
-                }
-                const currentOptionIds = new Set(currentGroups.flatMap((group) => getActiveModifierOptions(group).map((option) => Number(option?.modifier_option_id))));
-                if (savedModifiers.some((modifier) => !currentOptionIds.has(Number(modifier?.modifier_option_id)))) {
-                    return 'one or more modifier selections are no longer available.';
-                }
-                return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
-            }
-        });
         if (activeParkedSale?.pos_parked_sale_id
             && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
             return {
@@ -555,22 +532,78 @@ export const usePosCheckoutWorkflow = ({
                     : 'Pay requires an empty current sale. Park or clear the current sale first.'
             };
         }
+        const [{
+            getParkedSaleCatalogLookupQueries,
+            mergeParkedSaleCatalogResults,
+            validateParkedSaleResume
+        }, { validateFnbModifierSelections }] = await Promise.all([
+            import('../utils/posParkedSaleResume.js'),
+            import('../utils/fnbModifierValidation.js')
+        ]);
+        const lookupQueries = getParkedSaleCatalogLookupQueries({ parkedSale });
+        let resumeCatalog = safeCatalog;
+        if (lookupQueries.length > 0) {
+            try {
+                const lookupResults = await Promise.all(lookupQueries.map((search) => fetchPosCatalog({
+                    search,
+                    limit: 200,
+                    ...(selectedLocationId ? { location_id: selectedLocationId } : {})
+                })));
+                resumeCatalog = mergeParkedSaleCatalogResults(safeCatalog, lookupResults, parkedSale);
+            } catch {
+                return {
+                    ok: false,
+                    message: 'Unable to refresh the catalog items required by this parked sale. Check the connection and try again.'
+                };
+            }
+        }
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: resumeCatalog,
+            locationId: selectedLocationId,
+            allowedOrderMethods: posWorkflow.allowedMethods,
+            discountProfiles: toArray(discountProfiles),
+            commercialPromoConfig: toArray(commercialPromoConfig),
+            modifierValidator: ({ item, line, locationId }) => {
+                const currentGroups = getFnbModifierGroups(item);
+                const savedModifiers = toArray(line?.line_modifiers);
+                if (savedModifiers.length > 0 && currentGroups.length === 0) {
+                    return 'modifier selections are no longer available.';
+                }
+                const currentOptionIds = new Set(currentGroups.flatMap((group) => getActiveModifierOptions(group).map((option) => Number(option?.modifier_option_id))));
+                if (savedModifiers.some((modifier) => !currentOptionIds.has(Number(modifier?.modifier_option_id)))) {
+                    return 'one or more modifier selections are no longer available.';
+                }
+                return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
+            }
+        });
         if (!validation.ok) {
             return {
                 ok: false,
                 message: `This parked sale needs review before it can be resumed: ${validation.conflicts.slice(0, 3).join(' ')}`
             };
         }
-        return { ok: true };
+        return {
+            ok: true,
+            resumeContext: {
+                parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
+                catalog: resumeCatalog
+            }
+        };
     }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
 
-    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay') => {
+    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay', resumeContext = null) => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
             : {};
-        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: safeCatalog });
+        const claimedSaleId = Number(claimedSale?.pos_parked_sale_id);
+        if (Number(resumeContext?.parkedSaleId) !== claimedSaleId || !Array.isArray(resumeContext?.catalog)) {
+            throw new Error('This parked sale must be revalidated before it can be resumed. Reopen Parked Sales and try again.');
+        }
+        const validatedCatalog = resumeContext.catalog;
+        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
         const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
         const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
             ? snapshot.discount_context
@@ -665,7 +698,6 @@ export const usePosCheckoutWorkflow = ({
         itemDiscountApprovalRef,
         posWorkflow,
         resetEmployeeCredit,
-        safeCatalog,
         setActiveParkedSale,
         setAffiliateCodeInput,
         setAppliedDiscount,

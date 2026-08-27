@@ -6,6 +6,7 @@ import {
     calculateGovernedDiscount,
     formatQuantity,
     formatSplitPaymentMethod,
+    getCartLineSubtotal,
     inferReceiptContract,
     isSeniorPwdDiscountEligible,
     money,
@@ -24,6 +25,8 @@ describe('POS checkout terminal pure utilities', () => {
     it('keeps money, quantity, percentage, and payment labels deterministic', () => {
         expect(money(12.5)).toBe('12.50');
         expect(round4(1.23456)).toBe(1.2346);
+        expect(getCartLineSubtotal({ quantity: 2, sale_price: 150 })).toBe(300);
+        expect(getCartLineSubtotal({ quantity: 1.25, sale_price: 90 })).toBe(112.5);
         expect(formatQuantity(2.5)).toBe('2.5');
         expect(formatQuantity('invalid')).toBe('0');
         expect(sanitizeQuantityInput('1a.2.3', true)).toBe('1.23');

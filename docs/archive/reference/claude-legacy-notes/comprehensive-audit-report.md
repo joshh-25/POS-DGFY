@@ -1,5 +1,7 @@
 # SKUpervisor Subscription Implementation — Comprehensive Audit Report
 
+> **Archived (#365, 2026-08-26).** Moved out of `.claude/` — a one-off historical status report, not a live agent instruction; the product-name/architecture framing in this document may be stale. `AGENTS.md` is the current, canonical source of truth.
+
 **Audit Date:** 2026-03-10
 **Scope:** Full subscription management extension (Steps 1–11) + post-evaluation fixes
 **Auditor:** Claude Code (Sonnet 4.6)

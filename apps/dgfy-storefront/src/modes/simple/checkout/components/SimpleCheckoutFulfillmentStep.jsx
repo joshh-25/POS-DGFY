@@ -13,6 +13,7 @@ const SIMPLE_BRAND_SOFT = '#E4C98E';
 export function SimpleCheckoutFulfillmentStep({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -54,7 +55,10 @@ export function SimpleCheckoutFulfillmentStep({
   if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
     return renderGuestCheckoutEntry({
       title: 'Continue to your order',
-      description: 'Create an account or continue as guest to continue this order.',
+      // #622: see SimpleCheckoutCustomerStep.jsx's matching comment -- same fix, same reason.
+      description: guestCheckoutAllowed
+        ? 'Create an account or continue as guest to continue this order.'
+        : 'This store requires a DGFY account to check out. Create one or log in to continue.',
       resumeTarget: {
         checkoutTab: 'checkout',
         simpleOrderStep: 2

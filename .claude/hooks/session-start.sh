@@ -1,8 +1,11 @@
 #!/bin/bash
 # .claude/hooks/session-start.sh
-# SKU Inventory Manager — Session Initialization Hook
-# Implements DOCUMENTATION_GUIDE.md §5.4
-# Run at the start of every AI session to snapshot project state.
+# DGFY Platform — Session Initialization Hook
+# NOTE (#365): this script is not currently registered in .claude/settings.json's SessionStart
+# hooks (only record-ai-attribution.js and inject-ai-attribution-context.js are) — it does not
+# run automatically today. Kept and fixed as a manual dev-diagnostics script; run it by hand with
+# `bash .claude/hooks/session-start.sh` if you want the snapshot below.
+# Run at the start of an AI session to snapshot project state.
 #
 # Design rules:
 #   - Each section is independently non-blocking (|| true on optional checks)
@@ -21,7 +24,7 @@ ENV_FILE="$BACKEND_DIR/.env"
 
 # ─── Header ──────────────────────────────────────────────────────────────────
 echo ""
-echo "🚀 SKU Inventory Manager — Session Start"
+echo "🚀 DGFY Platform — Session Start"
 echo "══════════════════════════════════════════════"
 echo "   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "══════════════════════════════════════════════"
@@ -201,8 +204,7 @@ if command -v pm2 &>/dev/null; then
   echo "   $(_pm2_icon "$_fe_status") sku-frontend — $_fe_status"
 
   if [ "$_be_status" != "online" ] || [ "$_fe_status" != "online" ]; then
-    echo "   ▶  To start: pm2 start ecosystem.config.cjs"
-    echo "      or:       npm run dev"
+    echo "   ▶  To start local dev: npm run dev"
   fi
 else
   echo "   ℹ️  PM2 not found — using direct npm scripts (local dev mode)"
@@ -267,10 +269,10 @@ if command -v git &>/dev/null; then
     echo "$_recent" | grep -q "^packages/web-core/src/services/" && echo "   🔌 API service layer changes  — ref: packages/web-core/src/services/"
 
     # Backend
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: backend/src/routes/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/controllers/" && echo "   🎮 Backend controller changes — ref: backend/src/controllers/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/models/"      && echo "   🗂️  Backend model changes      — ref: backend/src/models/"
-    echo "$_recent" | grep -q "^apps/dgfy-api/src/services/"    && echo "   ⚙️  Backend service changes    — ref: backend/src/services/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: apps/dgfy-api/src/routes/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/controllers/" && echo "   🎮 Backend controller changes — ref: apps/dgfy-api/src/controllers/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/models/"      && echo "   🗂️  Backend model changes      — ref: apps/dgfy-api/src/models/"
+    echo "$_recent" | grep -q "^apps/dgfy-api/src/services/"    && echo "   ⚙️  Backend service changes    — ref: apps/dgfy-api/src/services/"
     echo "$_recent" | grep -q "^apps/dgfy-migration-runner/migrations/"      && echo "   🗃️  DB migrations changed      — run: cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate"
     echo "$_recent" | grep -q "^apps/dgfy-api/tests/"           && echo "   🧪 Test changes               — run: cd apps/dgfy-api && npm test"
 
@@ -298,11 +300,9 @@ echo "    npm run dev:skupervisor  # dgfy-ims (IMS) only     (port 5173)"
 echo "    npm run dev:pos          # dgfy-pos only           (port 5174)"
 echo "    npm run dev:store        # dgfy-storefront only    (port 5175)"
 echo ""
-echo "  Production (PM2):"
-echo "    pm2 start ecosystem.config.cjs   # Start all services"
-echo "    pm2 restart all                  # Restart services"
-echo "    pm2 logs                         # Stream logs"
-echo "    ./scripts/deploy.sh              # Full production deploy"
+echo "  Production/Staging deploy (#365: PM2 commands removed here):"
+echo "    Not PM2 / scripts/deploy.sh — that model is superseded (docs/ops/DEPLOYMENT_GUIDE.md)."
+echo "    See docs/ops/RELEASE_CANDIDATE_POLICY.md and AGENTS.md's promoter/incident-responder roles."
 echo ""
 echo "  Database:"
 echo "    cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate         # Run migrations"
@@ -311,12 +311,13 @@ echo ""
 echo "  Testing:"
 echo "    cd apps/dgfy-api && npm test                             # All backend tests"
 echo ""
-echo "  Workflows:"
-echo "    /health          # PM2 + API health check"
+echo "  Workflows (Antigravity, .agent/workflows/):"
 echo "    /audit           # Lint + endpoint verification"
-echo "    /start-dev       # PM2 dev start"
-echo "    /deploy          # Production deployment"
+echo "    /fix             # Lint auto-fix"
+echo "    /sync            # Dependency install (root + apps)"
+echo "    /verify-ai       # AI-assistant QA verification script"
+echo "    /verify-endpoints # Backend endpoint smoke test"
 echo ""
 echo "══════════════════════════════════════════════"
-echo "📖 Reference: CLAUDE.md · TROUBLESHOOTING.md · docs/"
+echo "📖 Reference: AGENTS.md · CLAUDE.md · TROUBLESHOOTING.md · docs/"
 echo ""

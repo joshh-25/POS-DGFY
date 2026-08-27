@@ -4,7 +4,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     cancelPosPaymentSession,
-    createPosCheckout
+    createPosCheckout,
+    fetchPosCatalog
 } from '../../services/posService';
 import {
     enqueueTerminalOperationIntent,
@@ -24,6 +25,7 @@ vi.mock('../../services/posService', () => ({
     completePosPaymentSession: vi.fn(),
     createPosCheckout: vi.fn(),
     createPosParkedSale: vi.fn(),
+    fetchPosCatalog: vi.fn(),
     reparkPosParkedSale: vi.fn()
 }));
 
@@ -175,6 +177,7 @@ describe('usePosCheckoutWorkflow', () => {
         markTerminalOperationReplayed.mockResolvedValue(undefined);
         cancelPosPaymentSession.mockResolvedValue({});
         createPosCheckout.mockResolvedValue({ transaction });
+        fetchPosCatalog.mockResolvedValue([]);
     });
 
     it('submits the existing checkout payload contract and resets the cart only after success', async () => {
@@ -325,6 +328,156 @@ describe('usePosCheckoutWorkflow', () => {
         expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
         expect(props.setCart).toHaveBeenCalledWith([]);
         expect(props.setReceiptPreviewModalOpen).toHaveBeenCalledWith(true);
+    });
+
+    it('refreshes parked item state before resume validation even when the loaded record is stale', async () => {
+        fetchPosCatalog.mockResolvedValueOnce([{
+            item_id: 7,
+            name: 'Coffee',
+            sku_code: 'COF-01',
+            default_sale_price: 125,
+            current_stock: 4
+        }]);
+        const { result, props } = renderCheckout({
+            safeCart: [],
+            safeCatalog: [{
+                item_id: 7,
+                name: 'Coffee',
+                sku_code: 'COF-01',
+                default_sale_price: 125,
+                current_stock: 0,
+                pos_always_available: false
+            }]
+        });
+        const parkedSale = {
+            pos_parked_sale_id: 27,
+            snapshot: {
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 7,
+                    item_name: 'Coffee',
+                    sku_code: 'COF-01',
+                    quantity: 1,
+                    base_sale_price: 125,
+                    sale_price: 125
+                }]
+            }
+        };
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume(parkedSale, 'resume');
+        });
+
+        expect(fetchPosCatalog).toHaveBeenCalledWith({
+            search: 'COF-01',
+            limit: 200,
+            location_id: 2
+        });
+        expect(validation).toEqual({
+            ok: true,
+            resumeContext: {
+                parkedSaleId: 27,
+                catalog: expect.any(Array)
+            }
+        });
+
+        await act(async () => {
+            await result.current.handleParkedSaleClaimed(parkedSale, 'resume', validation.resumeContext);
+        });
+        expect(props.setCart).toHaveBeenCalledWith([
+            expect.objectContaining({ item_id: 7, item_name: 'Coffee', quantity: 1 })
+        ]);
+    });
+
+    it('rejects local parked-sale blockers before fetching the catalog', async () => {
+        const { result } = renderCheckout();
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume({
+                pos_parked_sale_id: 27,
+                snapshot: {
+                    order_method: 'dine_in',
+                    lines: [{ item_id: 7, item_name: 'Coffee', quantity: 1 }]
+                }
+            }, 'resume');
+        });
+
+        expect(validation).toEqual({
+            ok: false,
+            message: 'Resume requires an empty current sale. Park or clear the current sale first.'
+        });
+        expect(fetchPosCatalog).not.toHaveBeenCalled();
+    });
+
+    it('refuses to hydrate a claimed parked sale without matching validation context', async () => {
+        const { result, props } = renderCheckout({ safeCart: [] });
+
+        await expect(result.current.handleParkedSaleClaimed({
+            pos_parked_sale_id: 28,
+            snapshot: { lines: [{ item_id: 7, item_name: 'Coffee', quantity: 1 }] }
+        }, 'resume', {
+            parkedSaleId: 27,
+            catalog: []
+        })).rejects.toThrow('This parked sale must be revalidated before it can be resumed.');
+        expect(props.setCart).not.toHaveBeenCalled();
+    });
+
+    it('reports a catalog refresh failure instead of claiming a parked item was removed', async () => {
+        fetchPosCatalog.mockRejectedValue(new Error('Network unavailable'));
+        const { result } = renderCheckout({ safeCart: [] });
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume({
+                pos_parked_sale_id: 27,
+                snapshot: {
+                    order_method: 'dine_in',
+                    lines: [{ item_id: 8, item_name: 'Tapsilog', quantity: 1 }]
+                }
+            }, 'resume');
+        });
+
+        expect(validation).toEqual({
+            ok: false,
+            message: 'Unable to refresh the catalog items required by this parked sale. Check the connection and try again.'
+        });
+    });
+
+    it('does not fall back to stale catalog data when a refreshed parked item is no longer returned', async () => {
+        fetchPosCatalog.mockResolvedValue([]);
+        const { result } = renderCheckout({
+            safeCart: [],
+            safeCatalog: [{
+                item_id: 7,
+                name: 'Coffee',
+                sku_code: 'COF-01',
+                default_sale_price: 125,
+                current_stock: 10
+            }]
+        });
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume({
+                pos_parked_sale_id: 27,
+                snapshot: {
+                    order_method: 'dine_in',
+                    lines: [{
+                        item_id: 7,
+                        item_name: 'Coffee',
+                        sku_code: 'COF-01',
+                        quantity: 1,
+                        base_sale_price: 125,
+                        sale_price: 125
+                    }]
+                }
+            }, 'resume');
+        });
+
+        expect(validation.ok).toBe(false);
+        expect(validation.message).toContain('Coffee is no longer available');
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

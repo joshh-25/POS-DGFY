@@ -16,6 +16,7 @@ const SIMPLE_BRAND_DARK = '#0F5A30';
  */
 export function SimpleCheckoutCustomerStep({
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   guestCheckoutOtpCode = '',
   guestCheckoutOtpCooldownLabel = '',
   guestCheckoutOtpError = '',
@@ -39,7 +40,12 @@ export function SimpleCheckoutCustomerStep({
   if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
     return renderGuestCheckoutEntry({
       title: 'Continue to your order',
-      description: 'Create an account or continue as guest to continue this order.',
+      // #622: track guestCheckoutAllowed the same way the "Continue as Guest" button does --
+      // a hardcoded description would keep inviting guest checkout in copy even after the
+      // merchant disabled it (PR #1095 RF-3, caught by rendered-UI proof).
+      description: guestCheckoutAllowed
+        ? 'Create an account or continue as guest to continue this order.'
+        : 'This store requires a DGFY account to check out. Create one or log in to continue.',
       resumeTarget: {
         checkoutTab: 'checkout',
         simpleOrderStep: 1

@@ -69,12 +69,20 @@ a skill file (this file's own Surface precedence calls that a bug):
 
 - **Base is `develop` or `staging`. Never `main`** — no exception, matching every other role's
   absolute rule on `main`.
-- **Unavailability is verified, not assumed**, as exactly one of three classified reasons:
+- **Unavailability is verified, not assumed**, as exactly one of four classified reasons:
   `runner_offline` (every runner non-`online`, `gh api repos/:repo/actions/runners`),
   `queue_starvation` (runners online, but this SHA's checks sit `queued`/`in_progress` past a
-  threshold or were `cancelled` without a conclusion), or `billing_allocation_failure` (the existing
-  verified reason, via `scripts/collect-github-actions-unavailability.js`). A check that is merely
-  *slow but progressing* is none of these and does not qualify.
+  threshold or were `cancelled` without a conclusion), `billing_allocation_failure` (the existing
+  verified reason, via `scripts/collect-github-actions-unavailability.js`), or
+  `github_platform_outage` (added 2026-08-27, #1077, gating tightened 2026-08-27 per PR #1078
+  review RF-1 — requires the target SHA itself to have **zero check-runs and zero check-suites**
+  before GitHub's own status API, `https://www.githubstatus.com/api/v2/summary.json`, is even
+  consulted; a completed check-run for this SHA is proof its checks ran and is never overridden by
+  a global degraded/outage status elsewhere. Distinct from the other three because no check-run
+  object is ever created at all in this case — confirmed live via zero `check-suites` on a PR's
+  head commit during a real GitHub-side Actions outage, a state `queue_starvation`'s check-run-based
+  detection can't see).
+  A check that is merely *slow but progressing* is none of these and does not qualify.
 - **The `## Local CI` comment is posted before the merge**, never after, and states its own
   overall result plus a non-empty "Not reproduced locally" list — never silently substituting for
   CI.
@@ -212,14 +220,17 @@ Four kinds of file govern behavior here, highest authority first, on any conflic
 
 1. **`docs/` governed docs**, ranked by their own `authority_level` frontmatter
    (`authoritative` > `reference` > `historical`, `deprecated` never used for new decisions).
+   `docs/ai/*` files carry no `authority_level` frontmatter and so don't fall under this tier —
+   they rank below this file (see rank 2) as working-context supplements, not above it; don't treat
+   `docs/ai/CLAUDE.md` as outranking `AGENTS.md` just because it lives under `docs/` (#365).
 2. **This file (`AGENTS.md`)** — repo-wide agent rules and the role index above. References `docs/`;
    never restates it.
 3. **`.agents/skills/<role>/SKILL.md`** — canonical role definitions. Reference rules at runtime,
    same principle.
-4. **Vendor directories** (`.claude/`, `.cursor/`, `.agent/`) — thin pointers and harness-specific
-   config only (tool allowlists, subagent isolation, IDE-specific glob scoping). Never a rule
-   source in their own right — if a rule is found only in one of these, that's a bug, not a
-   feature. Note the naming trap: `.agent/` (singular, Antigravity workflows) and `.agents/`
+4. **Vendor directories** (`.claude/`, `.cursor/`, `.agent/`, `.codex/`) — thin pointers and
+   harness-specific config only (tool allowlists, subagent isolation, IDE-specific glob scoping).
+   Never a rule source in their own right — if a rule is found only in one of these, that's a bug,
+   not a feature. Note the naming trap: `.agent/` (singular, Antigravity workflows) and `.agents/`
    (plural, the canonical roles above) are two different, unrelated directories — don't conflate
    or "tidy" one into the other.
 
