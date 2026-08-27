@@ -82,7 +82,8 @@ import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
   canUseCheckout,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage
+  getStorefrontAccessBlockMessage,
+  isGuestCheckoutAllowed
 } from './shared/model/customerAccess.js';
 import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
@@ -1045,7 +1046,8 @@ export default function StorefrontApp() {
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const isSimpleOrderSubpage = isSimpleMode && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
-  const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
+  const guestCheckoutAllowed = isGuestCheckoutAllowed(selectedStore);
+  const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked && guestCheckoutAllowed;
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
     canOpen: canOpenTrackingDrawer,
@@ -1369,6 +1371,7 @@ export default function StorefrontApp() {
     setCustomerAddress,
     setRememberCustomerDetails,
     setGuestCheckoutUnlocked,
+    guestCheckoutAllowed,
     // `openCheckoutAuthFlow`/`handleRequestGuestCheckoutOtp` are declared later in this
     // component (they depend on state that in turn depends on this hook), so they can
     // only be handed to the hook as lazy getters - the same forward-reference idiom
@@ -3104,6 +3107,7 @@ export default function StorefrontApp() {
   const retailOrderRouteProps = useRetailOrderPageProps({
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3178,6 +3182,7 @@ export default function StorefrontApp() {
     applySavedDeliveryLocation,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3466,6 +3471,7 @@ export default function StorefrontApp() {
     applySavedDeliveryLocation,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -3960,6 +3966,7 @@ export default function StorefrontApp() {
     bookingTimeSlotOptions,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     catalog,
     catalogError,
     catalogSearch,

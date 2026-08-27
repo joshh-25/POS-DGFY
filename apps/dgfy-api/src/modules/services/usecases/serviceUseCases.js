@@ -16,7 +16,7 @@ import {
     normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import { resolveStockBearingDescriptor, resolveStockExemptReason } from '../../shared/utils/stockBearingPolicy.js';
-import { assertGuestCheckoutProof } from '../../store/utils/storeGuestCheckoutProof.js';
+import { assertGuestCheckoutAllowed, assertGuestCheckoutProof } from '../../store/utils/storeGuestCheckoutProof.js';
 import { buildCalculateServiceQuoteUseCase } from './calculateServiceQuoteUseCase.js';
 import {
     deriveFulfillmentProfileFromHandoffLegs,
@@ -2203,13 +2203,14 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository, serviceOpt
             ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
             : null;
         let storefrontSettings = null;
+        let storefrontAccessPolicy = null;
         if (source === 'storefront') {
             storefrontSettings = await loadServiceStorefrontSettings(serviceRepository, { transaction });
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
+            storefrontAccessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
             assertServiceStorefrontActionAllowed({
                 action: 'service_booking',
                 capability: 'booking',
-                accessPolicy
+                accessPolicy: storefrontAccessPolicy
             });
         }
         const replayBookings = await replayBookingsForIdempotency({
@@ -2234,6 +2235,10 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository, serviceOpt
             });
         }
         if (source === 'storefront') {
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: storefrontAccessPolicy?.guest_checkout_enabled,
+                storeCustomer
+            });
             assertGuestCheckoutProof({
                 tenantId: (dbStore.getStore() || {}).tenantId,
                 email: payload.customer_email || storeCustomer?.email,
@@ -2374,13 +2379,14 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository, servi
             ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
             : null;
         let storefrontSettings = null;
+        let storefrontAccessPolicy = null;
         if (source === 'storefront') {
             storefrontSettings = await loadServiceStorefrontSettings(serviceRepository, { transaction });
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
+            storefrontAccessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
             assertServiceStorefrontActionAllowed({
                 action: 'service_booking',
                 capability: 'booking',
-                accessPolicy
+                accessPolicy: storefrontAccessPolicy
             });
         }
         const bookingDrafts = Array.isArray(payload.bookings) ? payload.bookings : [];
@@ -2408,6 +2414,10 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository, servi
             });
         }
         if (source === 'storefront') {
+            assertGuestCheckoutAllowed({
+                guestCheckoutEnabled: storefrontAccessPolicy?.guest_checkout_enabled,
+                storeCustomer
+            });
             assertGuestCheckoutProof({
                 tenantId: (dbStore.getStore() || {}).tenantId,
                 email: payload.customer_email || storeCustomer?.email,

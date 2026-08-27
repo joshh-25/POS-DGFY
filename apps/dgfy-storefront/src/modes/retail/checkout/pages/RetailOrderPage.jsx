@@ -53,6 +53,7 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
 export function RetailOrderPage({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   cart = [],
   cartCount = 0,
   cartImageErrors,
@@ -225,6 +226,7 @@ export function RetailOrderPage({
           <div style={stepGridStyle}>
             <RetailOrderAccountStep
               canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+              guestCheckoutAllowed={guestCheckoutAllowed}
               guestCheckoutOtpCode={guestCheckoutOtpCode}
               guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
               guestCheckoutOtpError={guestCheckoutOtpError}

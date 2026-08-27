@@ -2,6 +2,7 @@ export function useSimpleCheckoutRouteProps({
   applySavedDeliveryLocation,
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   cart = [],
   cartCount = 0,
   cartImageErrors,
@@ -103,6 +104,7 @@ export function useSimpleCheckoutRouteProps({
   return {
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,

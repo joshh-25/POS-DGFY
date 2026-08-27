@@ -8,13 +8,27 @@ export const CUSTOMER_ACCESS_SETTING_KEYS = Object.freeze([
     'platform_max_customer_access_mode',
     'inventory_display_mode',
     'inventory_low_stock_display_threshold',
-    'tenant_onboarding_progress'
+    'tenant_onboarding_progress',
+    'storefront_guest_checkout_enabled'
 ]);
 
 export const DEFAULT_CUSTOMER_ACCESS_MODE = 'catalog';
 export const DEFAULT_PLATFORM_MAX_CUSTOMER_ACCESS_MODE = 'transaction';
 export const DEFAULT_INVENTORY_DISPLAY_MODE = 'availability';
 export const DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD = 5;
+// #622: fail-open default -- a tenant with no seeded row (every tenant that existed before this
+// setting shipped) resolves to guest checkout enabled, so this deploy changes no live storefront's
+// behavior. Only newly-provisioned tenants get a real seeded row, per
+// resolveDefaultGuestCheckoutEnabledForWorkflowMode below.
+export const DEFAULT_GUEST_CHECKOUT_ENABLED = true;
+
+// #622 (Pat, 2026-08-18): guest checkout defaults to enabled on FnB, disabled (DGFY account
+// required) on Retail -- a conservative default for Retail. Named map, not an inline ternary, so
+// extending the vertical policy later is a one-line edit. Only consulted at tenant provisioning
+// (tenantProvisioningService.js); the runtime default above is unconditional and vertical-blind.
+const WORKFLOW_MODE_GUEST_CHECKOUT_DEFAULT = Object.freeze({
+    retail: false
+});
 
 const isExplicitlyDisabledEnv = (value) => {
     const raw = String(value || '').trim().toLowerCase();
@@ -84,6 +98,22 @@ export const normalizeInventoryDisplayMode = (value, fallback = DEFAULT_INVENTOR
     return INVENTORY_DISPLAY_MODES.includes(fallbackNormalized)
         ? fallbackNormalized
         : DEFAULT_INVENTORY_DISPLAY_MODE;
+};
+
+export const normalizeGuestCheckoutEnabled = (value, fallback = DEFAULT_GUEST_CHECKOUT_ENABLED) => {
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    return fallback;
+};
+
+// Provisioning-time only -- see WORKFLOW_MODE_GUEST_CHECKOUT_DEFAULT above.
+export const resolveDefaultGuestCheckoutEnabledForWorkflowMode = (workflowMode) => {
+    const normalized = String(workflowMode || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(WORKFLOW_MODE_GUEST_CHECKOUT_DEFAULT, normalized)
+        ? WORKFLOW_MODE_GUEST_CHECKOUT_DEFAULT[normalized]
+        : DEFAULT_GUEST_CHECKOUT_ENABLED;
 };
 
 export const normalizeLowStockDisplayThreshold = (value, fallback = DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD) => {
@@ -203,11 +233,16 @@ export const resolveAccessPolicyFromSettings = (settings = {}, options = {}) => 
         settings?.inventory_low_stock_display_threshold?.value
             ?? settings?.inventory_low_stock_display_threshold
     );
+    const guestCheckoutEnabled = normalizeGuestCheckoutEnabled(
+        settings?.storefront_guest_checkout_enabled?.value
+            ?? settings?.storefront_guest_checkout_enabled
+    );
 
     return {
         ...resolved,
         inventory_display_mode: inventoryDisplayMode,
-        inventory_low_stock_display_threshold: lowStockThreshold
+        inventory_low_stock_display_threshold: lowStockThreshold,
+        guest_checkout_enabled: guestCheckoutEnabled
     };
 };
 
@@ -222,6 +257,17 @@ export const buildCustomerAccessModeBlockedError = ({ action, accessPolicy }) =>
             effective_mode: accessPolicy?.effective_customer_access_mode || DEFAULT_CUSTOMER_ACCESS_MODE,
             limitation_reason: accessPolicy?.limitation_reason || 'The storefront is not in transaction mode.',
             allowed_capabilities: accessPolicy?.access_capabilities || buildAccessCapabilities(DEFAULT_CUSTOMER_ACCESS_MODE)
+        }
+    }
+);
+
+export const buildGuestCheckoutDisabledError = () => new DomainError(
+    DomainErrorCode.AUTHORIZATION_FAILED,
+    'This store requires a DGFY account to check out.',
+    {
+        statusCode: 403,
+        details: {
+            reason_code: 'GUEST_CHECKOUT_DISABLED'
         }
     }
 );

@@ -13,7 +13,8 @@ import {
 // Phase 142 (#823): widened extraction (carries amount_paid/balance_due, not just total_amount);
 // see useCheckoutSubmission.js's own note for why this supersedes #857's plain inline restore.
 import { resolveTrackedTotals } from '../../../../shared/model/trackedTotals.js';
-import { GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
+import { GUEST_CHECKOUT_DISABLED_MESSAGE, GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../../../../shared/checkout/model/guestCheckoutOtp.js';
+import { isGuestCheckoutAllowed } from '../../../../shared/model/customerAccess.js';
 import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 
 /**
@@ -93,6 +94,12 @@ export function useFnbCheckoutSubmission({
       toast.error(checkoutBlockReason === 'business_hours'
         ? storefrontClosedToastMessage
         : blockMessage);
+      return;
+    }
+    if (!isDgfyCustomerSignedIn && !isGuestCheckoutAllowed(selectedStore)) {
+      const message = GUEST_CHECKOUT_DISABLED_MESSAGE;
+      setCheckoutError(message);
+      toast.error(message);
       return;
     }
     if (!isDgfyCustomerSignedIn && !guestCheckoutProof?.proof) {
