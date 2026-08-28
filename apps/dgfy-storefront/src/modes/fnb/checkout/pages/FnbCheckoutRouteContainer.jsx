@@ -89,6 +89,7 @@ export function FnbCheckoutRouteContainer({
   fnbCheckoutContentPadding,
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
+  fulfillmentOptions,
   fnbMobileSummaryItemCountLabel,
   fnbOrderBrand,
   fnbOrderBrandBorder,
@@ -240,6 +241,7 @@ export function FnbCheckoutRouteContainer({
               fnbOrderBrandShadowStrong={fnbOrderBrandShadowStrong}
               fnbScheduleMode={fnbScheduleMode}
               fnbScheduledFor={fnbScheduledFor}
+              fulfillmentOptions={fulfillmentOptions}
               isDeliveryOrder={isDeliveryOrder}
               isMobileViewport={isMobileViewport}
               isResponsive={isFnbOrderResponsiveFlow}
