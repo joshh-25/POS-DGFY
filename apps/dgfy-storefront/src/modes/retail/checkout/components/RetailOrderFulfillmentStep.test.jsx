@@ -8,7 +8,7 @@ describe('RetailOrderFulfillmentStep', () => {
     const onOrderMethodChange = vi.fn();
     render(<RetailOrderFulfillmentStep
       orderMethod="pickup"
-      fulfillmentOptions={[
+      orderMethodOptions={[
         { value: 'delivery', label: 'Delivery', available: false },
         { value: 'pickup', label: 'Pickup', available: true }
       ]}
