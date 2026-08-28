@@ -79,6 +79,7 @@ import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/fea
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
+import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -464,15 +465,6 @@ const formatValidationErrorDescription = (apiErrors) => {
     .map((err) => `${getReadableFieldName(err.field)}: ${err.message}`)
     .join(' | ');
 };
-
-// #1093: mirrors the server-side guard in tenantLocationUseCases.js's
-// assertFulfillmentMethodAvailable -- a location can't lose its last enabled
-// delivery/pickup method while the store is in Transaction mode. UI-side lock is a
-// convenience (disables the switch instead of a rejected save); the server guard is
-// the one that's actually authoritative.
-const LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE = 'At least one of Delivery or Pickup must stay '
-  + 'enabled while Customer Access Mode is Transaction. To stop taking online orders instead, '
-  + 'switch Customer Access Mode to Catalog Only.';
 
 const createDefaultLocationForm = () => ({
   name: '',
