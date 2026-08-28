@@ -98,7 +98,7 @@ describe('service worker caching contracts', () => {
     expect(source).toContain('scope: appBasePath === \'/\' ? \'/\' : `${appBasePath}/`');
   });
 
-  it('automatically activates POS updates only after the safety guard clears', () => {
+  it('never auto-applies a waiting update -- only a user tap or a natural transition (#990, 2026-08-28)', () => {
     const serviceWorkerSource = readSource(posServiceWorkerPath);
     const installStart = serviceWorkerSource.indexOf("self.addEventListener('install'");
     const messageStart = serviceWorkerSource.indexOf("self.addEventListener('message'");
@@ -111,14 +111,87 @@ describe('service worker caching contracts', () => {
     expect(mainSource).toContain("registration.addEventListener('updatefound'");
     expect(mainSource).toContain("navigator.serviceWorker.addEventListener('controllerchange'");
     expect(mainSource).toContain('getPosUpdateSafetyState()');
-    expect(mainSource).toContain('POS_UPDATE_SAFETY_EVENT');
-    expect(mainSource).toContain('updateDeferredBySafety');
-    expect(mainSource).toContain('activateWaitingWorker();');
+    // The waiting worker is discovered and the notice shown -- never
+    // auto-applied on discovery. showUpdateNotice is called, not
+    // applyWaitingWorker, from handleWaitingWorker.
+    expect(mainSource).toContain('const handleWaitingWorker = (worker) => {');
+    expect(mainSource).toMatch(/const handleWaitingWorker = \(worker\) => \{[\s\S]*?showUpdateNotice\(\);[\s\S]*?\};/);
+    expect(mainSource).toContain('activate: applyWaitingWorker');
     expect(layoutSource).toContain('{notice.activate ? (');
-    expect(mainSource).toContain('POS update will install after the current transaction is finished.');
+    expect(mainSource).toContain('A POS update is ready.');
     expect(mainSource).not.toContain("toast.info('POS update ready'");
     expect(mainSource).not.toContain("toast.dismiss('pos-service-worker-update-ready'");
     expect(mainSource).not.toContain("registration.waiting.postMessage({ type: 'SKIP_WAITING' });");
+    // No more deferral/safety-gate state -- these were the mechanism that
+    // decided *whether* to auto-apply; there is no more "whether" left to
+    // decide, so they must not still be present as dead code.
+    expect(mainSource).not.toContain('updateDeferredBySafety');
+    expect(mainSource).not.toContain('canForceActivation');
+    expect(mainSource).not.toContain('const CHECKOUT_SAFETY_REASONS = new Set([');
+  });
+
+  it('never mistakes a brand-new install for a genuine update (no prior controller, 2026-08-28 follow-up)', () => {
+    const mainSource = readSource(posMainPath);
+
+    // A first-ever install has no old worker (and no clients depending on
+    // one) to wait for, so the browser auto-promotes it through
+    // `registration.waiting` almost immediately regardless of any of this
+    // code -- it just passes through that state on its way to activating.
+    // Without gating on an existing controller, a completely fresh browser
+    // falsely shows "an update is ready" for a worker that's already
+    // self-activating, and "Update now" silently does nothing because that
+    // worker's state has already moved past 'installed' by the time
+    // SKIP_WAITING would be posted to it.
+    expect(mainSource).toContain('const hadExistingController = Boolean(navigator.serviceWorker.controller);');
+    expect(mainSource).toContain("if (!worker || !hadExistingController) return;");
+    // Captured before register() runs, not read lazily later -- register()
+    // (and any resulting clients.claim()) can change navigator.serviceWorker.controller.
+    const controllerCaptureIndex = mainSource.indexOf('const hadExistingController = Boolean(navigator.serviceWorker.controller);');
+    const registerCallIndex = mainSource.indexOf('await navigator.serviceWorker.register(serviceWorkerUrl, {');
+    expect(controllerCaptureIndex).toBeGreaterThan(-1);
+    expect(registerCallIndex).toBeGreaterThan(controllerCaptureIndex);
+  });
+
+  it('gives the notice message context, without ever gating whether it shows or activates (#1118 RF-1, still true)', () => {
+    const mainSource = readSource(posMainPath);
+    const safetySource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateSafety.js'));
+
+    expect(mainSource).toContain('hasCheckoutOwnedSafetyReason,');
+    expect(mainSource).toContain('const applyWaitingWorker = () => {');
+    expect(mainSource).toContain('const describeNotice = (reasons) => (');
+    expect(mainSource).toContain('A POS update is ready. Updating now will end the current transaction.');
+    // hasCheckoutOwnedSafetyReason is still the single source of truth for
+    // "is a transaction in progress" -- confirmed behaviorally (not just by
+    // string match) in posUpdateSafety.test.js's own suite for it.
+    expect(safetySource).toContain('export const hasCheckoutOwnedSafetyReason = (reasons = []) => (');
+  });
+
+  it('silently applies a waiting update on a natural transition pulse -- login, logout, switch, or reunlock (#990, 2026-08-28)', () => {
+    const mainSource = readSource(posMainPath);
+    const transitionSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateTransition.js'));
+    const terminalPageSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/pages/TerminalPage.jsx'));
+
+    expect(transitionSource).toContain("export const POS_UPDATE_TRANSITION_EVENT = 'dgfy-pos:update-transition';");
+    expect(transitionSource).toContain('export const publishPosUpdateTransition = (');
+    expect(mainSource).toContain("import { POS_UPDATE_TRANSITION_EVENT } from '../../../packages/web-core/src/features/pos/utils/posUpdateTransition.js';");
+    expect(mainSource).toMatch(/window\.addEventListener\(POS_UPDATE_TRANSITION_EVENT, \(\) => \{\s*applyWaitingWorker\(\);\s*\}\);/);
+    // TerminalPage publishes the pulse whenever `locked` actually changes
+    // (login succeeding, logging out) -- not on every render, only a real
+    // change -- and whenever terminalStartupLoading starts (company switch,
+    // admin re-unlock), never on an idle screen with nothing changing.
+    expect(terminalPageSource).toContain("import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';");
+    expect(terminalPageSource).toContain('const previousLockedRef = useRef(locked);');
+    expect(terminalPageSource).toContain('if (previousLockedRef.current === locked) return;');
+    expect(terminalPageSource).toContain('const previousStartupLoadingRef = useRef(terminalStartupLoading);');
+    expect(terminalPageSource).toContain('if (previousStartupLoadingRef.current === terminalStartupLoading) return;');
+    expect(terminalPageSource).toContain('if (!terminalStartupLoading) return;');
+
+    // Both pulse effects must be declared after terminalStartupLoading is
+    // computed (they depend on it / sit alongside it).
+    const startupLoadingIndex = terminalPageSource.indexOf('const terminalStartupLoading = !terminalStartupReady || (');
+    const pulseIndex = terminalPageSource.indexOf('publishPosUpdateTransition();');
+    expect(startupLoadingIndex).toBeGreaterThan(-1);
+    expect(pulseIndex).toBeGreaterThan(startupLoadingIndex);
   });
 
   it('renders the service-worker update prompt as an inline POS notice', () => {

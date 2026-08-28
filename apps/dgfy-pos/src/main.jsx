@@ -15,8 +15,10 @@ import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 import {
   getPosUpdateSafetyState,
+  hasCheckoutOwnedSafetyReason,
   POS_UPDATE_SAFETY_EVENT
 } from '../../../packages/web-core/src/features/pos/utils/posUpdateSafety.js';
+import { POS_UPDATE_TRANSITION_EVENT } from '../../../packages/web-core/src/features/pos/utils/posUpdateTransition.js';
 import { login as loginTenantSession } from '../../../packages/web-core/src/services/authService.js';
 import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
@@ -173,44 +175,85 @@ const registerPosServiceWorker = async () => {
     const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
     if (!probe.ok || !scriptLike) return;
 
+    // Whether this tab was ALREADY being controlled by a service worker
+    // before this registration ran -- captured now, before register() can
+    // change it. A brand-new install has no old worker (and no clients
+    // depending on one) to wait for, so the browser auto-promotes it
+    // through `registration.waiting` almost immediately regardless -- it
+    // just passes through that state on its way to activating, it isn't
+    // genuinely "waiting" for anything. Without this check, a completely
+    // fresh browser falsely sees "an update is ready" for a worker that's
+    // already self-activating, and tapping "Update now" silently does
+    // nothing because that worker's state has already moved past
+    // 'installed' by the time SKIP_WAITING would be posted to it. A real
+    // update (a newer build discovered while an older one already controls
+    // this tab) always has an existing controller at this point.
+    const hadExistingController = Boolean(navigator.serviceWorker.controller);
+
     let waitingWorker = null;
     let reloadAfterControllerChange = false;
     let reloadTriggered = false;
-    let updateDeferredBySafety = false;
-    let updateActivationStarted = false;
+    let activationStarted = false;
+    let noticeShowing = false;
 
-    const activateWaitingWorker = () => {
-      if (!waitingWorker || waitingWorker.state !== 'installed') return false;
-      if (updateActivationStarted) return true;
-      const safetyState = getPosUpdateSafetyState();
-      if (safetyState.unsafe) {
-        updateDeferredBySafety = true;
-        publishPosUpdateNoticeState({
-          message: 'POS update will install after the current transaction is finished.'
-        });
-        return false;
-      }
+    // Pat's call (#990 follow-up, 2026-08-28): never auto-apply an update,
+    // full stop -- not even on an untouched, idle screen. The notice may
+    // appear at any time, regardless of what the user is doing (typing,
+    // mid-checkout, anything) -- showing it is never the problem, only a
+    // forced reload is. The only two ways an update ever applies from here
+    // on: the user taps "Update now", or they refresh the page themselves
+    // (sw.js's network-first navigation + content-hashed build assets
+    // already serve the new build on a plain refresh, independent of this
+    // registration flow entirely).
+    const describeNotice = (reasons) => (
+      hasCheckoutOwnedSafetyReason(reasons)
+        ? 'A POS update is ready. Updating now will end the current transaction.'
+        : 'A POS update is ready.'
+    );
 
-      updateDeferredBySafety = false;
-      updateActivationStarted = true;
+    const applyWaitingWorker = () => {
+      if (!waitingWorker || waitingWorker.state !== 'installed') return;
+      if (activationStarted) return;
+      activationStarted = true;
       reloadAfterControllerChange = true;
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
       publishPosUpdateNoticeState(null);
-      return true;
+    };
+
+    const showUpdateNotice = () => {
+      if (!waitingWorker || waitingWorker.state !== 'installed') return;
+      if (activationStarted) return;
+      noticeShowing = true;
+      publishPosUpdateNoticeState({
+        message: describeNotice(getPosUpdateSafetyState().reasons),
+        activate: applyWaitingWorker
+      });
     };
 
     const handleWaitingWorker = (worker) => {
-      if (!worker) return;
+      if (!worker || !hadExistingController) return;
       waitingWorker = worker;
-      activateWaitingWorker();
+      showUpdateNotice();
     };
 
-    const handlePosUpdateSafetyChange = () => {
-      if (!updateDeferredBySafety) return;
-      activateWaitingWorker();
-    };
+    // Purely informational: keeps the notice's message current if the
+    // in-progress-transaction state changes while it's already showing (e.g.
+    // a cart becomes active, or checkout finishes). Never gates or triggers
+    // activation on its own.
+    window.addEventListener(POS_UPDATE_SAFETY_EVENT, () => {
+      if (!noticeShowing) return;
+      showUpdateNotice();
+    });
 
-    window.addEventListener(POS_UPDATE_SAFETY_EVENT, handlePosUpdateSafetyChange);
+    // The one exception to "never auto-apply": a natural transition the
+    // user just triggered themselves (login succeeding, logging out, a
+    // company switch, an admin re-unlock -- TerminalPage.jsx's own
+    // definition of "transition"). Silently applying right then piggybacks
+    // on a moment the user already expects something to happen, rather than
+    // reloading an idle screen "out of nowhere".
+    window.addEventListener(POS_UPDATE_TRANSITION_EVENT, () => {
+      applyWaitingWorker();
+    });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!reloadAfterControllerChange || reloadTriggered) return;
