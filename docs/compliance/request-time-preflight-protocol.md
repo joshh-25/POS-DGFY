@@ -108,7 +108,7 @@ leaving the front matter to imply otherwise — see
 the established shape of that caveat. Reconciling `preflight_run_at` /
 `preflight_request_ref` against a real run remains a human step.
 
-### Where live preflight actually runs (#884, 2026-08-22)
+### Where live preflight actually runs (#884, 2026-08-22; token minting automated #1121, 2026-08-28)
 
 The endpoint requires an authenticated session against a running backend
 (`SYSTEM.EDIT_SETTINGS`), which no `develop`-merge PR ever has — so a per-PR
@@ -123,14 +123,74 @@ should not raise it as a should-fix at that stage (see
 once per promotion batch, before `release/<label>` is cut — since ADR 0074/#980
 (2026-08-25), that means the `develop → main` leg by default, or the
 `develop → staging` leg first if a promoter chooses the optional soak for that
-batch — against a **deployed non-production host — DEV is sufficient**. The
-endpoint evaluates the change *proposal* carried in the declaration's
-`impact_declaration` payload against the policy engine; it does not need the
-change's code to be running anywhere, so DEV's currently-deployed version is
-irrelevant and production is never required. `.agents/skills/promoter/SKILL.md`
-owns the executable form of this sweep; `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
-2026-08-22 amendment (superseded in part by its 2026-08-25 amendment) owns the
-ladder this sits in.
+batch — against a **deployed non-production host**. **Target STAGING** (#1121,
+2026-08-28) — DEV is being made optional and intentionally allowed to go stale
+(#982), so it can no longer be assumed to reflect anything current; STAGING is
+named first here ahead of #982's own docs amendment landing, per Pat's explicit
+redirect on #1121. DEV remains named below only as a still-valid fallback for
+testing the mechanism itself. Note both hosts share a real, unresolved
+limitation: `docs/ops/DEV_STAGING_ENVIRONMENT_HEALTH_2026-08-08.md` (#304,
+diagnosed not fixed) found the office network path truncates large responses on
+both `dev.dgfy.ph` and `stage.dgfy.ph` — this doesn't affect the small JSON
+calls below, but is worth knowing if either host looks unreachable for a larger
+request. The endpoint evaluates the change *proposal* carried in the
+declaration's `impact_declaration` payload against the policy engine; it does
+not need the change's code to be running anywhere, so the target host's
+currently-deployed version is irrelevant and production is never required.
+`.agents/skills/promoter/SKILL.md` owns the executable form of this sweep;
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment (superseded in
+part by its 2026-08-25 amendment) owns the ladder this sits in.
+
+**Minting `DGFY_DEV_TOKEN` is automated (#1121).** The primary path is
+dispatching `.github/workflows/compliance-preflight-sweep.yml`:
+
+```bash
+gh workflow run compliance-preflight-sweep.yml -f environment=STAGING
+```
+
+It mints a fresh token per declaration (via `scripts/mint-preflight-token.js`,
+below) from credentials held only in that GitHub Environment's own secrets —
+never a human's or Claude's local shell — calls the preflight endpoint for
+every outstanding `NOT-EXECUTED-*` declaration in the `develop → main` (or
+`develop → staging`) diff, and writes the results to the run's step summary
+and a `compliance-preflight-sweep-results` artifact. It does **not** write
+back to the declaration files or open a PR — reconciling
+`preflight_result`/`preflight_reason_code`/`preflight_run_at`/
+`preflight_request_ref` from that artifact into each declaration, and landing
+it via a cut branch + PR into `develop`, stays a separate step (unchanged from
+before, see below).
+
+For local debugging only (e.g. exercising the mechanism against DEV without
+dispatching the workflow), mint a token directly:
+
+```bash
+DGFY_DEV_TOKEN=$(node scripts/mint-preflight-token.js)
+```
+
+`scripts/mint-preflight-token.js` reads `PREFLIGHT_HOST`,
+`PREFLIGHT_COMPANY_TOKEN`, `PREFLIGHT_BOT_EMAIL`, `PREFLIGHT_BOT_PASSWORD` from
+the environment and logs in as the dedicated, least-privilege bot account
+(`SYSTEM.EDIT_SETTINGS` only, never `role: admin`) via
+`POST /api/v1/auth/login`, printing only the resulting JWT to stdout. Neither
+this script nor the workflow above stores, caches, or reuses a token — a fresh
+one is minted per call, matching the 24h `JWT_EXPIRY` default
+(`apps/dgfy-api/src/services/authService.js`) and the "cheap to mint, lower
+exposure than a long-lived token" reasoning #1121 raised.
+
+**Provisioning the bot account itself is a manual, one-time step, not part of
+this automation** — `authService.loginUser`'s `requireTenantAuthContext()`
+resolves a **per-tenant** database connection from the `x-company-token`
+header, and `apps/dgfy-migration-runner` (the only migration/seed tooling this
+repo has) is scoped to the **landlord** database only
+(`apps/dgfy-migration-runner/README.md`) — it has no path to create a
+tenant-scoped user. Create the account through the tenant's own existing
+user-management flow instead (`POST /api/v1/auth/register`, or the
+invite/`accept-invite` pair), then edit its `permissions` down to exactly
+`["settings:edit"]` via the existing user-management surface — never leave it
+on a broader role. Record the chosen tenant and its `x-company-token` value as
+`PREFLIGHT_COMPANY_TOKEN` alongside the bot's `PREFLIGHT_BOT_EMAIL`/
+`PREFLIGHT_BOT_PASSWORD` in the target GitHub Environment's secrets (`STAGING`,
+and optionally `DEV` for testing this workflow) — never in this repo.
 
 **No `NOT-EXECUTED-*` declaration may reach `main`** — the promotion-time sweep
 must have reconciled every one in the batch first, unless `promoter`'s #1007
@@ -144,8 +204,9 @@ Recipe (adapted from the worked example in
 run once per outstanding declaration in the batch):
 
 ```bash
-curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
+curl -sS -X POST https://<target-host>/api/v1/compliance/preflight \
   -H 'Content-Type: application/json' \
+  -H "x-company-token: ${PREFLIGHT_COMPANY_TOKEN}" \
   -H "Authorization: Bearer ${DGFY_DEV_TOKEN}" \
   -d '{
     "request_name": "<PR title or declaration_id>",
@@ -153,6 +214,10 @@ curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
     "impact_declaration": { <the declaration'"'"'s own fields, verbatim> }
   }'
 ```
+
+Note the `x-company-token` header — the original recipe omitted it, but the same tenant-resolution
+middleware that requires it for the login call above (`requireTenantAuthContext()`) also gates
+`/api/v1/compliance/preflight` itself, so it's required here too.
 
 Record the response's `result`, `reason_code`, and a run timestamp into the
 declaration's `preflight_result` / `preflight_reason_code` / `preflight_run_at`
