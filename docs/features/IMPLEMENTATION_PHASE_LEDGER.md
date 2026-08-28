@@ -9752,7 +9752,9 @@ Phase 177.
 Keep Delivery and Pickup visible in Retail, Simple/MSME, and F&B checkout when a selected
 location does not support one of them. An unavailable method is visually muted, remains
 keyboard-activatable for feedback, preserves the current fulfillment selection, and displays the
-method-specific inline explanation. Missing or cached legacy support flags remain fail-open.
+method-specific inline explanation. Missing or cached legacy support flags remain fail-open. The
+mode-agnostic `DefaultOrderFulfillmentStep` remains explicitly out of scope because it is the
+unwired placeholder checkout tree, not one of the three live product checkout routes.
 
 ### Status
 
@@ -9773,7 +9775,7 @@ method-specific inline explanation. Missing or cached legacy support flags remai
   the required inline message (three focused selector/component interaction tests).
 - [x] F&B now consumes the selected location's resolved fulfillment options rather than rendering
   both methods unconditionally.
-- [x] `npm run build:store`, focused Storefront Vitest coverage (4 files, 8 tests),
+- [x] `npm run build:store`, focused Storefront Vitest coverage (5 files, 20 tests),
   `npm run lint:docs`, and `npm run check:architecture` pass. Storefront lint passes with the
   repository's existing warnings and no errors.
 
