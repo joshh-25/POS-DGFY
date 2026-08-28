@@ -2806,7 +2806,7 @@ export default function TerminalPage() {
           terminalId: activeTerminalId,
           locationId: shiftState?.shift?.location_id || operatingLocationId,
           userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
-        }, activeShiftId);
+        }, shiftState?.shift?.pos_terminal_shift_id || null);
       };
       const clearSessionSale = checkoutLifecycleRef.current?.clearTransientSaleForSessionEnd;
       if (typeof clearSessionSale === 'function') {
@@ -2830,7 +2830,7 @@ export default function TerminalPage() {
       window.removeEventListener('auth:session-cleared', onSessionExpired);
       window.removeEventListener('auth:logout', onSessionExpired);
     };
-  }, [activeShiftId, activeTerminalId, activeTenantId, operatingLocationId, resetSettingsAccessPinState, shiftState?.shift?.location_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+  }, [activeTerminalId, activeTenantId, operatingLocationId, resetSettingsAccessPinState, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
 
   useEffect(() => {
     if (settingsAccessPinEnabled) return;
