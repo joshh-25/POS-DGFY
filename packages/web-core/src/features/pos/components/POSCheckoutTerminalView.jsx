@@ -2,31 +2,20 @@ import React, { Suspense } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
-    Accessibility,
     AlertCircle,
-    BadgeCheck,
     CarTaxiFront,
-    ChevronDown,
     ChevronLeft,
     ChevronRight,
-    CreditCard,
     Delete,
     Folder,
     Lock,
-    MessageSquare,
     Minus,
-    Pencil,
     Plus,
     Percent,
     Printer,
     Search,
-    ShieldCheck,
-    Tag,
-    Ticket,
-    UserRound,
     X,
     Eye,
-    EyeOff,
     Trash2,
     LayoutGrid
 } from 'lucide-react';
@@ -46,9 +35,9 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
-import { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
-import { formatQuantity, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
-import { POSCheckoutConfirmDialog } from './POSCheckoutConfirmDialog.jsx';
+import { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
+import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
+import POSCheckoutConfirmDialog from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
 
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
@@ -61,20 +50,9 @@ const PosAddToCartToastContainer = lazyWithChunkRetry(() => import('./PosAddToCa
 const PosCurrentSaleActions = lazyWithChunkRetry(() => import('./PosCurrentSaleActions.jsx').then(({ PosCurrentSaleActions: Component }) => ({ default: Component })));
 const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
+const POSDiscountWorkspace = lazyWithChunkRetry(() => import('./POSDiscountWorkspace.jsx'));
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
-const DISCOUNT_TYPE_OPTIONS = [
-    { value: 'employee', label: 'Employee', icon: BadgeCheck },
-    { value: 'senior', label: 'Senior Citizen', icon: UserRound },
-    { value: 'pwd', label: 'PWD', icon: Accessibility },
-    { value: 'promo', label: 'Promo', icon: Tag },
-    // #712: POS voucher redemption. No client-side validation like Promo -- there is no
-    // enumerating endpoint for a store's vouchers, so the code is submitted and the server decides.
-    { value: 'voucher', label: 'Voucher', icon: Ticket },
-    { value: 'manual', label: 'Other', icon: Pencil }
-];
-
 const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false }) => {
     if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
     const sharedClassName = overlay ? 'border-white/30 bg-slate-950/55 text-white' : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
@@ -129,7 +107,6 @@ const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
 export default function POSCheckoutTerminalView({ viewModel = {} }) {
     const {
         activeParkedSale,
-        activeShiftCashierApprover,
         activeShiftId,
         addCatalogItemToCart,
         addToCart,
@@ -166,11 +143,9 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogViewportClassName,
         catalogViewportRef,
         checkoutBlockedReason,
-        checkoutDiscountLabel,
         checkoutGridClassName,
         checkoutLoading,
         checkoutPaneClassName,
-        clearAppliedDiscount,
         clearSaleConfirmOpen,
         closeDiscountModal,
         closeReceiptPreviewModal,
@@ -181,12 +156,9 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
         currentViewMode,
-        discountApplying,
-        discountApproversLoading,
-        discountEmployeesLoading,
-        discountDraft,
+        handleClearSaleDialogOpenChange,
+        pendingViewModeAfterSaleClear,
         discountModalOpen,
-        discountPreviewTotals,
         drawerAdminBypass,
         drawerAuthorizationModalOpen,
         drawerAuthorizationPin,
@@ -194,13 +166,11 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         drawerAuthorizationSubmitting,
         drawerOpening,
         editingQuantityItemId,
-        employeeDiscountRateOptions,
         flyImageToCheckoutBar,
         folderButtonClassName,
         folderStripRef,
         globalDiscountAmount,
         governedDiscountTotals,
-        handleApplyGovernedDiscount,
         handleCartQtyButtonPointerCancel,
         handleCartQtyButtonPointerDown,
         handleCartQtyButtonPointerMove,
@@ -247,14 +217,12 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historySearch,
         historyStatus,
         imagePreview,
-        isCartLineSeniorPwdEligible,
         isEmployeeCreditPayment,
         isMsmeMode,
         isPrinterAvailable,
         isTabletViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
-        itemOptionsItemDiscount,
         itemOptionsLine,
         itemOptionsLineKey,
         lastReceipt,
@@ -273,13 +241,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         offlineSnapshotScope,
         openCheckoutConfirmModal,
         openClearCurrentSale,
-        openDiscountModal,
         openHistoryDetail,
-        openInPosReport,
         openParkSaleNameDialog,
         openParkedSalesHistory,
         openSplitPaymentModal,
-        orderMethod,
         parkLoading,
         parkSaleNameDialogOpen,
         parkSaleNameInput,
@@ -289,7 +254,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         posFoldersLoading,
         posHardware,
         posPresentationBundle,
-        posReportActionLabel,
         qtyMeterState,
         quantityInputValue,
         queuedCheckoutBlockedCount,
@@ -304,10 +268,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         resetCurrentSaleForNewSale,
         safeCart,
         safeCatalog,
-        safeDiscountApprovers,
-        safeDiscountEmployees,
-        safeEligibleDiscountItemIds,
-        safeEligibleDiscountItems,
         saveItemOptions,
         search,
         selectedDiscount,
@@ -320,10 +280,8 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setAffiliateCodeInput,
         setBillRequestDraft,
         setCatalogImageErrors,
-        setClearSaleConfirmOpen,
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
-        setDiscountDraft,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,
         setDrawerAuthorizationPin,
@@ -346,18 +304,17 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setParkedSalesDialogOpen,
         setQuantityInputValue,
         setReceiptPaperWidth,
+        setReceiptPreviewModalOpen,
         setReceiptPreviewSource,
         setSearch,
         setSelectedFolderId,
         setServiceOptionsModal,
         setSetupSnapshotModalOpen,
-        setShowDiscountPin,
         setSplitPaymentCancelModalOpen,
         setupCurrency,
         setupMeta,
         setupSnapshotModalOpen,
         shellClassName,
-        showDiscountPin,
         splitPaymentCancelLoading,
         splitPaymentCancelModalOpen,
         splitPaymentCheckoutContext,
@@ -379,6 +336,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
+    const handleCloseDiscountModal = () => {
+        closeDiscountModal();
+    };
+
 
 return (
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
@@ -1216,7 +1177,7 @@ return (
                                         <div className="text-[11px] text-slate-500">
                                             <span>Price</span>
                                             <p className="mt-1 h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-[13px] font-extrabold leading-8 text-[#0F172A]">
-                                                {money(line.sale_price)}
+                                                {money(getCartLineSubtotal(line))}
                                             </p>
                                         </div>
                                     </div>
@@ -1483,24 +1444,44 @@ return (
                             <h2 className="text-xl font-bold text-slate-900">Order Preview</h2>
                             <p className="text-sm text-slate-600">Review the selected order summary.</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                data-testid="pos-receipt-open-pos-report"
-                                onClick={openInPosReport}
+                                data-testid="pos-receipt-view-receipt"
+                                onClick={() => {
+                                    setReceiptPreviewSource('receipt_preview');
+                                    setReceiptPreviewModalOpen(true);
+                                }}
+                                disabled={posActionsBlocked || !lastReceipt}
                             >
-                                {posReportActionLabel}
+                                <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                View Receipt
                             </Button>
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                data-testid="pos-receipt-print"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                             >
-                                {receiptPrinting ? 'Printing...' : 'Send to Printer'}
+                                <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                {receiptPrinting ? 'Printing...' : 'Print'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                data-testid="pos-receipt-print-order"
+                                onClick={() => handlePrintOrder(lastReceipt)}
+                                disabled={posActionsBlocked || !lastReceipt || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                            >
+                                <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                Print Order
                             </Button>
                         </div>
                     </div>
@@ -1631,411 +1612,22 @@ return (
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : closeDiscountModal())}>
-                <DialogContent className="relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
-                    <button
-                        type="button"
-                        onClick={closeDiscountModal}
-                        className="absolute right-3 top-3 z-10 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                        aria-label="Close discount modal"
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
-
-                    <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3 pr-12 text-left">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                                <Tag className="h-5 w-5" aria-hidden="true" />
-                            </div>
-                            <div>
-                                <DialogTitle className="text-[17px] font-black text-[#0F172A]">Apply Discount</DialogTitle>
-                                <DialogDescription className="mt-0.5 text-[12px] font-medium text-[#475569]">Select discount type and verify employee.</DialogDescription>
-                            </div>
-                        </div>
+            <Dialog open={discountModalOpen && !viewModel.checkoutConfirmModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}>
+                <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl sm:w-[calc(100vw-4rem)]">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Apply Discount</DialogTitle>
+                        <DialogDescription>Select discount type and verify employee.</DialogDescription>
                     </DialogHeader>
-
-                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-                        <div className="grid grid-cols-6 gap-1.5" role="tablist" aria-label="Discount Type">
-                            {DISCOUNT_TYPE_OPTIONS.map((option) => {
-                                const TypeIcon = option.icon;
-                                const active = discountDraft.type === option.value;
-                                return (
-                                    <button
-                                        key={option.value}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={active}
-                                        aria-controls="discount-type-panel"
-                                        className={`flex min-h-[62px] flex-col items-center justify-center gap-0.5 rounded-lg border p-1 text-[10px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
-                                            active
-                                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-extrabold shadow-sm'
-                                                : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:bg-slate-50'
-                                        }`}
-                                        onClick={() => setDiscountDraft((previous) => ({
-                                            ...previous,
-                                            type: option.value,
-                                            rate: option.value === 'employee'
-                                                ? '15'
-                                                : (['senior', 'pwd'].includes(option.value) ? '20' : previous.rate)
-                                        }))}
-                                    >
-                                        <TypeIcon className={`h-5 w-5 shrink-0 transition-colors ${active ? 'text-emerald-600' : 'text-slate-600'}`} aria-hidden="true" />
-                                        <span className="w-full whitespace-normal text-center leading-tight">{option.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        <div id="discount-type-panel" role="tabpanel" className="space-y-3">
-                            <div className="grid gap-2.5 sm:grid-cols-2">
-                                {discountDraft.type !== 'employee' && (
-                                    <div className={`space-y-1 ${['senior', 'pwd', 'promo', 'voucher'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
-                                        <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input
-                                                className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                placeholder="Enter customer name"
-                                                value={discountDraft.customer_name}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {['senior', 'pwd'].includes(discountDraft.type) && (
-                                    <div className="space-y-1 col-span-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter ID number" value={discountDraft.id_number} onChange={(e) => setDiscountDraft((p) => ({ ...p, id_number: e.target.value }))} />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {discountDraft.type === 'promo' && (
-                                    <div className="space-y-1 col-span-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Promo Code <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <Tag className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input
-                                                className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                placeholder="Enter promo code"
-                                                value={discountDraft.promo_code || ''}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, promo_code: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {discountDraft.type === 'voucher' && (
-                                    <div className="space-y-1 col-span-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Voucher Code <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <Ticket className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input
-                                                className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                placeholder="Enter voucher code"
-                                                value={discountDraft.voucher_code || ''}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, voucher_code: e.target.value }))}
-                                            />
-                                        </div>
-                                        {/* No client-side code validation, unlike Promo -- nothing enumerates a
-                                            store's vouchers for the POS client. The server decides on submit. */}
-                                        <p className="text-[11px] font-medium text-[#64748B]">Discount amount is confirmed at checkout</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {['senior', 'pwd'].includes(discountDraft.type) && (
-                                <div className="space-y-2.5">
-                                    <div>
-                                        <p className="mb-1 text-xs font-semibold text-[#0F172A]">Eligible Items</p>
-                                        <p className="mb-2 text-[11px] text-slate-500">Select only items and quantities for this Senior/PWD customer.</p>
-                                        <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                                            {safeCart.some(isCartLineSeniorPwdEligible) ? safeCart.filter(isCartLineSeniorPwdEligible).map((line) => {
-                                                const checked = safeEligibleDiscountItemIds.includes(Number(line.item_id));
-                                                const selectedEntry = safeEligibleDiscountItems.find((entry) => Number(entry?.item_id) === Number(line.item_id));
-                                                const selectedQuantity = selectedEntry?.eligible_quantity ?? 1;
-                                                const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
-                                                const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
-                                                const resolvedSrc = imageSrc ? resolveAssetVariantUrl(imageSrc, 'thumbnail') : '';
-
-                                                return (
-                                                    <label
-                                                        key={`discount-line-${line.item_id}`}
-                                                        className={`flex min-h-[32px] items-center justify-between gap-2.5 rounded-lg border px-2 py-1 text-xs transition-all cursor-pointer ${
-                                                            checked
-                                                                ? 'border-teal-200 bg-teal-50/10'
-                                                                : 'border-slate-200 bg-white hover:border-slate-300'
-                                                        }`}
-                                                    >
-                                                        <div className="flex min-w-0 items-center gap-2">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 accent-teal-600 cursor-pointer"
-                                                                checked={checked}
-                                                                onChange={(e) =>
-                                                                    setDiscountDraft((p) => ({
-                                                                        ...p,
-                                                                        eligible_item_ids: e.target.checked
-                                                                            ? [...new Set([...toArray(p.eligible_item_ids), Number(line.item_id)])]
-                                                                            : toArray(p.eligible_item_ids).filter((id) => id !== Number(line.item_id)),
-                                                                        eligible_items: e.target.checked
-                                                                            ? [...toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id)), { item_id: Number(line.item_id), eligible_quantity: 1 }]
-                                                                            : toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id))
-                                                                    }))
-                                                                }
-                                                            />
-
-                                                            <div className="h-6 w-6 shrink-0 overflow-hidden rounded border border-slate-100 bg-slate-50 flex items-center justify-center">
-                                                                {resolvedSrc ? (
-                                                                    <img
-                                                                        src={resolvedSrc}
-                                                                        alt={line.item_name}
-                                                                        className="h-full w-full object-cover"
-                                                                    />
-                                                                ) : (
-                                                                    <div className="text-[9px] font-bold text-slate-400 uppercase">
-                                                                        {line.item_name ? line.item_name.substring(0, 2) : 'IT'}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            <span className="truncate font-semibold text-slate-700">{line.item_name}</span>
-                                                        </div>
-
-                                                        {checked ? (
-                                                            <div className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-slate-600">
-                                                                <span>Eligible:</span>
-                                                                <Input
-                                                                    aria-label={`Eligible quantity for ${line.item_name}`}
-                                                                    className="h-6 w-14 rounded-md px-1 text-center text-[10px]"
-                                                                    type="number"
-                                                                    min="1"
-                                                                    max={line.quantity}
-                                                                    step="0.001"
-                                                                    value={selectedQuantity}
-                                                                    onClick={(event) => event.stopPropagation()}
-                                                                    onChange={(event) => {
-                                                                        const requestedQuantity = Number(event.target.value);
-                                                                        const cartQuantity = Number(line.quantity || 0);
-                                                                        const eligibleQuantity = Number.isFinite(requestedQuantity)
-                                                                            ? Math.min(Math.max(requestedQuantity, 1), cartQuantity)
-                                                                            : 1;
-                                                                        setDiscountDraft((previous) => ({
-                                                                            ...previous,
-                                                                            eligible_items: toArray(previous.eligible_items).map((entry) => (
-                                                                                Number(entry?.item_id) === Number(line.item_id)
-                                                                                    ? { ...entry, eligible_quantity: eligibleQuantity }
-                                                                                    : entry
-                                                                            ))
-                                                                        }));
-                                                                    }}
-                                                                />
-                                                                <span>of {formatQuantity(line.quantity)}</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-                                                                Qty: {formatQuantity(line.quantity)}
-                                                            </span>
-                                                        )}
-                                                    </label>
-                                                );
-                                            }) : (
-                                                <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800" role="status">
-                                                    No eligible items are in this cart. In Items, enable Senior/PWD Eligible and save the item, then remove and re-add it to this cart.
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {discountDraft.type === 'employee' && (
-                                <div className="grid gap-2.5 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <select
-                                                aria-label="Employee Name"
-                                                value={discountDraft.employee_directory_id || ''}
-                                                disabled={discountEmployeesLoading}
-                                                onChange={(event) => {
-                                                    const selected = safeDiscountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
-                                                    setDiscountDraft((previous) => ({
-                                                        ...previous,
-                                                        employee_directory_id: selected ? String(selected.employee_id) : '',
-                                                        employee_name: selected?.full_name || '',
-                                                        employee_id: selected?.employee_code || ''
-                                                    }));
-                                                }}
-                                                className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
-                                            >
-                                                <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
-                                                {safeDiscountEmployees.map((employee) => (
-                                                    <option key={employee.employee_id} value={employee.employee_id}>
-                                                        {employee.full_name} ({employee.employee_code} · {employee.location_name})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        </div>
-                                        {!discountEmployeesLoading && safeDiscountEmployees.length === 0 && <p className="mt-1 text-xs font-medium text-amber-700">No active registered employees are available.</p>}
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID</label>
-                                        <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input readOnly className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-xs font-medium" placeholder="Auto-filled" value={discountDraft.employee_id} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {discountDraft.type === 'manual' && (
-                                <div className="grid gap-2.5 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Method <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <select
-                                                value={discountDraft.method}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, method: e.target.value }))}
-                                                className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                            >
-                                                <option value="percentage">Percentage</option>
-                                                <option value="fixed">Fixed Amount</option>
-                                            </select>
-                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">
-                                            {discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'} <span className="text-rose-500">*</span>
-                                        </label>
-                                        <div className="relative">
-                                            {discountDraft.method === 'fixed' ? (
-                                                <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            ) : (
-                                                <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            )}
-                                            <Input
-                                                className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
-                                                placeholder={discountDraft.method === 'fixed' ? 'Enter amount' : 'Enter rate'}
-                                                type="number"
-                                                min="0"
-                                                max={discountDraft.method === 'percentage' ? 100 : undefined}
-                                                value={discountDraft.method === 'fixed' ? discountDraft.amount : discountDraft.rate}
-                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, [p.method === 'fixed' ? 'amount' : 'rate']: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {discountDraft.type === 'promo' && (
-                                <div className="text-[11px] font-medium text-[#64748B] -mt-1">
-                                    Enter a valid promo or campaign code
-                                </div>
-                            )}
-
-                            {discountDraft.type === 'manual' && (
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="text-[11px] font-medium text-slate-400">(optional)</span></label>
-                                    <div className="relative">
-                                        <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter other discount reason (optional)" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
-                                    </div>
-                                </div>
-                            )}
-                            {discountDraft.type && (
-                                <div className="grid gap-2.5 sm:grid-cols-2">
-                                    {discountDraft.type === 'employee' && (
-                                        <div className="space-y-1 sm:col-span-1">
-                                            <label className="text-xs font-semibold text-[#0F172A]">Discount Rate <span className="text-rose-500">*</span></label>
-                                            <div className="relative">
-                                                <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                <select
-                                                    value={discountDraft.rate}
-                                                    onChange={(event) => setDiscountDraft((previous) => ({ ...previous, rate: event.target.value, method: 'percentage' }))}
-                                                    className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                                    aria-label="Discount Rate"
-                                                >
-                                                    {employeeDiscountRateOptions.map((rate) => (
-                                                        <option key={rate} value={rate}>{rate}</option>
-                                                    ))}
-                                                </select>
-                                                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-1 sm:col-span-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Authorizing employee <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <select autoComplete="off" value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
-                                                <option value="">{discountApproversLoading ? 'Loading authorized employees...' : 'Select authorized employee'}</option>
-                                                {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id} disabled={approver.pos_approval_pin_configured !== true}>{approver.username} ({approver.role}){approver.pos_approval_pin_configured === true ? '' : ' — PIN not configured'}</option>)}
-                                            </select>
-                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        </div>
-                                        {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-xs font-medium text-amber-700 mt-1">No authorized employees are configured. Ask an administrator to grant discount authorization.</p>}
-                                        {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some((approver) => approver.pos_approval_pin_configured === true) && <p className="text-xs font-medium text-amber-700 mt-1">Authorized employees are listed, but each needs a POS approval PIN before they can approve a discount.</p>}
-                                    </div>
-                                    <div className="space-y-1 sm:col-span-2">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee PIN <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input name="pos_discount_approval_pin" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: showDiscountPin ? 'none' : 'disc' }} className="h-9 rounded-lg border-slate-200 pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee PIN" type="text" inputMode="numeric" value={discountDraft.manager_pin} onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))} />
-                                            <button type="button" onClick={() => setShowDiscountPin((prev) => !prev)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500" aria-label={showDiscountPin ? 'Hide employee PIN' : 'Show employee PIN'}>
-                                                {showDiscountPin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-center sm:grid-cols-3 sm:divide-x sm:divide-slate-200">
-                            <div className="space-y-0.5 px-2 py-2.5">
-                                <span className="block text-[10px] font-semibold text-slate-500">VAT Removed</span>
-                                <span className="block text-sm font-bold tabular-nums text-slate-800">PHP {money(discountPreviewTotals.vatRemoved)}</span>
-                            </div>
-                            <div className="space-y-0.5 border-t border-slate-200 px-2 py-2.5 sm:border-t-0">
-                                <span className="block text-[10px] font-semibold text-slate-500">Discount</span>
-                                <span className="block text-sm font-bold tabular-nums text-slate-800">- PHP {money(discountPreviewTotals.discountAmount)}</span>
-                            </div>
-                            <div className="space-y-0.5 border-t border-slate-200 bg-emerald-50/60 px-2 py-2.5 sm:border-t-0">
-                                <span className="block text-[10px] font-semibold text-slate-500">Total Amount Due</span>
-                                <span className="block text-base font-black tabular-nums text-emerald-700">PHP {money(discountPreviewTotals.total)}</span>
-                            </div>
-                        </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                        <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-slate-100" aria-hidden="true" />}>
+                            <POSDiscountWorkspace viewModel={viewModel} onCancel={handleCloseDiscountModal} />
+                        </Suspense>
                     </div>
-                    <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="h-9 rounded-lg border-slate-200 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors sm:min-w-28"
-                            onClick={closeDiscountModal}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="button"
-                            className="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700 transition-colors flex items-center justify-center sm:min-w-40"
-                            onClick={handleApplyGovernedDiscount}
-                            disabled={discountApplying}
-                        >
-                            <Tag className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                            {discountApplying ? 'Verifying...' : 'Apply Discount'}
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            <POSCheckoutConfirmDialog viewModel={viewModel} />
+
+            <POSCheckoutConfirmDialog key={viewModel.checkoutConfirmModalOpen ? 'checkout-open' : 'checkout-closed'} viewModel={viewModel} />
 
             <POSCheckoutTerminalReceiptDialogs
                 splitPaymentCancelModalOpen={splitPaymentCancelModalOpen}
@@ -2055,11 +1647,10 @@ return (
                 setReceiptPaperWidth={setReceiptPaperWidth}
                 setReceiptPreviewSource={setReceiptPreviewSource}
                 posActionsBlocked={posActionsBlocked}
-                openInPosReport={openInPosReport}
-                posReportActionLabel={posReportActionLabel}
                 receiptPrinting={receiptPrinting}
                 isPrinterAvailable={isPrinterAvailable}
                 handlePrintReceipt={handlePrintReceipt}
+                handlePrintOrder={handlePrintOrder}
                 OrderPreviewView={OrderPreviewView}
             />
 
@@ -2207,7 +1798,7 @@ return (
             </Dialog>
             <Dialog
                 open={clearSaleConfirmOpen}
-                onOpenChange={setClearSaleConfirmOpen}
+                onOpenChange={handleClearSaleDialogOpenChange}
             >
                 <DialogContent
                     className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
@@ -2216,17 +1807,19 @@ return (
                     <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
                         <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
                             <Trash2 className="h-5 w-5 text-rose-600" />
-                            Clear current sale?
+                            {pendingViewModeAfterSaleClear ? 'Leave checkout and clear sale?' : 'Clear current sale?'}
                         </DialogTitle>
                         <DialogDescription className="text-sm text-slate-600">
-                            This removes all items and unsaved sale details from the current sale. This cannot be undone.
+                            {pendingViewModeAfterSaleClear
+                                ? 'Leaving checkout will remove all items and unsaved sale details from the current sale. This cannot be undone.'
+                                : 'This removes all items and unsaved sale details from the current sale. This cannot be undone.'}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setClearSaleConfirmOpen(false)}
+                            onClick={() => handleClearSaleDialogOpenChange(false)}
                         >
                             Cancel
                         </Button>
@@ -2237,7 +1830,7 @@ return (
                             data-testid="pos-confirm-clear-current-sale"
                         >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Clear sale
+                            {pendingViewModeAfterSaleClear ? 'Leave without sale' : 'Clear sale'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -2259,13 +1852,7 @@ return (
                         open
                         line={itemOptionsLine}
                         locationId={selectedLocationId}
-                        itemDiscount={itemOptionsItemDiscount}
                         globalDiscount={itemOptionsGlobalDiscount}
-                        discountApprovers={safeDiscountApprovers}
-                        discountApproversLoading={discountApproversLoading}
-                        discountEmployees={safeDiscountEmployees}
-                        discountEmployeesLoading={discountEmployeesLoading}
-                        defaultDiscountApprover={activeShiftCashierApprover}
                         onClose={() => setItemOptionsLineKey(null)}
                         onSave={saveItemOptions}
                     />

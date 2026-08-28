@@ -18,7 +18,7 @@ const PROFILE_CASES = Object.freeze([
     effectiveCapabilities: null,
     bundleKey: 'fnb',
     detailsTestId: 'fnb-workflow-panel',
-    heading: 'Order details',
+    heading: null,
     visibleLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)'],
     hiddenLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room']
   }),
@@ -28,7 +28,7 @@ const PROFILE_CASES = Object.freeze([
     effectiveCapabilities: [],
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
-    heading: 'Order details',
+    heading: null,
     visibleLabels: ['Walk-in'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
   }),
@@ -48,7 +48,7 @@ const PROFILE_CASES = Object.freeze([
     effectiveCapabilities: null,
     bundleKey: 'counter',
     detailsTestId: 'counter-workflow-panel',
-    heading: 'Order details',
+    heading: null,
     visibleLabels: ['Walk-in'],
     hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
   })
@@ -105,7 +105,11 @@ describe('POS mode presentation matrix', () => {
 
       expect(presentationBundle.key).toBe(profile.bundleKey);
       expect(await screen.findByTestId(profile.detailsTestId, {}, { timeout: 5000 })).toBeDefined();
-      expect(screen.getByText(profile.heading)).toBeDefined();
+      if (profile.heading) {
+        expect(screen.getByText(profile.heading)).toBeDefined();
+      } else {
+        expect(screen.queryByText('Order details')).toBeNull();
+      }
 
       profile.visibleLabels.forEach((label) => {
         expect(screen.getByText(label)).toBeDefined();

@@ -1,5 +1,7 @@
 # Admin Account Security - Implementation Summary
 
+> **Archived (#365, 2026-08-26).** Moved out of `.claude/` — a one-off historical status report, not a live agent instruction; the product-name/architecture framing in this document may be stale. `AGENTS.md` is the current, canonical source of truth.
+
 **Date:** 2025-12-27
 **Status:** ✅ Implemented
 

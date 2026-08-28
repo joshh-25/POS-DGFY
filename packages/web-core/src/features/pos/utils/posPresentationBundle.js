@@ -20,11 +20,13 @@ const buildPresentationBundle = ({
   key,
   checkoutDetailsOwner,
   checkoutDetailsHeading,
+  showCheckoutDetailsHeading = false,
   showParkedSaleControls
 }) => Object.freeze({
   key,
   labels: Object.freeze({
-    checkoutDetailsHeading
+    checkoutDetailsHeading,
+    showCheckoutDetailsHeading
   }),
   currentSaleActions: Object.freeze({
     showParkedSaleControls
@@ -47,6 +49,7 @@ export const POS_PRESENTATION_BUNDLES = Object.freeze({
     key: 'services',
     checkoutDetailsOwner: POS_PRESENTATION_SLOT_OWNERS.SERVICES,
     checkoutDetailsHeading: 'Service details',
+    showCheckoutDetailsHeading: true,
     showParkedSaleControls: false
   }),
   counter: buildPresentationBundle({

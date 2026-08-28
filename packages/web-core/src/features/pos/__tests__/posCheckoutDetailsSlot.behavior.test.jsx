@@ -46,7 +46,7 @@ describe('PosCheckoutDetailsSlot', () => {
     await renderSlot('fnb');
 
     expect(await screen.findByTestId('fnb-workflow-panel')).toBeDefined();
-    expect(screen.getByText('Order details')).toBeDefined();
+    expect(screen.queryByText('Order details')).toBeNull();
     expect(screen.queryByTestId('services-workflow-panel')).toBeNull();
     expect(screen.queryByTestId('counter-workflow-panel')).toBeNull();
   });

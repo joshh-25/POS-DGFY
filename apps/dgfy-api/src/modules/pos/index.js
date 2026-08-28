@@ -99,7 +99,10 @@ import {
     buildGetMobilePosCatalogBootstrapUseCase,
     buildGetMobilePosSettingsBootstrapUseCase,
     buildGetMobilePosDevicePolicyUseCase,
+    buildGetMobilePosTransactionCheckpointUseCase,
     buildSyncMobilePosCheckoutsUseCase,
+    buildSyncMobilePosVoidsUseCase,
+    buildSyncMobilePosOrderActionsUseCase,
     buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
     buildSyncMobilePosHardwareEventsUseCase,
@@ -386,7 +389,13 @@ export { revokePosOperatorSessionsForTerminal };
 export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
-export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase });
+export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });
+export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository });
+export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase });
+export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
+    updateOnlineOrderStatusUseCase,
+    collectCashPickupOrderUseCase
+});
 export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
     createItemUseCase,
     updateItemUseCase,

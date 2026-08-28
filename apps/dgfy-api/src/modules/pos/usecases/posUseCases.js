@@ -2712,6 +2712,7 @@ export const buildCheckoutPosUseCase = ({
         quoteOnly = false,
         discountApproval = null,
         trustedDiscountApproval = null,
+        trustedOfflineStatutoryPolicy = null,
         itemDiscountApprovals = null,
         trustedItemDiscountApprovals = null
     }) => {
@@ -2893,6 +2894,7 @@ export const buildCheckoutPosUseCase = ({
                         .filter(Boolean))],
                     eligible_items: (payload.governed_discount.eligible_items || [])
                         .map((entry) => ({
+                            line_ref: String(entry?.line_ref || '').trim() || null,
                             item_id: parsePositiveInt(entry?.item_id),
                             eligible_quantity: round4(entry?.eligible_quantity)
                         }))
@@ -2902,6 +2904,7 @@ export const buildCheckoutPosUseCase = ({
             lines: lines
                 .map((line, index) => ({
                     sequence: index,
+                    line_ref: String(line.line_ref || '').trim() || null,
                     item_id: Number.parseInt(line.item_id, 10),
                     quantity: round4(line.quantity),
                     sale_price: line.sale_price == null ? null : round4(line.sale_price),
@@ -3402,6 +3405,7 @@ export const buildCheckoutPosUseCase = ({
                 subtotalAmount += lineSubtotal;
 
                 preparedLines.push({
+                    line_ref: String(line.line_ref || '').trim() || null,
                     item_id: item.item_id,
                     item_name: item.name,
                     item_name_snapshot: item.name || null,
@@ -3648,7 +3652,21 @@ export const buildCheckoutPosUseCase = ({
                     governedDraft,
                     governedApplication
                 );
-                if (trustedApprovalMatches) {
+                const offlineStatutoryPolicyMatches = isPlainObject(trustedOfflineStatutoryPolicy)
+                    && ['senior', 'pwd'].includes(governedApplication.type)
+                    && trustedOfflineStatutoryPolicy.discountType === governedApplication.type
+                    && String(trustedOfflineStatutoryPolicy.version || '').trim();
+                if (offlineStatutoryPolicyMatches) {
+                    const policyVersion = String(trustedOfflineStatutoryPolicy.version).trim();
+                    governedApplication.manager_approval_id = null;
+                    governedApplication.manager_approval_name = `Verified mobile policy ${policyVersion.slice(0, 12)}`;
+                    governedApplication.manager_approved_at = new Date(trustedOfflineStatutoryPolicy.verifiedAt || Date.now());
+                    governedApplication.self_approved = false;
+                    governedApplication.reason = [
+                        String(governedApplication.reason || '').trim(),
+                        `Offline statutory policy ${policyVersion}`
+                    ].filter(Boolean).join(' · ').slice(0, 500);
+                } else if (trustedApprovalMatches) {
                     if (governedApplication.type === 'employee'
                         && normalizedTrustedDiscountApproval.self_approved === true
                         && employeeDiscountSelfApprovalEnabled !== true) {
@@ -4474,7 +4492,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
-    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+    return async ({ posTransactionId, payload = {}, user = {}, trustedMobileReplay = false } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const operatorSessionId = parsePositiveInt(user?.operator_session_id);
@@ -4485,6 +4503,9 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const activeShiftId = parsePositiveInt(payload.shift_id);
         const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         const terminalLocationId = parsePositiveInt(payload.terminal_location_id);
+        const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
+        const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
         const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
         if (!normalizedTransactionId) {
             return fail(new DomainError(
@@ -4514,7 +4535,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 { statusCode: 422 }
             ));
         }
-        if (!activeShiftId && !adminShiftBypass) {
+        if (!activeShiftId && !adminShiftBypass && !trustedMobileReplay) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'An active shift is required to void a POS transaction',
@@ -4526,15 +4547,15 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const transaction = await sequelize.transaction();
         try {
             const existing = await posRepository.getTransactionById(normalizedTransactionId, { transaction, lock: true });
-            if (!existing || existing.status === 'voided') {
+            if (!existing) {
                 throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'POS transaction is not available for voiding',
-                    { statusCode: 409 }
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'POS transaction was not found',
+                    { statusCode: 404 }
                 );
             }
 
-            if (activeShiftId) {
+            if (activeShiftId && !trustedMobileReplay) {
                 await assertOpenShiftForPosMutation({
                     posRepository,
                     cashierId: actorUserId,
@@ -4563,12 +4584,14 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 });
             }
             const auditShiftId = transactionShiftId || activeShiftId || null;
-            const authorizationMode = adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift';
+            const authorizationMode = trustedMobileReplay
+                ? 'mobile_offline_replay'
+                : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift');
             const originalCashierId = parsePositiveInt(existing.cashier_id);
             const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
             const paymentStatusBeforeVoid = String(existing.payment_status || 'unknown').trim().toLowerCase() || 'unknown';
             const financialOutcome = resolvePosVoidFinancialOutcome(existing);
-            const voidAdjustmentIdempotencyKey = `pos-void:${normalizedTransactionId}`;
+            const voidAdjustmentIdempotencyKey = requestedVoidIdempotencyKey || `pos-void:${normalizedTransactionId}`;
             const voidAdjustmentPayload = {
                 pos_transaction_id: normalizedTransactionId,
                 reason,
@@ -4600,10 +4623,39 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                         { statusCode: 409 }
                     );
                 }
+                await transaction.commit();
+                return ok({
+                    transaction: toSerializable(existing),
+                    stock_reversals: [],
+                    authorization_mode: authorizationMode,
+                    transaction_shift_id: transactionShiftId,
+                    financial_outcome: financialOutcome,
+                    idempotent_replay: true,
+                    replay_outcome: 'idempotent_replay'
+                });
+            }
+            if (existing.status === 'voided') {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
-                    'POS void evidence already exists for this transaction',
-                    { statusCode: 409 }
+                    'POS transaction is not available for voiding',
+                    { statusCode: 409, details: { reason_code: 'POS_TRANSACTION_ALREADY_VOIDED' } }
+                );
+            }
+            if (expectedStatus && String(existing.status || '').trim().toLowerCase() !== expectedStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction status changed before the offline void was applied',
+                    { statusCode: 409, details: { reason_code: 'MOBILE_VOID_STATUS_CONFLICT', expected_status: expectedStatus, actual_status: existing.status } }
+                );
+            }
+            const actualServerVersion = existing.updated_at instanceof Date
+                ? existing.updated_at.toISOString()
+                : String(existing.updated_at || '').trim();
+            if (expectedServerVersion && actualServerVersion && expectedServerVersion !== actualServerVersion) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction changed before the offline void was applied',
+                    { statusCode: 409, details: { reason_code: 'MOBILE_VOID_VERSION_CONFLICT', expected_server_version: expectedServerVersion, actual_server_version: actualServerVersion } }
                 );
             }
 
@@ -8590,6 +8642,11 @@ const buildCollectCashOnlineOrderUseCase = ({
         const terminalId = sanitizeTerminalId(payload?.terminal_id);
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const cashReceived = round4(payload?.cash_received);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
         if (!orderId || !cashierId || !terminalId || !idempotencyKey || cashReceived <= 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -8598,10 +8655,16 @@ const buildCollectCashOnlineOrderUseCase = ({
             ));
         }
 
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
             terminal_id: terminalId,
-            cash_received: cashReceived
+            cash_received: cashReceived,
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
         let transaction = null;
         try {
@@ -8632,6 +8695,28 @@ const buildCollectCashOnlineOrderUseCase = ({
             const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
             if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Online ${orderLabel} order not found.`, { statusCode: 404 });
+            }
+            const actualServerVersion = order.updated_at instanceof Date
+                ? order.updated_at.toISOString()
+                : String(order.updated_at || '').trim();
+            if (
+                (expectedStatus && String(order.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(order.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline cash collection could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(order.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(order.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
+                );
             }
             if (order.order_method !== orderMethod) {
                 throw new DomainError(DomainErrorCode.CONFLICT, `Cash collection is available only for ${orderLabel} orders.`, { statusCode: 409 });
@@ -9750,9 +9835,20 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             ));
         }
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const replayRequestHash = hashPayload({
             pos_transaction_id: normalizedTransactionId,
-            fulfillment_status: targetStatus
+            fulfillment_status: targetStatus,
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
 
         const actingUserId = parsePositiveInt(user?.user_id);
@@ -9794,6 +9890,28 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     DomainErrorCode.CONFLICT,
                     'Only online store orders can be updated through this endpoint',
                     { statusCode: 409 }
+                );
+            }
+            const actualServerVersion = existing.updated_at instanceof Date
+                ? existing.updated_at.toISOString()
+                : String(existing.updated_at || '').trim();
+            if (
+                (expectedStatus && String(existing.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(existing.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline status update could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(existing.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(existing.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
                 );
             }
             const activeShift = await assertOpenShiftForPosMutation({

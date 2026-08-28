@@ -2,6 +2,7 @@ import dbStore from '../../../utils/dbStore.js';
 import { Op } from 'sequelize';
 import { assertTenantLocationRepositoryContract } from '../contracts/tenantLocationRepository.contract.js';
 import { TENANT_LOCATION_REFERENCE_SOURCES } from './tenantLocationReferenceSources.js';
+import { CUSTOMER_ACCESS_SETTING_KEYS } from '../../shared/utils/customerAccessPolicy.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -42,6 +43,35 @@ export const tenantLocationRepository = {
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         return sequelize.transaction();
+    },
+
+    // #1093: read-only settings lookup for the both-fulfillment-methods-off guard in
+    // tenantLocationUseCases.js. Mirrors storeRepository.js's own getSettingsByKeys shape rather
+    // than reaching into modules/settings/repositories/settingsRepository.js cross-module -- every
+    // other module that needs a SystemSetting value reads it through its own repository the same
+    // way (see storeUseCases.js's resolveStorefrontAccessPolicy). Value parsing mirrors
+    // storeUseCases.js's own parseSettingValue (JSON.parse with a raw-string fallback) so a
+    // plain-string setting like customer_access_mode and a JSON-encoded one behave identically.
+    async getCustomerAccessModeSettings({ transaction = null } = {}) {
+        const SystemSetting = dbStore.get('SystemSetting');
+        const rows = await SystemSetting.findAll({
+            where: {
+                setting_key: { [Op.in]: CUSTOMER_ACCESS_SETTING_KEYS }
+            },
+            transaction
+        });
+        return rows.reduce((settings, row) => {
+            let value = row.setting_value;
+            if (typeof value === 'string') {
+                try {
+                    value = JSON.parse(value);
+                } catch {
+                    // Not JSON -- keep the raw string (e.g. customer_access_mode: "transaction").
+                }
+            }
+            settings[row.setting_key] = { value };
+            return settings;
+        }, {});
     },
 
     async listLocations({ includeInactive = true } = {}) {

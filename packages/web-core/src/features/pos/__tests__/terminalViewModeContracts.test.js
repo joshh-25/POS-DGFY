@@ -16,6 +16,7 @@ const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenant
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutTerminalViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posDiscountWorkspacePath = path.resolve(__dirname, '../components/POSDiscountWorkspace.jsx');
 const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../components/POSCheckoutTerminalReceiptDialogs.jsx');
 const posCheckoutWorkflowPath = path.resolve(__dirname, '../hooks/usePosCheckoutWorkflow.js');
 const posHistoryVoidWorkflowPath = path.resolve(__dirname, '../hooks/usePosHistoryVoidWorkflow.js');
@@ -67,7 +68,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
-    posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath]
+    posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     posCheckoutTerminalReceiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');
@@ -420,7 +421,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('canSubmitOpenShift');
     expect(terminalPageContent).toContain('required');
     expect(terminalPageContent).not.toContain('openingFloatAmount: configuredPettyCash.toFixed(2)');
-    expect(terminalPageContent).toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
+    expect(terminalPageContent).toContain("if (!shiftState.shift) return 'Open a shift before checkout.';");
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
     expect(terminalPageContent).toContain('Shift opened successfully.');
     expect(terminalPageContent).toContain('terminalIdOverride: terminalId,');
@@ -499,6 +500,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
     expect(posCheckoutTerminalContent).toContain('<option value="fixed">Fixed Amount</option>');
     expect(posCheckoutTerminalContent).toContain("discountDraft.type === 'manual'");
+    expect(posCheckoutTerminalContent).toContain('resetDiscountState();');
+    expect(posCheckoutWorkflowContent).toContain('const resetDiscountState = useCallback');
     expect(posCheckoutWorkflowContent).toContain("discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'))");
     expect(posCheckoutTerminalContent).toContain("discountDraft.method === 'fixed' ? 'Amount' : 'Rate (%)'");
     expect(posCheckoutTerminalContent).toContain('Select discount type and verify employee.');
@@ -512,7 +515,8 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('opens checkout confirmation and then receipt preview after a successful sale', () => {
-    expect(posCheckoutTerminalContent).toContain('setCheckoutConfirmModalOpen(true);');
+    expect(posCheckoutWorkflowContent).toContain('setCheckoutConfirmModalOpen(true);');
+    expect(posCheckoutWorkflowContent).toContain('resetCheckoutModalState();');
     expect(posCheckoutWorkflowContent).toMatch(
       /setCheckoutConfirmModalOpen\(false\);[\s\S]*?setReceiptPreviewModalOpen\(true\);[\s\S]*?if \(typeof onCheckoutCompleted/
     );
@@ -771,8 +775,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutWorkflowContent).toContain('terminal_id: normalizedTerminalId || undefined');
   });
 
-  it('keeps receipt modal POS-report navigation while history rows stay receipt-focused', () => {
-    expect(posCheckoutTerminalContent).toContain('openInPosReport');
+  it('keeps order overview actions focused on receipt and order printing', () => {
     expect(posHistoryVoidWorkflowContent).toContain("setCurrentViewMode(isCashierRole ? 'history' : 'reports')");
     expect(posCheckoutTerminalContent).not.toContain('openSkupervisorPath');
     expect(posCheckoutTerminalContent).not.toContain("../utils/skupervisorHandoff.js");
@@ -780,9 +783,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).not.toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
     expect(posHistoryPanelContent).toContain('<span>View</span>');
     expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
-    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-pos-report"');
-    expect(posCheckoutTerminalReceiptDialogsContent).toContain('data-testid="pos-receipt-modal-open-pos-report"');
-    expect(posCheckoutTerminalContent).toContain("const posReportActionLabel = isCashierRole ? 'Open POS History' : 'Open POS Report';");
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-view-receipt"');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print"');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print-order"');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('data-testid="pos-receipt-modal-print-order"');
+    expect(posCheckoutTerminalContent).toContain('handlePrintOrder(lastReceipt)');
   });
 
   it('exposes deterministic sidebar test hook for history mode switching', () => {

@@ -1,10 +1,13 @@
 import {
     applyInventoryDisplayPolicy,
     buildAccessCapabilities,
+    buildGuestCheckoutDisabledError,
     isCustomerAccessModesEnabled,
     normalizeCustomerAccessMode,
+    normalizeGuestCheckoutEnabled,
     normalizeInventoryDisplayMode,
     resolveAccessPolicyFromSettings,
+    resolveDefaultGuestCheckoutEnabledForWorkflowMode,
     resolveEffectiveCustomerAccessMode
 } from '../src/modules/shared/utils/customerAccessPolicy.js';
 
@@ -171,6 +174,42 @@ describe('customerAccessPolicy', () => {
         })).toEqual({
             mode: 'hidden',
             label: null
+        });
+    });
+
+    // #622
+    describe('guest checkout enabled', () => {
+        it('defaults to enabled when unset -- every tenant provisioned before this shipped', () => {
+            expect(resolveAccessPolicyFromSettings({}).guest_checkout_enabled).toBe(true);
+            expect(normalizeGuestCheckoutEnabled(undefined)).toBe(true);
+        });
+
+        it('normalizes the stored string form the settings repository persists booleans as', () => {
+            expect(normalizeGuestCheckoutEnabled('true')).toBe(true);
+            expect(normalizeGuestCheckoutEnabled('false')).toBe(false);
+            expect(normalizeGuestCheckoutEnabled('garbage')).toBe(true);
+        });
+
+        it('resolves the explicit setting value from a raw settings row', () => {
+            expect(resolveAccessPolicyFromSettings({
+                storefront_guest_checkout_enabled: { value: false }
+            }).guest_checkout_enabled).toBe(false);
+            expect(resolveAccessPolicyFromSettings({
+                storefront_guest_checkout_enabled: { value: true }
+            }).guest_checkout_enabled).toBe(true);
+        });
+
+        it('resolves the vertical-dependent provisioning default -- disabled only for retail', () => {
+            expect(resolveDefaultGuestCheckoutEnabledForWorkflowMode('retail')).toBe(false);
+            expect(resolveDefaultGuestCheckoutEnabledForWorkflowMode('fnb')).toBe(true);
+            expect(resolveDefaultGuestCheckoutEnabledForWorkflowMode('msme')).toBe(true);
+            expect(resolveDefaultGuestCheckoutEnabledForWorkflowMode(undefined)).toBe(true);
+        });
+
+        it('builds a 403 error carrying the GUEST_CHECKOUT_DISABLED reason code', () => {
+            const error = buildGuestCheckoutDisabledError();
+            expect(error.statusCode).toBe(403);
+            expect(error.details.reason_code).toBe('GUEST_CHECKOUT_DISABLED');
         });
     });
 });

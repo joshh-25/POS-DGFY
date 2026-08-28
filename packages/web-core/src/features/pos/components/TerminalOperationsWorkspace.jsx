@@ -85,6 +85,7 @@ import {
   getFolders,
   getItems,
   lookupExternalProduct,
+  updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -99,6 +100,7 @@ import {
   subscribeToPosCatalogUpdates,
   subscribeToRemotePosCatalogUpdates
 } from '../utils/posCatalogRefresh.js';
+import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   updateStorefrontCatalogOverride,
@@ -159,6 +161,7 @@ import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
@@ -268,6 +271,7 @@ const SETTINGS_FIELD_LABELS = {
   storefront_delivery_partners: 'Storefront Delivery Partners',
   storefront_follow_enabled: 'Show Follow Button',
   storefront_share_enabled: 'Show Share Button',
+  storefront_guest_checkout_enabled: 'Allow Guest Checkout',
   'storefront_locations.primary_location': 'Primary Storefront Location'
 };
 
@@ -2706,17 +2710,13 @@ function ItemsWorkspace({
       editSaveStage = 'barcode';
       const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
       const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
-      if (!barcodeSelection.shouldGenerate && barcodeSelection.code !== existingPrimaryCode) {
-        await attachItemBarcode(editItemId, {
-          code: barcodeSelection.code,
-          source: barcodeSelection.kind === 'gtin' ? 'manufacturer' : 'supplier',
-          scope: barcodeSelection.kind === 'gtin' ? 'inventory' : 'pos',
-          packaging_level: 'unit',
-          quantity_multiplier: 1,
-          is_primary: true,
-          metadata: { attached_via: 'pos_item_edit' }
-        });
-      }
+      await persistPosItemBarcode({
+        itemId: editItemId,
+        barcodeSelection,
+        existingPrimaryBarcode,
+        attachBarcode: attachItemBarcode,
+        updateBarcode: updateItemBarcode
+      });
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -3124,7 +3124,7 @@ function ItemsWorkspace({
       ...(barcodeSelection.code
         ? barcodeSelection.kind === 'manual'
           ? { internal_barcode: { code: barcodeSelection.code } }
-          : { manufacturer_barcode: { code: barcodeSelection.code } }
+          : { manufacturer_barcode: { code: barcodeSelection.code, scope: 'pos' } }
         : {}),
       status: 'active'
     };
@@ -5412,7 +5412,8 @@ function SettingsWorkspace({
     storefrontReviewSummaryStar4: '',
     storefrontReviewSummaryStar5: '',
     storefrontFollowEnabled: false,
-    storefrontShareEnabled: false
+    storefrontShareEnabled: false,
+    storefrontGuestCheckoutEnabled: true
   });
   const [storefrontAssets, setStorefrontAssets] = useState({ cover: '', profile: '' });
   const [assetUploadingType, setAssetUploadingType] = useState('');
@@ -5439,6 +5440,8 @@ function SettingsWorkspace({
   const storefrontLocationRequired = storefrontForm.storeIsVisible === true && storefrontForm.storeHasNoLocation !== true;
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
+  const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
+    && locationForm.supports_delivery !== locationForm.supports_pickup;
   const maxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMaxMode || 'transaction', 'transaction');
   const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const customerAccessRollbackActive = storefrontForm.customerAccessFlagStatus === 'rollback';
@@ -5872,7 +5875,10 @@ function SettingsWorkspace({
         storefrontReviewSummaryStar4: normalizedReviewSummary.star4,
         storefrontReviewSummaryStar5: normalizedReviewSummary.star5,
         storefrontFollowEnabled: settingsPayload?.storefront_follow_enabled?.value === true,
-        storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true
+        storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true,
+        // #622: fail-open default -- an unset row (every tenant provisioned before this shipped)
+        // must hydrate to checked/on, matching the backend's own DEFAULT_GUEST_CHECKOUT_ENABLED.
+        storefrontGuestCheckoutEnabled: settingsPayload?.storefront_guest_checkout_enabled?.value !== false
       });
       setStorefrontAssets({
         cover: String(settingsPayload?.storefront_cover_image_url?.value || ''),
@@ -6334,7 +6340,8 @@ function SettingsWorkspace({
         // alone. Mirrors the same fix already applied to the singular editor in
         // apps/dgfy-ims/Pages/Settings.jsx.
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
-        storefront_share_enabled: storefrontForm.storefrontShareEnabled === true
+        storefront_share_enabled: storefrontForm.storefrontShareEnabled === true,
+        storefront_guest_checkout_enabled: storefrontForm.storefrontGuestCheckoutEnabled !== false
       });
       await hydrateSettingsWorkspace({ silent: true });
       await onStorefrontSetupSaved?.();
@@ -6504,6 +6511,9 @@ function SettingsWorkspace({
       supports_pickup: locationForm.supports_pickup !== false,
       supports_dine_in: locationForm.supports_dine_in !== false
     };
+    if (editingLocationId && locationForm.location_version) {
+      payload.last_known_updated_at = locationForm.location_version;
+    }
     const localErrors = [];
     if (!payload.name) {
       localErrors.push({ field: 'name', message: 'Location name is required.' });
@@ -8205,6 +8215,10 @@ function SettingsWorkspace({
             <span className="text-[12px] font-black text-[#0F172A]">Show Share Button</span>
             <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontShareEnabled === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontShareEnabled: event.target.checked }))} />
           </label>
+          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <span className="text-[12px] font-black text-[#0F172A]">Allow Guest Checkout</span>
+            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontGuestCheckoutEnabled !== false} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontGuestCheckoutEnabled: event.target.checked }))} />
+          </label>
         </div>
 
         <div className="mt-5 space-y-4">
@@ -8634,6 +8648,40 @@ function SettingsWorkspace({
                     <div>
                       <p className="text-xs font-bold text-[#0F172A]">Allow OOS Sales</p>
                       <p className="text-[11px] text-slate-500">Allow out-of-stock item sales</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.supports_delivery === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_delivery: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Supports Delivery</p>
+                      <p className="text-[11px] text-slate-500">Enable delivery orders for this location</p>
+                      {lastFulfillmentMethodLocked && locationForm.supports_delivery === true && (
+                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.supports_pickup === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_pickup: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Supports Pickup</p>
+                      <p className="text-[11px] text-slate-500">Enable pickup orders for this location</p>
+                      {lastFulfillmentMethodLocked && locationForm.supports_pickup === true && (
+                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                      )}
                     </div>
                   </label>
                 </div>

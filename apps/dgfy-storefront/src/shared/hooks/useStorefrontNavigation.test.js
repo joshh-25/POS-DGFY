@@ -46,4 +46,17 @@ describe('useStorefrontNavigation', () => {
     expect(props.setShowFnbMobileOrderSummary).toHaveBeenCalledWith(false);
     expect(props.setRouteSlug).toHaveBeenCalledWith('fnb-store');
   });
+
+  it('restores the branch from a browser-history URL change', () => {
+    const props = buildNavigationProps();
+    renderHook(() => useStorefrontNavigation(props));
+
+    window.history.pushState({}, '', '/tenant-store/laundry-store?location_id=2');
+    act(() => window.dispatchEvent(new PopStateEvent('popstate')));
+
+    expect(props.setSelectedLocationId).toHaveBeenCalledWith(2);
+    expect(props.setHasSelectedBranchFromMenu).toHaveBeenCalledWith(true);
+    expect(props.setRouteSlug).toHaveBeenCalledWith('laundry-store');
+    expect(props.setPreferredStoreLocationSelection).not.toHaveBeenCalled();
+  });
 });

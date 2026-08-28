@@ -33,7 +33,8 @@ const manufacturerBarcodeSchema = Joi.object({
     hasValidGtinCheckDigit(value) ? value : helpers.error('barcode.checkDigit')
   )).required().messages({
     'barcode.checkDigit': 'Manufacturer barcode has an invalid GTIN check digit.'
-  })
+  }),
+  scope: Joi.string().valid('inventory', 'pos').default('inventory')
 }).allow(null).optional();
 
 const internalBarcodeSchema = Joi.object({

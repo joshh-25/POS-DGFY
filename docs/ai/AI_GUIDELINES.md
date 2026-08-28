@@ -2,7 +2,7 @@
 > **Last Updated:** May 8, 2026
 > **Tool Count:** 66
 
-This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the SKU Inventory Manager.
+This document describes the capabilities, limitations, and workflows of the SKUpervisor AI Assistant integrated into the DGFY platform (SKUpervisor is the IMS app's own codename — see `apps/dgfy-ims` — not the platform name).
 
 > **Note:** For the complete auto-generated tool reference, see [generated/AI_CAPABILITIES.md](../generated/AI_CAPABILITIES.md).
 
@@ -394,9 +394,9 @@ The AI Assistant respects the user's permissions:
 
 | File | Purpose |
 |------|---------|
-| `backend/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
-| `backend/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
-| `backend/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
+| `apps/dgfy-api/src/config/permissions.js` | Permission constants, `DEFAULT_ROLE_PERMISSIONS` |
+| `apps/dgfy-api/src/services/userService.js` | `updateUserRole()`, `updateUserPermissions()` |
+| `apps/dgfy-api/src/middleware/auth.js` | `checkPermission()`, `requireMasterAdmin()` |
 | `packages/web-core/Components/users/PermissionMatrix.jsx` | UI for editing granular permissions |
 | `packages/web-core/Components/users/UserManagementModal.jsx` | User CRUD, role dropdown, permission editor |
 
@@ -576,9 +576,9 @@ Ask the assistant:
 ### Documentation
 
 - [Quick Start Guide](../setup/QUICK_START.md)
-- [API Specification](api/specification.md)
+- [API Specification](../api/specification.md)
 - [Troubleshooting](../setup/TROUBLESHOOTING.md)
-- [Nested Products Guide](NESTED_PRODUCTS.md)
+- [Nested Products Guide](../features/NESTED_PRODUCTS.md)
 
 ### Support
 

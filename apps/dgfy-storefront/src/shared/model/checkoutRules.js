@@ -11,7 +11,11 @@ export const getCheckoutBlockReason = ({
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, only meaningful at a
   // payment_mode='customer_choice' store. Every existing caller (full_payment/downpayment_required)
   // omits this and is unaffected -- see the guard below.
-  paymentElection = null
+  paymentElection = null,
+  // #1093: whether the storefront resolved at least one delivery/pickup option for the customer's
+  // fulfillment location. Every existing caller that doesn't pass this omits the check entirely
+  // (undefined !== false), so no caller regresses to blocking on a field it doesn't know about.
+  hasAvailableFulfillmentMethod
 } = {}) => {
   if (!selectedStore) return 'missing_store';
   if (Number(cartCount) <= 0) return 'empty_cart';
@@ -20,6 +24,7 @@ export const getCheckoutBlockReason = ({
   if (selectedStore?.storefront_hours_status?.is_open_now === false) return 'business_hours';
   if (hasServiceCart && accessCapabilities?.booking === false) return 'access_mode';
   if (!hasServiceCart && (accessCapabilities?.checkout === false || accessCapabilities?.quote === false)) return 'access_mode';
+  if (!hasServiceCart && hasAvailableFulfillmentMethod === false) return 'no_fulfillment_method';
   if (hasServiceCart) return null;
   if (!requireQuote) return null;
   if (!quoteResult) return 'missing_quote';

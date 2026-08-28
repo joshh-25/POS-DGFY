@@ -7,7 +7,7 @@ import ItemOptionsDialog from '../components/ItemOptionsDialog.jsx';
 afterEach(() => cleanup());
 
 describe('ItemOptionsDialog', () => {
-  it('saves the note and independent item discount together', () => {
+  it('saves item notes and modifiers without creating an item-level discount', () => {
     const onSave = vi.fn();
     render(
       <ItemOptionsDialog
@@ -20,41 +20,20 @@ describe('ItemOptionsDialog', () => {
           modifier_groups: [],
           line_modifiers: [],
         }}
-        discountApprovers={[{ user_id: 7, username: 'Manager' }]}
         onClose={vi.fn()}
         onSave={onSave}
       />
     );
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Item discount rate' }), { target: { value: '15' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Authorizing employee' }), { target: { value: '7' } });
-    fireEvent.change(screen.getByLabelText('Approval PIN'), { target: { value: '1234' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(onSave).toHaveBeenCalledWith({
       note: 'No onions',
       selections: [],
-      item_discount: {
-        enabled: true,
-        discount_type: 'manual',
-        method: 'percentage',
-        rate: '15',
-        amount: '',
-        customer_name: '',
-        id_number: '',
-        employee_name: '',
-        employee_id: '',
-        employee_directory_id: '',
-        promo_code: '',
-        reason: '',
-        approver_user_id: '7',
-        manager_pin: '1234',
-      },
     });
   });
 
-  it('keeps the item customization entry point as one modal surface', () => {
+  it('keeps the item customization modal focused on notes and modifiers', () => {
     render(
       <ItemOptionsDialog
         open
@@ -66,87 +45,26 @@ describe('ItemOptionsDialog', () => {
 
     expect(screen.getByRole('heading', { name: 'Item note' })).toBeDefined();
     expect(screen.getByRole('heading', { name: 'Modifiers' })).toBeDefined();
-    expect(screen.getByRole('heading', { name: 'Discount for this item' })).toBeDefined();
-    expect(screen.queryByText(/Update this item's note/i)).toBeNull();
-    expect(screen.queryByText(/This note applies only to this item/i)).toBeNull();
-    expect(screen.queryByText(/Choose the options for this item/i)).toBeNull();
-    expect(screen.queryByText(/This discount applies only to Burger/i)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Discount for this item' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Apply an item-only discount' })).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Item discount type' })).toBeNull();
+    expect(screen.getByText(/Apply discounts from the checkout discount action/i)).toBeDefined();
     expect(screen.getByText(/no global discount is applied to this sale/i)).toBeDefined();
   });
 
-  it('offers governed discount types inside the item customization modal', () => {
+  it('preserves the global discount context as read-only information', () => {
     render(
       <ItemOptionsDialog
         open
-        line={{ item_name: 'Burger', quantity: 1, sale_price: 150, modifier_groups: [], line_modifiers: [] }}
+        line={{ item_name: 'Burger', quantity: 1, modifier_groups: [], line_modifiers: [] }}
+        globalDiscount={{ label: 'Employee Discount', rate: 15, amount: 22.5 }}
         onClose={vi.fn()}
         onSave={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
-
-    expect(screen.getByRole('tab', { name: 'Employee' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'PWD' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Senior' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Promo' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Other' })).toBeDefined();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'PWD' }));
-    expect(screen.getByLabelText(/Customer name/)).toBeDefined();
-    expect(screen.getByLabelText(/Senior\/PWD ID number/)).toBeDefined();
-    expect(screen.getByText(/configured Senior\/PWD discount rate is verified by the server/i)).toBeDefined();
-  });
-
-  it('defaults only the authorizing employee to the active shift cashier', () => {
-    render(
-      <ItemOptionsDialog
-        open
-        line={{ item_name: 'Burger', quantity: 1, sale_price: 150, modifier_groups: [], line_modifiers: [] }}
-        discountApprovers={[{ user_id: 7, username: 'Cashier' }]}
-        defaultDiscountApprover={{ user_id: 7, username: 'Cashier' }}
-        onClose={vi.fn()}
-        onSave={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Employee' }));
-
-    expect(screen.getByLabelText(/Employee name/).value).toBe('');
-    expect(screen.getByRole('combobox', { name: 'Authorizing employee' }).value).toBe('7');
-  });
-
-  it('selects a registered employee and auto-fills the employee code', () => {
-    const onSave = vi.fn();
-    render(
-      <ItemOptionsDialog
-        open
-        line={{ item_name: 'Burger', quantity: 1, sale_price: 150, modifier_groups: [], line_modifiers: [] }}
-        discountEmployees={[{
-          employee_id: 14,
-          employee_code: '001',
-          full_name: 'Joshua Guto',
-          location_name: 'Masu Cafe',
-        }]}
-        discountApprovers={[{ user_id: 7, username: 'Manager' }]}
-        onClose={vi.fn()}
-        onSave={onSave}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Apply an item-only discount' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Employee' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Employee name' }), { target: { value: '14' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Authorizing employee' }), { target: { value: '7' } });
-    fireEvent.change(screen.getByLabelText('Approval PIN'), { target: { value: '1234' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    expect(screen.getByLabelText('Employee ID').value).toBe('001');
-    expect(onSave.mock.calls[0][0].item_discount).toMatchObject({
-      employee_directory_id: '14',
-      employee_name: 'Joshua Guto',
-      employee_id: '001',
-    });
+    expect(screen.getByText(/Global discount also applies to this item/i)).toBeDefined();
+    expect(screen.getByText(/Employee Discount · 15.00%/i)).toBeDefined();
+    expect(screen.queryByRole('button', { name: /apply discount/i })).toBeNull();
   });
 });

@@ -12,10 +12,10 @@ import { usePosEmployeeCreditWorkflow } from '../hooks/usePosEmployeeCreditWorkf
 import { usePosFinancialWorkflow } from '../hooks/usePosFinancialWorkflow.js';
 import { usePosHistoryVoidWorkflow } from '../hooks/usePosHistoryVoidWorkflow.js';
 import { usePosCheckoutWorkflow } from '../hooks/usePosCheckoutWorkflow.js';
+import { usePosCheckoutLifecycle } from '../hooks/usePosCheckoutLifecycle.js';
 import { usePosDiscountDirectory } from '../hooks/usePosDiscountDirectory.js';
 import { usePosReceiptHardwareWorkflow } from '../hooks/usePosReceiptHardwareWorkflow.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
     normalizeLowStockDisplayThreshold
@@ -26,10 +26,10 @@ import { usePosHardware } from '../hardware/usePosHardware.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
 import { publishPosUpdateSafetyState } from '../utils/posUpdateSafety.js';
-import { getItemDiscountDraft } from '../utils/posItemDiscount.js';
 import {
     EMPTY_DISCOUNT_DRAFT,
     getLineKey,
+    getPriceOverrideReasonValidationMessage,
     isSeniorPwdDiscountEligible,
     normalizeDiscountProfiles,
     normalizePromoCode,
@@ -40,6 +40,7 @@ import { resolveModifierDelta } from '../utils/posCheckoutTerminalModifiers.js';
 import { flyImageToCheckoutBar } from '../utils/posCatalogAnimations.js';
 import { getPosTerminalLayoutClasses } from '../utils/posTerminalLayout.js';
 import { normalizeAppliedDiscount, normalizePosTerminalDraftState, parseTerminalPermissions } from '../utils/posTerminalDraftState.js';
+import { buildDiscountItemSelection, getDiscountLineRef } from '../utils/posDiscountSelection.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 
@@ -63,7 +64,7 @@ export default function POSCheckoutTerminal({
     universalPendingSyncCount = 0,
     modalOnly = false,
     viewMode: controlledViewMode = null,
-    onViewModeChange = null,
+    onViewModeChange = null, onCheckoutLifecycleChange = null,
     externalReceiptTransactionId = null,
     onExternalReceiptHydrated = null,
     onExternalReceiptClosed = null,
@@ -112,9 +113,6 @@ export default function POSCheckoutTerminal({
             setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
         }
     }, [posWorkflow, orderMethod]);
-    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
-        && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
-        && (orderMethod !== 'appointment' || Boolean(servicesDateTime));
     const [paymentType, setPaymentType] = useState('cash');
     const {
         employeeCreditAccountCode,
@@ -133,7 +131,6 @@ export default function POSCheckoutTerminal({
     const [manualDiscountRateInput, setManualDiscountRateInput] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [discountModalOpen, setDiscountModalOpen] = useState(false);
-    const discountReturnToCheckoutRef = useRef(false);
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const discountApprovalRef = useRef(null);
@@ -162,7 +159,7 @@ export default function POSCheckoutTerminal({
         discountApproversLoading,
         discountEmployeesLoading,
         loadDiscountDirectory
-    } = usePosDiscountDirectory({ autoLoad: Boolean(itemOptionsLineKey) });
+    } = usePosDiscountDirectory({ autoLoad: false });
     const posHardware = usePosHardware({ enabled: Boolean(terminalUser) });
     const [imagePreview, setImagePreview] = useState(null);
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
@@ -363,7 +360,6 @@ export default function POSCheckoutTerminal({
         safeDiscountProfiles,
         safeCommercialPromoConfig,
         safeDiscountApprovers,
-        activeShiftCashierApprover,
         safeQueuedCheckouts,
         safeEligibleDiscountItemIds,
         safeEligibleDiscountItems,
@@ -379,6 +375,28 @@ export default function POSCheckoutTerminal({
         discountDraft
     });
     const safeDiscountEmployees = toArray(discountEmployees);
+    const checkoutWorkflowValidationMessage = useMemo(() => {
+        for (const line of safeCart) {
+            const catalogItem = safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id));
+            const baseSalePrice = Number(line?.base_sale_price ?? catalogItem?.default_sale_price);
+            if (!Number.isFinite(baseSalePrice) || baseSalePrice <= 0) continue;
+
+            const serviceOptionDelta = toArray(line?.service_option_details).reduce(
+                (sum, option) => sum + ((Number(option?.price_adjustment_centavos) || 0) / 100),
+                0
+            );
+            const message = getPriceOverrideReasonValidationMessage({
+                line,
+                effectiveDefaultSalePrice: round4(baseSalePrice + resolveModifierDelta(line) + serviceOptionDelta)
+            });
+            if (message) return message;
+        }
+        return null;
+    }, [safeCart, safeCatalog]);
+    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
+        && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
+        && (orderMethod !== 'appointment' || Boolean(servicesDateTime))
+        && !checkoutWorkflowValidationMessage;
     const isCartLineSeniorPwdEligible = (line) => (
         isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
@@ -606,7 +624,6 @@ export default function POSCheckoutTerminal({
         historyDetailLoading, voidingTransactionId,
         refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow,
         openHistoryDetail, handleVoidHistoryTransaction,
-        openInPosReport,
         loadHistory
     } = usePosHistoryVoidWorkflow({
         sessionLocked,
@@ -648,6 +665,7 @@ export default function POSCheckoutTerminal({
         handleManualUniversalSync,
         openCheckoutConfirmModal,
         openSplitPaymentModal,
+        resetDiscountState,
         resetCurrentSaleForNewSale,
         cancelActiveParkedSaleEditingAfterCartEmpty,
         validateParkedSaleForResume,
@@ -757,6 +775,7 @@ export default function POSCheckoutTerminal({
         restaurantServiceChargeAmount,
         vatBreakdown,
         cartTotal,
+        checkoutWorkflowValidationMessage,
         paymentType,
         isCheckoutWorkflowValid,
         isCashPayment,
@@ -815,8 +834,6 @@ export default function POSCheckoutTerminal({
             setCommercialPromoConfig([]);
         }
     }, [saveCatalogSnapshot, sessionLocked]);
-
-    const posReportActionLabel = isCashierRole ? 'Open POS History' : 'Open POS Report';
 
     useEffect(() => {
         if (sessionLocked) return;
@@ -879,7 +896,6 @@ export default function POSCheckoutTerminal({
                 ? itemOptionsDiscountIds.includes(Number(itemOptionsLine?.item_id))
                 : itemOptionsDiscountIds.length === 0 || itemOptionsDiscountIds.includes(Number(itemOptionsLine?.item_id))
         : false;
-    const itemOptionsItemDiscount = itemOptionsLine ? getItemDiscountDraft(itemOptionsLine) : null;
     const itemOptionsGlobalDiscount = safeAppliedDiscount && Number(itemOptionsGlobalDiscountAllocation?.discount_amount || 0) > 0
         ? {
             label: safeAppliedDiscount.label || 'Approved discount',
@@ -898,7 +914,7 @@ export default function POSCheckoutTerminal({
         }
     }, [manualDiscountAmountInput, manualDiscountRateInput, selectedDiscountProfile]);
 
-    const saveItemOptions = async ({ note, selections, item_discount: itemDiscount }) => {
+    const saveItemOptions = async ({ note, selections }) => {
         const lineKey = itemOptionsLineKey;
         const currentLine = safeCart.find((line) => getLineKey(line) === lineKey);
         if (!lineKey || !currentLine || sessionLocked) return false;
@@ -907,116 +923,10 @@ export default function POSCheckoutTerminal({
             (sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100),
             0
         );
-        let normalizedItemDiscount = null;
-        if (itemDiscount?.enabled) {
-            const discountType = ['senior', 'pwd', 'employee', 'promo', 'manual'].includes(String(itemDiscount.discount_type || '').trim().toLowerCase())
-                ? String(itemDiscount.discount_type).trim().toLowerCase()
-                : 'manual';
-            const method = String(itemDiscount.method || '').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
-            const rate = Number(itemDiscount.rate);
-            const amount = Number(itemDiscount.amount);
-            if (['senior', 'pwd'].includes(discountType)
-                && ![true, 1, '1'].includes(currentLine.senior_pwd_discount_eligible)) {
-                toast.error('This item is not configured as eligible for Senior/PWD discounts.');
-                return false;
-            }
-            if (['senior', 'pwd'].includes(discountType) && (!String(itemDiscount.customer_name || '').trim() || !String(itemDiscount.id_number || '').trim())) {
-                toast.error('Customer name and Senior/PWD ID number are required.');
-                return false;
-            }
-            if (discountType === 'promo' && !String(itemDiscount.customer_name || '').trim()) {
-                toast.error('Customer name is required for a promo item discount.');
-                return false;
-            }
-            if (discountType === 'promo' && !String(itemDiscount.promo_code || '').trim()) {
-                toast.error('Enter a promo code for this item discount.');
-                return false;
-            }
-            if (discountType === 'employee' && !(Number(itemDiscount.employee_directory_id) > 0)) {
-                toast.error('Select a registered employee for this employee discount.');
-                return false;
-            }
-            if (!['senior', 'pwd', 'promo'].includes(discountType) && method === 'percentage' && (!Number.isFinite(rate) || rate <= 0 || rate > 100)) {
-                toast.error('Item discount rate must be from 0.01% to 100%.');
-                return false;
-            }
-            if (!['senior', 'pwd', 'promo'].includes(discountType) && method === 'fixed' && (!Number.isFinite(amount) || amount <= 0)) {
-                toast.error('Item fixed discount amount must be greater than zero.');
-                return false;
-            }
-            const approverId = Number(itemDiscount.approver_user_id);
-            const currentDiscount = currentLine.item_discount;
-            const sameDiscount = currentDiscount
-                && String(currentDiscount.discount_type || 'manual').toLowerCase() === discountType
-                && String(currentDiscount.method || '').toLowerCase() === method
-                && Number(currentDiscount.rate || 0) === (method === 'percentage' ? rate : 0)
-                && Number(currentDiscount.amount || 0) === (method === 'fixed' ? amount : 0)
-                && String(currentDiscount.customer_name || '') === String(itemDiscount.customer_name || '').trim()
-                && String(currentDiscount.id_number || '') === String(itemDiscount.id_number || '').trim()
-                && String(currentDiscount.employee_name || '') === String(itemDiscount.employee_name || '').trim()
-                && String(currentDiscount.employee_id || '') === String(itemDiscount.employee_id || '').trim()
-                && Number(currentDiscount.employee_directory_id || 0) === Number(itemDiscount.employee_directory_id || 0)
-                && String(currentDiscount.promo_code || '') === String(itemDiscount.promo_code || '').trim().toUpperCase()
-                && String(currentDiscount.reason || '') === String(itemDiscount.reason || '').trim();
-            let approval = itemDiscountApprovalRef.current.get(lineKey);
-            if (!sameDiscount || !approval || Number(approval.approver_user_id) !== approverId) {
-                if (!Number.isInteger(approverId) || approverId <= 0 || !String(itemDiscount.manager_pin || '').trim()) {
-                    toast.error('Select an authorized approver and enter the approval PIN for this item discount.');
-                    return false;
-                }
-                try {
-                    const verifiedApprover = await verifyPosDiscountApproval({
-                        discount_type: discountType,
-                        approver_user_id: approverId,
-                        manager_pin: String(itemDiscount.manager_pin || '').trim(),
-                        employee_directory_id: discountType === 'employee'
-                            ? Number(itemDiscount.employee_directory_id) || null
-                            : null
-                    });
-                    approval = {
-                        approver_user_id: verifiedApprover?.user_id || approverId,
-                        employee_directory_id: discountType === 'employee'
-                            ? Number(itemDiscount.employee_directory_id) || null
-                            : null,
-                        self_approved: verifiedApprover?.self_approved === true,
-                        manager_pin: String(itemDiscount.manager_pin || '').trim()
-                    };
-                    itemDiscountApprovalRef.current.set(lineKey, approval);
-                } catch (error) {
-                    toast.error(error?.response?.data?.message || error?.message || 'Item discount approval failed.');
-                    return false;
-                }
-            }
-            const approver = safeDiscountApprovers.find((entry) => Number(entry?.user_id) === Number(approval?.approver_user_id));
-            const labels = { senior: 'Senior Discount', pwd: 'PWD Discount', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Other Discount' };
-            normalizedItemDiscount = {
-                discount_type: discountType,
-                label: labels[discountType],
-                method,
-                rate: ['senior', 'pwd', 'promo'].includes(discountType) ? null : (method === 'percentage' ? round4(rate) : null),
-                amount: ['senior', 'pwd', 'promo'].includes(discountType) ? null : (method === 'fixed' ? round4(amount) : null),
-                customer_name: String(itemDiscount.customer_name || '').trim().slice(0, 255) || null,
-                id_number: String(itemDiscount.id_number || '').trim().slice(0, 100) || null,
-                employee_name: String(itemDiscount.employee_name || '').trim().slice(0, 255) || null,
-                employee_id: String(itemDiscount.employee_id || '').trim().slice(0, 100) || null,
-                employee_directory_id: discountType === 'employee'
-                    ? Number(itemDiscount.employee_directory_id) || null
-                    : null,
-                promo_code: String(itemDiscount.promo_code || '').trim().toUpperCase().slice(0, 40) || null,
-                reason: String(itemDiscount.reason || '').trim().slice(0, 500) || null,
-                approver_user_id: Number(approval.approver_user_id),
-                approver_name: String(approver?.username || '').trim() || null,
-                approved_at: currentDiscount?.approved_at || new Date().toISOString(),
-                self_approved: approval.self_approved === true
-            };
-        } else {
-            itemDiscountApprovalRef.current.delete(lineKey);
-        }
         const updated = updateCartLine(lineKey, {
             line_modifiers: selections,
             special_instructions: String(note || '').trim().slice(0, 1000),
             sale_price: round4(basePrice + serviceDelta + resolveModifierDelta(currentLine, selections)),
-            item_discount: normalizedItemDiscount
         }, { allowWhenCheckoutBlocked: true });
         if (!updated) return false;
         setItemOptionsLineKey(null);
@@ -1025,17 +935,12 @@ export default function POSCheckoutTerminal({
 
     const closeDiscountModal = useCallback(() => {
         setDiscountModalOpen(false);
-        if (discountReturnToCheckoutRef.current) {
-            discountReturnToCheckoutRef.current = false;
-            setCheckoutConfirmModalOpen(true);
-        }
     }, []);
 
-    const openDiscountModal = async ({ returnToCheckout = false } = {}) => {
-        discountReturnToCheckoutRef.current = returnToCheckout;
-        if (returnToCheckout) {
-            setCheckoutConfirmModalOpen(false);
-        }
+    const openDiscountModal = async ({ initialType } = {}) => {
+        const requestedType = ['employee', 'senior', 'pwd', 'promo', 'voucher', 'manual'].includes(initialType)
+            ? initialType
+            : null;
         const employeeCreditDirectoryId = Number(selectedEmployeeCreditOption?.employee_id) || null;
         const employeeCreditDiscountName = employeeCreditDirectoryId
             ? String(selectedEmployeeCreditOption?.employee_name || '').trim()
@@ -1043,7 +948,7 @@ export default function POSCheckoutTerminal({
         const employeeCreditDiscountId = employeeCreditDirectoryId
             ? String(selectedEmployeeCreditOption?.employee_code || '').trim()
             : '';
-        const draftToOpen = appliedDiscount
+        const draftSeed = appliedDiscount
             ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' }
             : {
                 ...EMPTY_DISCOUNT_DRAFT,
@@ -1051,6 +956,21 @@ export default function POSCheckoutTerminal({
                 employee_id: employeeCreditDiscountId,
                 employee_directory_id: employeeCreditDirectoryId ? String(employeeCreditDirectoryId) : ''
             };
+        if (requestedType) {
+            draftSeed.type = requestedType;
+            draftSeed.rate = requestedType === 'employee'
+                ? '15'
+                : (['senior', 'pwd'].includes(requestedType) ? '20' : draftSeed.rate);
+        }
+        const draftToOpen = {
+            ...draftSeed,
+            ...buildDiscountItemSelection({
+                cart: safeCart,
+                type: draftSeed.type,
+                draft: draftSeed,
+                isEligible: isSeniorPwdDiscountEligible
+            })
+        };
         setShowDiscountPin(false);
         setDiscountDraft(draftToOpen);
         setDiscountModalOpen(true);
@@ -1076,6 +996,12 @@ export default function POSCheckoutTerminal({
     const handleApplyGovernedDiscount = async () => {
         const type = discountDraft.type;
         const statutory = type === 'senior' || type === 'pwd';
+        const cartLinesByRef = new Map(safeCart.map((line, index) => [getDiscountLineRef(line, index), line]));
+        const selectedDiscountItems = safeEligibleDiscountItems.filter((entry) => {
+            const line = cartLinesByRef.get(String(entry?.line_ref || '').trim());
+            return line && Number(line.item_id) === Number(entry?.item_id);
+        });
+        const selectedDiscountItemIds = [...new Set(selectedDiscountItems.map((entry) => Number(entry.item_id)))];
         const approvalUserId = Number(discountDraft.approver_user_id);
         if (!Number.isInteger(approvalUserId) || approvalUserId <= 0) {
             toast.error('Select the employee who is authorizing this discount.');
@@ -1102,8 +1028,8 @@ export default function POSCheckoutTerminal({
             toast.error('Customer name and Senior/PWD ID number are required.');
             return;
         }
-        if (statutory && safeEligibleDiscountItemIds.length === 0) {
-            toast.error('Select at least one eligible item.');
+        if (selectedDiscountItemIds.length === 0) {
+            toast.error('Select at least one item for this discount.');
             return;
         }
         if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
@@ -1159,9 +1085,10 @@ export default function POSCheckoutTerminal({
                     .map(Number)
                     .filter((itemId) => Number.isInteger(itemId) && itemId > 0))]
                 : [];
-            const cartItemIds = new Set(safeCart.map((line) => Number(line.item_id)));
-            const promoEligibleItemIds = configuredTargetIds.filter((itemId) => cartItemIds.has(itemId));
-            if (type === 'promo' && configuredTargetIds.length > 0 && promoEligibleItemIds.length === 0) {
+            const promoEligibleItemIds = configuredTargetIds.length > 0
+                ? configuredTargetIds.filter((itemId) => selectedDiscountItemIds.includes(itemId))
+                : selectedDiscountItemIds;
+            if (type === 'promo' && promoEligibleItemIds.length === 0) {
                 toast.error('Promo code does not apply to the items in this order.');
                 return;
             }
@@ -1184,8 +1111,10 @@ export default function POSCheckoutTerminal({
                     : null,
                 approver_user_id: governedDiscountApproverUserId,
                 approver_name: verifiedApprover?.username || null,
-                eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
-                eligible_items: statutory ? safeEligibleDiscountItems : []
+                eligible_item_ids: type === 'promo' ? promoEligibleItemIds : selectedDiscountItemIds,
+                eligible_items: selectedDiscountItems.filter((entry) => (
+                    type !== 'promo' || promoEligibleItemIds.includes(Number(entry?.item_id))
+                ))
             });
             discountApprovalRef.current = {
                 discount_type: type,
@@ -1214,15 +1143,11 @@ export default function POSCheckoutTerminal({
             toast.error('Finish or cancel the active payment before changing the discount.');
             return;
         }
-        setAppliedDiscount(null);
-        discountApprovalRef.current = null;
-        setSelectedDiscountProfile('');
-        setManualDiscountMode('none');
-        setManualDiscountRateInput('');
-        setManualDiscountAmountInput('');
-        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        resetDiscountState();
         toast.success('Discount removed.');
-    }, [hasSplitPaymentSummary, splitPaymentDialogOpen]);
+    }, [hasSplitPaymentSummary, resetDiscountState, splitPaymentDialogOpen]);
+
+    const { confirmClearCurrentSale, handleClearSaleDialogOpenChange, pendingViewModeAfterSaleClear } = usePosCheckoutLifecycle({ activeParkedSale, activeShiftId, offlineSnapshotScope, onCheckoutLifecycleChange, onViewModeChange, posActionsBlocked, releaseActiveParkedSaleForSessionEnd: cancelActiveParkedSaleEditingAfterCartEmpty, resetCurrentSaleForNewSale, safeCartLength: safeCart.length, setActiveParkedSale, setClearSaleConfirmOpen, setCurrentSaleHelpOpen });
 
     parkedSaleEmptyCartHandlerRef.current = cancelActiveParkedSaleEditingAfterCartEmpty;
 
@@ -1232,20 +1157,8 @@ export default function POSCheckoutTerminal({
         setClearSaleConfirmOpen(true);
     };
 
-    const confirmClearCurrentSale = () => {
-        if (posActionsBlocked || safeCart.length === 0 || activeParkedSale?.pos_parked_sale_id) {
-            setClearSaleConfirmOpen(false);
-            return;
-        }
-        clearPosCartDraft(offlineSnapshotScope, activeShiftId);
-        setActiveParkedSale(null);
-        resetCurrentSaleForNewSale();
-        setClearSaleConfirmOpen(false);
-        toast.success('Current sale cleared.');
-    };
     const terminalViewModel = {
         activeParkedSale,
-        activeShiftCashierApprover,
         activeShiftId,
         addCatalogItemToCart,
         addToCart,
@@ -1299,7 +1212,7 @@ export default function POSCheckoutTerminal({
         currentSaleHelpOpen,
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
-        currentViewMode,
+        currentViewMode, handleClearSaleDialogOpenChange, pendingViewModeAfterSaleClear,
         ...customerPaymentAmountState,
         customerPaymentChange,
         customerPaymentFieldLabel,
@@ -1389,7 +1302,6 @@ export default function POSCheckoutTerminal({
         isTabletViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
-        itemOptionsItemDiscount,
         itemOptionsLine,
         itemOptionsLineKey,
         kitchenNotes,
@@ -1411,7 +1323,6 @@ export default function POSCheckoutTerminal({
         openClearCurrentSale,
         openDiscountModal,
         openHistoryDetail,
-        openInPosReport,
         openParkSaleNameDialog,
         openParkedSalesHistory,
         openSplitPaymentModal,
@@ -1427,7 +1338,6 @@ export default function POSCheckoutTerminal({
         posFoldersLoading,
         posHardware,
         posPresentationBundle,
-        posReportActionLabel,
         posWorkflow,
         qtyMeterState,
         quantityInputValue,
@@ -1497,6 +1407,7 @@ export default function POSCheckoutTerminal({
         setPaymentType,
         setQuantityInputValue,
         setReceiptPaperWidth,
+        setReceiptPreviewModalOpen,
         setReceiptPreviewSource,
         setSearch,
         setSelectedFolderId,

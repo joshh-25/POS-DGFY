@@ -17,17 +17,19 @@ const checkoutDialogContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx'),
   'utf8'
 );
+const discountWorkspaceContent = fs.readFileSync(
+  path.resolve(webCoreRoot, 'src/features/pos/components/POSDiscountWorkspace.jsx'),
+  'utf8'
+);
 const checkoutUtilsContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js'),
   'utf8'
 );
-const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutDialogContent}\n${checkoutUtilsContent}`;
-const modalStart = checkoutRenderContent.indexOf('<Dialog open={discountModalOpen}');
-const modalEnd = checkoutRenderContent.indexOf('<Dialog open={checkoutConfirmModalOpen}', modalStart);
-const discountModalContent = checkoutRenderContent.slice(modalStart, modalEnd);
+const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutDialogContent}\n${discountWorkspaceContent}\n${checkoutUtilsContent}`;
+const discountModalContent = discountWorkspaceContent;
 
 describe('Apply Discount type-card navigation contract', () => {
-  it('uses five visible type cards and no Discount Type select', () => {
+  it('uses six visible type cards and no Discount Type select', () => {
     expect(checkoutRenderContent.indexOf("{ value: 'employee', label: 'Employee'")).toBeLessThan(
       checkoutRenderContent.indexOf("{ value: 'senior', label: 'Senior Citizen'")
     );
@@ -35,6 +37,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).toContain("{ value: 'pwd', label: 'PWD'");
     expect(checkoutRenderContent).toContain("{ value: 'employee', label: 'Employee'");
     expect(checkoutRenderContent).toContain("{ value: 'promo', label: 'Promo'");
+    expect(checkoutRenderContent).toContain("{ value: 'voucher', label: 'Voucher'");
     expect(checkoutRenderContent).toContain("{ value: 'manual', label: 'Other'");
     expect(discountModalContent).toContain('role="tablist"');
     expect(discountModalContent).toContain('role="tab"');
@@ -47,8 +50,8 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).toContain('activeShiftCashierId = null');
     expect(checkoutRenderContent).toContain('Number(approver?.user_id) === shiftCashierId');
     expect(checkoutRenderContent).toContain('approver_user_id = shiftCashierApprover?.user_id || \'\';');
-    expect(checkoutRenderContent).toContain("option.value === 'employee'");
-    expect(discountModalContent).toContain('type: option.value');
+    expect(checkoutRenderContent).toContain('handleDiscountTypeChange(option.value)');
+    expect(discountModalContent).toContain('handleDiscountTypeChange(option.value)');
     expect(discountModalContent).toContain("['senior', 'pwd'].includes(discountDraft.type)");
     expect(discountModalContent).toContain("discountDraft.type === 'employee'");
     expect(discountModalContent).toContain("discountDraft.type === 'manual'");
@@ -61,7 +64,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain("discountDraft.type === 'manual'");
     expect(discountModalContent).toContain('Discount Rate');
     expect(discountModalContent).toContain('employeeDiscountRateOptions.map');
-    expect(discountModalContent).toContain('placeholder="Enter other discount reason (optional)"');
+    expect(discountModalContent).toContain('placeholder="Enter discount reason (optional)"');
     expect(discountModalContent).toContain('Employee PIN');
     expect(discountModalContent).toContain('discountDraft.approver_user_id');
     expect(discountModalContent).toContain('Authorizing employee');
@@ -87,12 +90,43 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('discountPreviewTotals.vatRemoved');
     expect(discountModalContent).toContain('discountPreviewTotals.discountAmount');
     expect(discountModalContent).toContain('discountPreviewTotals.total');
-    expect(discountModalContent).toContain('eligible_quantity: 1');
-    expect(discountModalContent).toContain('Select only items and quantities for this Senior/PWD customer.');
+    expect(discountModalContent).toContain('selectedQuantity');
+    expect(discountModalContent).toContain('Select all items');
+    expect(discountModalContent).toContain('Uncheck items with no discount');
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
     expect(checkoutRenderContent).not.toContain('onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}');
     expect(discountModalContent).toContain('Select authorized employee');
     expect(discountModalContent).toContain('No authorized employees are configured.');
+    expect(discountModalContent).not.toContain('No active registered employees are available.');
     expect(discountModalContent).toContain('PIN not configured');
+  });
+
+  it('keeps approval controls on one responsive row and hides the duplicate preview when embedded', () => {
+    expect(discountModalContent).toContain('<div className="grid gap-2.5 sm:grid-cols-2">');
+    expect(discountModalContent).toContain('<div className="space-y-1 sm:col-span-2">');
+    expect(discountModalContent).toContain('data-testid="pos-discount-preview-summary"');
+    expect(discountModalContent).toContain('{!embedded && (');
+  });
+
+  it('renders Customer Name before Eligible Items on tablet and restores desktop placement', () => {
+    const workspaceCustomerNameIndex = discountWorkspaceContent.indexOf('>Customer Name <');
+    const workspaceEligibleItemsIndex = discountWorkspaceContent.indexOf('>Eligible Items</');
+
+    expect(workspaceCustomerNameIndex).toBeGreaterThan(-1);
+    expect(workspaceCustomerNameIndex).toBeLessThan(workspaceEligibleItemsIndex);
+    expect(discountWorkspaceContent).toContain('isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
+    expect(discountWorkspaceContent).toContain('!isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
+    expect(checkoutViewContent).toContain('<POSDiscountWorkspace viewModel={viewModel} onCancel={handleCloseDiscountModal} />');
+  });
+
+  it('renders Employee Name and ID before Eligible Items on tablet and restores desktop placement', () => {
+    const workspaceTabletEmployeeIndex = discountWorkspaceContent.indexOf('{isTabletViewport ? employeeDiscountIdentityFields : null}');
+    const workspaceEligibleItemsIndex = discountWorkspaceContent.indexOf('>Eligible Items</');
+    const workspaceDesktopEmployeeIndex = discountWorkspaceContent.indexOf('{!isTabletViewport ? employeeDiscountIdentityFields : null}');
+
+    expect(workspaceTabletEmployeeIndex).toBeGreaterThan(-1);
+    expect(workspaceTabletEmployeeIndex).toBeLessThan(workspaceEligibleItemsIndex);
+    expect(workspaceDesktopEmployeeIndex).toBeGreaterThan(workspaceEligibleItemsIndex);
+    expect(checkoutViewContent).not.toContain('employeeDiscountIdentityFields');
   });
 });

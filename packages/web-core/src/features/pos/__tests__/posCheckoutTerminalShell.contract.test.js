@@ -29,15 +29,15 @@ describe('POS checkout terminal orchestration shell contract', () => {
   it('keeps stable rendered DOM/test-ID ownership in the extracted view', () => {
     expect(viewSource).toContain('data-testid="pos-catalog-scroll"');
     expect(viewSource).toContain('data-testid="pos-clear-current-sale-dialog"');
-    expect(receiptDialogsSource).toContain('data-testid="pos-receipt-modal-open-pos-report"');
+    expect(receiptDialogsSource).toContain('data-testid="pos-receipt-modal-print-order"');
     expect(viewSource).toContain('data-testid="pos-header-parked-sales-history-button"');
     expect(viewSource).toContain('aria-label="POS catalog contents"');
     expect(viewSource).toContain('aria-label="Current sale contents"');
   });
 
   it('keeps the payment draft inside the isolated checkout dialog', () => {
-    expect(viewSource).toContain('<POSCheckoutConfirmDialog viewModel={viewModel} />');
-    expect(checkoutDialogSource).toContain('const [paymentAmountInput, setPaymentAmountInput] = useState');
+    expect(viewSource).toContain("<POSCheckoutConfirmDialog key={viewModel.checkoutConfirmModalOpen ? 'checkout-open' : 'checkout-closed'} viewModel={viewModel} />");
+    expect(checkoutDialogSource).toContain('const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);');
     expect(checkoutDialogSource).toContain('onChange={(event) => selectPaymentAmount(event.target.value)}');
     expect(checkoutDialogSource).toContain('const confirmCheckout = () => handleCheckout({');
     expect(viewSource).not.toContain('id="pos-customer-payment-amount"');

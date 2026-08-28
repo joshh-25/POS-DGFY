@@ -585,7 +585,7 @@ const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
             item_id: { [Op.in]: itemIds },
             is_active: true
         },
-        attributes: ['item_barcode_id', 'item_id', 'code', 'scope', 'is_primary'],
+        attributes: ['item_barcode_id', 'item_id', 'code', 'source', 'scope', 'is_primary'],
         order: [
             ['item_id', 'ASC'],
             ['is_primary', 'DESC'],
@@ -597,8 +597,16 @@ const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
     const primaryBarcodeMap = new Map();
     rows
         // A catalog barcode is shown to POS operators as a scan target, so it
-        // must use one of the scopes that the POS scanner can actually resolve.
-        .filter((row) => isBarcodeScopeAllowedForSurface(row.scope, 'pos'))
+        // normally uses a POS-resolvable scope. Legacy manufacturer GTINs were
+        // created with inventory scope even from the POS item form; expose only
+        // that narrow legacy case so an explicit POS edit can repair its scope.
+        .filter((row) => (
+            isBarcodeScopeAllowedForSurface(row.scope, 'pos')
+            || (
+                String(row.source || '').trim().toLowerCase() === 'manufacturer'
+                && String(row.scope || '').trim().toLowerCase() === 'inventory'
+            )
+        ))
         .forEach((row) => {
             const barcode = toPlain(row);
             const itemId = Number(barcode?.item_id);
@@ -608,6 +616,7 @@ const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
             primaryBarcodeMap.set(itemId, {
                 item_barcode_id: Number(barcode.item_barcode_id),
                 code: String(barcode.code || '').trim(),
+                source: String(barcode.source || '').trim(),
                 scope: String(barcode.scope || '').trim(),
                 is_primary: barcode.is_primary === true
             });
@@ -2624,6 +2633,7 @@ export const posRepository = {
             ),
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
+                ...buildItemFolderInclude(),
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ]
@@ -3337,9 +3347,6 @@ export const posRepository = {
         if (searchConditions.length > 0) {
             whereAnd.push({ [Op.or]: searchConditions });
         }
-        if (whereAnd.length > 0) {
-            where[Op.and] = whereAnd;
-        }
         const locationId = Number.parseInt(filters.location_id, 10);
         if (Number.isInteger(locationId) && locationId > 0) {
             where.location_id = locationId;
@@ -3351,9 +3358,28 @@ export const posRepository = {
             if (filters.date_to) where.created_at[Op.lte] = toDateEnd(filters.date_to);
         }
 
+        const updatedAfter = filters.updated_after ? new Date(filters.updated_after) : null;
+        const updatedAfterId = toPositiveInt(filters.updated_after_id);
+        if (updatedAfter && !Number.isNaN(updatedAfter.getTime())) {
+            whereAnd.push({
+                [Op.or]: [
+                    { updated_at: { [Op.gt]: updatedAfter } },
+                    ...(updatedAfterId ? [{
+                        [Op.and]: [
+                            { updated_at: updatedAfter },
+                            { pos_transaction_id: { [Op.gt]: updatedAfterId } }
+                        ]
+                    }] : [])
+                ]
+            });
+        }
+        if (whereAnd.length > 0) where[Op.and] = whereAnd;
+
+        const mobileCheckpoint = filters.mobile_checkpoint === true;
+
         const { rows, count } = await PosTransaction.findAndCountAll({
             where,
-            include: [
+            include: mobileCheckpoint ? buildTransactionInclude() : [
                 {
                     model: dbStore.get('User'),
                     as: 'cashier',
@@ -3395,7 +3421,9 @@ export const posRepository = {
                 }
             ],
             distinct: true,
-            order: [['created_at', 'DESC']],
+            order: mobileCheckpoint
+                ? [['updated_at', 'ASC'], ['pos_transaction_id', 'ASC']]
+                : [['created_at', 'DESC']],
             limit,
             offset
         });

@@ -79,6 +79,7 @@ import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/fea
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
+import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -207,6 +208,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   customerAccessLimitationReason: '',
   inventoryDisplayMode: 'availability',
   inventoryLowStockDisplayThreshold: 5,
+  storefrontGuestCheckoutEnabled: true,
   customerAccessRegistrationStage: 'registered',
   customerAccessFlagStatus: 'enabled',
   storefrontTagline: '',
@@ -333,7 +335,8 @@ const SETTINGS_FIELD_LABELS = {
   storefront_share_enabled: 'Storefront Share Enabled',
   customer_access_mode: 'Customer Access Mode',
   inventory_display_mode: 'Inventory Display Mode',
-  inventory_low_stock_display_threshold: 'Low Stock Display Threshold'
+  inventory_low_stock_display_threshold: 'Low Stock Display Threshold',
+  storefront_guest_checkout_enabled: 'Allow Guest Checkout'
 };
 
 const POS_RECEIPT_METADATA_SETTING_KEYS = [
@@ -370,6 +373,7 @@ const STOREFRONT_SETTING_KEYS = [
   'customer_access_mode',
   'inventory_display_mode',
   'inventory_low_stock_display_threshold',
+  'storefront_guest_checkout_enabled',
   'storefront_tagline',
   'storefront_about',
   'storefront_phone',
@@ -1061,6 +1065,9 @@ export default function Settings() {
           ...mapCustomerAccessRuntimeSettings(systemSettings),
           inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
           inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
+          // #622: fail-open default -- an unset row (every tenant provisioned before this shipped)
+          // must hydrate to checked/on, matching the backend's own DEFAULT_GUEST_CHECKOUT_ENABLED.
+          storefrontGuestCheckoutEnabled: systemSettings.storefront_guest_checkout_enabled?.value !== false,
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
@@ -2006,6 +2013,7 @@ export default function Settings() {
         customer_access_mode: normalizeCustomerAccessMode(settings.customerAccessMode),
         inventory_display_mode: normalizeInventoryDisplayMode(settings.inventoryDisplayMode),
         inventory_low_stock_display_threshold: Number(settings.inventoryLowStockDisplayThreshold || 5),
+        storefront_guest_checkout_enabled: settings.storefrontGuestCheckoutEnabled !== false,
         storefront_tagline: String(settings.storefrontTagline || '').trim(),
         storefront_about: String(settings.storefrontAbout || '').trim(),
         storefront_phone: String(settings.storefrontPhone || '').trim(),
@@ -2361,6 +2369,12 @@ export default function Settings() {
   const maxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMaxMode || 'transaction', 'transaction');
   const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessEffectiveMode || requestedCustomerAccessMode);
+  // #1093: exactly one of delivery/pickup is currently on for the location being edited, and the
+  // store is in Transaction mode -- lock that switch so it can't be turned off and leave the
+  // location with neither. Both-on (nothing to lock) and both-off (already saved that way,
+  // handled by the server's previous-state exemption) are both left alone.
+  const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
+    && locationForm.supports_delivery !== locationForm.supports_pickup;
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
     : 'No platform or registration-stage cap is reducing the requested mode.';
@@ -2789,6 +2803,15 @@ export default function Settings() {
                     onChange={(e) => handleChange('inventoryLowStockDisplayThreshold', e.target.value)}
                   />
                 </div>
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Allow Guest Checkout</Label>
+                    <Switch checked={settings.storefrontGuestCheckoutEnabled !== false} onCheckedChange={(checked) => handleChange('storefrontGuestCheckoutEnabled', checked === true)} />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    When off, customers must sign in with a DGFY account before checking out or booking on this storefront.
+                  </p>
+                </div>
                 <div
                   className={cn(
                     'rounded-lg border p-3 text-sm',
@@ -2973,9 +2996,13 @@ export default function Settings() {
                     <span className="text-sm text-slate-600">Enable delivery orders for this location</span>
                     <Switch
                       checked={locationForm.supports_delivery === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}
                       onCheckedChange={(v) => handleLocationFormChange('supports_delivery', v)}
                     />
                   </div>
+                  {lastFulfillmentMethodLocked && locationForm.supports_delivery === true && (
+                    <p className="text-xs text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Supports Pickup</Label>
@@ -2983,10 +3010,22 @@ export default function Settings() {
                     <span className="text-sm text-slate-600">Enable pickup orders for this location</span>
                     <Switch
                       checked={locationForm.supports_pickup === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}
                       onCheckedChange={(v) => handleLocationFormChange('supports_pickup', v)}
                     />
                   </div>
+                  {lastFulfillmentMethodLocked && locationForm.supports_pickup === true && (
+                    <p className="text-xs text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                  )}
                 </div>
+                {locationForm.supports_delivery === false && locationForm.supports_pickup === false && (
+                  <div className="space-y-2 md:col-span-2">
+                    <p className="text-xs text-amber-700">
+                      This location has neither Delivery nor Pickup enabled -- it cannot receive online orders while
+                      Customer Access Mode is Transaction. Existing storefront checkouts will show it as unavailable.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                     <div>

@@ -119,7 +119,7 @@ export default function POSParkedSalesDialog({
                 terminal_id: normalizedTerminalId,
                 location_id: selectedLocationId ? Number(selectedLocationId) : undefined
             });
-            await onClaimed(claimed, normalizedAction);
+            await onClaimed(claimed, normalizedAction, preflight.resumeContext);
             onOpenChange(false);
         } catch (requestError) {
             setActionError(requestError?.response?.data?.message || requestError?.message || 'Unable to resume this parked sale. It may already be claimed on another terminal.');

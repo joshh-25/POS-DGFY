@@ -17,6 +17,7 @@ const RETAIL_ACCENT_DARK = '#1a4586';
  */
 export function RetailOrderAccountStep({
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   guestCheckoutOtpCode = '',
   guestCheckoutOtpCooldownLabel = '',
   guestCheckoutOtpError = '',
@@ -40,7 +41,13 @@ export function RetailOrderAccountStep({
   if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
     return renderGuestCheckoutEntry({
       title: 'Continue to your order',
-      description: 'Create an account or continue as guest to continue this order.',
+      // #622: the description must track guestCheckoutAllowed the same way the "Continue as
+      // Guest" button itself does -- a hardcoded description here would keep inviting guest
+      // checkout in copy even after the merchant disabled it (caught by rendered-UI proof,
+      // PR #1095 RF-3: the button correctly disappeared but this text didn't change).
+      description: guestCheckoutAllowed
+        ? 'Create an account or continue as guest to continue this order.'
+        : 'This store requires a DGFY account to check out. Create one or log in to continue.',
       resumeTarget: {
         checkoutTab: 'checkout'
       }

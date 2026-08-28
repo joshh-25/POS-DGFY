@@ -1,115 +1,14 @@
 # Documentation Guidelines
 
-## Overview
+This is a **pointer**, not the definition. This file used to restate a `/docs` folder structure and
+decision checklist for the "SKU Inventory Manager project" — stale in two ways (#365): the product
+framing, and a `/docs` layout (`docs/architecture/system-architecture.md`,
+`docs/database/schema.md`, `docs/api/specification.md`, `docs/development/`) that's a small, dated
+subset of the real tree (which also has `docs/ops/`, `docs/compliance/`, `docs/process/`,
+`docs/ai/`, `docs/architecture/adr/`, and more).
 
-This document defines when and how to create documentation files for the SKU Inventory Manager project. Documentation in `/docs` is the **single source of truth** and takes precedence over code.
-
-## Core Principle
-
-**Documentation in `/docs` is authoritative** - code must align with documentation. If code doesn't match docs, docs are correct (unless explicitly stated otherwise). When fixing bugs, align code with documented behavior. If docs are wrong, update them in the same PR.
-
-## When to Create Documentation Files
-
-### Decision Checklist
-
-Before creating a new `.md` file, check:
-
-- Does it need to be referenced by multiple people?
-- Is it a decision/rule affecting architecture/domain?
-- Will it be useful beyond current PR?
-- Does it fit `/docs` structure?
-- Is it not just implementation details?
-
-**If 3+ "yes"** → Create file  
-**If 2 or fewer "yes"** → Use code comments/PR description/issues
-
-**When in doubt**: Ask User before creating a new `.md` file
-
-### CREATE Documentation Files When:
-
-- Architectural decisions (ADRs)
-- Bounded context docs (domain rules)
-- System-level docs
-- Feature/TDD docs
-- Operational procedures
-- Architecture patterns
-- Project rules/guidelines
-
-### DO NOT CREATE Documentation Files When:
-
-- Implementation details (use code comments)
-- Single-use decisions (PR description)
-- Code-level docs (docstrings)
-- Quick TODOs
-- Information that belongs in code
-- User Rules or conversation-level guidance (these belong in the User Rules system, not as project docs)
-
-## Documentation Structure
-
-### Folder Organization
-
-```
-/docs
-├── README.md                    # Documentation index & navigation
-├── architecture/                # System architecture & diagrams
-│   ├── system-architecture.md
-│   └── component-architecture.md
-├── database/                    # Database schema & migrations
-│   └── schema.md
-├── api/                         # API specifications & integration
-│   ├── specification.md
-│   └── integration-guide.md
-└── development/                 # Development guides & roadmaps
-    ├── roadmap.md
-    ├── guidelines.md
-    └── environment-setup.md
-```
-
-### Naming Conventions
-
-- Use lowercase with hyphens: `system-architecture.md`
-- Be descriptive: `integration-guide.md` not `guide.md`
-- Group related docs in subdirectories
-- Use `README.md` for indexes/navigation
-
-## Documentation Standards
-
-### Update Procedures
-
-1. **Update Together**: Code changes require documentation updates in the same PR
-2. **Source of Truth**: `/docs` takes precedence - code must align
-3. **Versioning**: Keep documentation in sync with codebase
-4. **Cross-References**: Use relative links between documents
-
-### Content Guidelines
-
-- Use clear headings and structure
-- Include diagrams (Mermaid) when helpful
-- Provide examples and code snippets
-- Keep content current and accurate
-- Link related documentation
-
-### Handling Conflicts
-
-When documentation:
-- **Conflicts**: Follow these guidelines (canonical source). Surface conflicts and ask User if unclear
-- **Missing**: Ask User - never invent missing information
-- **Wrong**: Update in same PR as code fix
-- **Redundant**: Consolidate following these guidelines
-
-## Reference Documentation
-
-- **Architecture**: See `/docs/architecture/system-architecture.md`
-- **Database**: See `/docs/database/schema.md`
-- **API**: See `/docs/api/specification.md` and `/docs/api/integration-guide.md`
-- **Development**: See `/docs/development/` for roadmap, guidelines, and setup
-
-## PR Checklist
-
-When making changes that affect documentation:
-
-- [ ] Documentation updated in same PR
-- [ ] Cross-references updated
-- [ ] Examples updated if applicable
-- [ ] Diagrams updated if architecture changed
-- [ ] README links verified
+**Read `AGENTS.md` in full and follow it**, specifically its "Mandatory Documentation Lookup Order"
+and doc-authority rules (`docs/` governed docs ranked by `authority_level` frontmatter —
+`authoritative` > `reference` > `historical`). Do not duplicate that content here — a second,
+independently-drifting copy of the same doc-hierarchy rule is exactly the staleness failure this
+file itself became an example of.

@@ -2,6 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import dbStore from '../../../utils/dbStore.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
+import { assertNoUnfulfillableLocationForTransactionMode } from '../../settings/usecases/customerAccessModeFulfillmentPolicy.js';
 import {
     buildCustomerAccessCapabilityMetadata,
     normalizeTenantCapabilities,
@@ -210,6 +211,30 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                         await upsertJsonSetting(SystemSetting, 'tenant_onboarding_progress', updatedProgress, { transaction });
                     }
                     const after = await readCapabilitiesFromSettings(SystemSetting, capabilityKeys, { transaction });
+
+                    // #1093 follow-up (PR #1096 review, RF-1): this is the platform-admin path,
+                    // the only one that can move BOTH customer_access_mode and its ceilings
+                    // (platform_max_customer_access_mode, registration stage) in one write --
+                    // `after` already reflects the fully-resolved resulting state (post-write,
+                    // still inside this transaction), so re-checking it here catches every lever
+                    // this path can pull, not just customer_access_mode alone. Throwing here
+                    // rolls back the whole transaction (Sequelize's managed-transaction
+                    // behavior), so a rejected transition writes nothing.
+                    if (after.effective_customer_access_mode === 'transaction') {
+                        const TenantLocation = dbStore.get('TenantLocation');
+                        const locations = TenantLocation
+                            ? (await TenantLocation.findAll({
+                                where: { is_active: true },
+                                attributes: ['location_id', 'name', 'supports_delivery', 'supports_pickup'],
+                                transaction
+                            })).map((row) => (typeof row.get === 'function' ? row.get({ plain: true }) : row))
+                            : [];
+                        assertNoUnfulfillableLocationForTransactionMode({
+                            effectiveCustomerAccessMode: after.effective_customer_access_mode,
+                            locations
+                        });
+                    }
+
                     return { before, after };
                 });
             });

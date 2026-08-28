@@ -9,5 +9,5 @@ This workflow runs the end-to-end Playwright tests to verify the AI assistant's 
 
 ### 1. Run the verification script
 ```bash
-node backend/verify_ai.js
+cd apps/dgfy-api && npm run verify:ai && cd ../..
 ```

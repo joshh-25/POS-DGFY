@@ -87,11 +87,19 @@ export function useCustomerAuthNavigation({
     setIsGuestTrackingDrawerOpen(false);
     openCustomerDashboard();
   }, [openCustomerDashboard, setIsCheckoutOpen, setIsGuestTrackingDrawerOpen]);
+  // Deliberately does NOT stamp `?dgfy_account=1` (#1100). That marker is
+  // `buildCustomerDashboardReturnUrl`/the header "My Account" flow's signal
+  // to `useCustomerDashboardRoutePresentation` to force-redirect onto the
+  // customer dashboard. This builder's only callers are checkout's own
+  // "come back to where I was" flow (`persistCheckoutAuthResume`'s draft and
+  // `openCanonicalDgfyAuth`'s `returnTarget: 'current'` branch, both reached
+  // only via `openCheckoutAuthFlow`) - reusing the same marker here caused
+  // that dashboard-redirect effect to hijack a returning checkout login and
+  // hard-navigate the customer off checkout before the resume draft could
+  // reopen it.
   const buildContextualCustomerReturnUrl = useCallback(() => {
     if (typeof window === 'undefined') return '';
-    const target = new URL(window.location.href);
-    target.searchParams.set('dgfy_account', '1');
-    return target.toString();
+    return window.location.href;
   }, []);
   const persistCheckoutAuthResume = useCallback((resumeTarget = {}) => {
     writeCheckoutAuthResumeDraft({

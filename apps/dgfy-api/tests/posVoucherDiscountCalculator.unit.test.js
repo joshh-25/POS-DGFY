@@ -111,4 +111,24 @@ describe('POS voucher governed calculation (#712)', () => {
         expect(result.lines.find((line) => line.item_id === 1).final_line_amount).toBe(144);
         expect(result.lines.find((line) => line.item_id === 2).final_line_amount).toBe(50);
     });
+
+    test('uses line_ref so a voucher allocation cannot multiply across duplicate item lines', () => {
+        const duplicateLines = [
+            { line_ref: 'coffee-hot', item_id: 1, quantity: 1, sale_price: 100, global_discount_base_amount: 100 },
+            { line_ref: 'coffee-cold', item_id: 1, quantity: 1, sale_price: 150, global_discount_base_amount: 150 }
+        ];
+        const result = buildVoucherGovernedCalculation({
+            lines: duplicateLines,
+            voucher: {
+                benefitClass: 'amount_off',
+                discountCentavos: 1000,
+                lineAllocations: [
+                    { line_ref: 'coffee-hot', item_id: 1, quantity: 1, discountCentavos: 1000, eligible: true }
+                ]
+            }
+        });
+
+        expect(result.discount_amount).toBe(10);
+        expect(result.lines.map((line) => line.discount_amount)).toEqual([10, 0]);
+    });
 });

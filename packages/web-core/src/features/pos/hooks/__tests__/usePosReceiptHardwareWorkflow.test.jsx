@@ -107,6 +107,44 @@ describe('usePosReceiptHardwareWorkflow', () => {
         expect(result.current.billRequestPrinting).toBe(false);
     });
 
+    it('prints the selected historical order instead of the active cart', async () => {
+        const transaction = {
+            pos_transaction_id: 19,
+            order_method: 'dine_in',
+            fnb_table_label_snapshot: 'T-04',
+            special_instructions: 'No onions',
+            lines: [{
+                line_id: 23,
+                item_id: 12,
+                item_name_snapshot: 'Burger Meal',
+                quantity: 2,
+                sale_price: 150,
+                fnb_special_instructions: 'Extra sauce'
+            }]
+        };
+        const { result, props } = renderWorkflow({
+            safeCart: [{ line_key: 'active-line', item_id: 99, item_name: 'Active item', quantity: 1, sale_price: 10 }]
+        });
+
+        await act(async () => {
+            await result.current.handlePrintOrder(transaction);
+        });
+
+        expect(props.posHardware.printOrderTicket).toHaveBeenCalledWith(expect.objectContaining({
+            cart: [expect.objectContaining({
+                line_id: 23,
+                item_id: 12,
+                item_name: 'Burger Meal',
+                quantity: 2,
+                sale_price: 150,
+                fnb_special_instructions: 'Extra sauce'
+            })],
+            orderMethod: 'dine_in',
+            fnbContext: { table_label: 'T-04', fnb_table_label_snapshot: 'T-04' },
+            orderNotes: 'No onions'
+        }));
+    });
+
     it('authorizes a cashier drawer opening with the same idempotency key as the hardware command', async () => {
         const { result, props } = renderWorkflow();
 

@@ -94,6 +94,11 @@ const runTransaction = async (work) => {
 };
 
 const actorId = (user) => parsePositiveInt(user?.user_id);
+const isMasterAdmin = (user) => (
+    user?.is_master_admin === true
+    || user?.is_master_admin === 1
+    || user?.is_master_admin === '1'
+);
 const operatorUserSummary = (user) => user ? {
     user_id: parsePositiveInt(user.user_id),
     username: String(user.username || '').trim() || null,
@@ -160,10 +165,15 @@ const assertTargetScope = async ({ repository, targetUser, targetUserId, locatio
     if (!targetUser || targetUser.is_active !== true || targetUser.deleted_at) {
         throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'The selected cashier is not authorized for this register.', 403);
     }
+    // Master admins have tenant-wide location authority everywhere else in the
+    // POS location-scope policy. They may operate their own valid open shift
+    // without a redundant user_location_grants row. Regular operators still
+    // require an exact grant for this register location.
+    if (isMasterAdmin(targetUser)) return;
     if (typeof repository.findUserLocationGrant === 'function') {
         const grant = await repository.findUserLocationGrant({ userId: targetUserId, locationId, transaction, lock: true });
         if (!grant) {
-            throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'The selected cashier is not authorized for this register location.', 403);
+            throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'The current register operator is not authorized for this location.', 403);
         }
     }
 };

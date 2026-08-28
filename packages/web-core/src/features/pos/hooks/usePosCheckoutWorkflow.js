@@ -3,6 +3,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     createPosCheckout,
     createPosParkedSale,
+    fetchPosCatalog,
     reparkPosParkedSale,
     cancelPosPaymentAllocation,
     cancelPosPaymentSession,
@@ -48,6 +49,7 @@ import {
     resolveCheckoutReplayErrorDetails
 } from '../utils/posCheckoutTerminalQueue.js';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
+import { getDiscountLineRef } from '../utils/posDiscountSelection.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 
 /**
@@ -152,6 +154,7 @@ export const usePosCheckoutWorkflow = ({
     vatBreakdown = {},
     cartTotal = 0,
     paymentType = 'cash',
+    checkoutWorkflowValidationMessage = null,
     isCheckoutWorkflowValid = true,
     isCashPayment = false,
     isEmployeeCreditPayment = false,
@@ -320,9 +323,29 @@ export const usePosCheckoutWorkflow = ({
         await replayQueuedCheckouts({ toastIfEmpty: true });
     }, [onManualUniversalSync, replayQueuedCheckouts]);
 
-    const resetCurrentSaleForNewSale = useCallback(() => {
-        setCart([]);
-        itemDiscountApprovalRef?.current?.clear?.();
+    const resetDiscountState = useCallback(({ closeModal = true } = {}) => {
+        setSelectedDiscountProfile('');
+        setManualDiscountMode('none');
+        setManualDiscountRateInput('');
+        setManualDiscountAmountInput('');
+        setAppliedDiscount(null);
+        if (discountApprovalRef) discountApprovalRef.current = null;
+        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        if (closeModal) setDiscountModalOpen(false);
+        setShowDiscountPin(false);
+    }, [
+        discountApprovalRef,
+        setAppliedDiscount,
+        setDiscountDraft,
+        setDiscountModalOpen,
+        setManualDiscountAmountInput,
+        setManualDiscountMode,
+        setManualDiscountRateInput,
+        setSelectedDiscountProfile,
+        setShowDiscountPin
+    ]);
+
+    const resetCheckoutModalState = useCallback(({ closeModal = true } = {}) => {
         setOrderMethod(posWorkflow.allowedMethods?.[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
         setTableNumber('');
         setKitchenNotes('');
@@ -333,69 +356,61 @@ export const usePosCheckoutWorkflow = ({
         setServicesNotes('');
         setPaymentType('cash');
         resetEmployeeCredit();
-        setSelectedDiscountProfile('');
-        setManualDiscountMode('none');
-        setManualDiscountRateInput('');
-        setManualDiscountAmountInput('');
-        setAppliedDiscount(null);
-        if (discountApprovalRef) discountApprovalRef.current = null;
-        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        resetDiscountState();
         splitPaymentReturnToCheckoutRef.current = false;
-        setDiscountModalOpen(false);
-        setShowDiscountPin(false);
         setAffiliateCodeInput('');
         setCustomerPaymentAmountInput('');
         setCustomerPaymentAmountAutoFilled(false);
-        setCheckoutConfirmModalOpen(false);
-        setParkedSalePayContext(null);
-        setItemOptionsLineKey(null);
-        setServiceOptionsModal({ open: false, item: null, groups: [] });
+        if (closeModal) setCheckoutConfirmModalOpen(false);
     }, [
-        discountApprovalRef,
-        itemDiscountApprovalRef,
         posWorkflow,
         resetEmployeeCredit,
+        resetDiscountState,
         setAffiliateCodeInput,
-        setAppliedDiscount,
-        setCart,
         setCheckoutConfirmModalOpen,
         setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
-        setDiscountDraft,
-        setDiscountModalOpen,
-        setItemOptionsLineKey,
         setKitchenNotes,
-        setManualDiscountAmountInput,
-        setManualDiscountMode,
-        setManualDiscountRateInput,
         setOrderMethod,
-        setParkedSalePayContext,
         setPaymentType,
-        setSelectedDiscountProfile,
-        setServiceOptionsModal,
         setServicesClientName,
         setServicesDateTime,
         setServicesNotes,
         setServicesProvider,
         setServicesResource,
-        setShowDiscountPin,
         setTableNumber
     ]);
 
-    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () => {
+    const resetCurrentSaleForNewSale = useCallback(() => {
+        setCart([]);
+        itemDiscountApprovalRef?.current?.clear?.();
+        resetCheckoutModalState();
+        setParkedSalePayContext(null);
+        setItemOptionsLineKey(null);
+        setServiceOptionsModal({ open: false, item: null, groups: [] });
+    }, [
+        itemDiscountApprovalRef,
+        resetCheckoutModalState,
+        setCart,
+        setItemOptionsLineKey,
+        setParkedSalePayContext,
+        setServiceOptionsModal
+    ]);
+
+    const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async ({ sessionEnd = false } = {}) => {
         const parkedSaleId = Number(activeParkedSale?.pos_parked_sale_id);
         const snapshot = activeParkedSale?.snapshot;
         if (!parkedSaleId || parkedSaleReleaseLoading) return false;
         if (!activeShiftId || !normalizedTerminalId) {
-            toast.error('Open the active POS shift before cancelling parked-sale editing.');
+            if (!sessionEnd) toast.error('Open the active POS shift before cancelling parked-sale editing.');
             return false;
         }
         if (!snapshot || !Array.isArray(snapshot.lines) || snapshot.lines.length === 0) {
-            toast.error('Unable to return this parked sale because its original items are unavailable.');
+            if (!sessionEnd) toast.error('Unable to return this parked sale because its original items are unavailable.');
             return false;
         }
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
+            if (!sessionEnd) toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
             return false;
         }
 
@@ -414,10 +429,10 @@ export const usePosCheckoutWorkflow = ({
             clearPosCartDraft(offlineSnapshotScope, activeShiftId);
             setActiveParkedSale(null);
             resetCurrentSaleForNewSale();
-            toast.info(`${parkedSaleLabel} remains available for the next cashier. Editing was cancelled because all items were removed.`);
+            if (!sessionEnd) toast.info(`${parkedSaleLabel} remains available for the next cashier. Editing was cancelled because all items were removed.`);
             return true;
         } catch (error) {
-            toast.error(error?.response?.data?.message || error?.message || 'Unable to release this parked sale. The current items were kept.');
+            if (!sessionEnd) toast.error(error?.response?.data?.message || error?.message || 'Unable to release this parked sale. The current items were kept.');
             return false;
         } finally {
             setParkedSaleReleaseLoading(false);
@@ -435,6 +450,10 @@ export const usePosCheckoutWorkflow = ({
         }
         if (safeCart.length === 0) {
             toast.error('Add at least one item before checkout.');
+            return;
+        }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
             return;
         }
         const { validateFnbModifierSelections } = await import('../utils/fnbModifierValidation.js');
@@ -465,7 +484,7 @@ export const usePosCheckoutWorkflow = ({
         setCustomerPaymentAmountAutoFilled(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const openSplitPaymentModal = useCallback(async () => {
         if (checkoutBlockedReason) {
@@ -478,6 +497,10 @@ export const usePosCheckoutWorkflow = ({
         }
         if (safeCart.length === 0) {
             toast.error('Add at least one item before recording payment.');
+            return;
+        }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
             return;
         }
         if (isEmployeeCreditPayment) {
@@ -504,34 +527,10 @@ export const usePosCheckoutWorkflow = ({
         splitPaymentReturnToCheckoutRef.current = false;
         handleSplitPaymentOpenChange(true);
         setMobileCheckoutPanelOpen(false);
-    }, [checkoutBlockedReason, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [checkoutBlockedReason, checkoutWorkflowValidationMessage, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
-        const [{ validateParkedSaleResume }, { validateFnbModifierSelections }] = await Promise.all([
-            import('../utils/posParkedSaleResume.js'),
-            import('../utils/fnbModifierValidation.js')
-        ]);
-        const validation = validateParkedSaleResume({
-            parkedSale,
-            catalog: safeCatalog,
-            locationId: selectedLocationId,
-            allowedOrderMethods: posWorkflow.allowedMethods,
-            discountProfiles: toArray(discountProfiles),
-            commercialPromoConfig: toArray(commercialPromoConfig),
-            modifierValidator: ({ item, line, locationId }) => {
-                const currentGroups = getFnbModifierGroups(item);
-                const savedModifiers = toArray(line?.line_modifiers);
-                if (savedModifiers.length > 0 && currentGroups.length === 0) {
-                    return 'modifier selections are no longer available.';
-                }
-                const currentOptionIds = new Set(currentGroups.flatMap((group) => getActiveModifierOptions(group).map((option) => Number(option?.modifier_option_id))));
-                if (savedModifiers.some((modifier) => !currentOptionIds.has(Number(modifier?.modifier_option_id)))) {
-                    return 'one or more modifier selections are no longer available.';
-                }
-                return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
-            }
-        });
         if (activeParkedSale?.pos_parked_sale_id
             && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
             return {
@@ -555,22 +554,78 @@ export const usePosCheckoutWorkflow = ({
                     : 'Pay requires an empty current sale. Park or clear the current sale first.'
             };
         }
+        const [{
+            getParkedSaleCatalogLookupQueries,
+            mergeParkedSaleCatalogResults,
+            validateParkedSaleResume
+        }, { validateFnbModifierSelections }] = await Promise.all([
+            import('../utils/posParkedSaleResume.js'),
+            import('../utils/fnbModifierValidation.js')
+        ]);
+        const lookupQueries = getParkedSaleCatalogLookupQueries({ parkedSale });
+        let resumeCatalog = safeCatalog;
+        if (lookupQueries.length > 0) {
+            try {
+                const lookupResults = await Promise.all(lookupQueries.map((search) => fetchPosCatalog({
+                    search,
+                    limit: 200,
+                    ...(selectedLocationId ? { location_id: selectedLocationId } : {})
+                })));
+                resumeCatalog = mergeParkedSaleCatalogResults(safeCatalog, lookupResults, parkedSale);
+            } catch {
+                return {
+                    ok: false,
+                    message: 'Unable to refresh the catalog items required by this parked sale. Check the connection and try again.'
+                };
+            }
+        }
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: resumeCatalog,
+            locationId: selectedLocationId,
+            allowedOrderMethods: posWorkflow.allowedMethods,
+            discountProfiles: toArray(discountProfiles),
+            commercialPromoConfig: toArray(commercialPromoConfig),
+            modifierValidator: ({ item, line, locationId }) => {
+                const currentGroups = getFnbModifierGroups(item);
+                const savedModifiers = toArray(line?.line_modifiers);
+                if (savedModifiers.length > 0 && currentGroups.length === 0) {
+                    return 'modifier selections are no longer available.';
+                }
+                const currentOptionIds = new Set(currentGroups.flatMap((group) => getActiveModifierOptions(group).map((option) => Number(option?.modifier_option_id))));
+                if (savedModifiers.some((modifier) => !currentOptionIds.has(Number(modifier?.modifier_option_id)))) {
+                    return 'one or more modifier selections are no longer available.';
+                }
+                return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
+            }
+        });
         if (!validation.ok) {
             return {
                 ok: false,
                 message: `This parked sale needs review before it can be resumed: ${validation.conflicts.slice(0, 3).join(' ')}`
             };
         }
-        return { ok: true };
+        return {
+            ok: true,
+            resumeContext: {
+                parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
+                catalog: resumeCatalog
+            }
+        };
     }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
 
-    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay') => {
+    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay', resumeContext = null) => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
             : {};
-        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: safeCatalog });
+        const claimedSaleId = Number(claimedSale?.pos_parked_sale_id);
+        if (Number(resumeContext?.parkedSaleId) !== claimedSaleId || !Array.isArray(resumeContext?.catalog)) {
+            throw new Error('This parked sale must be revalidated before it can be resumed. Reopen Parked Sales and try again.');
+        }
+        const validatedCatalog = resumeContext.catalog;
+        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
         const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
         const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
             ? snapshot.discount_context
@@ -665,7 +720,6 @@ export const usePosCheckoutWorkflow = ({
         itemDiscountApprovalRef,
         posWorkflow,
         resetEmployeeCredit,
-        safeCatalog,
         setActiveParkedSale,
         setAffiliateCodeInput,
         setAppliedDiscount,
@@ -962,7 +1016,7 @@ export const usePosCheckoutWorkflow = ({
             if (parkedSalePayContext && activeParkedSale?.pos_parked_sale_id) {
                 await releaseClaimedParkedSaleAfterPayCancel();
             } else {
-                setCheckoutConfirmModalOpen(false);
+                resetCheckoutModalState();
             }
             return;
         }
@@ -980,14 +1034,14 @@ export const usePosCheckoutWorkflow = ({
                 reason: 'Cashier cancelled split-payment checkout before payment was recorded.'
             });
             clearSplitPaymentState();
-            setCheckoutConfirmModalOpen(false);
+            resetCheckoutModalState();
             toast.success('Split-payment draft cancelled. New checkout ready.');
         } catch (error) {
             toast.error(error?.response?.data?.message || error?.message || 'Unable to cancel the split-payment draft.');
         } finally {
             setSplitPaymentCancelLoading(false);
         }
-    }, [activeParkedSale?.pos_parked_sale_id, activeShiftId, clearSplitPaymentState, normalizedTerminalId, parkedSalePayContext, releaseClaimedParkedSaleAfterPayCancel, selectedLocationId, setCheckoutConfirmModalOpen, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations.length]);
+    }, [activeParkedSale?.pos_parked_sale_id, activeShiftId, clearSplitPaymentState, normalizedTerminalId, parkedSalePayContext, releaseClaimedParkedSaleAfterPayCancel, resetCheckoutModalState, selectedLocationId, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations.length]);
 
     const handleKeepSplitPaymentAndClose = useCallback(() => {
         setSplitPaymentCancelModalOpen(false);
@@ -1019,14 +1073,14 @@ export const usePosCheckoutWorkflow = ({
             });
             clearSplitPaymentState();
             setSplitPaymentCancelModalOpen(false);
-            setCheckoutConfirmModalOpen(false);
+            resetCheckoutModalState();
             toast.success('Split payment reversed and cancelled. New checkout ready.');
         } catch (error) {
             toast.error(error?.response?.data?.message || error?.message || 'Unable to reverse the split payment. Review the saved payment and try again.');
         } finally {
             setSplitPaymentCancelLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, selectedLocationId, setCheckoutConfirmModalOpen, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations]);
+    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, resetCheckoutModalState, selectedLocationId, setSplitPaymentCancelLoading, setSplitPaymentCancelModalOpen, splitPaymentSession, splitPaymentSuccessfulAllocations]);
 
     const handleCompletePreparedSplitPayment = useCallback(async (preparedSession = null) => {
         const sessionToComplete = preparedSession || splitPaymentSession;
@@ -1148,6 +1202,11 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
+            setCheckoutConfirmModalOpen(false);
+            return;
+        }
         if (!effectiveCustomerPaymentSufficient) {
             toast.error(isEmployeeCreditPayment
                 ? 'Verify an active, eligible employee account with enough available balance.'
@@ -1223,7 +1282,8 @@ export const usePosCheckoutWorkflow = ({
             fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
             fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
             restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
-            lines: safeCart.map((line) => ({
+            lines: safeCart.map((line, index) => ({
+                line_ref: getDiscountLineRef(line, index),
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
@@ -1389,12 +1449,17 @@ export const usePosCheckoutWorkflow = ({
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
             const { buildFnbRecipeBlockerMessage, buildValidationDetailMessage } = await import('../utils/posCheckoutErrorMessages.js');
+            const rawMessage = String(error?.response?.data?.message || '').trim();
+            const friendlyPriceOverrideMessage = /^Price override reason is required for item\b/i.test(rawMessage)
+                ? 'Enter a price override reason of at least 3 characters before checkout.'
+                : null;
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
                 || buildFnbRecipeBlockerMessage(error)
+                || friendlyPriceOverrideMessage
                 || buildValidationDetailMessage(error)
-                || error?.response?.data?.message
+                || rawMessage
                 || 'POS checkout failed'
             );
             if (compliancePolicyBlocker?.actionTarget) {
@@ -1499,6 +1564,7 @@ export const usePosCheckoutWorkflow = ({
         cartTotal,
         catalog,
         checkoutBlockedReason,
+        checkoutWorkflowValidationMessage,
         customerPaymentAmount,
         customerPaymentChange,
         customerPaymentFieldLabel,
@@ -1567,6 +1633,8 @@ export const usePosCheckoutWorkflow = ({
         handleManualUniversalSync,
         openCheckoutConfirmModal,
         openSplitPaymentModal,
+        resetDiscountState,
+        resetCheckoutModalState,
         resetCurrentSaleForNewSale,
         cancelActiveParkedSaleEditingAfterCartEmpty,
         validateParkedSaleForResume,

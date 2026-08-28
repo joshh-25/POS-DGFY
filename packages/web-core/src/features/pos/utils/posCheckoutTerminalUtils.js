@@ -1,8 +1,26 @@
 import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
+import { getDiscountLineRef } from './posDiscountSelection.js';
 
 export const money = (value) => Number(value || 0).toFixed(2);
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+export const getCartLineSubtotal = (line) => round4(
+    Number(line?.quantity || 0) * Number(line?.sale_price || 0)
+);
+
+export const getPriceOverrideReasonValidationMessage = ({ line = {}, effectiveDefaultSalePrice } = {}) => {
+    const salePrice = Number(line?.sale_price);
+    const defaultSalePrice = Number(effectiveDefaultSalePrice);
+    if (!Number.isFinite(salePrice) || !Number.isFinite(defaultSalePrice)) return null;
+    if (Math.abs(round4(salePrice) - round4(defaultSalePrice)) <= 0.0001) return null;
+    if (String(line?.price_override_reason || '').trim().length >= 3) return null;
+
+    const itemLabel = String(line?.item_name || '').trim()
+        || (Number.isInteger(Number(line?.item_id)) && Number(line?.item_id) > 0
+            ? `item ${Number(line.item_id)}`
+            : 'this item');
+    return `Enter a price override reason of at least 3 characters for ${itemLabel} before checkout.`;
+};
 
 export const SPLIT_PAYMENT_METHOD_LABELS = {
     cash: 'Cash',
@@ -19,6 +37,8 @@ export const SPLIT_PAYMENT_METHOD_LABELS = {
 export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     cash: Object.freeze({
         selectClassName: 'border-amber-400 bg-amber-100 text-amber-950',
+        inactiveSelectClassName: 'border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100',
+        activeRingClassName: 'ring-amber-300',
         rowClassName: 'border-amber-300 bg-amber-100',
         badgeClassName: 'border-amber-300 bg-amber-200 text-amber-950',
         dotClassName: 'bg-amber-700',
@@ -26,6 +46,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     gcash: Object.freeze({
         selectClassName: 'border-blue-400 bg-blue-100 text-blue-950',
+        inactiveSelectClassName: 'border-blue-300 bg-blue-50 text-blue-950 hover:bg-blue-100',
+        activeRingClassName: 'ring-blue-300',
         rowClassName: 'border-blue-300 bg-blue-100',
         badgeClassName: 'border-blue-300 bg-blue-200 text-blue-950',
         dotClassName: 'bg-blue-800',
@@ -33,6 +55,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     maya: Object.freeze({
         selectClassName: 'border-emerald-400 bg-emerald-100 text-emerald-950',
+        inactiveSelectClassName: 'border-emerald-300 bg-emerald-50 text-emerald-950 hover:bg-emerald-100',
+        activeRingClassName: 'ring-emerald-300',
         rowClassName: 'border-emerald-300 bg-emerald-100',
         badgeClassName: 'border-emerald-300 bg-emerald-200 text-emerald-950',
         dotClassName: 'bg-emerald-800',
@@ -40,6 +64,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     card: Object.freeze({
         selectClassName: 'border-[#A66A45] bg-[#E8D2BF] text-[#4A2C1A]',
+        inactiveSelectClassName: 'border-[#C49A7C] bg-[#FAF3ED] text-[#4A2C1A] hover:bg-[#F3E3D5]',
+        activeRingClassName: 'ring-[#C58B64]',
         rowClassName: 'border-[#B9825A] bg-[#E8D2BF]',
         badgeClassName: 'border-[#A66A45] bg-[#D7B191] text-[#4A2C1A]',
         dotClassName: 'bg-[#6B3F24]',
@@ -48,6 +74,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     // Bank Transfer uses a dark indigo family, distinct from Employee Credit's navy.
     bank_transfer: Object.freeze({
         selectClassName: 'border-[#7C3AED] bg-[#EDE9FE] text-[#3B0764]',
+        inactiveSelectClassName: 'border-violet-300 bg-violet-50 text-[#3B0764] hover:bg-violet-100',
+        activeRingClassName: 'ring-violet-300',
         rowClassName: 'border-[#8B5CF6] bg-[#EDE9FE]',
         badgeClassName: 'border-[#8B5CF6] bg-[#DDD6FE] text-[#4C1D95]',
         dotClassName: 'bg-[#6D28D9]',
@@ -55,6 +83,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     employee_credit: Object.freeze({
         selectClassName: 'border-[#1A4E8D] bg-[#DBEAFE] text-[#0B2E59]',
+        inactiveSelectClassName: 'border-[#9AB6D4] bg-[#EFF6FF] text-[#0B2E59] hover:bg-[#DBEAFE]',
+        activeRingClassName: 'ring-[#6F95BF]',
         rowClassName: 'border-[#6F95BF] bg-[#DBEAFE]',
         badgeClassName: 'border-[#6F95BF] bg-[#BFDBFE] text-[#0B2E59]',
         dotClassName: 'bg-[#1A4E8D]',
@@ -62,6 +92,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     qrph: Object.freeze({
         selectClassName: 'border-violet-400 bg-violet-100 text-violet-950',
+        inactiveSelectClassName: 'border-violet-300 bg-violet-50 text-violet-950 hover:bg-violet-100',
+        activeRingClassName: 'ring-violet-300',
         rowClassName: 'border-violet-300 bg-violet-100',
         badgeClassName: 'border-violet-300 bg-violet-200 text-violet-950',
         dotClassName: 'bg-violet-800',
@@ -69,6 +101,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     default: Object.freeze({
         selectClassName: 'border-slate-300 bg-slate-50 text-slate-900',
+        inactiveSelectClassName: 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50',
+        activeRingClassName: 'ring-slate-300',
         rowClassName: 'border-slate-200 bg-slate-50/70',
         badgeClassName: 'border-slate-200 bg-slate-100 text-slate-700',
         dotClassName: 'bg-slate-500',
@@ -128,7 +162,10 @@ export const EMPTY_DISCOUNT_DRAFT = {
 };
 
 export const calculateGovernedDiscount = (cart, application) => {
-    const cartRows = toArray(cart);
+    const cartRows = toArray(cart).map((line, index) => ({
+        ...line,
+        __discount_line_ref: getDiscountLineRef(line, index)
+    }));
     const eligibleItemIds = toArray(application?.eligible_item_ids);
     const eligibleItems = toArray(application?.eligible_items);
     const getGlobalBase = (line) => line?.global_discount_base_amount == null
@@ -152,33 +189,65 @@ export const calculateGovernedDiscount = (cart, application) => {
         };
     }
     const statutory = application.type === 'senior' || application.type === 'pwd';
+    const selectedByLineRef = new Map(eligibleItems
+        .map((entry) => [String(entry?.line_ref || '').trim(), entry])
+        .filter(([lineRef]) => lineRef));
+    const selectedByItemId = new Map(eligibleItems
+        .filter((entry) => !String(entry?.line_ref || '').trim())
+        .map((entry) => [Number(entry?.item_id), entry]));
+    const selectedItemIds = new Set(eligibleItemIds.map(Number));
+    const useLegacySelectedItemIds = selectedByLineRef.size === 0 && selectedByItemId.size === 0;
+    const restrictToSelections = selectedByLineRef.size > 0 || selectedByItemId.size > 0 || selectedItemIds.size > 0;
+    const getSelectedEntry = (line) => {
+        const lineRef = String(line?.__discount_line_ref || '').trim();
+        if (lineRef && selectedByLineRef.has(lineRef)) return selectedByLineRef.get(lineRef);
+        if (selectedByItemId.has(Number(line?.item_id))) return selectedByItemId.get(Number(line?.item_id));
+        if (useLegacySelectedItemIds && selectedItemIds.has(Number(line?.item_id))) {
+            return { item_id: Number(line?.item_id), eligible_quantity: null };
+        }
+        return null;
+    };
     if (!statutory) {
-        const selectedItemIds = new Set(eligibleItemIds.map(Number));
-        const restrictToSelections = selectedItemIds.size > 0;
+        const getEligibleQuantity = (line) => {
+            const selected = getSelectedEntry(line);
+            if (!restrictToSelections || selected) {
+                const requested = Number(selected?.eligible_quantity);
+                return selected?.eligible_quantity != null && Number.isFinite(requested)
+                    ? Math.min(Number(line.quantity || 0), Math.max(0, requested))
+                    : Number(line.quantity || 0);
+            }
+            return 0;
+        };
         const discountBase = restrictToSelections
             ? round4(cartRows.reduce((sum, line) => (
-                selectedItemIds.has(Number(line.item_id))
-                    ? sum + getGlobalBase(line)
+                getSelectedEntry(line)
+                    ? sum + round4(getGlobalBase(line) * (Number(line.quantity || 0) > 0
+                        ? getEligibleQuantity(line) / Number(line.quantity || 0)
+                        : 0))
                     : sum
             ), 0))
             : subtotal;
         const discountAmount = application.method === 'fixed'
             ? Math.min(discountBase, Math.max(0, Number(application.amount || 0)))
             : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
-        const eligibleRows = cartRows.filter((line) => !restrictToSelections || selectedItemIds.has(Number(line.item_id)));
+        const eligibleRows = cartRows.filter((line) => !restrictToSelections || getSelectedEntry(line));
         // Chrome 80-84 iMin POS WebView has no Array.prototype.at (ES2022 / Chrome 92+). See DGFY-POS-Y (#664).
         const lastEligibleLine = eligibleRows[eligibleRows.length - 1];
         let allocatedDiscount = 0;
         const lines = cartRows.map((line) => {
             const gross = round4(getGlobalBase(line));
-            const eligible = !restrictToSelections || selectedItemIds.has(Number(line.item_id));
+            const eligible = !restrictToSelections || Boolean(getSelectedEntry(line));
+            const eligibleQuantity = getEligibleQuantity(line);
+            const eligibleGross = round4(gross * (Number(line.quantity || 0) > 0
+                ? eligibleQuantity / Number(line.quantity || 0)
+                : 0));
             const lineDiscount = !eligible
                 ? 0
                 : application.method === 'fixed'
                     ? line === lastEligibleLine
                         ? round4(discountAmount - allocatedDiscount)
-                        : round4(Math.min(discountAmount - allocatedDiscount, discountBase > 0 ? (gross / discountBase) * discountAmount : 0))
-                    : round4(gross * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
+                        : round4(Math.min(discountAmount - allocatedDiscount, discountBase > 0 ? (eligibleGross / discountBase) * discountAmount : 0))
+                    : round4(eligibleGross * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
             allocatedDiscount = round4(allocatedDiscount + lineDiscount);
             return {
                 line_key: line.line_key || line.line_id || null,
@@ -186,19 +255,16 @@ export const calculateGovernedDiscount = (cart, application) => {
                 discount_amount: lineDiscount,
                 vat_removed: 0,
                 vat_exempt_amount: 0,
-                eligible_quantity: eligible ? Number(line.quantity || 0) : 0
+                eligible_quantity: eligibleQuantity
             };
         });
         return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount), lines };
     }
-    const selected = new Map(eligibleItems.length > 0
-        ? eligibleItems.map((entry) => [Number(entry?.item_id), Number(entry?.eligible_quantity)])
-        : eligibleItemIds.map((itemId) => [Number(itemId), null]));
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     const lines = cartRows.map((line) => {
-        const selectedQuantity = selected.get(Number(line.item_id));
-        if (selectedQuantity === undefined) {
+        const selected = getSelectedEntry(line);
+        if (!selected) {
             return {
                 line_key: line.line_key || line.line_id || null,
                 item_id: Number(line.item_id),
@@ -208,7 +274,8 @@ export const calculateGovernedDiscount = (cart, application) => {
                 eligible_quantity: 0
             };
         }
-        const quantity = selectedQuantity == null
+        const selectedQuantity = Number(selected.eligible_quantity);
+        const quantity = selected.eligible_quantity == null || !Number.isFinite(selectedQuantity)
             ? Number(line.quantity || 0)
             : Math.min(Number(line.quantity || 0), Math.max(0, selectedQuantity));
         const globalUnitPrice = Number(line.quantity || 0) > 0
