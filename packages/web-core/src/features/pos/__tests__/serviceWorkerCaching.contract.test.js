@@ -121,6 +121,29 @@ describe('service worker caching contracts', () => {
     expect(mainSource).not.toContain("registration.waiting.postMessage({ type: 'SKIP_WAITING' });");
   });
 
+  it('offers an "Update now" activation when a deferred update is safe to force', () => {
+    const mainSource = readSource(posMainPath);
+
+    expect(mainSource).toContain('activate: () => activateWaitingWorker({ force: true })');
+    expect(mainSource).toContain('const activateWaitingWorker = ({ force = false } = {}) => {');
+    expect(mainSource).toContain('if (safetyState.unsafe && !force) {');
+    expect(mainSource).toContain('A POS update is ready. It will install when the terminal is idle.');
+  });
+
+  it('publishes shell (login/session) update safety alongside checkout safety', () => {
+    const safetySource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateSafety.js'));
+    const terminalPageSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/pages/TerminalPage.jsx'));
+
+    expect(safetySource).toContain('export const derivePosShellUpdateSafety = ({');
+    expect(safetySource).toContain('export const publishPosShellUpdateSafety = (');
+    expect(safetySource).toContain("addReason(reasons, 'authenticated_session', locked !== true);");
+    expect(safetySource).toContain("addReason(reasons, 'login_input', loginFieldsDirty === true);");
+    expect(safetySource).toContain("addReason(reasons, 'login_submitting', loginSubmitting === true);");
+    expect(terminalPageSource).toContain('publishPosShellUpdateSafety({');
+    expect(terminalPageSource).toContain('loginFieldsDirty,');
+    expect(terminalPageSource).toContain('loginSubmitting: submitting');
+  });
+
   it('renders the service-worker update prompt as an inline POS notice', () => {
     const layoutSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx'));
     const noticeSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateNotice.js'));
