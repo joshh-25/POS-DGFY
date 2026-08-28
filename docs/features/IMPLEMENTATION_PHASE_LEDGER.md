@@ -9796,7 +9796,7 @@ dependencies and status.
 
 ### Initiative and release
 
-- Initiative: #1093 per-store delivery/pickup capability correction.
+- Initiative: #1093 per-store delivery/pickup capability correction; incident record #1117.
 - Release: staging hotfix.
 
 ### Objective and scope
@@ -9811,6 +9811,8 @@ dependencies and status.
 
 - `in_progress`
 - Started on 2026-08-28 under the explicit `/hotfix` incident workflow.
+- Incident traceability: #1117 records the confirmed staging defect, reproduction, and deployment
+  proof still required before closure.
 
 ### Dependencies
 
