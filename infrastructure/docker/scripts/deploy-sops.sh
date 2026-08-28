@@ -52,26 +52,41 @@ for f in "${SECRET_FILES[@]}"; do
 done
 set +a
 
+# Pull first -- the validation run below needs the current image, and this
+# also means a pull failure aborts before any container is touched.
+docker compose pull
+
 # Fail loudly, before any container is touched, if the assembled environment
 # is missing something apps/dgfy-api/src/config/productionEnvValidation.cjs
 # requires -- turns the crash-loop failure class into a pre-flight check.
 #
-# NOT `npm run check:production-env` (scripts/check-production-env-fixtures.js)
-# -- that validates hardcoded fixture scenarios, not the real assembled env.
-# check-assembled-env.cjs (sibling script, same directory) calls the same
-# validateProductionEnv() function against the actual process environment
-# this loop just built. See infrastructure/docker/env/
-# prod.env-var-classification.md for the full boot-required list this checks.
-GATE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/check-assembled-env.cjs"
-if [ -f "$GATE_SCRIPT" ] && command -v node >/dev/null 2>&1; then
-  if ! node "$GATE_SCRIPT"; then
-    echo "::error::deploy-sops.sh: assembled environment fails the production boot check -- aborting before docker compose up. Fix the missing/invalid vars, do not retry blind." >&2
-    exit 1
-  fi
-else
-  echo "::error::deploy-sops.sh: check-assembled-env.cjs or node not available -- refusing to deploy without the pre-flight validation gate. Do not bypass this by removing the check." >&2
+# Runs INSIDE the dgfy-api image itself (`docker compose run`), not via a
+# host-side copy of productionEnvValidation.cjs -- /opt/dgfy-platform is not
+# a git checkout, so a hand-copied validator file would silently drift from
+# the image the moment the real one changes. `docker compose run --rm
+# --no-deps` resolves the exact same `environment:` block the real `up -d`
+# would give dgfy-api (Compose substitutes ${VAR} from this shell's exports,
+# same as it will for the real service), so this is a genuine dry run of
+# the assembled environment against the image's own, current validator --
+# zero drift, nothing to keep in sync by hand.
+#
+# check-assembled-env.cjs (sibling script) is the local/CI-side variant of
+# this same check, for use outside a full compose context.
+VALIDATE_JS='const { validateProductionEnv, formatValidationFailure } = require("./src/config/productionEnvValidation.cjs");
+const result = validateProductionEnv({ env: process.env });
+if (result.warnings && result.warnings.length > 0) {
+  for (const w of result.warnings) console.error(`[check-assembled-env] WARN: ${w}`);
+}
+if (result.shouldFail) {
+  console.error("[check-assembled-env] FAIL -- this environment would crash-loop dgfy-api at boot:");
+  console.error(formatValidationFailure(result));
+  process.exit(1);
+}
+console.log("[check-assembled-env] OK -- assembled environment passes the production boot check.");'
+
+if ! docker compose run --rm --no-deps --entrypoint node dgfy-api -e "$VALIDATE_JS"; then
+  echo "::error::deploy-sops.sh: assembled environment fails the production boot check -- aborting before docker compose up. Fix the missing/invalid vars, do not retry blind." >&2
   exit 1
 fi
 
-docker compose pull
 exec docker compose up -d --remove-orphans

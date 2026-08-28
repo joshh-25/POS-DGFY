@@ -1,9 +1,22 @@
 #!/usr/bin/env node
 // Validates the CURRENT process environment against
 // apps/dgfy-api/src/config/productionEnvValidation.cjs's real production
-// gate -- the same check apps/dgfy-api/src/server.js:193-198 runs at boot,
-// run here BEFORE `docker compose up` so a missing/invalid var fails loudly
-// on the deploy host instead of crash-looping the container.
+// gate -- the same check apps/dgfy-api/src/server.js:193-198 runs at boot.
+//
+// NOT what deploy-sops.sh calls anymore for the real PROD cutover --
+// that script runs this same check INSIDE the dgfy-api image itself
+// (`docker compose run --rm --no-deps --entrypoint node dgfy-api -e ...`),
+// against the image's own copy of productionEnvValidation.cjs, because
+// /opt/dgfy-platform is not a git checkout and a host-side copy of this
+// repo's productionEnvValidation.cjs would silently drift from the image
+// the moment the real validator changes. See deploy-sops.sh's own comment.
+//
+// This script remains the local/CI-side variant: useful for validating an
+// assembled environment (e.g. while iterating on the classification, or in
+// a CI job that doesn't have a running dgfy-api image to shell into)
+// without a full compose context. It requires this repo's own checkout of
+// productionEnvValidation.cjs to be present and current -- fine for that
+// use case, wrong for the real server.
 //
 // Deliberately distinct from `npm run check:production-env`
 // (scripts/check-production-env-fixtures.js): that script validates a set
@@ -11,7 +24,7 @@
 // itself -- it does not read the real environment, so it cannot tell you
 // whether a specific assembled deploy env (e.g. this cutover's
 // secrets/*.env exports + docker-compose.yml literals) actually passes.
-// This script is the one that answers that question.
+// This script is the one that answers that question, for local/CI use.
 //
 // Usage: node check-assembled-env.cjs
 //   Exit 0 + prints "OK" -- the current process env would pass
