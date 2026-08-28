@@ -10199,9 +10199,10 @@ executes against production, not the full epic.
 
 ### Status
 
-- `blocked`
-- Blocked on: Pat (sudo access, ADR 0060 Decision 7 boundary on Phase 2's real secret values,
-  physical server access — `/opt/dgfy-platform` is not a git checkout).
+- `in_progress`
+- Escrow verification (the one permanent-failure-mode item) completed 2026-08-29 — see evidence
+  below. Remaining items still blocked on Pat (sudo access, ADR 0060 Decision 7 boundary on Phase
+  2's real secret values, physical server access — `/opt/dgfy-platform` is not a git checkout).
 
 ### Dependencies
 
@@ -10210,7 +10211,14 @@ executes against production, not the full epic.
 
 ### Acceptance and validation evidence
 
-- [ ] Bitwarden escrow copy round-trip confirmed to actually decrypt.
+- [x] Bitwarden escrow copy round-trip confirmed to actually decrypt. Verified 2026-08-29 via a
+  4-step local script (file sanity, public-key match against
+  `age1vn735dtf8lupv3djtur3le5mgqlql5x08hekq09r9u9p5g5zrs4s7sjsa4`, a real encrypt/decrypt round
+  trip with a throwaway canary string, and a SHA-256 checksum comparison) — all four passed,
+  including a byte-identical checksum match (`9fb2074570f2d63d5c5a8e34aa48be0280d1d92f94c306fbd00a8ce7b91d826b`)
+  against the server's real `/etc/dgfy/age/keys.txt`. No private key material was ever displayed,
+  transcribed, or handled by the AI session at any point in this verification, per ADR 0060
+  Decision 7.
 - [ ] `secrets/`, `Sieitzz/dgfy-secrets` repo created/populated (Pat runs Runbook Phase 2 personally
   — AI may not extract/transcribe a real production secret value, ADR 0060 Decision 7, `binding`).
 - [ ] Config backup and image digests captured and reviewed on the real server.
