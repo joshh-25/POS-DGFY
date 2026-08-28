@@ -96,11 +96,26 @@ just reached.
   force-reloads today and is untouched by this change; `TerminalPage.jsx`'s new publish effect is
   gated by the same `IS_DGFY_POS_SURFACE` constant `POSCheckoutTerminal.jsx` already uses, so it is a
   no-op when the same shared component renders inside `dgfy-ims`.
+- **Amendment 2026-08-28 (live testing on `dgfy-pos.nicenature.space`, real defect found):** a
+  brand-new browser with no prior visit to the site falsely showed "an update is ready" and
+  tapping "Update now" silently did nothing. Root cause: a first-ever service-worker install has no
+  old worker (and no clients depending on one) to wait for, so the browser auto-promotes it through
+  `registration.waiting` almost immediately regardless — that state was never a genuine "waiting for
+  the user" state, just a brief pass-through on the way to activating. The code was treating any
+  `registration.waiting` worker as a real update candidate, so it showed the notice for this
+  self-activating worker, and by the time "Update now" posted `SKIP_WAITING` to it, its `.state` had
+  already moved past `'installed'` on its own, making the tap a silent no-op. Fixed:
+  `hadExistingController = Boolean(navigator.serviceWorker.controller)`, captured before
+  `register()` runs, gates `handleWaitingWorker` — a worker is only ever treated as a genuine update
+  if this tab was already being controlled by *some* service worker beforehand. A first-ever install
+  now installs and activates silently in the background with no notice at all, matching "a fresh
+  browser should just load the latest version" — nothing forces a reload there either way, since
+  `reloadAfterControllerChange` is never set without `applyWaitingWorker` running.
 
 ## Verification Evidence
 
 - `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js`,
-  `.../posUpdateTransition.test.js`, and `.../serviceWorkerCaching.contract.test.js` — 19/19
+  `.../posUpdateTransition.test.js`, and `.../serviceWorkerCaching.contract.test.js` — 20/20
   passing, run from `apps/dgfy-ims` (`packages/web-core` has no test runner of its own; its tests
   execute via `apps/dgfy-ims`'s vitest `test.include` glob).
 - `npm run build:pos` and `npm run build:skupervisor` — both real Vite builds, both succeed with no
@@ -113,7 +128,7 @@ just reached.
 - `packages/web-core/src/features/pos/utils/posUpdateSafety.js`
 - `packages/web-core/src/features/pos/utils/posUpdateTransition.js` (new)
 - `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
-- `apps/dgfy-pos/src/main.jsx`
+- `apps/dgfy-pos/src/main.jsx` (including the 2026-08-28 `hadExistingController` fix, above)
 - `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js`
 - `packages/web-core/src/features/pos/__tests__/posUpdateTransition.test.js` (new)
 - `packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js`

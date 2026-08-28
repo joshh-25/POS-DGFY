@@ -175,6 +175,21 @@ const registerPosServiceWorker = async () => {
     const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
     if (!probe.ok || !scriptLike) return;
 
+    // Whether this tab was ALREADY being controlled by a service worker
+    // before this registration ran -- captured now, before register() can
+    // change it. A brand-new install has no old worker (and no clients
+    // depending on one) to wait for, so the browser auto-promotes it
+    // through `registration.waiting` almost immediately regardless -- it
+    // just passes through that state on its way to activating, it isn't
+    // genuinely "waiting" for anything. Without this check, a completely
+    // fresh browser falsely sees "an update is ready" for a worker that's
+    // already self-activating, and tapping "Update now" silently does
+    // nothing because that worker's state has already moved past
+    // 'installed' by the time SKIP_WAITING would be posted to it. A real
+    // update (a newer build discovered while an older one already controls
+    // this tab) always has an existing controller at this point.
+    const hadExistingController = Boolean(navigator.serviceWorker.controller);
+
     let waitingWorker = null;
     let reloadAfterControllerChange = false;
     let reloadTriggered = false;
@@ -216,7 +231,7 @@ const registerPosServiceWorker = async () => {
     };
 
     const handleWaitingWorker = (worker) => {
-      if (!worker) return;
+      if (!worker || !hadExistingController) return;
       waitingWorker = worker;
       showUpdateNotice();
     };

@@ -130,6 +130,28 @@ describe('service worker caching contracts', () => {
     expect(mainSource).not.toContain('const CHECKOUT_SAFETY_REASONS = new Set([');
   });
 
+  it('never mistakes a brand-new install for a genuine update (no prior controller, 2026-08-28 follow-up)', () => {
+    const mainSource = readSource(posMainPath);
+
+    // A first-ever install has no old worker (and no clients depending on
+    // one) to wait for, so the browser auto-promotes it through
+    // `registration.waiting` almost immediately regardless of any of this
+    // code -- it just passes through that state on its way to activating.
+    // Without gating on an existing controller, a completely fresh browser
+    // falsely shows "an update is ready" for a worker that's already
+    // self-activating, and "Update now" silently does nothing because that
+    // worker's state has already moved past 'installed' by the time
+    // SKIP_WAITING would be posted to it.
+    expect(mainSource).toContain('const hadExistingController = Boolean(navigator.serviceWorker.controller);');
+    expect(mainSource).toContain("if (!worker || !hadExistingController) return;");
+    // Captured before register() runs, not read lazily later -- register()
+    // (and any resulting clients.claim()) can change navigator.serviceWorker.controller.
+    const controllerCaptureIndex = mainSource.indexOf('const hadExistingController = Boolean(navigator.serviceWorker.controller);');
+    const registerCallIndex = mainSource.indexOf('await navigator.serviceWorker.register(serviceWorkerUrl, {');
+    expect(controllerCaptureIndex).toBeGreaterThan(-1);
+    expect(registerCallIndex).toBeGreaterThan(controllerCaptureIndex);
+  });
+
   it('gives the notice message context, without ever gating whether it shows or activates (#1118 RF-1, still true)', () => {
     const mainSource = readSource(posMainPath);
     const safetySource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateSafety.js'));
