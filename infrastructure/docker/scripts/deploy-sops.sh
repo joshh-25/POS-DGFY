@@ -14,12 +14,26 @@
 # secrets/{shared,mysql,dgfy-api}.env already present (Phase 2, Pat runs this
 # personally -- see ADR 0060 Decision 7, `binding`).
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
-# ^ infrastructure/docker/scripts/ -> repo/server root. On the real server
-# this file is copied to /opt/dgfy-platform/deploy-sops.sh directly (that
-# directory is hand-maintained, not a git checkout -- see the runbook's
-# "Server facts" section), so this cd is a no-op there; it only matters when
-# testing this script from a repo checkout.
+
+# Resolve the project root correctly in BOTH locations this script runs
+# from -- a bug in an earlier version of this file assumed the repo-checkout
+# math (dirname -> ../../..) was a no-op once deployed to
+# /opt/dgfy-platform/deploy-sops.sh, but it is NOT: dirname of that deployed
+# path is /opt/dgfy-platform, and /opt/dgfy-platform/../../.. resolves to
+# "/", not /opt/dgfy-platform -- every subsequent relative secrets/*.env
+# read and `docker compose` invocation would have run against the wrong
+# directory (or failed outright). Detect which layout this actually is:
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+  # Deployed layout: /opt/dgfy-platform/deploy-sops.sh, sitting directly
+  # beside docker-compose.yml and secrets/.
+  PROJECT_ROOT="$SCRIPT_DIR"
+else
+  # Repo-checkout layout: infrastructure/docker/scripts/deploy-sops.sh,
+  # three levels above the repo root.
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+fi
+cd "$PROJECT_ROOT"
 
 export SOPS_AGE_KEY_FILE=/etc/dgfy/age/keys.txt
 SECRET_FILES=(secrets/shared.env secrets/mysql.env secrets/dgfy-api.env)
