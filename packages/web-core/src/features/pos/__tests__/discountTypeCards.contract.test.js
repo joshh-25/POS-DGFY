@@ -96,7 +96,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
     expect(checkoutRenderContent).not.toContain('onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}');
     expect(discountModalContent).toContain('Select authorized employee');
-    expect(discountModalContent).not.toContain('No authorized employees are configured.');
+    expect(discountModalContent).toContain('No authorized employees are configured.');
     expect(discountModalContent).not.toContain('No active registered employees are available.');
     expect(discountModalContent).toContain('PIN not configured');
   });
@@ -111,32 +111,22 @@ describe('Apply Discount type-card navigation contract', () => {
   it('renders Customer Name before Eligible Items on tablet and restores desktop placement', () => {
     const workspaceCustomerNameIndex = discountWorkspaceContent.indexOf('>Customer Name <');
     const workspaceEligibleItemsIndex = discountWorkspaceContent.indexOf('>Eligible Items</');
-    const checkoutCustomerNameIndex = checkoutViewContent.indexOf('>Customer Name <');
-    const checkoutEligibleItemsIndex = checkoutViewContent.indexOf('>Eligible Items</');
 
     expect(workspaceCustomerNameIndex).toBeGreaterThan(-1);
     expect(workspaceCustomerNameIndex).toBeLessThan(workspaceEligibleItemsIndex);
-    expect(checkoutCustomerNameIndex).toBeGreaterThan(-1);
-    expect(checkoutCustomerNameIndex).toBeLessThan(checkoutEligibleItemsIndex);
     expect(discountWorkspaceContent).toContain('isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
     expect(discountWorkspaceContent).toContain('!isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
-    expect(checkoutViewContent).toContain('isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
-    expect(checkoutViewContent).toContain('!isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
+    expect(checkoutViewContent).toContain('<POSDiscountWorkspace viewModel={viewModel} onCancel={handleCloseDiscountModal} />');
   });
 
   it('renders Employee Name and ID before Eligible Items on tablet and restores desktop placement', () => {
     const workspaceTabletEmployeeIndex = discountWorkspaceContent.indexOf('{isTabletViewport ? employeeDiscountIdentityFields : null}');
     const workspaceEligibleItemsIndex = discountWorkspaceContent.indexOf('>Eligible Items</');
     const workspaceDesktopEmployeeIndex = discountWorkspaceContent.indexOf('{!isTabletViewport ? employeeDiscountIdentityFields : null}');
-    const checkoutTabletEmployeeIndex = checkoutViewContent.indexOf('{isTabletViewport ? employeeDiscountIdentityFields : null}');
-    const checkoutEligibleItemsIndex = checkoutViewContent.indexOf('>Eligible Items</');
-    const checkoutDesktopEmployeeIndex = checkoutViewContent.indexOf('{!isTabletViewport ? employeeDiscountIdentityFields : null}');
 
     expect(workspaceTabletEmployeeIndex).toBeGreaterThan(-1);
     expect(workspaceTabletEmployeeIndex).toBeLessThan(workspaceEligibleItemsIndex);
     expect(workspaceDesktopEmployeeIndex).toBeGreaterThan(workspaceEligibleItemsIndex);
-    expect(checkoutTabletEmployeeIndex).toBeGreaterThan(-1);
-    expect(checkoutTabletEmployeeIndex).toBeLessThan(checkoutEligibleItemsIndex);
-    expect(checkoutDesktopEmployeeIndex).toBeGreaterThan(checkoutEligibleItemsIndex);
+    expect(checkoutViewContent).not.toContain('employeeDiscountIdentityFields');
   });
 });

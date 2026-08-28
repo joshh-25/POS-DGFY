@@ -16,6 +16,7 @@ const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenant
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutTerminalViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
+const posDiscountWorkspacePath = path.resolve(__dirname, '../components/POSDiscountWorkspace.jsx');
 const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../components/POSCheckoutTerminalReceiptDialogs.jsx');
 const posCheckoutWorkflowPath = path.resolve(__dirname, '../hooks/usePosCheckoutWorkflow.js');
 const posHistoryVoidWorkflowPath = path.resolve(__dirname, '../hooks/usePosHistoryVoidWorkflow.js');
@@ -67,7 +68,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
-    posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath]
+    posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     posCheckoutTerminalReceiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');

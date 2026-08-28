@@ -18,6 +18,7 @@ export default function EmployeeCreditPaymentPanel({
     onPrefillEmployee,
     onClearPrefill,
     lookupLoading,
+    account,
     totalDue,
     locationId = null,
     preferredEmployeeId = null,
@@ -37,6 +38,14 @@ export default function EmployeeCreditPaymentPanel({
     const prefillAttemptRef = useRef('');
     const employeePickerRef = useRef(null);
     const normalizedPreferredEmployeeId = Number(preferredEmployeeId) || null;
+    const currentOutstanding = Number(
+        account?.outstanding_balance
+        ?? selectedEmployee?.outstanding_balance
+        ?? selectedEmployee?.current_balance
+        ?? 0
+    );
+    const outstandingAfterSale = currentOutstanding + Number(totalDue || 0);
+    const isVerified = Boolean(account && selectedEmployee && selectedEmployee.is_eligible);
 
     useEffect(() => {
         const requestId = requestSequence.current + 1;
@@ -282,9 +291,23 @@ export default function EmployeeCreditPaymentPanel({
                             <span className="font-extrabold text-slate-900">{selectedEmployee.employee_code}</span>
                         </div>
                         <div className="flex justify-between gap-3">
+                            <span className="font-semibold text-slate-600">Branch</span>
+                            <span className="text-right font-extrabold text-slate-900">{selectedEmployee.branch_name}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                            <span className="font-semibold text-slate-600">Current outstanding</span>
+                            <span className="font-extrabold text-slate-900">PHP {money(currentOutstanding)}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
                             <span className="font-semibold text-slate-600">Charge amount</span>
                             <span className="font-extrabold text-slate-900">PHP {money(totalDue)}</span>
                         </div>
+                        {isVerified ? (
+                            <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
+                                <span className="font-semibold text-slate-600">Outstanding after sale</span>
+                                <span className="font-extrabold text-slate-900">PHP {money(outstandingAfterSale)}</span>
+                            </div>
+                        ) : null}
                     </div>
                 ) : null}
             </div>

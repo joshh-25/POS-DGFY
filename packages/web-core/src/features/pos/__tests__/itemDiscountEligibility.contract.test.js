@@ -40,7 +40,8 @@ describe('item Senior/PWD discount eligibility controls', () => {
 
     expect(cartWorkflow).toContain('isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible)');
     expect(checkoutTerminal).toContain('isCartLineSeniorPwdEligible');
-    expect(checkoutTerminal).toContain('getSelectableDiscountLines(safeCart, discountDraft.type, isCartLineSeniorPwdEligible)');
+    expect(checkoutTerminal).toContain('getSelectableDiscountLines(');
+    expect(checkoutTerminal).toContain('isCartLineSeniorPwdEligible');
     expect(checkoutTerminal).toContain('No eligible items are in this cart.');
     expect(checkoutTerminal).toContain('remove and re-add it to this cart.');
     expect(checkoutTerminal).toContain('data-testid="pos-discount-select-all"');

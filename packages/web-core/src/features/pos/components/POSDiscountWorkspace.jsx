@@ -64,9 +64,12 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
     );
     const selectableDiscountEntries = selectableDiscountLines.map((line) => ({
         line,
-        lineRef: getDiscountLineRef(line, safeCart.indexOf(line))
+        lineRef: getDiscountLineRef(line, safeCart.indexOf(line)),
+        wholeCartQuantity: Math.floor(Number(line.quantity || 0))
     }));
-    const selectableDiscountRefs = selectableDiscountEntries.map((entry) => entry.lineRef);
+    const selectableDiscountRefs = selectableDiscountEntries
+        .filter((entry) => entry.wholeCartQuantity > 0)
+        .map((entry) => entry.lineRef);
     const selectedDiscountRefs = new Set(
         safeEligibleDiscountItems
             .map((entry) => String(entry?.line_ref || '').trim())
@@ -241,10 +244,10 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                         </p>
                     ) : null}
                     <div className="max-h-52 space-y-1 overflow-y-auto pr-1">
-                        {selectableDiscountEntries.length > 0 ? selectableDiscountEntries.map(({ line, lineRef }) => {
-                            const checked = selectedDiscountRefs.has(lineRef);
+                        {selectableDiscountEntries.length > 0 ? selectableDiscountEntries.map(({ line, lineRef, wholeCartQuantity }) => {
+                            const checked = wholeCartQuantity > 0 && selectedDiscountRefs.has(lineRef);
                             const selectedEntry = safeEligibleDiscountItems.find((entry) => String(entry?.line_ref || '').trim() === lineRef);
-                            const cartQuantity = Math.max(1, Math.floor(Number(line.quantity || 0)));
+                            const cartQuantity = wholeCartQuantity;
                             const requestedSelectedQuantity = Number(selectedEntry?.eligible_quantity ?? line.quantity);
                             const selectedQuantity = Number.isFinite(requestedSelectedQuantity) && requestedSelectedQuantity > 0
                                 ? Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)
@@ -258,7 +261,9 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                             return (
                                 <label
                                     key={`discount-line-${lineRef}`}
-                                    className={`flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2 py-1 text-xs ${
+                                    className={`flex min-h-9 items-center justify-between gap-2 rounded-lg border px-2 py-1 text-xs ${
+                                        cartQuantity > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+                                    } ${
                                         checked ? 'border-teal-200 bg-teal-50/20' : 'border-slate-200 bg-white'
                                     }`}
                                 >
@@ -266,6 +271,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                         <input
                                             type="checkbox"
                                             checked={checked}
+                                            disabled={cartQuantity === 0}
                                             onChange={(event) => updateDiscountItemSelection(
                                                 event.target.checked
                                                     ? [...selectedDiscountRefs, lineRef]
@@ -328,7 +334,9 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                             <span>of {formatQuantity(line.quantity)}</span>
                                         </div>
                                     ) : (
-                                        <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">Qty: {formatQuantity(line.quantity)}</span>
+                                        <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                                            {cartQuantity > 0 ? `Qty: ${formatQuantity(line.quantity)}` : 'No whole units'}
+                                        </span>
                                     )}
                                 </label>
                             );
@@ -442,6 +450,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                             </div>
                             {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some((approver) => approver.pos_approval_pin_configured === true) && <p className="text-xs font-medium text-amber-700">Authorized employees are listed, but each needs a POS approval PIN before they can approve a discount.</p>}
+                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-xs font-medium text-amber-700">No authorized employees are configured. Ask an administrator to grant discount authorization.</p>}
                         </div>
                         <div className="space-y-1">
                             <label className="text-xs font-semibold text-[#0F172A]">Employee PIN <span className="text-rose-500">*</span></label>

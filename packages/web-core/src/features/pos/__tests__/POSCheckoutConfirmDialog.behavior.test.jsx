@@ -373,7 +373,6 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         fireEvent.click(screen.getByTestId('pos-checkout-discount-type-pwd'));
 
         expect(viewModel.openDiscountModal).toHaveBeenCalledWith({
-            returnToCheckout: true,
             initialType: 'pwd'
         });
     });
@@ -395,6 +394,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
             safeCart: [{ item_id: 7, item_name: 'Brewed Coffee', quantity: 2, sale_price: 90 }],
             cartSubtotal: 180,
             cartTotal: 180,
+            restaurantServiceChargeAmount: 12,
             customerPaymentAmountInput: '180.00'
         })} />);
 
@@ -403,6 +403,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(screen.getByTestId('pos-checkout-order-summary-modal')).toBeDefined();
         expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('Brewed Coffee');
         expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('PHP 180.00');
+        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Service ChargePHP 12.00');
         expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Total AmountPHP 180.00');
         expect(screen.getByRole('heading', { name: 'Checkout Tab' })).toBeDefined();
 

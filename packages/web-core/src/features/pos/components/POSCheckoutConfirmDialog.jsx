@@ -107,6 +107,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         posPresentationBundle,
         posWorkflow,
         resetEmployeeCredit,
+        restaurantServiceChargeAmount = 0,
         safeCart = [],
         selectedEmployeeCreditOption,
         selectedLocationId,
@@ -196,7 +197,6 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         setCustomerPaymentAmountInput(paymentAmountInput);
         setCustomerPaymentAmountAutoFilled(paymentAmountAutoFilled);
         openDiscountModal({
-            returnToCheckout: true,
             initialType: typeof initialType === 'string' ? initialType : undefined
         });
     };
@@ -618,6 +618,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                 <div className="shrink-0 bg-white p-4 pt-2">
                     <dl className="space-y-1 rounded-xl border border-slate-200 px-4 py-3 text-[11px]">
                         <div className="flex items-center justify-between gap-4"><dt>Item Cost</dt><dd>PHP {money(cartSubtotal)}</dd></div>
+                        {Number(restaurantServiceChargeAmount || 0) > 0 && (
+                            <div className="flex items-center justify-between gap-4"><dt>Service Charge</dt><dd>PHP {money(restaurantServiceChargeAmount)}</dd></div>
+                        )}
                         <div className="flex items-center justify-between gap-4"><dt>VAT Removed</dt><dd>PHP {money(governedDiscountTotals.vatRemoved)}</dd></div>
                         <div className="flex items-center justify-between gap-4 text-rose-600"><dt>Discount/Promo</dt><dd>-PHP {money(calculatedDiscountAmount)}</dd></div>
                         <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 text-sm font-black text-slate-950"><dt>Total Amount</dt><dd>PHP {money(cartTotal)}</dd></div>

@@ -170,10 +170,10 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutCleanupSource).not.toContain('Select items and the quantity this discount should apply to.');
         expect(checkoutCleanupSource).toContain('Select eligible items and discount quantities for this customer.');
         expect(checkoutCleanupSource).toContain('data-testid="pos-discount-select-all"');
-        expect(checkoutCleanupSource).toContain("heading !== 'Order details'");
-        expect(checkoutCleanupSource).not.toContain('Outstanding after sale');
+        expect(checkoutCleanupSource).toContain('showHeading = !buttonLayout');
+        expect(checkoutCleanupSource).toContain('Outstanding after sale');
         expect(checkoutCleanupSource).not.toContain('No active registered employees are available.');
-        expect(checkoutCleanupSource).not.toContain('No authorized employees are configured. Ask an administrator to grant discount authorization.');
+        expect(checkoutCleanupSource).toContain('No authorized employees are configured. Ask an administrator to grant discount authorization.');
     });
 
     it('shows the amount field and five additive cash suggestions in one horizontal row', () => {

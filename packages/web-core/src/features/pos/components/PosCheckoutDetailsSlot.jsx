@@ -31,10 +31,11 @@ export function PosCheckoutDetailsSlot({
 }) {
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
   const heading = presentationBundle?.labels?.checkoutDetailsHeading || 'Order details';
+  const showHeading = !buttonLayout && presentationBundle?.labels?.showCheckoutDetailsHeading === true;
 
   return (
     <>
-      {heading !== 'Order details' ? (
+      {showHeading ? (
         <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">
           {heading}
         </p>

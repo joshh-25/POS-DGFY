@@ -17,7 +17,11 @@ const checkoutViewContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'
 );
-const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}`;
+const discountWorkspaceContent = fs.readFileSync(
+  path.resolve(webCoreRoot, 'src/features/pos/components/POSDiscountWorkspace.jsx'),
+  'utf8'
+);
+const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${discountWorkspaceContent}`;
 const terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
 
 describe('POS discount approver management contract', () => {

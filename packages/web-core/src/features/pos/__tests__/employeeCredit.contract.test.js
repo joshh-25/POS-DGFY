@@ -67,9 +67,9 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).toContain('data-visible-record-limit="5"');
     expect(employeeCreditPaymentContent).toContain('max-h-[24rem] overflow-y-auto');
     expect(employeeCreditPaymentContent).toContain('Search and select employee');
-    expect(employeeCreditPaymentContent).not.toContain('Outstanding after sale');
-    expect(employeeCreditPaymentContent).not.toContain('>Branch</span>');
-    expect(employeeCreditPaymentContent).not.toContain('>Current outstanding</span>');
+    expect(employeeCreditPaymentContent).toContain('Outstanding after sale');
+    expect(employeeCreditPaymentContent).toContain('>Branch</span>');
+    expect(employeeCreditPaymentContent).toContain('>Current outstanding</span>');
     expect(employeeCreditPaymentContent).not.toContain('Select an employee. Eligibility is validated automatically');
     expect(employeeCreditPaymentContent).not.toContain('Eligible. This sale will be added to the employee outstanding balance.');
     expect(employeeCreditPaymentContent).not.toContain('Full Employee Credit payment only.');
