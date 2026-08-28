@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, jest } from '@jest/globals';
+import crypto from 'node:crypto';
 import dbStore from '../src/utils/dbStore.js';
 
 let buildCollectCashPickupOrderUseCase;
@@ -16,6 +17,17 @@ const createTransaction = () => ({
     commit: jest.fn(async function commit() { this.finished = true; }),
     rollback: jest.fn(async function rollback() { this.finished = true; })
 });
+
+const stableStringify = (value) => {
+    if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value).sort();
+        return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
 const buildRepository = (seed = {}) => {
     const order = {
@@ -36,6 +48,7 @@ const buildRepository = (seed = {}) => {
     return {
         order,
         audit,
+        operationReplays: replays,
         async findOperationReplayByKey({ operationKey, idempotencyKey }) {
             return replays.get(`${operationKey}:${idempotencyKey}`) || null;
         },
@@ -71,6 +84,39 @@ describe('POS cash pickup collection', () => {
         expect(replay.success).toBe(true);
         expect(replay.data.idempotent_replay).toBe(true);
         expect(repository.audit).toHaveLength(1);
+    });
+
+    it('preserves legacy web replay hashes when expected-state fields are absent', async () => {
+        const cashRepository = buildRepository();
+        const collectCash = buildCollectCashPickupOrderUseCase({ posRepository: cashRepository });
+        const cashPayload = { terminal_id: 'COUNTER-01', cash_received: 200, idempotency_key: 'pickup-cash-legacy-hash' };
+
+        const cashResult = await run(() => collectCash({
+            posTransactionId: 44,
+            payload: cashPayload,
+            user: { user_id: 12 }
+        }));
+
+        expect(cashResult.success).toBe(true);
+        expect([...cashRepository.operationReplays.values()][0].request_hash).toBe(hashPayload({
+            pos_transaction_id: 44,
+            terminal_id: 'COUNTER-01',
+            cash_received: 200
+        }));
+
+        const statusRepository = buildRepository({ fulfillment_status: 'confirmed' });
+        const updateStatus = buildUpdateOnlineOrderStatusUseCase({ posRepository: statusRepository });
+        const statusResult = await run(() => updateStatus({
+            posTransactionId: 44,
+            payload: { fulfillment_status: 'preparing', idempotency_key: 'pickup-status-legacy-hash' },
+            user: { user_id: 12 }
+        }));
+
+        expect(statusResult.success).toBe(true);
+        expect([...statusRepository.operationReplays.values()][0].request_hash).toBe(hashPayload({
+            pos_transaction_id: 44,
+            fulfillment_status: 'preparing'
+        }));
     });
 
     it('rejects insufficient cash and unpaid pickup completion', async () => {

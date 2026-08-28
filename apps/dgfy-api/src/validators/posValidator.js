@@ -948,7 +948,7 @@ const mobilePosOrderActionSyncEntrySchema = Joi.object({
         order_id: Joi.number().integer().positive().required(),
         idempotency_key: Joi.string().trim().min(8).max(160).required(),
         expected_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(),
-        expected_payment_status: Joi.string().trim().max(40).required(),
+        expected_payment_status: Joi.string().trim().lowercase().valid(...PAYMENT_STATUSES).required(),
         expected_server_version: Joi.date().iso().required(),
         fulfillment_status: Joi.when('operation_type', {
             is: 'status_transition', then: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(), otherwise: Joi.forbidden()

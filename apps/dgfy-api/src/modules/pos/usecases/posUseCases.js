@@ -8655,13 +8655,16 @@ const buildCollectCashOnlineOrderUseCase = ({
             ));
         }
 
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
             terminal_id: terminalId,
             cash_received: cashReceived,
-            expected_status: expectedStatus,
-            expected_payment_status: expectedPaymentStatus,
-            expected_server_version: expectedServerVersion
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
         let transaction = null;
         try {
@@ -9837,12 +9840,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
         const expectedServerVersion = payload?.expected_server_version instanceof Date
             ? payload.expected_server_version.toISOString()
             : String(payload?.expected_server_version || '').trim() || null;
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const replayRequestHash = hashPayload({
             pos_transaction_id: normalizedTransactionId,
             fulfillment_status: targetStatus,
-            expected_status: expectedStatus,
-            expected_payment_status: expectedPaymentStatus,
-            expected_server_version: expectedServerVersion
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
 
         const actingUserId = parsePositiveInt(user?.user_id);
