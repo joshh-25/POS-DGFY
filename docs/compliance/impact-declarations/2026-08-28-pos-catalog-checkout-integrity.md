@@ -11,8 +11,8 @@ verification_evidence: focused POS checkout and governed-discount tests,focused 
 rollback_note: Revert the inherited modifier include,POS-scoped GTIN persistence,and responsive-image manifest detection together with their focused tests; no schema rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-28T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-POS-CATALOG-CHECKOUT-INTEGRITY
+preflight_run_at: 2026-08-28T17:16:02Z
+preflight_request_ref: PREFLIGHT-POS-CATALOG-CHECKOUT-INTEGRITY-20260828T171602Z
 ---
 
 # POS Catalog and Checkout Integrity
@@ -65,3 +65,5 @@ No live environment preflight was executed for this local/develop-targeted PR.
 `preflight_request_ref: NOT-EXECUTED-POS-CATALOG-CHECKOUT-INTEGRITY` explicitly
 records that promotion-time reconciliation is still required; this declaration
 does not claim staging or production verification.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot2` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-POS-CATALOG-CHECKOUT-INTEGRITY-20260828T171602Z`.
