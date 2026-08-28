@@ -72,7 +72,7 @@ describe('EmployeeCreditPaymentPanel', () => {
     expect(onSelectEmployee).toHaveBeenCalledWith(eligibleEmployee);
   });
 
-  it('shows verified outstanding evidence and the projected outstanding after checkout', () => {
+  it('shows the charge without redundant balance rows', () => {
     render(
       <EmployeeCreditPaymentPanel
         selectedEmployee={eligibleEmployee}
@@ -86,8 +86,11 @@ describe('EmployeeCreditPaymentPanel', () => {
 
     expect(screen.getByText('EMP-044')).toBeTruthy();
     expect(screen.getByText('Employee ID')).toBeTruthy();
-    expect(screen.getByText('PHP 80.00')).toBeTruthy();
-    expect(screen.getByText('PHP 205.00')).toBeTruthy();
+    expect(screen.getByText('Charge amount')).toBeTruthy();
+    expect(screen.getByText('PHP 125.00')).toBeTruthy();
+    expect(screen.queryByText('Branch')).toBeNull();
+    expect(screen.queryByText('Current outstanding')).toBeNull();
+    expect(screen.queryByText('PHP 205.00')).toBeNull();
   });
 
   it('prefills the eligible Employee Credit account linked to the sale-level employee discount', async () => {

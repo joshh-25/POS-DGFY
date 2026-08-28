@@ -139,6 +139,19 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('throw new Error(selectedActiveShiftDecision.message);');
   });
 
+  it('declares activeShiftId before the session-expiry cleanup effect uses it', () => {
+    const activeShiftDeclaration = terminalPageSource.indexOf(
+      'const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;'
+    );
+    const sessionExpiryEffect = terminalPageSource.indexOf(
+      'const onSessionExpired = () => {'
+    );
+
+    expect(activeShiftDeclaration).toBeGreaterThanOrEqual(0);
+    expect(sessionExpiryEffect).toBeGreaterThanOrEqual(0);
+    expect(activeShiftDeclaration).toBeLessThan(sessionExpiryEffect);
+  });
+
 
   it('sends onboarding handoff to the dedicated POS app origin when started from IMS', () => {
     expect(terminalPageSource).toContain('resolvePosTerminalUrl');

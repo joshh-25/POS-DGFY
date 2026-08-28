@@ -32,6 +32,7 @@ describe('item Senior/PWD discount eligibility controls', () => {
     const checkoutTerminal = [
       readFrontendFile('src/features/pos/components/POSCheckoutTerminal.jsx'),
       readFrontendFile('src/features/pos/components/POSCheckoutTerminalView.jsx'),
+      readFrontendFile('src/features/pos/components/POSDiscountWorkspace.jsx'),
       readFrontendFile('src/features/pos/utils/posDiscountSelection.js'),
     ].join('\n');
     const cartWorkflow = readFrontendFile('src/features/pos/hooks/usePosCartWorkflow.js');

@@ -10,7 +10,10 @@ describe('POS payment method colors', () => {
         ['bank_transfer', 'bg-[#EDE9FE]'],
         ['employee_credit', 'bg-[#DBEAFE]']
     ])('maps %s to the expected color family', (method, expectedClassName) => {
-        expect(resolvePaymentMethodColorStyles(method).selectClassName).toContain(expectedClassName);
+        const styles = resolvePaymentMethodColorStyles(method);
+        expect(styles.selectClassName).toContain(expectedClassName);
+        expect(styles.inactiveSelectClassName).toBeTruthy();
+        expect(styles.activeRingClassName).toBeTruthy();
     });
 
     it('falls back safely for an unknown payment method', () => {

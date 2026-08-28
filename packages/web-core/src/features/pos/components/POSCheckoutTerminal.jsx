@@ -29,6 +29,7 @@ import { publishPosUpdateSafetyState } from '../utils/posUpdateSafety.js';
 import {
     EMPTY_DISCOUNT_DRAFT,
     getLineKey,
+    getPriceOverrideReasonValidationMessage,
     isSeniorPwdDiscountEligible,
     normalizeDiscountProfiles,
     normalizePromoCode,
@@ -112,9 +113,6 @@ export default function POSCheckoutTerminal({
             setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
         }
     }, [posWorkflow, orderMethod]);
-    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
-        && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
-        && (orderMethod !== 'appointment' || Boolean(servicesDateTime));
     const [paymentType, setPaymentType] = useState('cash');
     const {
         employeeCreditAccountCode,
@@ -133,7 +131,6 @@ export default function POSCheckoutTerminal({
     const [manualDiscountRateInput, setManualDiscountRateInput] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [discountModalOpen, setDiscountModalOpen] = useState(false);
-    const discountReturnToCheckoutRef = useRef(false);
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const discountApprovalRef = useRef(null);
@@ -378,6 +375,28 @@ export default function POSCheckoutTerminal({
         discountDraft
     });
     const safeDiscountEmployees = toArray(discountEmployees);
+    const checkoutWorkflowValidationMessage = useMemo(() => {
+        for (const line of safeCart) {
+            const catalogItem = safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id));
+            const baseSalePrice = Number(line?.base_sale_price ?? catalogItem?.default_sale_price);
+            if (!Number.isFinite(baseSalePrice) || baseSalePrice <= 0) continue;
+
+            const serviceOptionDelta = toArray(line?.service_option_details).reduce(
+                (sum, option) => sum + ((Number(option?.price_adjustment_centavos) || 0) / 100),
+                0
+            );
+            const message = getPriceOverrideReasonValidationMessage({
+                line,
+                effectiveDefaultSalePrice: round4(baseSalePrice + resolveModifierDelta(line) + serviceOptionDelta)
+            });
+            if (message) return message;
+        }
+        return null;
+    }, [safeCart, safeCatalog]);
+    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
+        && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
+        && (orderMethod !== 'appointment' || Boolean(servicesDateTime))
+        && !checkoutWorkflowValidationMessage;
     const isCartLineSeniorPwdEligible = (line) => (
         isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
@@ -756,6 +775,7 @@ export default function POSCheckoutTerminal({
         restaurantServiceChargeAmount,
         vatBreakdown,
         cartTotal,
+        checkoutWorkflowValidationMessage,
         paymentType,
         isCheckoutWorkflowValid,
         isCashPayment,
@@ -915,17 +935,12 @@ export default function POSCheckoutTerminal({
 
     const closeDiscountModal = useCallback(() => {
         setDiscountModalOpen(false);
-        if (discountReturnToCheckoutRef.current) {
-            discountReturnToCheckoutRef.current = false;
-            setCheckoutConfirmModalOpen(true);
-        }
     }, []);
 
-    const openDiscountModal = async ({ returnToCheckout = false } = {}) => {
-        discountReturnToCheckoutRef.current = returnToCheckout;
-        if (returnToCheckout) {
-            setCheckoutConfirmModalOpen(false);
-        }
+    const openDiscountModal = async ({ initialType } = {}) => {
+        const requestedType = ['employee', 'senior', 'pwd', 'promo', 'voucher', 'manual'].includes(initialType)
+            ? initialType
+            : null;
         const employeeCreditDirectoryId = Number(selectedEmployeeCreditOption?.employee_id) || null;
         const employeeCreditDiscountName = employeeCreditDirectoryId
             ? String(selectedEmployeeCreditOption?.employee_name || '').trim()
@@ -941,6 +956,12 @@ export default function POSCheckoutTerminal({
                 employee_id: employeeCreditDiscountId,
                 employee_directory_id: employeeCreditDirectoryId ? String(employeeCreditDirectoryId) : ''
             };
+        if (requestedType) {
+            draftSeed.type = requestedType;
+            draftSeed.rate = requestedType === 'employee'
+                ? '15'
+                : (['senior', 'pwd'].includes(requestedType) ? '20' : draftSeed.rate);
+        }
         const draftToOpen = {
             ...draftSeed,
             ...buildDiscountItemSelection({

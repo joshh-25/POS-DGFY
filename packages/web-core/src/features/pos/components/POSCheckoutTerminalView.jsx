@@ -49,7 +49,7 @@ import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
 import { buildDiscountItemSelection, getDiscountLineRef, getSelectableDiscountLines, isStatutoryDiscountType } from '../utils/posDiscountSelection.js';
-import { POSCheckoutConfirmDialog } from './POSCheckoutConfirmDialog.jsx';
+import POSCheckoutConfirmDialog from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
 
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
@@ -432,6 +432,47 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
             })()
         }));
     };
+
+    const employeeDiscountIdentityFields = discountDraft.type === 'employee' ? (
+        <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
+                <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                    <select
+                        aria-label="Employee Name"
+                        value={discountDraft.employee_directory_id || ''}
+                        disabled={discountEmployeesLoading}
+                        onChange={(event) => {
+                            const selected = safeDiscountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
+                            setDiscountDraft((previous) => ({
+                                ...previous,
+                                employee_directory_id: selected ? String(selected.employee_id) : '',
+                                employee_name: selected?.full_name || '',
+                                employee_id: selected?.employee_code || ''
+                            }));
+                        }}
+                        className="h-9 w-full max-w-full truncate appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
+                    >
+                        <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
+                        {safeDiscountEmployees.map((employee) => (
+                            <option key={employee.employee_id} value={employee.employee_id}>
+                                {employee.full_name}
+                            </option>
+                        ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                </div>
+            </div>
+            <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#0F172A]">Employee ID</label>
+                <div className="relative">
+                    <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                    <Input readOnly className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-xs font-medium" placeholder="Auto-filled" value={discountDraft.employee_id} />
+                </div>
+            </div>
+        </div>
+    ) : null;
 
 return (
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
@@ -1704,7 +1745,7 @@ return (
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}>
+            <Dialog open={discountModalOpen && !viewModel.checkoutConfirmModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}>
                 <DialogContent className="relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
                     <button
                         type="button"
@@ -1754,8 +1795,25 @@ return (
                         </div>
 
                         <div id="discount-type-panel" role="tabpanel" className="space-y-3">
+                            {isTabletViewport ? employeeDiscountIdentityFields : null}
+
+                            {isTabletViewport && discountDraft.type && discountDraft.type !== 'employee' ? (
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
+                                    <div className="relative">
+                                        <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        <Input
+                                            className="h-9 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                                            placeholder="Enter customer name"
+                                            value={discountDraft.customer_name}
+                                            onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
+
                             <div className="grid gap-2.5 sm:grid-cols-2">
-                                {discountDraft.type !== 'employee' && (
+                                {!isTabletViewport && discountDraft.type && discountDraft.type !== 'employee' && (
                                     <div className={`space-y-1 ${['senior', 'pwd', 'promo', 'voucher'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
                                         <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
                                         <div className="relative">
@@ -1769,7 +1827,6 @@ return (
                                         </div>
                                     </div>
                                 )}
-
                                 {['senior', 'pwd'].includes(discountDraft.type) && (
                                     <div className="space-y-1 col-span-1">
                                         <label className="text-xs font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
@@ -1835,11 +1892,11 @@ return (
                                             </label>
                                             <span className="text-[10px] font-medium text-teal-700">Uncheck items with no discount</span>
                                         </div>
-                                        <p className="mb-2 text-[11px] text-slate-500">
-                                            {isStatutoryDiscountType(discountDraft.type)
-                                                ? 'Select eligible items and discount quantities for this customer.'
-                                                : 'Select items and the quantity this discount should apply to.'}
-                                        </p>
+                                        {isStatutoryDiscountType(discountDraft.type) ? (
+                                            <p className="mb-2 text-[11px] text-slate-500">
+                                                Select eligible items and discount quantities for this customer.
+                                            </p>
+                                        ) : null}
                                         <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                                             {selectableDiscountEntries.length > 0 ? selectableDiscountEntries.map(({ line, lineRef }) => {
                                                 const checked = selectedDiscountRefs.has(lineRef);
@@ -1977,47 +2034,7 @@ return (
                                 </div>
                             )}
 
-                            {discountDraft.type === 'employee' && (
-                                <div className="grid gap-2.5 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
-                                        <div className="relative">
-                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <select
-                                                aria-label="Employee Name"
-                                                value={discountDraft.employee_directory_id || ''}
-                                                disabled={discountEmployeesLoading}
-                                                onChange={(event) => {
-                                                    const selected = safeDiscountEmployees.find((employee) => Number(employee.employee_id) === Number(event.target.value));
-                                                    setDiscountDraft((previous) => ({
-                                                        ...previous,
-                                                        employee_directory_id: selected ? String(selected.employee_id) : '',
-                                                        employee_name: selected?.full_name || '',
-                                                        employee_id: selected?.employee_code || ''
-                                                    }));
-                                                }}
-                                                className="h-9 w-full max-w-full truncate appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
-                                            >
-                                                <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
-                                                {safeDiscountEmployees.map((employee) => (
-                                                    <option key={employee.employee_id} value={employee.employee_id}>
-                                                        {employee.full_name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        </div>
-                                        {!discountEmployeesLoading && safeDiscountEmployees.length === 0 && <p className="mt-1 text-xs font-medium text-amber-700">No active registered employees are available.</p>}
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee ID</label>
-                                        <div className="relative">
-                                            <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input readOnly className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-xs font-medium" placeholder="Auto-filled" value={discountDraft.employee_id} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                            {!isTabletViewport ? employeeDiscountIdentityFields : null}
 
                             {discountDraft.type === 'manual' && (
                                 <div className="grid gap-2.5 sm:grid-cols-2">
@@ -2106,7 +2123,6 @@ return (
                                             </select>
                                             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                         </div>
-                                        {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-xs font-medium text-amber-700 mt-1">No authorized employees are configured. Ask an administrator to grant discount authorization.</p>}
                                         {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some((approver) => approver.pos_approval_pin_configured === true) && <p className="text-xs font-medium text-amber-700 mt-1">Authorized employees are listed, but each needs a POS approval PIN before they can approve a discount.</p>}
                                     </div>
                                     <div className="space-y-1 sm:col-span-2">
@@ -2160,7 +2176,7 @@ return (
                 </DialogContent>
             </Dialog>
 
-            <POSCheckoutConfirmDialog viewModel={viewModel} />
+            <POSCheckoutConfirmDialog key={viewModel.checkoutConfirmModalOpen ? 'checkout-open' : 'checkout-closed'} viewModel={viewModel} />
 
             <POSCheckoutTerminalReceiptDialogs
                 splitPaymentCancelModalOpen={splitPaymentCancelModalOpen}

@@ -26,6 +26,7 @@ export function PosCheckoutDetailsSlot({
   servicesNotes,
   setServicesNotes,
   paymentTypeField = null,
+  buttonLayout = false,
   disabled = false
 }) {
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
@@ -33,9 +34,11 @@ export function PosCheckoutDetailsSlot({
 
   return (
     <>
-      <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">
-        {heading}
-      </p>
+      {heading !== 'Order details' ? (
+        <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">
+          {heading}
+        </p>
+      ) : null}
       <Suspense fallback={null}>
         {checkoutDetailsOwner === POS_PRESENTATION_SLOT_OWNERS.FNB && (
           <FnbWorkflowPanel
@@ -46,6 +49,7 @@ export function PosCheckoutDetailsSlot({
             kitchenNotes={kitchenNotes}
             setKitchenNotes={setKitchenNotes}
             paymentTypeField={paymentTypeField}
+            buttonLayout={buttonLayout}
             disabled={disabled}
           />
         )}
@@ -72,6 +76,7 @@ export function PosCheckoutDetailsSlot({
             orderMethod={orderMethod}
             setOrderMethod={setOrderMethod}
             allowedMethods={Array.isArray(posWorkflow?.allowedMethods) ? posWorkflow.allowedMethods : []}
+            buttonLayout={buttonLayout}
             disabled={disabled}
           />
         )}

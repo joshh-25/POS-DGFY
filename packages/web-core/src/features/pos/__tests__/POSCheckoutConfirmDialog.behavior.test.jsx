@@ -39,6 +39,14 @@ vi.mock('../components/EmployeeCreditPaymentPanel.jsx', () => ({
     )
 }));
 
+vi.mock('../components/POSDiscountWorkspace.jsx', () => ({
+    default: ({ onCancel, embedded }) => (
+        <div data-testid="mock-inline-discount" data-embedded={String(embedded)}>
+            <button type="button" onClick={onCancel}>Cancel discount</button>
+        </div>
+    )
+}));
+
 const createViewModel = (overrides = {}) => ({
     billRequestPrinting: false,
     calculatedDiscountAmount: 0,
@@ -48,9 +56,13 @@ const createViewModel = (overrides = {}) => ({
     checkoutDiscountLabel: '',
     checkoutLoading: false,
     clearAppliedDiscount: vi.fn(),
+    closeDiscountModal: vi.fn(),
     customerPaymentAmountAutoFilled: true,
     customerPaymentAmountInput: '100.00',
     customerPaymentFieldLabel: 'Total Payment',
+    discountDraft: { type: 'employee' },
+    discountModalOpen: false,
+    discountPreviewTotals: { vatRemoved: 0 },
     governedDiscountTotals: { vatRemoved: 0 },
     handleBillRequest: vi.fn(),
     handleCancelCheckout: vi.fn(),
@@ -64,6 +76,7 @@ const createViewModel = (overrides = {}) => ({
     isEmployeeCreditPayment: false,
     isMsmeMode: false,
     isPrinterAvailable: false,
+    isTabletViewport: false,
     openDiscountModal: vi.fn(),
     parkedSaleReleaseLoading: false,
     paymentType: 'cash',
@@ -81,6 +94,38 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('does not inspect cart data while checkout is closed', () => {
+        const guardedCart = new Proxy([], {
+            get() {
+                throw new Error('Closed checkout must not inspect cart data');
+            }
+        });
+
+        expect(() => render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            checkoutConfirmModalOpen: false,
+            safeCart: guardedCart
+        })} />)).not.toThrow();
+        expect(screen.queryByTestId('checkout-dialog-root')).toBeNull();
+    });
+
+    it('does not build order-summary rows until the summary is opened', () => {
+        let itemNameReads = 0;
+        const cartLine = { item_id: 7, quantity: 2, sale_price: 90 };
+        Object.defineProperty(cartLine, 'item_name', {
+            get() {
+                itemNameReads += 1;
+                return 'Brewed Coffee';
+            }
+        });
+
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({ safeCart: [cartLine] })} />);
+
+        expect(itemNameReads).toBe(0);
+        fireEvent.click(screen.getByTestId('pos-checkout-view-order-summary'));
+        expect(itemNameReads).toBeGreaterThan(0);
+        expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('Brewed Coffee');
+    });
+
     it('passes the saved item-discount employee to Employee Credit and blocks ambiguous matches', async () => {
         const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
             isCashPayment: false,
@@ -93,8 +138,13 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         })} />);
 
         const paymentPanel = await screen.findByTestId('employee-credit-payment-panel');
+        const orderSettings = screen.getByTestId('pos-checkout-order-settings');
+        const employeeCreditSection = screen.getByTestId('pos-checkout-employee-credit');
+        const discountControls = screen.getByTestId('pos-checkout-discount-type-buttons').closest('fieldset');
         expect(paymentPanel.getAttribute('data-preferred-employee-id')).toBe('44');
         expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toBe('');
+        expect(orderSettings.compareDocumentPosition(employeeCreditSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(employeeCreditSection.compareDocumentPosition(discountControls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
         rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
             isCashPayment: false,
@@ -165,19 +215,200 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         });
     });
 
-    it('uses the payment method color on the selector and payment summary', () => {
+    it('uses readable inactive labels and highlights only the selected payment method', () => {
         const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
 
-        expect(screen.getByLabelText('Payment Type').className).toContain('bg-amber-100');
-        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('Cash').className).toContain('text-amber-950');
+        const paymentButtons = screen.getByTestId('pos-checkout-payment-method-buttons');
+        const cashButton = screen.getByRole('button', { name: 'Cash' });
+        const gcashButton = screen.getByRole('button', { name: 'GCash' });
+        expect(paymentButtons.querySelectorAll('button')).toHaveLength(6);
+        expect(paymentButtons.className).toContain('grid-cols-6');
+        expect(paymentButtons.className).toContain('min-w-[720px]');
+        expect(cashButton.className).toContain('bg-amber-100');
+        expect(cashButton.getAttribute('aria-pressed')).toBe('true');
+        expect(gcashButton.className).toContain('text-[#0F172A]');
+        expect(gcashButton.className).toContain('bg-white');
+        expect(gcashButton.getAttribute('aria-pressed')).toBe('false');
 
         rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
             isCashPayment: false,
             paymentType: 'gcash'
         })} />);
 
-        expect(screen.getByLabelText('Payment Type').className).toContain('bg-blue-100');
-        expect(within(screen.getByTestId('pos-checkout-payment-summary')).getByText('GCash').className).toContain('text-blue-950');
+        expect(screen.getByRole('button', { name: 'Cash' }).className).toContain('bg-white');
+        expect(screen.getByRole('button', { name: 'Cash' }).getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByRole('button', { name: 'GCash' }).className).toContain('bg-blue-100');
+        expect(screen.getByRole('button', { name: 'GCash' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('keeps every tablet payment method color visible and strengthens only the selected button', () => {
+        const initialViewModel = createViewModel({ isTabletViewport: true });
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={initialViewModel} />);
+
+        const cashButton = screen.getByRole('button', { name: 'Cash' });
+        const gcashButton = screen.getByRole('button', { name: 'GCash' });
+        const mayaButton = screen.getByRole('button', { name: 'Maya' });
+        const cardButton = screen.getByRole('button', { name: 'Card' });
+        const bankButton = screen.getByRole('button', { name: 'Bank Transfer' });
+        const employeeCreditButton = screen.getByRole('button', { name: 'Employee Credit' });
+
+        expect(screen.getByTestId('pos-checkout-payment-method-buttons').parentElement.className).toContain('p-1');
+        expect(cashButton.className).toContain('bg-amber-100');
+        expect(cashButton.className).toContain('ring-amber-300');
+        expect(gcashButton.className).toContain('bg-blue-50');
+        expect(mayaButton.className).toContain('bg-emerald-50');
+        expect(cardButton.className).toContain('bg-[#FAF3ED]');
+        expect(bankButton.className).toContain('bg-violet-50');
+        expect(employeeCreditButton.className).toContain('bg-[#EFF6FF]');
+        expect(gcashButton.className).not.toContain('ring-blue-300');
+
+        fireEvent.click(gcashButton);
+        expect(initialViewModel.setPaymentType).toHaveBeenCalledWith('gcash');
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isCashPayment: false,
+            isTabletViewport: true,
+            paymentType: 'gcash'
+        })} />);
+
+        expect(screen.getByRole('button', { name: 'Cash' }).className).toContain('bg-amber-50');
+        expect(screen.getByRole('button', { name: 'Cash' }).className).not.toContain('ring-amber-300');
+        expect(screen.getByRole('button', { name: 'GCash' }).className).toContain('bg-blue-100');
+        expect(screen.getByRole('button', { name: 'GCash' }).className).toContain('ring-blue-300');
+        expect(screen.getByRole('button', { name: 'GCash' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('uses one amount row with five additive cash suggestions and no separate exact-amount button', () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        const paymentRow = screen.getByTestId('pos-cash-payment-suggestions');
+        const paymentInput = screen.getByLabelText('Total Payment');
+        const suggestionButtons = within(paymentRow).getAllByRole('button');
+
+        expect(paymentRow.contains(paymentInput)).toBe(true);
+        expect(suggestionButtons).toHaveLength(5);
+        expect(screen.queryByTestId('pos-cash-payment-exact')).toBeNull();
+        expect(screen.queryByTestId('pos-cash-payment-suggestion-2000')).toBeNull();
+
+        const thousandSuggestion = screen.getByTestId('pos-cash-payment-suggestion-1000');
+        fireEvent.click(thousandSuggestion);
+        expect(paymentInput.value).toBe('1000');
+
+        fireEvent.click(thousandSuggestion);
+        expect(paymentInput.value).toBe('2000');
+    });
+
+    it('orders Order Details, Total Payment, then Apply Discount', () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
+
+        const orderSettings = screen.getByTestId('pos-checkout-order-settings');
+        const paymentEntry = screen.getByTestId('pos-checkout-payment-entry');
+        const discountControls = screen.getByTestId('pos-checkout-discount-type-buttons').closest('fieldset');
+
+        expect(orderSettings.compareDocumentPosition(paymentEntry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(paymentEntry.compareDocumentPosition(discountControls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('shows the compact financial summary flush below the checkout header', () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            calculatedDiscountAmount: 20,
+            cartSubtotal: 120,
+            cartTotal: 100,
+            customerPaymentAmountAutoFilled: false,
+            customerPaymentAmountInput: '150.00',
+            isTabletViewport: true
+        })} />);
+
+        const paymentSummary = screen.getByTestId('pos-checkout-payment-summary');
+        const orderSettings = screen.getByTestId('pos-checkout-order-settings');
+        const summarySection = paymentSummary.closest('section');
+
+        expect(paymentSummary.compareDocumentPosition(orderSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(summarySection.className).toContain('shrink-0');
+        expect(summarySection.className).toContain('bg-white');
+        expect(summarySection.className).toContain('border-b');
+        expect(summarySection.className).not.toContain('sticky');
+        expect(summarySection.className).not.toContain('pb-3');
+        expect(paymentSummary.className).toContain('rounded-none');
+        expect(paymentSummary.className).toContain('border-x-0');
+        expect(paymentSummary.className).toContain('border-t-0');
+        expect(screen.queryByText('Payment Summary')).toBeNull();
+        expect(within(paymentSummary).getByText('Order Total')).toBeDefined();
+        expect(within(paymentSummary).getByText('- PHP 20.00')).toBeDefined();
+        expect(within(paymentSummary).getByText('Payment Received')).toBeDefined();
+        expect(within(paymentSummary).getByText('PHP 150.00')).toBeDefined();
+        expect(within(paymentSummary).getByText('Change')).toBeDefined();
+        expect(within(paymentSummary).getByText('PHP 50.00')).toBeDefined();
+    });
+
+    it('shows VAT Removed in the totals only for Senior Citizen or PWD', () => {
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            discountDraft: { type: 'senior' },
+            discountModalOpen: true,
+            discountPreviewTotals: { vatRemoved: 12 }
+        })} />);
+
+        const vatRemoved = screen.getByTestId('pos-checkout-vat-removed');
+        expect(within(vatRemoved).getByText('VAT Removed')).toBeDefined();
+        expect(within(vatRemoved).getByText('PHP 12.00')).toBeDefined();
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            discountDraft: { type: 'employee' },
+            discountModalOpen: true,
+            discountPreviewTotals: { vatRemoved: 12 }
+        })} />);
+
+        expect(screen.queryByTestId('pos-checkout-vat-removed')).toBeNull();
+    });
+
+    it('opens the existing discount workspace with the selected governed type', () => {
+        const viewModel = createViewModel();
+
+        render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
+
+        const discountButtons = screen.getByTestId('pos-checkout-discount-type-buttons');
+        expect(discountButtons.querySelectorAll('button')).toHaveLength(6);
+        expect(discountButtons.className).toContain('grid-cols-6');
+        expect(discountButtons.className).toContain('min-w-[720px]');
+        fireEvent.click(screen.getByTestId('pos-checkout-discount-type-pwd'));
+
+        expect(viewModel.openDiscountModal).toHaveBeenCalledWith({
+            returnToCheckout: true,
+            initialType: 'pwd'
+        });
+    });
+
+    it('shows the discount workspace inline and blocks checkout until it is applied or cancelled', async () => {
+        const viewModel = createViewModel({ discountModalOpen: true });
+
+        render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
+
+        expect(await screen.findByTestId('mock-inline-discount')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Confirm' }).disabled).toBe(true);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel discount' }));
+        expect(viewModel.closeDiscountModal).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the order summary as a popup and closes it without leaving checkout', () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            safeCart: [{ item_id: 7, item_name: 'Brewed Coffee', quantity: 2, sale_price: 90 }],
+            cartSubtotal: 180,
+            cartTotal: 180,
+            customerPaymentAmountInput: '180.00'
+        })} />);
+
+        expect(screen.queryByTestId('pos-checkout-order-summary-panel')).toBeNull();
+        fireEvent.click(screen.getByTestId('pos-checkout-view-order-summary'));
+        expect(screen.getByTestId('pos-checkout-order-summary-modal')).toBeDefined();
+        expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('Brewed Coffee');
+        expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('PHP 180.00');
+        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Total AmountPHP 180.00');
+        expect(screen.getByRole('heading', { name: 'Checkout Tab' })).toBeDefined();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close Order Summary' }));
+        expect(screen.queryByTestId('pos-checkout-order-summary-panel')).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Checkout Tab' })).toBeDefined();
     });
 
     it('removes the applied checkout discount from the sale summary', () => {

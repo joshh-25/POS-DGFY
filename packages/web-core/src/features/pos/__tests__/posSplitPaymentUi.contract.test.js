@@ -18,7 +18,29 @@ const checkoutSource = [
         'utf8'
     ),
     fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/POSDiscountWorkspace.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
         path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
+        'utf8'
+    ),
+].join('\n');
+const checkoutCleanupSource = [
+    fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/PosCheckoutDetailsSlot.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/EmployeeCreditPaymentPanel.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/POSDiscountWorkspace.jsx'),
+        'utf8'
+    ),
+    fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
         'utf8'
     ),
 ].join('\n');
@@ -79,10 +101,10 @@ describe('POS split-payment UI contract', () => {
         expect(financialWorkflowSource).toContain("? round4(cartTotal).toFixed(2)");
         expect(checkoutSource).toContain('setCustomerPaymentAmountAutoFilled(true);');
         expect(checkoutSource).toContain('if (paymentAmountAutoFilled) selectPaymentAmount(\'\');');
-        expect(checkoutSource).toContain('data-testid="pos-cash-payment-exact"');
-        expect(checkoutSource).toContain('Exact Amount · PHP {money(cartTotal)}');
-        expect(checkoutSource).toContain('selectPaymentAmount(String(amount))');
-        expect(checkoutSource).toContain('const [paymentAmountAutoFilled, setPaymentAmountAutoFilled] = useState');
+        expect(checkoutSource).not.toContain('data-testid="pos-cash-payment-exact"');
+        expect(checkoutSource).not.toContain('Exact Amount · PHP {money(cartTotal)}');
+        expect(checkoutSource).toContain('addSuggestedPaymentAmount(amount)');
+        expect(checkoutSource).toContain('const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);');
         expect(splitDialogSource).toContain("if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });");
     });
 
@@ -98,28 +120,39 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('The sale is not paid yet. Press Confirm below to finish it.');
         expect(checkoutSource).not.toContain('must be at least PHP');
         expect(checkoutSource).toContain('!paymentIsSufficient');
-        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {
-        expect(checkoutSource).toContain('data-testid="pos-checkout-sale-summary"');
+        expect(checkoutSource).not.toContain('data-testid="pos-checkout-sale-summary"');
         expect(checkoutSource).toContain('data-testid="pos-checkout-discount-summary"');
-        expect(checkoutSource).toContain('Total Sales (before discount)');
-        expect(checkoutSource).toContain('Total Due');
+        expect(checkoutSource).not.toContain('Total Sales (before discount)');
         expect(checkoutSource).toContain('data-testid="pos-checkout-payment-summary"');
-        expect(checkoutSource).toContain('Payment Summary');
-        expect(checkoutSource).toContain('Payment Method');
-        expect(checkoutSource).toContain('formatSplitPaymentMethod(paymentType)');
+        expect(checkoutSource).toContain('className="shrink-0 border-b border-slate-200 bg-white"');
+        expect(checkoutSource).toContain('rounded-none border-x-0 border-t-0 border-emerald-300');
+        expect(checkoutSource).not.toContain('pos-checkout-payment-summary-heading');
+        expect(checkoutSource).toContain("selectedDiscountType === 'senior' || selectedDiscountType === 'pwd'");
+        expect(checkoutSource).toContain('data-testid="pos-checkout-vat-removed"');
+        expect(checkoutSource).toContain('Order Total');
+        expect(checkoutSource).toContain('Payment Received');
+        expect(checkoutSource).toContain('displayedPaymentReceived');
+        expect(checkoutSource).toContain('displayedPaymentChange');
         expect(checkoutSource).toContain('Remaining Balance');
         expect(checkoutSource).not.toContain('Review the items and enter the customer payment before finalizing this sale.');
-        expect(checkoutSource).toContain('data-testid="pos-checkout-add-discount"');
+        expect(checkoutSource).not.toContain('data-testid="pos-checkout-add-discount"');
+        expect(checkoutSource).toContain('data-testid="pos-checkout-discount-type-buttons"');
+        expect(checkoutSource).toContain('className="grid min-w-[720px] grid-cols-6 gap-2"');
+        expect(checkoutSource).not.toContain('grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6');
+        expect(checkoutSource).toContain('data-testid={`pos-checkout-discount-type-${option.value}`}');
         expect(checkoutSource).toContain('data-testid="pos-edit-checkout-discount"');
         expect(checkoutSource).toContain('data-testid="pos-remove-checkout-discount"');
-        expect(checkoutSource).toContain('openDiscountModal({ returnToCheckout: true });');
+        expect(checkoutSource).toContain('initialType: typeof initialType === \'string\' ? initialType : undefined');
         expect(checkoutSource).toContain('onClick={clearAppliedDiscount}');
-        expect(checkoutSource).toContain('const discountReturnToCheckoutRef = useRef(false);');
-        expect(checkoutSource).toContain('setCheckoutConfirmModalOpen(false);');
-        expect(checkoutSource).toContain('setCheckoutConfirmModalOpen(true);');
+        expect(checkoutSource).toContain("'pos-checkout-inline-discount-workspace'");
+        expect(checkoutSource).toContain('<POSDiscountWorkspace viewModel={viewModel} onCancel={closeDiscountModal} embedded />');
+        expect(checkoutSource).toContain('{!embedded && (');
+        expect(checkoutSource).not.toContain('Close editor');
+        expect(checkoutSource).toContain('discountModalOpen && !viewModel.checkoutConfirmModalOpen');
         expect(checkoutSource).toContain('onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}');
         expect(checkoutSource).toContain('const handleCloseDiscountModal = () => {');
         expect(checkoutSource).toContain('closeDiscountModal();');
@@ -127,13 +160,42 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}');
     });
 
-    it('shows cash payment suggestions above the payment amount field', () => {
-        expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000, 2000];');
-        expect(checkoutSource).toContain('data-testid="pos-cash-payment-suggestions"');
-        expect(checkoutSource).toContain('isCashPayment && (');
-        expect(checkoutSource).toContain('selectPaymentAmount(String(amount))');
+    it('keeps all payment methods in one horizontally scrollable row', () => {
+        expect(checkoutSource).toContain('data-testid="pos-checkout-payment-method-buttons"');
+        expect(checkoutSource).toContain('className="grid min-w-[720px] grid-cols-6 gap-1.5"');
+        expect(checkoutSource).not.toContain('grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6');
+    });
+
+    it('removes redundant checkout labels without removing the selection controls', () => {
+        expect(checkoutCleanupSource).not.toContain('Select items and the quantity this discount should apply to.');
+        expect(checkoutCleanupSource).toContain('Select eligible items and discount quantities for this customer.');
+        expect(checkoutCleanupSource).toContain('data-testid="pos-discount-select-all"');
+        expect(checkoutCleanupSource).toContain("heading !== 'Order details'");
+        expect(checkoutCleanupSource).not.toContain('Outstanding after sale');
+        expect(checkoutCleanupSource).not.toContain('No active registered employees are available.');
+        expect(checkoutCleanupSource).not.toContain('No authorized employees are configured. Ask an administrator to grant discount authorization.');
+    });
+
+    it('shows the amount field and five additive cash suggestions in one horizontal row', () => {
+        expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000];');
+        expect(checkoutSource).toContain("data-testid={isCashPayment ? 'pos-cash-payment-suggestions' : undefined}");
+        expect(checkoutSource).toContain('grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(80px,1fr))]');
+        expect(checkoutSource).toContain('const currentAmount = paymentAmountAutoFilled ? 0 : normalizePaymentAmount(paymentAmountInput);');
+        expect(checkoutSource).toContain('selectPaymentAmount(String(round4(currentAmount + amount)))');
+        expect(checkoutSource).toContain('addSuggestedPaymentAmount(amount)');
         expect(checkoutSource).toContain('data-testid={`pos-cash-payment-suggestion-${amount}`}');
         expect(checkoutSource).toContain('id="pos-customer-payment-amount"');
+        expect(checkoutSource).not.toContain('pos-cash-payment-suggestion-2000');
+    });
+
+    it('orders Order Details, Total Payment, then Apply Discount', () => {
+        const orderSettingsIndex = checkoutSource.indexOf('data-testid="pos-checkout-order-settings"');
+        const paymentEntryIndex = checkoutSource.indexOf('data-testid="pos-checkout-payment-entry"');
+        const discountControlsIndex = checkoutSource.indexOf('aria-label="Apply Discount"');
+
+        expect(orderSettingsIndex).toBeGreaterThan(-1);
+        expect(paymentEntryIndex).toBeGreaterThan(orderSettingsIndex);
+        expect(discountControlsIndex).toBeGreaterThan(paymentEntryIndex);
     });
 
     it('does not auto-focus Total Payment when checkout confirmation opens', () => {

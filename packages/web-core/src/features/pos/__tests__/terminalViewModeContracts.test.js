@@ -514,7 +514,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('opens checkout confirmation and then receipt preview after a successful sale', () => {
-    expect(posCheckoutTerminalContent).toContain('setCheckoutConfirmModalOpen(true);');
+    expect(posCheckoutWorkflowContent).toContain('setCheckoutConfirmModalOpen(true);');
     expect(posCheckoutWorkflowContent).toContain('resetCheckoutModalState();');
     expect(posCheckoutWorkflowContent).toMatch(
       /setCheckoutConfirmModalOpen\(false\);[\s\S]*?setReceiptPreviewModalOpen\(true\);[\s\S]*?if \(typeof onCheckoutCompleted/
