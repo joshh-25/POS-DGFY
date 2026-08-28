@@ -145,6 +145,7 @@ import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { publishPosShellUpdateSafety } from '../utils/posUpdateSafety.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -552,6 +553,46 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
+
+  // Publish "shell" update-safety state -- whether a service-worker update is
+  // safe to auto-install right now from the login/unlock screen's point of
+  // view. POSCheckoutTerminal's own publisher only exists post-login, so
+  // without this the login screen always reads as "safe" and a redeploy can
+  // reload it mid-keystroke (#990).
+  const loginFieldsDirty = Boolean(
+    formData.email
+    || formData.password
+    || formData.dgfyTenantId
+    || terminalUnlockForm.terminalPassword
+    || terminalUnlockForm.cashierEmail
+    || terminalUnlockForm.cashierPassword
+    || terminalUnlockForm.openingFloatAmount
+    || terminalUnlockForm.openingNote
+    || cashierResumeForm.identifier
+    || cashierResumeForm.password
+    || cashierTakeoverForm.identifier
+    || cashierTakeoverForm.password
+    || cashierTakeoverForm.pin
+    || adminReauthForm.password
+    || settingsAccessPinValue
+  );
+
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return undefined;
+    publishPosShellUpdateSafety({
+      locked,
+      loginFieldsDirty,
+      loginSubmitting: submitting
+    });
+  }, [locked, loginFieldsDirty, submitting]);
+
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return undefined;
+    return () => {
+      publishPosShellUpdateSafety({});
+    };
+  }, []);
+
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
     account: null,

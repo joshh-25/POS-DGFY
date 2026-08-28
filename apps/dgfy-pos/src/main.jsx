@@ -179,14 +179,36 @@ const registerPosServiceWorker = async () => {
     let updateDeferredBySafety = false;
     let updateActivationStarted = false;
 
-    const activateWaitingWorker = () => {
+    // Reasons published by the "checkout" source (see posUpdateSafety.js) --
+    // an in-progress transaction. Everything else (an authenticated session,
+    // unsubmitted login input, a submit in flight) is a "shell" reason and
+    // gets a different, session-appropriate deferral message.
+    const CHECKOUT_SAFETY_REASONS = new Set([
+      'active_cart',
+      'checkout_commit',
+      'split_payment',
+      'offline_replay',
+      'receipt_workflow',
+      'drawer_workflow',
+      'parked_sale_workflow',
+      'checkout_editing'
+    ]);
+
+    const describeDeferral = (reasons) => (
+      reasons.some((reason) => CHECKOUT_SAFETY_REASONS.has(reason))
+        ? 'POS update will install after the current transaction is finished.'
+        : 'A POS update is ready. It will install when the terminal is idle.'
+    );
+
+    const activateWaitingWorker = ({ force = false } = {}) => {
       if (!waitingWorker || waitingWorker.state !== 'installed') return false;
       if (updateActivationStarted) return true;
       const safetyState = getPosUpdateSafetyState();
-      if (safetyState.unsafe) {
+      if (safetyState.unsafe && !force) {
         updateDeferredBySafety = true;
         publishPosUpdateNoticeState({
-          message: 'POS update will install after the current transaction is finished.'
+          message: describeDeferral(safetyState.reasons),
+          activate: () => activateWaitingWorker({ force: true })
         });
         return false;
       }

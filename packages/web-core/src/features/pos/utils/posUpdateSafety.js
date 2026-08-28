@@ -1,14 +1,50 @@
 export const POS_UPDATE_SAFETY_EVENT = 'dgfy:pos-update-safety';
 
-const initialPosUpdateSafetyState = Object.freeze({
+const EMPTY_SAFETY_STATE = Object.freeze({
     unsafe: false,
     reasons: []
 });
 
-let currentPosUpdateSafetyState = initialPosUpdateSafetyState;
+// Two independent parts of the POS app publish into this one gate:
+// - 'checkout' (POSCheckoutTerminal.jsx): cart/checkout/receipt/drawer state,
+//   only mounted after login.
+// - 'shell' (TerminalPage.jsx): whether a session exists at all and whether
+//   the login/unlock forms have unsubmitted input -- covers the login screen,
+//   which 'checkout' never sees.
+// A single last-write-wins snapshot would let either source silently clear
+// the other's "unsafe" (this is exactly how a deferred update used to get
+// released the instant checkout unmounted on logout -- #990). Keyed storage
+// with a merge on read fixes that.
+const safetyStateBySource = {
+    checkout: EMPTY_SAFETY_STATE,
+    shell: EMPTY_SAFETY_STATE
+};
 
 const addReason = (reasons, reason, condition) => {
     if (condition) reasons.push(reason);
+};
+
+const mergeSafetyStates = () => {
+    const reasons = [];
+    const seen = new Set();
+    for (const source of ['checkout', 'shell']) {
+        for (const reason of safetyStateBySource[source].reasons) {
+            if (seen.has(reason)) continue;
+            seen.add(reason);
+            reasons.push(reason);
+        }
+    }
+    return reasons.length === 0 ? EMPTY_SAFETY_STATE : { unsafe: true, reasons };
+};
+
+const publishMergedState = (windowObj) => {
+    const merged = mergeSafetyStates();
+    if (typeof windowObj?.dispatchEvent === 'function' && typeof windowObj?.CustomEvent === 'function') {
+        windowObj.dispatchEvent(new windowObj.CustomEvent(POS_UPDATE_SAFETY_EVENT, {
+            detail: merged
+        }));
+    }
+    return merged;
 };
 
 export const derivePosUpdateSafety = ({
@@ -53,19 +89,40 @@ export const derivePosUpdateSafety = ({
     };
 };
 
-export const getPosUpdateSafetyState = () => currentPosUpdateSafetyState;
+// Whether the POS "shell" -- the login/unlock screen and its various
+// re-auth forms -- has anything unsaved or in flight. Unlike
+// derivePosUpdateSafety, this has to be safe to evaluate before any
+// terminal/session state exists at all.
+export const derivePosShellUpdateSafety = ({
+    locked = true,
+    loginFieldsDirty = false,
+    loginSubmitting = false
+} = {}) => {
+    const reasons = [];
+    addReason(reasons, 'authenticated_session', locked !== true);
+    addReason(reasons, 'login_input', loginFieldsDirty === true);
+    addReason(reasons, 'login_submitting', loginSubmitting === true);
+
+    return {
+        unsafe: reasons.length > 0,
+        reasons
+    };
+};
+
+export const getPosUpdateSafetyState = () => mergeSafetyStates();
 
 export const publishPosUpdateSafetyState = (
     snapshot = {},
     windowObj = typeof window === 'undefined' ? null : window
 ) => {
-    currentPosUpdateSafetyState = derivePosUpdateSafety(snapshot);
-    if (typeof windowObj?.dispatchEvent !== 'function' || typeof windowObj?.CustomEvent !== 'function') {
-        return currentPosUpdateSafetyState;
-    }
+    safetyStateBySource.checkout = derivePosUpdateSafety(snapshot);
+    return publishMergedState(windowObj);
+};
 
-    windowObj.dispatchEvent(new windowObj.CustomEvent(POS_UPDATE_SAFETY_EVENT, {
-        detail: currentPosUpdateSafetyState
-    }));
-    return currentPosUpdateSafetyState;
+export const publishPosShellUpdateSafety = (
+    snapshot = {},
+    windowObj = typeof window === 'undefined' ? null : window
+) => {
+    safetyStateBySource.shell = derivePosShellUpdateSafety(snapshot);
+    return publishMergedState(windowObj);
 };
