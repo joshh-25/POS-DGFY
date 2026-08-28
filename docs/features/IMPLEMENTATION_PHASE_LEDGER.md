@@ -10346,16 +10346,23 @@ script, closing out the initiative.
 
 ### Acceptance and validation evidence
 
+This phase's own objective and scope (above) is exactly two items, and both passed:
+
 - [x] PR #1136 merged.
 - [x] A real `deploy-main.yml` PROD run through the edited workflow succeeds (after the
   file-permissions fix above; the retry via `--failed` counts as the same dispatch's successful
   completion, not a separate independent deploy).
-- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — still
-  gated on one further **independent** CI deploy also succeeding (i.e. a second, separate
-  `deploy-main.yml`/`publish-platform.yml` PROD dispatch beyond this phase's own).
-- [ ] This initiative's changes back-ported to `develop` (fresh issue via `pm`, per
-  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port procedure — a closed/merged `main` PR
-  cannot itself `Refs` into a `For QA` transition). Up next.
+
+Cleanup (stale plaintext shredding) and the `develop` back-port are real remaining work for
+initiative #360, but they are not part of *this* phase's own acceptance gates — they were
+initially listed here unchecked, which is why this phase could not correctly be marked
+`completed` while they stood. Per RF-1 (PR #1152 review), they are moved out to their own
+phase, tracked below, rather than left as permanently-open checkboxes on an otherwise-passed
+phase:
+
+- `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — see
+  Phase 188.
+- This initiative's changes back-ported to `develop` — see Phase 188.
 
 ### Implementation links
 
@@ -10365,8 +10372,8 @@ script, closing out the initiative.
 
 ### Next eligible phase
 
-The next repository phase is allocated from the authoritative ledger after Phase 184 completes.
-This initiative (#360) is done at that point.
+Phase 188 (cleanup shred + `develop` back-port for this initiative). #360 is not done until
+Phase 188 also completes.
 ---
 
 **Dated note, 2026-08-29 — Phase-number collision between the `main`-based #360 hotfix track and
@@ -10647,3 +10654,52 @@ dependencies and approval requirements.
 
 Phase 188 after Phase 187 completes; planned Phases 172-175 retain their own dependencies and
 approval requirements.
+
+## Phase 188 - SOPS+age Cutover: Cleanup Shred and `develop` Back-port
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Closing work split out of Phase 184 per RF-1
+(PR #1152 review, 2026-08-29): Phase 184's own objective (CI cutover through
+`publish-platform.yml`) fully passed and is `completed`; these two remaining items are real but
+were incorrectly listed as that phase's own unchecked acceptance gates. #360 as a whole is not
+done until this phase also completes.
+
+### Objective and scope
+
+- Shred `.env.pre-sops` and the stale plaintext `.env*` dumps on the production server (Runbook
+  Phase 7 / #403), gated on one further **independent** successful `deploy-main.yml` /
+  `publish-platform.yml` PROD dispatch beyond Phase 184's own (i.e. not the same run/rerun already
+  counted there).
+- Back-port this initiative's `main`-only changes to `develop`: a fresh GitHub issue (via `pm` —
+  a closed/merged `main` PR cannot itself `Refs` into a `For QA` transition), a branch off fresh
+  `origin/develop`, `git merge origin/main`, and an ordinary PR into `develop`, per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port procedure.
+
+### Status
+
+- `planned`
+
+### Dependencies
+
+- Phase 184 completed (it is).
+- The independent CI deploy the shred step is gated on has not yet occurred.
+
+### Acceptance and validation evidence
+
+- [ ] A second, independent `deploy-main.yml`/`publish-platform.yml` PROD dispatch (beyond
+  Phase 184's own) succeeds.
+- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps shredded on the server, confirmed via a
+  names-only listing (no file content/value ever read or displayed).
+- [ ] Fresh back-port issue filed via `pm`.
+- [ ] Back-port PR opened against `develop`, `Refs`ing that issue.
+
+### Implementation links
+
+- `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 188 completes.
+This initiative (#360) is done at that point.

@@ -3,7 +3,7 @@ status: draft
 authority_level: default
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-28
+last_reviewed: 2026-08-29
 review_by: 2027-02-28
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_secrets_cutover_runbook
@@ -213,6 +213,22 @@ sops --age "$(grep -oP 'public key: \K.*' /etc/dgfy/age/keys.txt)" \
 
 # Confirm ciphertext, not plaintext, is on disk before going further:
 grep -c 'ENC\[' secrets/*.env   # each file should show hits
+
+# Group-own every secrets file `docker` so the CI deploy account (`gha`,
+# a `docker`-group member, same scoping already used for
+# /etc/dgfy/age/keys.txt) can decrypt it -- this step was missing here
+# originally and caused a real Phase 184 production incident (2026-08-29):
+# files created as `pat:pat 640` blocked `gha`'s `sops decrypt`, which
+# failed silently, producing an empty assembled environment that surfaced
+# as an unrelated-looking "missing bcrypt hash" validator error. See
+# ADR 0060's 2026-08-29 amendment for the full incident writeup.
+chgrp docker secrets/*.env
+chmod 640 secrets/*.env
+
+# Names-only verification -- do NOT let this step print any value:
+stat -c '%U:%G %a %n' secrets/*.env
+# Every line must read exactly: pat:docker 640 secrets/<name>.env
+# This check must pass before Phase 2 is considered complete.
 ```
 
 Once encrypted, mirror `secrets/` into `Sieitzz/dgfy-secrets` under
