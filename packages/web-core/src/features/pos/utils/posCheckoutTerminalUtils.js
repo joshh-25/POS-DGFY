@@ -1,5 +1,6 @@
 import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
+import { getDiscountLineRef } from './posDiscountSelection.js';
 
 export const money = (value) => Number(value || 0).toFixed(2);
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -131,7 +132,10 @@ export const EMPTY_DISCOUNT_DRAFT = {
 };
 
 export const calculateGovernedDiscount = (cart, application) => {
-    const cartRows = toArray(cart);
+    const cartRows = toArray(cart).map((line, index) => ({
+        ...line,
+        __discount_line_ref: getDiscountLineRef(line, index)
+    }));
     const eligibleItemIds = toArray(application?.eligible_item_ids);
     const eligibleItems = toArray(application?.eligible_items);
     const getGlobalBase = (line) => line?.global_discount_base_amount == null
@@ -155,33 +159,65 @@ export const calculateGovernedDiscount = (cart, application) => {
         };
     }
     const statutory = application.type === 'senior' || application.type === 'pwd';
+    const selectedByLineRef = new Map(eligibleItems
+        .map((entry) => [String(entry?.line_ref || '').trim(), entry])
+        .filter(([lineRef]) => lineRef));
+    const selectedByItemId = new Map(eligibleItems
+        .filter((entry) => !String(entry?.line_ref || '').trim())
+        .map((entry) => [Number(entry?.item_id), entry]));
+    const selectedItemIds = new Set(eligibleItemIds.map(Number));
+    const useLegacySelectedItemIds = selectedByLineRef.size === 0 && selectedByItemId.size === 0;
+    const restrictToSelections = selectedByLineRef.size > 0 || selectedByItemId.size > 0 || selectedItemIds.size > 0;
+    const getSelectedEntry = (line) => {
+        const lineRef = String(line?.__discount_line_ref || '').trim();
+        if (lineRef && selectedByLineRef.has(lineRef)) return selectedByLineRef.get(lineRef);
+        if (selectedByItemId.has(Number(line?.item_id))) return selectedByItemId.get(Number(line?.item_id));
+        if (useLegacySelectedItemIds && selectedItemIds.has(Number(line?.item_id))) {
+            return { item_id: Number(line?.item_id), eligible_quantity: null };
+        }
+        return null;
+    };
     if (!statutory) {
-        const selectedItemIds = new Set(eligibleItemIds.map(Number));
-        const restrictToSelections = selectedItemIds.size > 0;
+        const getEligibleQuantity = (line) => {
+            const selected = getSelectedEntry(line);
+            if (!restrictToSelections || selected) {
+                const requested = Number(selected?.eligible_quantity);
+                return selected?.eligible_quantity != null && Number.isFinite(requested)
+                    ? Math.min(Number(line.quantity || 0), Math.max(0, requested))
+                    : Number(line.quantity || 0);
+            }
+            return 0;
+        };
         const discountBase = restrictToSelections
             ? round4(cartRows.reduce((sum, line) => (
-                selectedItemIds.has(Number(line.item_id))
-                    ? sum + getGlobalBase(line)
+                getSelectedEntry(line)
+                    ? sum + round4(getGlobalBase(line) * (Number(line.quantity || 0) > 0
+                        ? getEligibleQuantity(line) / Number(line.quantity || 0)
+                        : 0))
                     : sum
             ), 0))
             : subtotal;
         const discountAmount = application.method === 'fixed'
             ? Math.min(discountBase, Math.max(0, Number(application.amount || 0)))
             : Math.min(discountBase, discountBase * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
-        const eligibleRows = cartRows.filter((line) => !restrictToSelections || selectedItemIds.has(Number(line.item_id)));
+        const eligibleRows = cartRows.filter((line) => !restrictToSelections || getSelectedEntry(line));
         // Chrome 80-84 iMin POS WebView has no Array.prototype.at (ES2022 / Chrome 92+). See DGFY-POS-Y (#664).
         const lastEligibleLine = eligibleRows[eligibleRows.length - 1];
         let allocatedDiscount = 0;
         const lines = cartRows.map((line) => {
             const gross = round4(getGlobalBase(line));
-            const eligible = !restrictToSelections || selectedItemIds.has(Number(line.item_id));
+            const eligible = !restrictToSelections || Boolean(getSelectedEntry(line));
+            const eligibleQuantity = getEligibleQuantity(line);
+            const eligibleGross = round4(gross * (Number(line.quantity || 0) > 0
+                ? eligibleQuantity / Number(line.quantity || 0)
+                : 0));
             const lineDiscount = !eligible
                 ? 0
                 : application.method === 'fixed'
                     ? line === lastEligibleLine
                         ? round4(discountAmount - allocatedDiscount)
-                        : round4(Math.min(discountAmount - allocatedDiscount, discountBase > 0 ? (gross / discountBase) * discountAmount : 0))
-                    : round4(gross * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
+                        : round4(Math.min(discountAmount - allocatedDiscount, discountBase > 0 ? (eligibleGross / discountBase) * discountAmount : 0))
+                    : round4(eligibleGross * Math.min(100, Math.max(0, Number(application.rate || 0))) / 100);
             allocatedDiscount = round4(allocatedDiscount + lineDiscount);
             return {
                 line_key: line.line_key || line.line_id || null,
@@ -189,19 +225,16 @@ export const calculateGovernedDiscount = (cart, application) => {
                 discount_amount: lineDiscount,
                 vat_removed: 0,
                 vat_exempt_amount: 0,
-                eligible_quantity: eligible ? Number(line.quantity || 0) : 0
+                eligible_quantity: eligibleQuantity
             };
         });
         return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount), lines };
     }
-    const selected = new Map(eligibleItems.length > 0
-        ? eligibleItems.map((entry) => [Number(entry?.item_id), Number(entry?.eligible_quantity)])
-        : eligibleItemIds.map((itemId) => [Number(itemId), null]));
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     const lines = cartRows.map((line) => {
-        const selectedQuantity = selected.get(Number(line.item_id));
-        if (selectedQuantity === undefined) {
+        const selected = getSelectedEntry(line);
+        if (!selected) {
             return {
                 line_key: line.line_key || line.line_id || null,
                 item_id: Number(line.item_id),
@@ -211,7 +244,8 @@ export const calculateGovernedDiscount = (cart, application) => {
                 eligible_quantity: 0
             };
         }
-        const quantity = selectedQuantity == null
+        const selectedQuantity = Number(selected.eligible_quantity);
+        const quantity = selected.eligible_quantity == null || !Number.isFinite(selectedQuantity)
             ? Number(line.quantity || 0)
             : Math.min(Number(line.quantity || 0), Math.max(0, selectedQuantity));
         const globalUnitPrice = Number(line.quantity || 0) > 0

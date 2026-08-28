@@ -26,7 +26,8 @@ export function SelectableOptionCard({
   fontWeight = 700,
   iconBoxSize = 40,
   iconSize = 20,
-  disabled = false
+  disabled = false,
+  unavailable = false
 }) {
   const resolvedActiveIconColor = activeIconColor || activeBorderColor;
   const resolvedCheckColor = checkColor || activeBorderColor;
@@ -36,6 +37,7 @@ export function SelectableOptionCard({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-disabled={unavailable || undefined}
       style={{
         minHeight,
         width: '100%',
@@ -46,12 +48,13 @@ export function SelectableOptionCard({
         display: 'flex',
         alignItems: 'center',
         gap,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        cursor: disabled || unavailable ? 'not-allowed' : 'pointer',
         textAlign: 'left',
         boxShadow: active ? activeBoxShadow : 'none',
         boxSizing: 'border-box',
         transition: 'all 200ms ease',
-        opacity: disabled ? 0.65 : 1
+        opacity: disabled || unavailable ? 0.65 : 1,
+        filter: unavailable ? 'grayscale(0.35)' : 'none'
       }}
     >
       {icon ? (
@@ -60,7 +63,7 @@ export function SelectableOptionCard({
         </div>
       ) : null}
       <div style={{ flex: '1 1 0%', minWidth: 0, fontSize, fontWeight, color: active ? (activeTextColor || '#1e293b') : inactiveTextColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {label}
+        {label}{unavailable ? ' (Unavailable)' : ''}
       </div>
       {showCheck ? (
         <div style={{ width: 22, height: 22, borderRadius: '50%', border: `1px solid ${active ? resolvedCheckColor : inactiveBorderColor}`, background: active ? resolvedCheckColor : '#fff', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, transition: 'all 200ms ease' }}>

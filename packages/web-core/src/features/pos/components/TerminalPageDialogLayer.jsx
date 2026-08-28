@@ -166,6 +166,14 @@ export default function TerminalPageDialogLayer({ model }) {
     zReadingReport
   } = model;
 
+  const currentCashierLabel = String(
+    cashierUnlockSession?.username
+    || cashierUnlockSession?.email
+    || terminalUser?.username
+    || terminalUser?.email
+    || ''
+  ).trim();
+
   return (
     <>
 <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
@@ -580,14 +588,13 @@ export default function TerminalPageDialogLayer({ model }) {
             <form onSubmit={handleShiftOpeningModalSubmit}>
               <DialogHeader className="border-b border-slate-100 px-5 py-4">
                 <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Open Shift</DialogTitle>
-                <DialogDescription className="text-sm text-slate-600">
-                  No open shift is active. Enter opening cash to start a new shift before using POS.
-                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 px-5 py-5">
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                  Shift Closed. Sales, payments, receipt printing, and transaction changes are blocked.
-                </div>
+                {currentCashierLabel ? (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1A4E8D]">
+                    Cashier signed in: {currentCashierLabel}
+                  </div>
+                ) : null}
                 <div className="grid gap-2">
                   <Label htmlFor="shift-opening-cash-amount" className="text-xs font-extrabold text-[#0F172A]">
                     Opening Cash

@@ -92,8 +92,9 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
 
   it('the location-aware catalog effect still refetches on a voucherCode change', () => {
     const source = catalogLoaderSource();
-    const effectDeps = source.match(/\[applyCatalogResponse, isStorePage, selectedStore\?\.slug, selectedLocationId, voucherCode\]/);
+    const effectDeps = source.match(/\[applyCatalogResponse, [^\]]*selectedLocationId, voucherCode\]/);
     expect(effectDeps).not.toBeNull();
+    expect(effectDeps[0]).toContain('completeBranchSwitchFeedback');
   });
 
   it('the catalog route props bundle threads checkoutVoucherCode/setCheckoutVoucherCode/handleVoucherCardApply', () => {

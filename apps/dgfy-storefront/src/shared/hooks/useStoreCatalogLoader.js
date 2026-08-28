@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { requestJson } from '../../services/requestJson.js';
 import { toSlug } from '../utils/storefrontFormatters.js';
@@ -28,6 +29,8 @@ export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = nu
   if (locationId != null) query.set('location_id', String(locationId));
   return `${basePath}?${query.toString()}`;
 };
+
+const BRANCH_SWITCH_FEEDBACK_MIN_DURATION_MS = 300;
 
 /**
  * Stateful hook that owns storefront catalog/location loading.
@@ -64,6 +67,7 @@ export function useStoreCatalogLoader({
   const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [branchSwitchFeedback, setBranchSwitchFeedback] = useState(null);
   const [catalogError, setCatalogError] = useState('');
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
 
@@ -88,6 +92,9 @@ export function useStoreCatalogLoader({
   // instead of merely ignoring their eventual response via the sequence
   // guard above -- an actual abort rather than a wasted in-flight request.
   const storeLoadAbortControllerRef = useRef(null);
+  const branchSwitchFeedbackRef = useRef(null);
+  const branchSwitchFeedbackTimerRef = useRef(null);
+  const branchSwitchFeedbackSequenceRef = useRef(0);
   // #694: `openStoreBySlug` reads the CURRENT voucher code via this ref rather than depending on
   // the `voucherCode` prop directly. Before #694 nothing changed `voucherCode` after mount (it only
   // ever arrived once, from a `?voucher=` link), so `openStoreBySlug` depending on it was harmless.
@@ -134,6 +141,34 @@ export function useStoreCatalogLoader({
     });
   }, []);
   const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
+
+  const completeBranchSwitchFeedback = useCallback((locationId, { notify = false } = {}) => {
+    const pending = branchSwitchFeedbackRef.current;
+    if (!pending || Number(pending.locationId) !== Number(locationId)) return;
+
+    const sequence = pending.sequence;
+    const finish = () => {
+      if (branchSwitchFeedbackRef.current?.sequence !== sequence) return;
+      branchSwitchFeedbackRef.current = null;
+      branchSwitchFeedbackTimerRef.current = null;
+      setBranchSwitchFeedback(null);
+      if (notify) toast.success(`Switched to ${pending.label}`);
+    };
+
+    if (branchSwitchFeedbackTimerRef.current) {
+      clearTimeout(branchSwitchFeedbackTimerRef.current);
+      branchSwitchFeedbackTimerRef.current = null;
+    }
+    const remainingMs = Math.max(
+      0,
+      BRANCH_SWITCH_FEEDBACK_MIN_DURATION_MS - (Date.now() - pending.startedAt)
+    );
+    if (remainingMs > 0) {
+      branchSwitchFeedbackTimerRef.current = setTimeout(finish, remainingMs);
+    } else {
+      finish();
+    }
+  }, []);
 
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
@@ -186,12 +221,16 @@ export function useStoreCatalogLoader({
           storeSlug: profile.slug,
           routeSubpage,
           routeServiceItemId,
-          routeItemId
+          routeItemId,
+          locationId: preferredStoreLocationSelection?.locationId
         });
         if (!isCurrentStorefrontTarget(canonicalPath)) {
           window.history.replaceState(buildStorefrontHistoryState({
             storeSlug: profile.slug,
-            storeSubpage: routeSubpage
+            storeSubpage: routeSubpage,
+            serviceItemId: routeServiceItemId,
+            itemId: routeItemId,
+            locationId: preferredStoreLocationSelection?.locationId
           }), '', canonicalPath);
         }
         setRouteSlug(toSlug(profile.slug));
@@ -201,6 +240,25 @@ export function useStoreCatalogLoader({
       const isServicesStorefront = normalizeBusinessMode(
         profile?.workflow_mode || profile?.ops_workflow_mode
       ) === 'services';
+      const canonicalizeLocationUrl = (locationId) => {
+        if (locationId == null || typeof window === 'undefined' || !profile?.slug) return;
+        const canonicalPath = buildCanonicalStorefrontTarget({
+          storeSlug: profile.slug,
+          routeSubpage,
+          routeServiceItemId,
+          routeItemId,
+          locationId
+        });
+        if (!isCurrentStorefrontTarget(canonicalPath)) {
+          window.history.replaceState(buildStorefrontHistoryState({
+            storeSlug: profile.slug,
+            storeSubpage: routeSubpage,
+            serviceItemId: routeServiceItemId,
+            itemId: routeItemId,
+            locationId
+          }), '', canonicalPath);
+        }
+      };
       let resolvedCatalogLocationId = null;
       const profileLocations = normalizeProfileLocations(profile);
       loadedProfileLocations = profileLocations;
@@ -262,6 +320,7 @@ export function useStoreCatalogLoader({
           );
           resolvedCatalogLocationId = fallbackLocationId;
           setSelectedLocationId(fallbackLocationId);
+          canonicalizeLocationUrl(fallbackLocationId);
         } else {
           resolvedCatalogLocationId = null;
           setSelectedLocationId(null);
@@ -278,6 +337,7 @@ export function useStoreCatalogLoader({
         setPrimaryLocationId(fallbackPrimaryLocationId);
         resolvedCatalogLocationId = fallbackPrimaryLocationId;
         setSelectedLocationId(fallbackPrimaryLocationId);
+        canonicalizeLocationUrl(fallbackPrimaryLocationId);
         }
       }
 
@@ -358,7 +418,11 @@ export function useStoreCatalogLoader({
       // store+location shouldn't refetch. refreshStorePageForTenantSetup
       // bypasses this by calling openStoreBySlug directly, which never
       // reads lastCatalogKeyRef, so it still forces a real refetch.
-      if (lastCatalogKeyRef.current === catalogKey) return;
+      if (lastCatalogKeyRef.current === catalogKey) {
+        // A matching pending manual switch is the only case that produces this toast.
+        completeBranchSwitchFeedback(selectedLocationId, { notify: true });
+        return;
+      }
 
       setLoadingCatalog(true);
       setCatalogError('');
@@ -375,11 +439,14 @@ export function useStoreCatalogLoader({
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         applyCatalogResponse(catalogData);
         lastCatalogKeyRef.current = catalogKey;
+        // A matching pending manual switch is the only case that produces this toast.
+        completeBranchSwitchFeedback(selectedLocationId, { notify: true });
       } catch (error) {
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant catalog for selected location.');
         setCatalog([]);
         setCatalogError(normalizedError.message);
+        completeBranchSwitchFeedback(selectedLocationId);
       } finally {
         if (!cancelled && requestSequence === locationCatalogRequestSequenceRef.current) setLoadingCatalog(false);
       }
@@ -389,19 +456,59 @@ export function useStoreCatalogLoader({
     return () => {
       cancelled = true;
       abortController.abort();
+      // Superseded requests must also release any overlay for this effect's location.
+      completeBranchSwitchFeedback(selectedLocationId);
     };
-  }, [applyCatalogResponse, isStorePage, selectedStore?.slug, selectedLocationId, voucherCode]);
+    }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, selectedStore?.slug, selectedLocationId, voucherCode]);
 
   const handleBranchMenuSelection = useCallback((nextValue) => {
-    const nextLocationId = nextValue ? Number(nextValue) : null;
+    const requestedLocationId = nextValue ? Number(nextValue) : null;
+    const nextLocation = storeLocations.find((location) => Number(location.location_id) === requestedLocationId);
+    const nextLocationId = nextLocation?.location_id == null ? null : Number(nextLocation.location_id);
+    if (nextLocationId == null) return;
+    if (Number(selectedLocationId) === nextLocationId) return;
+    if (branchSwitchFeedbackTimerRef.current) clearTimeout(branchSwitchFeedbackTimerRef.current);
+    const nextSequence = branchSwitchFeedbackSequenceRef.current + 1;
+    branchSwitchFeedbackSequenceRef.current = nextSequence;
+    const nextLabel = String(nextLocation.name || nextLocation.address_line || `Branch ${nextLocationId}`).trim();
+    branchSwitchFeedbackRef.current = {
+      label: nextLabel,
+      locationId: nextLocationId,
+      sequence: nextSequence,
+      startedAt: Date.now()
+    };
+    setBranchSwitchFeedback({ label: nextLabel });
+    if (typeof window !== 'undefined' && selectedStore?.slug) {
+      const canonicalPath = buildCanonicalStorefrontTarget({
+        storeSlug: selectedStore.slug,
+        routeSubpage,
+        routeServiceItemId,
+        routeItemId,
+        locationId: nextLocationId
+      });
+      if (!isCurrentStorefrontTarget(canonicalPath)) {
+        window.history.replaceState(buildStorefrontHistoryState({
+          storeSlug: selectedStore.slug,
+          storeSubpage: routeSubpage,
+          serviceItemId: routeServiceItemId,
+          itemId: routeItemId,
+          locationId: nextLocationId
+        }), '', canonicalPath);
+      }
+    }
     setSelectedLocationId(nextLocationId);
     setHasSelectedBranchFromMenu(true);
+  }, [routeItemId, routeServiceItemId, routeSubpage, selectedLocationId, selectedStore?.slug, setSelectedLocationId, setHasSelectedBranchFromMenu, storeLocations]);
+
+  useEffect(() => () => {
+    if (branchSwitchFeedbackTimerRef.current) clearTimeout(branchSwitchFeedbackTimerRef.current);
   }, []);
 
   return {
     catalog,
     setCatalog,
     loadingCatalog,
+    branchSwitchFeedback,
     setLoadingCatalog,
     catalogError,
     setCatalogError,

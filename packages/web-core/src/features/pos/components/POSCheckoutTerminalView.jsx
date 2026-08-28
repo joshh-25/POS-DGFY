@@ -48,6 +48,7 @@ import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, round4, sanitizeQuantityInput, toArray, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
+import { buildDiscountItemSelection, getDiscountLineRef, getSelectableDiscountLines, isStatutoryDiscountType } from '../utils/posDiscountSelection.js';
 import { POSCheckoutConfirmDialog } from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
 
@@ -127,9 +128,9 @@ const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
 };
 
 export default function POSCheckoutTerminalView({ viewModel = {} }) {
+    const [discountQuantityInput, setDiscountQuantityInput] = React.useState(null);
     const {
         activeParkedSale,
-        activeShiftCashierApprover,
         activeShiftId,
         addCatalogItemToCart,
         addToCart,
@@ -181,6 +182,8 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
         currentViewMode,
+        handleClearSaleDialogOpenChange,
+        pendingViewModeAfterSaleClear,
         discountApplying,
         discountApproversLoading,
         discountEmployeesLoading,
@@ -254,7 +257,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         isTabletViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
-        itemOptionsItemDiscount,
         itemOptionsLine,
         itemOptionsLineKey,
         lastReceipt,
@@ -275,7 +277,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         openClearCurrentSale,
         openDiscountModal,
         openHistoryDetail,
-        openInPosReport,
         openParkSaleNameDialog,
         openParkedSalesHistory,
         openSplitPaymentModal,
@@ -289,7 +290,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         posFoldersLoading,
         posHardware,
         posPresentationBundle,
-        posReportActionLabel,
         qtyMeterState,
         quantityInputValue,
         queuedCheckoutBlockedCount,
@@ -306,7 +306,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         safeCatalog,
         safeDiscountApprovers,
         safeDiscountEmployees,
-        safeEligibleDiscountItemIds,
         safeEligibleDiscountItems,
         saveItemOptions,
         search,
@@ -320,7 +319,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setAffiliateCodeInput,
         setBillRequestDraft,
         setCatalogImageErrors,
-        setClearSaleConfirmOpen,
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
         setDiscountDraft,
@@ -346,6 +344,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setParkedSalesDialogOpen,
         setQuantityInputValue,
         setReceiptPaperWidth,
+        setReceiptPreviewModalOpen,
         setReceiptPreviewSource,
         setSearch,
         setSelectedFolderId,
@@ -379,6 +378,60 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
+    const selectableDiscountLines = getSelectableDiscountLines(safeCart, discountDraft.type, isCartLineSeniorPwdEligible);
+    const selectableDiscountEntries = selectableDiscountLines.map((line) => ({
+        line,
+        lineRef: getDiscountLineRef(line, safeCart.indexOf(line))
+    }));
+    const selectableDiscountRefs = selectableDiscountEntries.map((entry) => entry.lineRef);
+    const selectedDiscountRefs = new Set(safeEligibleDiscountItems
+        .map((entry) => String(entry?.line_ref || '').trim())
+        .filter(Boolean));
+    const selectedDiscountCount = selectableDiscountRefs.filter((lineRef) => selectedDiscountRefs.has(lineRef)).length;
+    const allDiscountItemsSelected = selectableDiscountRefs.length > 0 && selectedDiscountCount === selectableDiscountRefs.length;
+
+    React.useEffect(() => {
+        if (!discountModalOpen) setDiscountQuantityInput(null);
+    }, [discountModalOpen]);
+
+    const handleCloseDiscountModal = () => {
+        setDiscountQuantityInput(null);
+        closeDiscountModal();
+    };
+
+    const updateDiscountItemSelection = (nextLineRefs) => {
+        setDiscountDraft((previous) => ({
+            ...previous,
+            ...buildDiscountItemSelection({
+                cart: safeCart,
+                type: previous.type,
+                draft: previous,
+                isEligible: isCartLineSeniorPwdEligible,
+                selectAllWhenEmpty: false,
+                selectedLineRefs: nextLineRefs
+            })
+        }));
+    };
+
+    const handleDiscountTypeChange = (type) => {
+        setDiscountQuantityInput(null);
+        setDiscountDraft((previous) => ({
+            ...previous,
+            ...(() => {
+                const nextSelection = buildDiscountItemSelection({
+                    cart: safeCart,
+                    type,
+                    draft: { ...previous, eligible_item_ids: [], eligible_items: [] },
+                    isEligible: isCartLineSeniorPwdEligible
+                });
+                return {
+                    ...nextSelection,
+                    type,
+                    rate: type === 'employee' ? '15' : (isStatutoryDiscountType(type) ? '20' : previous.rate)
+                };
+            })()
+        }));
+    };
 
 return (
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
@@ -1483,24 +1536,44 @@ return (
                             <h2 className="text-xl font-bold text-slate-900">Order Preview</h2>
                             <p className="text-sm text-slate-600">Review the selected order summary.</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                data-testid="pos-receipt-open-pos-report"
-                                onClick={openInPosReport}
+                                data-testid="pos-receipt-view-receipt"
+                                onClick={() => {
+                                    setReceiptPreviewSource('receipt_preview');
+                                    setReceiptPreviewModalOpen(true);
+                                }}
+                                disabled={posActionsBlocked || !lastReceipt}
                             >
-                                {posReportActionLabel}
+                                <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                View Receipt
                             </Button>
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                data-testid="pos-receipt-print"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                             >
-                                {receiptPrinting ? 'Printing...' : 'Send to Printer'}
+                                <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                {receiptPrinting ? 'Printing...' : 'Print'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                data-testid="pos-receipt-print-order"
+                                onClick={() => handlePrintOrder(lastReceipt)}
+                                disabled={posActionsBlocked || !lastReceipt || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                            >
+                                <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                                Print Order
                             </Button>
                         </div>
                     </div>
@@ -1631,11 +1704,11 @@ return (
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : closeDiscountModal())}>
+            <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : handleCloseDiscountModal())}>
                 <DialogContent className="relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
                     <button
                         type="button"
-                        onClick={closeDiscountModal}
+                         onClick={handleCloseDiscountModal}
                         className="absolute right-3 top-3 z-10 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                         aria-label="Close discount modal"
                     >
@@ -1671,13 +1744,7 @@ return (
                                                 ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-extrabold shadow-sm'
                                                 : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:bg-slate-50'
                                         }`}
-                                        onClick={() => setDiscountDraft((previous) => ({
-                                            ...previous,
-                                            type: option.value,
-                                            rate: option.value === 'employee'
-                                                ? '15'
-                                                : (['senior', 'pwd'].includes(option.value) ? '20' : previous.rate)
-                                        }))}
+                                        onClick={() => handleDiscountTypeChange(option.value)}
                                     >
                                         <TypeIcon className={`h-5 w-5 shrink-0 transition-colors ${active ? 'text-emerald-600' : 'text-slate-600'}`} aria-hidden="true" />
                                         <span className="w-full whitespace-normal text-center leading-tight">{option.label}</span>
@@ -1747,23 +1814,52 @@ return (
                                 )}
                             </div>
 
-                            {['senior', 'pwd'].includes(discountDraft.type) && (
+                            {discountDraft.type && (
                                 <div className="space-y-2.5">
                                     <div>
-                                        <p className="mb-1 text-xs font-semibold text-[#0F172A]">Eligible Items</p>
-                                        <p className="mb-2 text-[11px] text-slate-500">Select only items and quantities for this Senior/PWD customer.</p>
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                            <p className="text-xs font-semibold text-[#0F172A]">Eligible Items</p>
+                                            <span className="text-[10px] font-semibold text-slate-500">{selectedDiscountCount}/{selectableDiscountRefs.length} selected</span>
+                                        </div>
+                                        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-teal-100 bg-teal-50/60 px-2 py-1.5">
+                                            <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-teal-800">
+                                                <input
+                                                    type="checkbox"
+                                                    data-testid="pos-discount-select-all"
+                                                    className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600 accent-teal-600 focus:ring-teal-500"
+                                                    checked={allDiscountItemsSelected}
+                                                    disabled={selectableDiscountRefs.length === 0}
+                                                    onChange={(event) => updateDiscountItemSelection(event.target.checked ? selectableDiscountRefs : [])}
+                                                />
+                                                Select all items
+                                            </label>
+                                            <span className="text-[10px] font-medium text-teal-700">Uncheck items with no discount</span>
+                                        </div>
+                                        <p className="mb-2 text-[11px] text-slate-500">
+                                            {isStatutoryDiscountType(discountDraft.type)
+                                                ? 'Select eligible items and discount quantities for this customer.'
+                                                : 'Select items and the quantity this discount should apply to.'}
+                                        </p>
                                         <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                                            {safeCart.some(isCartLineSeniorPwdEligible) ? safeCart.filter(isCartLineSeniorPwdEligible).map((line) => {
-                                                const checked = safeEligibleDiscountItemIds.includes(Number(line.item_id));
-                                                const selectedEntry = safeEligibleDiscountItems.find((entry) => Number(entry?.item_id) === Number(line.item_id));
-                                                const selectedQuantity = selectedEntry?.eligible_quantity ?? 1;
+                                            {selectableDiscountEntries.length > 0 ? selectableDiscountEntries.map(({ line, lineRef }) => {
+                                                const checked = selectedDiscountRefs.has(lineRef);
+                                                const selectedEntry = safeEligibleDiscountItems.find((entry) => String(entry?.line_ref || '').trim() === lineRef);
+                                                const cartQuantity = Math.max(1, Math.floor(Number(line.quantity || 0)));
+                                                const requestedSelectedQuantity = Number(selectedEntry?.eligible_quantity ?? line.quantity);
+                                                const selectedQuantity = Number.isFinite(requestedSelectedQuantity) && requestedSelectedQuantity > 0
+                                                    ? Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)
+                                                    : cartQuantity;
+                                                const isEditingDiscountQuantity = discountQuantityInput?.lineRef === lineRef;
+                                                const discountQuantityInputValue = isEditingDiscountQuantity
+                                                    ? discountQuantityInput.value
+                                                    : selectedQuantity;
                                                 const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
                                                 const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
                                                 const resolvedSrc = imageSrc ? resolveAssetVariantUrl(imageSrc, 'thumbnail') : '';
 
                                                 return (
                                                     <label
-                                                        key={`discount-line-${line.item_id}`}
+                                                        key={`discount-line-${lineRef}`}
                                                         className={`flex min-h-[32px] items-center justify-between gap-2.5 rounded-lg border px-2 py-1 text-xs transition-all cursor-pointer ${
                                                             checked
                                                                 ? 'border-teal-200 bg-teal-50/10'
@@ -1775,17 +1871,11 @@ return (
                                                                 type="checkbox"
                                                                 className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 accent-teal-600 cursor-pointer"
                                                                 checked={checked}
-                                                                onChange={(e) =>
-                                                                    setDiscountDraft((p) => ({
-                                                                        ...p,
-                                                                        eligible_item_ids: e.target.checked
-                                                                            ? [...new Set([...toArray(p.eligible_item_ids), Number(line.item_id)])]
-                                                                            : toArray(p.eligible_item_ids).filter((id) => id !== Number(line.item_id)),
-                                                                        eligible_items: e.target.checked
-                                                                            ? [...toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id)), { item_id: Number(line.item_id), eligible_quantity: 1 }]
-                                                                            : toArray(p.eligible_items).filter((entry) => Number(entry?.item_id) !== Number(line.item_id))
-                                                                    }))
-                                                                }
+                                                                    onChange={(e) => updateDiscountItemSelection(
+                                                                        e.target.checked
+                                                                            ? [...selectedDiscountRefs, lineRef]
+                                                                            : [...selectedDiscountRefs].filter((entry) => entry !== lineRef)
+                                                                    )}
                                                             />
 
                                                             <div className="h-6 w-6 shrink-0 overflow-hidden rounded border border-slate-100 bg-slate-50 flex items-center justify-center">
@@ -1807,30 +1897,63 @@ return (
 
                                                         {checked ? (
                                                             <div className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-slate-600">
-                                                                <span>Eligible:</span>
+                                                                <span>Discount qty:</span>
                                                                 <Input
-                                                                    aria-label={`Eligible quantity for ${line.item_name}`}
+                                                                    aria-label={`Discount quantity for ${line.item_name}`}
                                                                     className="h-6 w-14 rounded-md px-1 text-center text-[10px]"
                                                                     type="number"
+                                                                    inputMode="numeric"
                                                                     min="1"
-                                                                    max={line.quantity}
-                                                                    step="0.001"
-                                                                    value={selectedQuantity}
+                                                                    max={cartQuantity}
+                                                                    step="1"
+                                                                    value={discountQuantityInputValue}
                                                                     onClick={(event) => event.stopPropagation()}
+                                                                    onFocus={() => {
+                                                                        if (!isEditingDiscountQuantity) {
+                                                                            setDiscountQuantityInput({ lineRef, value: '' });
+                                                                        }
+                                                                    }}
+                                                                    onKeyDown={(event) => {
+                                                                        if (['.', ',', 'e', 'E', '+', '-'].includes(event.key)) event.preventDefault();
+                                                                    }}
                                                                     onChange={(event) => {
-                                                                        const requestedQuantity = Number(event.target.value);
-                                                                        const cartQuantity = Number(line.quantity || 0);
-                                                                        const eligibleQuantity = Number.isFinite(requestedQuantity)
-                                                                            ? Math.min(Math.max(requestedQuantity, 1), cartQuantity)
+                                                                        const rawValue = String(event.target.value || '');
+                                                                        if (!/^\d*$/.test(rawValue)) return;
+                                                                        if (!rawValue) {
+                                                                            setDiscountQuantityInput({ lineRef, value: '' });
+                                                                            return;
+                                                                        }
+                                                                        const requestedQuantity = Number(rawValue);
+                                                                        const eligibleQuantity = Number.isFinite(requestedQuantity) && requestedQuantity > 0
+                                                                            ? Math.min(requestedQuantity, cartQuantity)
                                                                             : 1;
+                                                                        setDiscountQuantityInput({ lineRef, value: String(eligibleQuantity) });
                                                                         setDiscountDraft((previous) => ({
                                                                             ...previous,
                                                                             eligible_items: toArray(previous.eligible_items).map((entry) => (
-                                                                                Number(entry?.item_id) === Number(line.item_id)
+                                                                                String(entry?.line_ref || '').trim() === lineRef
                                                                                     ? { ...entry, eligible_quantity: eligibleQuantity }
                                                                                     : entry
                                                                             ))
                                                                         }));
+                                                                     }}
+                                                                    onBlur={() => {
+                                                                        const rawValue = discountQuantityInput?.lineRef === lineRef
+                                                                            ? discountQuantityInput.value
+                                                                            : '';
+                                                                        const requestedQuantity = Number(rawValue);
+                                                                        const eligibleQuantity = Number.isInteger(requestedQuantity) && requestedQuantity > 0
+                                                                            ? Math.min(requestedQuantity, cartQuantity)
+                                                                            : cartQuantity;
+                                                                        setDiscountDraft((previous) => ({
+                                                                            ...previous,
+                                                                            eligible_items: toArray(previous.eligible_items).map((entry) => (
+                                                                                String(entry?.line_ref || '').trim() === lineRef
+                                                                                    ? { ...entry, eligible_quantity: eligibleQuantity }
+                                                                                    : entry
+                                                                            ))
+                                                                        }));
+                                                                        setDiscountQuantityInput(null);
                                                                     }}
                                                                 />
                                                                 <span>of {formatQuantity(line.quantity)}</span>
@@ -1844,7 +1967,9 @@ return (
                                                 );
                                             }) : (
                                                 <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800" role="status">
-                                                    No eligible items are in this cart. In Items, enable Senior/PWD Eligible and save the item, then remove and re-add it to this cart.
+                                                    {isStatutoryDiscountType(discountDraft.type)
+                                                        ? 'No eligible items are in this cart. In Items, enable Senior/PWD Eligible and save the item, then remove and re-add it to this cart.'
+                                                        : 'No items are available in this cart.'}
                                                 </div>
                                             )}
                                         </div>
@@ -1871,12 +1996,12 @@ return (
                                                         employee_id: selected?.employee_code || ''
                                                     }));
                                                 }}
-                                                className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
+                                                className="h-9 w-full max-w-full truncate appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60"
                                             >
                                                 <option value="">{discountEmployeesLoading ? 'Loading registered employees...' : 'Select registered employee'}</option>
                                                 {safeDiscountEmployees.map((employee) => (
                                                     <option key={employee.employee_id} value={employee.employee_id}>
-                                                        {employee.full_name} ({employee.employee_code} · {employee.location_name})
+                                                        {employee.full_name}
                                                     </option>
                                                 ))}
                                             </select>
@@ -2018,7 +2143,7 @@ return (
                             type="button"
                             variant="outline"
                             className="h-9 rounded-lg border-slate-200 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors sm:min-w-28"
-                            onClick={closeDiscountModal}
+                            onClick={handleCloseDiscountModal}
                         >
                             Cancel
                         </Button>
@@ -2055,11 +2180,10 @@ return (
                 setReceiptPaperWidth={setReceiptPaperWidth}
                 setReceiptPreviewSource={setReceiptPreviewSource}
                 posActionsBlocked={posActionsBlocked}
-                openInPosReport={openInPosReport}
-                posReportActionLabel={posReportActionLabel}
                 receiptPrinting={receiptPrinting}
                 isPrinterAvailable={isPrinterAvailable}
                 handlePrintReceipt={handlePrintReceipt}
+                handlePrintOrder={handlePrintOrder}
                 OrderPreviewView={OrderPreviewView}
             />
 
@@ -2207,7 +2331,7 @@ return (
             </Dialog>
             <Dialog
                 open={clearSaleConfirmOpen}
-                onOpenChange={setClearSaleConfirmOpen}
+                onOpenChange={handleClearSaleDialogOpenChange}
             >
                 <DialogContent
                     className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
@@ -2216,17 +2340,19 @@ return (
                     <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
                         <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
                             <Trash2 className="h-5 w-5 text-rose-600" />
-                            Clear current sale?
+                            {pendingViewModeAfterSaleClear ? 'Leave checkout and clear sale?' : 'Clear current sale?'}
                         </DialogTitle>
                         <DialogDescription className="text-sm text-slate-600">
-                            This removes all items and unsaved sale details from the current sale. This cannot be undone.
+                            {pendingViewModeAfterSaleClear
+                                ? 'Leaving checkout will remove all items and unsaved sale details from the current sale. This cannot be undone.'
+                                : 'This removes all items and unsaved sale details from the current sale. This cannot be undone.'}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setClearSaleConfirmOpen(false)}
+                            onClick={() => handleClearSaleDialogOpenChange(false)}
                         >
                             Cancel
                         </Button>
@@ -2237,7 +2363,7 @@ return (
                             data-testid="pos-confirm-clear-current-sale"
                         >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Clear sale
+                            {pendingViewModeAfterSaleClear ? 'Leave without sale' : 'Clear sale'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -2259,13 +2385,7 @@ return (
                         open
                         line={itemOptionsLine}
                         locationId={selectedLocationId}
-                        itemDiscount={itemOptionsItemDiscount}
                         globalDiscount={itemOptionsGlobalDiscount}
-                        discountApprovers={safeDiscountApprovers}
-                        discountApproversLoading={discountApproversLoading}
-                        discountEmployees={safeDiscountEmployees}
-                        discountEmployeesLoading={discountEmployeesLoading}
-                        defaultDiscountApprover={activeShiftCashierApprover}
                         onClose={() => setItemOptionsLineKey(null)}
                         onSave={saveItemOptions}
                     />

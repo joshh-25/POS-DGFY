@@ -66,6 +66,23 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("cashierEmail: String(activeOperator?.email || shiftState?.shift?.cashier?.email || '').trim()");
   });
 
+  it('keeps raw shift-open diagnostics out of the cashier dialog and identifies the signed-in cashier', () => {
+    const failurePanelStart = terminalPageSource.indexOf('const renderUnlockFailurePanel = () => {');
+    const failurePanelEnd = terminalPageSource.indexOf('  const validateSelectedTerminalForUnlock', failurePanelStart);
+    const failurePanel = terminalPageSource.slice(failurePanelStart, failurePanelEnd);
+
+    expect(failurePanel).toContain('Could not open shift');
+    expect(failurePanel).toContain('{unlockFailure.message}');
+    expect(failurePanel).not.toContain('metaParts');
+    expect(failurePanel).not.toContain('requestPath');
+    expect(failurePanel).not.toContain('status');
+    expect(failurePanel).not.toContain('ref');
+    expect(terminalPageDialogLayerSource).toContain('const currentCashierLabel = String(');
+    expect(terminalPageDialogLayerSource).toContain('Cashier signed in: {currentCashierLabel}');
+    expect(terminalPageDialogLayerSource).not.toContain('No open shift is active. Enter opening cash to start a new shift before using POS.');
+    expect(terminalPageDialogLayerSource).not.toContain('Shift Closed. Sales, payments, receipt printing, and transaction changes are blocked.');
+  });
+
   it('keeps legacy selling available when a mixed-version API has no operator-authority route', () => {
     expect(terminalPageSource).toContain('isPosOperatorAuthorityUnavailableError(initialError)');
     expect(terminalPageSource).toContain('const shouldRecover = !operatorAuthorityUnavailable');

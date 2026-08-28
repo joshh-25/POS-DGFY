@@ -29,12 +29,29 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const statutory = STATUTORY_TYPES.has(type);
   const requestedRate = statutory ? 20 : clamp(application.rate, 0, 100);
   const method = String(application.method || 'percentage').toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
-  const selections = new Map((application.lines || []).map((entry) => [Number(entry.item_id), entry]));
-  const hasStatutorySelections = selections.size > 0;
-  const restrictToSelections = !statutory && selections.size > 0;
+  const selectionEntries = Array.isArray(application.lines) ? application.lines : [];
+  const selectionsByLineRef = new Map(selectionEntries
+    .map((entry) => [String(entry?.line_ref || '').trim(), entry])
+    .filter(([lineRef]) => lineRef));
+  const legacySelectionsByItemId = new Map(selectionEntries
+    .filter((entry) => !String(entry?.line_ref || '').trim())
+    .map((entry) => [Number(entry.item_id), entry]));
+  const getSelection = (line) => {
+    const lineRef = String(line?.line_ref || '').trim();
+    if (lineRef && selectionsByLineRef.has(lineRef)) return selectionsByLineRef.get(lineRef);
+    return legacySelectionsByItemId.get(Number(line.item_id));
+  };
+  const hasSelections = selectionsByLineRef.size > 0 || legacySelectionsByItemId.size > 0;
+  const hasStatutorySelections = hasSelections;
+  const restrictToSelections = !statutory && hasSelections;
   const eligibleBase = round4(normalizedLines.reduce((sum, line) => {
-    const selected = selections.get(Number(line.item_id));
-    if (!statutory) return restrictToSelections && !selected ? sum : sum + line.global_discount_base_amount;
+    const selected = getSelection(line);
+    if (!statutory) {
+      if (restrictToSelections && !selected) return sum;
+      const eligibleQuantity = clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity);
+      const globalUnitPrice = line.quantity > 0 ? line.global_discount_base_amount / line.quantity : 0;
+      return sum + round4(eligibleQuantity * globalUnitPrice);
+    }
     const autoEligible = isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible);
     if ((hasStatutorySelections && !selected) || !autoEligible) return sum;
     const eligibleQuantity = clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity);
@@ -44,7 +61,7 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const fixedDiscountAmount = remainingFixed;
   const eligibleLineIndexes = normalizedLines
     .map((line, index) => {
-      const selected = selections.get(Number(line.item_id));
+      const selected = getSelection(line);
       if (statutory) {
         return (!hasStatutorySelections || selected) && isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible)
           ? index
@@ -58,12 +75,14 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   const finalEligibleIndex = eligibleLineIndexes[eligibleLineIndexes.length - 1];
 
   const calculatedLines = normalizedLines.map((line, index) => {
-    const selected = selections.get(Number(line.item_id));
+    const selected = getSelection(line);
     const eligibleQuantity = statutory
       ? ((!hasStatutorySelections || selected) && isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible)
         ? clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity)
         : 0)
-      : (restrictToSelections && !selected ? 0 : line.quantity);
+      : (restrictToSelections && !selected
+        ? 0
+        : clamp(selected?.eligible_quantity ?? line.quantity, 0, line.quantity));
     const globalUnitPrice = line.quantity > 0 ? line.global_discount_base_amount / line.quantity : 0;
     const eligibleGross = round4(eligibleQuantity * globalUnitPrice);
     let vatRemoved = 0;

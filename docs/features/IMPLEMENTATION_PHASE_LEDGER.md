@@ -9745,6 +9745,53 @@ Phase 177.
 
 ---
 
+## Phase 178 - Storefront Unavailable Fulfillment Feedback (#1093)
+
+### Objective and scope
+
+Keep Delivery and Pickup visible in Retail, Simple/MSME, and F&B checkout when a selected
+location does not support one of them. An unavailable method is visually muted, remains
+keyboard-activatable for feedback, preserves the current fulfillment selection, and displays the
+method-specific inline explanation. Missing or cached legacy support flags remain fail-open. The
+mode-agnostic `DefaultOrderFulfillmentStep` remains explicitly out of scope because it is the
+unwired placeholder checkout tree, not one of the three live product checkout routes.
+
+### Status
+
+- `completed` (2026-08-28)
+
+### Dependencies
+
+- Phase 177 completed. No migration, API, schema, settings, architecture allowlist, or ADR
+  amendment is required; server-side location-capability validation remains authoritative.
+
+### Acceptance and validation evidence
+
+- [x] The shared storefront option resolver keeps Delivery and Pickup candidates and annotates
+  availability for delivery-only, pickup-only, both-enabled, both-disabled legacy, and missing-flag
+  location states (`storefrontFulfillmentOptions.test.js`).
+- [x] Retail, Simple/MSME, and F&B each keep unavailable choices visible, expose unavailable
+  semantics without a native disabled button, preserve the existing method on activation, and show
+  the required inline message (three focused selector/component interaction tests).
+- [x] F&B now consumes the selected location's resolved fulfillment options rather than rendering
+  both methods unconditionally.
+- [x] `npm run build:store`, focused Storefront Vitest coverage (5 files, 20 tests),
+  `npm run lint:docs`, and `npm run check:architecture` pass. Storefront lint passes with the
+  repository's existing warnings and no errors.
+
+### Implementation links
+
+- `apps/dgfy-storefront/src/shared/model/storefrontFulfillmentOptions.js`
+- `apps/dgfy-storefront/src/shared/components/checkout/SelectableOptionCard.jsx`
+- `apps/dgfy-storefront/src/modes/{simple,fnb,retail}/checkout/`
+
+### Next eligible phase
+
+Phase 179 is the next repository phase; planned Phases 172-175 retain their initiative-specific
+dependencies and status.
+
+---
+
 ### Planning Record (2026-08-26)
 
 - Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
@@ -9802,6 +9849,75 @@ follows). The root cause is structural, not a process gap on either side: as lon
 own ledger entry stays unmerged, every `develop` author choosing "the next free phase number" is
 choosing against a ledger that doesn't yet contain this branch's reservation. It will keep recurring
 each absorb cycle until PR #513 merges.
+
+---
+
+## Phase 177 - POS Checkout State and Discount Financial-Truth Audit
+
+### Initiative and release
+
+- Initiative: close confirmed POS checkout state, discount scoping, mobile sync composition, and
+  order-preview financial-truth gaps found in the 2026-08-28 final audit.
+- Release: maintenance follow-up to the unified POS discount and Current Sale navigation work.
+
+### Objective and scope
+
+- Bind per-quantity governed discounts to an exact cart line so duplicate catalog item IDs cannot
+  multiply one cashier selection.
+- Preserve non-discount checkout fields when removing a discount, while full modal close/new-sale
+  reset continues to restore Cash and the normal checkout defaults.
+- Clear transient sale state on navigation and authentication session end, reparking an active
+  parked sale when possible and always removing local cashier state before the next login.
+- Correct Order Overview Total Payment fallback and mobile statutory-sync dependency composition.
+- Repair the stale split-payment source contract and add regression coverage for every confirmed
+  failure mode.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28.
+
+### Dependencies
+
+- ADR 0033's server-authoritative governed-discount boundary and its 2026-08-28 amendment.
+- Existing POS checkout, parked-sale, voucher, and mobile financial-sync contracts.
+- This is an explicitly approved parallel maintenance phase; it does not imply completion of
+  planned Phases 172-175.
+
+### Acceptance and validation evidence
+
+- [x] Duplicate-item cart lines receive discounts only on selected `line_ref` values; ambiguous
+  quantity-bearing legacy selections fail closed.
+- [x] Discount removal preserves order method, table, notes, tender, employee-credit, affiliate,
+  and payment input state.
+- [x] Logout/session-clear removes local sale state and attempts to release an active parked sale.
+- [x] Completed Order Overview uses the persisted total when `amount_paid` is absent/default zero,
+  while genuine partial payments show the paid amount.
+- [x] Mobile statutory checkout sync is composed with `posRepository`; the focused backend matrix
+  passes 69/69 tests.
+- [x] The complete POS frontend suite passes 899/899 tests across 161 files; SKUpervisor, POS, and
+  Storefront production builds pass.
+- [x] Changed backend/frontend lint reports zero errors; architecture, controller-boundary, ADR,
+  docs, compliance, API-contract, JavaScript syntax, and diff-safety checks pass.
+- [x] POS frontend/backend focused suites, full POS tests, builds, lint, architecture, ADR, docs,
+  and diff-safety gates pass with no new failure.
+- [x] No database migration is required because `line_ref` is request-only context.
+
+### Implementation links
+
+- `packages/web-core/src/features/pos/utils/posDiscountSelection.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutWorkflow.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutLifecycle.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`
+- `apps/dgfy-api/src/modules/pos/domain/posVoucherDiscountCalculator.js`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+
+### Next eligible phase
+
+The next repository phase is Phase 178 after Phase 177 completes; planned Phases 172-175 retain
+their existing dependencies and status.
 `docs/architecture/backend-absorption.md`'s 2026-08-16 dated log entry, which narrates this
 branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
 true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
