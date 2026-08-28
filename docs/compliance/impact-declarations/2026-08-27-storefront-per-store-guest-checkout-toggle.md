@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (14 pass
 rollback_note: Revert this commit. The new setting key defaults to enabled everywhere it is read (customerAccessPolicy.js's DEFAULT_GUEST_CHECKOUT_ENABLED, and the storefront's own isGuestCheckoutAllowed fail-open check), and no existing tenant has a seeded row for it (only newly-provisioned tenants get one, at provisioning time) -- reverting removes the enforcement and the toggle with no persisted-state cleanup needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-27T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-622-STOREFRONT-PER-STORE-GUEST-CHECKOUT-TOGGLE
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-PER-STORE-GUEST-CHECKOUT-TOGGLE-20260828T092056Z
 ---
 
 # Per-Store Setting To Require A DGFY Account Before Checkout Or Booking
@@ -202,3 +202,5 @@ is expected on a PR targeting `develop`, not a finding — per #884, the real
 `POST /api/v1/compliance/preflight` run happens once per batch at the `develop -> main` (or
 `develop -> staging`) promotion sweep (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22/25
 amendments), not per PR.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-PER-STORE-GUEST-CHECKOUT-TOGGLE-20260828T092056Z`.

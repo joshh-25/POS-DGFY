@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/terminalPage
 rollback_note: Revert this commit. Pure code-motion within one existing useEffect -- no new state, no new write path, no schema/migration. Reverting restores the prior (broken) state where TerminalPage throws "Cannot access 'activeShiftId' before initialization" on every render.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-28T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1107-TERMINALPAGE-ACTIVESHIFTID-TDZ-CRASH
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-28-TERMINALPAGE-ACTIVESHIFTID-TDZ-CRASH-20260828T092056Z
 ---
 
 # TerminalPage No Longer Crashes on Every Render
@@ -92,3 +92,5 @@ promotion sweep, not per PR.
 ## Rollback
 
 Revert the commit. No schema, migration, or persisted-state change; no new setting or capability.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-28-TERMINALPAGE-ACTIVESHIFTID-TDZ-CRASH-20260828T092056Z`.
