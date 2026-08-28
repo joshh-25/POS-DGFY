@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-28
 review_by: 2027-02-13
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_age_encrypted_secrets_at_rest
@@ -80,15 +80,19 @@ mechanism. Results posted to #360.
    key per file, wrapped per-recipient using age (X25519). For `.env`-format
    files, only values are encrypted — keys stay cleartext, so diffs on
    secret *changes* stay meaningful. `default`
-2. **Split by secrecy, not only by service.** Of the 93 current variables,
-   roughly 18 are genuine secrets; the rest are non-secret configuration
-   (domains, feature flags, rate limits, image tags). `/opt/dgfy-platform/.env`
-   continues to hold the non-secret ~75 and continues to serve as Compose's
-   `${VAR}` interpolation source for `IMAGE_TAG`/`FRONTEND_PROD_IMAGE_TAG`/
-   nginx domain vars. The ~18 secrets move into SOPS-encrypted files under a
-   new `secrets/` directory, split further by which service needs them
-   (`shared.env` for `DB_NAME`/`DB_USER`/`DB_PASSWORD`, used by three
-   services; `mysql.env`; `dgfy-api.env`). `default`
+2. **Split by secrecy, not only by service.** Superseded 2026-08-28 (see
+   Amendments) — the non-secret majority no longer stays in `.env` at all;
+   it becomes literal values in `docker-compose.yml` instead, and there are
+   three buckets, not two. Original text, for history: "Of the 93 current
+   variables, roughly 18 are genuine secrets; the rest are non-secret
+   configuration (domains, feature flags, rate limits, image tags).
+   `/opt/dgfy-platform/.env` continues to hold the non-secret ~75 and
+   continues to serve as Compose's `${VAR}` interpolation source for
+   `IMAGE_TAG`/`FRONTEND_PROD_IMAGE_TAG`/nginx domain vars. The ~18 secrets
+   move into SOPS-encrypted files under a new `secrets/` directory, split
+   further by which service needs them (`shared.env` for
+   `DB_NAME`/`DB_USER`/`DB_PASSWORD`, used by three services; `mysql.env`;
+   `dgfy-api.env`)." `default`
 3. **One escrowed age key, generated on the server, not distributed to
    individual operators as a second recipient.** Lives at
    `/etc/dgfy/age/keys.txt` (`root:docker`, `0640`). A break-glass copy is
@@ -196,3 +200,52 @@ affected; the single-file/scoped-`environment:` decisions and the threat model b
 should be read against the current (post-retirement) `docker-compose.yml`/`.env` shape when the
 real cutover executes, not against the four-domain-group state this ADR was originally written
 against.
+
+### 2026-08-28 — Decision 2 refined: three buckets, literals in compose, PROD-only CI scope
+
+Supersedes Decision 2's original 2-bucket split (untagged/`default`-tier, so
+this is an amendment per ADR 0039, not a new ADR — no `binding` clause is
+touched). Pat's own framing was that non-secret config should live directly
+in `docker-compose.yml`, not in a thinner `.env` — giving it a git audit
+trail the way the secrets already get one from SOPS diffs.
+
+**Three buckets now, not two:**
+
+- **A — secrets.** SOPS-encrypted `secrets/*.env`, referenced as `${VAR}`.
+  Unchanged in mechanism from the original Decision 2, just re-scoped: 23
+  vars (not ~18), split `shared.env`/`mysql.env`/`dgfy-api.env` exactly as
+  before.
+- **B — static non-secret config.** Now **literal values directly in
+  `docker-compose.yml`** (via the committed prod fragment,
+  `infrastructure/docker/env/prod.sops-cutover-fragment.yml`), not a thinner
+  `.env`. 75 vars. This is the change: config edits become a reviewable git
+  diff on the fragment file, the same audit-trail property secrets already
+  had from SOPS.
+- **C — mutable / CI-injected.** `IMAGE_TAG` (hand-maintained on the server,
+  confirmed **not** CI-written — a correction to an earlier working
+  assumption) and `SENTRY_RELEASE` (confirmed injected as a shell variable
+  by `publish-platform.yml` per deploy, not present in the live `.env` at
+  all). Both stay `${VAR}` with their existing defaults, never literals.
+
+**The actual split, reconciled against a live 2026-08-28 names-only
+extraction of the production `.env` (100 unique names, zero values read —
+this Decision governs values, not names, so a names-only read doesn't cross
+Decision 7's boundary): 23 secret / 75 literal-in-compose / 2 mutable, with
+2 names dropped** (a duplicate `MENU_IMPORT_BATCH_ENABLED` line, and
+`FRONTEND_PROD_IMAGE_TAG`, vestigial since the 2026-08-25 frontend-split
+restart) — not the "roughly 18/75" originally estimated. `FRONTEND_PROD_IMAGE_TAG`
+no longer appears anywhere in the cutover artifacts as a live reference.
+
+**CI scope also narrowed, not part of the original Decision 2 text at all:**
+`.github/workflows/publish-platform.yml`'s SOPS path applies to **PROD
+only**, gated on `inputs.environment == 'PROD'`. That workflow is shared by
+all three environments; an unconditional swap would break the next
+DEV/STAGING deploy, since `deploy-sops.sh`, `secrets/`, and an age key exist
+on none of those boxes.
+
+With `/opt/dgfy-platform/.env` no longer holding bucket-B config, its role
+narrows to (at most) `IMAGE_TAG` — arguably droppable entirely, since PROD
+already runs the `${IMAGE_TAG:-latest}` default. **No root `.env` file** is
+now the target end state, matching Pat's original framing for this
+refinement.
+
