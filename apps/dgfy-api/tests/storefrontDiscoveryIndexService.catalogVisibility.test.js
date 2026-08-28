@@ -90,6 +90,50 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
         mockIndexCount.mockResolvedValue(0);
     });
 
+    it('keeps no-location map fields null while projecting active-primary fulfillment support', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_has_no_location', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'no-location-capability' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([{
+                location_id: 10,
+                name: 'Hidden map branch',
+                address_line: 'Main Road',
+                latitude: 10.72,
+                longitude: 122.56,
+                is_active: true,
+                is_primary_storefront: true,
+                supports_delivery: true,
+                supports_pickup: false,
+                supports_dine_in: false
+            }]) },
+            Item: { findAll: jest.fn().mockResolvedValue([]) },
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock: { findAll: jest.fn().mockResolvedValue([]) }
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        expect(mockIndexCreate.mock.calls[0][0]).toEqual(expect.objectContaining({
+            location_id: null,
+            latitude: null,
+            longitude: null,
+            supports_delivery: true,
+            supports_pickup: false,
+            supports_dine_in: false,
+            active_location_snapshot: [expect.objectContaining({ location_id: 10, supports_pickup: false })]
+        }));
+    });
+
     it('uses StorefrontCatalogOverride instead of POS override when building item_search_snapshot', async () => {
         const SystemSetting = {
             findAll: jest.fn().mockResolvedValue([
