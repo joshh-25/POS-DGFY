@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-23
+last_reviewed: 2026-08-29
 review_by: 2027-02-13
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_age_encrypted_secrets_at_rest
@@ -80,15 +80,19 @@ mechanism. Results posted to #360.
    key per file, wrapped per-recipient using age (X25519). For `.env`-format
    files, only values are encrypted — keys stay cleartext, so diffs on
    secret *changes* stay meaningful. `default`
-2. **Split by secrecy, not only by service.** Of the 93 current variables,
-   roughly 18 are genuine secrets; the rest are non-secret configuration
-   (domains, feature flags, rate limits, image tags). `/opt/dgfy-platform/.env`
-   continues to hold the non-secret ~75 and continues to serve as Compose's
-   `${VAR}` interpolation source for `IMAGE_TAG`/`FRONTEND_PROD_IMAGE_TAG`/
-   nginx domain vars. The ~18 secrets move into SOPS-encrypted files under a
-   new `secrets/` directory, split further by which service needs them
-   (`shared.env` for `DB_NAME`/`DB_USER`/`DB_PASSWORD`, used by three
-   services; `mysql.env`; `dgfy-api.env`). `default`
+2. **Split by secrecy, not only by service.** Superseded 2026-08-28 (see
+   Amendments) — the non-secret majority no longer stays in `.env` at all;
+   it becomes literal values in `docker-compose.yml` instead, and there are
+   three buckets, not two. Original text, for history: "Of the 93 current
+   variables, roughly 18 are genuine secrets; the rest are non-secret
+   configuration (domains, feature flags, rate limits, image tags).
+   `/opt/dgfy-platform/.env` continues to hold the non-secret ~75 and
+   continues to serve as Compose's `${VAR}` interpolation source for
+   `IMAGE_TAG`/`FRONTEND_PROD_IMAGE_TAG`/nginx domain vars. The ~18 secrets
+   move into SOPS-encrypted files under a new `secrets/` directory, split
+   further by which service needs them (`shared.env` for
+   `DB_NAME`/`DB_USER`/`DB_PASSWORD`, used by three services; `mysql.env`;
+   `dgfy-api.env`)." `default`
 3. **One escrowed age key, generated on the server, not distributed to
    individual operators as a second recipient.** Lives at
    `/etc/dgfy/age/keys.txt` (`root:docker`, `0640`). A break-glass copy is
@@ -175,13 +179,6 @@ mechanism behind #239.
 
 ## Amendments
 
-None yet. This ADR will need an amendment (or a new ADR, if any `binding`
-clause above changes) once the real cutover executes and any deviation from
-the plan is discovered — expected, since Decision 2's exact 18/75 split and
-Decision 4's repository name are working assumptions to be confirmed at
-execution time, not verified against the live server's full 93-variable set
-in this session.
-
 ### 2026-08-23 — beta.dgfy.ph retired
 
 The Context section's framing of production as "`dgfy.ph` + `beta.dgfy.ph`, one Linode VPS" is now
@@ -196,3 +193,122 @@ affected; the single-file/scoped-`environment:` decisions and the threat model b
 should be read against the current (post-retirement) `docker-compose.yml`/`.env` shape when the
 real cutover executes, not against the four-domain-group state this ADR was originally written
 against.
+
+### 2026-08-28 — Decision 2 refined: three buckets, literals in compose, PROD-only CI scope
+
+Supersedes Decision 2's original 2-bucket split (untagged/`default`-tier, so
+this is an amendment per ADR 0039, not a new ADR — no `binding` clause is
+touched). Pat's own framing was that non-secret config should live directly
+in `docker-compose.yml`, not in a thinner `.env` — giving it a git audit
+trail the way the secrets already get one from SOPS diffs.
+
+**Three buckets now, not two:**
+
+- **A — secrets.** SOPS-encrypted `secrets/*.env`, referenced as `${VAR}`.
+  Unchanged in mechanism from the original Decision 2, just re-scoped: 23
+  vars (not ~18), split `shared.env`/`mysql.env`/`dgfy-api.env` exactly as
+  before.
+- **B — static non-secret config.** Now **literal values directly in
+  `docker-compose.yml`** (via the committed prod fragment,
+  `infrastructure/docker/env/prod.sops-cutover-fragment.yml`), not a thinner
+  `.env`. 75 vars. This is the change: config edits become a reviewable git
+  diff on the fragment file, the same audit-trail property secrets already
+  had from SOPS.
+- **C — mutable / CI-injected.** `IMAGE_TAG` (hand-maintained on the server,
+  confirmed **not** CI-written — a correction to an earlier working
+  assumption) and `SENTRY_RELEASE` (confirmed injected as a shell variable
+  by `publish-platform.yml` per deploy, not present in the live `.env` at
+  all). Both stay `${VAR}` with their existing defaults, never literals.
+
+**The actual split, reconciled against a live 2026-08-28 names-only
+extraction of the production `.env` (100 unique names, zero values read —
+this Decision governs values, not names, so a names-only read doesn't cross
+Decision 7's boundary): 23 secret / 75 literal-in-compose / 2 mutable, with
+2 names dropped** (a duplicate `MENU_IMPORT_BATCH_ENABLED` line, and
+`FRONTEND_PROD_IMAGE_TAG`, vestigial since the 2026-08-25 frontend-split
+restart) — not the "roughly 18/75" originally estimated. `FRONTEND_PROD_IMAGE_TAG`
+no longer appears anywhere in the cutover artifacts as a live reference.
+
+**CI scope also narrowed, not part of the original Decision 2 text at all:**
+`.github/workflows/publish-platform.yml`'s SOPS path applies to **PROD
+only**, gated on `inputs.environment == 'PROD'`. That workflow is shared by
+all three environments; an unconditional swap would break the next
+DEV/STAGING deploy, since `deploy-sops.sh`, `secrets/`, and an age key exist
+on none of those boxes.
+
+With `/opt/dgfy-platform/.env` no longer holding bucket-B config, its role
+narrows to (at most) `IMAGE_TAG` — arguably droppable entirely, since PROD
+already runs the `${IMAGE_TAG:-latest}` default. **No root `.env` file** is
+now the target end state, matching Pat's original framing for this
+refinement.
+
+### 2026-08-29 — Real cutover incident: 3 bucket-B values wrongly hardcoded, not read from `.env`
+
+Found during Phase 183's live execution (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`), via a
+manual post-cutover smoke test — not caught by the pre-flight gate, since none of the three
+produced an invalid-environment error, just wrong runtime behavior.
+
+The compose-reconciliation tooling classified `CORS_ORIGIN`, `TEMP_FILE_STORAGE`, and
+`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` as bucket-B "policy literals" — assumed/deduced values
+independent of the live `.env` — rather than reading their actual live values, the treatment every
+other bucket-B var correctly got. This was wrong for all three:
+
+- **`CORS_ORIGIN`** was assumed to be the single value `https://dgfy.ph`. The real live value was
+  a comma-separated list of 7 origins (`pos.dgfy.ph`, `skupervisor.dgfy.ph`, three `*.beta.dgfy.ph`
+  entries, a custom domain `bar.space.com.ph`, and `dgfy.ph` itself). Every request from a
+  non-bare-domain origin was rejected with `CORS_NOT_ALLOWED` until this was caught live and fixed
+  directly on the server.
+- **`TEMP_FILE_STORAGE`** was assumed to be `local`; the real value was `auto`. Silent — no
+  validator error, since both are valid enum members, just a runtime behavior difference.
+- **`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`** was assumed to be `"900000"` (15 min); the real
+  value was `"3600000"` (1 hour). Also silent, same reason.
+
+**Fix:** all three are now `<copy literal from live .env>` placeholders in
+`infrastructure/docker/env/prod.sops-cutover-fragment.yml`, matching every other genuinely
+non-deducible bucket-B value — not hardcoded. The remaining bucket-B-hardcode set (`NODE_ENV`,
+`HOSTING_PROFILE`, `SESSION_COOKIE_SECURE`, `AUTH_BLACKLIST_FAILURE_MODE`,
+`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`, `TENANT_SCHEMA_MUTATION_APPROVED`, `PAYMONGO_MODE`,
+`PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS`) was individually audited against the live `.env` after this was
+found and confirmed to genuinely match — not merely re-asserted.
+
+**Lesson for future work in this space:** a "policy literal" classification is only safe when the
+value is *independently derivable* (e.g. `NODE_ENV: production` needs no external source of
+truth). Anything that could plausibly have been configured differently per-deployment — even
+something that looks like an obvious single value, like a CORS origin — belongs in the "read from
+the live source, never assume" bucket, full stop. No `binding` clause is affected; this is an
+implementation-tooling correction, not a decision reversal.
+
+### 2026-08-29 — Phase 184 incident: `secrets/*.env` group ownership blocked the CI deploy account
+
+Found during Phase 184's first live `deploy-main.yml` PROD run
+(`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`). Not a values/corruption issue — a file-permissions
+gap that Phase 183's manual, `pat`-run cutover had no way to surface.
+
+Runbook Phase 2 (`phase182.sh encrypt`, run personally by Pat per Decision 7) created
+`secrets/{mysql,shared,dgfy-api}.env` with default ownership: `pat:pat`, mode `640`. That's correct
+for `pat`'s own manual runs — the file is readable by its owner and by anyone else in the `pat`
+group (nobody). It silently excludes the CI deploy account: `gha`'s groups are `gha`, `users`,
+`docker` — not `pat`. `deploy-sops.sh`'s decrypt loop (`sops decrypt --input-type dotenv "$f"`, fed
+into a `while read` export loop, never `source` — per Decision 6) failed permission-denied for
+`gha` on all three files; the loop got zero stdin and exported nothing, so the assembled
+environment came up empty. The in-image pre-flight gate correctly caught this and refused to
+deploy — but its error text (`ADMIN_ACCOUNTS_JSON account 0 requires a username and valid bcrypt
+password hash`) is identical in shape to Phase 183's real bcrypt-doubling data bug, so the two
+failure classes are indistinguishable from the gate's error message alone. Diagnosing which one
+actually occurred needs a permissions check (`ls -la`, `id`/`groups` — no secret values) before
+assuming a data-corruption repeat.
+
+**Fix:** `chgrp docker` + `chmod 640` on all three `secrets/*.env` files — no `sudo` required, since
+a file's own owner may `chgrp` it to any group they belong to, and `pat` is already in `docker`.
+Matches the scoping already used for `/etc/dgfy/age/keys.txt` (`root:docker 0640`) — `docker`
+already contains both `pat` and `gha`, so this is consistent with, not a widening of, the existing
+key-file access model.
+
+**Lesson for future work in this space:** any file Runbook Phase 2 (or an equivalent manual step)
+creates on the server must be group-owned `docker`, not left at its default per-user ownership, the
+moment more than one account (a human operator and a CI service account, at minimum) needs to read
+it. Verify this explicitly as part of Phase 2's own completion check next time, rather than
+discovering it only when a different account first attempts a real deploy. No `binding` clause is
+affected — Decision 6 and Decision 7 were both already correctly implemented; this is a file-mode
+gap in Phase 2's execution, not a design flaw in either decision.
+
