@@ -24,6 +24,31 @@ const addReason = (reasons, reason, condition) => {
     if (condition) reasons.push(reason);
 };
 
+// Every reason derivePosUpdateSafety can produce -- i.e. an in-progress
+// transaction, owned by 'checkout'. Exported as the single source of truth so
+// a consumer (main.jsx's force-activation button) can tell a transaction
+// reason apart from a 'shell' (session/login) reason without hand-maintaining
+// a second copy of this list that could drift from the real one.
+export const CHECKOUT_OWNED_SAFETY_REASONS = Object.freeze([
+    'active_cart',
+    'checkout_commit',
+    'split_payment',
+    'offline_replay',
+    'receipt_workflow',
+    'drawer_workflow',
+    'parked_sale_workflow',
+    'checkout_editing'
+]);
+
+const checkoutOwnedSafetyReasonSet = new Set(CHECKOUT_OWNED_SAFETY_REASONS);
+
+// Whether any of the given reasons represents an in-progress transaction
+// (as opposed to a session/login-only reason) -- i.e. whether it would be
+// unsafe to let a user force an update past this state with a click.
+export const hasCheckoutOwnedSafetyReason = (reasons = []) => (
+    reasons.some((reason) => checkoutOwnedSafetyReasonSet.has(reason))
+);
+
 const mergeSafetyStates = () => {
     const reasons = [];
     const seen = new Set();

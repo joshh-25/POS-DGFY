@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+    CHECKOUT_OWNED_SAFETY_REASONS,
     derivePosShellUpdateSafety,
     derivePosUpdateSafety,
     getPosUpdateSafetyState,
+    hasCheckoutOwnedSafetyReason,
     publishPosShellUpdateSafety,
     publishPosUpdateSafetyState
 } from '../utils/posUpdateSafety.js';
@@ -92,6 +94,60 @@ describe('POS Service Worker update safety', () => {
             publishPosUpdateSafetyState({});
             expect(getPosUpdateSafetyState().unsafe).toBe(true);
             expect(getPosUpdateSafetyState().reasons).toContain('login_input');
+        });
+    });
+
+    describe('hasCheckoutOwnedSafetyReason (#1118 RF-1)', () => {
+        // main.jsx's force-activation ("Update now") button must never be
+        // offered while a transaction is in progress -- only ever for a pure
+        // "shell" (session/login) reason. This is what main.jsx actually
+        // gates that decision on, so proving it here proves the button's
+        // behavior directly, not just that some source string is present.
+        it('is true for every reason derivePosUpdateSafety can produce', () => {
+            const state = derivePosUpdateSafety({
+                cartLineCount: 1,
+                checkoutLoading: true,
+                splitPaymentSession: { status: 'active' },
+                replayingQueuedCheckouts: true,
+                receiptPrinting: true,
+                drawerOpening: true,
+                activeParkedSale: { id: 1 },
+                discountApplying: true
+            });
+
+            expect(state.reasons.sort()).toEqual([...CHECKOUT_OWNED_SAFETY_REASONS].sort());
+            for (const reason of state.reasons) {
+                expect(hasCheckoutOwnedSafetyReason([reason])).toBe(true);
+            }
+        });
+
+        it('is false for every reason derivePosShellUpdateSafety can produce', () => {
+            const state = derivePosShellUpdateSafety({
+                locked: false,
+                loginFieldsDirty: true,
+                loginSubmitting: true
+            });
+
+            for (const reason of state.reasons) {
+                expect(hasCheckoutOwnedSafetyReason([reason])).toBe(false);
+            }
+        });
+
+        it('is true for the merged state of an active cart with a dirty login screen', () => {
+            // The exact scenario RF-1 flagged: an active cart (checkout-owned,
+            // must never be force-activated past) merged with unrelated shell
+            // state. One checkout-owned reason anywhere in the merge must be
+            // enough to refuse a force-activation.
+            publishPosUpdateSafetyState({ cartLineCount: 2 });
+            publishPosShellUpdateSafety({ locked: true, loginFieldsDirty: true });
+
+            const merged = getPosUpdateSafetyState();
+            expect(merged.unsafe).toBe(true);
+            expect(hasCheckoutOwnedSafetyReason(merged.reasons)).toBe(true);
+        });
+
+        it('is false for an idle, safe merged state (nothing to refuse)', () => {
+            expect(hasCheckoutOwnedSafetyReason([])).toBe(false);
         });
     });
 });

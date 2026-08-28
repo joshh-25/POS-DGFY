@@ -7,7 +7,7 @@ classification: major
 surfaces: pos, terminal
 reason_codes_impacted: N/A
 policy_version: 2026.08.26
-verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js (19 passed, run from apps/dgfy-ims per its vitest test.include),packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js (part of the same 19),npm run build:pos,npm run build:skupervisor
+verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js (23 passed, run from apps/dgfy-ims per its vitest test.include),packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js (part of the same 23),npm run build:pos,npm run build:skupervisor
 rollback_note: Revert this commit. The change only widens when a service-worker update is deferred (adds a second, session-aware safety source alongside the existing cart/checkout one) and adds an "Update now" activation path that did not exist before; reverting restores the prior unconditional login-screen/idle-terminal auto-reload behavior (the #990 defect) with no schema, migration, or persisted-state impact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -57,6 +57,15 @@ just reached.
 - The change can only make auto-update *more* conservative (defer in more cases) or offer an
   explicit user-triggered activation — it introduces no new path that force-reloads a page the old
   code would not already have reloaded.
+- **Amendment 2026-08-28 (PR #1118 review, RF-1):** the "Update now" force-activation button
+  originally bypassed every safety reason unconditionally, including an active cart/checkout/
+  receipt/drawer reason — a click during a live transaction could have reloaded the terminal
+  mid-sale. Fixed before merge: `hasCheckoutOwnedSafetyReason` (new, exported from
+  `posUpdateSafety.js` as the single source of truth for which reasons are transaction-owned) now
+  gates the `activate` callback so it is only ever offered for a pure "shell" (session/login)
+  reason — never while any checkout-owned reason is present. Covered by
+  `posUpdateSafety.test.js`'s `hasCheckoutOwnedSafetyReason` suite, including the exact scenario
+  flagged in review (an active cart merged with dirty login-screen state).
 - `apps/dgfy-ims` and `apps/dgfy-storefront` are unaffected: `dgfy-ims`'s own SW registration never
   force-reloads today and is untouched by this change; `TerminalPage.jsx`'s new publish effect is
   gated by the same `IS_DGFY_POS_SURFACE` constant `POSCheckoutTerminal.jsx` already uses, so it is a
@@ -65,7 +74,7 @@ just reached.
 ## Verification Evidence
 
 - `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js` and
-  `.../serviceWorkerCaching.contract.test.js` — 19/19 passing, run from `apps/dgfy-ims`
+  `.../serviceWorkerCaching.contract.test.js` — 23/23 passing, run from `apps/dgfy-ims`
   (`packages/web-core` has no test runner of its own; its tests execute via `apps/dgfy-ims`'s vitest
   `test.include` glob).
 - `npm run build:pos` and `npm run build:skupervisor` — both real Vite builds, both succeed with no

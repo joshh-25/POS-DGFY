@@ -121,13 +121,22 @@ describe('service worker caching contracts', () => {
     expect(mainSource).not.toContain("registration.waiting.postMessage({ type: 'SKIP_WAITING' });");
   });
 
-  it('offers an "Update now" activation when a deferred update is safe to force', () => {
+  it('offers an "Update now" activation only when no transaction is in progress (#1118 RF-1)', () => {
     const mainSource = readSource(posMainPath);
+    const safetySource = readSource(path.resolve(webCoreRoot, 'src/features/pos/utils/posUpdateSafety.js'));
 
-    expect(mainSource).toContain('activate: () => activateWaitingWorker({ force: true })');
+    expect(mainSource).toContain('hasCheckoutOwnedSafetyReason,');
     expect(mainSource).toContain('const activateWaitingWorker = ({ force = false } = {}) => {');
     expect(mainSource).toContain('if (safetyState.unsafe && !force) {');
+    expect(mainSource).toContain('const canForceActivation = !hasCheckoutOwnedSafetyReason(safetyState.reasons);');
+    expect(mainSource).toContain("activate: canForceActivation ? () => activateWaitingWorker({ force: true }) : null");
     expect(mainSource).toContain('A POS update is ready. It will install when the terminal is idle.');
+    // The force-vs-defer decision is driven by the shared reason list in
+    // posUpdateSafety.js, not a second hand-maintained copy in main.jsx --
+    // confirmed behaviorally (not just by string match) in
+    // posUpdateSafety.test.js's "hasCheckoutOwnedSafetyReason" suite.
+    expect(safetySource).toContain('export const hasCheckoutOwnedSafetyReason = (reasons = []) => (');
+    expect(mainSource).not.toContain('const CHECKOUT_SAFETY_REASONS = new Set([');
   });
 
   it('publishes shell (login/session) update safety alongside checkout safety', () => {

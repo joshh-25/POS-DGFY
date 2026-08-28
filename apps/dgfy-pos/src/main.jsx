@@ -15,6 +15,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 import {
   getPosUpdateSafetyState,
+  hasCheckoutOwnedSafetyReason,
   POS_UPDATE_SAFETY_EVENT
 } from '../../../packages/web-core/src/features/pos/utils/posUpdateSafety.js';
 import { login as loginTenantSession } from '../../../packages/web-core/src/services/authService.js';
@@ -183,19 +184,8 @@ const registerPosServiceWorker = async () => {
     // an in-progress transaction. Everything else (an authenticated session,
     // unsubmitted login input, a submit in flight) is a "shell" reason and
     // gets a different, session-appropriate deferral message.
-    const CHECKOUT_SAFETY_REASONS = new Set([
-      'active_cart',
-      'checkout_commit',
-      'split_payment',
-      'offline_replay',
-      'receipt_workflow',
-      'drawer_workflow',
-      'parked_sale_workflow',
-      'checkout_editing'
-    ]);
-
     const describeDeferral = (reasons) => (
-      reasons.some((reason) => CHECKOUT_SAFETY_REASONS.has(reason))
+      hasCheckoutOwnedSafetyReason(reasons)
         ? 'POS update will install after the current transaction is finished.'
         : 'A POS update is ready. It will install when the terminal is idle.'
     );
@@ -206,9 +196,14 @@ const registerPosServiceWorker = async () => {
       const safetyState = getPosUpdateSafetyState();
       if (safetyState.unsafe && !force) {
         updateDeferredBySafety = true;
+        // A user-triggered force-activation must never be offered while a
+        // transaction is in progress -- only a "shell" reason (unauthenticated
+        // session state, no cart/checkout/receipt/drawer work) is safe to
+        // override with an explicit click.
+        const canForceActivation = !hasCheckoutOwnedSafetyReason(safetyState.reasons);
         publishPosUpdateNoticeState({
           message: describeDeferral(safetyState.reasons),
-          activate: () => activateWaitingWorker({ force: true })
+          activate: canForceActivation ? () => activateWaitingWorker({ force: true }) : null
         });
         return false;
       }
