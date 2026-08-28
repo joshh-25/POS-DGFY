@@ -10,7 +10,7 @@ describe('POS catalog barcode contract', () => {
   it('exposes only barcodes that the POS scanner can resolve', () => {
     const repository = fs.readFileSync(repositoryPath, 'utf8');
 
-    expect(repository).toContain("attributes: ['item_barcode_id', 'item_id', 'code', 'scope', 'is_primary']");
+    expect(repository).toContain("attributes: ['item_barcode_id', 'item_id', 'code', 'source', 'scope', 'is_primary']");
     expect(repository).toContain("isBarcodeScopeAllowedForSurface(row.scope, 'pos')");
   });
 });

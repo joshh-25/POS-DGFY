@@ -134,25 +134,11 @@ export const ensureOptimizedItemImage = async ({
 
     const fingerprint = inputPath ? await calculateFileHash(inputPath) : null;
 
-    // Catalog image storage already writes responsive-v2 assets. Treat its
-    // manifest as authoritative so a repository save does not recompress the
-    // same upload into a second folder and append it as another gallery image.
-    const responsiveManifest = !file && inputPath
-        ? await readResponsiveAssetManifest({ inputPath, uploadsRoot })
-        : null;
-    if (responsiveManifest) {
-        return {
-            path: storedPath,
-            url: storedUrl,
-            image_fingerprint: fingerprint,
-            optimization_version: OPTIMIZATION_VERSION_V2,
-            processing_status: 'optimized',
-            variant_metadata: buildVariantMetadataFromManifest(responsiveManifest),
-            image_variants: deriveImageAssetVariantUrls({ storedPath, storedUrl })
-        };
-    }
-
-    // Check if unchanged optimized asset
+    // Check if unchanged optimized asset. Must run before the responsive-manifest
+    // short-circuit below: on a re-save of an already-optimized item, storedPath
+    // points at the previously-generated large-variant file, so the fingerprint
+    // computed above hashes that variant rather than the original source — only
+    // existingOverride still carries the source's stored fingerprint to reuse.
     if (!file && existingOverride) {
         const isAlreadyV2 = Number(existingOverride.optimization_version) === OPTIMIZATION_VERSION_V2;
         const isStatusOptimized = existingOverride.processing_status === 'optimized';
@@ -177,6 +163,24 @@ export const ensureOptimizedItemImage = async ({
                 })
             };
         }
+    }
+
+    // Catalog image storage already writes responsive-v2 assets. Treat its
+    // manifest as authoritative so a repository save does not recompress the
+    // same upload into a second folder and append it as another gallery image.
+    const responsiveManifest = !file && inputPath
+        ? await readResponsiveAssetManifest({ inputPath, uploadsRoot })
+        : null;
+    if (responsiveManifest) {
+        return {
+            path: storedPath,
+            url: storedUrl,
+            image_fingerprint: fingerprint,
+            optimization_version: OPTIMIZATION_VERSION_V2,
+            processing_status: 'optimized',
+            variant_metadata: buildVariantMetadataFromManifest(responsiveManifest),
+            image_variants: deriveImageAssetVariantUrls({ storedPath, storedUrl })
+        };
     }
 
     // Process legacy or replaced file asset
