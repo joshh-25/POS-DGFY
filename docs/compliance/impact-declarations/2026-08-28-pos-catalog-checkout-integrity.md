@@ -7,8 +7,8 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.08.28
-verification_evidence: focused POS F&B checkout and repository tests,API architecture guardrails
-rollback_note: Revert the inherited modifier-group repository include and its focused tests; checkout returns to direct item modifier assignments only.
+verification_evidence: focused POS F&B checkout,GTIN persistence,image lifecycle and repository tests,POS production build,API architecture guardrails
+rollback_note: Revert the inherited modifier include,POS-scoped GTIN persistence,and responsive-image manifest detection together with their focused tests; no schema rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-28T00:00:00Z
@@ -21,13 +21,16 @@ preflight_request_ref: NOT-EXECUTED-POS-CATALOG-CHECKOUT-INTEGRITY
 
 Major. The changed checkout repository is under `apps/dgfy-api/src/modules/pos/`,
 whose classification floor is `major` for the `pos,terminal` surfaces. The
-change loads folder-inherited F&B modifier groups during server-side checkout
-validation so a catalog item and its configured modifiers use the same contract.
+changes align three existing catalog contracts: folder-inherited F&B modifiers
+are loaded during checkout validation, scanner-entered GTINs persist with POS
+scope, and already-optimized responsive image manifests are reused rather than
+stored repeatedly.
 
 ## Affected Surfaces
 
 - `pos`, `terminal` — server-side resolution of configured F&B modifier groups
-  when validating sellable checkout items.
+  when validating sellable checkout items, POS item GTIN create/edit persistence,
+  and catalog image presentation.
 
 ## Compliance Preconditions
 
@@ -35,13 +38,19 @@ validation so a catalog item and its configured modifiers use the same contract.
   audit checks remain unchanged.
 - Checkout accepts only modifier groups already configured directly on the item
   or inherited from its assigned catalog folder.
+- Scanner-entered manufacturer GTINs remain tenant-owned item barcodes and are
+  saved with the existing POS visibility scope.
+- Responsive image assets are reused only when their stored lifecycle manifest
+  proves they already contain the expected optimized variants.
 - No payment capture, discount, fiscal-output, or database-schema behavior is
   changed.
 
 ## Verification Evidence
 
-- Focused POS F&B checkout and repository tests passed, including a regression
-  case for folder-inherited modifier groups.
+- Focused API suites passed for F&B checkout, GTIN contracts, repository image
+  persistence, and responsive image lifecycle behavior.
+- Focused POS tests passed for primary barcode selection and GTIN persistence.
+- The POS production build completed successfully.
 - API architecture and controller-boundary guardrails passed.
 
 ## Preflight Reconciliation

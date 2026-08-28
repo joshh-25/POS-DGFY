@@ -228,7 +228,14 @@ describe('inventory itemRepository', () => {
 
     expect(StorefrontCatalogOverride.findOne).toHaveBeenCalledWith(expect.objectContaining({
       where: { item_id: 901 },
-      attributes: expect.arrayContaining(['storefront_catalog_override_id', 'item_id'])
+      attributes: expect.arrayContaining([
+        'storefront_catalog_override_id',
+        'item_id',
+        'image_fingerprint',
+        'optimization_version',
+        'processing_status',
+        'variant_metadata'
+      ])
     }));
   });
 
@@ -1060,6 +1067,58 @@ describe('inventory itemRepository', () => {
     expect(transaction.commit).toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
     expect(result).toEqual({ item_id: 1001, name: 'Milk' });
+  });
+
+  it('persists an explicitly POS-scoped manufacturer GTIN in the item transaction', async () => {
+    const itemRecord = { item_id: 1004, name: 'POS GTIN Item', sku_code: 'POS-GTIN-001', status: 'active', category: 'product' };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const barcodeRecord = { item_barcode_id: 44, item_id: 1004 };
+    const ItemBarcode = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(barcodeRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 1004, name: 'POS GTIN Item' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-pos-gtin' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemBarcode') return ItemBarcode;
+      if (name === 'AuditLog') return null;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active',
+      category: 'product',
+      product_type: 'finished_goods',
+      sku_code: 'POS-GTIN-001',
+      name: 'POS GTIN Item',
+      manufacturer_barcode: { code: '4006381333931', scope: 'pos' }
+    }, 5);
+
+    expect(ItemBarcode.create).toHaveBeenCalledWith(expect.objectContaining({
+      item_id: 1004,
+      code: '4006381333931',
+      source: 'manufacturer',
+      scope: 'pos',
+      is_primary: true,
+      is_active: true
+    }), { transaction });
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
   });
 
   it('creates an admin-requested category in the same transaction as a new item', async () => {

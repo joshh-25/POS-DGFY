@@ -85,6 +85,7 @@ import {
   getFolders,
   getItems,
   lookupExternalProduct,
+  updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -99,6 +100,7 @@ import {
   subscribeToPosCatalogUpdates,
   subscribeToRemotePosCatalogUpdates
 } from '../utils/posCatalogRefresh.js';
+import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   updateStorefrontCatalogOverride,
@@ -2707,17 +2709,13 @@ function ItemsWorkspace({
       editSaveStage = 'barcode';
       const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
       const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
-      if (!barcodeSelection.shouldGenerate && barcodeSelection.code !== existingPrimaryCode) {
-        await attachItemBarcode(editItemId, {
-          code: barcodeSelection.code,
-          source: barcodeSelection.kind === 'gtin' ? 'manufacturer' : 'supplier',
-          scope: barcodeSelection.kind === 'gtin' ? 'inventory' : 'pos',
-          packaging_level: 'unit',
-          quantity_multiplier: 1,
-          is_primary: true,
-          metadata: { attached_via: 'pos_item_edit' }
-        });
-      }
+      await persistPosItemBarcode({
+        itemId: editItemId,
+        barcodeSelection,
+        existingPrimaryBarcode,
+        attachBarcode: attachItemBarcode,
+        updateBarcode: updateItemBarcode
+      });
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -3125,7 +3123,7 @@ function ItemsWorkspace({
       ...(barcodeSelection.code
         ? barcodeSelection.kind === 'manual'
           ? { internal_barcode: { code: barcodeSelection.code } }
-          : { manufacturer_barcode: { code: barcodeSelection.code } }
+          : { manufacturer_barcode: { code: barcodeSelection.code, scope: 'pos' } }
         : {}),
       status: 'active'
     };
