@@ -278,3 +278,37 @@ something that looks like an obvious single value, like a CORS origin — belong
 the live source, never assume" bucket, full stop. No `binding` clause is affected; this is an
 implementation-tooling correction, not a decision reversal.
 
+### 2026-08-29 — Phase 184 incident: `secrets/*.env` group ownership blocked the CI deploy account
+
+Found during Phase 184's first live `deploy-main.yml` PROD run
+(`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`). Not a values/corruption issue — a file-permissions
+gap that Phase 183's manual, `pat`-run cutover had no way to surface.
+
+Runbook Phase 2 (`phase182.sh encrypt`, run personally by Pat per Decision 7) created
+`secrets/{mysql,shared,dgfy-api}.env` with default ownership: `pat:pat`, mode `640`. That's correct
+for `pat`'s own manual runs — the file is readable by its owner and by anyone else in the `pat`
+group (nobody). It silently excludes the CI deploy account: `gha`'s groups are `gha`, `users`,
+`docker` — not `pat`. `deploy-sops.sh`'s decrypt loop (`sops decrypt --input-type dotenv "$f"`, fed
+into a `while read` export loop, never `source` — per Decision 6) failed permission-denied for
+`gha` on all three files; the loop got zero stdin and exported nothing, so the assembled
+environment came up empty. The in-image pre-flight gate correctly caught this and refused to
+deploy — but its error text (`ADMIN_ACCOUNTS_JSON account 0 requires a username and valid bcrypt
+password hash`) is identical in shape to Phase 183's real bcrypt-doubling data bug, so the two
+failure classes are indistinguishable from the gate's error message alone. Diagnosing which one
+actually occurred needs a permissions check (`ls -la`, `id`/`groups` — no secret values) before
+assuming a data-corruption repeat.
+
+**Fix:** `chgrp docker` + `chmod 640` on all three `secrets/*.env` files — no `sudo` required, since
+a file's own owner may `chgrp` it to any group they belong to, and `pat` is already in `docker`.
+Matches the scoping already used for `/etc/dgfy/age/keys.txt` (`root:docker 0640`) — `docker`
+already contains both `pat` and `gha`, so this is consistent with, not a widening of, the existing
+key-file access model.
+
+**Lesson for future work in this space:** any file Runbook Phase 2 (or an equivalent manual step)
+creates on the server must be group-owned `docker`, not left at its default per-user ownership, the
+moment more than one account (a human operator and a CI service account, at minimum) needs to read
+it. Verify this explicitly as part of Phase 2's own completion check next time, rather than
+discovering it only when a different account first attempts a real deploy. No `binding` clause is
+affected — Decision 6 and Decision 7 were both already correctly implemented; this is a file-mode
+gap in Phase 2's execution, not a design flaw in either decision.
+

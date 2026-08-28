@@ -10314,10 +10314,31 @@ script, closing out the initiative.
 
 ### Status
 
-- `planned` (unblocked 2026-08-29)
-- Phase 183 completed. PR #1136 is open (`main`) and ready, deliberately still unmerged pending
-  this phase's own execution -- re-verify `mergeStateStatus`/`mergeable` immediately before
-  merging, since several other PRs have landed on `main` since it was last checked.
+- `completed` (2026-08-29)
+- PR #1136 merged (`61e8614f8`). `deploy-main.yml` dispatched against `main` (run `33202986806`,
+  default full-rebuild inputs) — all 5 image builds succeeded, but `publish / deploy` failed on its
+  first attempt.
+- **Real incident found and fixed live, not a clean first run**: the `publish / deploy` job failed
+  the in-image pre-flight gate with the same symptom text as Phase 183's bcrypt-doubling bug
+  (`ADMIN_ACCOUNTS_JSON account 0 requires a username and valid bcrypt password hash`), but the root
+  cause this time was different — a **file-permissions gap**, not a data-corruption bug. All three
+  `secrets/*.env` files were `pat:pat 640` (owner+group `pat` only); the CI deploy account `gha` is
+  in `gha`/`users`/`docker` but not `pat`, so `sops decrypt` failed permission-denied for `gha`,
+  `deploy-sops.sh`'s export loop silently got zero output, and the assembled environment came up
+  empty — surfacing as the same-shaped "missing bcrypt hash" validator error. Confirmed via
+  `ls -la`/`id`/`groups` (no secret values needed) and independently re-verified the file's actual
+  content was fine via the same shape-only diagnostic used in Phase 183. Fixed by `chgrp docker` +
+  `chmod 640` on all three files (no `sudo` needed — `pat`, as file owner, can `chgrp` to any group
+  it belongs to) — same scoping model already used for `/etc/dgfy/age/keys.txt` (`root:docker
+  0640`), since `docker` already contains both `pat` and `gha`. This gap existed since Phase 182
+  first created these files (as `pat`, manually) and was never hit until this phase's CI-driven,
+  `gha`-executed deploy — Phase 183's manual cutover always ran as `pat`, the files' own owner.
+- Re-ran via `gh run rerun 33202986806 --failed` (reuses the same run's already-succeeded image
+  builds rather than rebuilding) — `publish / deploy` passed clean this time:
+  `[check-assembled-env] OK`, all containers recreated, `dgfy-api` reached `Healthy`.
+- `curl -fsS https://dgfy.ph/api/v1/health` post-deploy: `success: true`, database/redis connected,
+  `tenantSchema.status: "healthy"`, `failed_tenant_count: 0`.
+- `verify-deployment.yml` dispatched for PROD (read-only) — passed clean, run `33204461803`.
 
 ### Dependencies
 
@@ -10325,18 +10346,22 @@ script, closing out the initiative.
 
 ### Acceptance and validation evidence
 
-- [ ] PR #1136 merged.
-- [ ] A real `deploy-main.yml` PROD run through the edited workflow succeeds.
-- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — gated on
-  this phase passing *and* one further independent CI deploy also succeeding.
+- [x] PR #1136 merged.
+- [x] A real `deploy-main.yml` PROD run through the edited workflow succeeds (after the
+  file-permissions fix above; the retry via `--failed` counts as the same dispatch's successful
+  completion, not a separate independent deploy).
+- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — still
+  gated on one further **independent** CI deploy also succeeding (i.e. a second, separate
+  `deploy-main.yml`/`publish-platform.yml` PROD dispatch beyond this phase's own).
 - [ ] This initiative's changes back-ported to `develop` (fresh issue via `pm`, per
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port procedure — a closed/merged `main` PR
-  cannot itself `Refs` into a `For QA` transition).
+  cannot itself `Refs` into a `For QA` transition). Up next.
 
 ### Implementation links
 
 - PR #1136
 - `.github/workflows/publish-platform.yml`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`
 
 ### Next eligible phase
 
