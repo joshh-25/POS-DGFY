@@ -2624,6 +2624,7 @@ export const posRepository = {
             ),
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
+                ...buildItemFolderInclude(),
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ]
