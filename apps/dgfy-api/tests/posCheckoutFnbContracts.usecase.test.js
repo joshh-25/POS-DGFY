@@ -675,6 +675,7 @@ describe('POS checkout F&B contracts', () => {
                 governed_discount: null,
                 lines: [{
                     sequence: 0,
+                    line_ref: null,
                     item_id: 1,
                     quantity: 1,
                     sale_price: null,
