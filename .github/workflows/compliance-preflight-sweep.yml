@@ -74,10 +74,15 @@ jobs:
             # Explicit list -- one path per line, comma-split.
             printf '%s' "$DECLARATIONS_INPUT" | tr ',' '\n' | sed '/^\s*$/d' > /tmp/declarations.txt
           else
+            # Only the front matter's CURRENT preflight_request_ref decides "outstanding" --
+            # pr-reviewer RF-6 on PR #1127/#1121: a whole-file `grep NOT-EXECUTED-` also matches a
+            # reconciled declaration whose body still mentions the placeholder in a historical
+            # note (its front matter carries a real PROMOTER-* ref by then). See
+            # scripts/is-preflight-outstanding.js for the fix and its tests.
             git fetch origin main develop --quiet
             git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
               | while read -r f; do
-                  if [ -f "$f" ] && grep -q 'NOT-EXECUTED-' "$f"; then
+                  if [ -f "$f" ] && node scripts/is-preflight-outstanding.js "$f" > /dev/null; then
                     echo "$f"
                   fi
                 done > /tmp/declarations.txt || true
@@ -139,22 +144,11 @@ jobs:
             # pr-reviewer RF-2 on PR #1127/#1121: HTTP 200 alone is not success -- the endpoint
             # returns 200 for result=breach / result=review_required too (can_proceed=false). Only
             # result=no_breach AND can_proceed=true is an actual pass; anything else -- including
-            # unparseable JSON -- is a sweep failure, not a silently-recorded "swept".
-            verdict=$(node -e '
-              let raw = "";
-              try { raw = require("fs").readFileSync(0, "utf8"); } catch { raw = ""; }
-              let parsed = null;
-              try { parsed = JSON.parse(raw); } catch { parsed = null; }
-              const result = parsed && parsed.result;
-              const canProceed = parsed && parsed.can_proceed === true;
-              const pass = result === "no_breach" && canProceed;
-              process.stdout.write(JSON.stringify({
-                pass,
-                result: result || null,
-                can_proceed: parsed ? Boolean(parsed.can_proceed) : null,
-                reason_code: (parsed && parsed.reason_code) || null
-              }));
-            ' <<< "$response_body")
+            # unparseable JSON -- is a sweep failure, not a silently-recorded "swept". Parsing (and
+            # unwrapping the { success, data: {...} } envelope -- pr-reviewer RF-5) lives in
+            # scripts/parse-preflight-response.js, tested directly against that exact envelope
+            # shape rather than reimplemented inline here.
+            verdict=$(node scripts/parse-preflight-response.js <<< "$response_body")
 
             pass=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).pass))')
             result_value=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).result))')
