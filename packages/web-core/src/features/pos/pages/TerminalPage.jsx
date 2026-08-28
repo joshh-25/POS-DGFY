@@ -142,6 +142,7 @@ import {
   safeLocalStorageSet
 } from '../utils/posTerminalStorage.js';
 import { isPosTabletViewport } from '../utils/posTabletViewport.js';
+import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -259,10 +260,10 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 };
 
-// Short, screen-readable code shown on the inline Open Shift failure panel
-// so a cashier can read it off the terminal and a supervisor can find the
-// matching Sentry event by searching `pos_error_ref:<code>` -- see
-// captureTerminalFlowFailure in observability/sentryClient.js.
+// Short internal correlation code for matching a terminal failure to its
+// Sentry event by searching `pos_error_ref:<code>` -- see
+// captureTerminalFlowFailure in observability/sentryClient.js. It is kept out
+// of cashier-facing UI.
 const createTerminalErrorRef = () => {
   const raw = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID().replace(/-/g, '')
@@ -693,6 +694,10 @@ export default function TerminalPage() {
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView() || 'checkout');
+  const checkoutLifecycleRef = useRef(null);
+  const handleCheckoutLifecycleChange = useCallback((lifecycle) => {
+    checkoutLifecycleRef.current = lifecycle;
+  }, []);
   const hasInitializedPosViewRef = useRef(false);
   const previousSetupFlowActiveRef = useRef(null);
   const tenantSetupCompletionInFlightRef = useRef(false);
@@ -2795,6 +2800,20 @@ export default function TerminalPage() {
 
   useEffect(() => {
     const onSessionExpired = () => {
+      const clearStoredSaleDraft = () => {
+        clearPosCartDraft({
+          tenantId: activeTenantId,
+          terminalId: activeTerminalId,
+          locationId: shiftState?.shift?.location_id || operatingLocationId,
+          userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
+        }, activeShiftId);
+      };
+      const clearSessionSale = checkoutLifecycleRef.current?.clearTransientSaleForSessionEnd;
+      if (typeof clearSessionSale === 'function') {
+        Promise.resolve(clearSessionSale()).catch(clearStoredSaleDraft);
+      } else {
+        clearStoredSaleDraft();
+      }
       resetSettingsAccessPinState();
       setLoadingUser(false);
       setTerminalStartupReady(true);
@@ -2811,7 +2830,7 @@ export default function TerminalPage() {
       window.removeEventListener('auth:session-cleared', onSessionExpired);
       window.removeEventListener('auth:logout', onSessionExpired);
     };
-  }, [resetSettingsAccessPinState]);
+  }, [activeShiftId, activeTerminalId, activeTenantId, operatingLocationId, resetSettingsAccessPinState, shiftState?.shift?.location_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
 
   useEffect(() => {
     if (settingsAccessPinEnabled) return;
@@ -3206,9 +3225,9 @@ export default function TerminalPage() {
   // resolves the operator-facing message the same way the toast always has,
   // classifies whether it was a real network failure, a real HTTP error, or
   // a locally-thrown check (see classifyTerminalLoginFailure), then (a)
-  // keeps the toast for at-a-glance visibility, (b) retains a short reference
-  // code for the Open Shift dialog when that flow needs it, and (c) sends it to Sentry
-  // -- including local throws, which never touch axios and were previously
+  // keeps the toast for at-a-glance visibility, (b) retains internal
+  // correlation data for support diagnostics, and (c) sends it to Sentry --
+  // including local throws, which never touch axios and were previously
   // invisible in observability entirely.
   const reportTerminalFailure = (error, flow, { showToast = true } = {}) => {
     const message = resolveTerminalLoginErrorMessage(error);
@@ -3227,18 +3246,10 @@ export default function TerminalPage() {
   // impossible to read off the device.
   const renderUnlockFailurePanel = () => {
     if (!unlockFailure) return null;
-    const metaParts = [
-      unlockFailure.method && unlockFailure.requestPath
-        ? `${unlockFailure.method} ${unlockFailure.requestPath}`
-        : unlockFailure.requestPath,
-      unlockFailure.status ? `status ${unlockFailure.status}` : null,
-      `ref ${unlockFailure.ref}`
-    ].filter(Boolean);
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900" role="alert">
         <p className="font-semibold text-red-950">Could not open shift</p>
         <p className="mt-0.5">{unlockFailure.message}</p>
-        <p className="mt-1 font-mono text-[10px] text-red-700">{metaParts.join(' · ')}</p>
       </div>
     );
   };
@@ -4498,6 +4509,20 @@ export default function TerminalPage() {
     }
   };
 
+  const clearCurrentSaleForSessionEnd = useCallback(async () => {
+    const checkoutLifecycle = checkoutLifecycleRef.current;
+    if (typeof checkoutLifecycle?.clearTransientSaleForSessionEnd === 'function') {
+      await checkoutLifecycle.clearTransientSaleForSessionEnd();
+      return;
+    }
+    clearPosCartDraft({
+      tenantId: activeTenantId,
+      terminalId: activeTerminalId,
+      locationId: shiftState?.shift?.location_id || operatingLocationId,
+      userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
+    }, activeShiftId);
+  }, [activeShiftId, activeTerminalId, activeTenantId, operatingLocationId, shiftState?.shift?.location_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+
   const handleLock = async ({ forceLogin = false } = {}) => {
     const hasOpenShift = Boolean(activeShiftId) && !forceLogin;
     const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;
@@ -4541,6 +4566,8 @@ export default function TerminalPage() {
         }
       }
     }
+
+    await clearCurrentSaleForSessionEnd();
 
     if (adminLock) {
       takeoverShiftContextRef.current = null;
@@ -5737,6 +5764,13 @@ export default function TerminalPage() {
         return;
       }
     }
+    if (CHECKOUT_VIEW_MODES.includes(posViewMode) && nextMode !== 'checkout') {
+      const mayLeaveCheckout = checkoutLifecycleRef.current?.requestViewModeChange?.(nextMode);
+      if (mayLeaveCheckout === false) {
+        setMobileNavOpen(false);
+        return;
+      }
+    }
     if (isShiftExemptViewMode && shiftClosedToastIdRef.current) {
       toast.dismiss(shiftClosedToastIdRef.current);
       shiftClosedToastIdRef.current = null;
@@ -5751,6 +5785,7 @@ export default function TerminalPage() {
     canViewAudit,
     canViewPos,
     commitViewModeSelection,
+    posViewMode,
     isCashierRole,
     isOnline,
     locked,
@@ -5780,6 +5815,13 @@ export default function TerminalPage() {
       setSettingsAccessPinValue('');
       const nextMode = String(pendingSettingsViewMode || 'settings_profile').trim() || 'settings_profile';
       setPendingSettingsViewMode('');
+      if (CHECKOUT_VIEW_MODES.includes(posViewMode) && nextMode !== 'checkout') {
+        const mayLeaveCheckout = checkoutLifecycleRef.current?.requestViewModeChange?.(nextMode);
+        if (mayLeaveCheckout === false) {
+          setMobileNavOpen(false);
+          return;
+        }
+      }
       commitViewModeSelection(nextMode);
       toast.success('POS tools unlocked for this session.');
     } catch (error) {
@@ -5787,7 +5829,7 @@ export default function TerminalPage() {
     } finally {
       setSettingsAccessPinSubmitting(false);
     }
-  }, [commitViewModeSelection, hydrateTerminalMeta, pendingSettingsViewMode, settingsAccessPinValue]);
+  }, [commitViewModeSelection, hydrateTerminalMeta, pendingSettingsViewMode, posViewMode, settingsAccessPinValue]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
@@ -6382,6 +6424,7 @@ function PosRestorationLoadingScreen() {
           todayDashboard={todayDashboard}
           reportRefreshKey={reportRefreshKey}
           employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
+          onCheckoutLifecycleChange={handleCheckoutLifecycleChange}
           openShiftForm={openShiftForm}
           setOpenShiftForm={setOpenShiftForm}
           cashEventForm={cashEventForm}
@@ -6436,7 +6479,7 @@ function PosRestorationLoadingScreen() {
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
           posTextSize={posTextSize}
           onPosTextSizeChange={handlePosTextSizeChange}
-          setPosViewMode={setPosViewMode}
+          setPosViewMode={commitViewModeSelection}
           modeChangeNotice={modeChangeNotice}
           dismissModeChangeNotice={dismissModeChangeNotice}
           receiptRequestId={receiptRequestId}

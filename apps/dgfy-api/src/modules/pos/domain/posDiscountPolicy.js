@@ -9,6 +9,78 @@ const positiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
+const normalizeSelectedDiscountItems = (draft) => {
+    const entries = (Array.isArray(draft?.eligible_items) ? draft.eligible_items : [])
+        .map((entry) => {
+            const itemId = positiveInt(entry?.item_id);
+            const eligibleQuantity = Number(entry?.eligible_quantity);
+            if (!itemId || !Number.isFinite(eligibleQuantity) || eligibleQuantity <= 0) return null;
+            const lineRef = text(entry?.line_ref);
+            return {
+                ...(lineRef ? { line_ref: lineRef } : {}),
+                item_id: itemId,
+                eligible_quantity: eligibleQuantity
+            };
+        })
+        .filter(Boolean);
+    if (entries.length > 0) {
+        return [...new Map(entries.map((entry) => [entry.line_ref || `item:${entry.item_id}`, entry])).values()];
+    }
+    return [...new Set((Array.isArray(draft?.eligible_item_ids) ? draft.eligible_item_ids : [])
+        .map(positiveInt)
+        .filter(Boolean))]
+        .map((itemId) => ({ item_id: itemId }));
+};
+const resolveSelectedDiscountLines = (lines, selectedItems, {
+    invalidQuantityMessage = 'Selected discount quantity exceeds the cart quantity.',
+    invalidQuantityReason = 'DISCOUNT_QUANTITY_INVALID'
+} = {}) => {
+    if (selectedItems.length === 0) return lines;
+    const indexedLines = lines.map((line, index) => ({ line, index }));
+    const resolved = new Map();
+
+    selectedItems.forEach((selected) => {
+        const selectedLineRef = text(selected.line_ref);
+        const matches = indexedLines.filter(({ line }) => (
+            positiveInt(line.item_id) === selected.item_id
+            && (!selectedLineRef || text(line.line_ref) === selectedLineRef)
+        ));
+        if (matches.length === 0) {
+            validationError('The selected discount items are no longer in the cart.', 'DISCOUNT_ITEM_SELECTION_INVALID', {
+                item_id: selected.item_id,
+                line_ref: selectedLineRef || null
+            });
+        }
+        if (!selectedLineRef && selected.eligible_quantity != null && matches.length > 1) {
+            validationError(
+                'A selected item appears on multiple cart lines. Refresh the discount and select the exact line again.',
+                'DISCOUNT_LINE_SELECTION_AMBIGUOUS',
+                { item_id: selected.item_id }
+            );
+        }
+        matches.forEach(({ line, index }) => {
+            const quantity = Number(line.quantity || 0);
+            if (selected.eligible_quantity != null && selected.eligible_quantity > quantity) {
+                validationError(invalidQuantityMessage, invalidQuantityReason, {
+                    item_ids: [selected.item_id],
+                    line_refs: selectedLineRef ? [selectedLineRef] : []
+                });
+            }
+            const selectedQuantity = selected.eligible_quantity == null ? quantity : selected.eligible_quantity;
+            const lineSubtotal = Number(line.line_subtotal ?? (quantity * Number(line.sale_price || 0)));
+            const unitSubtotal = quantity > 0 ? lineSubtotal / quantity : 0;
+            resolved.set(index, {
+                ...line,
+                quantity: selectedQuantity,
+                line_subtotal: round4(selectedQuantity * unitSubtotal)
+            });
+        });
+    });
+
+    return [...resolved.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, line]) => line);
+};
 
 const validationError = (message, reasonCode, details = {}) => {
     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, message, {
@@ -60,10 +132,21 @@ export const resolvePosGovernedDiscount = async ({
     }
 
     if (type === 'promo') {
+        const requestedItems = normalizeSelectedDiscountItems(draft);
+        const requestedItemIds = requestedItems.map((entry) => entry.item_id);
+        const scopedPreparedLines = requestedItemIds.length > 0
+            ? resolveSelectedDiscountLines(preparedLines, requestedItems)
+            : preparedLines;
+        if (requestedItemIds.length > 0 && scopedPreparedLines.length === 0) {
+            validationError('The selected discount items are no longer in the cart.', 'DISCOUNT_ITEM_SELECTION_INVALID');
+        }
+        const scopedSubtotalAmount = requestedItemIds.length > 0
+            ? round4(scopedPreparedLines.reduce((sum, line) => sum + round4(line.line_subtotal ?? (Number(line.quantity) * Number(line.sale_price))), 0))
+            : subtotalAmount;
         const promo = resolveCommercialPromoApplication({
             settings,
             promoCode: draft.promo_code,
-            prepared: { preparedLines, subtotalAmount },
+            prepared: { preparedLines: scopedPreparedLines, subtotalAmount: scopedSubtotalAmount },
             channel: 'pos',
             orderMethod
         });
@@ -76,7 +159,9 @@ export const resolvePosGovernedDiscount = async ({
                 rate: promo.discountRate,
                 amount: null,
                 promo_code: promo.enteredPromoCode,
-                lines: promo.eligibleItemIds.map((itemId) => ({ item_id: itemId }))
+                lines: requestedItems.length > 0
+                    ? requestedItems.filter((entry) => promo.eligibleItemIds.includes(entry.item_id))
+                    : promo.eligibleItemIds.map((itemId) => ({ item_id: itemId }))
             },
             promo
         };
@@ -90,10 +175,19 @@ export const resolvePosGovernedDiscount = async ({
         if (!voucherCode) {
             validationError('Voucher code is required.', 'VOUCHER_CODE_REQUIRED');
         }
-        // Sale-level only (settled 2026-08-20, #712) -- a voucher's own `voucher_scopes`/pricelist
-        // decides which lines it touches, exactly as on the storefront. Pass every prepared line;
-        // the redemption use case resolves eligibility itself.
-        const voucherLines = preparedLines.map((line) => ({
+        // Preserve the existing empty-selection contract for older clients, while allowing the
+        // unified POS selector to narrow the lines the voucher may discount. The voucher's own
+        // scopes/pricelist still decide eligibility within this selected set.
+        const requestedItems = normalizeSelectedDiscountItems(draft);
+        const requestedItemIds = requestedItems.map((entry) => entry.item_id);
+        const scopedVoucherPreparedLines = requestedItemIds.length > 0
+            ? resolveSelectedDiscountLines(preparedLines, requestedItems)
+            : preparedLines;
+        if (requestedItemIds.length > 0 && scopedVoucherPreparedLines.length === 0) {
+            validationError('The selected discount items are no longer in the cart.', 'DISCOUNT_ITEM_SELECTION_INVALID');
+        }
+        const voucherLines = scopedVoucherPreparedLines.map((line) => ({
+            line_ref: text(line.line_ref) || null,
             item_id: line.item_id,
             quantity: line.quantity,
             sale_price: line.sale_price,
@@ -122,7 +216,10 @@ export const resolvePosGovernedDiscount = async ({
                 promo_code: voucher.code,
                 lines: (voucher.lineAllocations || [])
                     .filter((allocation) => allocation.eligible !== false)
-                    .map((allocation) => ({ item_id: allocation.item_id }))
+                    .map((allocation) => ({
+                        ...(text(allocation.line_ref) ? { line_ref: text(allocation.line_ref) } : {}),
+                        item_id: allocation.item_id
+                    }))
             },
             promo: null,
             voucher
@@ -143,44 +240,32 @@ export const resolvePosGovernedDiscount = async ({
         if (!text(draft.customer_name) || !text(draft.id_number)) {
             validationError('Customer name and Senior/PWD ID number are required.', 'STATUTORY_IDENTITY_REQUIRED');
         }
-        const selectedItems = Array.isArray(draft.eligible_items) && draft.eligible_items.length > 0
-            ? draft.eligible_items.map((entry) => ({
-                item_id: positiveInt(entry?.item_id),
-                eligible_quantity: Number(entry?.eligible_quantity)
-            })).filter((entry) => entry.item_id && Number.isFinite(entry.eligible_quantity) && entry.eligible_quantity > 0)
-            : [...new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : []).map(positiveInt).filter(Boolean))]
-                .map((itemId) => ({ item_id: itemId, eligible_quantity: null }));
+        const selectedItems = normalizeSelectedDiscountItems(draft);
         const selectedIds = [...new Set(selectedItems.map((entry) => entry.item_id))];
         if (selectedIds.length === 0) validationError('Select at least one eligible item.', 'STATUTORY_ITEM_SELECTION_REQUIRED');
-        const linesByItemId = new Map(preparedLines.map((line) => [positiveInt(line.item_id), line]));
-        const invalidIds = selectedIds.filter((itemId) => !isSeniorPwdDiscountEligible(linesByItemId.get(itemId)?.senior_pwd_discount_eligible));
-        if (invalidIds.length > 0) {
-            validationError('One or more selected items are not eligible for Senior/PWD discount.', 'STATUTORY_ITEM_NOT_ELIGIBLE', { item_ids: invalidIds });
-        }
-        const invalidQuantities = selectedItems.filter((entry) => {
-            const line = linesByItemId.get(entry.item_id);
-            return entry.eligible_quantity != null && entry.eligible_quantity > Number(line?.quantity || 0);
+        const selectedLines = resolveSelectedDiscountLines(preparedLines, selectedItems, {
+            invalidQuantityMessage: 'Selected Senior/PWD quantity exceeds the cart quantity.',
+            invalidQuantityReason: 'STATUTORY_QUANTITY_INVALID'
         });
-        if (invalidQuantities.length > 0) {
-            validationError('Selected Senior/PWD quantity exceeds the cart quantity.', 'STATUTORY_QUANTITY_INVALID', { item_ids: invalidQuantities.map((entry) => entry.item_id) });
+        const invalidLines = selectedLines.filter((line) => !isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible));
+        if (invalidLines.length > 0) {
+            validationError('One or more selected items are not eligible for Senior/PWD discount.', 'STATUTORY_ITEM_NOT_ELIGIBLE', {
+                item_ids: [...new Set(invalidLines.map((line) => positiveInt(line.item_id)))],
+                line_refs: invalidLines.map((line) => text(line.line_ref)).filter(Boolean)
+            });
         }
         application.method = 'percentage';
         application.rate = Number(rule.rate ?? 20);
         application.amount = null;
-        application.lines = selectedItems.map((entry) => ({ item_id: entry.item_id, ...(entry.eligible_quantity != null ? { eligible_quantity: entry.eligible_quantity } : {}) }));
+        application.lines = selectedItems.map((entry) => ({ ...entry }));
     }
 
     if (['employee', 'manual'].includes(type)) {
-        const selectedItemIds = [...new Set((Array.isArray(draft.eligible_item_ids) ? draft.eligible_item_ids : [])
-            .map(positiveInt)
-            .filter(Boolean))];
+        const selectedItems = normalizeSelectedDiscountItems(draft);
+        const selectedItemIds = selectedItems.map((entry) => entry.item_id);
         if (selectedItemIds.length > 0) {
-            const linesByItemId = new Map(preparedLines.map((line) => [positiveInt(line.item_id), line]));
-            const selectedLines = selectedItemIds.filter((itemId) => linesByItemId.has(itemId));
-            if (selectedLines.length === 0) {
-                validationError('The selected discount items are no longer in the cart.', 'DISCOUNT_ITEM_SELECTION_INVALID');
-            }
-            application.lines = selectedLines.map((itemId) => ({ item_id: itemId }));
+            resolveSelectedDiscountLines(preparedLines, selectedItems);
+            application.lines = selectedItems.map((entry) => ({ ...entry }));
         }
     }
 

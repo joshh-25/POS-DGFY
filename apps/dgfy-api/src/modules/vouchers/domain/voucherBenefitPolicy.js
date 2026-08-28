@@ -107,6 +107,7 @@ const normalizeLines = (lines) => (Array.isArray(lines) ? lines : []).map((line,
     const costPerUnitCentavos = line?.costPerUnitCentavos == null ? null : toNonNegativeInteger(line.costPerUnitCentavos);
     return {
         index,
+        line_ref: String(line?.line_ref || '').trim() || null,
         item_id: line?.item_id ?? null,
         quantity,
         baseUnitPriceCentavos,
@@ -292,6 +293,7 @@ export const calculateVoucherBenefit = ({
             ? Math.round(((line.quantity * line.baseUnitPriceCentavos) - lineDiscountCentavos) / line.quantity)
             : line.baseUnitPriceCentavos;
         return {
+            line_ref: line.line_ref,
             item_id: line.item_id,
             quantity: line.quantity,
             baseUnitPriceCentavos: line.baseUnitPriceCentavos,

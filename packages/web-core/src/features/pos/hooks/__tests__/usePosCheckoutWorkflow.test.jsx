@@ -136,6 +136,7 @@ const createBaseProps = (overrides = {}) => ({
     setDiscountModalOpen: vi.fn(),
     setShowDiscountPin: vi.fn(),
     setAffiliateCodeInput: vi.fn(),
+    setCustomerPaymentAmountAutoFilled: vi.fn(),
     setCustomerPaymentAmountInput: vi.fn(),
     setOrderMethod: vi.fn(),
     setTableNumber: vi.fn(),
@@ -193,6 +194,7 @@ describe('usePosCheckoutWorkflow', () => {
             shift_id: 4,
             payment_type: 'cash',
             lines: [{
+                line_ref: 'line-7',
                 item_id: 7,
                 quantity: 1,
                 sale_price: 100,
@@ -210,6 +212,26 @@ describe('usePosCheckoutWorkflow', () => {
                 expect.objectContaining({ resolution_source: 'network_success' })
             );
         });
+    });
+
+    it('clears only discount state when a discount is removed', () => {
+        const { result, props } = renderCheckout();
+
+        act(() => {
+            result.current.resetDiscountState();
+        });
+
+        expect(props.setAppliedDiscount).toHaveBeenCalledWith(null);
+        expect(props.setSelectedDiscountProfile).toHaveBeenCalledWith('');
+        expect(props.setDiscountModalOpen).toHaveBeenCalledWith(false);
+        expect(props.setOrderMethod).not.toHaveBeenCalled();
+        expect(props.setTableNumber).not.toHaveBeenCalled();
+        expect(props.setKitchenNotes).not.toHaveBeenCalled();
+        expect(props.setPaymentType).not.toHaveBeenCalled();
+        expect(props.resetEmployeeCredit).not.toHaveBeenCalled();
+        expect(props.setAffiliateCodeInput).not.toHaveBeenCalled();
+        expect(props.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
+        expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalled();
     });
 
     it('uses the confirmed dialog payment snapshot instead of stale shell payment state', async () => {
@@ -522,6 +544,28 @@ describe('usePosCheckoutWorkflow', () => {
         });
         expect(clearPosSplitPaymentSessionPointer).toHaveBeenCalledWith('tenant:1:9:COUNTER-01:4:2');
         expect(props.setSplitPaymentSession).toHaveBeenCalledWith(null);
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
+    });
+
+    it('clears the checkout modal draft on cancel without clearing the current cart', async () => {
+        const { result, props } = renderCheckout({
+            appliedDiscount: { type: 'employee', employee_directory_id: 44 },
+            paymentType: 'employee_credit',
+            customerPaymentAmountInput: '148.75'
+        });
+
+        await act(async () => {
+            await result.current.handleCancelCheckout();
+        });
+
+        expect(props.setCart).not.toHaveBeenCalled();
+        expect(props.setOrderMethod).toHaveBeenCalledWith('dine_in');
+        expect(props.setTableNumber).toHaveBeenCalledWith('');
+        expect(props.setPaymentType).toHaveBeenCalledWith('cash');
+        expect(props.resetEmployeeCredit).toHaveBeenCalledTimes(1);
+        expect(props.setAppliedDiscount).toHaveBeenCalledWith(null);
+        expect(props.setCustomerPaymentAmountInput).toHaveBeenCalledWith('');
+        expect(props.setCustomerPaymentAmountAutoFilled).toHaveBeenCalledWith(false);
         expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
     });
 });

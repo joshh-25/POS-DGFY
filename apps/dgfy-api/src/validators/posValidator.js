@@ -27,6 +27,7 @@ const restaurantServiceChargeSchema = Joi.object({
 });
 
 const checkoutLineSchema = Joi.object({
+    line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
     item_id: Joi.number().integer().positive().required().messages({
         'any.required': 'Item ID is required',
         'number.positive': 'Item ID must be positive'
@@ -117,6 +118,7 @@ const governedDiscountSchema = Joi.object({
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
     eligible_items: Joi.array().items(Joi.object({
+        line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).max(100).default([]),
@@ -912,6 +914,33 @@ const mobilePosCheckoutSyncSchema = Joi.object({
     entries: Joi.array().items(mobilePosCheckoutSyncEntrySchema).required()
 });
 
+const mobilePosTransactionCheckpointQuerySchema = Joi.object({
+    cursor: Joi.string().trim().max(1000).allow('', null).optional(),
+    limit: Joi.number().integer().min(1).max(200).default(100),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const mobilePosVoidSyncEntrySchema = Joi.object({
+    local_transaction_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        local_availment_id: Joi.string().trim().max(120).required(),
+        transaction_id: Joi.number().integer().positive().allow(null).required(),
+        reason: Joi.string().trim().min(3).max(255).required(),
+        shift_id: Joi.number().integer().positive().allow(null).required(),
+        terminal_id: Joi.string().trim().max(100).required(),
+        expected_status: Joi.string().valid('completed').required(),
+        expected_server_version: Joi.date().iso().allow(null).optional()
+    }).required().unknown(true)
+});
+
+const mobilePosVoidSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosVoidSyncEntrySchema).required()
+});
+
 const mobilePosShiftSyncEntrySchema = Joi.object({
     local_operation_id: Joi.string().trim().max(120).required(),
     operation_type: Joi.string().valid('shift_open', 'switch_location', 'cash_event', 'shift_close').required(),
@@ -1144,6 +1173,8 @@ export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema,
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
 export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
+export const validateMobilePosTransactionCheckpointQuery = validateSchema(mobilePosTransactionCheckpointQuerySchema, 'query', 'validatedQuery');
+export const validateMobilePosVoidSync = validateSchema(mobilePosVoidSyncSchema, 'body', 'validatedData');
 export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema, 'body', 'validatedData');
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
 export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');

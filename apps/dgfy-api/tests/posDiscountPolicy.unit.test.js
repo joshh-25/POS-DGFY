@@ -84,6 +84,105 @@ describe('POS governed discount policy', () => {
         expect(result.promo.discountAmount).toBe(8);
     });
 
+    test('honors the selected item scope when applying a configured promo', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'promo',
+                promo_code: 'SAVE10',
+                customer_name: 'Promo Buyer',
+                eligible_item_ids: [1]
+            },
+            preparedLines,
+            subtotalAmount: 180,
+            settings: {
+                storefront_promo: {
+                    value: { active: true, promo_code: 'SAVE10', discount_percent: 10, target_item_ids: [1, 2] }
+                }
+            }
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 1 }]);
+        expect(result.promo.discountAmount).toBe(10);
+    });
+
+    test('preserves selected quantities for employee discounts', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                employee_directory_id: 42,
+                customer_name: '',
+                eligible_item_ids: [1],
+                eligible_items: [{ item_id: 1, eligible_quantity: 0.5 }]
+            },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 100, line_subtotal: 200 }],
+            subtotalAmount: 200,
+            findActiveRule: async () => rules.employee,
+            findActiveEmployeeDirectory: async () => ({ employee_id: 42, employee_code: 'E-42', full_name: 'Staff Member', email: 'staff@example.com' })
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 1, eligible_quantity: 0.5 }]);
+    });
+
+    test('preserves exact line selection when duplicate cart lines share an item ID', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                employee_directory_id: 42,
+                eligible_items: [{ line_ref: 'coffee-cold', item_id: 1, eligible_quantity: 1 }]
+            },
+            preparedLines: [
+                { line_ref: 'coffee-hot', item_id: 1, quantity: 1, sale_price: 100, line_subtotal: 100 },
+                { line_ref: 'coffee-cold', item_id: 1, quantity: 1, sale_price: 150, line_subtotal: 150 }
+            ],
+            subtotalAmount: 250,
+            findActiveRule: async () => rules.employee,
+            findActiveEmployeeDirectory: async () => ({ employee_id: 42, employee_code: 'E-42', full_name: 'Staff Member', email: 'staff@example.com' })
+        });
+
+        expect(result.application.lines).toEqual([
+            { line_ref: 'coffee-cold', item_id: 1, eligible_quantity: 1 }
+        ]);
+    });
+
+    test('rejects ambiguous quantity selection from a legacy client when duplicate lines share an item ID', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: {
+                type: 'employee',
+                employee_directory_id: 42,
+                eligible_items: [{ item_id: 1, eligible_quantity: 1 }]
+            },
+            preparedLines: [
+                { line_ref: 'coffee-hot', item_id: 1, quantity: 1, sale_price: 100, line_subtotal: 100 },
+                { line_ref: 'coffee-cold', item_id: 1, quantity: 1, sale_price: 150, line_subtotal: 150 }
+            ],
+            subtotalAmount: 250,
+            findActiveRule: async () => rules.employee,
+            findActiveEmployeeDirectory: async () => ({ employee_id: 42, employee_code: 'E-42', full_name: 'Staff Member' })
+        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_LINE_SELECTION_AMBIGUOUS' } });
+    });
+
+    test('preserves selected quantities for configured promos', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'promo',
+                promo_code: 'SAVE10',
+                customer_name: 'Promo Buyer',
+                eligible_item_ids: [1],
+                eligible_items: [{ item_id: 1, eligible_quantity: 0.5 }]
+            },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 100, line_subtotal: 200 }],
+            subtotalAmount: 200,
+            settings: {
+                storefront_promo: {
+                    value: { active: true, promo_code: 'SAVE10', discount_percent: 10, target_item_ids: [1] }
+                }
+            }
+        });
+
+        expect(result.application.lines).toEqual([{ item_id: 1, eligible_quantity: 0.5 }]);
+        expect(result.promo.discountAmount).toBe(5);
+    });
+
     test('resolves promo rate and targets from multiple Storefront promo configurations', async () => {
         const result = await resolvePosGovernedDiscount({
             draft: { type: 'promo', promo_code: ' meal15 ', method: 'fixed', rate: 99, customer_name: 'Promo Buyer' },
@@ -365,7 +464,47 @@ describe('POS governed discount policy', () => {
             });
         });
 
-        test('passes every prepared line to redeemVoucher, sale-level only (no per-line scoping)', async () => {
+        test('passes only selected lines to redeemVoucher while preserving all-line fallback', async () => {
+            let capturedLines = null;
+            await resolvePosGovernedDiscount({
+                draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'GRACEOFFER', eligible_item_ids: [2] },
+                preparedLines,
+                subtotalAmount: 180,
+                redeemVoucher: async ({ lines }) => {
+                    capturedLines = lines;
+                    return percentOffVoucher;
+                }
+            });
+
+            expect(capturedLines).toEqual([
+                expect.objectContaining({ item_id: 2 })
+            ]);
+        });
+
+        test('passes the selected quantity to redeemVoucher', async () => {
+            let capturedLines = null;
+            await resolvePosGovernedDiscount({
+                draft: {
+                    type: 'voucher',
+                    customer_name: 'Walk-in Customer',
+                    voucher_code: 'GRACEOFFER',
+                    eligible_item_ids: [1],
+                    eligible_items: [{ item_id: 1, eligible_quantity: 0.5 }]
+                },
+                preparedLines: [{ item_id: 1, quantity: 2, sale_price: 100, line_subtotal: 200 }],
+                subtotalAmount: 200,
+                redeemVoucher: async ({ lines }) => {
+                    capturedLines = lines;
+                    return percentOffVoucher;
+                }
+            });
+
+            expect(capturedLines).toEqual([
+                expect.objectContaining({ item_id: 1, quantity: 0.5, line_subtotal: 50 })
+            ]);
+        });
+
+        test('passes every prepared line when no selection is supplied for legacy clients', async () => {
             let capturedLines = null;
             await resolvePosGovernedDiscount({
                 draft: { type: 'voucher', customer_name: 'Walk-in Customer', voucher_code: 'GRACEOFFER' },
