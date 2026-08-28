@@ -1,10 +1,72 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StoreCatalogEmptyStates } from '../features/shared-storefront/components/StoreCatalogEmptyStates.jsx';
 import { StorefrontBranchSwitchFeedback } from '../shared/components/storefront/StorefrontBranchSwitchFeedback.jsx';
+import { requestJson } from '../services/requestJson.js';
+import { useStoreCatalogLoader } from '../shared/hooks/useStoreCatalogLoader.js';
+
+vi.mock('../services/requestJson.js', () => ({
+  requestJson: vi.fn()
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn()
+  }
+}));
+
+const buildLoaderProps = (slug = 'storefront') => ({
+  routeSlug: '',
+  routeSubpage: '',
+  routeServiceItemId: null,
+  routeItemId: null,
+  isStorePage: true,
+  selectedStore: { slug, workflow_mode: 'fnb' },
+  setSelectedStore: vi.fn(),
+  setRouteSlug: vi.fn(),
+  preferredStoreLocationSelection: null,
+  voucherCode: ''
+});
+
+describe('useStoreCatalogLoader branch refresh state', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    requestJson.mockImplementation(() => new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('clears branch feedback when an in-flight catalog request is canceled', () => {
+    const { result, rerender, unmount } = renderHook(
+      (props) => useStoreCatalogLoader(props),
+      { initialProps: buildLoaderProps() }
+    );
+
+    act(() => {
+      result.current.setStoreLocations([{ location_id: 7, name: 'Second Branch' }]);
+    });
+    act(() => {
+      result.current.handleBranchMenuSelection('7');
+    });
+
+    expect(result.current.branchSwitchFeedback).toEqual({ label: 'Second Branch' });
+
+    act(() => {
+      rerender(buildLoaderProps('different-storefront'));
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(result.current.branchSwitchFeedback).toBeNull();
+    unmount();
+  });
+});
 
 describe('StoreCatalogEmptyStates branch refresh state', () => {
   it('shows an in-place loading message while a populated catalog refreshes', () => {

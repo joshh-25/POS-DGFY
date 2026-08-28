@@ -419,6 +419,7 @@ export function useStoreCatalogLoader({
       // bypasses this by calling openStoreBySlug directly, which never
       // reads lastCatalogKeyRef, so it still forces a real refetch.
       if (lastCatalogKeyRef.current === catalogKey) {
+        // A matching pending manual switch is the only case that produces this toast.
         completeBranchSwitchFeedback(selectedLocationId, { notify: true });
         return;
       }
@@ -438,6 +439,7 @@ export function useStoreCatalogLoader({
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         applyCatalogResponse(catalogData);
         lastCatalogKeyRef.current = catalogKey;
+        // A matching pending manual switch is the only case that produces this toast.
         completeBranchSwitchFeedback(selectedLocationId, { notify: true });
       } catch (error) {
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
@@ -454,6 +456,8 @@ export function useStoreCatalogLoader({
     return () => {
       cancelled = true;
       abortController.abort();
+      // Superseded requests must also release any overlay for this effect's location.
+      completeBranchSwitchFeedback(selectedLocationId);
     };
     }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, selectedStore?.slug, selectedLocationId, voucherCode]);
 
