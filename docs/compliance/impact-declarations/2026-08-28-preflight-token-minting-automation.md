@@ -7,7 +7,7 @@ classification: minor
 surfaces: compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.28
-verification_evidence: node --check scripts/mint-preflight-token.js,node --check scripts/build-preflight-request.js,node --test scripts/build-preflight-request.test.js,npm run check:compliance,manual dry-run of scripts/mint-preflight-token.js and the sweep workflow's result-gating logic against a local target (documented in PR)
+verification_evidence: node --check on every scripts/*.js added,node --test across build-preflight-request.test.js parse-preflight-response.test.js is-preflight-outstanding.test.js (20 cases),npm run check:compliance,manual dry-run against a local fake server covering no_breach/breach/review_required envelopes and a live regression check against a real reconciled declaration in this repo (documented in PR)
 rollback_note: Revert scripts/mint-preflight-token.js, .github/workflows/compliance-preflight-sweep.yml, the docs/promoter-skill edits, and this declaration together. Nothing here changes any runtime authorization decision, schema, or persisted business state — reverting restores the prior manual-token-paste procedure exactly as it was, with no cleanup required on any host. No bot account or GitHub secret this PR documents is created by the revert itself; those remain a separate manual step either way.
 ---
 
