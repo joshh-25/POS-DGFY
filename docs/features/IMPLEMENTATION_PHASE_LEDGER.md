@@ -10261,11 +10261,35 @@ DevOps Initiative 1 — secrets management (#360). The actual server-side cutove
 
 ### Status
 
-- `planned` (unblocked 2026-08-29)
-- Phase 182 completed 2026-08-29 — this phase's sole dependency is now clear. Not yet started;
-  needs Pat's own execution window (Runbook Phases 3-5) since the compose reconciliation and the
-  targeted `up -d` both touch the live server.
-- **2026-08-29 amendment:** the original sequencing blocked this phase on PR #1130 (a separate,
+- `completed` (2026-08-29)
+- Executed by Pat personally over SSH per ADR 0060 Decision 7 (real secret values, `sudo`, and
+  physical server access are all AI-excluded); the AI session wrote/tested the reconciliation and
+  gate-check tooling and ran every non-secret-touching step directly (an explicit go given each
+  time it touched the live server), per this repo's Worker checkpoint policy.
+- **Real incident found and fixed live**, not merely a clean run: the compose-reconciliation
+  tooling wrongly hardcoded 3 bucket-B values (`CORS_ORIGIN`, `TEMP_FILE_STORAGE`,
+  `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`) as assumed "policy literals" instead of reading them
+  from the live `.env`. `CORS_ORIGIN` broke production CORS for every non-bare-domain origin
+  (`pos.dgfy.ph` returned `CORS_NOT_ALLOWED`) until caught by Pat's own manual smoke test; the
+  other two were silently wrong (no validator error, just incorrect runtime behavior). Fixed live
+  on the server (confirmed via the same failing request returning `200`), and fixed at the source
+  in `infrastructure/docker/env/prod.sops-cutover-fragment.yml` + ADR 0060's Amendments (PR #1148,
+  merged `52d5624`) so the tooling can't repeat the mistake on a future run. Full incident writeup:
+  ADR 0060, "2026-08-29 — Real cutover incident."
+- **A separate, self-flagged process violation occurred during debugging**: a broad `grep`
+  (run by the AI session) against the live `.env` returned the full `ADMIN_ACCOUNTS_JSON` line,
+  including both admin accounts' complete bcrypt `password_hash` values — a real ADR 0060
+  Decision 7 violation, self-caught and disclosed immediately. Pat's call: defer rotation to a
+  later full-SOPS rotation pass rather than doing it ad hoc (see local memory note
+  `admin-hash-exposure-rotation-deferred.md` for tracking).
+- A separate, genuine data-quality bug was also found and fixed during this phase (not a #360
+  tooling bug): both admin accounts' `ADMIN_ACCOUNTS_JSON` `password_hash` values had every
+  literal `$` doubled to `$$` (a defensive-escaping artifact that was never actually needed for
+  `.env`), failing the boot-time bcrypt-pattern validator. Fixed by undoubling (lossless,
+  no new password needed) after a shape-only diagnostic (never displaying the hash itself)
+  confirmed it was a pure formatting corruption, not truncation.
+- **2026-08-29 amendment (pre-execution sequencing decision, recorded for history):** the original
+  sequencing blocked this phase on PR #1130 (a separate,
   unrelated `staging`->`main` application-code promotion) merging and being verified healthy first,
   so a post-cutover problem would be diagnosable against a known-good baseline rather than
   conflated with a 100-file release. Pat's call: decoupled instead — #1130 (or whatever promotion
@@ -10279,23 +10303,30 @@ DevOps Initiative 1 — secrets management (#360). The actual server-side cutove
 ### Dependencies
 
 - Phase 180, 181, 182 completed.
-- (No longer depends on PR #1130 — see the 2026-08-29 amendment above.)
+- (No longer depends on PR #1130 — see the 2026-08-29 sequencing amendment above.)
 
 ### Acceptance and validation evidence
 
-- [ ] Dry-run gate (Runbook Phase 4): clean `sops decrypt`, zero empty interpolations, in-image
-  pre-flight gate passes against the real assembled environment.
-- [ ] `docker compose ps` all healthy post-cutover (`dgfy-api` needs up to ~104s — do not call it
-  failed early).
-- [ ] `curl -fsS https://dgfy.ph/api/v1/health` (not `beta.dgfy.ph`, which 301-redirects).
-- [ ] `[entrypoint] Tenant schema sync: all active tenants OK.` in the production logs.
-- [ ] Manual smoke test on the live domain.
-- [ ] `verify-deployment.yml` dispatched for PROD (read-only).
+- [x] Dry-run gate (Runbook Phase 4): in-image pre-flight gate initially correctly FAILED (caught
+  the pre-existing malformed `ADMIN_ACCOUNTS_JSON` bcrypt hashes before any container was
+  touched), then passed clean after the fix.
+- [x] `docker compose ps` all healthy post-cutover — only `dgfy-api` recreated (twice: once for
+  the cutover, once for the CORS/config fix), everything else (`mysql`, `redis`, `nginx`, three
+  frontends, `certbot`) untouched throughout.
+- [x] `curl -fsS https://dgfy.ph/api/v1/health` — `success: true`, database/redis connected,
+  `tenantSchema.status: "healthy"`, `failed_tenant_count: 0`.
+- [x] `[entrypoint] Tenant schema sync: all active tenants OK.` — present in the production logs.
+- [x] Manual smoke test on the live domain — caught the CORS incident above; re-verified passing
+  (`200`) after the fix.
+- [x] `verify-deployment.yml` dispatched for PROD (read-only) — passed clean, run `33195669066`,
+  "Poll deployed containers for health / crash-loop signature" step green.
 
 ### Implementation links
 
 - `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` (Phases 2-5, "Rollback")
 - Phase 180's artifacts
+- PR #1148 (the CORS/TEMP_FILE_STORAGE/rate-limit hardcode fix)
+- ADR 0060, "2026-08-29 — Real cutover incident" amendment
 
 ### Next eligible phase
 
@@ -10318,9 +10349,10 @@ script, closing out the initiative.
 
 ### Status
 
-- `blocked`
-- Blocked on: Phase 183 completion. PR #1136 is open (`main`, `mergeStateStatus: CLEAN`) and ready,
-  deliberately unmerged.
+- `planned` (unblocked 2026-08-29)
+- Phase 183 completed. PR #1136 is open (`main`) and ready, deliberately still unmerged pending
+  this phase's own execution -- re-verify `mergeStateStatus`/`mergeable` immediately before
+  merging, since several other PRs have landed on `main` since it was last checked.
 
 ### Dependencies
 
