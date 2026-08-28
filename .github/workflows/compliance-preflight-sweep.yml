@@ -45,7 +45,7 @@ on:
         default: STAGING
         required: true
       declarations:
-        description: Comma-separated declaration file paths (relative to docs/compliance/impact-declarations/) to sweep. Leave blank to auto-discover every NOT-EXECUTED-* declaration in the develop..main diff, matching promoter's own discovery command.
+        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration in the develop..main diff, matching promoter's own discovery command.
         type: string
         required: false
 
@@ -70,9 +70,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          DECLARATIONS_DIR="docs/compliance/impact-declarations"
+
           if [ -n "$DECLARATIONS_INPUT" ]; then
-            # Explicit list -- one path per line, comma-split.
-            printf '%s' "$DECLARATIONS_INPUT" | tr ',' '\n' | sed '/^\s*$/d' > /tmp/declarations.txt
+            # Explicit list -- one value per line, comma-split, then normalized (pr-reviewer RF-7
+            # on PR #1127/#1121: the input is documented as accepting a bare filename, but was
+            # passed straight through unchanged -- resolving from the runner's cwd, not this
+            # directory, so a bare filename silently failed to be found). A bare filename gets
+            # this directory prefixed; a value that already starts with it is left alone; anything
+            # absolute or containing ".." is rejected outright rather than silently mishandled.
+            : > /tmp/declarations.txt
+            # printf's trailing \n matters: without it, `read` hits EOF on the LAST split entry
+            # before a newline and the while-loop body silently never runs for it (found live
+            # while testing this fix -- a single-entry input was silently dropped entirely).
+            printf '%s\n' "$DECLARATIONS_INPUT" | tr ',' '\n' | sed '/^\s*$/d' | while read -r entry; do
+              entry="$(echo "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+              case "$entry" in
+                /*|*..*)
+                  echo "::error::rejected declarations input entry (absolute path or path traversal): $entry"
+                  exit 1
+                  ;;
+                "$DECLARATIONS_DIR"/*)
+                  echo "$entry" >> /tmp/declarations.txt
+                  ;;
+                *)
+                  echo "$DECLARATIONS_DIR/$entry" >> /tmp/declarations.txt
+                  ;;
+              esac
+            done
           else
             # Only the front matter's CURRENT preflight_request_ref decides "outstanding" --
             # pr-reviewer RF-6 on PR #1127/#1121: a whole-file `grep NOT-EXECUTED-` also matches a
