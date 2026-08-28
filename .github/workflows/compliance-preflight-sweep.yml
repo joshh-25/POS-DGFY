@@ -28,9 +28,10 @@ name: Compliance Preflight Sweep
 #
 # The bot account and its credentials (PREFLIGHT_HOST/PREFLIGHT_COMPANY_TOKEN/
 # PREFLIGHT_BOT_EMAIL/PREFLIGHT_BOT_PASSWORD, resolved from the dispatched `environment`'s own
-# GitHub Environment secrets) are provisioned out of band -- see
-# apps/dgfy-migration-runner/src/seeders/*-seed-preflight-bot-user.js and
-# docs/compliance/request-time-preflight-protocol.md. This workflow has no path to create either.
+# GitHub Environment secrets) are provisioned out of band, by hand, through the tenant's own
+# existing user-management flow -- see docs/compliance/request-time-preflight-protocol.md's
+# "Where live preflight actually runs" section for the exact procedure. This workflow has no path
+# to create either the account or the secrets themselves.
 
 on:
   workflow_dispatch:
@@ -112,24 +113,16 @@ jobs:
               continue
             fi
 
-            declaration_id=$(sed -n 's/^declaration_id:[[:space:]]*//p' "$declaration" | head -1)
-            surfaces_raw=$(sed -n 's/^surfaces:[[:space:]]*//p' "$declaration" | head -1)
-            surfaces_json=$(printf '%s' "$surfaces_raw" | node -e '
-              const raw = require("fs").readFileSync(0, "utf8").trim();
-              const list = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-              process.stdout.write(JSON.stringify(list));
-            ')
-
-            body=$(node -e '
-              const fs = require("fs");
-              const declarationId = process.argv[1];
-              const surfaces = JSON.parse(process.argv[2]);
-              process.stdout.write(JSON.stringify({
-                request_name: `Compliance preflight sweep - ${declarationId}`,
-                surfaces,
-                impact_declaration: { declaration_id: declarationId }
-              }));
-            ' "$declaration_id" "$surfaces_json")
+            # Full impact_declaration payload (declaration_id, classification, summary,
+            # affected_surfaces, reason_codes_impacted, policy_version, verification_evidence,
+            # rollback_note) -- pr-reviewer RF-1 on PR #1127/#1121: the endpoint 422s on anything
+            # less. See scripts/build-preflight-request.js's own header for the parsing/summary-
+            # derivation rationale.
+            if ! body=$(node scripts/build-preflight-request.js "$declaration"); then
+              echo "::error::failed to build the preflight request body for $declaration"
+              overall_fail=1
+              continue
+            fi
 
             response=$(curl -sS -w '\n%{http_code}' -X POST "${PREFLIGHT_HOST}/api/v1/compliance/preflight" \
               -H 'Content-Type: application/json' \
@@ -143,8 +136,32 @@ jobs:
             echo "HTTP $http_code"
             echo "$response_body"
 
-            if [ "$http_code" != "200" ]; then
-              echo "::error::preflight call for $declaration returned HTTP $http_code"
+            # pr-reviewer RF-2 on PR #1127/#1121: HTTP 200 alone is not success -- the endpoint
+            # returns 200 for result=breach / result=review_required too (can_proceed=false). Only
+            # result=no_breach AND can_proceed=true is an actual pass; anything else -- including
+            # unparseable JSON -- is a sweep failure, not a silently-recorded "swept".
+            verdict=$(node -e '
+              let raw = "";
+              try { raw = require("fs").readFileSync(0, "utf8"); } catch { raw = ""; }
+              let parsed = null;
+              try { parsed = JSON.parse(raw); } catch { parsed = null; }
+              const result = parsed && parsed.result;
+              const canProceed = parsed && parsed.can_proceed === true;
+              const pass = result === "no_breach" && canProceed;
+              process.stdout.write(JSON.stringify({
+                pass,
+                result: result || null,
+                can_proceed: parsed ? Boolean(parsed.can_proceed) : null,
+                reason_code: (parsed && parsed.reason_code) || null
+              }));
+            ' <<< "$response_body")
+
+            pass=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).pass))')
+            result_value=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).result))')
+            reason_code=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).reason_code))')
+
+            if [ "$http_code" != "200" ] || [ "$pass" != "true" ]; then
+              echo "::error::preflight call for $declaration did not pass -- HTTP $http_code, result=$result_value, reason_code=$reason_code"
               overall_fail=1
             fi
 
@@ -154,10 +171,10 @@ jobs:
               results.push({
                 declaration: process.argv[1],
                 http_code: process.argv[2],
-                response: process.argv[3]
+                verdict: JSON.parse(process.argv[3])
               });
               fs.writeFileSync("/tmp/results.json", JSON.stringify(results, null, 2));
-            ' "$declaration" "$http_code" "$response_body"
+            ' "$declaration" "$http_code" "$verdict"
           done < /tmp/declarations.txt
 
           echo "overall_fail=$overall_fail" >> "$GITHUB_OUTPUT"
