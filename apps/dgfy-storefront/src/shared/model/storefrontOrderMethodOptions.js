@@ -16,20 +16,24 @@ export const isEnabledStorefrontOrderMethod = (method, locationSupport = null) =
 
 // Mirrors the server's own location resolution for checkout
 // (storeUseCases.js: `const location = requestedLocation || fallbackLocation`):
-// prefer the location the customer actually has selected, fall back to the
-// storefront's primary/active location list, and finally fall back to the
-// discovery profile's own primary-location snapshot (`selectedStore.supports_*`)
-// for a store that hasn't loaded `storeLocations` yet.
+// prefer the location the customer actually has selected, then its matching
+// discovery snapshot, then a loaded primary/active location, then a snapshot
+// primary/active location, and finally the profile's top-level fallback.
 export const resolveLocationFulfillmentSupport = ({
   selectedStore = null,
   storeLocations = [],
   selectedLocationId = null
 } = {}) => {
   const locations = Array.isArray(storeLocations) ? storeLocations : [];
+  const snapshotLocations = Array.isArray(selectedStore?.active_location_snapshot)
+    ? selectedStore.active_location_snapshot
+    : [];
 
   if (selectedLocationId != null) {
     const selected = locations.find((location) => String(location?.location_id) === String(selectedLocationId));
     if (selected) return selected;
+    const selectedSnapshot = snapshotLocations.find((location) => String(location?.location_id) === String(selectedLocationId));
+    if (selectedSnapshot) return selectedSnapshot;
   }
 
   const fallback = locations.find((location) => location?.is_primary_storefront === true)
@@ -37,6 +41,12 @@ export const resolveLocationFulfillmentSupport = ({
     || locations[0]
     || null;
   if (fallback) return fallback;
+
+  const snapshotFallback = snapshotLocations.find((location) => location?.is_primary_storefront === true)
+    || snapshotLocations.find((location) => location?.is_active !== false)
+    || snapshotLocations[0]
+    || null;
+  if (snapshotFallback) return snapshotFallback;
 
   return selectedStore || null;
 };

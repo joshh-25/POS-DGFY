@@ -514,7 +514,8 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
     const fallbackPrimaryLocation = !explicitPrimaryLocation
         ? (activeLocations?.[0] || null)
         : null;
-    const primaryLocation = storeHasNoLocation ? null : (explicitPrimaryLocation || fallbackPrimaryLocation);
+    const resolvedActivePrimaryLocation = explicitPrimaryLocation || fallbackPrimaryLocation;
+    const primaryLocation = storeHasNoLocation ? null : resolvedActivePrimaryLocation;
     if (!storeHasNoLocation && !primaryLocation) {
         return null;
     }
@@ -531,6 +532,12 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
     }
 
     const location = storeHasNoLocation ? null : toLocationPlain(primaryLocation);
+    // `store_has_no_location` suppresses map publication only. A usable active
+    // primary still owns checkout fulfillment capability, even when its map
+    // fields are intentionally omitted from the public discovery row.
+    const fulfillmentLocation = resolvedActivePrimaryLocation
+        ? toLocationPlain(resolvedActivePrimaryLocation)
+        : null;
     const allActiveLocationIds = (activeLocations || [])
         .map((entry) => Number(toLocationPlain(entry).location_id))
         .filter((locationId) => Number.isInteger(locationId) && locationId > 0);
@@ -849,9 +856,9 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         longitude,
         delivery_radius_km: storeHasNoLocation ? 0 : toNumber(location.delivery_radius_km, 0),
         estimated_wait_minutes: storeHasNoLocation ? toNumber(settings.pos_wait_time_minutes, 15) : toNumber(location.current_wait_time_minutes, toNumber(settings.pos_wait_time_minutes, 15)),
-        supports_delivery: storeHasNoLocation ? true : location.supports_delivery !== false,
-        supports_pickup: storeHasNoLocation ? true : location.supports_pickup !== false,
-        supports_dine_in: storeHasNoLocation ? true : location.supports_dine_in !== false,
+        supports_delivery: fulfillmentLocation?.supports_delivery !== false,
+        supports_pickup: fulfillmentLocation?.supports_pickup !== false,
+        supports_dine_in: fulfillmentLocation?.supports_dine_in !== false,
         store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
         catalog_count: canExposeCatalog ? (Number(catalogCount) || 0) : 0,
         customer_access_mode: accessPolicy.customer_access_mode,
