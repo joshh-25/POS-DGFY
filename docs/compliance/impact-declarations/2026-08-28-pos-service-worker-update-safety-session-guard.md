@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSaf
 rollback_note: Revert this commit. The change only widens when a service-worker update is deferred (adds a second, session-aware safety source alongside the existing cart/checkout one) and adds an "Update now" activation path that did not exist before; reverting restores the prior unconditional login-screen/idle-terminal auto-reload behavior (the #990 defect) with no schema, migration, or persisted-state impact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-28T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-990-POS-UPDATE-SAFETY-SESSION-GUARD
+preflight_run_at: 2026-08-28T12:24:02Z
+preflight_request_ref: PREFLIGHT-990-POS-UPDATE-SAFETY-SESSION-GUARD-20260828T122402Z
 ---
 
 # POS Update-Safety Gate Now Covers the Login Screen and Idle Authenticated Sessions
@@ -139,3 +139,5 @@ Not yet run. `preflight_request_ref: NOT-EXECUTED-990-POS-UPDATE-SAFETY-SESSION-
 a PR targeting `develop`, not a finding — per #884, the real
 `POST /api/v1/compliance/preflight` run happens once per batch at the `develop -> staging`/`main`
 promotion sweep (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment), not per PR.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-990-POS-UPDATE-SAFETY-SESSION-GUARD-20260828T122402Z`.
