@@ -20,6 +20,14 @@ export function StoreCatalogEmptyStates({
   };
   const searchQuery = String(catalogSearch || '').trim();
 
+  if (catalogState === 'loading') {
+    return (
+      <div style={wrapperStyle} aria-live="polite" aria-busy="true">
+        <StoreCatalogEmptyState mode="refreshing" />
+      </div>
+    );
+  }
+
   if (catalogState === 'empty_setup') {
     return (
       <div style={wrapperStyle}>

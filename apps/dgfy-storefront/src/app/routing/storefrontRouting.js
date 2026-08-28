@@ -99,6 +99,11 @@ export const readStoreServiceItemId = () => readQueryParam('service');
 
 export const readStoreItemId = () => readQueryParam('item');
 
+export const readStoreLocationId = () => {
+  const raw = Number(readQueryParam('location_id'));
+  return Number.isInteger(raw) && raw > 0 ? raw : null;
+};
+
 export const readStoreReviewToken = () => readQueryParam('review_token', '');
 
 export const readTrackingPinFromQuery = () => String(readQueryParam('pin', '') || '').trim().toUpperCase();

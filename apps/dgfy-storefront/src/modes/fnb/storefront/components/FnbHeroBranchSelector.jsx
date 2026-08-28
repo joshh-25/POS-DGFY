@@ -52,6 +52,7 @@ export function FnbHeroBranchSelector({
           fontFamily: bodyFont || '"Source Sans 3", "Segoe UI", sans-serif'
         }}
         containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+        menuPlacement="bottom-end"
         menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
         optionStyle={{ padding: '12px 18px', fontFamily: bodyFont || '"Source Sans 3", "Segoe UI", sans-serif' }}
         selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}

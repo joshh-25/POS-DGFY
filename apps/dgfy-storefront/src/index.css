@@ -1651,6 +1651,10 @@
   }
 }
 
+@keyframes storefrontCatalogRefreshSpin {
+  to { transform: rotate(360deg); }
+}
+
 .fnb-gallery-lightbox-image {
   animation: fnbGalleryLightboxFade 180ms ease;
 }

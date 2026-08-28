@@ -100,6 +100,7 @@ import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandPro
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
 import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
+import { StorefrontBranchSwitchFeedback } from './shared/components/storefront/StorefrontBranchSwitchFeedback.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -145,6 +146,7 @@ import { useCustomerDashboardRouteOutlet } from './customer-dashboard/pages/useC
 import {
   readRouteSlug,
   readStoreItemId,
+  readStoreLocationId,
   readStoreReviewToken,
   readStoreServiceItemId,
   readStoreSubpage,
@@ -791,8 +793,8 @@ export default function StorefrontApp() {
 
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
     if (!routeSlug || typeof window === 'undefined') return null;
-    const locationId = Number(new URLSearchParams(window.location.search).get('location_id'));
-    return Number.isInteger(locationId) && locationId > 0
+    const locationId = readStoreLocationId();
+    return locationId != null
       ? { slug: routeSlug, locationId }
       : null;
   });
@@ -806,6 +808,7 @@ export default function StorefrontApp() {
     storeLocations,
     setStoreLocations,
     selectedLocationId,
+    branchSwitchFeedback,
     setSelectedLocationId,
     primaryLocationId,
     setPrimaryLocationId,
@@ -1013,6 +1016,7 @@ export default function StorefrontApp() {
     isCurrentTarget: isCurrentStorefrontTarget,
     itemSubpage: STORE_ITEM_SUBPAGE,
     routeSlug,
+    selectedLocationId,
     selectedStoreSlug: selectedStore?.slug,
     setFnbDetail: setSelectedFnbDetail,
     setFnbDetailQuantity: setSelectedFnbDetailQuantity,
@@ -1607,11 +1611,12 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = buildOrderTarget(normalized);
+    const target = buildOrderTarget(normalized, { locationId: selectedLocationId });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
-        storeSubpage: STORE_ORDER_SUBPAGE
+        storeSubpage: STORE_ORDER_SUBPAGE,
+        locationId: selectedLocationId
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -1635,11 +1640,12 @@ export default function StorefrontApp() {
     const normalized = toSlug(storeSlug || selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
     const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
-    const target = buildTrackTarget(normalized, normalizedPin);
+    const target = buildTrackTarget(normalized, normalizedPin, { locationId: selectedLocationId });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
-        storeSubpage: STORE_TRACK_SUBPAGE
+        storeSubpage: STORE_TRACK_SUBPAGE,
+        locationId: selectedLocationId
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -3004,6 +3010,7 @@ export default function StorefrontApp() {
   } = useStorefrontNavigation({
     routeSlug,
     selectedStore,
+    selectedLocationId,
     setRouteSlug,
     setRouteSubpage,
     setRouteServiceItemId,
@@ -4300,6 +4307,7 @@ export default function StorefrontApp() {
         overflowX: 'clip'
       }}
     >
+      <StorefrontBranchSwitchFeedback branchName={branchSwitchFeedback?.label} />
       <div style={{
         maxWidth: 1320,
         width: '100%',

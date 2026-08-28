@@ -2184,6 +2184,48 @@ describe('storefront discovery integration flow', () => {
     expect(window.location.search).toBe('?location_id=22');
   });
 
+  it('canonicalizes root tenant URLs to the resolved default location', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          workflow_mode: 'services',
+          location_id: 11,
+          location_name: 'Main',
+          address_line: 'Main Road',
+          storefront_open: true,
+          catalog_count: 1
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.73, longitude: 122.57, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (isStoreCatalogRequest(normalized)) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    window.history.pushState({}, '', '/tenant-store/alpha');
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('?location_id=11');
+    });
+    const catalogCalls = fetchMock.mock.calls
+      .map(([requestUrl]) => String(requestUrl))
+      .filter(isStoreCatalogRequest);
+    expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=11'))).toBe(true);
+  });
+
   // Regression coverage for #297: a discovery load used to fan out one
   // GET /api/v1/store/locations request per store (up to 100 for a full
   // page, each against a different tenant DB) to build discoveryLocationMap.
