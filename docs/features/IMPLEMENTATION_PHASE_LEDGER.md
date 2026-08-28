@@ -9875,3 +9875,254 @@ their existing dependencies and status.
 branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
 true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
 is not a live reference and is not updated by this note.
+
+---
+
+## Phase 178 - Standalone Mobile Offline Order Actions
+
+### Initiative and release
+
+- Initiative: Phase 4 of the native cashier offline-first rollout.
+- Release: mobile POS order fulfillment and pickup-cash reconciliation.
+
+### Objective and scope
+
+- Preserve known online orders locally during connectivity loss.
+- Queue status transitions and pickup cash collection atomically with expected
+  fulfillment, payment, and server-version state.
+- Reuse existing locked POS lifecycle and cash-collection rules through a
+  dedicated batch replay route.
+- Keep provisional payment unpaid and turn permanent rejection into durable
+  conflict/dead-letter evidence.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28; Android emulator UAT remains the separate requested
+  test session and is not claimed here.
+
+### Dependencies
+
+- ADR 0031 terminal/shift-safe mutation rules.
+- ADR 0075 local financial reconciliation and typed conflict behavior.
+- Phase 177 completed; this phase does not alter planned Phases 172-175.
+
+### Acceptance and validation evidence
+
+- [x] SQLite v16 adds order-action audit and projection reconciliation fields.
+- [x] Status and cash writes stage atomically with the shared outbox.
+- [x] `POST /mobile-pos/sync/order-actions` accepts per-entry replay results.
+- [x] Server CAS checks fulfillment, payment, and `updated_at` under row lock.
+- [x] Cash remains unpaid before acknowledgement; conflicts remain visible.
+- [x] Focused mobile and API suites and JavaScript syntax checks pass.
+
+### Implementation links
+
+- `docs/architecture/adr/0076-standalone-mobile-offline-order-actions.md`
+- `docs/compliance/impact-declarations/2026-08-28-mobile-offline-order-actions.md`
+- `apps/dgfy-api/src/routes/mobilePos.js`
+- `apps/dgfy-api/src/modules/pos/usecases/mobilePosUseCases.js`
+
+### Next eligible phase
+
+Phase 179 after Phase 178 completes; planned Phases 172-175 retain their own
+dependencies and approval requirements.
+
+---
+
+## Phase 179 - POS Master-Admin Operator Scope Parity
+
+### Initiative and release
+
+- Initiative: POS operator-authority and governed discount reliability.
+- Release: maintenance fix for the protected mutation authorization gap.
+
+### Objective and scope
+
+- Allow an active master administrator with a valid operator session and open
+  register shift to pass protected POS mutation scope checks without a
+  redundant `user_location_grants` row.
+- Preserve exact location-grant enforcement for regular operators.
+- Preserve independent governed-discount approver permission and PIN checks.
+- Clarify the regular-operator location denial message.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28.
+
+### Dependencies
+
+- ADR 0031 terminal and shift-safe navigation.
+- ADR 0033 governed POS discount authorization.
+- ADR 0044 POS terminal device pairing.
+- ADR 0073 POS cashier attendance and operator sessions.
+
+### Acceptance and validation evidence
+
+- [x] Active master admin without an explicit location grant can authorize a
+  protected POS mutation for a valid open shift.
+- [x] Regular operator without the exact location grant remains rejected with
+  HTTP 403.
+- [x] Inactive/deleted operators remain rejected by the existing guard.
+- [x] Discount approver permission, PIN, and self-approval policies remain
+  unchanged.
+- [x] Focused POS operator-authority and discount-policy tests pass: 28/28.
+- [x] POS handler and operator-attribution contract tests pass: 31/31.
+- [x] Architecture guardrails and controller-boundary checks pass.
+- [x] Backend lint passes with zero errors; existing warnings are unrelated.
+- [x] No database migration is required.
+
+### Implementation links
+
+- `apps/dgfy-api/src/modules/pos/usecases/posOperatorAuthorityUseCases.js`
+- `apps/dgfy-api/tests/posOperatorAuthority.usecases.test.js`
+- `apps/dgfy-api/src/routes/pos.js`
+
+### Next eligible phase
+
+Phase 180 after Phase 179 completes; planned Phases 172-175 retain their own
+dependencies and approval requirements.
+
+---
+
+## Phase 180 - Unified Wide Checkout and Discount Workspace
+
+### Initiative and release
+
+- Initiative: POS checkout navigation and governed-discount usability.
+- Release: responsive shared POS checkout presentation.
+
+### Objective and scope
+
+- Replace the narrow confirmation layout with one responsive wide checkout workspace.
+- Present order methods and payment methods as direct, stateful controls while preserving
+  workflow-mode ownership and the existing checkout/payment engines.
+- Present Order Total, Discount, Payment Received, and Change in one compact responsive summary
+  above Order Details, using the existing checkout financial calculations.
+- Keep the four financial totals sticky below the checkout header without a redundant Payment
+  Summary heading so the values remain visible while the checkout workspace scrolls; on tablet,
+  extend its opaque white sticky backdrop across the scroll area and separate it from the form with
+  a bottom divider.
+- Show VAT Removed in the sticky totals only for Senior Citizen and PWD discounts, using the live
+  draft preview while editing and the governed totals after application.
+- Remove the duplicate Sale Summary card and keep cash payment entry in one horizontal row with
+  the amount field followed by PHP 50, 100, 200, 500, and 1,000 suggestions.
+- Order the editable workspace as Order Details, Total Payment, then Apply Discount; denomination
+  suggestions replace the untouched auto-filled total on first click and accumulate afterward.
+- Keep Order Summary available as a focused popup over checkout without replacing or resetting
+  the checkout workspace.
+- Open and edit the existing single governed sale discount inline through direct Employee, Senior
+  Citizen, PWD, Promo, Voucher, and Other type buttons.
+- Remove the duplicate heading, helper text, close link, and type tabs from the embedded discount
+  editor while retaining them on the standalone workspace and retaining the bottom actions.
+- Place Authorizing employee and Employee PIN on one responsive row in the discount form, and
+  remove the duplicate financial preview from embedded checkout while preserving it standalone.
+- Keep inactive payment-method labels high-contrast and highlight only the selected tender; render
+  each tablet payment method with its persistent semantic color, strengthen only the selected
+  tender, render Employee Credit directly below Payment Type, and omit redundant
+  Branch/current-balance rows.
+- Keep all six checkout discount-type buttons on one equal-width horizontal row, using horizontal
+  overflow instead of wrapping when the available viewport is narrower than the control group.
+- Keep Cash, GCash, Maya, Card, Bank Transfer, and Employee Credit on one equal-width horizontal
+  row, using horizontal overflow instead of wrapping on narrower viewports and reserving enough
+  tablet scroll-container space to display the selected button ring without clipping.
+- Remove the redundant Order details heading, Employee Credit outstanding-after-sale row, and
+  duplicated non-statutory item-selection helper from the checkout UI while preserving controls.
+- Remove redundant empty-state authorization messages from checkout discount fields while keeping
+  the employee/approver controls and server-side authorization checks unchanged.
+- Render Customer Name before Eligible Items for non-employee discount types when the shared POS
+  tablet classifier is active, while retaining the prior details-grid placement for desktop; keep
+  field validation and discount scope unchanged.
+- Render Employee Name and its auto-filled Employee ID before Eligible Items when the shared POS
+  tablet classifier is active, while retaining the prior employee details placement for desktop.
+- Preserve item selection, whole-number discount quantities, authorizer/PIN verification,
+  statutory eligibility, voucher resolution, employee credit, split tender, receipt, and print
+  contracts.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28.
+
+### Dependencies
+
+- ADR 0033 commercial promo and statutory POS discount boundaries.
+- ADR 0051 POS employee-credit tender and ledger.
+- ADR 0063 POS split-tender and manual walk-in payment recording.
+- ADR 0066 voucher sale-time price resolution.
+- `docs/features/POS_MODE_PRESENTATION_OWNERSHIP_CONTRACT.md`.
+- Phase 179 completed; this phase does not alter planned Phases 172-175.
+
+### Acceptance and validation evidence
+
+- [x] Checkout uses a responsive `max-w-6xl` shell with direct order and payment controls.
+- [x] A four-value payment summary appears before Order Details and updates from the current total,
+  governed discount, received payment, and calculated change without duplicating financial logic.
+- [x] The four-value totals strip remains sticky within the checkout scroll container and has no
+  separate Payment Summary heading or overlap with the fixed modal header; its tablet wrapper has
+  an edge-to-edge opaque white backdrop and bottom divider while sticky.
+- [x] VAT Removed appears as a fifth sticky total only for selected or applied Senior Citizen/PWD
+  discounts and follows the existing governed preview/financial calculations.
+- [x] The duplicate Sale Summary and Exact Amount button are removed; the existing exact-total
+  field behavior and five requested cash suggestions share one responsive horizontal row.
+- [x] Order Details precedes Total Payment and Apply Discount, and repeated denomination clicks
+  accumulate (for example, PHP 1,000 clicked twice produces PHP 2,000) without breaking manual entry.
+- [x] Order Summary opens as a responsive popup and closes back to checkout without replacing,
+  resetting, or hiding payment and action controls.
+- [x] Six direct checkout discount buttons open the same inline governed editor with the selected
+  type while preserving exact line/quantity scope and the one-discount limit.
+- [x] The embedded editor starts directly with the selected discount form and does not repeat the
+  heading, helper text, close link, or six type controls; standalone behavior remains unchanged.
+- [x] Authorizer and PIN fields share one desktop row and stack on narrow screens; the embedded
+  editor relies on sticky checkout totals while the standalone editor keeps its preview summary.
+- [x] Tablet payment selectors retain visible dark labels and persistent tender-specific colors,
+  while only the active tender receives the stronger fill and selection ring; desktop selectors
+  retain their prior styling. Employee Credit follows Payment Type and shows Employee, ID, charge,
+  and projected balance.
+- [x] Cash, GCash, Maya, Card, Bank Transfer, and Employee Credit remain one six-column row with
+  selected-state behavior unchanged, an unclipped tablet selection ring, and narrow-screen
+  horizontal scrolling available.
+- [x] Checkout no longer renders the redundant Order details heading, Employee Credit
+  outstanding-after-sale row, or duplicated non-statutory item-selection helper; selection and
+  statutory eligibility controls remain available.
+- [x] Checkout no longer renders the redundant empty-state employee or approver authorization
+  messages; dropdowns, loading states, PIN validation, and server-side authorization remain intact.
+- [x] Customer Name renders before Eligible Items for non-employee discounts when the shared POS
+  tablet classifier is active (including the native iMin tablet runtime), while the prior
+  details-grid placement is retained for desktop; Employee Name and all existing discount
+  validation remain unchanged.
+- [x] Employee Name and Employee ID render before Eligible Items for Employee discounts when the
+  shared POS tablet classifier is active, while their prior placement remains unchanged on desktop.
+- [x] Employee, Senior Citizen, PWD, Promo, Voucher, and Other remain one six-column row with
+  selected-state behavior unchanged and narrow-screen horizontal scrolling available.
+- [x] Checkout confirmation is blocked while a discount draft is open.
+- [x] Split-payment, employee-credit, statutory, promo, voucher, receipt, and print contracts remain
+  on their existing workflows and APIs.
+- [x] Focused checkout tests pass: 31/31 tests across 3 directly affected files; the complete shared
+  frontend regression set passes: 1,828/1,828 tests across 297 files.
+- [x] SKUpervisor, POS, and Storefront production builds pass.
+- [x] Changed frontend lint and architecture/controller-boundary checks pass; this refinement is
+  classified `no-architecture-impact` and introduces no exception or allowlist dependency.
+- [x] The restarted local stack listens on MySQL 3306, API 5000, device bridge 5101, and frontend
+  ports 5173-5175; the locked POS shell renders without console errors. Authenticated checkout
+  visual UAT is not claimed because no cashier credentials were used.
+- [x] No database migration or API-contract change is required.
+
+### Implementation links
+
+- `packages/web-core/src/features/pos/components/POSCheckoutConfirmDialog.jsx`
+- `packages/web-core/src/features/pos/components/POSDiscountWorkspace.jsx`
+- `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`
+- `packages/web-core/src/features/pos/components/EmployeeCreditPaymentPanel.jsx`
+- `packages/web-core/src/features/pos/components/PosCheckoutDetailsSlot.jsx`
+- `packages/web-core/src/features/pos/components/FnbWorkflowPanel.jsx`
+- `packages/web-core/src/features/pos/components/CounterWorkflowPanel.jsx`
+
+### Next eligible phase
+
+Phase 181 after Phase 180 completes; planned Phases 172-175 retain their own dependencies and
+approval requirements.
