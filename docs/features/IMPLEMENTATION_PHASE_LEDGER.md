@@ -10199,10 +10199,14 @@ executes against production, not the full epic.
 
 ### Status
 
-- `in_progress`
-- Escrow verification (the one permanent-failure-mode item) completed 2026-08-29 — see evidence
-  below. Remaining items still blocked on Pat (sudo access, ADR 0060 Decision 7 boundary on Phase
-  2's real secret values, physical server access — `/opt/dgfy-platform` is not a git checkout).
+- `completed` (2026-08-29)
+- All four items done. Runbook Phase 2 (`.env` split/encrypt, `Sieitzz/dgfy-secrets` populate) and
+  the server-side backup/digest-pin/DB-dump were run by Pat personally, per ADR 0060 Decision 7,
+  via `phase182.sh` -- a script the AI session wrote and iterated on (three real bugs found and
+  fixed live: `sops --encrypt` needs an explicit `--age` key or a discoverable `.sops.yaml`, a
+  `local`-scoped variable referenced from an `EXIT` trap is unreliable across a `set -e` auto-exit
+  in bash, and `docker inspect` needs the image ID not the container ID to read `RepoDigests`) but
+  never executed by the AI session itself against the real server or real values.
 
 ### Dependencies
 
@@ -10219,10 +10223,16 @@ executes against production, not the full epic.
   against the server's real `/etc/dgfy/age/keys.txt`. No private key material was ever displayed,
   transcribed, or handled by the AI session at any point in this verification, per ADR 0060
   Decision 7.
-- [ ] `secrets/`, `Sieitzz/dgfy-secrets` repo created/populated (Pat runs Runbook Phase 2 personally
-  — AI may not extract/transcribe a real production secret value, ADR 0060 Decision 7, `binding`).
-- [ ] Config backup and image digests captured and reviewed on the real server.
-- [ ] A fresh production DB dump taken.
+- [x] `secrets/{mysql,shared,dgfy-api}.env` created on the server and encrypted (19 + 3 + 1 = 23
+  bucket-A names, matching the plan's classification) and pushed to `Sieitzz/dgfy-secrets`
+  (`prod/dgfy/*.env`, commit `051e0f8` + a follow-up fix `91055bc` restoring `.sops.yaml`/
+  `README.md` content the automation script had incorrectly overwritten on that first run).
+- [x] Config backup and image digests captured and reviewed on the real server: `.env`,
+  `docker-compose.yml` -> `.pre-sops` copies; `nginx/` -> a timestamped tarball; all 5 image
+  digests resolved to real `sha256:...` values (`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`,
+  `dgfy-pos`, `dgfy-storefront`) in `backups/image-digests.pre-sops.20260828-170005.txt`.
+- [x] A fresh production DB dump taken — `backups/db-dump.pre-sops.20260828-170005.sql.gz`
+  (11.7MB compressed).
 
 ### Implementation links
 
@@ -10246,7 +10256,6 @@ DevOps Initiative 1 — secrets management (#360). The actual server-side cutove
 
 ### Objective and scope
 
-- Split and encrypt the live `.env` (Runbook Phase 2, Pat personally).
 - Reconcile the live `docker-compose.yml` against the fragment (Runbook Phase 3).
 - Dry-run gate (Runbook Phase 4) then the actual cutover (Runbook Phase 5) in its own deploy window.
 
@@ -10279,6 +10288,17 @@ DevOps Initiative 1 — secrets management (#360). The actual server-side cutove
   `.env`), failing the boot-time bcrypt-pattern validator. Fixed by undoubling (lossless,
   no new password needed) after a shape-only diagnostic (never displaying the hash itself)
   confirmed it was a pure formatting corruption, not truncation.
+- **2026-08-29 amendment (pre-execution sequencing decision, recorded for history):** the original
+  sequencing blocked this phase on PR #1130 (a separate,
+  unrelated `staging`->`main` application-code promotion) merging and being verified healthy first,
+  so a post-cutover problem would be diagnosable against a known-good baseline rather than
+  conflated with a 100-file release. Pat's call: decoupled instead — #1130 (or whatever promotion
+  supersedes it) is not itself the known-good baseline; current `main` already is, post
+  #1135/#1138/#1139. The cutover now runs against current `main` first; the next
+  `develop`->`main` promotion (#1130 or its replacement — promotion branches are throwaway per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`) is verified against the *post-cutover* state afterward
+  instead of the other way around. This also avoids two separate `dgfy-api` recreations
+  close together (one for the cutover, one for the promotion's image bump).
 
 ### Dependencies
 
