@@ -28,6 +28,7 @@ const buildRepository = (seed = {}) => {
         fulfillment_status: 'ready_for_pickup',
         total_amount: 150,
         location_id: 7,
+        updated_at: new Date('2026-08-28T00:00:00.000Z'),
         ...seed
     };
     const replays = new Map();
@@ -123,5 +124,33 @@ describe('POS cash pickup collection', () => {
         expect(result.success).toBe(false);
         expect(result.error.message).toMatch(/shift is closed/i);
         expect(repository.order.payment_status).toBe('unpaid');
+    });
+
+    it('rejects stale offline status and cash actions before mutating payment or fulfillment', async () => {
+        const repository = buildRepository();
+        const expected = {
+            expected_status: 'ready_for_pickup',
+            expected_payment_status: 'unpaid',
+            expected_server_version: '2026-08-27T23:59:59.000Z'
+        };
+        const collectCash = buildCollectCashPickupOrderUseCase({ posRepository: repository });
+        const cashResult = await run(() => collectCash({
+            posTransactionId: 44,
+            payload: { terminal_id: 'COUNTER-01', cash_received: 200, idempotency_key: 'pickup-cash-stale', ...expected },
+            user: { user_id: 12 }
+        }));
+        expect(cashResult.success).toBe(false);
+        expect(cashResult.error.details.reason_code).toBe('MOBILE_ORDER_VERSION_CONFLICT');
+        expect(repository.order.payment_status).toBe('unpaid');
+
+        const updateStatus = buildUpdateOnlineOrderStatusUseCase({ posRepository: repository });
+        const statusResult = await run(() => updateStatus({
+            posTransactionId: 44,
+            payload: { fulfillment_status: 'completed', idempotency_key: 'pickup-status-stale', ...expected },
+            user: { user_id: 12 }
+        }));
+        expect(statusResult.success).toBe(false);
+        expect(statusResult.error.details.reason_code).toBe('MOBILE_ORDER_VERSION_CONFLICT');
+        expect(repository.order.fulfillment_status).toBe('ready_for_pickup');
     });
 });

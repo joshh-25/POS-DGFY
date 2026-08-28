@@ -941,6 +941,33 @@ const mobilePosVoidSyncSchema = Joi.object({
     entries: Joi.array().items(mobilePosVoidSyncEntrySchema).required()
 });
 
+const mobilePosOrderActionSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        operation_type: Joi.string().valid('status_transition', 'cash_collection').required(),
+        order_id: Joi.number().integer().positive().required(),
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        expected_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(),
+        expected_payment_status: Joi.string().trim().max(40).required(),
+        expected_server_version: Joi.date().iso().required(),
+        fulfillment_status: Joi.when('operation_type', {
+            is: 'status_transition', then: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(), otherwise: Joi.forbidden()
+        }),
+        terminal_id: Joi.when('operation_type', {
+            is: 'cash_collection', then: Joi.string().trim().max(100).required(), otherwise: Joi.forbidden()
+        }),
+        cash_received: Joi.when('operation_type', {
+            is: 'cash_collection', then: Joi.number().positive().precision(4).required(), otherwise: Joi.forbidden()
+        })
+    }).required()
+});
+
+const mobilePosOrderActionSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosOrderActionSyncEntrySchema).required()
+});
+
 const mobilePosShiftSyncEntrySchema = Joi.object({
     local_operation_id: Joi.string().trim().max(120).required(),
     operation_type: Joi.string().valid('shift_open', 'switch_location', 'cash_event', 'shift_close').required(),
@@ -1175,6 +1202,7 @@ export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalR
 export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
 export const validateMobilePosTransactionCheckpointQuery = validateSchema(mobilePosTransactionCheckpointQuerySchema, 'query', 'validatedQuery');
 export const validateMobilePosVoidSync = validateSchema(mobilePosVoidSyncSchema, 'body', 'validatedData');
+export const validateMobilePosOrderActionSync = validateSchema(mobilePosOrderActionSyncSchema, 'body', 'validatedData');
 export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema, 'body', 'validatedData');
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
 export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');

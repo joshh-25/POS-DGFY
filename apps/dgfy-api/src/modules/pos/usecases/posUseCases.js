@@ -8642,6 +8642,11 @@ const buildCollectCashOnlineOrderUseCase = ({
         const terminalId = sanitizeTerminalId(payload?.terminal_id);
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const cashReceived = round4(payload?.cash_received);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
         if (!orderId || !cashierId || !terminalId || !idempotencyKey || cashReceived <= 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -8653,7 +8658,10 @@ const buildCollectCashOnlineOrderUseCase = ({
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
             terminal_id: terminalId,
-            cash_received: cashReceived
+            cash_received: cashReceived,
+            expected_status: expectedStatus,
+            expected_payment_status: expectedPaymentStatus,
+            expected_server_version: expectedServerVersion
         });
         let transaction = null;
         try {
@@ -8684,6 +8692,28 @@ const buildCollectCashOnlineOrderUseCase = ({
             const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
             if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Online ${orderLabel} order not found.`, { statusCode: 404 });
+            }
+            const actualServerVersion = order.updated_at instanceof Date
+                ? order.updated_at.toISOString()
+                : String(order.updated_at || '').trim();
+            if (
+                (expectedStatus && String(order.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(order.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline cash collection could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(order.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(order.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
+                );
             }
             if (order.order_method !== orderMethod) {
                 throw new DomainError(DomainErrorCode.CONFLICT, `Cash collection is available only for ${orderLabel} orders.`, { statusCode: 409 });
@@ -9802,9 +9832,17 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             ));
         }
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
         const replayRequestHash = hashPayload({
             pos_transaction_id: normalizedTransactionId,
-            fulfillment_status: targetStatus
+            fulfillment_status: targetStatus,
+            expected_status: expectedStatus,
+            expected_payment_status: expectedPaymentStatus,
+            expected_server_version: expectedServerVersion
         });
 
         const actingUserId = parsePositiveInt(user?.user_id);
@@ -9846,6 +9884,28 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     DomainErrorCode.CONFLICT,
                     'Only online store orders can be updated through this endpoint',
                     { statusCode: 409 }
+                );
+            }
+            const actualServerVersion = existing.updated_at instanceof Date
+                ? existing.updated_at.toISOString()
+                : String(existing.updated_at || '').trim();
+            if (
+                (expectedStatus && String(existing.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(existing.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline status update could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(existing.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(existing.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
                 );
             }
             const activeShift = await assertOpenShiftForPosMutation({
