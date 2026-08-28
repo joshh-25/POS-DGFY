@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.08.28
-verification_evidence: focused POS F&B checkout,GTIN persistence,image lifecycle and repository tests,POS production build,API architecture guardrails
+verification_evidence: focused POS checkout and governed-discount tests,focused POS F&B checkout,GTIN persistence,image lifecycle and repository tests,POS production build,API architecture guardrails
 rollback_note: Revert the inherited modifier include,POS-scoped GTIN persistence,and responsive-image manifest detection together with their focused tests; no schema rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -30,26 +30,32 @@ stored repeatedly.
 
 - `pos`, `terminal` — server-side resolution of configured F&B modifier groups
   when validating sellable checkout items, POS item GTIN create/edit persistence,
-  and catalog image presentation.
+  catalog image presentation, checkout payment/summary presentation, governed
+  discount entry and whole-unit item selection, and Employee Credit balance
+  review.
 
 ## Compliance Preconditions
 
-- Existing terminal, location, inventory, authorization, tax, payment, and
-  audit checks remain unchanged.
+- Existing terminal, location, inventory, discount calculation, discount
+  authorization, payment capture, tax, fiscal-output, and audit checks remain
+  unchanged. Checkout presentation and cashier entry flow change, but the
+  governed calculations and server mutations do not.
 - Checkout accepts only modifier groups already configured directly on the item
   or inherited from its assigned catalog folder.
 - Scanner-entered manufacturer GTINs remain tenant-owned item barcodes and are
   saved with the existing POS visibility scope.
 - Responsive image assets are reused only when their stored lifecycle manifest
   proves they already contain the expected optimized variants.
-- No payment capture, discount, fiscal-output, or database-schema behavior is
-  changed.
+- No database-schema behavior is changed.
 
 ## Verification Evidence
 
 - Focused API suites passed for F&B checkout, GTIN contracts, repository image
   persistence, and responsive image lifecycle behavior.
 - Focused POS tests passed for primary barcode selection and GTIN persistence.
+- Focused POS tests cover the shared discount workspace, whole-unit quantity
+  selection, Employee Credit before/after balances, payment entry, service
+  charge summary, and checkout popup behavior.
 - The POS production build completed successfully.
 - API architecture and controller-boundary guardrails passed.
 

@@ -78,7 +78,11 @@ risks when another terminal changes the same server order.
 
 ## Approval Record
 
-- Tech-lead approval: **accepted by the user in this task on 2026-08-28**.
+- Task-level implementation approval was recorded on 2026-08-28.
+- Durable tech-lead acceptance evidence is pending an explicit confirmation
+  comment from `@patterueldev` on
+  [dgfy-platform PR #1134](https://github.com/Sieitzz/dgfy-platform/pull/1134);
+  this record must be updated to the confirmation comment before merge.
 - Platform implementation phase: Phase 180.
 
 ## References
@@ -86,3 +90,8 @@ risks when another terminal changes the same server order.
 - `docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md`
 - `docs/architecture/adr/0075-standalone-mobile-offline-financial-reconciliation.md`
 - `docs/compliance/impact-declarations/2026-08-28-mobile-offline-order-actions.md`
+- [dgfy-mobile PR #19](https://github.com/Sieitzz/dgfy-mobile/pull/19) at merge
+  commit `0f44d42e5755fdb352cff708cfd0aad956512f27` — existing native online-order
+  queue baseline only; it does not implement the Phase 180 offline action client.
+- Phase 180 client follow-up: no versioned dgfy-mobile PR/commit exists yet;
+  platform evidence must not be presented as native-client evidence.
