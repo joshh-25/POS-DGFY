@@ -145,12 +145,25 @@ describe('service worker caching contracts', () => {
 
     expect(safetySource).toContain('export const derivePosShellUpdateSafety = ({');
     expect(safetySource).toContain('export const publishPosShellUpdateSafety = (');
-    expect(safetySource).toContain("addReason(reasons, 'authenticated_session', locked !== true);");
+    expect(safetySource).toContain("addReason(reasons, 'authenticated_session', locked !== true && terminalStartupLoading !== true);");
     expect(safetySource).toContain("addReason(reasons, 'login_input', loginFieldsDirty === true);");
     expect(safetySource).toContain("addReason(reasons, 'login_submitting', loginSubmitting === true);");
     expect(terminalPageSource).toContain('publishPosShellUpdateSafety({');
     expect(terminalPageSource).toContain('loginFieldsDirty,');
-    expect(terminalPageSource).toContain('loginSubmitting: submitting');
+    expect(terminalPageSource).toContain('loginSubmitting: submitting,');
+    expect(terminalPageSource).toContain('terminalStartupLoading');
+  });
+
+  it('auto-applies a deferred update during the post-login/switch/reunlock loading window, never mid-session (#1118 follow-up)', () => {
+    const terminalPageSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/pages/TerminalPage.jsx'));
+
+    // The publish effect must run after terminalStartupLoading is computed
+    // (it depends on it), and before the login screen's own untouched-idle
+    // notice is otherwise the only way to apply an update.
+    const startupLoadingIndex = terminalPageSource.indexOf('const terminalStartupLoading = !terminalStartupReady || (');
+    const publishIndex = terminalPageSource.indexOf('publishPosShellUpdateSafety({');
+    expect(startupLoadingIndex).toBeGreaterThan(-1);
+    expect(publishIndex).toBeGreaterThan(startupLoadingIndex);
   });
 
   it('renders the service-worker update prompt as an inline POS notice', () => {

@@ -65,6 +65,28 @@ describe('POS Service Worker update safety', () => {
             expect(derivePosShellUpdateSafety({ locked: true, loginFieldsDirty: true }).reasons).toContain('login_input');
             expect(derivePosShellUpdateSafety({ locked: true, loginSubmitting: true }).reasons).toContain('login_submitting');
         });
+
+        it('does not flag an authenticated session while terminalStartupLoading is true', () => {
+            // The post-login/company-switch/admin-reunlock hydration window --
+            // already showing a full loading screen instead of live terminal
+            // UI, so a pending update may auto-apply there without waiting
+            // for a tap.
+            expect(derivePosShellUpdateSafety({ locked: false, terminalStartupLoading: true }))
+                .toEqual({ unsafe: false, reasons: [] });
+        });
+
+        it('resumes flagging an authenticated session once terminalStartupLoading clears', () => {
+            expect(derivePosShellUpdateSafety({ locked: false, terminalStartupLoading: false }).reasons)
+                .toContain('authenticated_session');
+        });
+
+        it('still flags dirty login input even during terminalStartupLoading', () => {
+            expect(derivePosShellUpdateSafety({
+                locked: true,
+                loginFieldsDirty: true,
+                terminalStartupLoading: true
+            }).reasons).toContain('login_input');
+        });
     });
 
     describe('merged (checkout + shell) safety', () => {

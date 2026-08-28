@@ -7,7 +7,7 @@ classification: major
 surfaces: pos, terminal
 reason_codes_impacted: N/A
 policy_version: 2026.08.26
-verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js (23 passed, run from apps/dgfy-ims per its vitest test.include),packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js (part of the same 23),npm run build:pos,npm run build:skupervisor
+verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js (27 passed, run from apps/dgfy-ims per its vitest test.include),packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js (part of the same 27),npm run build:pos,npm run build:skupervisor
 rollback_note: Revert this commit. The change only widens when a service-worker update is deferred (adds a second, session-aware safety source alongside the existing cart/checkout one) and adds an "Update now" activation path that did not exist before; reverting restores the prior unconditional login-screen/idle-terminal auto-reload behavior (the #990 defect) with no schema, migration, or persisted-state impact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -66,6 +66,17 @@ just reached.
   reason — never while any checkout-owned reason is present. Covered by
   `posUpdateSafety.test.js`'s `hasCheckoutOwnedSafetyReason` suite, including the exact scenario
   flagged in review (an active cart merged with dirty login-screen state).
+- **Amendment 2026-08-28 (Pat's UX follow-up):** an authenticated session previously deferred a
+  pending update indefinitely (until manual "Update now" or logout), matching #990's intent but
+  giving up on the auto-update's original purpose for any long-running signed-in terminal.
+  `derivePosShellUpdateSafety` now also accepts `terminalStartupLoading` and stops flagging
+  `authenticated_session` while it is true — i.e. while the terminal is itself mid-restoration
+  (post-login, a company switch, or an admin re-unlock; `TerminalPage.jsx`'s existing
+  `PosRestorationLoadingScreen`), rather than only while genuinely unauthenticated. A deferred
+  update auto-applies at that exact boundary, reusing the already-expected loading transition, so
+  it reads as part of normal sign-in rather than a surprise reload of live UI. It still never
+  fires while login/unlock input is dirty or a submit is in flight, and the "Update now" notice is
+  unchanged for every other deferred case (mid-session, active cart, dirty login).
 - `apps/dgfy-ims` and `apps/dgfy-storefront` are unaffected: `dgfy-ims`'s own SW registration never
   force-reloads today and is untouched by this change; `TerminalPage.jsx`'s new publish effect is
   gated by the same `IS_DGFY_POS_SURFACE` constant `POSCheckoutTerminal.jsx` already uses, so it is a
@@ -74,7 +85,7 @@ just reached.
 ## Verification Evidence
 
 - `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js` and
-  `.../serviceWorkerCaching.contract.test.js` — 23/23 passing, run from `apps/dgfy-ims`
+  `.../serviceWorkerCaching.contract.test.js` — 27/27 passing, run from `apps/dgfy-ims`
   (`packages/web-core` has no test runner of its own; its tests execute via `apps/dgfy-ims`'s vitest
   `test.include` glob).
 - `npm run build:pos` and `npm run build:skupervisor` — both real Vite builds, both succeed with no

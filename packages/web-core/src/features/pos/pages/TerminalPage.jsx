@@ -554,11 +554,10 @@ export default function TerminalPage() {
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
 
-  // Publish "shell" update-safety state -- whether a service-worker update is
-  // safe to auto-install right now from the login/unlock screen's point of
-  // view. POSCheckoutTerminal's own publisher only exists post-login, so
-  // without this the login screen always reads as "safe" and a redeploy can
-  // reload it mid-keystroke (#990).
+  // Whether any login/unlock/re-auth field currently has unsubmitted input --
+  // feeds the "shell" update-safety publish below, once terminalStartupLoading
+  // is also known (defined further down this component, after terminalUser
+  // and setupFlowState exist).
   const loginFieldsDirty = Boolean(
     formData.email
     || formData.password
@@ -576,22 +575,6 @@ export default function TerminalPage() {
     || adminReauthForm.password
     || settingsAccessPinValue
   );
-
-  useEffect(() => {
-    if (!IS_DGFY_POS_SURFACE) return undefined;
-    publishPosShellUpdateSafety({
-      locked,
-      loginFieldsDirty,
-      loginSubmitting: submitting
-    });
-  }, [locked, loginFieldsDirty, submitting]);
-
-  useEffect(() => {
-    if (!IS_DGFY_POS_SURFACE) return undefined;
-    return () => {
-      publishPosShellUpdateSafety({});
-    };
-  }, []);
 
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
@@ -1037,6 +1020,37 @@ export default function TerminalPage() {
     && terminalUser?.is_master_admin === true
     && setupFlowState.loading
   );
+
+  // Publish "shell" update-safety state -- whether a service-worker update is
+  // safe to auto-install right now from the login/session's point of view.
+  // POSCheckoutTerminal's own publisher only exists post-login, so without
+  // this the login screen always read as "safe" and a redeploy could reload
+  // it mid-keystroke (#990).
+  //
+  // An authenticated session normally blocks auto-apply indefinitely -- but
+  // not while terminalStartupLoading is true (post-login/company-switch/
+  // admin-reunlock hydration, all of which already show a full loading
+  // screen -- PosRestorationLoadingScreen -- instead of live terminal UI). A
+  // pending update applying during that exact window reads as part of the
+  // normal loading sequence, never as a surprise interruption of something
+  // the cashier was doing.
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return undefined;
+    publishPosShellUpdateSafety({
+      locked,
+      loginFieldsDirty,
+      loginSubmitting: submitting,
+      terminalStartupLoading
+    });
+  }, [locked, loginFieldsDirty, submitting, terminalStartupLoading]);
+
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return undefined;
+    return () => {
+      publishPosShellUpdateSafety({});
+    };
+  }, []);
+
   // Tell the iMin Android wrapper the POS shell is interactive as soon as
   // startup resolves -- not only once a cashier is logged in and the
   // checkout terminal happens to mount (POSCheckoutTerminal.jsx's own

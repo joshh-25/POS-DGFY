@@ -121,10 +121,17 @@ export const derivePosUpdateSafety = ({
 export const derivePosShellUpdateSafety = ({
     locked = true,
     loginFieldsDirty = false,
-    loginSubmitting = false
+    loginSubmitting = false,
+    terminalStartupLoading = false
 } = {}) => {
     const reasons = [];
-    addReason(reasons, 'authenticated_session', locked !== true);
+    // An established session normally blocks auto-apply indefinitely -- except
+    // while the terminal is itself mid-restoration (terminalStartupLoading:
+    // post-login, a company switch, or an admin re-unlock), which already
+    // shows a full loading screen instead of live terminal UI. Applying a
+    // pending update during that exact window reads as part of the normal
+    // loading sequence, not a surprise interruption of something in progress.
+    addReason(reasons, 'authenticated_session', locked !== true && terminalStartupLoading !== true);
     addReason(reasons, 'login_input', loginFieldsDirty === true);
     addReason(reasons, 'login_submitting', loginSubmitting === true);
 
