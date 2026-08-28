@@ -145,7 +145,7 @@ import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { publishPosShellUpdateSafety } from '../utils/posUpdateSafety.js';
+import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -553,28 +553,6 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
-
-  // Whether any login/unlock/re-auth field currently has unsubmitted input --
-  // feeds the "shell" update-safety publish below, once terminalStartupLoading
-  // is also known (defined further down this component, after terminalUser
-  // and setupFlowState exist).
-  const loginFieldsDirty = Boolean(
-    formData.email
-    || formData.password
-    || formData.dgfyTenantId
-    || terminalUnlockForm.terminalPassword
-    || terminalUnlockForm.cashierEmail
-    || terminalUnlockForm.cashierPassword
-    || terminalUnlockForm.openingFloatAmount
-    || terminalUnlockForm.openingNote
-    || cashierResumeForm.identifier
-    || cashierResumeForm.password
-    || cashierTakeoverForm.identifier
-    || cashierTakeoverForm.password
-    || cashierTakeoverForm.pin
-    || adminReauthForm.password
-    || settingsAccessPinValue
-  );
 
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
@@ -1021,35 +999,32 @@ export default function TerminalPage() {
     && setupFlowState.loading
   );
 
-  // Publish "shell" update-safety state -- whether a service-worker update is
-  // safe to auto-install right now from the login/session's point of view.
-  // POSCheckoutTerminal's own publisher only exists post-login, so without
-  // this the login screen always read as "safe" and a redeploy could reload
-  // it mid-keystroke (#990).
-  //
-  // An authenticated session normally blocks auto-apply indefinitely -- but
-  // not while terminalStartupLoading is true (post-login/company-switch/
-  // admin-reunlock hydration, all of which already show a full loading
-  // screen -- PosRestorationLoadingScreen -- instead of live terminal UI). A
-  // pending update applying during that exact window reads as part of the
-  // normal loading sequence, never as a surprise interruption of something
-  // the cashier was doing.
+  // Signal a natural transition to main.jsx's service-worker registration
+  // (#990 follow-up, Pat's call 2026-08-28): the one case a pending update
+  // may apply silently, with no tap, is a moment the user already triggered
+  // themselves -- login succeeding or logging out (`locked` changes), or a
+  // company switch / admin re-unlock (both re-enter the restoration/loading
+  // window without necessarily touching `locked`). An idle screen with
+  // nothing changing never pulses, so it never silently reloads.
+  const previousLockedRef = useRef(locked);
   useEffect(() => {
-    if (!IS_DGFY_POS_SURFACE) return undefined;
-    publishPosShellUpdateSafety({
-      locked,
-      loginFieldsDirty,
-      loginSubmitting: submitting,
-      terminalStartupLoading
-    });
-  }, [locked, loginFieldsDirty, submitting, terminalStartupLoading]);
+    if (!IS_DGFY_POS_SURFACE) return;
+    if (previousLockedRef.current === locked) return;
+    previousLockedRef.current = locked;
+    publishPosUpdateTransition();
+  }, [locked]);
 
+  const previousStartupLoadingRef = useRef(terminalStartupLoading);
   useEffect(() => {
-    if (!IS_DGFY_POS_SURFACE) return undefined;
-    return () => {
-      publishPosShellUpdateSafety({});
-    };
-  }, []);
+    if (!IS_DGFY_POS_SURFACE) return;
+    if (previousStartupLoadingRef.current === terminalStartupLoading) return;
+    previousStartupLoadingRef.current = terminalStartupLoading;
+    // Only the start of a restoration window counts as a transition -- its
+    // end is just "the terminal is now idle again", not a moment the user
+    // triggered anything.
+    if (!terminalStartupLoading) return;
+    publishPosUpdateTransition();
+  }, [terminalStartupLoading]);
 
   // Tell the iMin Android wrapper the POS shell is interactive as soon as
   // startup resolves -- not only once a cashier is logged in and the

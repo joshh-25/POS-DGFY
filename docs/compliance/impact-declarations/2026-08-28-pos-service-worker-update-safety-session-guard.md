@@ -7,7 +7,7 @@ classification: major
 surfaces: pos, terminal
 reason_codes_impacted: N/A
 policy_version: 2026.08.26
-verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js (27 passed, run from apps/dgfy-ims per its vitest test.include),packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js (part of the same 27),npm run build:pos,npm run build:skupervisor
+verification_evidence: packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js + posUpdateTransition.test.js + serviceWorkerCaching.contract.test.js (19 passed, run from apps/dgfy-ims per its vitest test.include),npm run build:pos,npm run build:skupervisor
 rollback_note: Revert this commit. The change only widens when a service-worker update is deferred (adds a second, session-aware safety source alongside the existing cart/checkout one) and adds an "Update now" activation path that did not exist before; reverting restores the prior unconditional login-screen/idle-terminal auto-reload behavior (the #990 defect) with no schema, migration, or persisted-state impact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -66,17 +66,32 @@ just reached.
   reason — never while any checkout-owned reason is present. Covered by
   `posUpdateSafety.test.js`'s `hasCheckoutOwnedSafetyReason` suite, including the exact scenario
   flagged in review (an active cart merged with dirty login-screen state).
-- **Amendment 2026-08-28 (Pat's UX follow-up):** an authenticated session previously deferred a
-  pending update indefinitely (until manual "Update now" or logout), matching #990's intent but
-  giving up on the auto-update's original purpose for any long-running signed-in terminal.
-  `derivePosShellUpdateSafety` now also accepts `terminalStartupLoading` and stops flagging
-  `authenticated_session` while it is true — i.e. while the terminal is itself mid-restoration
-  (post-login, a company switch, or an admin re-unlock; `TerminalPage.jsx`'s existing
-  `PosRestorationLoadingScreen`), rather than only while genuinely unauthenticated. A deferred
-  update auto-applies at that exact boundary, reusing the already-expected loading transition, so
-  it reads as part of normal sign-in rather than a surprise reload of live UI. It still never
-  fires while login/unlock input is dirty or a submit is in flight, and the "Update now" notice is
-  unchanged for every other deferred case (mid-session, active cart, dirty login).
+- **Amendment 2026-08-28 (Pat's UX follow-up, superseded same day — see next amendment):** an
+  authenticated session previously deferred a pending update indefinitely; a short-lived
+  `terminalStartupLoading`-gated auto-apply window was added, then replaced hours later by the
+  amendment below with a more precise trigger. Left here for the paper trail, not the current
+  behavior.
+- **Amendment 2026-08-28 (Pat's final call — never auto-update while idle, only on a transition):**
+  after further discussion, Pat's explicit direction narrowed to: an update must **never** apply
+  silently while the terminal is idle — untouched login screen, mid-typing, or an authenticated
+  session just sitting there — regardless of how safe that idle state looks, because a reload with
+  no user action behind it reads as "out of nowhere" even when nothing is lost. The only two ways
+  an update now ever applies: (1) the user taps "Update now" in the persistent notice (which can
+  now appear and stay visible at any time, in any state — showing it is never the problem, only a
+  forced reload is), or (2) a natural transition the user just triggered themselves — login
+  succeeding, logging out, a company switch, or an admin re-unlock — silently applies a waiting
+  update right then, because the user already expects something to happen at that exact moment.
+  Implemented as a one-shot pulse (`posUpdateTransition.js`'s `POS_UPDATE_TRANSITION_EVENT`) that
+  `TerminalPage.jsx` fires only on an actual change to `locked` or the start of
+  `terminalStartupLoading` (never on a render with nothing changing), which `main.jsx` listens for
+  and applies immediately — no continuous "is it safe" polling, no gating of the notice itself.
+  This **replaces** both the `derivePosShellUpdateSafety`/`publishPosShellUpdateSafety` mechanism
+  and its `terminalStartupLoading` exception entirely (removed, not just changed) — everything
+  `posUpdateSafety.js` still derives (checkout/cart/receipt/drawer state) is now purely
+  informational, shaping the notice's message, never gating whether it shows or activates. A
+  manual browser refresh continues to serve the current build regardless of any of this, unchanged
+  (`sw.js`'s network-first navigation + Vite's content-hashed build assets — no code change needed
+  there, already true beforehand).
 - `apps/dgfy-ims` and `apps/dgfy-storefront` are unaffected: `dgfy-ims`'s own SW registration never
   force-reloads today and is untouched by this change; `TerminalPage.jsx`'s new publish effect is
   gated by the same `IS_DGFY_POS_SURFACE` constant `POSCheckoutTerminal.jsx` already uses, so it is a
@@ -84,10 +99,10 @@ just reached.
 
 ## Verification Evidence
 
-- `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js` and
-  `.../serviceWorkerCaching.contract.test.js` — 27/27 passing, run from `apps/dgfy-ims`
-  (`packages/web-core` has no test runner of its own; its tests execute via `apps/dgfy-ims`'s vitest
-  `test.include` glob).
+- `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js`,
+  `.../posUpdateTransition.test.js`, and `.../serviceWorkerCaching.contract.test.js` — 19/19
+  passing, run from `apps/dgfy-ims` (`packages/web-core` has no test runner of its own; its tests
+  execute via `apps/dgfy-ims`'s vitest `test.include` glob).
 - `npm run build:pos` and `npm run build:skupervisor` — both real Vite builds, both succeed with no
   errors (Tier 0 per `.agents/skills/implement/SKILL.md`; `packages/web-core` has no build step of
   its own but is the shared trunk compiled into both apps).
@@ -96,9 +111,11 @@ just reached.
 ## Changed Files
 
 - `packages/web-core/src/features/pos/utils/posUpdateSafety.js`
+- `packages/web-core/src/features/pos/utils/posUpdateTransition.js` (new)
 - `packages/web-core/src/features/pos/pages/TerminalPage.jsx`
 - `apps/dgfy-pos/src/main.jsx`
 - `packages/web-core/src/features/pos/__tests__/posUpdateSafety.test.js`
+- `packages/web-core/src/features/pos/__tests__/posUpdateTransition.test.js` (new)
 - `packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js`
 
 ## Preflight Reconciliation

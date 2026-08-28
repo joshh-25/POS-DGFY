@@ -1,23 +1,20 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     CHECKOUT_OWNED_SAFETY_REASONS,
-    derivePosShellUpdateSafety,
     derivePosUpdateSafety,
     getPosUpdateSafetyState,
     hasCheckoutOwnedSafetyReason,
-    publishPosShellUpdateSafety,
     publishPosUpdateSafetyState
 } from '../utils/posUpdateSafety.js';
 
 describe('POS Service Worker update safety', () => {
     afterEach(() => {
-        // Both sources are a module-level singleton -- reset both after every
-        // test so state doesn't leak across cases.
+        // Module-level singleton -- reset after every test so state doesn't
+        // leak across cases.
         publishPosUpdateSafetyState({});
-        publishPosShellUpdateSafety({});
     });
 
-    it('blocks activation while transaction-critical state is owned by the terminal', () => {
+    it('flags every transaction-critical reason it is given', () => {
         const state = derivePosUpdateSafety({
             cartLineCount: 1,
             splitPaymentSession: { status: 'active' },
@@ -36,11 +33,11 @@ describe('POS Service Worker update safety', () => {
         ]));
     });
 
-    it('allows activation only when the derived terminal state is idle', () => {
+    it('reports idle when given no transaction-critical state', () => {
         expect(derivePosUpdateSafety()).toEqual({ unsafe: false, reasons: [] });
     });
 
-    it('publishes the derived state without creating a second transaction owner', () => {
+    it('publishes the derived state', () => {
         const eventWindow = new EventTarget();
         eventWindow.CustomEvent = CustomEvent;
         let received = null;
@@ -54,77 +51,14 @@ describe('POS Service Worker update safety', () => {
         expect(getPosUpdateSafetyState()).toEqual(nextState);
     });
 
-    describe('shell (login/session) safety', () => {
-        it('is safe on an untouched, locked login screen', () => {
-            expect(derivePosShellUpdateSafety({ locked: true })).toEqual({ unsafe: false, reasons: [] });
-            expect(derivePosShellUpdateSafety()).toEqual({ unsafe: false, reasons: [] });
-        });
-
-        it('flags an authenticated session, dirty login input, and an in-flight submit independently', () => {
-            expect(derivePosShellUpdateSafety({ locked: false }).reasons).toContain('authenticated_session');
-            expect(derivePosShellUpdateSafety({ locked: true, loginFieldsDirty: true }).reasons).toContain('login_input');
-            expect(derivePosShellUpdateSafety({ locked: true, loginSubmitting: true }).reasons).toContain('login_submitting');
-        });
-
-        it('does not flag an authenticated session while terminalStartupLoading is true', () => {
-            // The post-login/company-switch/admin-reunlock hydration window --
-            // already showing a full loading screen instead of live terminal
-            // UI, so a pending update may auto-apply there without waiting
-            // for a tap.
-            expect(derivePosShellUpdateSafety({ locked: false, terminalStartupLoading: true }))
-                .toEqual({ unsafe: false, reasons: [] });
-        });
-
-        it('resumes flagging an authenticated session once terminalStartupLoading clears', () => {
-            expect(derivePosShellUpdateSafety({ locked: false, terminalStartupLoading: false }).reasons)
-                .toContain('authenticated_session');
-        });
-
-        it('still flags dirty login input even during terminalStartupLoading', () => {
-            expect(derivePosShellUpdateSafety({
-                locked: true,
-                loginFieldsDirty: true,
-                terminalStartupLoading: true
-            }).reasons).toContain('login_input');
-        });
-    });
-
-    describe('merged (checkout + shell) safety', () => {
-        it('stays unsafe if either source is unsafe', () => {
-            publishPosUpdateSafetyState({ cartLineCount: 1 });
-            publishPosShellUpdateSafety({ locked: true });
-            expect(getPosUpdateSafetyState().unsafe).toBe(true);
-
-            publishPosUpdateSafetyState({});
-            publishPosShellUpdateSafety({ locked: true, loginFieldsDirty: true });
-            expect(getPosUpdateSafetyState().unsafe).toBe(true);
-        });
-
-        it('is only safe when both sources report safe', () => {
-            publishPosUpdateSafetyState({});
-            publishPosShellUpdateSafety({ locked: true });
-            expect(getPosUpdateSafetyState()).toEqual({ unsafe: false, reasons: [] });
-        });
-
-        it('a checkout unmount reset does not clear an unsafe shell state (#990)', () => {
-            // Regression case: logging out used to publish {} from
-            // POSCheckoutTerminal's own unmount effect, which -- before the
-            // sources were keyed separately -- clobbered the shell's own
-            // "unsafe" (e.g. a deferred update landing right on the login
-            // screen the user just reached).
-            publishPosShellUpdateSafety({ locked: true, loginFieldsDirty: true });
-            publishPosUpdateSafetyState({});
-            expect(getPosUpdateSafetyState().unsafe).toBe(true);
-            expect(getPosUpdateSafetyState().reasons).toContain('login_input');
-        });
-    });
-
-    describe('hasCheckoutOwnedSafetyReason (#1118 RF-1)', () => {
-        // main.jsx's force-activation ("Update now") button must never be
-        // offered while a transaction is in progress -- only ever for a pure
-        // "shell" (session/login) reason. This is what main.jsx actually
-        // gates that decision on, so proving it here proves the button's
-        // behavior directly, not just that some source string is present.
+    describe('hasCheckoutOwnedSafetyReason (#1118 RF-1, still informational post-2026-08-28)', () => {
+        // Per the 2026-08-28 follow-up, nothing in this module gates
+        // activation any more -- an update is never auto-applied while idle,
+        // full stop (Pat's call). hasCheckoutOwnedSafetyReason now only
+        // informs the notice's message (main.jsx's describeNotice), telling
+        // the user whether tapping "Update now" right now would end a live
+        // transaction. Still worth covering directly, not just by string
+        // match, since a silent regression here would mislead the message.
         it('is true for every reason derivePosUpdateSafety can produce', () => {
             const state = derivePosUpdateSafety({
                 cartLineCount: 1,
@@ -143,32 +77,7 @@ describe('POS Service Worker update safety', () => {
             }
         });
 
-        it('is false for every reason derivePosShellUpdateSafety can produce', () => {
-            const state = derivePosShellUpdateSafety({
-                locked: false,
-                loginFieldsDirty: true,
-                loginSubmitting: true
-            });
-
-            for (const reason of state.reasons) {
-                expect(hasCheckoutOwnedSafetyReason([reason])).toBe(false);
-            }
-        });
-
-        it('is true for the merged state of an active cart with a dirty login screen', () => {
-            // The exact scenario RF-1 flagged: an active cart (checkout-owned,
-            // must never be force-activated past) merged with unrelated shell
-            // state. One checkout-owned reason anywhere in the merge must be
-            // enough to refuse a force-activation.
-            publishPosUpdateSafetyState({ cartLineCount: 2 });
-            publishPosShellUpdateSafety({ locked: true, loginFieldsDirty: true });
-
-            const merged = getPosUpdateSafetyState();
-            expect(merged.unsafe).toBe(true);
-            expect(hasCheckoutOwnedSafetyReason(merged.reasons)).toBe(true);
-        });
-
-        it('is false for an idle, safe merged state (nothing to refuse)', () => {
+        it('is false for an idle state (nothing in progress)', () => {
             expect(hasCheckoutOwnedSafetyReason([])).toBe(false);
         });
     });

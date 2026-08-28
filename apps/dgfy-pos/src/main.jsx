@@ -18,6 +18,7 @@ import {
   hasCheckoutOwnedSafetyReason,
   POS_UPDATE_SAFETY_EVENT
 } from '../../../packages/web-core/src/features/pos/utils/posUpdateSafety.js';
+import { POS_UPDATE_TRANSITION_EVENT } from '../../../packages/web-core/src/features/pos/utils/posUpdateTransition.js';
 import { login as loginTenantSession } from '../../../packages/web-core/src/services/authService.js';
 import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
@@ -177,57 +178,67 @@ const registerPosServiceWorker = async () => {
     let waitingWorker = null;
     let reloadAfterControllerChange = false;
     let reloadTriggered = false;
-    let updateDeferredBySafety = false;
-    let updateActivationStarted = false;
+    let activationStarted = false;
+    let noticeShowing = false;
 
-    // Reasons published by the "checkout" source (see posUpdateSafety.js) --
-    // an in-progress transaction. Everything else (an authenticated session,
-    // unsubmitted login input, a submit in flight) is a "shell" reason and
-    // gets a different, session-appropriate deferral message.
-    const describeDeferral = (reasons) => (
+    // Pat's call (#990 follow-up, 2026-08-28): never auto-apply an update,
+    // full stop -- not even on an untouched, idle screen. The notice may
+    // appear at any time, regardless of what the user is doing (typing,
+    // mid-checkout, anything) -- showing it is never the problem, only a
+    // forced reload is. The only two ways an update ever applies from here
+    // on: the user taps "Update now", or they refresh the page themselves
+    // (sw.js's network-first navigation + content-hashed build assets
+    // already serve the new build on a plain refresh, independent of this
+    // registration flow entirely).
+    const describeNotice = (reasons) => (
       hasCheckoutOwnedSafetyReason(reasons)
-        ? 'POS update will install after the current transaction is finished.'
-        : 'A POS update is ready. It will install when the terminal is idle.'
+        ? 'A POS update is ready. Updating now will end the current transaction.'
+        : 'A POS update is ready.'
     );
 
-    const activateWaitingWorker = ({ force = false } = {}) => {
-      if (!waitingWorker || waitingWorker.state !== 'installed') return false;
-      if (updateActivationStarted) return true;
-      const safetyState = getPosUpdateSafetyState();
-      if (safetyState.unsafe && !force) {
-        updateDeferredBySafety = true;
-        // A user-triggered force-activation must never be offered while a
-        // transaction is in progress -- only a "shell" reason (unauthenticated
-        // session state, no cart/checkout/receipt/drawer work) is safe to
-        // override with an explicit click.
-        const canForceActivation = !hasCheckoutOwnedSafetyReason(safetyState.reasons);
-        publishPosUpdateNoticeState({
-          message: describeDeferral(safetyState.reasons),
-          activate: canForceActivation ? () => activateWaitingWorker({ force: true }) : null
-        });
-        return false;
-      }
-
-      updateDeferredBySafety = false;
-      updateActivationStarted = true;
+    const applyWaitingWorker = () => {
+      if (!waitingWorker || waitingWorker.state !== 'installed') return;
+      if (activationStarted) return;
+      activationStarted = true;
       reloadAfterControllerChange = true;
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
       publishPosUpdateNoticeState(null);
-      return true;
+    };
+
+    const showUpdateNotice = () => {
+      if (!waitingWorker || waitingWorker.state !== 'installed') return;
+      if (activationStarted) return;
+      noticeShowing = true;
+      publishPosUpdateNoticeState({
+        message: describeNotice(getPosUpdateSafetyState().reasons),
+        activate: applyWaitingWorker
+      });
     };
 
     const handleWaitingWorker = (worker) => {
       if (!worker) return;
       waitingWorker = worker;
-      activateWaitingWorker();
+      showUpdateNotice();
     };
 
-    const handlePosUpdateSafetyChange = () => {
-      if (!updateDeferredBySafety) return;
-      activateWaitingWorker();
-    };
+    // Purely informational: keeps the notice's message current if the
+    // in-progress-transaction state changes while it's already showing (e.g.
+    // a cart becomes active, or checkout finishes). Never gates or triggers
+    // activation on its own.
+    window.addEventListener(POS_UPDATE_SAFETY_EVENT, () => {
+      if (!noticeShowing) return;
+      showUpdateNotice();
+    });
 
-    window.addEventListener(POS_UPDATE_SAFETY_EVENT, handlePosUpdateSafetyChange);
+    // The one exception to "never auto-apply": a natural transition the
+    // user just triggered themselves (login succeeding, logging out, a
+    // company switch, an admin re-unlock -- TerminalPage.jsx's own
+    // definition of "transition"). Silently applying right then piggybacks
+    // on a moment the user already expects something to happen, rather than
+    // reloading an idle screen "out of nowhere".
+    window.addEventListener(POS_UPDATE_TRANSITION_EVENT, () => {
+      applyWaitingWorker();
+    });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!reloadAfterControllerChange || reloadTriggered) return;
