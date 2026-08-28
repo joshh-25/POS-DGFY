@@ -9650,6 +9650,380 @@ is not a live reference and is not updated by this note.
 
 ---
 
+**Back-fill note, 2026-08-28 — Phases 176-179 (and 177) reconciled onto `main` from `develop`.**
+These four phases exist on `develop` but not on `main` (which only reached Phase 175 before this initiative's own PRs started landing directly against `main` -- see the dated note immediately below for why). Copied verbatim from `develop`'s current ledger so `main`'s own copy has no numbering gap between Phase 175 and this initiative's Phase 180 -- per `pr-reviewer`'s RF-2 finding on PR #1138, correctly identifying that a gap would have made the "continuous numbering" claim depend on an unspecified future back-port instead of being true in `main`'s own history right now. Content unchanged from `develop`; only the act of copying it here is new. Phase 176's original physical ordering (176, 178, 179, then 177 -- itself the product of an earlier documented collision, see the note embedded in that block) is preserved exactly as `develop` has it, not renumbered or reordered.
+
+---
+
+---
+
+## Phase 176 - Per-Store Guest Checkout Toggle
+
+### Objective and scope
+
+Add a per-store merchant setting, `storefront_guest_checkout_enabled` (default `true`), that lets
+a merchant require a signed-in DGFY account before a customer can complete storefront checkout or
+a Services booking. Covers all storefront purchase paths (Retail, Simple/MSME, F&B product
+checkout, Services bookings), a fail-closed backend enforcement gate, a fail-open client UI gate
+in the shared guest-or-account entry renderer, a merchant toggle dual-surfaced in both IMS Settings
+> Storefront > Storefront Access and the POS app's own terminal settings workspace (Pat's
+preference for where this control should live), and a vertical-dependent provisioning default
+(disabled for `retail`, enabled otherwise) for newly-provisioned tenants only.
+
+### Status
+
+- `completed` (re-confirmed 2026-08-27 after a second RF-3 round — see the rendered-proof bullets
+  below for the full evidence, including one gap disclosed rather than faked, and the real bug
+  the rendered-proof pass itself caught and fixed)
+
+### Dependencies
+
+- None. No migration, no tenant-schema-sync entry (`system_settings` is key/value; a missing row
+  resolves to enabled everywhere it's read).
+
+### Acceptance and validation evidence
+
+- [x] `resolveAccessPolicyFromSettings` resolves `guest_checkout_enabled`, defaulting to `true` when
+  unset, so no existing tenant's behavior changes on deploy
+  (`apps/dgfy-api/tests/customerAccessPolicy.test.js`).
+- [x] `assertGuestCheckoutAllowed` rejects a non-DGFY-linked store customer with 403
+  `GUEST_CHECKOUT_DISABLED` when the setting is `false`, and allows a DGFY-linked customer
+  regardless (`apps/dgfy-api/tests/storeGuestCheckoutProof.test.js`, new).
+- [x] The guard is wired into all four checkout/booking use-case call sites (product checkout,
+  payment-session, single booking, batch booking) with no regression across 21 store/service
+  usecase test files (263 tests passing).
+- [x] Caller-level proof at all four enforcement sites, not just the isolated decision function
+  (PR #1095 reviewer finding RF-2): `buildStoreCheckoutUseCase`, `buildStoreCheckoutPaymentSessionUseCase`,
+  `buildCreateServiceBookingUseCase`, and `buildCreateServiceBookingBatchUseCase` each asserted to
+  reject a guest 403 `GUEST_CHECKOUT_DISABLED` before any persistence/payment-session side effect,
+  and to still let a DGFY-linked customer through
+  (`apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js`, new, 8/8 passing).
+- [x] The settings validator accepts the new key in both the bulk and single-key schemas
+  (`apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js`).
+- [x] The storefront's shared guest-or-account entry renderer hides "Continue as Guest" only when
+  the store has explicitly disabled it, and fails open on a missing/undefined value
+  (`apps/dgfy-storefront/src/__tests__/guestCheckoutEntryGate.test.jsx`, new; `customerAccess.test.js`
+  extended). Full storefront suite (140 files / 754 tests) passes.
+- [x] IMS Settings > Storefront > Storefront Access, and the POS app's own terminal settings
+  workspace (`TerminalOperationsWorkspace.jsx`, rendered only by `apps/dgfy-pos`), both expose the
+  "Allow Guest Checkout" toggle, following the existing `storefront_follow_enabled` toggle idiom
+  (already dual-surfaced the same way). No regression across `apps/dgfy-ims`'s full `packages/web-core`
+  suite (295 files / 1794 tests).
+- [x] `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos` all pass (Tier 0).
+- [x] ADR 0023 amended (Decision 11, Consequences item 2 — both `default`-tier, dated `## Amendments`
+  block, no superseding ADR needed) and `docs/features/DGFY_CUSTOMER_ACCOUNT.md` updated to match.
+- [x] Compliance impact declaration filed:
+  `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+  (`major`, `settings,payments,pos,terminal`).
+- [x] Rendered proof (Architecture Governance item 8), storefront guest-vs-account checkout entry
+  gate -- root-caused and completed on the retry. The first attempt's bounce turned out not to be a
+  bug: `shopai-store-745611` has `ops_workflow_mode: food_manufacturing`, which
+  `modePresentationRegistry.js` maps to no gate-bearing checkout route at all (falls through to
+  the documented `DefaultOrderPage.jsx` placeholder), and its business hours were closed at test
+  time -- neither is this PR's code. Retried against two zero-mutation-for-enabled tenants whose
+  `ops_workflow_mode` and hours actually qualify (`pat-marketing-314108`, retail;
+  `pat-s-non-existent-kainan-6086e7`, fnb, already carrying a real
+  `storefront_guest_checkout_enabled: false` row). New committed harness
+  `scripts/smoke-guest-checkout-gate-ui.js` (`npm run smoke:guest-checkout-gate`), modelled on the
+  existing `smoke-dgfy-access-ui.js`/`smoke-pos-terminal-ui.js` harnesses: page identity ("Continue
+  to your order" matched), nonblank content, no framework overlay, console health (zero
+  unignored errors), one primary interaction per state (enabled: click "Continue as Guest",
+  advances in-page to the guest details step; disabled: click "Create DGFY Account", navigates
+  in-app to `/register`), and both desktop (1440x960) and mobile (390x844) viewports -- real
+  Playwright viewports, not a live-window resize, so the "when practical" mobile hedge that bit an
+  earlier phase (Phase 152/DOWNPAYMENT.md) didn't apply here. All 4 checks pass; screenshots and the
+  JSON evidence payload are in `.tmp/rendered-qa/guest-checkout-gate/` (gitignored, regenerable via
+  the npm script).
+  **This pass caught and fixed a real bug**: every actual call site of the shared
+  `renderGuestCheckoutEntry` (retail, both Simple steps, both F&B steps, both Services-booking
+  variants) was passing a hardcoded description string, so only the "Continue as Guest" button's
+  presence tracked the toggle -- the copy always read "create an account or continue as guest",
+  even when the merchant had disabled it. Fixed by threading a `guestCheckoutAllowed` prop through
+  each call site (same threading pattern already used for `canUseGuestCheckoutFlow`) so the
+  description branches correctly in all seven render sites, including the `services-reference`
+  layout variant whose disabled-state copy ("No account is needed...") was actively wrong, not just
+  stale. Full storefront suite re-run clean afterward: 140 files / 754 tests.
+- [x] Rendered proof (Architecture Governance item 8), IMS and POS "Allow Guest Checkout" toggle
+  save-and-rehydrate -- completed with Pat's own authenticated session (this session never saw or
+  entered any credential): on `pat-s-non-existent-kainan-6086e7`, toggled on in POS's terminal
+  settings workspace, saved, reloaded, confirmed the checkbox and the underlying setting row both
+  persisted `true`; toggled off, saved, reloaded, confirmed both restored to `false`. Repeated
+  identically on IMS Settings > Storefront > Storefront Access (a dedicated switch with live
+  copy, not a bare checkbox). Both surfaces: page identity, nonblank content, no overlay, console
+  health (zero errors both directions, both apps), and the save-reload round trip itself as the
+  primary interaction -- confirmed at the database row level after every save, not just the UI's
+  own optimistic state. **Desktop only** -- a live-window resize to the mobile viewport did not
+  take effect in this environment (the same "browser resize didn't take effect" limitation already
+  disclosed once for Phase 152/`DOWNPAYMENT.md`, not new here); not pursued further rather than
+  faked, per that same precedent's own resolution. Screenshots in
+  `.tmp/rendered-qa/merchant-toggle/` (gitignored).
+- [x] **Harness integrity fix (PR #1095 reviewer finding RF-5)**: the rendered-proof harness above
+  (`scripts/smoke-guest-checkout-gate-ui.js`) had two real gaps that could let it print `PASS` on a
+  broken proof. (1) Each `interact()` returned diagnostic fields (`advancedToGuestDetails`,
+  `navigatedToAuth`, `authPageNonblank`) but the failure reducer only checked for a thrown
+  `interactionError` -- a click that landed but produced the wrong outcome would still pass. Fixed
+  by having each `interact()` compute a single explicit `passed` boolean from its own assertions,
+  and changing the reducer to `entry.interactionResult?.passed !== true`. (2) The console-health
+  check ignored every 403 by bare status text (no URL was available on that log line), which could
+  hide a real, relevant 403 alongside the one known-benign storefront-asset 403. Fixed by moving
+  HTTP-failure judgment entirely to the `page.on('response')` listener, which does carry the URL:
+  a 403 is only ignored when it matches the documented `/uploads/storefront-assets/....(webp|png|jpe?g)`
+  shape; any other 4xx against this flow's own `/api/v1/store/...` surface, or any 5xx anywhere, now
+  fails the run. **Negative-run proof, as requested**: temporarily forced `passed: false` on the
+  `enabled` check's interaction (while its own `advancedToGuestDetails` computed `true`, i.e. the
+  click itself worked) and re-ran the harness -- exited 1, `FAIL enabled.desktop.interactionFailed=...,
+  enabled.mobile.interactionFailed=...`, proving the reducer genuinely gates on `passed` rather than
+  only on a thrown exception. Reverted immediately, confirmed `git diff` showed no residual change,
+  and re-ran clean: exit 0, all 4 checks pass, `interactionResult.passed: true` on all of them, one
+  correctly-ignored anonymous `401` on `/api/v1/dgfy/auth/me` visible in the evidence JSON and
+  correctly non-failing (not a target-flow endpoint).
+- **Correction to this ledger's own prior record**: an earlier pass of this rendered-proof work
+  claimed "no `storefront_guest_checkout_enabled` row was left on any tenant" after reverting a test
+  mutation on `shopai-store-745611`. That claim was checked against the wrong tenant and was wrong
+  -- a full 45-tenant-database sweep found one residual row, on
+  `pat-s-non-existent-kainan-6086e7` (`false`, timestamped from that earlier session, description
+  "Auto-created by settings update flow"). That tenant was then reused, deliberately, as the fixture
+  for this round's rendered proof above -- its final value (`false`) reflects a real save performed
+  through the actual IMS/POS UI during this verification, not leftover test residue, so it was left
+  as-is rather than deleted out from under Pat's own just-performed action. Every other tenant in
+  the sweep had no row (resolves to the default `true`).
+
+### Implementation links
+
+- Issue #622
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md` (`## Amendments (2026-08-27)`)
+- `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+- `apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js` (new, RF-2)
+- `scripts/smoke-guest-checkout-gate-ui.js` (new, RF-3 rendered proof)
+
+### Next eligible phase
+
+Phase 177.
+
+---
+
+## Phase 178 - Storefront Unavailable Fulfillment Feedback (#1093)
+
+### Objective and scope
+
+Keep Delivery and Pickup visible in Retail, Simple/MSME, and F&B checkout when a selected
+location does not support one of them. An unavailable method is visually muted, remains
+keyboard-activatable for feedback, preserves the current fulfillment selection, and displays the
+method-specific inline explanation. Missing or cached legacy support flags remain fail-open. The
+mode-agnostic `DefaultOrderFulfillmentStep` remains explicitly out of scope because it is the
+unwired placeholder checkout tree, not one of the three live product checkout routes.
+
+### Status
+
+- `completed` (2026-08-28)
+
+### Dependencies
+
+- Phase 177 completed. No migration, API, schema, settings, architecture allowlist, or ADR
+  amendment is required; server-side location-capability validation remains authoritative.
+
+### Acceptance and validation evidence
+
+- [x] The shared storefront option resolver keeps Delivery and Pickup candidates and annotates
+  availability for delivery-only, pickup-only, both-enabled, both-disabled legacy, and missing-flag
+  location states (`storefrontFulfillmentOptions.test.js`).
+- [x] Retail, Simple/MSME, and F&B each keep unavailable choices visible, expose unavailable
+  semantics without a native disabled button, preserve the existing method on activation, and show
+  the required inline message (three focused selector/component interaction tests).
+- [x] F&B now consumes the selected location's resolved fulfillment options rather than rendering
+  both methods unconditionally.
+- [x] `npm run build:store`, focused Storefront Vitest coverage (5 files, 20 tests),
+  `npm run lint:docs`, and `npm run check:architecture` pass. Storefront lint passes with the
+  repository's existing warnings and no errors.
+
+### Implementation links
+
+- `apps/dgfy-storefront/src/shared/model/storefrontFulfillmentOptions.js`
+- `apps/dgfy-storefront/src/shared/components/checkout/SelectableOptionCard.jsx`
+- `apps/dgfy-storefront/src/modes/{simple,fnb,retail}/checkout/`
+
+### Next eligible phase
+
+Phase 179 is the next repository phase; planned Phases 172-175 retain their initiative-specific
+dependencies and status.
+
+---
+
+## Phase 179 - Staging Fulfillment-Capability Consistency Hotfix
+
+### Initiative and release
+
+- Initiative: #1093 per-store delivery/pickup capability correction; incident record #1117.
+- Release: staging hotfix.
+
+### Objective and scope
+
+- Keep `store_has_no_location` as a map-publication control while projecting fulfillment support
+  from a resolved active primary location when one exists.
+- Resolve Storefront fulfillment support from selected/loaded/snapshotted locations before using
+  top-level discovery profile fallbacks.
+- Preserve unavailable-choice feedback in Retail, Simple/MSME, and F&B.
+
+### Status
+
+- `in_progress`
+- Started on 2026-08-28 under the explicit `/hotfix` incident workflow.
+- Incident traceability: #1117 records the confirmed staging defect, reproduction, and deployment
+  proof still required before closure.
+
+### Dependencies
+
+- ADR 0010, ADR 0014, ADR 0017, and Phase 178's fulfillment-option presentation contract.
+
+### Acceptance and validation evidence
+
+- [ ] Contradictory no-location discovery profiles retain null map fields and project the active
+  primary location's fulfillment flags.
+- [ ] Retail, Simple/MSME, and F&B keep Pickup unavailable, retain Delivery selection, and show
+  the existing explanation.
+- [ ] Focused API/Storefront tests, Storefront build, architecture, documentation, and compliance
+  gates pass.
+
+### Implementation links
+
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-storefront/src/shared/model/storefrontOrderMethodOptions.js`
+
+### Next eligible phase
+
+Phase 180 is next after Phase 179 completes; planned Phases 172-175 retain their existing
+initiative-specific dependencies and status.
+
+---
+
+### Planning Record (2026-08-26)
+
+- Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
+  next eligible phase after explicit approval and Phase 171 merge.
+- Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
+  rollback/re-apply rehearsals, focused persistence tests, existing POS
+  regression tests, and architecture/compliance/docs/schema gates.
+- A phase becomes `completed` only after all of its required acceptance evidence is checked and
+  linked; planning alone is not evidence of functional completion.
+---
+
+**Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
+the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
+renumbers"):**
+
+This branch's own Phase entry for the frontend split (issue #322) originally claimed **Phase 89**,
+assigned during the prior absorb cycle (`f8e56c71`, 2026-08-16) against `develop`'s state at that
+time. Since then `develop` independently landed its own, different **Phase 89** (*POS Items
+Gallery and IMS CSV Import Foundation*) and continued on through **Phase 150**. Neither side had
+the other's Phase 89 as an ancestor when each claimed the number, so this is a genuine collision,
+not a missed rebase — resolved by absorbing `develop` (the larger, already-merged body of work)
+verbatim and renumbering this branch's unmerged entry, and moving it to the end of the ledger
+(after develop's own Phase 150) rather than leaving it spliced between develop's Phase 88 and 89:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 89 | `develop`'s POS Items Gallery / IMS CSV Import Foundation | unchanged — prior reservation, already merged to `develop` |
+| 151 | This branch's Frontend App Split (issue #322) | **moved from 89**, then moved again — see the 2026-08-23 addendum below |
+
+No code changes accompany this renumber — the phase's own implementation was already complete and
+merge-independent; only the ledger heading, its own "Completion Record" trailer, and the ADR 0071
+cross-reference above needed edits. The three `// ... Phase 89` source comments in
+`apps/dgfy-api/**` (`fulfillmentProfiles.contract.test.js`, `ServiceBookingStatusEvent.js`,
+`serviceUseCases.js`) refer to `develop`'s Phase 89 and are correct as absorbed — left untouched.
+
+**Addendum, 2026-08-23 — the same collision fired a second time, same day, on the number this note
+itself just assigned.** `develop` independently claimed `## Phase 151 - Customer-Facing Downpayment
+Surfaces` (#826, commit `6519e39c`, 2026-08-22 21:11) about 1.5 hours after this branch's own
+renumber above (commit `18e11cb6`, 19:37) — so this branch was chronologically first, but by the
+time of the next absorb cycle (2026-08-23) develop's Phase 151 was already merged and externally
+cited (its own issue, PR, and compliance declaration all reference "Phase 151"). Neither side was
+careless: each checked against the highest number visible in the ledger it could see, and this
+branch's own reservation is invisible to `develop`'s authors by construction — it lives on an
+unmerged branch. Resolved the same way as the first collision: the unmerged absorbing branch
+renumbers again.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | `develop`'s Customer-Facing Downpayment Surfaces (#826) | unchanged — already merged to `develop` |
+| 152 | This branch's Frontend App Split (issue #322) | **moved from 151, which was itself moved from 89** |
+
+This is the fourth ADR/phase-number collision across two absorb cycles (see
+`docs/architecture/backend-absorption.md:300` for the earlier ADR-number precedent this pattern
+follows). The root cause is structural, not a process gap on either side: as long as this branch's
+own ledger entry stays unmerged, every `develop` author choosing "the next free phase number" is
+choosing against a ledger that doesn't yet contain this branch's reservation. It will keep recurring
+each absorb cycle until PR #513 merges.
+
+---
+
+## Phase 177 - POS Checkout State and Discount Financial-Truth Audit
+
+### Initiative and release
+
+- Initiative: close confirmed POS checkout state, discount scoping, mobile sync composition, and
+  order-preview financial-truth gaps found in the 2026-08-28 final audit.
+- Release: maintenance follow-up to the unified POS discount and Current Sale navigation work.
+
+### Objective and scope
+
+- Bind per-quantity governed discounts to an exact cart line so duplicate catalog item IDs cannot
+  multiply one cashier selection.
+- Preserve non-discount checkout fields when removing a discount, while full modal close/new-sale
+  reset continues to restore Cash and the normal checkout defaults.
+- Clear transient sale state on navigation and authentication session end, reparking an active
+  parked sale when possible and always removing local cashier state before the next login.
+- Correct Order Overview Total Payment fallback and mobile statutory-sync dependency composition.
+- Repair the stale split-payment source contract and add regression coverage for every confirmed
+  failure mode.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28.
+
+### Dependencies
+
+- ADR 0033's server-authoritative governed-discount boundary and its 2026-08-28 amendment.
+- Existing POS checkout, parked-sale, voucher, and mobile financial-sync contracts.
+- This is an explicitly approved parallel maintenance phase; it does not imply completion of
+  planned Phases 172-175.
+
+### Acceptance and validation evidence
+
+- [x] Duplicate-item cart lines receive discounts only on selected `line_ref` values; ambiguous
+  quantity-bearing legacy selections fail closed.
+- [x] Discount removal preserves order method, table, notes, tender, employee-credit, affiliate,
+  and payment input state.
+- [x] Logout/session-clear removes local sale state and attempts to release an active parked sale.
+- [x] Completed Order Overview uses the persisted total when `amount_paid` is absent/default zero,
+  while genuine partial payments show the paid amount.
+- [x] Mobile statutory checkout sync is composed with `posRepository`; the focused backend matrix
+  passes 69/69 tests.
+- [x] The complete POS frontend suite passes 899/899 tests across 161 files; SKUpervisor, POS, and
+  Storefront production builds pass.
+- [x] Changed backend/frontend lint reports zero errors; architecture, controller-boundary, ADR,
+  docs, compliance, API-contract, JavaScript syntax, and diff-safety checks pass.
+- [x] POS frontend/backend focused suites, full POS tests, builds, lint, architecture, ADR, docs,
+  and diff-safety gates pass with no new failure.
+- [x] No database migration is required because `line_ref` is request-only context.
+
+### Implementation links
+
+- `packages/web-core/src/features/pos/utils/posDiscountSelection.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutWorkflow.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutLifecycle.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`
+- `apps/dgfy-api/src/modules/pos/domain/posVoucherDiscountCalculator.js`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+
+### Next eligible phase
+
+The next repository phase is Phase 178 after Phase 177 completes; planned Phases 172-175 retain
+their existing dependencies and status.
+
 **Dated note, 2026-08-28 — phase numbers reserved from a `main`-based branch, not `develop`.**
 This initiative's PRs intentionally target `main` directly (Pat's explicit direction, #360 —
 production secrets need to be ready to execute live, not queued behind `develop`'s normal flow;
