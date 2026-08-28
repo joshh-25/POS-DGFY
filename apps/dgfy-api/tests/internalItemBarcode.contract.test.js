@@ -31,6 +31,31 @@ describe('internal item barcode contract', () => {
         expect(error?.message).toContain('valid GTIN');
     });
 
+    it('accepts a POS-scoped manufacturer GTIN while keeping inventory as the default', () => {
+        const posResult = createItemDraftSchema.validate({
+            name: 'POS-scanned product',
+            manufacturer_barcode: { code: '4006381333931', scope: 'pos' }
+        });
+        const inventoryResult = createItemDraftSchema.validate({
+            name: 'Inventory-scanned product',
+            manufacturer_barcode: { code: '4006381333931' }
+        });
+
+        expect(posResult.error).toBeUndefined();
+        expect(posResult.value.manufacturer_barcode.scope).toBe('pos');
+        expect(inventoryResult.error).toBeUndefined();
+        expect(inventoryResult.value.manufacturer_barcode.scope).toBe('inventory');
+    });
+
+    it('rejects manufacturer barcode scopes outside inventory and POS', () => {
+        const { error } = createItemDraftSchema.validate({
+            name: 'Invalid barcode scope',
+            manufacturer_barcode: { code: '4006381333931', scope: 'storefront_qr' }
+        });
+
+        expect(error?.message).toContain('must be one of');
+    });
+
     it('does not allow the same request to classify a barcode as both manufacturer and internal', () => {
         const { error } = createItemDraftSchema.validate({
             name: 'Conflicting Barcode',

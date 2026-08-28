@@ -154,6 +154,7 @@ export const usePosCheckoutWorkflow = ({
     vatBreakdown = {},
     cartTotal = 0,
     paymentType = 'cash',
+    checkoutWorkflowValidationMessage = null,
     isCheckoutWorkflowValid = true,
     isCashPayment = false,
     isEmployeeCreditPayment = false,
@@ -451,6 +452,10 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
+            return;
+        }
         const { validateFnbModifierSelections } = await import('../utils/fnbModifierValidation.js');
         const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
         if (invalidModifierLine) {
@@ -479,7 +484,7 @@ export const usePosCheckoutWorkflow = ({
         setCustomerPaymentAmountAutoFilled(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const openSplitPaymentModal = useCallback(async () => {
         if (checkoutBlockedReason) {
@@ -492,6 +497,10 @@ export const usePosCheckoutWorkflow = ({
         }
         if (safeCart.length === 0) {
             toast.error('Add at least one item before recording payment.');
+            return;
+        }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
             return;
         }
         if (isEmployeeCreditPayment) {
@@ -518,7 +527,7 @@ export const usePosCheckoutWorkflow = ({
         splitPaymentReturnToCheckoutRef.current = false;
         handleSplitPaymentOpenChange(true);
         setMobileCheckoutPanelOpen(false);
-    }, [checkoutBlockedReason, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [checkoutBlockedReason, checkoutWorkflowValidationMessage, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
@@ -1193,6 +1202,11 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        if (checkoutWorkflowValidationMessage) {
+            toast.error(checkoutWorkflowValidationMessage);
+            setCheckoutConfirmModalOpen(false);
+            return;
+        }
         if (!effectiveCustomerPaymentSufficient) {
             toast.error(isEmployeeCreditPayment
                 ? 'Verify an active, eligible employee account with enough available balance.'
@@ -1435,12 +1449,17 @@ export const usePosCheckoutWorkflow = ({
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
             const { buildFnbRecipeBlockerMessage, buildValidationDetailMessage } = await import('../utils/posCheckoutErrorMessages.js');
+            const rawMessage = String(error?.response?.data?.message || '').trim();
+            const friendlyPriceOverrideMessage = /^Price override reason is required for item\b/i.test(rawMessage)
+                ? 'Enter a price override reason of at least 3 characters before checkout.'
+                : null;
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
                 || buildFnbRecipeBlockerMessage(error)
+                || friendlyPriceOverrideMessage
                 || buildValidationDetailMessage(error)
-                || error?.response?.data?.message
+                || rawMessage
                 || 'POS checkout failed'
             );
             if (compliancePolicyBlocker?.actionTarget) {
@@ -1545,6 +1564,7 @@ export const usePosCheckoutWorkflow = ({
         cartTotal,
         catalog,
         checkoutBlockedReason,
+        checkoutWorkflowValidationMessage,
         customerPaymentAmount,
         customerPaymentChange,
         customerPaymentFieldLabel,

@@ -38,6 +38,14 @@ export default function EmployeeCreditPaymentPanel({
     const prefillAttemptRef = useRef('');
     const employeePickerRef = useRef(null);
     const normalizedPreferredEmployeeId = Number(preferredEmployeeId) || null;
+    const currentOutstanding = Number(
+        account?.outstanding_balance
+        ?? selectedEmployee?.outstanding_balance
+        ?? selectedEmployee?.current_balance
+        ?? 0
+    );
+    const outstandingAfterSale = currentOutstanding + Number(totalDue || 0);
+    const isVerified = Boolean(account && selectedEmployee && selectedEmployee.is_eligible);
 
     useEffect(() => {
         const requestId = requestSequence.current + 1;
@@ -147,14 +155,6 @@ export default function EmployeeCreditPaymentPanel({
         return () => document.removeEventListener('mousedown', handlePointerDown);
     }, [open]);
 
-    const currentOutstanding = Number(
-        account?.outstanding_balance
-        ?? selectedEmployee?.outstanding_balance
-        ?? selectedEmployee?.current_balance
-        ?? 0
-    );
-    const outstandingAfterSale = currentOutstanding + Number(totalDue || 0);
-    const isVerified = Boolean(account && selectedEmployee && selectedEmployee.is_eligible);
     return (
         <div className="space-y-3.5">
             <div className="space-y-3 rounded-xl border border-blue-100 bg-[#F8FAFC] p-3.5">

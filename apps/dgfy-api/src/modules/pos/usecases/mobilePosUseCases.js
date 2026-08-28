@@ -526,6 +526,74 @@ export const buildSyncMobilePosVoidsUseCase = ({ voidPosTransactionUseCase }) =>
     };
 };
 
+export const buildSyncMobilePosOrderActionsUseCase = ({
+    updateOnlineOrderStatusUseCase,
+    collectCashPickupOrderUseCase
+}) => {
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+
+        for (const entry of entries) {
+            const localOperationId = safeTrimmedText(entry?.local_operation_id, null);
+            const request = safeObject(entry?.payload);
+            const operationType = safeTrimmedText(request.operation_type, null);
+            const orderId = toPositiveInt(request.order_id);
+            let result;
+            if (!orderId) {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'order_id is required', { statusCode: 422 }));
+            } else if (operationType === 'status_transition') {
+                result = await updateOnlineOrderStatusUseCase({ posTransactionId: orderId, payload: request, user });
+            } else if (operationType === 'cash_collection') {
+                result = await collectCashPickupOrderUseCase({ posTransactionId: orderId, payload: request, user });
+            } else {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported order operation', { statusCode: 422 }));
+            }
+
+            if (result.success) {
+                const replayed = result.data?.idempotent_replay === true;
+                if (replayed) replayedEntries += 1; else acceptedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    operation_type: operationType,
+                    status: replayed ? 'replayed' : 'accepted',
+                    server_transaction_id: orderId,
+                    server_version: result.data?.order?.updated_at || null,
+                    payment_status: result.data?.order?.payment_status || null,
+                    data: result.data
+                });
+            } else {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    operation_type: operationType,
+                    status: 'rejected',
+                    error: toFailurePayload(result.error)
+                });
+            }
+        }
+
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: acceptedEntries + replayedEntries > 0
+                    ? buildCheckpointToken({ scope: 'order-actions', device_id: payload.device_id, run: payload.client_sync_run_id, acceptedEntries, replayedEntries })
+                    : null
+            })
+        });
+    };
+};
+
 // Item sync has no plan-tier gating (unlike checkout/shift/hardware sync,
 // which share mobilePosFreeSyncLimiter's 2/day free-tier budget) - item/
 // catalog CRUD has never been plan-gated anywhere else in the app, and

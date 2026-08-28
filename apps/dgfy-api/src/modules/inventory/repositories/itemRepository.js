@@ -1419,7 +1419,7 @@ export const itemRepository = {
                 ? {
                     code: manufacturer_barcode.code,
                     source: 'manufacturer',
-                    scope: 'inventory',
+                    scope: normalizeBarcodeScope(manufacturer_barcode.scope, 'inventory'),
                     metadata: { attached_via: 'external_registry_prefill' }
                 }
                 : internal_barcode?.code
@@ -2683,7 +2683,18 @@ export const itemRepository = {
         try {
             return await StorefrontCatalogOverride.findOne({
                 where: { item_id: itemId },
-                attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
+                attributes: [
+                    'storefront_catalog_override_id',
+                    'item_id',
+                    'storefront_visible',
+                    'storefront_image_path',
+                    'storefront_image_url',
+                    'storefront_image_gallery',
+                    'image_fingerprint',
+                    'optimization_version',
+                    'processing_status',
+                    'variant_metadata'
+                ],
                 transaction: options.transaction
             });
         } catch (error) {
@@ -2693,7 +2704,17 @@ export const itemRepository = {
             if (isMissingStorefrontCatalogGalleryColumnError(error)) {
                 return StorefrontCatalogOverride.findOne({
                     where: { item_id: itemId },
-                    attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    attributes: [
+                        'storefront_catalog_override_id',
+                        'item_id',
+                        'storefront_visible',
+                        'storefront_image_path',
+                        'storefront_image_url',
+                        'image_fingerprint',
+                        'optimization_version',
+                        'processing_status',
+                        'variant_metadata'
+                    ],
                     transaction: options.transaction
                 });
             }

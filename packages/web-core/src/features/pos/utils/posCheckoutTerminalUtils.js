@@ -8,6 +8,20 @@ export const getCartLineSubtotal = (line) => round4(
     Number(line?.quantity || 0) * Number(line?.sale_price || 0)
 );
 
+export const getPriceOverrideReasonValidationMessage = ({ line = {}, effectiveDefaultSalePrice } = {}) => {
+    const salePrice = Number(line?.sale_price);
+    const defaultSalePrice = Number(effectiveDefaultSalePrice);
+    if (!Number.isFinite(salePrice) || !Number.isFinite(defaultSalePrice)) return null;
+    if (Math.abs(round4(salePrice) - round4(defaultSalePrice)) <= 0.0001) return null;
+    if (String(line?.price_override_reason || '').trim().length >= 3) return null;
+
+    const itemLabel = String(line?.item_name || '').trim()
+        || (Number.isInteger(Number(line?.item_id)) && Number(line?.item_id) > 0
+            ? `item ${Number(line.item_id)}`
+            : 'this item');
+    return `Enter a price override reason of at least 3 characters for ${itemLabel} before checkout.`;
+};
+
 export const SPLIT_PAYMENT_METHOD_LABELS = {
     cash: 'Cash',
     gcash: 'GCash',
@@ -23,6 +37,8 @@ export const SPLIT_PAYMENT_METHOD_LABELS = {
 export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     cash: Object.freeze({
         selectClassName: 'border-amber-400 bg-amber-100 text-amber-950',
+        inactiveSelectClassName: 'border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100',
+        activeRingClassName: 'ring-amber-300',
         rowClassName: 'border-amber-300 bg-amber-100',
         badgeClassName: 'border-amber-300 bg-amber-200 text-amber-950',
         dotClassName: 'bg-amber-700',
@@ -30,6 +46,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     gcash: Object.freeze({
         selectClassName: 'border-blue-400 bg-blue-100 text-blue-950',
+        inactiveSelectClassName: 'border-blue-300 bg-blue-50 text-blue-950 hover:bg-blue-100',
+        activeRingClassName: 'ring-blue-300',
         rowClassName: 'border-blue-300 bg-blue-100',
         badgeClassName: 'border-blue-300 bg-blue-200 text-blue-950',
         dotClassName: 'bg-blue-800',
@@ -37,6 +55,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     maya: Object.freeze({
         selectClassName: 'border-emerald-400 bg-emerald-100 text-emerald-950',
+        inactiveSelectClassName: 'border-emerald-300 bg-emerald-50 text-emerald-950 hover:bg-emerald-100',
+        activeRingClassName: 'ring-emerald-300',
         rowClassName: 'border-emerald-300 bg-emerald-100',
         badgeClassName: 'border-emerald-300 bg-emerald-200 text-emerald-950',
         dotClassName: 'bg-emerald-800',
@@ -44,6 +64,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     card: Object.freeze({
         selectClassName: 'border-[#A66A45] bg-[#E8D2BF] text-[#4A2C1A]',
+        inactiveSelectClassName: 'border-[#C49A7C] bg-[#FAF3ED] text-[#4A2C1A] hover:bg-[#F3E3D5]',
+        activeRingClassName: 'ring-[#C58B64]',
         rowClassName: 'border-[#B9825A] bg-[#E8D2BF]',
         badgeClassName: 'border-[#A66A45] bg-[#D7B191] text-[#4A2C1A]',
         dotClassName: 'bg-[#6B3F24]',
@@ -52,6 +74,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     // Bank Transfer uses a dark indigo family, distinct from Employee Credit's navy.
     bank_transfer: Object.freeze({
         selectClassName: 'border-[#7C3AED] bg-[#EDE9FE] text-[#3B0764]',
+        inactiveSelectClassName: 'border-violet-300 bg-violet-50 text-[#3B0764] hover:bg-violet-100',
+        activeRingClassName: 'ring-violet-300',
         rowClassName: 'border-[#8B5CF6] bg-[#EDE9FE]',
         badgeClassName: 'border-[#8B5CF6] bg-[#DDD6FE] text-[#4C1D95]',
         dotClassName: 'bg-[#6D28D9]',
@@ -59,6 +83,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     employee_credit: Object.freeze({
         selectClassName: 'border-[#1A4E8D] bg-[#DBEAFE] text-[#0B2E59]',
+        inactiveSelectClassName: 'border-[#9AB6D4] bg-[#EFF6FF] text-[#0B2E59] hover:bg-[#DBEAFE]',
+        activeRingClassName: 'ring-[#6F95BF]',
         rowClassName: 'border-[#6F95BF] bg-[#DBEAFE]',
         badgeClassName: 'border-[#6F95BF] bg-[#BFDBFE] text-[#0B2E59]',
         dotClassName: 'bg-[#1A4E8D]',
@@ -66,6 +92,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     qrph: Object.freeze({
         selectClassName: 'border-violet-400 bg-violet-100 text-violet-950',
+        inactiveSelectClassName: 'border-violet-300 bg-violet-50 text-violet-950 hover:bg-violet-100',
+        activeRingClassName: 'ring-violet-300',
         rowClassName: 'border-violet-300 bg-violet-100',
         badgeClassName: 'border-violet-300 bg-violet-200 text-violet-950',
         dotClassName: 'bg-violet-800',
@@ -73,6 +101,8 @@ export const PAYMENT_METHOD_COLOR_STYLES = Object.freeze({
     }),
     default: Object.freeze({
         selectClassName: 'border-slate-300 bg-slate-50 text-slate-900',
+        inactiveSelectClassName: 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50',
+        activeRingClassName: 'ring-slate-300',
         rowClassName: 'border-slate-200 bg-slate-50/70',
         badgeClassName: 'border-slate-200 bg-slate-100 text-slate-700',
         dotClassName: 'bg-slate-500',

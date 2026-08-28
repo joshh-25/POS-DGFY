@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { FnbWorkflowPanel } from '../components/FnbWorkflowPanel.jsx';
+import { CounterWorkflowPanel } from '../components/CounterWorkflowPanel.jsx';
 import { ServicesWorkflowPanel } from '../components/ServicesWorkflowPanel.jsx';
 
 describe('POS Workflow Panels Contract', () => {
@@ -76,5 +77,33 @@ describe('POS Workflow Panels Contract', () => {
     expect(textContent).not.toContain('Table #');
     expect(textContent).not.toContain('Guest Count');
     expect(textContent).not.toContain('Kitchen Notes');
+  });
+
+  it('uses direct order-method buttons in the wide checkout presentation', () => {
+    const setFnbMethod = vi.fn();
+    const setCounterMethod = vi.fn();
+
+    const { rerender } = render(
+      <FnbWorkflowPanel
+        orderMethod="dine_in"
+        setOrderMethod={setFnbMethod}
+        buttonLayout
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take Out' }));
+    expect(setFnbMethod).toHaveBeenCalledWith('takeout');
+
+    rerender(
+      <CounterWorkflowPanel
+        orderMethod="walk_in"
+        setOrderMethod={setCounterMethod}
+        allowedMethods={['walk_in', 'delivery']}
+        buttonLayout
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
+    expect(setCounterMethod).toHaveBeenCalledWith('delivery');
   });
 });

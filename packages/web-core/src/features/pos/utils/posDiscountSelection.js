@@ -29,8 +29,14 @@ export const buildDiscountItemSelection = ({
     const selectableEntries = selectableLines.map((line) => ({
         line,
         lineRef: getDiscountLineRef(line, cart.indexOf(line)),
-        itemId: Number(line?.item_id)
-    })).filter((entry) => entry.lineRef && Number.isInteger(entry.itemId) && entry.itemId > 0);
+        itemId: Number(line?.item_id),
+        wholeQuantity: Math.floor(Number(line?.quantity || 0))
+    })).filter((entry) => (
+        entry.lineRef
+        && Number.isInteger(entry.itemId)
+        && entry.itemId > 0
+        && entry.wholeQuantity > 0
+    ));
     const selectableRefs = new Set(selectableEntries.map((entry) => entry.lineRef));
     const selectableIds = new Set(selectableEntries.map((entry) => entry.itemId));
     const draftEntries = Array.isArray(draft.eligible_items) ? draft.eligible_items : [];
@@ -63,13 +69,12 @@ export const buildDiscountItemSelection = ({
                     ? []
                     : selectableEntries.map((entry) => entry.lineRef);
     const selectedRefSet = new Set(selectedRefs);
-    const selectedItems = selectableEntries.filter((entry) => selectedRefSet.has(entry.lineRef)).map(({ line, lineRef, itemId }) => {
-        const quantity = Number(line?.quantity || 0);
+    const selectedItems = selectableEntries.filter((entry) => selectedRefSet.has(entry.lineRef)).map(({ lineRef, itemId, wholeQuantity }) => {
         const existingEntry = existingByLineRef.get(lineRef) || legacyByItemId.get(itemId);
         const existingQuantity = Number(existingEntry?.eligible_quantity);
         const eligibleQuantity = Number.isFinite(existingQuantity) && existingQuantity > 0
-            ? Math.min(existingQuantity, quantity)
-            : quantity;
+            ? Math.min(Math.floor(existingQuantity), wholeQuantity)
+            : wholeQuantity;
         return { line_ref: lineRef, item_id: itemId, eligible_quantity: eligibleQuantity };
     }).filter((entry) => entry.eligible_quantity > 0);
     return {

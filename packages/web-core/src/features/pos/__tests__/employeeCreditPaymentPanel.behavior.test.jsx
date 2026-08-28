@@ -72,7 +72,7 @@ describe('EmployeeCreditPaymentPanel', () => {
     expect(onSelectEmployee).toHaveBeenCalledWith(eligibleEmployee);
   });
 
-  it('shows verified outstanding evidence and the projected outstanding after checkout', () => {
+  it('shows branch and before/after balances for a verified account', () => {
     render(
       <EmployeeCreditPaymentPanel
         selectedEmployee={eligibleEmployee}
@@ -86,7 +86,13 @@ describe('EmployeeCreditPaymentPanel', () => {
 
     expect(screen.getByText('EMP-044')).toBeTruthy();
     expect(screen.getByText('Employee ID')).toBeTruthy();
+    expect(screen.getByText('Charge amount')).toBeTruthy();
+    expect(screen.getByText('PHP 125.00')).toBeTruthy();
+    expect(screen.getByText('Branch')).toBeTruthy();
+    expect(screen.getByText('Makati Branch')).toBeTruthy();
+    expect(screen.getByText('Current outstanding')).toBeTruthy();
     expect(screen.getByText('PHP 80.00')).toBeTruthy();
+    expect(screen.getByText('Outstanding after sale')).toBeTruthy();
     expect(screen.getByText('PHP 205.00')).toBeTruthy();
   });
 

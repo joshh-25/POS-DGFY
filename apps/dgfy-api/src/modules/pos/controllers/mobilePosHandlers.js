@@ -5,6 +5,7 @@ import {
     getMobilePosTransactionCheckpointUseCase,
     syncMobilePosCheckoutsUseCase,
     syncMobilePosVoidsUseCase,
+    syncMobilePosOrderActionsUseCase,
     syncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase,
     syncMobilePosHardwareEventsUseCase,
@@ -115,6 +116,22 @@ export const syncVoids = async (req, res, next) => {
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => buildSuccessPayload(result, 'Mobile POS void sync processed'),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const syncOrderActions = async (req, res, next) => {
+    try {
+        const result = await syncMobilePosOrderActionsUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => buildSuccessPayload(result, 'Mobile POS order action sync processed'),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
         });
     } catch (error) {

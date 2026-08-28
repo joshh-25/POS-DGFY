@@ -102,6 +102,7 @@ import {
     buildGetMobilePosTransactionCheckpointUseCase,
     buildSyncMobilePosCheckoutsUseCase,
     buildSyncMobilePosVoidsUseCase,
+    buildSyncMobilePosOrderActionsUseCase,
     buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
     buildSyncMobilePosHardwareEventsUseCase,
@@ -391,6 +392,10 @@ export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseC
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository });
 export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase });
+export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
+    updateOnlineOrderStatusUseCase,
+    collectCashPickupOrderUseCase
+});
 export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
     createItemUseCase,
     updateItemUseCase,

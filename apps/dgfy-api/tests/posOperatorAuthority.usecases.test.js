@@ -228,6 +228,43 @@ describe('Phase 159 POS operator authority use cases', () => {
         expect(result.data.operator_user).toMatchObject({ user_id: 1, username: 'alice' });
     });
 
+    test('allows an active master admin operator without a location grant', async () => {
+        const fixture = buildFixture();
+        fixture.users.set(1, {
+            ...fixture.users.get(1),
+            is_master_admin: true
+        });
+        fixture.repository.findUserLocationGrant = async () => null;
+
+        const result = await fixture.useCases.authorizeMutation({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            operationKey: 'request-master-admin-001',
+            operationType: 'POST /discount-approvals/verify'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.operator_user).toMatchObject({ user_id: 1, username: 'alice' });
+    });
+
+    test('rejects a regular operator without the register location grant', async () => {
+        const fixture = buildFixture();
+        fixture.repository.findUserLocationGrant = async () => null;
+
+        const result = await fixture.useCases.authorizeMutation({
+            authorityToken: 'authority-10',
+            tenantId: 'tenant-1',
+            scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 },
+            operationKey: 'request-missing-location-grant-001',
+            operationType: 'POST /discount-approvals/verify'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.message).toBe('The current register operator is not authorized for this location.');
+    });
+
     test('authorizes a valid scoped authority when its operator differs from the DGFY session identity', async () => {
         const { useCases } = buildFixture();
         const result = await useCases.authorizeMutation({

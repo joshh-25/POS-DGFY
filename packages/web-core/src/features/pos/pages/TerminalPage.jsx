@@ -2828,6 +2828,8 @@ export default function TerminalPage() {
     return () => window.clearInterval(timer);
   }, [canViewPos, locked, onlineOrderQueueEnabled, refreshIncomingOrders]);
 
+  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+
   useEffect(() => {
     const onSessionExpired = () => {
       const clearStoredSaleDraft = () => {
@@ -2994,7 +2996,6 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
-  const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const operatorScopeKey = `${shiftState?.shift?.location_id || operatingLocationId || ''}:${sanitizeTerminalId(activeTerminalId)}:${activeShiftId || ''}`;
   const operatorAuthorityPending = Boolean(activeShiftId)
     && (operatorAuthorityState.scopeKey !== operatorScopeKey || operatorAuthorityState.loading);

@@ -4,28 +4,30 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-const checkoutView = fs.readFileSync(
-    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+const discountWorkspace = fs.readFileSync(
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSDiscountWorkspace.jsx'),
     'utf8'
 );
 
 describe('discount quantity and employee dropdown UI contracts', () => {
     it('restricts discount quantities to positive whole numbers', () => {
-        expect(checkoutView).toContain('inputMode="numeric"');
-        expect(checkoutView).toContain('min="1"');
-        expect(checkoutView).toContain('step="1"');
-        expect(checkoutView).toContain('Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)');
-        expect(checkoutView).toContain('const [discountQuantityInput, setDiscountQuantityInput] = React.useState(null);');
-        expect(checkoutView).toContain("setDiscountQuantityInput({ lineRef, value: '' });");
-        expect(checkoutView).toContain('Number.isInteger(requestedQuantity) && requestedQuantity > 0');
-        expect(checkoutView).toContain("['.', ',', 'e', 'E', '+', '-'].includes(event.key)");
-        expect(checkoutView).not.toContain('min="0.001"');
-        expect(checkoutView).not.toContain('step="0.001"');
+        expect(discountWorkspace).toContain('inputMode="numeric"');
+        expect(discountWorkspace).toContain('min="1"');
+        expect(discountWorkspace).toContain('step="1"');
+        expect(discountWorkspace).toContain('Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)');
+        expect(discountWorkspace).toContain('const [discountQuantityInput, setDiscountQuantityInput] = React.useState(null);');
+        expect(discountWorkspace).toContain("setDiscountQuantityInput({ lineRef, value: '' });");
+        expect(discountWorkspace).toContain('Number.isInteger(requestedQuantity) && requestedQuantity > 0');
+        expect(discountWorkspace).toContain("['.', ',', 'e', 'E', '+', '-'].includes(event.key)");
+        expect(discountWorkspace).toContain('disabled={cartQuantity === 0}');
+        expect(discountWorkspace).toContain("'No whole units'");
+        expect(discountWorkspace).not.toContain('min="0.001"');
+        expect(discountWorkspace).not.toContain('step="0.001"');
     });
 
     it('keeps employee options name-only and the select within its field', () => {
-        expect(checkoutView).toContain('max-w-full truncate appearance-none');
-        expect(checkoutView).toContain('{employee.full_name}');
-        expect(checkoutView).not.toContain('{employee.full_name} ({employee.employee_code} · {employee.location_name})');
+        expect(discountWorkspace).toContain('max-w-full truncate appearance-none');
+        expect(discountWorkspace).toContain('{employee.full_name}');
+        expect(discountWorkspace).not.toContain('{employee.full_name} ({employee.employee_code} · {employee.location_name})');
     });
 });

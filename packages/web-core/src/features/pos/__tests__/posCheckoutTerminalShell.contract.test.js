@@ -36,8 +36,8 @@ describe('POS checkout terminal orchestration shell contract', () => {
   });
 
   it('keeps the payment draft inside the isolated checkout dialog', () => {
-    expect(viewSource).toContain('<POSCheckoutConfirmDialog viewModel={viewModel} />');
-    expect(checkoutDialogSource).toContain('const [paymentAmountInput, setPaymentAmountInput] = useState');
+    expect(viewSource).toContain("<POSCheckoutConfirmDialog key={viewModel.checkoutConfirmModalOpen ? 'checkout-open' : 'checkout-closed'} viewModel={viewModel} />");
+    expect(checkoutDialogSource).toContain('const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);');
     expect(checkoutDialogSource).toContain('onChange={(event) => selectPaymentAmount(event.target.value)}');
     expect(checkoutDialogSource).toContain('const confirmCheckout = () => handleCheckout({');
     expect(viewSource).not.toContain('id="pos-customer-payment-amount"');

@@ -28,11 +28,11 @@ describe('TerminalPage session-end effect does not forward-reference activeShift
     expect(depsArray).not.toMatch(/[^.]\bactiveShiftId\b/);
     expect(depsArray).toContain('shiftState?.shift?.pos_terminal_shift_id');
 
-    // The declaration of the `activeShiftId` binding must come after this effect closes, so any
-    // future edit that reintroduces a bare reference inside the effect body would be a real TDZ
-    // violation, not a false positive from this test.
+    // The declaration may move earlier as TerminalPage is refactored. The contract is the
+    // dependency expression above: it must use the already-available shift state rather than
+    // relying on the derived binding's relative source position.
     const declarationIndex = terminalPageSource.indexOf('const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;');
-    expect(declarationIndex).toBeGreaterThan(depsArrayEnd);
+    expect(declarationIndex).toBeGreaterThan(-1);
   });
 
   it('the session-end sale-draft cleanup derives the shift id inline instead of via activeShiftId', () => {

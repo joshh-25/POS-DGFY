@@ -7,6 +7,7 @@ import {
     formatQuantity,
     formatSplitPaymentMethod,
     getCartLineSubtotal,
+    getPriceOverrideReasonValidationMessage,
     inferReceiptContract,
     isSeniorPwdDiscountEligible,
     money,
@@ -43,6 +44,21 @@ describe('POS checkout terminal pure utilities', () => {
         expect(normalizePromoCode('  spring-2026-extra-long-code  ')).toBe('SPRING-2026-EXTRA-LONG-CODE');
         expect(isSeniorPwdDiscountEligible('1')).toBe(true);
         expect(isSeniorPwdDiscountEligible('true')).toBe(false);
+    });
+
+    it('requires a reason only when a line price differs from its effective default', () => {
+        expect(getPriceOverrideReasonValidationMessage({
+            line: { item_id: 7, item_name: 'Coffee', sale_price: 125, price_override_reason: '' },
+            effectiveDefaultSalePrice: 100
+        })).toBe('Enter a price override reason of at least 3 characters for Coffee before checkout.');
+        expect(getPriceOverrideReasonValidationMessage({
+            line: { item_id: 7, item_name: 'Coffee', sale_price: 125, price_override_reason: 'Customer request' },
+            effectiveDefaultSalePrice: 100
+        })).toBeNull();
+        expect(getPriceOverrideReasonValidationMessage({
+            line: { item_id: 7, item_name: 'Coffee', sale_price: 100, price_override_reason: '' },
+            effectiveDefaultSalePrice: 100
+        })).toBeNull();
     });
 
     it('calculates no discount, selected percentage, fixed allocation, and statutory VAT removal', () => {
