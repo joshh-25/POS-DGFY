@@ -9792,6 +9792,51 @@ dependencies and status.
 
 ---
 
+## Phase 179 - Staging Fulfillment-Capability Consistency Hotfix
+
+### Initiative and release
+
+- Initiative: #1093 per-store delivery/pickup capability correction.
+- Release: staging hotfix.
+
+### Objective and scope
+
+- Keep `store_has_no_location` as a map-publication control while projecting fulfillment support
+  from a resolved active primary location when one exists.
+- Resolve Storefront fulfillment support from selected/loaded/snapshotted locations before using
+  top-level discovery profile fallbacks.
+- Preserve unavailable-choice feedback in Retail, Simple/MSME, and F&B.
+
+### Status
+
+- `in_progress`
+- Started on 2026-08-28 under the explicit `/hotfix` incident workflow.
+
+### Dependencies
+
+- ADR 0010, ADR 0014, ADR 0017, and Phase 178's fulfillment-option presentation contract.
+
+### Acceptance and validation evidence
+
+- [ ] Contradictory no-location discovery profiles retain null map fields and project the active
+  primary location's fulfillment flags.
+- [ ] Retail, Simple/MSME, and F&B keep Pickup unavailable, retain Delivery selection, and show
+  the existing explanation.
+- [ ] Focused API/Storefront tests, Storefront build, architecture, documentation, and compliance
+  gates pass.
+
+### Implementation links
+
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-storefront/src/shared/model/storefrontOrderMethodOptions.js`
+
+### Next eligible phase
+
+Phase 180 is next after Phase 179 completes; planned Phases 172-175 retain their existing
+initiative-specific dependencies and status.
+
+---
+
 ### Planning Record (2026-08-26)
 
 - Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
