@@ -190,7 +190,11 @@ itself automatically on `to-staging/*`/`release/*` promotion PRs specifically,
 never on an ordinary `develop` PR; see "What actually gates a release into
 `main` today" above and the "Promotion-time CI quality gate" amendment below.
 It is **complementary**, not a replacement: `npm run gate:release:local`, run
-by hand before a `staging`/`main` promotion, stays required regardless. It is
+by hand before a `main` promotion (`develop → main`, or `staging → main` when the optional soak is
+used), stays required regardless. **It does not run on the optional `develop → staging` soak leg
+itself** — stated explicitly here (#1097) rather than left implicit, matching the ladder table
+below and `.agents/skills/promoter/references/promotion-runbook.md`'s "Optional: a `staging` soak
+first" section. It is
 documented in `docs/testing/release-go-no-go-checklist.md`, which is the
 authoritative runbook for that gate — see #375. Do not propose rebuilding it
 (#345, #330); invoke it.
