@@ -12,13 +12,15 @@ let buildGetMobilePosDevicePolicyUseCase;
 let buildGetMobilePosTransactionCheckpointUseCase;
 let buildSyncMobilePosCheckoutsUseCase;
 let buildSyncMobilePosVoidsUseCase;
+let buildSyncMobilePosOrderActionsUseCase;
 
 beforeAll(async () => {
     ({
         buildGetMobilePosDevicePolicyUseCase,
         buildGetMobilePosTransactionCheckpointUseCase,
         buildSyncMobilePosCheckoutsUseCase,
-        buildSyncMobilePosVoidsUseCase
+        buildSyncMobilePosVoidsUseCase,
+        buildSyncMobilePosOrderActionsUseCase
     } = await import('../src/modules/pos/usecases/mobilePosUseCases.js'));
 });
 
@@ -167,5 +169,34 @@ describe('mobile POS financial sync contracts', () => {
             trustedMobileReplay: true,
             user: { user_id: 7 }
         }));
+    });
+
+    it('replays status and cash order actions independently with expected-state payloads intact', async () => {
+        const updateOnlineOrderStatusUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: { order: { pos_transaction_id: 91, fulfillment_status: 'confirmed', updated_at: '2026-08-28T01:00:00.000Z' } }
+        });
+        const collectCashPickupOrderUseCase = jest.fn().mockResolvedValue({
+            success: false,
+            error: { message: 'Changed on server', code: 'CONFLICT', statusCode: 409, details: { reason_code: 'MOBILE_ORDER_VERSION_CONFLICT' } }
+        });
+        const useCase = buildSyncMobilePosOrderActionsUseCase({ updateOnlineOrderStatusUseCase, collectCashPickupOrderUseCase });
+        const expected = {
+            expected_status: 'placed', expected_payment_status: 'unpaid',
+            expected_server_version: '2026-08-28T00:00:00.000Z'
+        };
+        const result = await useCase({
+            payload: { device_id: 'device-1', entries: [
+                { local_operation_id: 'order-action-1', payload: { operation_type: 'status_transition', order_id: 91, fulfillment_status: 'confirmed', idempotency_key: 'order-action-1', ...expected } },
+                { local_operation_id: 'order-action-2', payload: { operation_type: 'cash_collection', order_id: 92, terminal_id: 'COUNTER-01', cash_received: 300, idempotency_key: 'order-action-2', ...expected } }
+            ] },
+            user: { user_id: 7 }
+        });
+
+        expect(result.data.summary).toMatchObject({ accepted_count: 1, rejected_count: 1 });
+        expect(result.data.results[0]).toMatchObject({ local_operation_id: 'order-action-1', status: 'accepted', server_transaction_id: 91 });
+        expect(result.data.results[1]).toMatchObject({ local_operation_id: 'order-action-2', status: 'rejected', error: { details: { reason_code: 'MOBILE_ORDER_VERSION_CONFLICT' } } });
+        expect(updateOnlineOrderStatusUseCase).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining(expected) }));
+        expect(collectCashPickupOrderUseCase).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining(expected) }));
     });
 });

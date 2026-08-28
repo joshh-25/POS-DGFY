@@ -214,6 +214,54 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it('blocks checkout and explains when a changed price has no override reason', async () => {
+        const validationMessage = 'Enter a price override reason of at least 3 characters for Coffee before checkout.';
+        const { result, props } = renderCheckout({
+            checkoutWorkflowValidationMessage: validationMessage
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(createPosCheckout).not.toHaveBeenCalled();
+        expect(posToast.error).toHaveBeenCalledWith(validationMessage);
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
+    });
+
+    it('does not open the checkout dialog while a price override reason is missing', async () => {
+        const validationMessage = 'Enter a price override reason of at least 3 characters for Coffee before checkout.';
+        const { result, props } = renderCheckout({
+            checkoutWorkflowValidationMessage: validationMessage
+        });
+
+        await act(async () => {
+            await result.current.openCheckoutConfirmModal();
+        });
+
+        expect(posToast.error).toHaveBeenCalledWith(validationMessage);
+        expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalled();
+    });
+
+    it('maps a stale backend price-override error to the cashier-facing message', async () => {
+        createPosCheckout.mockRejectedValueOnce({
+            response: {
+                status: 422,
+                data: { message: 'Price override reason is required for item 7' }
+            }
+        });
+        const { result } = renderCheckout();
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(posToast.error).toHaveBeenCalledWith(
+            'Enter a price override reason of at least 3 characters before checkout.'
+        );
+        expect(posToast.error).not.toHaveBeenCalledWith('Price override reason is required for item 7');
+    });
+
     it('clears only discount state when a discount is removed', () => {
         const { result, props } = renderCheckout();
 

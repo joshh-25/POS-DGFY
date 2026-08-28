@@ -8,6 +8,7 @@ import {
     validateMobilePosCheckoutSync,
     validateMobilePosTransactionCheckpointQuery,
     validateMobilePosVoidSync,
+    validateMobilePosOrderActionSync,
     validateMobilePosItemSync,
     validateMobilePosShiftSync,
     validateMobilePosHardwareEventSync,
@@ -36,6 +37,7 @@ router.get('/sync/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_PO
 // shared quota per business across a whole sync round, not per-endpoint.
 router.post('/sync/checkouts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckoutSync, mobilePosController.syncCheckouts);
 router.post('/sync/voids', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validateMobilePosVoidSync, mobilePosController.syncVoids);
+router.post('/sync/order-actions', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosOrderActionSync, mobilePosController.syncOrderActions);
 
 // Item/catalog sync is NOT behind mobilePosFreeSyncLimiter - unlike the
 // transaction ledger above, item CRUD has never been plan-tier gated

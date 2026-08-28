@@ -30,19 +30,20 @@ const terminalPageContent = readPosFile('pages/TerminalPage.jsx');
 const reportsWorkspaceContent = readPosFile('components/PosReportsAnalyticsWorkspace.jsx');
 
 describe('Employee Credit POS contract', () => {
-  it('places the Employee Credit selector before Sale Summary and Add Discount only for that tender', () => {
+  it('shows the Employee Credit selector only for that tender without a duplicate Sale Summary', () => {
+    const orderSettingsIndex = checkoutDialogContent.indexOf('data-testid="pos-checkout-order-settings"');
     const employeeCreditPanelIndex = checkoutDialogContent.indexOf('{isEmployeeCreditPayment && (');
-    const saleSummaryIndex = checkoutDialogContent.indexOf('data-testid="pos-checkout-sale-summary"');
-    const addDiscountIndex = checkoutDialogContent.indexOf('data-testid="pos-checkout-add-discount"');
+    const discountControlsIndex = checkoutDialogContent.indexOf('aria-label="Apply Discount"');
 
-    expect(employeeCreditPanelIndex).toBeGreaterThanOrEqual(0);
-    expect(employeeCreditPanelIndex).toBeLessThan(saleSummaryIndex);
-    expect(employeeCreditPanelIndex).toBeLessThan(addDiscountIndex);
+    expect(employeeCreditPanelIndex).toBeGreaterThan(orderSettingsIndex);
+    expect(discountControlsIndex).toBeGreaterThan(employeeCreditPanelIndex);
+    expect(checkoutDialogContent).toContain('data-testid="pos-checkout-employee-credit"');
+    expect(checkoutDialogContent).not.toContain('data-testid="pos-checkout-sale-summary"');
     expect(checkoutRenderContent).toContain('{!isEmployeeCreditPayment && !splitPaymentReady && (');
   });
 
   it('offers the tender and submits only its governed authorization details', () => {
-    expect(checkoutRenderContent).toContain('<option value="employee_credit">Employee Credit</option>');
+    expect(checkoutRenderContent).toContain("{ value: 'employee_credit', label: 'Employee Credit' }");
     expect(checkoutWorkflowContent).toContain("payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external'");
     expect(checkoutWorkflowContent).toContain('account_code: employeeCreditAccountCode.trim().toUpperCase()');
     expect(checkoutRenderContent).toContain('onSelectEmployee={handleSelectEmployeeCredit}');
@@ -55,7 +56,7 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutRenderContent).toContain('employee_name: employeeCreditDiscountName');
     expect(checkoutRenderContent).toContain('employee_id: employeeCreditDiscountId');
     expect(checkoutContent).not.toContain('employeeCreditBalance >= cartTotal');
-    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');
@@ -67,6 +68,8 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).toContain('max-h-[24rem] overflow-y-auto');
     expect(employeeCreditPaymentContent).toContain('Search and select employee');
     expect(employeeCreditPaymentContent).toContain('Outstanding after sale');
+    expect(employeeCreditPaymentContent).toContain('>Branch</span>');
+    expect(employeeCreditPaymentContent).toContain('>Current outstanding</span>');
     expect(employeeCreditPaymentContent).not.toContain('Select an employee. Eligibility is validated automatically');
     expect(employeeCreditPaymentContent).not.toContain('Eligible. This sale will be added to the employee outstanding balance.');
     expect(employeeCreditPaymentContent).not.toContain('Full Employee Credit payment only.');

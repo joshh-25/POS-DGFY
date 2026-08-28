@@ -32,6 +32,7 @@ describe('item Senior/PWD discount eligibility controls', () => {
     const checkoutTerminal = [
       readFrontendFile('src/features/pos/components/POSCheckoutTerminal.jsx'),
       readFrontendFile('src/features/pos/components/POSCheckoutTerminalView.jsx'),
+      readFrontendFile('src/features/pos/components/POSDiscountWorkspace.jsx'),
       readFrontendFile('src/features/pos/utils/posDiscountSelection.js'),
     ].join('\n');
     const cartWorkflow = readFrontendFile('src/features/pos/hooks/usePosCartWorkflow.js');
@@ -39,7 +40,8 @@ describe('item Senior/PWD discount eligibility controls', () => {
 
     expect(cartWorkflow).toContain('isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible)');
     expect(checkoutTerminal).toContain('isCartLineSeniorPwdEligible');
-    expect(checkoutTerminal).toContain('getSelectableDiscountLines(safeCart, discountDraft.type, isCartLineSeniorPwdEligible)');
+    expect(checkoutTerminal).toContain('getSelectableDiscountLines(');
+    expect(checkoutTerminal).toContain('isCartLineSeniorPwdEligible');
     expect(checkoutTerminal).toContain('No eligible items are in this cart.');
     expect(checkoutTerminal).toContain('remove and re-add it to this cart.');
     expect(checkoutTerminal).toContain('data-testid="pos-discount-select-all"');

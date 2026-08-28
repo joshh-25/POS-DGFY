@@ -2,11 +2,19 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const itemFindAllMock = jest.fn();
 const itemLocationStockFindAllMock = jest.fn();
+const itemFolderModel = { name: 'ItemFolder' };
+const fnbModifierGroupModel = { name: 'FnbModifierGroup' };
+const fnbModifierOptionModel = { name: 'FnbModifierOption' };
+const fnbFolderModifierGroupModel = { name: 'FnbFolderModifierGroup' };
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
         get: (name) => {
             if (name === 'Item') return { findAll: itemFindAllMock };
+            if (name === 'ItemFolder') return itemFolderModel;
+            if (name === 'FnbModifierGroup') return fnbModifierGroupModel;
+            if (name === 'FnbModifierOption') return fnbModifierOptionModel;
+            if (name === 'FnbFolderModifierGroup') return fnbFolderModifierGroupModel;
             if (name === 'PosCatalogOverride') return null;
             if (name === 'ServiceItemDetail') return null;
             if (name === 'ItemLocationStock') return { findAll: itemLocationStockFindAllMock };
@@ -87,6 +95,42 @@ describe('posRepository location-stock schema fallback', () => {
             item_id: 502,
             current_stock: 6
         }));
+    });
+
+    it('loads folder-inherited modifier groups for checkout item validation', async () => {
+        itemFindAllMock.mockResolvedValue([{
+            ...buildCatalogRow({ item_id: 13, name: 'Beef Shawarma' }),
+            folder: {
+                folder_id: 15,
+                fnbModifierGroups: [{
+                    modifier_group_id: 7,
+                    name: 'Shawarma Options',
+                    FnbFolderModifierGroup: {
+                        folder_id: 15,
+                        modifier_group_id: 7,
+                        sort_order: 0
+                    },
+                    options: [{ modifier_option_id: 9, name: 'Regular' }]
+                }]
+            },
+            fnbModifierGroups: []
+        }]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await posRepository.findSellableItemsByIds([13], { locationId: 8 });
+
+        const folderInclude = itemFindAllMock.mock.calls[0][0].include.find((entry) => entry.as === 'folder');
+        expect(folderInclude).toEqual(expect.objectContaining({ model: itemFolderModel }));
+        expect(folderInclude.include).toEqual(expect.arrayContaining([
+            expect.objectContaining({ model: fnbModifierGroupModel, as: 'fnbModifierGroups' })
+        ]));
+        expect(result[0].fnbModifierGroups).toEqual([
+            expect.objectContaining({
+                modifier_group_id: 7,
+                assignment_source: 'folder',
+                FnbItemModifierGroup: expect.objectContaining({ assignment_folder_id: 15 })
+            })
+        ]);
     });
 
     it('requests mode_item_preset, min_threshold, and fifo_enabled so downstream service/threshold checks are not blind on this catalog path', async () => {

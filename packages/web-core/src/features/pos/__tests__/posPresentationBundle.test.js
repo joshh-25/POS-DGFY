@@ -59,4 +59,10 @@ describe('resolvePosPresentationBundle', () => {
     expect(POS_PRESENTATION_BUNDLES.counter.currentSaleActions.showParkedSaleControls).toBe(true);
     expect(POS_PRESENTATION_BUNDLES.services.currentSaleActions.showParkedSaleControls).toBe(false);
   });
+
+  it('shows a checkout-detail heading only when the bundle explicitly requests it', () => {
+    expect(POS_PRESENTATION_BUNDLES.fnb.labels.showCheckoutDetailsHeading).toBe(false);
+    expect(POS_PRESENTATION_BUNDLES.counter.labels.showCheckoutDetailsHeading).toBe(false);
+    expect(POS_PRESENTATION_BUNDLES.services.labels.showCheckoutDetailsHeading).toBe(true);
+  });
 });

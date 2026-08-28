@@ -84,15 +84,28 @@ none of this — including `gate:release:local` — runs on the `develop → sta
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
 **Compliance preflight sweep.** For every `major`/`regulatory` impact declaration in the batch still
-carrying a `NOT-EXECUTED-*` `preflight_request_ref`, run the real
-`POST /api/v1/compliance/preflight` against a deployed non-production host (DEV suffices — this
-never needs staging or production). Full protocol, the request-body shape, and the curl recipe:
-`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs" — read it
-there, don't reconstruct the request shape here. Find the batch's declarations with
-`git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/` (or
-`origin/staging origin/develop` if the optional soak already ran and `staging` reflects the batch)
-and grep the results for `NOT-EXECUTED-` — cheaper and more precise than sweeping the whole
-directory.
+carrying a `NOT-EXECUTED-*` `preflight_request_ref`, dispatch
+`compliance-preflight-sweep.yml` for **STAGING** (#1121, 2026-08-28 — the target this sweep now
+re-anchors to; DEV is optional/stale per #982 and only useful for testing the workflow itself):
+
+```bash
+gh workflow run compliance-preflight-sweep.yml -f environment=STAGING
+```
+
+This is **unattended, read-only** — same tier as dispatching `verify-deployment.yml`/
+`tenant-schema-report.yml` — it only calls `POST /api/v1/auth/login` (minting a fresh token from
+credentials held in that GitHub Environment's own secrets, never a local shell) and
+`POST /api/v1/compliance/preflight` per outstanding declaration; it does not write back to the
+declaration files or open a PR. Read the run's step summary / `compliance-preflight-sweep-results`
+artifact (`gh run view <id>` after polling to `completed`, same pattern as dispatching
+`verify-deployment.yml`) for the per-declaration `result`/`reason_code`. Full protocol, the request-
+body shape, and the token-minting mechanism itself: `docs/compliance/request-time-preflight-
+protocol.md`, "Where live preflight actually runs" — read it there, don't reconstruct the request
+shape here. The workflow auto-discovers the batch's declarations the same way this step used to by
+hand — `git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/`
+(or `origin/staging origin/develop` if the optional soak already ran and `staging` reflects the
+batch), filtered to `NOT-EXECUTED-` — or accept an explicit `-f declarations=<comma-separated
+paths>` if the auto-discovery diff isn't the right one for this promotion.
 
 **Land the reconciled front matter the same way as the hotfix back-port below: a small cut branch
 off fresh `origin/develop` (e.g. `compliance-sweep/<label>`), a commit updating only the swept
