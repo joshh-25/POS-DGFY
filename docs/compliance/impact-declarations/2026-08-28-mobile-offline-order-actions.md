@@ -12,8 +12,8 @@ verification_evidence: "API mobile order-action sync and POS lifecycle tests,leg
 rollback_note: Disable the platform mobile order-action route while preserving submitted operation replays for reconciliation; no mobile-client rollback is claimed by this platform-only PR.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-28T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-PHASE-180-LOCAL-IMPLEMENTATION
+preflight_run_at: 2026-08-28T17:16:01Z
+preflight_request_ref: PREFLIGHT-MOBILE-OFFLINE-ORDER-ACTIONS-20260828T171601Z
 ---
 
 # Mobile Offline Order Actions
@@ -53,3 +53,5 @@ versioned dgfy-mobile PR/commit and validation evidence.
 
 No live environment preflight was executed. The local static declaration is not
 a staging or production claim and must be replaced during promotion.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot2` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-MOBILE-OFFLINE-ORDER-ACTIONS-20260828T171601Z`.
