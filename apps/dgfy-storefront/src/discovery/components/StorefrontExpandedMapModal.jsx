@@ -23,7 +23,7 @@ export function StorefrontExpandedMapModal({
           </button>
         </div>
         <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #dbe5ee', background: '#f8fafc' }}>
-          <StoresMap stores={stores} selectedKey={selectedKey} onSelectStore={() => {}} height={520} />
+          <StoresMap stores={stores} selectedKey={selectedKey} onSelectStore={() => {}} height={520} focusSelectedKey />
         </div>
       </div>
     </div>

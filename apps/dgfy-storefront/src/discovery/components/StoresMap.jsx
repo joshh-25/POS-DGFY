@@ -55,7 +55,8 @@ export function StoresMap({
   openPopupOnHover = false,
   onSelectCluster = null,
   viewportPolicy = 'auto',
-  viewportSignal = ''
+  viewportSignal = '',
+  focusSelectedKey = false
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -67,6 +68,7 @@ export function StoresMap({
   const popupGenerationRef = useRef(0);
   const markerSignatureRef = useRef('');
   const viewportHasFitRef = useRef(false);
+  const lastSelectedMarkerKeyRef = useRef('');
   const lastViewportLocationSignatureRef = useRef('');
   const lastViewportSignalRef = useRef('');
   const resizeTimersRef = useRef([]);
@@ -108,15 +110,21 @@ export function StoresMap({
   }, []);
 
   const selectedStore = useMemo(() => {
-    if (!selectedKey) return null;
     const rows = Array.isArray(stores) ? stores : [];
-    return rows.find((store) => getDiscoveryMarkerKey(store) === selectedKey) || null;
+    const normalizedSelectedKey = String(selectedKey || '').trim();
+    if (!normalizedSelectedKey) return null;
+    const directMatch = rows.find((store) => getDiscoveryMarkerKey(store) === normalizedSelectedKey);
+    if (directMatch) return directMatch;
+    const locationMatch = normalizedSelectedKey.match(/^loc-(\d+)$/);
+    if (!locationMatch) return null;
+    return rows.find((store) => Number(store?.location_id) === Number(locationMatch[1])) || null;
   }, [stores, selectedKey]);
+  const selectedMarkerKey = selectedStore ? getDiscoveryMarkerKey(selectedStore) : selectedKey;
 
   const routeEnabled = Boolean(
     userLocation
     && selectedStore
-    && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude)
+    && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude, { allowProvisionedPlaceholder: focusSelectedKey })
   );
   const routeDestination = routeEnabled
     ? { latitude: selectedStore.latitude, longitude: selectedStore.longitude }
@@ -230,6 +238,9 @@ export function StoresMap({
     }
 
     const rows = Array.isArray(stores) ? stores : [];
+    const normalizedSelectedMarkerKey = String(selectedMarkerKey || '').trim();
+    const selectedMarkerChanged = lastSelectedMarkerKeyRef.current !== normalizedSelectedMarkerKey;
+    lastSelectedMarkerKeyRef.current = normalizedSelectedMarkerKey;
     const nextMarkerSignature = rows
       .map((store) => {
         const markerKey = getDiscoveryMarkerKey(store);
@@ -276,7 +287,12 @@ export function StoresMap({
       layerEventCleanupRef.current = null;
     }
 
-    const layerModel = buildDiscoveryPinLayerModel({ stores: rows, selectedKey, highlightedKeys });
+    const layerModel = buildDiscoveryPinLayerModel({
+      stores: rows,
+      selectedKey: selectedMarkerKey,
+      highlightedKeys,
+      allowProvisionedPlaceholder: focusSelectedKey
+    });
     const userSourceData = buildUserLocationSourceData(userLocation);
     const userFeature = userSourceData.features[0];
     const bounds = [...layerModel.bounds];
@@ -565,11 +581,26 @@ export function StoresMap({
         }
       });
 
-    const shouldFitViewport = viewportPolicy !== 'search-stable'
-      || !viewportHasFitRef.current
-      || viewportSignalChanged
-      || userLocationChanged;
-    if (shouldFitViewport && bounds.length === 1) {
+    const shouldFocusSelected = Boolean(
+      focusSelectedKey
+      && selectedStore
+      && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude, { allowProvisionedPlaceholder: focusSelectedKey })
+      && (selectedMarkerChanged || !viewportHasFitRef.current || viewportSignalChanged)
+    );
+    const shouldFitViewport = focusSelectedKey
+      ? (!viewportHasFitRef.current || selectedMarkerChanged || viewportSignalChanged || userLocationChanged)
+      : (viewportPolicy !== 'search-stable'
+        || !viewportHasFitRef.current
+        || viewportSignalChanged
+        || userLocationChanged);
+    if (shouldFocusSelected) {
+      map.flyTo({
+        center: [Number(selectedStore.longitude), Number(selectedStore.latitude)],
+        zoom: autoOpenPopups ? 14 : 15,
+        offset: STORE_MARKER_SINGLE_PIN_CENTER_OFFSET
+      });
+      viewportHasFitRef.current = true;
+    } else if (shouldFitViewport && bounds.length === 1) {
       map.flyTo({
         center: bounds[0],
         zoom: autoOpenPopups ? 14 : 15,
@@ -611,7 +642,7 @@ export function StoresMap({
         layerEventCleanupRef.current = null;
       }
     };
-  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady, containerResizeTick]);
+  }, [stores, selectedKey, selectedMarkerKey, selectedStore, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, focusSelectedKey, mapStyleReady, containerResizeTick]);
 
   useEffect(() => {
     const map = mapRef.current;
