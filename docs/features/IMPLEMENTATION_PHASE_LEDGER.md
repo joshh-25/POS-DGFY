@@ -9647,3 +9647,675 @@ each absorb cycle until PR #513 merges.
 branch's *prior* renumber decision (Phase 87 → 89 at that time), is a historical record of what was
 true then and is preserved verbatim per `AGENTS.md`'s "never renumber completed phases" rule — it
 is not a live reference and is not updated by this note.
+
+---
+
+**Back-fill note, 2026-08-28 — Phases 176-179 (and 177) reconciled onto `main` from `develop`.**
+These four phases exist on `develop` but not on `main` (which only reached Phase 175 before this initiative's own PRs started landing directly against `main` -- see the dated note immediately below for why). Copied verbatim from `develop`'s current ledger so `main`'s own copy has no numbering gap between Phase 175 and this initiative's Phase 180 -- per `pr-reviewer`'s RF-2 finding on PR #1138, correctly identifying that a gap would have made the "continuous numbering" claim depend on an unspecified future back-port instead of being true in `main`'s own history right now. Content unchanged from `develop`; only the act of copying it here is new. Phase 176's original physical ordering (176, 178, 179, then 177 -- itself the product of an earlier documented collision, see the note embedded in that block) is preserved exactly as `develop` has it, not renumbered or reordered.
+
+---
+
+---
+
+## Phase 176 - Per-Store Guest Checkout Toggle
+
+### Objective and scope
+
+Add a per-store merchant setting, `storefront_guest_checkout_enabled` (default `true`), that lets
+a merchant require a signed-in DGFY account before a customer can complete storefront checkout or
+a Services booking. Covers all storefront purchase paths (Retail, Simple/MSME, F&B product
+checkout, Services bookings), a fail-closed backend enforcement gate, a fail-open client UI gate
+in the shared guest-or-account entry renderer, a merchant toggle dual-surfaced in both IMS Settings
+> Storefront > Storefront Access and the POS app's own terminal settings workspace (Pat's
+preference for where this control should live), and a vertical-dependent provisioning default
+(disabled for `retail`, enabled otherwise) for newly-provisioned tenants only.
+
+### Status
+
+- `completed` (re-confirmed 2026-08-27 after a second RF-3 round — see the rendered-proof bullets
+  below for the full evidence, including one gap disclosed rather than faked, and the real bug
+  the rendered-proof pass itself caught and fixed)
+
+### Dependencies
+
+- None. No migration, no tenant-schema-sync entry (`system_settings` is key/value; a missing row
+  resolves to enabled everywhere it's read).
+
+### Acceptance and validation evidence
+
+- [x] `resolveAccessPolicyFromSettings` resolves `guest_checkout_enabled`, defaulting to `true` when
+  unset, so no existing tenant's behavior changes on deploy
+  (`apps/dgfy-api/tests/customerAccessPolicy.test.js`).
+- [x] `assertGuestCheckoutAllowed` rejects a non-DGFY-linked store customer with 403
+  `GUEST_CHECKOUT_DISABLED` when the setting is `false`, and allows a DGFY-linked customer
+  regardless (`apps/dgfy-api/tests/storeGuestCheckoutProof.test.js`, new).
+- [x] The guard is wired into all four checkout/booking use-case call sites (product checkout,
+  payment-session, single booking, batch booking) with no regression across 21 store/service
+  usecase test files (263 tests passing).
+- [x] Caller-level proof at all four enforcement sites, not just the isolated decision function
+  (PR #1095 reviewer finding RF-2): `buildStoreCheckoutUseCase`, `buildStoreCheckoutPaymentSessionUseCase`,
+  `buildCreateServiceBookingUseCase`, and `buildCreateServiceBookingBatchUseCase` each asserted to
+  reject a guest 403 `GUEST_CHECKOUT_DISABLED` before any persistence/payment-session side effect,
+  and to still let a DGFY-linked customer through
+  (`apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js`, new, 8/8 passing).
+- [x] The settings validator accepts the new key in both the bulk and single-key schemas
+  (`apps/dgfy-api/tests/settingsValidator.customerAccessModes.test.js`).
+- [x] The storefront's shared guest-or-account entry renderer hides "Continue as Guest" only when
+  the store has explicitly disabled it, and fails open on a missing/undefined value
+  (`apps/dgfy-storefront/src/__tests__/guestCheckoutEntryGate.test.jsx`, new; `customerAccess.test.js`
+  extended). Full storefront suite (140 files / 754 tests) passes.
+- [x] IMS Settings > Storefront > Storefront Access, and the POS app's own terminal settings
+  workspace (`TerminalOperationsWorkspace.jsx`, rendered only by `apps/dgfy-pos`), both expose the
+  "Allow Guest Checkout" toggle, following the existing `storefront_follow_enabled` toggle idiom
+  (already dual-surfaced the same way). No regression across `apps/dgfy-ims`'s full `packages/web-core`
+  suite (295 files / 1794 tests).
+- [x] `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos` all pass (Tier 0).
+- [x] ADR 0023 amended (Decision 11, Consequences item 2 — both `default`-tier, dated `## Amendments`
+  block, no superseding ADR needed) and `docs/features/DGFY_CUSTOMER_ACCOUNT.md` updated to match.
+- [x] Compliance impact declaration filed:
+  `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+  (`major`, `settings,payments,pos,terminal`).
+- [x] Rendered proof (Architecture Governance item 8), storefront guest-vs-account checkout entry
+  gate -- root-caused and completed on the retry. The first attempt's bounce turned out not to be a
+  bug: `shopai-store-745611` has `ops_workflow_mode: food_manufacturing`, which
+  `modePresentationRegistry.js` maps to no gate-bearing checkout route at all (falls through to
+  the documented `DefaultOrderPage.jsx` placeholder), and its business hours were closed at test
+  time -- neither is this PR's code. Retried against two zero-mutation-for-enabled tenants whose
+  `ops_workflow_mode` and hours actually qualify (`pat-marketing-314108`, retail;
+  `pat-s-non-existent-kainan-6086e7`, fnb, already carrying a real
+  `storefront_guest_checkout_enabled: false` row). New committed harness
+  `scripts/smoke-guest-checkout-gate-ui.js` (`npm run smoke:guest-checkout-gate`), modelled on the
+  existing `smoke-dgfy-access-ui.js`/`smoke-pos-terminal-ui.js` harnesses: page identity ("Continue
+  to your order" matched), nonblank content, no framework overlay, console health (zero
+  unignored errors), one primary interaction per state (enabled: click "Continue as Guest",
+  advances in-page to the guest details step; disabled: click "Create DGFY Account", navigates
+  in-app to `/register`), and both desktop (1440x960) and mobile (390x844) viewports -- real
+  Playwright viewports, not a live-window resize, so the "when practical" mobile hedge that bit an
+  earlier phase (Phase 152/DOWNPAYMENT.md) didn't apply here. All 4 checks pass; screenshots and the
+  JSON evidence payload are in `.tmp/rendered-qa/guest-checkout-gate/` (gitignored, regenerable via
+  the npm script).
+  **This pass caught and fixed a real bug**: every actual call site of the shared
+  `renderGuestCheckoutEntry` (retail, both Simple steps, both F&B steps, both Services-booking
+  variants) was passing a hardcoded description string, so only the "Continue as Guest" button's
+  presence tracked the toggle -- the copy always read "create an account or continue as guest",
+  even when the merchant had disabled it. Fixed by threading a `guestCheckoutAllowed` prop through
+  each call site (same threading pattern already used for `canUseGuestCheckoutFlow`) so the
+  description branches correctly in all seven render sites, including the `services-reference`
+  layout variant whose disabled-state copy ("No account is needed...") was actively wrong, not just
+  stale. Full storefront suite re-run clean afterward: 140 files / 754 tests.
+- [x] Rendered proof (Architecture Governance item 8), IMS and POS "Allow Guest Checkout" toggle
+  save-and-rehydrate -- completed with Pat's own authenticated session (this session never saw or
+  entered any credential): on `pat-s-non-existent-kainan-6086e7`, toggled on in POS's terminal
+  settings workspace, saved, reloaded, confirmed the checkbox and the underlying setting row both
+  persisted `true`; toggled off, saved, reloaded, confirmed both restored to `false`. Repeated
+  identically on IMS Settings > Storefront > Storefront Access (a dedicated switch with live
+  copy, not a bare checkbox). Both surfaces: page identity, nonblank content, no overlay, console
+  health (zero errors both directions, both apps), and the save-reload round trip itself as the
+  primary interaction -- confirmed at the database row level after every save, not just the UI's
+  own optimistic state. **Desktop only** -- a live-window resize to the mobile viewport did not
+  take effect in this environment (the same "browser resize didn't take effect" limitation already
+  disclosed once for Phase 152/`DOWNPAYMENT.md`, not new here); not pursued further rather than
+  faked, per that same precedent's own resolution. Screenshots in
+  `.tmp/rendered-qa/merchant-toggle/` (gitignored).
+- [x] **Harness integrity fix (PR #1095 reviewer finding RF-5)**: the rendered-proof harness above
+  (`scripts/smoke-guest-checkout-gate-ui.js`) had two real gaps that could let it print `PASS` on a
+  broken proof. (1) Each `interact()` returned diagnostic fields (`advancedToGuestDetails`,
+  `navigatedToAuth`, `authPageNonblank`) but the failure reducer only checked for a thrown
+  `interactionError` -- a click that landed but produced the wrong outcome would still pass. Fixed
+  by having each `interact()` compute a single explicit `passed` boolean from its own assertions,
+  and changing the reducer to `entry.interactionResult?.passed !== true`. (2) The console-health
+  check ignored every 403 by bare status text (no URL was available on that log line), which could
+  hide a real, relevant 403 alongside the one known-benign storefront-asset 403. Fixed by moving
+  HTTP-failure judgment entirely to the `page.on('response')` listener, which does carry the URL:
+  a 403 is only ignored when it matches the documented `/uploads/storefront-assets/....(webp|png|jpe?g)`
+  shape; any other 4xx against this flow's own `/api/v1/store/...` surface, or any 5xx anywhere, now
+  fails the run. **Negative-run proof, as requested**: temporarily forced `passed: false` on the
+  `enabled` check's interaction (while its own `advancedToGuestDetails` computed `true`, i.e. the
+  click itself worked) and re-ran the harness -- exited 1, `FAIL enabled.desktop.interactionFailed=...,
+  enabled.mobile.interactionFailed=...`, proving the reducer genuinely gates on `passed` rather than
+  only on a thrown exception. Reverted immediately, confirmed `git diff` showed no residual change,
+  and re-ran clean: exit 0, all 4 checks pass, `interactionResult.passed: true` on all of them, one
+  correctly-ignored anonymous `401` on `/api/v1/dgfy/auth/me` visible in the evidence JSON and
+  correctly non-failing (not a target-flow endpoint).
+- **Correction to this ledger's own prior record**: an earlier pass of this rendered-proof work
+  claimed "no `storefront_guest_checkout_enabled` row was left on any tenant" after reverting a test
+  mutation on `shopai-store-745611`. That claim was checked against the wrong tenant and was wrong
+  -- a full 45-tenant-database sweep found one residual row, on
+  `pat-s-non-existent-kainan-6086e7` (`false`, timestamped from that earlier session, description
+  "Auto-created by settings update flow"). That tenant was then reused, deliberately, as the fixture
+  for this round's rendered proof above -- its final value (`false`) reflects a real save performed
+  through the actual IMS/POS UI during this verification, not leftover test residue, so it was left
+  as-is rather than deleted out from under Pat's own just-performed action. Every other tenant in
+  the sweep had no row (resolves to the default `true`).
+
+### Implementation links
+
+- Issue #622
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md` (`## Amendments (2026-08-27)`)
+- `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- `docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md`
+- `apps/dgfy-api/tests/guestCheckoutDisabledEnforcement.usecase.test.js` (new, RF-2)
+- `scripts/smoke-guest-checkout-gate-ui.js` (new, RF-3 rendered proof)
+
+### Next eligible phase
+
+Phase 177.
+
+---
+
+## Phase 178 - Storefront Unavailable Fulfillment Feedback (#1093)
+
+### Objective and scope
+
+Keep Delivery and Pickup visible in Retail, Simple/MSME, and F&B checkout when a selected
+location does not support one of them. An unavailable method is visually muted, remains
+keyboard-activatable for feedback, preserves the current fulfillment selection, and displays the
+method-specific inline explanation. Missing or cached legacy support flags remain fail-open. The
+mode-agnostic `DefaultOrderFulfillmentStep` remains explicitly out of scope because it is the
+unwired placeholder checkout tree, not one of the three live product checkout routes.
+
+### Status
+
+- `completed` (2026-08-28)
+
+### Dependencies
+
+- Phase 177 completed. No migration, API, schema, settings, architecture allowlist, or ADR
+  amendment is required; server-side location-capability validation remains authoritative.
+
+### Acceptance and validation evidence
+
+- [x] The shared storefront option resolver keeps Delivery and Pickup candidates and annotates
+  availability for delivery-only, pickup-only, both-enabled, both-disabled legacy, and missing-flag
+  location states (`storefrontFulfillmentOptions.test.js`).
+- [x] Retail, Simple/MSME, and F&B each keep unavailable choices visible, expose unavailable
+  semantics without a native disabled button, preserve the existing method on activation, and show
+  the required inline message (three focused selector/component interaction tests).
+- [x] F&B now consumes the selected location's resolved fulfillment options rather than rendering
+  both methods unconditionally.
+- [x] `npm run build:store`, focused Storefront Vitest coverage (5 files, 20 tests),
+  `npm run lint:docs`, and `npm run check:architecture` pass. Storefront lint passes with the
+  repository's existing warnings and no errors.
+
+### Implementation links
+
+- `apps/dgfy-storefront/src/shared/model/storefrontFulfillmentOptions.js`
+- `apps/dgfy-storefront/src/shared/components/checkout/SelectableOptionCard.jsx`
+- `apps/dgfy-storefront/src/modes/{simple,fnb,retail}/checkout/`
+
+### Next eligible phase
+
+Phase 179 is the next repository phase; planned Phases 172-175 retain their initiative-specific
+dependencies and status.
+
+---
+
+## Phase 179 - Staging Fulfillment-Capability Consistency Hotfix
+
+### Initiative and release
+
+- Initiative: #1093 per-store delivery/pickup capability correction; incident record #1117.
+- Release: staging hotfix.
+
+### Objective and scope
+
+- Keep `store_has_no_location` as a map-publication control while projecting fulfillment support
+  from a resolved active primary location when one exists.
+- Resolve Storefront fulfillment support from selected/loaded/snapshotted locations before using
+  top-level discovery profile fallbacks.
+- Preserve unavailable-choice feedback in Retail, Simple/MSME, and F&B.
+
+### Status
+
+- `in_progress`
+- Started on 2026-08-28 under the explicit `/hotfix` incident workflow.
+- Incident traceability: #1117 records the confirmed staging defect, reproduction, and deployment
+  proof still required before closure.
+
+### Dependencies
+
+- ADR 0010, ADR 0014, ADR 0017, and Phase 178's fulfillment-option presentation contract.
+
+### Acceptance and validation evidence
+
+- [ ] Contradictory no-location discovery profiles retain null map fields and project the active
+  primary location's fulfillment flags.
+- [ ] Retail, Simple/MSME, and F&B keep Pickup unavailable, retain Delivery selection, and show
+  the existing explanation.
+- [ ] Focused API/Storefront tests, Storefront build, architecture, documentation, and compliance
+  gates pass.
+
+### Implementation links
+
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-storefront/src/shared/model/storefrontOrderMethodOptions.js`
+
+### Next eligible phase
+
+Phase 180 is next after Phase 179 completes; planned Phases 172-175 retain their existing
+initiative-specific dependencies and status.
+
+---
+
+### Planning Record (2026-08-26)
+
+- Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the
+  next eligible phase after explicit approval and Phase 171 merge.
+- Phase 157 evidence includes the actual temporary-MySQL migration/constraint/
+  rollback/re-apply rehearsals, focused persistence tests, existing POS
+  regression tests, and architecture/compliance/docs/schema gates.
+- A phase becomes `completed` only after all of its required acceptance evidence is checked and
+  linked; planning alone is not evidence of functional completion.
+---
+
+**Dated note, 2026-08-22 — Phase-number collision between this branch and `develop`, resolved per
+the `#578` precedent ("the prior reservation wins; the side that grabbed a number without checking
+renumbers"):**
+
+This branch's own Phase entry for the frontend split (issue #322) originally claimed **Phase 89**,
+assigned during the prior absorb cycle (`f8e56c71`, 2026-08-16) against `develop`'s state at that
+time. Since then `develop` independently landed its own, different **Phase 89** (*POS Items
+Gallery and IMS CSV Import Foundation*) and continued on through **Phase 150**. Neither side had
+the other's Phase 89 as an ancestor when each claimed the number, so this is a genuine collision,
+not a missed rebase — resolved by absorbing `develop` (the larger, already-merged body of work)
+verbatim and renumbering this branch's unmerged entry, and moving it to the end of the ledger
+(after develop's own Phase 150) rather than leaving it spliced between develop's Phase 88 and 89:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 89 | `develop`'s POS Items Gallery / IMS CSV Import Foundation | unchanged — prior reservation, already merged to `develop` |
+| 151 | This branch's Frontend App Split (issue #322) | **moved from 89**, then moved again — see the 2026-08-23 addendum below |
+
+No code changes accompany this renumber — the phase's own implementation was already complete and
+merge-independent; only the ledger heading, its own "Completion Record" trailer, and the ADR 0071
+cross-reference above needed edits. The three `// ... Phase 89` source comments in
+`apps/dgfy-api/**` (`fulfillmentProfiles.contract.test.js`, `ServiceBookingStatusEvent.js`,
+`serviceUseCases.js`) refer to `develop`'s Phase 89 and are correct as absorbed — left untouched.
+
+**Addendum, 2026-08-23 — the same collision fired a second time, same day, on the number this note
+itself just assigned.** `develop` independently claimed `## Phase 151 - Customer-Facing Downpayment
+Surfaces` (#826, commit `6519e39c`, 2026-08-22 21:11) about 1.5 hours after this branch's own
+renumber above (commit `18e11cb6`, 19:37) — so this branch was chronologically first, but by the
+time of the next absorb cycle (2026-08-23) develop's Phase 151 was already merged and externally
+cited (its own issue, PR, and compliance declaration all reference "Phase 151"). Neither side was
+careless: each checked against the highest number visible in the ledger it could see, and this
+branch's own reservation is invisible to `develop`'s authors by construction — it lives on an
+unmerged branch. Resolved the same way as the first collision: the unmerged absorbing branch
+renumbers again.
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 151 | `develop`'s Customer-Facing Downpayment Surfaces (#826) | unchanged — already merged to `develop` |
+| 152 | This branch's Frontend App Split (issue #322) | **moved from 151, which was itself moved from 89** |
+
+This is the fourth ADR/phase-number collision across two absorb cycles (see
+`docs/architecture/backend-absorption.md:300` for the earlier ADR-number precedent this pattern
+follows). The root cause is structural, not a process gap on either side: as long as this branch's
+own ledger entry stays unmerged, every `develop` author choosing "the next free phase number" is
+choosing against a ledger that doesn't yet contain this branch's reservation. It will keep recurring
+each absorb cycle until PR #513 merges.
+
+---
+
+## Phase 177 - POS Checkout State and Discount Financial-Truth Audit
+
+### Initiative and release
+
+- Initiative: close confirmed POS checkout state, discount scoping, mobile sync composition, and
+  order-preview financial-truth gaps found in the 2026-08-28 final audit.
+- Release: maintenance follow-up to the unified POS discount and Current Sale navigation work.
+
+### Objective and scope
+
+- Bind per-quantity governed discounts to an exact cart line so duplicate catalog item IDs cannot
+  multiply one cashier selection.
+- Preserve non-discount checkout fields when removing a discount, while full modal close/new-sale
+  reset continues to restore Cash and the normal checkout defaults.
+- Clear transient sale state on navigation and authentication session end, reparking an active
+  parked sale when possible and always removing local cashier state before the next login.
+- Correct Order Overview Total Payment fallback and mobile statutory-sync dependency composition.
+- Repair the stale split-payment source contract and add regression coverage for every confirmed
+  failure mode.
+
+### Status
+
+- `completed`
+- Explicit implementation approval received on 2026-08-28.
+- Completed on 2026-08-28.
+
+### Dependencies
+
+- ADR 0033's server-authoritative governed-discount boundary and its 2026-08-28 amendment.
+- Existing POS checkout, parked-sale, voucher, and mobile financial-sync contracts.
+- This is an explicitly approved parallel maintenance phase; it does not imply completion of
+  planned Phases 172-175.
+
+### Acceptance and validation evidence
+
+- [x] Duplicate-item cart lines receive discounts only on selected `line_ref` values; ambiguous
+  quantity-bearing legacy selections fail closed.
+- [x] Discount removal preserves order method, table, notes, tender, employee-credit, affiliate,
+  and payment input state.
+- [x] Logout/session-clear removes local sale state and attempts to release an active parked sale.
+- [x] Completed Order Overview uses the persisted total when `amount_paid` is absent/default zero,
+  while genuine partial payments show the paid amount.
+- [x] Mobile statutory checkout sync is composed with `posRepository`; the focused backend matrix
+  passes 69/69 tests.
+- [x] The complete POS frontend suite passes 899/899 tests across 161 files; SKUpervisor, POS, and
+  Storefront production builds pass.
+- [x] Changed backend/frontend lint reports zero errors; architecture, controller-boundary, ADR,
+  docs, compliance, API-contract, JavaScript syntax, and diff-safety checks pass.
+- [x] POS frontend/backend focused suites, full POS tests, builds, lint, architecture, ADR, docs,
+  and diff-safety gates pass with no new failure.
+- [x] No database migration is required because `line_ref` is request-only context.
+
+### Implementation links
+
+- `packages/web-core/src/features/pos/utils/posDiscountSelection.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutWorkflow.js`
+- `packages/web-core/src/features/pos/hooks/usePosCheckoutLifecycle.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`
+- `apps/dgfy-api/src/modules/pos/domain/posVoucherDiscountCalculator.js`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+
+### Next eligible phase
+
+The next repository phase is Phase 178 after Phase 177 completes; planned Phases 172-175 retain
+their existing dependencies and status.
+
+**Dated note, 2026-08-28 — phase numbers reserved from a `main`-based branch, not `develop`.**
+This initiative's PRs intentionally target `main` directly (Pat's explicit direction, #360 —
+production secrets need to be ready to execute live, not queued behind `develop`'s normal flow;
+see the initiative's own PR/issue trail for the authorization). At the time Phase 180 below was
+reserved, `develop`'s own copy of this ledger was already at Phase 179 (`main`'s was only at 175,
+since `develop` runs 100+ commits ahead) — reserving from 176 would have collided. Checked
+`develop`'s actual highest number directly rather than trusting `main`'s stale view, per this
+file's own established collision-resolution convention (see the 2026-08-16/2026-08-23 notes
+above). This is the same structural gap those notes describe: this reservation is invisible to
+`develop`'s authors until this branch's ledger edit is absorbed there. Reconcile at that point
+using the standard renumber procedure if `develop` has independently claimed 180+ by then.
+
+## Phase 180 - SOPS+age Production Secrets Cutover: Pre-Work
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management, replace dotenv (#360). Fixes the crash-loop defect in
+the originally drafted cutover artifacts (dropping `env_file: .env` from `dgfy-api` without
+replacing the ~69 non-secret vars it supplied) before any of it reaches the production server.
+
+### Objective and scope
+
+- Regenerate the SOPS cutover fragment (`infrastructure/docker/env/prod.sops-cutover-fragment.yml`)
+  and runbook (`docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`) against a fresh 2026-08-28 server
+  capture, replacing the stale 2026-08-13 baseline (retired `frontend`/`frontend-beta`, the #1014
+  `start_period` fix, the corrected A/B/C bucket split).
+- Commit `deploy-sops.sh` (the SOPS decrypt/export loop) and a real pre-flight gate that runs
+  `apps/dgfy-api/src/config/productionEnvValidation.cjs`'s `validateProductionEnv()` **inside the
+  dgfy-api image itself**, not against a host-side copy — `/opt/dgfy-platform` is not a git
+  checkout, so a hand-copied validator would silently drift from the image.
+- Amend ADR 0060 Decision 2: three buckets, not two — non-secret config becomes literal values in
+  `docker-compose.yml` (git-auditable), not a thinner `.env`.
+- Fix a path-resolution bug in `deploy-sops.sh` found by `pr-reviewer` (RF-2 on PR #1135): the
+  script's `cd` logic assumed the repo-checkout math (`dirname/../../..`) was a no-op once deployed
+  to `/opt/dgfy-platform/deploy-sops.sh` — it isn't; that resolves to `/`, not the project root.
+  Now detects the deployed-vs-checkout layout instead of assuming one.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-28. PR #1135 merged to `main` (merge commit `2b5b7158`).
+
+### Dependencies
+
+- ADR 0060 (`docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`), `status: amended`.
+- Runbook Phase 1 (sops/age install, server age keypair) — already done 2026-08-13, unaffected by
+  this phase.
+- None on a prior repository phase — this is this initiative's first ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] `node --check`/`bash -n` on all new/changed scripts; `npm run lint:docs` (29 governed docs,
+  81 ADRs) clean on every doc/ADR commit.
+- [x] `actionlint` clean on the (held) CI change, PR #1136.
+- [x] In-image pre-flight gate verified functionally against a real built `dgfy-api` image
+  (`dgfy-secrets-poc` Lima VM): fails on an empty env with the correct missing-key list, fails on
+  short/placeholder `JWT_SECRET`/`REFRESH_TOKEN_SECRET` values, passes on a complete valid set.
+- [x] `pr-reviewer` review on PR #1135: RF-2 (the `cd` path bug) fixed and independently re-verified
+  (both the deployed-layout and repo-checkout-layout resolution branches tested directly). RF-1
+  (base-branch choice) addressed via PR comment — Pat's explicit authorization for a `main`-based
+  branch on this initiative, not a code change.
+- [x] Names-only extraction from the live production `.env` (100 unique variable names, zero values
+  read — ADR 0060 Decision 7 governs values, not names) reconciled against the code-derived
+  classification; all 14 `BASE_REQUIRED_KEYS` traced to bucket A or B.
+
+### Implementation links
+
+- PR #1135 (merged), PR #1132 (closed, superseded by #1135)
+- `infrastructure/docker/env/prod.sops-cutover-fragment.yml`
+- `infrastructure/docker/env/prod.env-var-classification.md`
+- `infrastructure/docker/scripts/deploy-sops.sh`
+- `infrastructure/docker/scripts/check-assembled-env.cjs`
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md` (2026-08-28 amendment)
+
+### Next eligible phase
+
+Phase 181 (local rehearsal) — already completed alongside this phase; see below.
+
+---
+
+## Phase 181 - SOPS+age Cutover: Local Rehearsal (Mechanism and Migration Proof)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Simulates the full production cutover — including
+rollback — against a disposable local stack before Phase 182/183 touch the real server, per Pat's
+explicit direction that this be rehearsed first.
+
+### Objective and scope
+
+- Rehearse the actual migration of a *running* `env_file:`-based stack to the SOPS+age split — not
+  a greenfield build, which is what the original 2026-08-13 POC did and is why it likely never
+  exercised the crash-loop defect Phase 180 fixed.
+- Prove the in-image pre-flight gate catches a bad assembled environment before any container is
+  touched, and that `TENANT_SCHEMA_MUTATION_APPROVED` survives the bucket split (its absence in
+  `entrypoint.sh` is silent, not a crash — the exact regression class this cutover risks).
+- Rehearse the rollback leg, not just the forward cutover.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-28. `dgfy-secrets-poc` Lima VM (bumped 4GiB -> 8GiB RAM),
+  driving `do-not-commit/local-test`'s existing 7-service `env_file:`-based replica.
+
+### Dependencies
+
+- Phase 180 completed (the artifacts under rehearsal).
+- `do-not-commit/local-test` stack and the `dgfy-secrets-poc` Lima VM (pre-existing from the
+  2026-08-13 POC, repurposed here).
+
+### Acceptance and validation evidence
+
+- [x] All 5 service images built successfully inside the poc VM against the real Dockerfiles.
+- [x] Fixture secrets only (rehearsal-only age keypair, generated and used solely inside the VM;
+  never a real production value, per ADR 0060 Decision 7) encrypted correctly with SOPS — ciphertext
+  at rest, keys cleartext, ADR 0060 Decision 6's literal-`$`-in-bcrypt-hash corruption class
+  deliberately included in the fixture and confirmed not to reproduce.
+- [x] Dry-run config render: zero empty interpolations on the touched services (`dgfy-api`,
+  `dgfy-migration-runner`); pre-existing unrelated Sentry/PostHog frontend build-arg defaults
+  correctly excluded from that check.
+- [x] Pre-flight gate caught a real defect in the rehearsal's own fixture (`ADMIN_ACCOUNTS_JSON`
+  wrong shape, undersized bcrypt hash) *before* any container was touched — exactly the failure
+  class this gate exists to convert from a crash loop into a pre-flight check. Passed after the
+  fixture was corrected.
+- [x] Targeted `up -d` (never `down`) recreated only `dgfy-migration-runner`/`dgfy-api`; `dgfy-api`
+  reached `healthy`, `/api/v1/health` reported all subsystems healthy.
+- [x] `[TenantSchemaSync] completed total=45 ok=45 failed=0` in the container log — confirms
+  `TENANT_SCHEMA_MUTATION_APPROVED` (bucket B) survived the `env_file` removal.
+- [x] Rollback rehearsed: restored the pre-sops `docker-compose.yml`, Compose correctly recreated
+  both containers, `dgfy-api` returned to `healthy` with the original `env_file`-sourced config.
+- [x] Two real mistakes surfaced and corrected during the rehearsal, not silently reproduced going
+  forward: reading a dev-only `.env.compose` file for structure and finding it held real
+  credential-shaped values (corrected to names-only extraction for the remainder of this and any
+  future session); two `dgfy-api` container-creation attempts that silently failed network
+  attachment (a stale port conflict from the superseded 2026-08-13 POC container, and running a
+  `docker compose up` invocation outside the decrypt-loop wrapper) — both caught via direct
+  network/health inspection rather than assumed success.
+- [x] All rehearsal scratch state (fixture secrets, scratch scripts, `.pre-sops-rehearsal` backups)
+  removed afterward; `do-not-commit/local-test/docker-compose.yml` confirmed byte-identical to its
+  pre-rehearsal state; the `ch` docker context's working stack restored to healthy.
+
+### Implementation links
+
+- `do-not-commit/local-test/` (not committed to the repo — a local working stack)
+- `dgfy-secrets-poc` Lima VM (`~/.lima/dgfy-secrets-poc`)
+- Phase 180's artifacts (the object of this rehearsal)
+
+### Next eligible phase
+
+Phase 182, after Pat completes the age-key escrow verification (issue #1137) — the one step whose
+failure mode is permanent, per ADR 0060 Decision 3 (`binding`), and so gates everything after it.
+
+---
+
+## Phase 182 - SOPS+age Cutover: Backup and Rollback Prerequisites (Production Server)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Scoped to epic #492's #493/#494/#495 plus the
+age-key/ciphertext-repo backup gap (#1137) — only what this specific cutover needs before it
+executes against production, not the full epic.
+
+### Objective and scope
+
+- Verify the production age key's Bitwarden escrow copy actually decrypts (ADR 0060 Decision 3,
+  `binding` — a missing escrow copy is unrecoverable secret loss with no exceptions). Pat-only.
+- Config backup on the real server (`.env`, `docker-compose.yml`, `nginx/` -> `.pre-sops` copies)
+  and image-digest pinning (PROD runs `:latest`; if the tag moves before a rollback is needed, a
+  file-only restore recovers the file, not the behavior that was running).
+- A fresh production DB dump before cutover — closes the #494 gap (no pre-deploy backup on the live
+  container deploy path) this cutover would otherwise walk past.
+
+### Status
+
+- `blocked`
+- Blocked on: Pat (sudo access, ADR 0060 Decision 7 boundary on Phase 2's real secret values,
+  physical server access — `/opt/dgfy-platform` is not a git checkout).
+
+### Dependencies
+
+- Phase 181 completed (rehearsal must pass before this touches the real server).
+- Issue #1137 (age key escrow + ciphertext repo backup/recovery story), filed under epic #492.
+
+### Acceptance and validation evidence
+
+- [ ] Bitwarden escrow copy round-trip confirmed to actually decrypt.
+- [ ] `secrets/`, `Sieitzz/dgfy-secrets` repo created/populated (Pat runs Runbook Phase 2 personally
+  — AI may not extract/transcribe a real production secret value, ADR 0060 Decision 7, `binding`).
+- [ ] Config backup and image digests captured and reviewed on the real server.
+- [ ] A fresh production DB dump taken.
+
+### Implementation links
+
+- Issue #1137
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` ("Backup and rollback, before this cutover runs")
+- ADR 0060 Decisions 3 and 7
+
+### Next eligible phase
+
+Phase 183, after this phase's acceptance evidence is checked.
+
+---
+
+## Phase 183 - SOPS+age Cutover: Production Execution
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). The actual server-side cutover — Runbook Phases
+2-5, and the low-disruption targeted `up -d` sequence (`dgfy-api`/`dgfy-migration-runner` only;
+`mysql`/`redis`/`nginx`/the three frontends/`certbot` untouched).
+
+### Objective and scope
+
+- Split and encrypt the live `.env` (Runbook Phase 2, Pat personally).
+- Reconcile the live `docker-compose.yml` against the fragment (Runbook Phase 3).
+- Dry-run gate (Runbook Phase 4) then the actual cutover (Runbook Phase 5) in its own deploy window,
+  separate from PR #1130's application-code promotion, so a post-cutover problem is diagnosable
+  against a known-good baseline.
+
+### Status
+
+- `blocked`
+- Blocked on: Phase 182 completion; PR #1130 merged and independently verified healthy first
+  (its own, separate promotion — not part of this initiative, but a stated sequencing dependency).
+
+### Dependencies
+
+- Phase 180, 181, 182 completed.
+- PR #1130 (`release/2026-08-28` -> `main`) merged and verified.
+
+### Acceptance and validation evidence
+
+- [ ] Dry-run gate (Runbook Phase 4): clean `sops decrypt`, zero empty interpolations, in-image
+  pre-flight gate passes against the real assembled environment.
+- [ ] `docker compose ps` all healthy post-cutover (`dgfy-api` needs up to ~104s — do not call it
+  failed early).
+- [ ] `curl -fsS https://dgfy.ph/api/v1/health` (not `beta.dgfy.ph`, which 301-redirects).
+- [ ] `[entrypoint] Tenant schema sync: all active tenants OK.` in the production logs.
+- [ ] Manual smoke test on the live domain.
+- [ ] `verify-deployment.yml` dispatched for PROD (read-only).
+
+### Implementation links
+
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` (Phases 2-5, "Rollback")
+- Phase 180's artifacts
+
+### Next eligible phase
+
+Phase 184, after this phase's acceptance evidence is checked.
+
+---
+
+## Phase 184 - SOPS+age Cutover: CI Cutover (`publish-platform.yml`)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Flips the PROD deploy path in CI to the SOPS-aware
+script, closing out the initiative.
+
+### Objective and scope
+
+- Merge PR #1136 (`publish-platform.yml`'s PROD-only `deploy-sops.sh` branch) — held, not merged,
+  until Phase 183 has passed. DEV/STAGING are unaffected by this change.
+- Confirm a real `deploy-main.yml` run through the edited workflow succeeds.
+
+### Status
+
+- `blocked`
+- Blocked on: Phase 183 completion. PR #1136 is open (`main`, `mergeStateStatus: CLEAN`) and ready,
+  deliberately unmerged.
+
+### Dependencies
+
+- Phase 183 completed and verified.
+
+### Acceptance and validation evidence
+
+- [ ] PR #1136 merged.
+- [ ] A real `deploy-main.yml` PROD run through the edited workflow succeeds.
+- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — gated on
+  this phase passing *and* one further independent CI deploy also succeeding.
+- [ ] This initiative's changes back-ported to `develop` (fresh issue via `pm`, per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port procedure — a closed/merged `main` PR
+  cannot itself `Refs` into a `For QA` transition).
+
+### Implementation links
+
+- PR #1136
+- `.github/workflows/publish-platform.yml`
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 184 completes.
+This initiative (#360) is done at that point.
