@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { canCheckout, getCheckoutBlockReason } from '../../../../shared/model/checkoutRules.js';
 import { DGFY_CONVENIENCE_FEE_LABEL, DGFY_CONVENIENCE_FEE_RATE, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
+import {
+  buildStorefrontOrderMethodOptions,
+  resolveLocationFulfillmentSupport
+} from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { round4 } from '../../../../shared/utils/storefrontFormatters.js';
 import { buildServiceCartValidationIssues } from '../../../services/booking/model/serviceBookingValidation.js';
 import { buildFnbCartStatusLabel } from '../model/fnbCartPresentation.js';
@@ -38,7 +42,9 @@ export function useCheckoutTotalsAndGating({
   quoteNeedsRefresh,
   quoteResult,
   selectedStore,
+  selectedLocationId,
   serviceCartLines,
+  storeLocations,
   storefrontClosedByHours
 }) {
   const hasStockViolation = useMemo(() => (
@@ -113,7 +119,13 @@ export function useCheckoutTotalsAndGating({
     ? { label: 'Voucher Discount', value: `- ${money(totalsForDisplay.voucher_discount_amount)}` }
     : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
-  const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
+  // #1093: the mode's delivery/pickup candidate set, narrowed to what the resolved
+  // fulfillment location actually supports -- mirrors the server's own checkout-time
+  // enforcement (assertCheckoutLocationOperationalReadiness, storeUseCases.js).
+  const simpleOrderMethodOptions = buildStorefrontOrderMethodOptions(
+    ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery'),
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
   // Phase 142 (#823): fnb/simple/retail's product checkout normally never requires a quote (each
   // has its own client-computable totals fallback) -- but a downpayment-required store's payment
   // split is server-only, so those three modes DO require the quote in that one case. Reads the
@@ -137,7 +149,8 @@ export function useCheckoutTotalsAndGating({
     quoteResult,
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout,
-    paymentElection
+    paymentElection,
+    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   });
   const serviceCartValidationIssues = useMemo(
     () => buildServiceCartValidationIssues(serviceCartLines),
@@ -153,7 +166,8 @@ export function useCheckoutTotalsAndGating({
     quoteResult,
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout,
-    paymentElection
+    paymentElection,
+    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,

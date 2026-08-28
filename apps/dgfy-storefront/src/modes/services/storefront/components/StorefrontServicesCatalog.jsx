@@ -70,6 +70,7 @@ export function StorefrontServicesCatalog({
   getPreferredBookingTimeForDate,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
+  guestCheckoutAllowed = true,
   catalog,
   catalogError,
   catalogSearch,
@@ -568,6 +569,7 @@ export function StorefrontServicesCatalog({
                       isMobileViewport={isMobileViewport}
                       isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
                       canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+                      guestCheckoutAllowed={guestCheckoutAllowed}
                       missingCustomerInformation={missingCustomerInformation}
                       accountStepComplete={accountStepComplete}
                       guestCheckoutOtpCode={guestCheckoutOtpCode}

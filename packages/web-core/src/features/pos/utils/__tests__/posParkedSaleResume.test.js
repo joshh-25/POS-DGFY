@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildResumedCartLines, formatParkedSaleDisplayName, validateParkedSaleResume } from '../posParkedSaleResume.js';
+import {
+    buildResumedCartLines,
+    formatParkedSaleDisplayName,
+    getParkedSaleCatalogLookupQueries,
+    mergeParkedSaleCatalogResults,
+    validateParkedSaleResume
+} from '../posParkedSaleResume.js';
 
 const catalog = [{
     item_id: 7,
@@ -72,6 +78,55 @@ describe('POS parked-sale resume validation', () => {
 
         expect(validation.ok).toBe(true);
         expect(validation.conflicts).toEqual([]);
+    });
+
+    it('identifies every parked item for an authoritative catalog refresh', () => {
+        const queries = getParkedSaleCatalogLookupQueries({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    lines: [
+                        parkedSale.snapshot.lines[0],
+                        { item_id: 8, item_name: 'Tapsilog', sku_code: 'TAP-01', quantity: 1 }
+                    ]
+                }
+            },
+            catalog
+        });
+
+        expect(queries).toEqual(['Coffee', 'TAP-01']);
+    });
+
+    it('merges searched catalog results so a parked item outside the presentation catalog can resume', () => {
+        const searchedItem = {
+            item_id: 8,
+            name: 'Tapsilog',
+            sku_code: 'TAP-01',
+            default_sale_price: 159,
+            current_stock: 4
+        };
+        const parkedWithSearchedItem = {
+            ...parkedSale,
+            snapshot: {
+                ...parkedSale.snapshot,
+                lines: [{
+                    item_id: 8,
+                    item_name: 'Tapsilog',
+                    sku_code: 'TAP-01',
+                    quantity: 1,
+                    base_sale_price: 159,
+                    sale_price: 159
+                }]
+            }
+        };
+        const mergedCatalog = mergeParkedSaleCatalogResults(catalog, [[searchedItem]], parkedWithSearchedItem);
+
+        expect(validateParkedSaleResume({
+            parkedSale: parkedWithSearchedItem,
+            catalog: mergedCatalog,
+            allowedOrderMethods: ['takeout']
+        })).toEqual(expect.objectContaining({ ok: true, conflicts: [] }));
     });
 
     it('resolves a legacy parked line by a unique current item name and rebuilds its current ID', () => {

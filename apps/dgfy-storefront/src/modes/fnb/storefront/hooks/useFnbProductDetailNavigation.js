@@ -14,6 +14,7 @@ export function useFnbProductDetailNavigation({
   isCurrentTarget,
   itemSubpage,
   routeSlug,
+  selectedLocationId,
   selectedStoreSlug,
   setFnbDetail,
   setFnbDetailQuantity,
@@ -35,13 +36,14 @@ export function useFnbProductDetailNavigation({
     if (!normalizedStoreSlug || !itemId || typeof window === 'undefined') return;
 
     const reviewToken = String(options.reviewToken || '').trim();
-    const target = buildItemDetailTarget(normalizedStoreSlug, itemId, { reviewToken });
+    const target = buildItemDetailTarget(normalizedStoreSlug, itemId, { reviewToken, locationId: selectedLocationId });
     if (!isCurrentTarget(target)) {
       window.history.pushState(buildHistoryState({
         storeSlug: normalizedStoreSlug,
         storeSubpage: itemSubpage,
         itemId,
-        reviewToken
+        reviewToken,
+        locationId: selectedLocationId
       }), '', target);
     }
 
@@ -68,6 +70,7 @@ export function useFnbProductDetailNavigation({
     isCurrentTarget,
     itemSubpage,
     routeSlug,
+    selectedLocationId,
     selectedStoreSlug,
     setFnbDetail,
     setFnbDetailQuantity,
@@ -84,9 +87,9 @@ export function useFnbProductDetailNavigation({
     const normalizedStoreSlug = toSlug(selectedStoreSlug || routeSlug);
     if (!normalizedStoreSlug || typeof window === 'undefined') return;
 
-    const target = buildCatalogTarget(normalizedStoreSlug);
+    const target = buildCatalogTarget(normalizedStoreSlug, { locationId: selectedLocationId });
     if (!isCurrentTarget(target)) {
-      window.history.pushState(buildHistoryState({ storeSlug: normalizedStoreSlug }), '', target);
+      window.history.pushState(buildHistoryState({ storeSlug: normalizedStoreSlug, locationId: selectedLocationId }), '', target);
     }
 
     setFnbDetail(null);
@@ -106,6 +109,7 @@ export function useFnbProductDetailNavigation({
     buildHistoryState,
     isCurrentTarget,
     routeSlug,
+    selectedLocationId,
     selectedStoreSlug,
     setFnbDetail,
     setFnbDetailQuantity,

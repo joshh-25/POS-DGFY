@@ -59,6 +59,20 @@ describe('regular POS Setup cashier management contract', () => {
     expect(primaryLocationControl).not.toContain('disabled={normalizedLocations.length === 0}');
   });
 
+  it('exposes delivery and pickup availability in both POS location editors', () => {
+    expect(workspaceSource).toContain("import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';");
+    expect(workspaceSource).toContain("const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'");
+    expect(workspaceSource).toContain('checked={locationForm.supports_delivery === true}');
+    expect(workspaceSource).toContain('checked={locationForm.supports_pickup === true}');
+    expect(workspaceSource).toContain('disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}');
+    expect(workspaceSource).toContain('disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}');
+    expect(workspaceSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
+    expect(tenantSetupModalSource).toContain('Label>Supports Delivery</Label>');
+    expect(tenantSetupModalSource).toContain('Label>Supports Pickup</Label>');
+    expect(tenantSetupModalSource).toContain('checked={locationDraft.supports_delivery === true}');
+    expect(tenantSetupModalSource).toContain('checked={locationDraft.supports_pickup === true}');
+  });
+
   it('keeps cashier provisioning out of POS onboarding while preserving authorization readiness', () => {
     expect(tenantSetupModalSource).not.toContain('Cashier Gmail');
     expect(tenantSetupModalSource).not.toContain('Cashier Password');

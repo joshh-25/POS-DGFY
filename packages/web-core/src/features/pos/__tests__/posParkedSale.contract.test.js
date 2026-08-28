@@ -69,7 +69,7 @@ describe('POS Park & New Sale cashier flow', () => {
     });
 
     it('exits parked-sale editing when the final item is removed without cancelling the parked sale', () => {
-        expect(workflowSource).toContain('const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async () =>');
+        expect(workflowSource).toContain('const cancelActiveParkedSaleEditingAfterCartEmpty = useCallback(async ({ sessionEnd = false } = {}) =>');
         expect(componentSource).toContain('parkedSaleEmptyCartHandlerRef.current = cancelActiveParkedSaleEditingAfterCartEmpty;');
         expect(workflowSource).toContain('await reparkPosParkedSale(parkedSaleId, {');
         expect(workflowSource).toContain('snapshot,');

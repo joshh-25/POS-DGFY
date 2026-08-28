@@ -1,3 +1,9 @@
+import { RETAIL_ORDER_METHOD_OPTIONS } from '../components/RetailOrderFulfillmentStep.jsx';
+import {
+  buildStorefrontOrderMethodOptions,
+  resolveLocationFulfillmentSupport
+} from '../../../../shared/model/storefrontOrderMethodOptions.js';
+
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
 // guest/DGFY-account identity + guest email OTP infrastructure (useGuestCustomerIdentity.js,
@@ -7,9 +13,16 @@
 // instructions remain intentionally local state owned by RetailOrderPage itself, since neither
 // is wired to the backend yet. Retail-only — the other default-like workflow modes keep using
 // useDefaultOrderPageProps.js unmodified.
+//
+// #1093: also resolves `orderMethodOptions`, narrowing RETAIL_ORDER_METHOD_OPTIONS (the mode's
+// delivery/pickup candidate set) down to what the customer's resolved fulfillment location
+// actually supports -- mirrors the server's own checkout-time enforcement
+// (assertCheckoutLocationOperationalReadiness, storeUseCases.js) so retail checkout never offers
+// a method the server is about to 409 on.
 export function useRetailOrderPageProps({
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
+  guestCheckoutAllowed,
   cart,
   cartCount,
   cartImageErrors,
@@ -50,7 +63,10 @@ export function useRetailOrderPageProps({
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
   selectedStore,
+  fulfillmentOptions,
   selectedSavedLocationId,
+  storeLocations,
+  selectedLocationId,
   servicesBodyFont,
   servicesDisplayFont,
   setCartImageErrors,
@@ -84,9 +100,15 @@ export function useRetailOrderPageProps({
   paymentElection,
   onPaymentElectionChange
 }) {
+  const orderMethodOptions = buildStorefrontOrderMethodOptions(
+    RETAIL_ORDER_METHOD_OPTIONS,
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
+
   return {
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
+    guestCheckoutAllowed,
     cart,
     cartCount,
     cartImageErrors,
@@ -115,6 +137,7 @@ export function useRetailOrderPageProps({
     money,
     onSelectAddress: applySavedDeliveryLocation,
     orderMethod,
+    orderMethodOptions,
     promoDiscountSummaryRow,
   voucherDiscountSummaryRow,
     pinLocationError,
@@ -126,6 +149,7 @@ export function useRetailOrderPageProps({
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
     selectedStore,
+    fulfillmentOptions,
     selectedSavedLocationId,
     servicesBodyFont,
     servicesDisplayFont,

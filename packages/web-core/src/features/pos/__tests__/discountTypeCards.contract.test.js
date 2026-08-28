@@ -47,8 +47,8 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).toContain('activeShiftCashierId = null');
     expect(checkoutRenderContent).toContain('Number(approver?.user_id) === shiftCashierId');
     expect(checkoutRenderContent).toContain('approver_user_id = shiftCashierApprover?.user_id || \'\';');
-    expect(checkoutRenderContent).toContain("option.value === 'employee'");
-    expect(discountModalContent).toContain('type: option.value');
+    expect(checkoutRenderContent).toContain('handleDiscountTypeChange(option.value)');
+    expect(discountModalContent).toContain('handleDiscountTypeChange(option.value)');
     expect(discountModalContent).toContain("['senior', 'pwd'].includes(discountDraft.type)");
     expect(discountModalContent).toContain("discountDraft.type === 'employee'");
     expect(discountModalContent).toContain("discountDraft.type === 'manual'");
@@ -87,8 +87,9 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('discountPreviewTotals.vatRemoved');
     expect(discountModalContent).toContain('discountPreviewTotals.discountAmount');
     expect(discountModalContent).toContain('discountPreviewTotals.total');
-    expect(discountModalContent).toContain('eligible_quantity: 1');
-    expect(discountModalContent).toContain('Select only items and quantities for this Senior/PWD customer.');
+    expect(discountModalContent).toContain('selectedQuantity');
+    expect(discountModalContent).toContain('Select all items');
+    expect(discountModalContent).toContain('Uncheck items with no discount');
     expect(discountModalContent).toContain('handleApplyGovernedDiscount');
     expect(checkoutRenderContent).not.toContain('onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}');
     expect(discountModalContent).toContain('Select authorized employee');

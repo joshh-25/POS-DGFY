@@ -58,6 +58,7 @@ import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
+import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -413,7 +414,11 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
     return { settingsData: nextSettingsData, pendingReviewKeys };
 };
 
-export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
+export const buildUpdateSettingsUseCase = ({
+    settingsRepository,
+    storefrontAssetStorage = null,
+    tenantLocationRepository = null
+}) => {
     return async ({ settingsData, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
             return fail(new DomainError(
@@ -431,6 +436,11 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             settingsData = posMetadataReview.settingsData;
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
+            await assertFulfillmentMethodAvailableForAccessModeTransition({
+                settingsData,
+                settingsRepository,
+                tenantLocationRepository
+            });
             assertStoreProfileNotClientWritten({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });

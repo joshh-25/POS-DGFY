@@ -53,6 +53,7 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
 export function RetailOrderPage({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
   cart = [],
   cartCount = 0,
   cartImageErrors,
@@ -89,6 +90,7 @@ export function RetailOrderPage({
   onPaymentElectionChange,
   onPaymentTypeChange,
   orderMethod = 'delivery',
+  orderMethodOptions = null,
   paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
@@ -107,6 +109,7 @@ export function RetailOrderPage({
   servicesBodyFont,
   servicesDisplayFont,
   selectedStore,
+  fulfillmentOptions,
   selectedSavedLocationId = '',
   setCustomerPin,
   storefrontClosedByHours = false,
@@ -225,6 +228,7 @@ export function RetailOrderPage({
           <div style={stepGridStyle}>
             <RetailOrderAccountStep
               canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+              guestCheckoutAllowed={guestCheckoutAllowed}
               guestCheckoutOtpCode={guestCheckoutOtpCode}
               guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
               guestCheckoutOtpError={guestCheckoutOtpError}
@@ -271,10 +275,12 @@ export function RetailOrderPage({
           <div style={stepGridStyle}>
             <RetailOrderFulfillmentStep
               canAddPinnedLocation={canAddPinnedLocation}
+              orderMethodOptions={orderMethodOptions}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
               deliverySavedLocations={retailSavedLocations}
+              fulfillmentOptions={fulfillmentOptions}
               isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
               onAddPinnedLocation={handleAddPinnedLocation}

@@ -876,6 +876,32 @@ export default function PosTenantSetupModal({
                         <p className="text-xs text-slate-500">The first saved business location will be primary by default.</p>
                       ) : null}
                     </div>
+                    <div className="mt-3 space-y-1.5">
+                      <Label>Supports Delivery</Label>
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                        <span className="text-sm text-slate-600">Enable delivery orders for this location.</span>
+                        <Switch
+                          checked={locationDraft.supports_delivery === true}
+                          onCheckedChange={(checked) => setLocationDraft((current) => ({
+                            ...current,
+                            supports_delivery: checked === true
+                          }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1.5">
+                      <Label>Supports Pickup</Label>
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                        <span className="text-sm text-slate-600">Enable pickup orders for this location.</span>
+                        <Switch
+                          checked={locationDraft.supports_pickup === true}
+                          onCheckedChange={(checked) => setLocationDraft((current) => ({
+                            ...current,
+                            supports_pickup: checked === true
+                          }))}
+                        />
+                      </div>
+                    </div>
                     <React.Suspense fallback={<div className="mt-4 h-72 animate-pulse rounded-xl bg-slate-100" aria-label="Loading location map" />}>
                       <MapPinPicker
                         className="mt-4"

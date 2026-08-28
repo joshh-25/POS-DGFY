@@ -1,85 +1,15 @@
 ---
 alwaysApply: true
 ---
-# Project Goal: Inventory Management System for Food & Beverage Operations
+# Project Goal
 
-## Vision
-Build a **web-based Inventory Management System** that gives end-to-end visibility and control of inventory—from **procurement and supplier management** to **production consumption**, **stock movements**, and **financial tracking**—so the business can **optimize stock**, **minimize waste**, and **improve operational efficiency**.
+This is a **pointer**, not the definition. This file used to describe DGFY as a single-vertical
+"Inventory Management System for Food & Beverage Operations" (originally "SKU Inventory Manager")
+— that framing is stale (#365). DGFY is a multi-tenant, multi-vertical commerce/operations platform
+(POS, inventory, storefront, bookings, hospitality) across capability-driven workflow modes, not a
+single-vertical F&B tool.
 
----
-
-## Primary Objectives
-- Maintain **accurate, real-time stock levels** across all inventory items (ingredients, finished goods, packaging).
-- Reduce **waste/spoilage** and prevent **over-ordering** with thresholds, capacity rules, and forecasting.
-- Streamline purchasing with **PO workflows** and **intelligent supplier selection**.
-- Ensure traceability via a complete **audit log** of inventory transactions.
-- Provide decision support through **reports, alerts, and cost metrics** (COGS, valuation).
-
----
-
-## MVP Scope (Must-Have)
-### 1) Core Inventory Management
-- **Item Master**
-  - Central catalog for finished products, ingredients, and packaging.
-  - Unique SKU/item code.
-  - Support a **product matrix / BOM-style relationships** (ingredients → finished goods).
-- **Packaging Components**
-  - Store packaging specifications (dimensions, material, label/sticker details).
-- **Stock Control**
-  - Real-time stock by item.
-  - Per-item configurable rules:
-    - Total storage capacity
-    - Minimum threshold (% of capacity)
-    - Purchase allowance (% of capacity) to prevent over-ordering
-- **Inventory Movements**
-  - Track movement types:
-    - Production consumption
-    - Returns (supplier/customer)
-    - Transfers (future multi-location readiness)
-    - Calculated losses (waste, spoilage, pilferage, damages)
-- **Accountability Log (Audit Trail)**
-  - Log every movement with timestamp + user responsible.
-
-### 2) Procurement & Supplier Management
-- **Supplier Database**
-  - Maintain suppliers and allow **alternative suppliers per ingredient/material**.
-- **Intelligent Supplier Selection**
-  - Recommend supplier based on prioritized criteria:
-    1. Price
-    2. MOQ compatibility
-    3. Ability to consolidate the most required items into one order
-- **Supplier Performance Tracking**
-  - Track/edit metrics tied to deliveries/batches:
-    - Delivery time
-    - Quality control ratings
-    - Price consistency
-  - Flag suppliers below a defined performance threshold.
-- **Purchase Order (PO) Management**
-  - Create POs and record receiving with item-level breakdown.
-  - Handle supplier-specific MOQs and bulk discounts.
-
-### 3) Production & Operations
-- **Job Order (JO) Management**
-  - Create/track JOs for production.
-  - On JO completion:
-    - Automatically **deduct consumed ingredients**
-    - Automatically **add finished goods to stock**
-  - Record detailed JO breakdown.
-
-### 4) Forecasting, Notifications & Analytics
-- **Automated Forecasting**
-  - Forecast ingredient availability; highlight surplus/shortage to keep “just right” inventory.
-- **Alerts & Notifications**
-  - Low stock threshold reached
-  - Monthly procurement reminders (1 week before month start)
-  - Supplier quality/performance flags
-- **Reporting Suite**
-  - Stock aging (slow-moving/expiring risk)
-  - Surplus & shortage reports
-  - Full history of inventory movements
-
-### 5) Financial Tracking
-- **Cost Analysis**
-  - Cost per unit (items)
-  - Total inventory valuation
-  - C
+**Read `AGENTS.md` in full and follow it.** It is the canonical, always-current project entry
+point — repo layout, PR conventions, agent roles, and the doc lookup order all live there. Do not
+duplicate its content here; a rule restated in a vendor directory is exactly the staleness failure
+this file itself became an example of.

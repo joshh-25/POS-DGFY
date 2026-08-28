@@ -4,6 +4,10 @@ import { DGFY_ACRONYM, ORDER_METHOD_OPTIONS } from '../model/storefrontConstants
 import { StorefrontResponsiveImage } from './storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../model/storefrontDownpaymentPresentation.js';
+import {
+  buildStorefrontOrderMethodOptions,
+  resolveLocationFulfillmentSupport
+} from '../model/storefrontOrderMethodOptions.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the product/service checkout tab
@@ -121,7 +125,14 @@ export function StorefrontCheckoutSummaryContainer({
                   }}
                   style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                 >
-                  {ORDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {/* #1093: narrowed to the ecommerce fulfillment axis (delivery/pickup) and to
+                      what the resolved fulfillment location actually supports -- this raw
+                      <select> previously offered all four ORDER_METHOD_OPTIONS unconditionally,
+                      including dine_in/takeout, which never belong on a storefront checkout. */}
+                  {buildStorefrontOrderMethodOptions(
+                    ORDER_METHOD_OPTIONS.filter((o) => o.value === 'delivery' || o.value === 'pickup'),
+                    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+                  ).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
             )}

@@ -1,10 +1,12 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
+import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
 import { RetailOrderSavedAddressesModal } from './RetailOrderSavedAddressesModal.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
+import { getUnavailableFulfillmentMessage } from '../../../../shared/model/storefrontFulfillmentOptions.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -18,8 +20,11 @@ const ORDER_METHOD_ICONS = {
 };
 
 // Retail only offers Delivery/Pickup — Dine In/Takeout (from the shared
-// ORDER_METHOD_OPTIONS list, used by dine-in-capable modes) don't apply here.
-const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
+// ORDER_METHOD_OPTIONS list, used by dine-in-capable modes) don't apply here. This is the
+// mode's *candidate* set; #1093's `orderMethodOptions` prop further narrows it to what the
+// resolved fulfillment location actually supports (falls back to this full set if the prop
+// is omitted, so no caller regresses to an empty chooser).
+export const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
   (option) => option.value === 'delivery' || option.value === 'pickup'
 );
 
@@ -58,6 +63,7 @@ export function RetailOrderFulfillmentStep({
   onSpecialInstructionsChange,
   onStartMapPin,
   orderMethod = 'delivery',
+  orderMethodOptions = null,
   pinLocationError = '',
   pinLocationLoading = false,
   scheduleMode = 'asap',
@@ -69,6 +75,7 @@ export function RetailOrderFulfillmentStep({
   showMobileAddressModal = false,
   specialInstructions = ''
 }) {
+  const [unavailableMessage, setUnavailableMessage] = useState('');
   const isDeliveryOrder = orderMethod === 'delivery';
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
 
@@ -81,10 +88,19 @@ export function RetailOrderFulfillmentStep({
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-            {RETAIL_ORDER_METHOD_OPTIONS.map((option) => (
+            {(orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS).map((option) => {
+              const isAvailable = option.available !== false;
+              return (
               <SelectableOptionCard
                 key={`retail-order-method-${option.value}`}
-                onClick={() => onOrderMethodChange(option.value)}
+                onClick={() => {
+                  if (!isAvailable) {
+                    setUnavailableMessage(getUnavailableFulfillmentMessage(option));
+                    return;
+                  }
+                  setUnavailableMessage('');
+                  onOrderMethodChange(option.value);
+                }}
                 label={option.label}
                 icon={ORDER_METHOD_ICONS[option.value] || null}
                 active={orderMethod === option.value}
@@ -103,9 +119,12 @@ export function RetailOrderFulfillmentStep({
                 fontWeight={700}
                 iconBoxSize={isMobileViewport ? 34 : 40}
                 iconSize={isMobileViewport ? 18 : 20}
+                unavailable={!isAvailable}
               />
-            ))}
+              );
+            })}
           </div>
+          {unavailableMessage ? <div role="alert" style={{ color: '#9f1239', fontSize: 13, fontWeight: 600 }}>{unavailableMessage}</div> : null}
         </div>
 
         <div style={{ display: 'grid', gap: 12 }}>

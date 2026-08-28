@@ -4,6 +4,8 @@ const mockGetMobilePosCatalogBootstrapUseCase = jest.fn();
 const mockGetMobilePosSettingsBootstrapUseCase = jest.fn();
 const mockGetMobilePosDevicePolicyUseCase = jest.fn();
 const mockSyncMobilePosCheckoutsUseCase = jest.fn();
+const mockGetMobilePosTransactionCheckpointUseCase = jest.fn();
+const mockSyncMobilePosVoidsUseCase = jest.fn();
 const mockSyncMobilePosItemsUseCase = jest.fn();
 const mockSyncMobilePosShiftsUseCase = jest.fn();
 const mockSyncMobilePosHardwareEventsUseCase = jest.fn();
@@ -14,6 +16,8 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getMobilePosSettingsBootstrapUseCase: mockGetMobilePosSettingsBootstrapUseCase,
     getMobilePosDevicePolicyUseCase: mockGetMobilePosDevicePolicyUseCase,
     syncMobilePosCheckoutsUseCase: mockSyncMobilePosCheckoutsUseCase,
+    getMobilePosTransactionCheckpointUseCase: mockGetMobilePosTransactionCheckpointUseCase,
+    syncMobilePosVoidsUseCase: mockSyncMobilePosVoidsUseCase,
     syncMobilePosItemsUseCase: mockSyncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase: mockSyncMobilePosShiftsUseCase,
     syncMobilePosHardwareEventsUseCase: mockSyncMobilePosHardwareEventsUseCase,
