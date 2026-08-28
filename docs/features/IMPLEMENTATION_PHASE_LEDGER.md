@@ -10248,20 +10248,27 @@ DevOps Initiative 1 — secrets management (#360). The actual server-side cutove
 
 - Split and encrypt the live `.env` (Runbook Phase 2, Pat personally).
 - Reconcile the live `docker-compose.yml` against the fragment (Runbook Phase 3).
-- Dry-run gate (Runbook Phase 4) then the actual cutover (Runbook Phase 5) in its own deploy window,
-  separate from PR #1130's application-code promotion, so a post-cutover problem is diagnosable
-  against a known-good baseline.
+- Dry-run gate (Runbook Phase 4) then the actual cutover (Runbook Phase 5) in its own deploy window.
 
 ### Status
 
 - `blocked`
-- Blocked on: Phase 182 completion; PR #1130 merged and independently verified healthy first
-  (its own, separate promotion — not part of this initiative, but a stated sequencing dependency).
+- Blocked on: Phase 182 completion only.
+- **2026-08-29 amendment:** the original sequencing blocked this phase on PR #1130 (a separate,
+  unrelated `staging`->`main` application-code promotion) merging and being verified healthy first,
+  so a post-cutover problem would be diagnosable against a known-good baseline rather than
+  conflated with a 100-file release. Pat's call: decoupled instead — #1130 (or whatever promotion
+  supersedes it) is not itself the known-good baseline; current `main` already is, post
+  #1135/#1138/#1139. The cutover now runs against current `main` first; the next
+  `develop`->`main` promotion (#1130 or its replacement — promotion branches are throwaway per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`) is verified against the *post-cutover* state afterward
+  instead of the other way around. This also avoids two separate `dgfy-api` recreations
+  close together (one for the cutover, one for the promotion's image bump).
 
 ### Dependencies
 
 - Phase 180, 181, 182 completed.
-- PR #1130 (`release/2026-08-28` -> `main`) merged and verified.
+- (No longer depends on PR #1130 — see the 2026-08-29 amendment above.)
 
 ### Acceptance and validation evidence
 
