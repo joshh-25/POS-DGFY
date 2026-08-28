@@ -65,19 +65,25 @@ describe('buildStorefrontOrderMethodOptions', () => {
     { value: 'pickup', label: 'Pickup' }
   ];
 
-  it('offers both when the location supports both', () => {
+  it('keeps both candidates available when the location supports both', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: true, supports_pickup: true });
     expect(result.map((o) => o.value)).toEqual(['delivery', 'pickup']);
   });
 
-  it('offers only delivery for a delivery-only location (Surebiz)', () => {
+  it('keeps Pickup visible but unavailable for a delivery-only location (Surebiz)', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: true, supports_pickup: false });
-    expect(result.map((o) => o.value)).toEqual(['delivery']);
+    expect(result).toEqual([
+      { value: 'delivery', label: 'Delivery', available: true },
+      { value: 'pickup', label: 'Pickup', available: false }
+    ]);
   });
 
-  it('offers only pickup for a pickup-only location', () => {
+  it('keeps Delivery visible but unavailable for a pickup-only location', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: false, supports_pickup: true });
-    expect(result.map((o) => o.value)).toEqual(['pickup']);
+    expect(result).toEqual([
+      { value: 'delivery', label: 'Delivery', available: false },
+      { value: 'pickup', label: 'Pickup', available: true }
+    ]);
   });
 
   it('never adds a method outside the candidate set, even if supported', () => {

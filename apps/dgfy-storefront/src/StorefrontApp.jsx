@@ -1986,6 +1986,7 @@ export default function StorefrontApp() {
     quoteError,
     quoteNeedsRefresh,
     quoteResult,
+    selectedLocation,
     selectedStore,
     selectedLocationId,
     serviceAppointmentAt,
@@ -2041,9 +2042,10 @@ export default function StorefrontApp() {
       STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS,
       resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
     );
-    if (availableMethods.length === 0) return;
-    if (availableMethods.some((option) => option.value === orderMethod)) return;
-    setOrderMethod(availableMethods[0].value);
+    const enabledMethods = availableMethods.filter((option) => option.available);
+    if (enabledMethods.length === 0) return;
+    if (enabledMethods.some((option) => option.value === orderMethod)) return;
+    setOrderMethod(enabledMethods[0].value);
   }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod]);
   useEffect(() => {
     setServicePage(1);
@@ -3186,6 +3188,7 @@ export default function StorefrontApp() {
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    fulfillmentOptions: simpleOrderMethodOptions,
     selectedStore,
     selectedSavedLocationId,
     servicesBodyFont,
@@ -3244,6 +3247,7 @@ export default function StorefrontApp() {
     fnbCheckoutContentPadding,
     fnbCustomerStepComplete,
     fnbFulfillmentStepComplete,
+    fulfillmentOptions: simpleOrderMethodOptions,
     fnbMobileSummaryItemCountLabel,
     fnbOrderBrand,
     fnbOrderBrandBorder,

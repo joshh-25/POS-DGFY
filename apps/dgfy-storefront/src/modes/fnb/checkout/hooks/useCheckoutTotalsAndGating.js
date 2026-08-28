@@ -150,7 +150,7 @@ export function useCheckoutTotalsAndGating({
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout,
     paymentElection,
-    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.length > 0
+    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   });
   const serviceCartValidationIssues = useMemo(
     () => buildServiceCartValidationIssues(serviceCartLines),
@@ -167,7 +167,7 @@ export function useCheckoutTotalsAndGating({
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout,
     paymentElection,
-    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.length > 0
+    hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,

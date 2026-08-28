@@ -41,11 +41,14 @@ export const resolveLocationFulfillmentSupport = ({
   return selectedStore || null;
 };
 
-// Filters a mode's candidate order-method options (e.g. RETAIL_ORDER_METHOD_OPTIONS,
-// already scoped to the ecommerce fulfillment axis) down to what the resolved
-// location actually supports. The mode picks the candidate set first; availability
-// only ever subtracts from it -- this never adds a method a mode doesn't offer.
+// Annotates a mode's candidate order-method options (e.g. RETAIL_ORDER_METHOD_OPTIONS,
+// already scoped to the ecommerce fulfillment axis) with the resolved location's
+// availability. Candidates stay visible so a customer can understand why a method
+// cannot be selected; this never adds a method a mode does not offer.
 export const buildStorefrontOrderMethodOptions = (candidateOptions = [], locationSupport = null) => (
   (Array.isArray(candidateOptions) ? candidateOptions : [])
-    .filter((option) => isEnabledStorefrontOrderMethod(option?.value, locationSupport))
+    .map((option) => ({
+      ...option,
+      available: isEnabledStorefrontOrderMethod(option?.value, locationSupport)
+    }))
 );
