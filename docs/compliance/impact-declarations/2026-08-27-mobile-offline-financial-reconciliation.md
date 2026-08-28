@@ -12,8 +12,8 @@ verification_evidence: focused mobile POS financial sync tests,mobile TypeScript
 rollback_note: Revert the Phase 171 API routes and native Phase 3 schema/use cases together; preserve already-recorded local ledgers and disable replay rather than deleting financial records.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-27T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-PHASE-171-LOCAL-IMPLEMENTATION
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-27-MOBILE-OFFLINE-FINANCIAL-RECONCILIATION-20260828T092056Z
 ---
 
 # Mobile Offline Financial Reconciliation
@@ -62,3 +62,5 @@ No live environment preflight was executed during this local Phase 171 build.
 The `NOT-EXECUTED-*` reference is explicit and must be replaced by the normal
 promotion preflight before staging/production rollout. `no_breach/ALLOWED` here
 records the local static policy result only and is not a live-host claim.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-27-MOBILE-OFFLINE-FINANCIAL-RECONCILIATION-20260828T092056Z`.

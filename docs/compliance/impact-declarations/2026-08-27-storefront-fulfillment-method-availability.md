@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.
 rollback_note: Revert this commit. The storeUseCases.js change is a pure rename (ORDER_METHOD_LOCATION_SUPPORT_MAP -> the identical map now sourced from packages/shared-constants/src/orderMethods.js as ORDER_METHOD_LOCATION_SUPPORT_KEYS), verified behavior-identical by the full storeUsecases.applicationResult.test.js suite passing unmodified. The tenantLocationUseCases.js/tenantLocationRepository.js/customerAccessModeFulfillmentPolicy.js/updateSettingsUseCase.js/updateSettingByKeyUseCase.js/updateTenantCapabilitiesUseCase.js changes add validation guards plus new read-only settings/location queries -- no schema, migration, or persisted-state change; reverting restores the prior (present) gap where a location could be saved with both delivery and pickup disabled while the store still accepted online orders, in either write direction (location-first or access-mode-first). The Settings.jsx change is UI-only (disables a switch, adds explanatory text) -- no new setting key, no new write path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-27T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1093-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY-20260828T092056Z
 ---
 
 # Storefront Checkout Now Honors Per-Location Delivery/Pickup Availability
@@ -178,3 +178,5 @@ Not yet run. `preflight_request_ref: NOT-EXECUTED-1093-STOREFRONT-FULFILLMENT-ME
 is expected on a PR targeting `develop`, not a finding -- per #884, the real
 `POST /api/v1/compliance/preflight` run happens once per batch at the `develop -> staging`/`main`
 promotion sweep (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment), not per PR.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY-20260828T092056Z`.
