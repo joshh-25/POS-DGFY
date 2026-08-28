@@ -7,7 +7,7 @@ classification: minor
 surfaces: compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.28
-verification_evidence: node --check scripts/mint-preflight-token.js,npm run check:compliance,manual dry-run of scripts/mint-preflight-token.js against a local target (documented in PR)
+verification_evidence: node --check scripts/mint-preflight-token.js,node --check scripts/build-preflight-request.js,node --test scripts/build-preflight-request.test.js,npm run check:compliance,manual dry-run of scripts/mint-preflight-token.js and the sweep workflow's result-gating logic against a local target (documented in PR)
 rollback_note: Revert scripts/mint-preflight-token.js, .github/workflows/compliance-preflight-sweep.yml, the docs/promoter-skill edits, and this declaration together. Nothing here changes any runtime authorization decision, schema, or persisted business state — reverting restores the prior manual-token-paste procedure exactly as it was, with no cleanup required on any host. No bot account or GitHub secret this PR documents is created by the revert itself; those remain a separate manual step either way.
 ---
 
@@ -102,10 +102,14 @@ cleanup, or host action is required for either direction. The bot account and it
 secrets (provisioned separately, out of this PR's scope) are unaffected by reverting this PR — they
 simply become unused until the mechanism is reintroduced or the manual procedure resumes.
 
-Two follow-ups this declaration does not resolve, named so they aren't lost:
+Three follow-ups this declaration does not resolve, named so they aren't lost:
 
 1. Provisioning the real STAGING bot account, choosing its tenant, and creating the four
    `PREFLIGHT_*` GitHub Environment secrets — one-time human/ops action, no automated path exists
    for any of it in this repo today.
 2. Actually dispatching `compliance-preflight-sweep.yml` against a live STAGING run — blocked on
    (1); a human or `promoter` test-dispatches it once the secrets exist.
+3. A rotation/revocation procedure for the bot account's password and the GitHub Environment
+   secrets themselves — undesigned (pr-reviewer RF-4 on PR #1127; see the protocol doc's "Storage
+   mechanism" note for the full rationale on why GitHub Environment secrets replaced #1121's
+   original SOPS+age proposal, and why that substitution doesn't itself resolve rotation).

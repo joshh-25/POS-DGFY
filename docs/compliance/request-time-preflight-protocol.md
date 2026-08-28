@@ -192,6 +192,22 @@ on a broader role. Record the chosen tenant and its `x-company-token` value as
 `PREFLIGHT_BOT_PASSWORD` in the target GitHub Environment's secrets (`STAGING`,
 and optionally `DEV` for testing this workflow) — never in this repo.
 
+**Storage mechanism: GitHub Environment secrets, superseding #1121's original SOPS+age proposal
+(pr-reviewer RF-4 on PR #1127, 2026-08-28).** #1121 itself proposed storing the bot account's
+credentials via this repo's SOPS+age path (`docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`). That path's
+ciphertext lives in a separate private repo, `Sieitzz/dgfy-secrets` (ADR 0060 Decision 4, by
+design — so `dgfy-platform` never carries secret history), which has no read path wired into any
+GitHub Actions workflow today — nothing decrypts it into a CI job's env. GitHub Environment secrets
+is the mechanism actually wired into this exact self-hosted-runner CI path already, for a
+comparable credential class: `verify-deployment.yml` and `tenant-schema-report.yml` both resolve
+`SSH_PRIVATE_KEY`/`SSH_TARGET` the same way, per dispatched `environment`. Using the same mechanism
+for `PREFLIGHT_*` keeps one credential-handling pattern for this CI path instead of two. **This is
+an explicit, accepted substitution for #1121's storage mechanism, not an unstated deviation** — the
+credential still never lives in this repo, in a script, or in a plain env file, which was the actual
+constraint #1121's proposal was protecting. **Not yet designed: a rotation/revocation procedure for
+the bot account's password or the GitHub Environment secrets themselves** — this is a real,
+undesigned follow-up, not silently assumed solved by "GitHub Environment secrets are secret."
+
 **No `NOT-EXECUTED-*` declaration may reach `main`** — the promotion-time sweep
 must have reconciled every one in the batch first, unless `promoter`'s #1007
 phrase-gated expedited override is explicitly invoked for that specific

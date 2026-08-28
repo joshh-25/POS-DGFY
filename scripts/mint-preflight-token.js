@@ -5,9 +5,10 @@
  * Replaces the manual "log in by hand, paste the JWT" step the promotion-time compliance sweep
  * (docs/compliance/request-time-preflight-protocol.md, "Where live preflight actually runs") has
  * relied on since #884. This script does one thing: log in against a target host with a dedicated,
- * least-privilege service/bot account (SYSTEM.EDIT_SETTINGS only -- never `role: admin`, see the
- * seeder this script's own docs pair with, apps/dgfy-migration-runner's
- * seed-preflight-bot-user.js) and print the resulting JWT to stdout, nothing else.
+ * least-privilege service/bot account (SYSTEM.EDIT_SETTINGS only -- never `role: admin`) and print
+ * the resulting JWT to stdout, nothing else. Provisioning that account is a manual, one-time step --
+ * see docs/compliance/request-time-preflight-protocol.md's "Where live preflight actually runs" for
+ * the exact procedure and why no seeder in this repo can create it automatically.
  *
  * No credential is ever hardcoded, cached, or written to disk here -- everything comes from env,
  * consistent with the deploy-sops.sh pattern of exporting decrypted secrets into the shell just
