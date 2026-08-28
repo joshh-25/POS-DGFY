@@ -45,6 +45,15 @@ Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the com
 Choose this per batch when the change is risky enough to want it — not the default, see
 `../SKILL.md`'s "The flow" section.
 
+**Do NOT run `npm run gate:release:local` on this leg.** It is reserved for the `develop → main`
+(and `staging → main`) leg only — see the "Default" section above, where it's the first thing run.
+This isn't an omission to infer from silence: this leg's own CI-side check
+(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so a `to-staging/<label>` PR
+is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
+a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
+on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
+that were never this leg's gate to fail on.
+
 ```bash
 git fetch origin
 git ls-remote --exit-code --heads origin staging || echo "MISSING — restore before proceeding"

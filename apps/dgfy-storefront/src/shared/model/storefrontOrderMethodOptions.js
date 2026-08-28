@@ -16,20 +16,24 @@ export const isEnabledStorefrontOrderMethod = (method, locationSupport = null) =
 
 // Mirrors the server's own location resolution for checkout
 // (storeUseCases.js: `const location = requestedLocation || fallbackLocation`):
-// prefer the location the customer actually has selected, fall back to the
-// storefront's primary/active location list, and finally fall back to the
-// discovery profile's own primary-location snapshot (`selectedStore.supports_*`)
-// for a store that hasn't loaded `storeLocations` yet.
+// prefer the location the customer actually has selected, then its matching
+// discovery snapshot, then a loaded primary/active location, then a snapshot
+// primary/active location, and finally the profile's top-level fallback.
 export const resolveLocationFulfillmentSupport = ({
   selectedStore = null,
   storeLocations = [],
   selectedLocationId = null
 } = {}) => {
   const locations = Array.isArray(storeLocations) ? storeLocations : [];
+  const snapshotLocations = Array.isArray(selectedStore?.active_location_snapshot)
+    ? selectedStore.active_location_snapshot
+    : [];
 
   if (selectedLocationId != null) {
     const selected = locations.find((location) => String(location?.location_id) === String(selectedLocationId));
     if (selected) return selected;
+    const selectedSnapshot = snapshotLocations.find((location) => String(location?.location_id) === String(selectedLocationId));
+    if (selectedSnapshot) return selectedSnapshot;
   }
 
   const fallback = locations.find((location) => location?.is_primary_storefront === true)
@@ -38,14 +42,23 @@ export const resolveLocationFulfillmentSupport = ({
     || null;
   if (fallback) return fallback;
 
+  const snapshotFallback = snapshotLocations.find((location) => location?.is_primary_storefront === true)
+    || snapshotLocations.find((location) => location?.is_active !== false)
+    || snapshotLocations[0]
+    || null;
+  if (snapshotFallback) return snapshotFallback;
+
   return selectedStore || null;
 };
 
-// Filters a mode's candidate order-method options (e.g. RETAIL_ORDER_METHOD_OPTIONS,
-// already scoped to the ecommerce fulfillment axis) down to what the resolved
-// location actually supports. The mode picks the candidate set first; availability
-// only ever subtracts from it -- this never adds a method a mode doesn't offer.
+// Annotates a mode's candidate order-method options (e.g. RETAIL_ORDER_METHOD_OPTIONS,
+// already scoped to the ecommerce fulfillment axis) with the resolved location's
+// availability. Candidates stay visible so a customer can understand why a method
+// cannot be selected; this never adds a method a mode does not offer.
 export const buildStorefrontOrderMethodOptions = (candidateOptions = [], locationSupport = null) => (
   (Array.isArray(candidateOptions) ? candidateOptions : [])
-    .filter((option) => isEnabledStorefrontOrderMethod(option?.value, locationSupport))
+    .map((option) => ({
+      ...option,
+      available: isEnabledStorefrontOrderMethod(option?.value, locationSupport)
+    }))
 );

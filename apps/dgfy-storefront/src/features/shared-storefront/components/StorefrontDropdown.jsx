@@ -33,6 +33,7 @@ export function StorefrontDropdown({
   triggerStyle = {},
   containerStyle = {},
   menuStyle = {},
+  menuPlacement = 'bottom-start',
   optionStyle = {},
   selectedLabelStyle = {},
   labelStyle = {},
@@ -165,7 +166,14 @@ export function StorefrontDropdown({
       </button>
 
       {isOpen && !disabled ? (
-        <div role="listbox" style={{ ...DROPDOWN_MENU_BASE_STYLE, ...menuStyle }}>
+        <div
+          role="listbox"
+          style={{
+            ...DROPDOWN_MENU_BASE_STYLE,
+            ...(menuPlacement === 'bottom-end' ? { left: 'auto', right: 0 } : null),
+            ...menuStyle
+          }}
+        >
           {options.map((option) => {
             const isSelected = String(option.value) === String(value);
             return (

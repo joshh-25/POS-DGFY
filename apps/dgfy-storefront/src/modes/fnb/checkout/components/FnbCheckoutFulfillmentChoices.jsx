@@ -1,5 +1,7 @@
 import { CalendarDays, Clock3, ShoppingBag, Zap } from 'lucide-react';
+import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
+import { getUnavailableFulfillmentMessage, resolveStorefrontFulfillmentOptions } from '../../../../shared/model/storefrontFulfillmentOptions.js';
 
 const deliveryIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Im0xOCAxNC0xLTMiLz48cGF0aCBkPSJtMyA5IDYgMmEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDEuOTkgMS44MSIvPjxwYXRoIGQ9Ik04IDE3aDNhMSAxIDAgMCAwIDEtMSA2IDYgMCAwIDEgNi02IDEgMSAwIDAgMCAxLTF2LS43NUE1IDUgMCAwIDAgMTcgNSIvPjxjaXJjbGUgY3g9IjE5IiBjeT0iMTciIHI9IjMiLz48Y2lyY2xlIGN4PSI1IiBjeT0iMTciIHI9IjMiLz48L3N2Zz4=';
 
@@ -61,8 +63,10 @@ export function FnbCheckoutFulfillmentChoices({
   onScheduleModeChange,
   onScheduledForChange,
   orderMethod,
+  fulfillmentOptions = resolveStorefrontFulfillmentOptions(),
   scheduleHoursLabel
 }) {
+  const [unavailableMessage, setUnavailableMessage] = useState('');
   const choiceGridColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
   const choiceProps = {
     brand: fnbOrderBrand,
@@ -79,25 +83,27 @@ export function FnbCheckoutFulfillmentChoices({
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
-          <SelectableOptionCard
-            {...buildChoiceCardProps({
+          {fulfillmentOptions.map((option) => {
+            const isAvailable = option.available !== false;
+            return <SelectableOptionCard key={option.value} {...buildChoiceCardProps({
               ...choiceProps,
-              active: orderMethod === 'delivery',
-              icon: () => <span style={{ width: isResponsive ? 18 : 22, height: isResponsive ? 18 : 22, display: 'inline-block', backgroundColor: 'currentColor', WebkitMaskImage: `url("${deliveryIcon}")`, WebkitMaskRepeat: 'no-repeat', WebkitMaskPosition: 'center', WebkitMaskSize: 'contain', maskImage: `url("${deliveryIcon}")`, maskRepeat: 'no-repeat', maskPosition: 'center', maskSize: 'contain' }} />,
-              label: 'Delivery',
-              onClick: () => onOrderMethodChange('delivery')
-            })}
-          />
-          <SelectableOptionCard
-            {...buildChoiceCardProps({
-              ...choiceProps,
-              active: orderMethod === 'pickup',
-              icon: ({ size }) => <ShoppingBag size={size} />,
-              label: 'Pickup',
-              onClick: () => onOrderMethodChange('pickup')
-            })}
-          />
+              active: orderMethod === option.value,
+              icon: option.value === 'delivery'
+                ? () => <span style={{ width: isResponsive ? 18 : 22, height: isResponsive ? 18 : 22, display: 'inline-block', backgroundColor: 'currentColor', WebkitMaskImage: `url("${deliveryIcon}")`, WebkitMaskRepeat: 'no-repeat', WebkitMaskPosition: 'center', WebkitMaskSize: 'contain', maskImage: `url("${deliveryIcon}")`, maskRepeat: 'no-repeat', maskPosition: 'center', maskSize: 'contain' }} />
+                : ({ size }) => <ShoppingBag size={size} />,
+              label: option.label,
+              onClick: () => {
+                if (!isAvailable) {
+                  setUnavailableMessage(getUnavailableFulfillmentMessage(option));
+                  return;
+                }
+                setUnavailableMessage('');
+                onOrderMethodChange(option.value);
+              }
+            })} unavailable={!isAvailable} />;
+          })}
         </div>
+        {unavailableMessage ? <div role="alert" style={{ color: '#9f1239', fontSize: 13, fontWeight: 600 }}>{unavailableMessage}</div> : null}
       </div>
 
       <div style={{ display: 'grid', gap: 16 }}>

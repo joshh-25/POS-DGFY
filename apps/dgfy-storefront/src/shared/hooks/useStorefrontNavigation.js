@@ -10,6 +10,7 @@ import {
 } from '../../app/routing/storefrontNavigation.js';
 import {
   readRouteSlug,
+  readStoreLocationId,
   readStoreItemId,
   readStoreReviewToken,
   readStoreServiceItemId,
@@ -33,6 +34,7 @@ import {
 export function useStorefrontNavigation({
   routeSlug,
   selectedStore,
+  selectedLocationId,
   setRouteSlug,
   setRouteSubpage,
   setRouteServiceItemId,
@@ -59,12 +61,13 @@ export function useStorefrontNavigation({
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
     if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = buildServiceDetailTarget(normalized, serviceItemId);
+    const target = buildServiceDetailTarget(normalized, serviceItemId, { locationId: selectedLocationId });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
         storeSubpage: STORE_SERVICE_SUBPAGE,
-        serviceItemId
+        serviceItemId,
+        locationId: selectedLocationId
       }), '', target);
     }
     setSelectedServiceDetail(service);
@@ -85,9 +88,9 @@ export function useStorefrontNavigation({
       slug: normalized,
       locationId: Number(locationId)
     });
-    const target = buildCatalogTarget(normalized);
+    const target = buildCatalogTarget(normalized, { locationId: locationId });
     if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized }), '', target);
+      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized, locationId }), '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
@@ -103,11 +106,12 @@ export function useStorefrontNavigation({
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = buildBookingTarget(normalized);
+    const target = buildBookingTarget(normalized, { locationId: selectedLocationId });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
-        storeSubpage: STORE_BOOKING_SUBPAGE
+        storeSubpage: STORE_BOOKING_SUBPAGE,
+        locationId: selectedLocationId
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -123,9 +127,9 @@ export function useStorefrontNavigation({
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = buildCatalogTarget(normalized);
+    const target = buildCatalogTarget(normalized, { locationId: selectedLocationId });
     if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized }), '', target);
+      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized, locationId: selectedLocationId }), '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
@@ -161,15 +165,27 @@ export function useStorefrontNavigation({
 
   useEffect(() => {
     const onPopState = () => {
-      setRouteSlug(readRouteSlug());
+      const nextRouteSlug = readRouteSlug();
+      const nextLocationId = readStoreLocationId();
+      const isSameStore = toSlug(nextRouteSlug) === toSlug(routeSlug);
+      if (!isSameStore) {
+        setPreferredStoreLocationSelection(
+          nextRouteSlug && nextLocationId != null
+            ? { slug: nextRouteSlug, locationId: nextLocationId }
+            : null
+        );
+      }
+      setRouteSlug(nextRouteSlug);
       setRouteSubpage(readStoreSubpage());
       setRouteServiceItemId(readStoreServiceItemId());
       setRouteItemId(readStoreItemId());
       setRouteReviewToken(readStoreReviewToken());
+      setSelectedLocationId(nextLocationId);
+      setHasSelectedBranchFromMenu(nextLocationId != null);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, []);
+  }, [routeSlug, setHasSelectedBranchFromMenu, setPreferredStoreLocationSelection, setRouteItemId, setRouteReviewToken, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedLocationId]);
 
   return {
     openServiceDetail,

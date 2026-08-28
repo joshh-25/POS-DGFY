@@ -1,18 +1,18 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-27
+last_reviewed: 2026-08-28
 declaration_id: 2026-08-27-storefront-fulfillment-method-availability
 classification: major
-surfaces: payments, settings
+surfaces: payments, settings, pos, terminal
 reason_codes_impacted: FULFILLMENT_METHOD_NOT_AVAILABLE
 policy_version: 2026.08.27
 verification_evidence: apps/dgfy-api/tests/tenantLocationFulfillmentMethodGuard.usecases.test.js (7 passed, new/extended for RF-2), apps/dgfy-api/tests/settingsCustomerAccessModeFulfillmentGuard.usecases.test.js (8 passed, new), apps/dgfy-api/tests/updateTenantCapabilitiesFulfillmentGuard.usecases.test.js (3 passed, new), apps/dgfy-api/tests/tenantLocationUsecases.applicationResult.test.js (8 passed, unaffected), apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js (4 passed, extended), apps/dgfy-api/tests/storeUsecases.applicationResult.test.js (55 passed, unaffected), apps/dgfy-api/tests/tenantLocationRepository.referenceGuard.test.js + tenantLocationReferenceSources.coverage.test.js (5 passed, unaffected), apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js + settingsValidator.* (7 files, 140 passed, unaffected), apps/dgfy-api/tests/updateTenantCapabilitiesUseCase.rollback.test.js + tenantCapabilitySettings.test.js + adminTenantCapabilities.transport.test.js + adminTenantCapabilityValidator.test.js + listTenantCapabilityAuditLogs.usecase.test.js + tenantCapabilityReadiness.schemaCompatibility.test.js + tenantCapabilityRouteGates.test.js (unaffected), apps/dgfy-storefront/src/shared/model/__tests__/storefrontOrderMethodOptions.test.js (12 passed, new), apps/dgfy-storefront/src/__tests__/checkoutRules.test.js (14 passed, extended), apps/dgfy-storefront/src/__tests__/simpleCheckoutOnlinePayments.contract.test.js + fnbStorefront.contract.test.js + retailCheckoutOnlinePayments.contract.test.js + storefrontClosedHoursMessaging.contract.test.js (48 passed, unaffected), full apps/dgfy-storefront suite (140 files / 760 tests, unaffected), npm run build:store (apps/dgfy-storefront), npm run build:skupervisor (apps/dgfy-ims), npm run check:architecture, npm run check:controller-boundaries, npm run lint:docs
 rollback_note: Revert this commit. The storeUseCases.js change is a pure rename (ORDER_METHOD_LOCATION_SUPPORT_MAP -> the identical map now sourced from packages/shared-constants/src/orderMethods.js as ORDER_METHOD_LOCATION_SUPPORT_KEYS), verified behavior-identical by the full storeUsecases.applicationResult.test.js suite passing unmodified. The tenantLocationUseCases.js/tenantLocationRepository.js/customerAccessModeFulfillmentPolicy.js/updateSettingsUseCase.js/updateSettingByKeyUseCase.js/updateTenantCapabilitiesUseCase.js changes add validation guards plus new read-only settings/location queries -- no schema, migration, or persisted-state change; reverting restores the prior (present) gap where a location could be saved with both delivery and pickup disabled while the store still accepted online orders, in either write direction (location-first or access-mode-first). The Settings.jsx change is UI-only (disables a switch, adds explanatory text) -- no new setting key, no new write path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-27T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1093-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY-20260828T092056Z
 ---
 
 # Storefront Checkout Now Honors Per-Location Delivery/Pickup Availability
@@ -98,6 +98,14 @@ the same check to every write path that can move the *effective* `customer_acces
   new setting key) now disable turning off the last-enabled method while Customer Access Mode is
   Transaction, with inline text pointing to Catalog Only as the way to actually stop taking online
   orders. Convenience only; the backend guards above are authoritative.
+- **2026-08-28 POS completion:** `packages/web-core` now exposes the same Delivery/Pickup controls
+  in the POS Settings location editor and POS setup modal. The Settings editor applies the same
+  Transaction-mode last-enabled lock as IMS, sharing its message from
+  `packages/shared-constants/src/orderMethods.js`; the setup modal has no access-mode data, so it
+  relies on the existing server-side `422` guard. POS updates also now submit
+  `last_known_updated_at`, matching IMS optimistic-concurrency protection. These are UI/client
+  payload changes only: no new setting, API route, schema, migration, payment method, or capture
+  path is introduced.
 - Storefront (not itself compliance-tracked, listed for completeness): `apps/dgfy-storefront`
   checkout now filters delivery/pickup options through the resolved location's real
   `supports_delivery`/`supports_pickup`, self-corrects a stale/unavailable selection, and degrades
@@ -157,6 +165,9 @@ the same check to every write path that can move the *effective* `customer_acces
   `tenantCapabilityReadiness.schemaCompatibility.test.js`, `tenantCapabilityRouteGates.test.js`)
   — all pass unmodified, confirming no regression from the rename or either new guard.
 - `node --check` on every changed `apps/dgfy-api` `.js` file.
+- `packages/web-core/src/features/pos/__tests__/posSettingsCashier.contract.test.js` — covers both
+  POS controls, the Transaction-mode lock, shared message import, and optimistic-concurrency
+  payload.
 - `npm run build:store` (`apps/dgfy-storefront`) and `npm run build:skupervisor`
   (`apps/dgfy-ims`) — real Vite builds, both changed frontend apps.
 - `npm run check:architecture`, `npm run check:controller-boundaries`, `npm run lint:docs`.
@@ -167,3 +178,5 @@ Not yet run. `preflight_request_ref: NOT-EXECUTED-1093-STOREFRONT-FULFILLMENT-ME
 is expected on a PR targeting `develop`, not a finding -- per #884, the real
 `POST /api/v1/compliance/preflight` run happens once per batch at the `develop -> staging`/`main`
 promotion sweep (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment), not per PR.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-27-STOREFRONT-FULFILLMENT-METHOD-AVAILABILITY-20260828T092056Z`.

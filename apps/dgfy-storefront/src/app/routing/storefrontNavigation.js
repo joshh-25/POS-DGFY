@@ -9,12 +9,23 @@ import {
 
 const normalizeNavigationSlug = (value) => String(value || '').trim().toLowerCase();
 
+const normalizeLocationId = (value) => {
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue > 0 ? numericValue : null;
+};
+
+const buildQueryString = (params) => {
+  const query = params.toString();
+  return query ? `?${query}` : '';
+};
+
 export const buildStorefrontHistoryState = ({
   storeSlug = '',
   storeSubpage = null,
   serviceItemId = '',
   itemId = '',
-  reviewToken = ''
+  reviewToken = '',
+  locationId = null
 } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedSubpage = storeSubpage ? String(storeSubpage).trim().toLowerCase() : null;
@@ -28,17 +39,22 @@ export const buildStorefrontHistoryState = ({
   if (normalizedServiceItemId) state.serviceItemId = normalizedServiceItemId;
   if (normalizedItemId) state.itemId = normalizedItemId;
   if (normalizedReviewToken) state.reviewToken = normalizedReviewToken;
+  const normalizedLocationId = normalizeLocationId(locationId);
+  if (normalizedLocationId != null) state.locationId = normalizedLocationId;
   return state;
 };
 
-export const buildServiceDetailTarget = (storeSlug, serviceItemId) => {
+export const buildServiceDetailTarget = (storeSlug, serviceItemId, { locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedServiceItemId = String(serviceItemId || '').trim();
   if (!normalizedSlug || !normalizedServiceItemId) return '';
-  return storePath(normalizedSlug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(normalizedServiceItemId)}`);
+  const params = new URLSearchParams({ service: normalizedServiceItemId });
+  const normalizedLocationId = normalizeLocationId(locationId);
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  return storePath(normalizedSlug, STORE_SERVICE_SUBPAGE, buildQueryString(params));
 };
 
-export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '' } = {}) => {
+export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '', locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedItemId = String(itemId || '').trim();
   if (!normalizedSlug || !normalizedItemId) return '';
@@ -49,51 +65,62 @@ export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '' } = 
     params.set('review_token', normalizedReviewToken);
     params.set('review', '1');
   }
-  return storePath(normalizedSlug, STORE_ITEM_SUBPAGE, `?${params.toString()}`);
+  const normalizedLocationId = normalizeLocationId(locationId);
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  return storePath(normalizedSlug, STORE_ITEM_SUBPAGE, buildQueryString(params));
 };
 
-export const buildCatalogTarget = (storeSlug) => {
+export const buildCatalogTarget = (storeSlug, { locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
-  return normalizedSlug ? storePath(normalizedSlug) : '';
+  if (!normalizedSlug) return '';
+  const normalizedLocationId = normalizeLocationId(locationId);
+  return storePath(normalizedSlug, null, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
 };
 
-export const buildOrderTarget = (storeSlug) => {
+export const buildOrderTarget = (storeSlug, { locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
-  return normalizedSlug ? storePath(normalizedSlug, STORE_ORDER_SUBPAGE) : '';
+  if (!normalizedSlug) return '';
+  const normalizedLocationId = normalizeLocationId(locationId);
+  return storePath(normalizedSlug, STORE_ORDER_SUBPAGE, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
 };
 
-export const buildBookingTarget = (storeSlug) => {
+export const buildBookingTarget = (storeSlug, { locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
-  return normalizedSlug ? storePath(normalizedSlug, STORE_BOOKING_SUBPAGE) : '';
+  if (!normalizedSlug) return '';
+  const normalizedLocationId = normalizeLocationId(locationId);
+  return storePath(normalizedSlug, STORE_BOOKING_SUBPAGE, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
 };
 
-export const buildTrackTarget = (storeSlug, pin = '') => {
+export const buildTrackTarget = (storeSlug, pin = '', { locationId = null } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
   const normalizedPin = String(pin || '').trim().toUpperCase();
-  return normalizedPin
-    ? `${storePath(normalizedSlug, STORE_TRACK_SUBPAGE)}?pin=${encodeURIComponent(normalizedPin)}`
-    : storePath(normalizedSlug, STORE_TRACK_SUBPAGE);
+  const params = new URLSearchParams();
+  if (normalizedPin) params.set('pin', normalizedPin);
+  const normalizedLocationId = normalizeLocationId(locationId);
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  return storePath(normalizedSlug, STORE_TRACK_SUBPAGE, buildQueryString(params));
 };
 
 export const buildCanonicalStorefrontTarget = ({
   storeSlug = '',
   routeSubpage = null,
   routeServiceItemId = '',
-  routeItemId = ''
+  routeItemId = '',
+  locationId = null
 } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
-  if (routeSubpage === STORE_BOOKING_SUBPAGE) return storePath(normalizedSlug, STORE_BOOKING_SUBPAGE);
-  if (routeSubpage === STORE_TRACK_SUBPAGE) return storePath(normalizedSlug, STORE_TRACK_SUBPAGE);
-  if (routeSubpage === STORE_ORDER_SUBPAGE) return storePath(normalizedSlug, STORE_ORDER_SUBPAGE);
+  if (routeSubpage === STORE_BOOKING_SUBPAGE) return buildBookingTarget(normalizedSlug, { locationId });
+  if (routeSubpage === STORE_TRACK_SUBPAGE) return buildTrackTarget(normalizedSlug, '', { locationId });
+  if (routeSubpage === STORE_ORDER_SUBPAGE) return buildOrderTarget(normalizedSlug, { locationId });
   if (routeSubpage === STORE_SERVICE_SUBPAGE && String(routeServiceItemId || '').trim()) {
-    return buildServiceDetailTarget(normalizedSlug, routeServiceItemId);
+    return buildServiceDetailTarget(normalizedSlug, routeServiceItemId, { locationId });
   }
   if (routeSubpage === STORE_ITEM_SUBPAGE && String(routeItemId || '').trim()) {
-    return buildItemDetailTarget(normalizedSlug, routeItemId);
+    return buildItemDetailTarget(normalizedSlug, routeItemId, { locationId });
   }
-  return storePath(normalizedSlug);
+  return buildCatalogTarget(normalizedSlug, { locationId });
 };
 
 export const isCurrentStorefrontTarget = (target) => {

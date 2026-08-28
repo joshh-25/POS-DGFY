@@ -51,6 +51,39 @@ describe('resolveLocationFulfillmentSupport', () => {
     expect(result).toBe(selectedStore);
   });
 
+  it('uses the active snapshot over contradictory top-level no-location flags', () => {
+    const selectedStore = {
+      store_has_no_location: true,
+      supports_delivery: true,
+      supports_pickup: true,
+      active_location_snapshot: [{
+        location_id: 7,
+        is_active: true,
+        is_primary_storefront: true,
+        supports_delivery: true,
+        supports_pickup: false
+      }]
+    };
+    const result = resolveLocationFulfillmentSupport({ selectedStore, storeLocations: [] });
+    expect(result).toBe(selectedStore.active_location_snapshot[0]);
+    expect(buildStorefrontOrderMethodOptions([
+      { value: 'delivery', label: 'Delivery' },
+      { value: 'pickup', label: 'Pickup' }
+    ], result)).toEqual([
+      { value: 'delivery', label: 'Delivery', available: true },
+      { value: 'pickup', label: 'Pickup', available: false }
+    ]);
+  });
+
+  it('uses a matching snapshot when the selected location has not loaded', () => {
+    const selectedStore = {
+      supports_pickup: true,
+      active_location_snapshot: [{ location_id: 8, supports_pickup: false }]
+    };
+    expect(resolveLocationFulfillmentSupport({ selectedStore, selectedLocationId: 8 }))
+      .toBe(selectedStore.active_location_snapshot[0]);
+  });
+
   it('falls back to the first active location if none is marked primary', () => {
     const inactive = { location_id: 3, is_active: false, supports_delivery: true, supports_pickup: true };
     const active = { location_id: 4, is_active: true, supports_delivery: true, supports_pickup: false };
@@ -65,19 +98,25 @@ describe('buildStorefrontOrderMethodOptions', () => {
     { value: 'pickup', label: 'Pickup' }
   ];
 
-  it('offers both when the location supports both', () => {
+  it('keeps both candidates available when the location supports both', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: true, supports_pickup: true });
     expect(result.map((o) => o.value)).toEqual(['delivery', 'pickup']);
   });
 
-  it('offers only delivery for a delivery-only location (Surebiz)', () => {
+  it('keeps Pickup visible but unavailable for a delivery-only location (Surebiz)', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: true, supports_pickup: false });
-    expect(result.map((o) => o.value)).toEqual(['delivery']);
+    expect(result).toEqual([
+      { value: 'delivery', label: 'Delivery', available: true },
+      { value: 'pickup', label: 'Pickup', available: false }
+    ]);
   });
 
-  it('offers only pickup for a pickup-only location', () => {
+  it('keeps Delivery visible but unavailable for a pickup-only location', () => {
     const result = buildStorefrontOrderMethodOptions(candidates, { supports_delivery: false, supports_pickup: true });
-    expect(result.map((o) => o.value)).toEqual(['pickup']);
+    expect(result).toEqual([
+      { value: 'delivery', label: 'Delivery', available: false },
+      { value: 'pickup', label: 'Pickup', available: true }
+    ]);
   });
 
   it('never adds a method outside the candidate set, even if supported', () => {

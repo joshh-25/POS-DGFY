@@ -146,7 +146,7 @@ describe('discovery map layer helpers', () => {
     });
   });
 
-  it('excludes provisioned placeholder coordinates from public map layers', () => {
+  it('keeps provisioned placeholder coordinates out of the general discovery map', () => {
     const single = buildDiscoveryPinLayerModel({
       stores: [
         { slug: 'alpha', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'services' }
@@ -162,6 +162,19 @@ describe('discovery map layer helpers', () => {
     });
 
     expect(grouped.sourceData.features).toHaveLength(0);
+  });
+
+  it('allows the selected storefront map to use its exact stored coordinate', () => {
+    const selected = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'alpha', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'services' }
+      ],
+      selectedKey: 'alpha:loc:1',
+      allowProvisionedPlaceholder: true
+    });
+    expect(selected.sourceData.features).toHaveLength(1);
+    expect(selected.sourceData.features[0].geometry.coordinates).toEqual([122.559893, 10.699817]);
+    expect(selected.sourceData.features[0].properties.highlighted).toBe(true);
   });
 
   it('adds user location below pin halo and pin symbol layers', () => {

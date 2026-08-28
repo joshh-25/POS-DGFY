@@ -1,0 +1,236 @@
+name: Compliance Preflight Sweep
+
+# Manually-dispatched automation for the promotion-time compliance preflight sweep (#1121) --
+# replaces the manual "log in by hand, export DGFY_DEV_TOKEN, run curl" step
+# docs/compliance/request-time-preflight-protocol.md's "Where live preflight actually runs" has
+# required since #884. That manual step has already failed once for real: the 2026-08-26
+# attendance-gate declaration (docs/compliance/impact-declarations/
+# 2026-08-26-pos-attendance-feature-disabled-gate.md) records Pat explicitly authorizing a skip
+# because no DGFY_DEV_TOKEN/DEV-host credential was available in the executing session.
+#
+# Modeled directly on verify-deployment.yml (#514) and tenant-schema-report.yml (#1017): same
+# self-hosted-runner + per-GitHub-Environment-secret pattern, same "dispatching this is read-only,
+# unattended" classification those two already carry in .agents/skills/promoter/SKILL.md and
+# .agents/skills/verifier/SKILL.md. This workflow is simpler than either precedent -- STAGING's API
+# is reachable over plain HTTPS (the protocol doc's own curl recipe already hits it directly), so
+# no VPN/SSH hop is needed at all, just an HTTP call from the runner.
+#
+# READ-ONLY for checkpoint purposes: this workflow only ever calls
+# POST /api/v1/auth/login (to mint a token) and POST /api/v1/compliance/preflight (which evaluates
+# the declaration's *proposed* impact_declaration payload against the policy engine -- it does not
+# exercise or depend on the target host's currently-deployed code, per the issue's own framing).
+# Neither call mutates business state. This workflow deliberately has no step that writes back to
+# the declaration files or opens a PR -- reconciling preflight_result/preflight_reason_code/
+# preflight_run_at/preflight_request_ref into each declaration and landing that via a small cut
+# branch + PR into `develop` stays a separate, human/promoter-run step (already scripted in
+# .agents/skills/promoter/SKILL.md), now sourced from this workflow's step summary / artifact
+# instead of a manually-run curl transcript.
+#
+# The bot account and its credentials (PREFLIGHT_HOST/PREFLIGHT_COMPANY_TOKEN/
+# PREFLIGHT_BOT_EMAIL/PREFLIGHT_BOT_PASSWORD, resolved from the dispatched `environment`'s own
+# GitHub Environment secrets) are provisioned out of band, by hand, through the tenant's own
+# existing user-management flow -- see docs/compliance/request-time-preflight-protocol.md's
+# "Where live preflight actually runs" section for the exact procedure. This workflow has no path
+# to create either the account or the secrets themselves.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment (resolves PREFLIGHT_HOST/PREFLIGHT_COMPANY_TOKEN/PREFLIGHT_BOT_EMAIL/PREFLIGHT_BOT_PASSWORD from that GitHub Environment). STAGING is the real promotion-sweep target per #1121; DEV exists to test this workflow itself without touching STAGING.
+        type: choice
+        options:
+          - STAGING
+          - DEV
+        default: STAGING
+        required: true
+      declarations:
+        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration in the develop..main diff, matching promoter's own discovery command.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ['sieitz-runner']
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Discover NOT-EXECUTED-* declarations
+        id: discover
+        env:
+          DECLARATIONS_INPUT: ${{ inputs.declarations }}
+        run: |
+          set -euo pipefail
+
+          DECLARATIONS_DIR="docs/compliance/impact-declarations"
+
+          if [ -n "$DECLARATIONS_INPUT" ]; then
+            # Explicit list -- one value per line, comma-split, then normalized (pr-reviewer RF-7
+            # on PR #1127/#1121: the input is documented as accepting a bare filename, but was
+            # passed straight through unchanged -- resolving from the runner's cwd, not this
+            # directory, so a bare filename silently failed to be found). A bare filename gets
+            # this directory prefixed; a value that already starts with it is left alone; anything
+            # absolute or containing ".." is rejected outright rather than silently mishandled.
+            : > /tmp/declarations.txt
+            # printf's trailing \n matters: without it, `read` hits EOF on the LAST split entry
+            # before a newline and the while-loop body silently never runs for it (found live
+            # while testing this fix -- a single-entry input was silently dropped entirely).
+            printf '%s\n' "$DECLARATIONS_INPUT" | tr ',' '\n' | sed '/^\s*$/d' | while read -r entry; do
+              entry="$(echo "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+              case "$entry" in
+                /*|*..*)
+                  echo "::error::rejected declarations input entry (absolute path or path traversal): $entry"
+                  exit 1
+                  ;;
+                "$DECLARATIONS_DIR"/*)
+                  echo "$entry" >> /tmp/declarations.txt
+                  ;;
+                *)
+                  echo "$DECLARATIONS_DIR/$entry" >> /tmp/declarations.txt
+                  ;;
+              esac
+            done
+          else
+            # Only the front matter's CURRENT preflight_request_ref decides "outstanding" --
+            # pr-reviewer RF-6 on PR #1127/#1121: a whole-file `grep NOT-EXECUTED-` also matches a
+            # reconciled declaration whose body still mentions the placeholder in a historical
+            # note (its front matter carries a real PROMOTER-* ref by then). See
+            # scripts/is-preflight-outstanding.js for the fix and its tests.
+            git fetch origin main develop --quiet
+            git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
+              | while read -r f; do
+                  if [ -f "$f" ] && node scripts/is-preflight-outstanding.js "$f" > /dev/null; then
+                    echo "$f"
+                  fi
+                done > /tmp/declarations.txt || true
+          fi
+
+          count=$(wc -l < /tmp/declarations.txt | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count declaration(s) to sweep:"
+          cat /tmp/declarations.txt || true
+
+      - name: Run preflight sweep
+        id: sweep
+        if: steps.discover.outputs.count != '0'
+        env:
+          PREFLIGHT_HOST: ${{ secrets.PREFLIGHT_HOST }}
+          PREFLIGHT_COMPANY_TOKEN: ${{ secrets.PREFLIGHT_COMPANY_TOKEN }}
+          PREFLIGHT_BOT_EMAIL: ${{ secrets.PREFLIGHT_BOT_EMAIL }}
+          PREFLIGHT_BOT_PASSWORD: ${{ secrets.PREFLIGHT_BOT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          echo '[]' > /tmp/results.json
+          overall_fail=0
+
+          while IFS= read -r declaration; do
+            [ -z "$declaration" ] && continue
+            echo "--- $declaration ---"
+
+            # Fresh token per call -- cheap to mint, no reuse, matches the issue's own rationale.
+            if ! token="$(node scripts/mint-preflight-token.js)"; then
+              echo "::error::failed to mint a preflight token for $declaration"
+              overall_fail=1
+              continue
+            fi
+
+            # Full impact_declaration payload (declaration_id, classification, summary,
+            # affected_surfaces, reason_codes_impacted, policy_version, verification_evidence,
+            # rollback_note) -- pr-reviewer RF-1 on PR #1127/#1121: the endpoint 422s on anything
+            # less. See scripts/build-preflight-request.js's own header for the parsing/summary-
+            # derivation rationale.
+            if ! body=$(node scripts/build-preflight-request.js "$declaration"); then
+              echo "::error::failed to build the preflight request body for $declaration"
+              overall_fail=1
+              continue
+            fi
+
+            response=$(curl -sS -w '\n%{http_code}' -X POST "${PREFLIGHT_HOST}/api/v1/compliance/preflight" \
+              -H 'Content-Type: application/json' \
+              -H "x-company-token: ${PREFLIGHT_COMPANY_TOKEN}" \
+              -H "Authorization: Bearer ${token}" \
+              -d "$body" || echo -e "\n000")
+
+            http_code=$(printf '%s' "$response" | tail -1)
+            response_body=$(printf '%s' "$response" | sed '$d')
+
+            echo "HTTP $http_code"
+            echo "$response_body"
+
+            # pr-reviewer RF-2 on PR #1127/#1121: HTTP 200 alone is not success -- the endpoint
+            # returns 200 for result=breach / result=review_required too (can_proceed=false). Only
+            # result=no_breach AND can_proceed=true is an actual pass; anything else -- including
+            # unparseable JSON -- is a sweep failure, not a silently-recorded "swept". Parsing (and
+            # unwrapping the { success, data: {...} } envelope -- pr-reviewer RF-5) lives in
+            # scripts/parse-preflight-response.js, tested directly against that exact envelope
+            # shape rather than reimplemented inline here.
+            verdict=$(node scripts/parse-preflight-response.js <<< "$response_body")
+
+            pass=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).pass))')
+            result_value=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).result))')
+            reason_code=$(printf '%s' "$verdict" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).reason_code))')
+
+            if [ "$http_code" != "200" ] || [ "$pass" != "true" ]; then
+              echo "::error::preflight call for $declaration did not pass -- HTTP $http_code, result=$result_value, reason_code=$reason_code"
+              overall_fail=1
+            fi
+
+            node -e '
+              const fs = require("fs");
+              const results = JSON.parse(fs.readFileSync("/tmp/results.json", "utf8"));
+              results.push({
+                declaration: process.argv[1],
+                http_code: process.argv[2],
+                verdict: JSON.parse(process.argv[3])
+              });
+              fs.writeFileSync("/tmp/results.json", JSON.stringify(results, null, 2));
+            ' "$declaration" "$http_code" "$verdict"
+          done < /tmp/declarations.txt
+
+          echo "overall_fail=$overall_fail" >> "$GITHUB_OUTPUT"
+
+      - name: Upload results artifact
+        if: steps.discover.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-preflight-sweep-results
+          path: /tmp/results.json
+          retention-days: 30
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "### Compliance preflight sweep -- ${{ inputs.environment }}"
+            echo ""
+            if [ "${{ steps.discover.outputs.count }}" = "0" ]; then
+              echo "No NOT-EXECUTED-* declarations found -- nothing to sweep."
+            else
+              echo "Swept ${{ steps.discover.outputs.count }} declaration(s). Results attached as the"
+              echo "\`compliance-preflight-sweep-results\` artifact."
+              echo ""
+              echo "**Reconciling \`preflight_result\`/\`preflight_reason_code\`/\`preflight_run_at\`/"
+              echo "\`preflight_request_ref\` into each declaration's front matter, and landing that via"
+              echo "a cut branch + PR into \`develop\`, is a separate step -- see"
+              echo "\`.agents/skills/promoter/SKILL.md\`'s compliance preflight sweep procedure.**"
+              echo ""
+              echo '```'
+              cat /tmp/results.json 2>/dev/null || echo "(no results captured)"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the run on any bad result
+        if: steps.sweep.outputs.overall_fail == '1'
+        run: |
+          echo "::error::One or more preflight calls failed -- see the step summary for details."
+          exit 1

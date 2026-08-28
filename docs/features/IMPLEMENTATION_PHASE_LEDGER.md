@@ -9745,6 +9745,100 @@ Phase 177.
 
 ---
 
+## Phase 178 - Storefront Unavailable Fulfillment Feedback (#1093)
+
+### Objective and scope
+
+Keep Delivery and Pickup visible in Retail, Simple/MSME, and F&B checkout when a selected
+location does not support one of them. An unavailable method is visually muted, remains
+keyboard-activatable for feedback, preserves the current fulfillment selection, and displays the
+method-specific inline explanation. Missing or cached legacy support flags remain fail-open. The
+mode-agnostic `DefaultOrderFulfillmentStep` remains explicitly out of scope because it is the
+unwired placeholder checkout tree, not one of the three live product checkout routes.
+
+### Status
+
+- `completed` (2026-08-28)
+
+### Dependencies
+
+- Phase 177 completed. No migration, API, schema, settings, architecture allowlist, or ADR
+  amendment is required; server-side location-capability validation remains authoritative.
+
+### Acceptance and validation evidence
+
+- [x] The shared storefront option resolver keeps Delivery and Pickup candidates and annotates
+  availability for delivery-only, pickup-only, both-enabled, both-disabled legacy, and missing-flag
+  location states (`storefrontFulfillmentOptions.test.js`).
+- [x] Retail, Simple/MSME, and F&B each keep unavailable choices visible, expose unavailable
+  semantics without a native disabled button, preserve the existing method on activation, and show
+  the required inline message (three focused selector/component interaction tests).
+- [x] F&B now consumes the selected location's resolved fulfillment options rather than rendering
+  both methods unconditionally.
+- [x] `npm run build:store`, focused Storefront Vitest coverage (5 files, 20 tests),
+  `npm run lint:docs`, and `npm run check:architecture` pass. Storefront lint passes with the
+  repository's existing warnings and no errors.
+
+### Implementation links
+
+- `apps/dgfy-storefront/src/shared/model/storefrontFulfillmentOptions.js`
+- `apps/dgfy-storefront/src/shared/components/checkout/SelectableOptionCard.jsx`
+- `apps/dgfy-storefront/src/modes/{simple,fnb,retail}/checkout/`
+
+### Next eligible phase
+
+Phase 179 is the next repository phase; planned Phases 172-175 retain their initiative-specific
+dependencies and status.
+
+---
+
+## Phase 179 - Staging Fulfillment-Capability Consistency Hotfix
+
+### Initiative and release
+
+- Initiative: #1093 per-store delivery/pickup capability correction; incident record #1117.
+- Release: staging hotfix.
+
+### Objective and scope
+
+- Keep `store_has_no_location` as a map-publication control while projecting fulfillment support
+  from a resolved active primary location when one exists.
+- Resolve Storefront fulfillment support from selected/loaded/snapshotted locations before using
+  top-level discovery profile fallbacks.
+- Preserve unavailable-choice feedback in Retail, Simple/MSME, and F&B.
+
+### Status
+
+- `in_progress`
+- Started on 2026-08-28 under the explicit `/hotfix` incident workflow.
+- Incident traceability: #1117 records the confirmed staging defect, reproduction, and deployment
+  proof still required before closure.
+
+### Dependencies
+
+- ADR 0010, ADR 0014, ADR 0017, and Phase 178's fulfillment-option presentation contract.
+
+### Acceptance and validation evidence
+
+- [ ] Contradictory no-location discovery profiles retain null map fields and project the active
+  primary location's fulfillment flags.
+- [ ] Retail, Simple/MSME, and F&B keep Pickup unavailable, retain Delivery selection, and show
+  the existing explanation.
+- [ ] Focused API/Storefront tests, Storefront build, architecture, documentation, and compliance
+  gates pass.
+
+### Implementation links
+
+- `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`
+- `apps/dgfy-storefront/src/shared/model/storefrontOrderMethodOptions.js`
+
+### Next eligible phase
+
+Phase 180 is next after Phase 179 completes; planned Phases 172-175 retain their existing
+initiative-specific dependencies and status.
+
+---
+
 ### Planning Record (2026-08-26)
 
 - Phase 156 through Phase 171 are `completed`. Phases 172-175 are `planned`, and Phase 172 is the

@@ -109,6 +109,7 @@ export function RetailOrderPage({
   servicesBodyFont,
   servicesDisplayFont,
   selectedStore,
+  fulfillmentOptions,
   selectedSavedLocationId = '',
   setCustomerPin,
   storefrontClosedByHours = false,
@@ -279,6 +280,7 @@ export function RetailOrderPage({
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
               deliverySavedLocations={retailSavedLocations}
+              fulfillmentOptions={fulfillmentOptions}
               isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
               onAddPinnedLocation={handleAddPinnedLocation}

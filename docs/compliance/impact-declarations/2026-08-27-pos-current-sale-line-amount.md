@@ -11,8 +11,8 @@ verification_evidence: focused POS checkout utility and shell tests (10/10),apps
 rollback_note: Revert the line-amount helper, Current Sale presentation change, test, and this declaration; checkout continues using the unchanged unit-price payload.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-27T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1090-POS-CURRENT-SALE-LINE-AMOUNT
+preflight_run_at: 2026-08-28T09:20:56Z
+preflight_request_ref: PREFLIGHT-2026-08-27-POS-CURRENT-SALE-LINE-AMOUNT-20260828T092056Z
 ---
 
 # POS Current Sale Quantity-Adjusted Line Amount
@@ -53,3 +53,5 @@ No live environment preflight was executed for this local/develop-targeted PR.
 `preflight_request_ref: NOT-EXECUTED-1090-POS-CURRENT-SALE-LINE-AMOUNT` is an
 explicit record for the normal promotion-time preflight; this declaration does
 not claim production verification.
+
+**Update (2026-08-28, promotion-time sweep, #1017/#884 protocol):** Live `POST /api/v1/compliance/preflight` run against the deployed `staging` host (dedicated one-off `preflight-bot` account, since removed) returned `result: no_breach`, `reason_code: ALLOWED`. Recorded above as `preflight_request_ref: PREFLIGHT-2026-08-27-POS-CURRENT-SALE-LINE-AMOUNT-20260828T092056Z`.

@@ -146,6 +146,7 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -553,6 +554,7 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
+
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
     account: null,
@@ -1001,6 +1003,34 @@ export default function TerminalPage() {
     && terminalUser?.is_master_admin === true
     && setupFlowState.loading
   );
+
+  // Signal a natural transition to main.jsx's service-worker registration
+  // (#990 follow-up, Pat's call 2026-08-28): the one case a pending update
+  // may apply silently, with no tap, is a moment the user already triggered
+  // themselves -- login succeeding or logging out (`locked` changes), or a
+  // company switch / admin re-unlock (both re-enter the restoration/loading
+  // window without necessarily touching `locked`). An idle screen with
+  // nothing changing never pulses, so it never silently reloads.
+  const previousLockedRef = useRef(locked);
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return;
+    if (previousLockedRef.current === locked) return;
+    previousLockedRef.current = locked;
+    publishPosUpdateTransition();
+  }, [locked]);
+
+  const previousStartupLoadingRef = useRef(terminalStartupLoading);
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return;
+    if (previousStartupLoadingRef.current === terminalStartupLoading) return;
+    previousStartupLoadingRef.current = terminalStartupLoading;
+    // Only the start of a restoration window counts as a transition -- its
+    // end is just "the terminal is now idle again", not a moment the user
+    // triggered anything.
+    if (!terminalStartupLoading) return;
+    publishPosUpdateTransition();
+  }, [terminalStartupLoading]);
+
   // Tell the iMin Android wrapper the POS shell is interactive as soon as
   // startup resolves -- not only once a cashier is logged in and the
   // checkout terminal happens to mount (POSCheckoutTerminal.jsx's own
@@ -2808,7 +2838,7 @@ export default function TerminalPage() {
           terminalId: activeTerminalId,
           locationId: shiftState?.shift?.location_id || operatingLocationId,
           userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
-        }, activeShiftId);
+        }, shiftState?.shift?.pos_terminal_shift_id || null);
       };
       const clearSessionSale = checkoutLifecycleRef.current?.clearTransientSaleForSessionEnd;
       if (typeof clearSessionSale === 'function') {
@@ -2832,7 +2862,7 @@ export default function TerminalPage() {
       window.removeEventListener('auth:session-cleared', onSessionExpired);
       window.removeEventListener('auth:logout', onSessionExpired);
     };
-  }, [activeShiftId, activeTerminalId, activeTenantId, operatingLocationId, resetSettingsAccessPinState, shiftState?.shift?.location_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+  }, [activeTerminalId, activeTenantId, operatingLocationId, resetSettingsAccessPinState, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
 
   useEffect(() => {
     if (settingsAccessPinEnabled) return;

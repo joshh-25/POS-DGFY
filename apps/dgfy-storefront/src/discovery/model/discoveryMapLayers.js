@@ -36,13 +36,13 @@ export const isKnownProvisionedPlaceholderCoordinate = (latitude, longitude) => 
 // coerce those nulls to 0 (Number(null) === 0), which is finite and would slip
 // past a plain Number.isFinite check — so location-less stores must be rejected
 // here to keep them off the map.
-export const hasPlottableCoordinate = (latitude, longitude) => {
+export const hasPlottableCoordinate = (latitude, longitude, { allowProvisionedPlaceholder = false } = {}) => {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return false;
   const lat = Number(latitude);
   const lng = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
   if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return false;
-  if (isKnownProvisionedPlaceholderCoordinate(lat, lng)) return false;
+  if (!allowProvisionedPlaceholder && isKnownProvisionedPlaceholderCoordinate(lat, lng)) return false;
   return true;
 };
 
@@ -73,7 +73,7 @@ export const getDistanceMeters = (left, right) => {
 
 const getCoordinateKey = (latitude, longitude) => `${Number(latitude).toFixed(6)}:${Number(longitude).toFixed(6)}`;
 
-const buildCoordinateGroups = (rows) => {
+const buildCoordinateGroups = (rows, { allowProvisionedPlaceholder = false } = {}) => {
   const uniqueRows = [];
   const seenMarkerKeys = new Set();
   rows.forEach((store) => {
@@ -90,7 +90,7 @@ const buildCoordinateGroups = (rows) => {
 
   const validRows = uniqueRows
     .map((store) => {
-      if (!hasPlottableCoordinate(store?.latitude, store?.longitude)) return null;
+      if (!hasPlottableCoordinate(store?.latitude, store?.longitude, { allowProvisionedPlaceholder })) return null;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       return {
@@ -166,7 +166,8 @@ const buildExactCoordinateGroups = (uniqueRows) => (
 export const buildDiscoveryPinLayerModel = ({
   stores = [],
   selectedKey = '',
-  highlightedKeys = []
+  highlightedKeys = [],
+  allowProvisionedPlaceholder = false
 } = {}) => {
   const rows = Array.isArray(stores) ? stores : [];
   const selectedMarkerKey = String(selectedKey || '').trim();
@@ -175,7 +176,7 @@ export const buildDiscoveryPinLayerModel = ({
       .map((key) => String(key || '').trim())
       .filter(Boolean)
   );
-  const { uniqueRows, coordinateGroups, rowGroupKeys } = buildCoordinateGroups(rows);
+  const { uniqueRows, coordinateGroups, rowGroupKeys } = buildCoordinateGroups(rows, { allowProvisionedPlaceholder });
   const exactCoordinateGroups = buildExactCoordinateGroups(uniqueRows);
   const renderedCoordinateGroups = new Set();
   const groups = [];
@@ -184,7 +185,7 @@ export const buildDiscoveryPinLayerModel = ({
   const requiredImages = new Map();
 
   uniqueRows.forEach((store) => {
-    if (!hasPlottableCoordinate(store?.latitude, store?.longitude)) return;
+    if (!hasPlottableCoordinate(store?.latitude, store?.longitude, { allowProvisionedPlaceholder })) return;
     const lat = Number(store?.latitude);
     const lng = Number(store?.longitude);
     const rowCoordinateKey = getCoordinateKey(lat, lng);
@@ -195,8 +196,7 @@ export const buildDiscoveryPinLayerModel = ({
     const group = Array.isArray(coordinateGroup?.stores) ? coordinateGroup.stores : [];
     if (group.length === 0) return;
     const isPlaceholderGroup = coordinateGroup?.isPlaceholderGroup === true;
-    if (isPlaceholderGroup && group.length < 2) return;
-
+    if (isPlaceholderGroup && group.length < 2 && !allowProvisionedPlaceholder) return;
     const selected = selectedMarkerKey
       ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === selectedMarkerKey)
       : group.some((entry) => entry?.is_primary_storefront === true);

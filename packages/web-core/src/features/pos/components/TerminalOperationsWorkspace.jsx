@@ -161,6 +161,7 @@ import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
@@ -5439,6 +5440,8 @@ function SettingsWorkspace({
   const storefrontLocationRequired = storefrontForm.storeIsVisible === true && storefrontForm.storeHasNoLocation !== true;
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
+  const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
+    && locationForm.supports_delivery !== locationForm.supports_pickup;
   const maxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMaxMode || 'transaction', 'transaction');
   const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const customerAccessRollbackActive = storefrontForm.customerAccessFlagStatus === 'rollback';
@@ -6508,6 +6511,9 @@ function SettingsWorkspace({
       supports_pickup: locationForm.supports_pickup !== false,
       supports_dine_in: locationForm.supports_dine_in !== false
     };
+    if (editingLocationId && locationForm.location_version) {
+      payload.last_known_updated_at = locationForm.location_version;
+    }
     const localErrors = [];
     if (!payload.name) {
       localErrors.push({ field: 'name', message: 'Location name is required.' });
@@ -8642,6 +8648,40 @@ function SettingsWorkspace({
                     <div>
                       <p className="text-xs font-bold text-[#0F172A]">Allow OOS Sales</p>
                       <p className="text-[11px] text-slate-500">Allow out-of-stock item sales</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.supports_delivery === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_delivery: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Supports Delivery</p>
+                      <p className="text-[11px] text-slate-500">Enable delivery orders for this location</p>
+                      {lastFulfillmentMethodLocked && locationForm.supports_delivery === true && (
+                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.supports_pickup === true}
+                      disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_pickup: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Supports Pickup</p>
+                      <p className="text-[11px] text-slate-500">Enable pickup orders for this location</p>
+                      {lastFulfillmentMethodLocked && locationForm.supports_pickup === true && (
+                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
+                      )}
                     </div>
                   </label>
                 </div>
