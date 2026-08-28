@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-28
+last_reviewed: 2026-08-29
 review_by: 2027-02-13
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_age_encrypted_secrets_at_rest
@@ -179,13 +179,6 @@ mechanism behind #239.
 
 ## Amendments
 
-None yet. This ADR will need an amendment (or a new ADR, if any `binding`
-clause above changes) once the real cutover executes and any deviation from
-the plan is discovered — expected, since Decision 2's exact 18/75 split and
-Decision 4's repository name are working assumptions to be confirmed at
-execution time, not verified against the live server's full 93-variable set
-in this session.
-
 ### 2026-08-23 — beta.dgfy.ph retired
 
 The Context section's framing of production as "`dgfy.ph` + `beta.dgfy.ph`, one Linode VPS" is now
@@ -248,4 +241,40 @@ narrows to (at most) `IMAGE_TAG` — arguably droppable entirely, since PROD
 already runs the `${IMAGE_TAG:-latest}` default. **No root `.env` file** is
 now the target end state, matching Pat's original framing for this
 refinement.
+
+### 2026-08-29 — Real cutover incident: 3 bucket-B values wrongly hardcoded, not read from `.env`
+
+Found during Phase 183's live execution (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`), via a
+manual post-cutover smoke test — not caught by the pre-flight gate, since none of the three
+produced an invalid-environment error, just wrong runtime behavior.
+
+The compose-reconciliation tooling classified `CORS_ORIGIN`, `TEMP_FILE_STORAGE`, and
+`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` as bucket-B "policy literals" — assumed/deduced values
+independent of the live `.env` — rather than reading their actual live values, the treatment every
+other bucket-B var correctly got. This was wrong for all three:
+
+- **`CORS_ORIGIN`** was assumed to be the single value `https://dgfy.ph`. The real live value was
+  a comma-separated list of 7 origins (`pos.dgfy.ph`, `skupervisor.dgfy.ph`, three `*.beta.dgfy.ph`
+  entries, a custom domain `bar.space.com.ph`, and `dgfy.ph` itself). Every request from a
+  non-bare-domain origin was rejected with `CORS_NOT_ALLOWED` until this was caught live and fixed
+  directly on the server.
+- **`TEMP_FILE_STORAGE`** was assumed to be `local`; the real value was `auto`. Silent — no
+  validator error, since both are valid enum members, just a runtime behavior difference.
+- **`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`** was assumed to be `"900000"` (15 min); the real
+  value was `"3600000"` (1 hour). Also silent, same reason.
+
+**Fix:** all three are now `<copy literal from live .env>` placeholders in
+`infrastructure/docker/env/prod.sops-cutover-fragment.yml`, matching every other genuinely
+non-deducible bucket-B value — not hardcoded. The remaining bucket-B-hardcode set (`NODE_ENV`,
+`HOSTING_PROFILE`, `SESSION_COOKIE_SECURE`, `AUTH_BLACKLIST_FAILURE_MODE`,
+`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`, `TENANT_SCHEMA_MUTATION_APPROVED`, `PAYMONGO_MODE`,
+`PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS`) was individually audited against the live `.env` after this was
+found and confirmed to genuinely match — not merely re-asserted.
+
+**Lesson for future work in this space:** a "policy literal" classification is only safe when the
+value is *independently derivable* (e.g. `NODE_ENV: production` needs no external source of
+truth). Anything that could plausibly have been configured differently per-deployment — even
+something that looks like an obvious single value, like a CORS origin — belongs in the "read from
+the live source, never assume" bucket, full stop. No `binding` clause is affected; this is an
+implementation-tooling correction, not a decision reversal.
 

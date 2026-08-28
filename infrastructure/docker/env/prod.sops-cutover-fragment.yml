@@ -129,13 +129,30 @@
 #       DB_MAX_CONNECTIONS: 200
 #
 #       # --- bucket B: boot-required (BASE_REQUIRED_KEYS) ---
+#       # CORRECTED 2026-08-29 (real production incident during Phase 183's execution,
+#       # docs/features/IMPLEMENTATION_PHASE_LEDGER.md Phase 183): this section originally
+#       # hardcoded CORS_ORIGIN, TEMP_FILE_STORAGE, and RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS
+#       # as assumed/deduced "policy literals" instead of reading them from the live .env.
+#       # CORS_ORIGIN was assumed to be just "https://dgfy.ph" -- the real live value was a
+#       # comma-separated list of 7 origins (pos.dgfy.ph, beta subdomains, and a custom domain,
+#       # bar.space.com.ph), so every non-bare-domain request got rejected with CORS_NOT_ALLOWED
+#       # until a live smoke test caught it and it was fixed directly on the server. The other two
+#       # were also wrong (TEMP_FILE_STORAGE "local" vs real "auto"; window_ms "900000" vs real
+#       # "3600000") but silent -- no validator error, just wrong runtime behavior -- and were only
+#       # caught by auditing every hardcoded value against the live .env after the CORS bug
+#       # surfaced. All three are copy-literal-from-.env now, matching every other value in this
+#       # section that isn't a genuine, independently-derivable policy decision (NODE_ENV,
+#       # HOSTING_PROFILE, SESSION_COOKIE_SECURE, AUTH_BLACKLIST_FAILURE_MODE, and the two
+#       # confirmed-unchanged values below stay hardcoded -- verified against the live .env, not
+#       # merely assumed).
 #       NODE_ENV: production
 #       HOSTING_PROFILE: vps
-#       CORS_ORIGIN: https://dgfy.ph
+#       CORS_ORIGIN: <copy literal from live .env -- do NOT assume a single domain, this is a
+#         comma-separated list>
 #       SESSION_COOKIE_SECURE: "true"
 #       AUTH_BLACKLIST_FAILURE_MODE: fail_closed
-#       TEMP_FILE_STORAGE: local
-#       RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: "900000"
+#       TEMP_FILE_STORAGE: <copy literal from live .env -- do not assume "local">
+#       RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: <copy literal from live .env -- do not assume "900000">
 #       RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: "5"
 #
 #       # --- bucket B: TENANT_SCHEMA_MUTATION_APPROVED -- in NEITHER the
