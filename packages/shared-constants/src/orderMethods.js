@@ -48,6 +48,13 @@ export const ORDER_METHOD_FEE_METHODS = ALL_ORDER_METHODS;
 // docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md.
 export const STOREFRONT_FULFILLMENT_ORDER_METHODS = Object.freeze(['delivery', 'pickup']);
 
+// Shared merchant-facing copy for the client-side guard that prevents a
+// transaction-capable location from losing its final online fulfillment method.
+// The backend remains authoritative and returns 422 for bypassed UI clients.
+export const LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE = 'At least one of Delivery or Pickup must stay '
+    + 'enabled while Customer Access Mode is Transaction. To stop taking online orders instead, '
+    + 'switch Customer Access Mode to Catalog Only.';
+
 // order_method -> the tenant_locations column that gates whether a location accepts it.
 // Single source of truth for this mapping; storeUseCases.js's checkout enforcement and the
 // storefront's own availability resolver both import this rather than each keeping their
