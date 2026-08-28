@@ -6,54 +6,65 @@
 # prod.compose-fragment.yml (PR #55): /opt/dgfy-platform's compose file is
 # hand-maintained, not a git checkout.
 #
-# Captured from the live server 2026-08-13 -- reconcile again before
-# applying if /opt/dgfy-platform/docker-compose.yml has changed since.
-# Unlike PR #55's fragment, this one is NOT a clean reconciliation: the live
-# file and this repo's infrastructure/docker/docker-compose.yml have
-# drifted in BOTH directions since #55 shipped. Read both diffs below before
-# editing anything.
+# Captured from the live server 2026-08-28 (names-only extraction from the
+# live .env, zero values read -- ADR 0060 Decision 7 governs values, not
+# names). REPLACES the 2026-08-13 version of this file in full -- that
+# version predates the ADR 0071 frontend split, the beta.dgfy.ph retirement,
+# the #1014 start_period fix, and carried the env_file crash-loop bug
+# documented in infrastructure/docker/env/prod.env-var-classification.md.
+# Reconcile again before applying if the live docker-compose.yml has changed
+# since 2026-08-28.
 #
 # =============================================================================
-# Drift inventory (live server vs. this repo, as of 2026-08-13)
+# Bucket summary (100 unique live var names, 1 duplicate line dropped)
 # =============================================================================
 #
-# Present in this repo's docker-compose.yml, MISSING on the live server --
-# carry these into the reconciled file:
-#   - mysql:    the extended comment explaining --max_connections=200 vs.
-#               apps/dgfy-api/src/config/connectionBudget.js's 170-connection
-#               budget (informational only, no behavior change)
-#   - dgfy-api: DB_MAX_CONNECTIONS, SENTRY_ENABLED, SENTRY_BACKEND_DSN,
-#               SENTRY_ENVIRONMENT, SENTRY_RELEASE, SENTRY_TRACES_SAMPLE_RATE,
-#               SENTRY_SEND_DEFAULT_PII, SENTRY_DEBUG
-#   - nginx:    ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
-#               volume mount
+#   A -- secret, SOPS-encrypted (23) -- see EDIT 1-3 below
+#   B -- non-secret, literal in this fragment (75) -- see EDIT 1-3 below
+#   C -- mutable / CI-injected, stays a shell var (2): IMAGE_TAG, SENTRY_RELEASE
+#   dropped (2): duplicate MENU_IMPORT_BATCH_ENABLED line; FRONTEND_PROD_IMAGE_TAG
+#     (vestigial since the 2026-08-25 frontend-split restart -- confirm gone from
+#     the live .env before applying this fragment, don't assume)
 #
-# Present on the live server, MISSING in this repo -- KEEP these, do not
-# drop them just because the repo file doesn't have them:
-#   - frontend-beta: whole service block (beta.dgfy.ph front)
-#   - nginx:    SKUPERVISOR_DOMAIN_PROD, POS_DOMAIN_PROD,
-#               STOREFRONT_DOMAIN_PROD, STOREFRONT_ALT_DOMAIN_PROD,
-#               CERT_DOMAIN_PROD
-#   - mysql:    ports: ["3306:3306"]  <- see "MySQL port" section below.
-#               This one is NOT carried forward -- it's being removed, not
-#               reconciled. Called out separately because it changes
-#               reachability, not just secret handling.
+# All 14 BASE_REQUIRED_KEYS (productionEnvValidation.cjs:8-23) resolve to A or B
+# below -- see prod.env-var-classification.md's "Boot-required" section for the
+# reasoning. TENANT_SCHEMA_MUTATION_APPROVED (bucket B) is included explicitly --
+# it was in NEITHER the 2026-08-13 fragment nor the runbook's old Appendix A.
+#
+# Live-server drift folded in here rather than left as a separate inventory
+# (unlike the 2026-08-13 version of this file):
+#   - dgfy-api start_period was still 30s on the live server as of 2026-08-28,
+#     never updated after #1014 measured the real ~104s boot and set 300s in
+#     this repo's docker-compose.yml back on 2026-08-25. This fragment carries
+#     300s -- applying it is itself part of what fixes that drift.
+#   - mysql `ports: ["3306:3306"]  # TEMPORARY! remove once fixed` is still live.
+#     NOT touched by this fragment -- that's #402, its own independently
+#     revertable change. Do not fold it into this cutover.
+#   - nginx is missing the `custom-storefronts` volume mount and the
+#     DB_MAX_CONNECTIONS/SENTRY_* dgfy-api passthroughs this repo's compose file
+#     has. That's #401, also not folded in here.
+#   - frontend-beta is fully gone from the live server (retired 2026-08-23,
+#     #329/#894/#896) -- confirmed, nothing to carry forward or reconcile.
 #
 # =============================================================================
-# EDIT 1 -- mysql: drop env_file-adjacent inline vars, no env_file here
-# (mysql never had one), and remove the host port publish.
+# EDIT 1 -- mysql: bucket A vars from secrets/mysql.env + secrets/shared.env,
+# drop env_file (mysql never had one). Host port publish untouched (#402).
 # =============================================================================
 #
 #   mysql:
 #     image: mysql:8.0
 #     restart: unless-stopped
-#     command: --log-bin-trust-function-creators=1 --max_connections=200
+#     command: >
+#       mysqld
+#       --log-bin-trust-function-creators=1
+#       --max_connections=200
 #     environment:
-#       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}   # now from secrets/mysql.env
-#       MYSQL_DATABASE: ${DB_NAME}                     # now from secrets/shared.env
-#       MYSQL_USER: ${DB_USER}                         # now from secrets/shared.env
-#       MYSQL_PASSWORD: ${DB_PASSWORD}                 # now from secrets/shared.env
-#     # ports: ["3306:3306"] line REMOVED -- see "MySQL port" section below.
+#       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}   # secrets/mysql.env
+#       MYSQL_DATABASE: ${DB_NAME}                     # secrets/shared.env
+#       MYSQL_USER: ${DB_USER}                         # secrets/shared.env
+#       MYSQL_PASSWORD: ${DB_PASSWORD}                 # secrets/shared.env
+#     ports:
+#       - "3306:3306" # TEMPORARY! remove once fixed -- untouched here, see #402
 #     volumes:
 #       - ./data/mysql:/var/lib/mysql
 #     networks: [dgfy_internal]
@@ -66,8 +77,9 @@
 #
 # The four ${VAR} references above are unchanged syntactically -- only their
 # SOURCE changes, from .env (blanket) to deploy-sops.sh's decrypt-and-export
-# step (see runbook Phase 5). Compose doesn't care where a shell-exported var
-# came from.
+# step. Compose doesn't care where a shell-exported var came from, so this
+# service is NOT recreated by the cutover provided these four values resolve
+# identically to what's live today.
 #
 # =============================================================================
 # EDIT 2 -- dgfy-migration-runner: env_file: .env replaced with scoped vars
@@ -76,8 +88,9 @@
 #   dgfy-migration-runner:
 #     image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
 #     restart: "no"
-#     # WAS: env_file: .env  (blanket -- every one of 93 vars, whether used or not)
-#     # NOW: only the 6 vars this service actually touches.
+#     # WAS: env_file: .env  (blanket -- every one of 100 vars, whether used or not)
+#     # NOW: only the 6 vars this service actually touches (confirmed against
+#     # apps/dgfy-migration-runner/src/config/sequelize.config.cjs).
 #     environment:
 #       DB_HOST: mysql
 #       DB_PORT: 3306
@@ -91,33 +104,132 @@
 #     networks: [dgfy_internal]
 #
 # =============================================================================
-# EDIT 3 -- dgfy-api: env_file: .env replaced with scoped vars, plus the
-# SENTRY_* passthrough this repo's version has and the live server is
-# currently missing.
+# EDIT 3 -- dgfy-api: env_file: .env replaced with bucket-B literals + bucket-A
+# ${VAR} secrets + bucket-C passthroughs. This is the service the crash-loop
+# bug was in -- every BASE_REQUIRED_KEY is present below, confirm against
+# prod.env-var-classification.md's "Boot-required" list before applying.
 # =============================================================================
 #
 #   dgfy-api:
 #     image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
 #     restart: unless-stopped
-#     # WAS: env_file: .env  (blanket)
-#     # NOW: no env_file line. Non-secret config below comes from .env's
-#     # normal auto-load (Compose still reads .env for ${VAR} interpolation
-#     # even with no env_file: line); only actual secrets are listed
-#     # explicitly, sourced from deploy-sops.sh's decrypted exports.
+#     # WAS: env_file: .env  (blanket -- this was the crash-loop bug's root cause
+#     # when a prior draft of this fragment dropped env_file without replacing
+#     # what it supplied. See prod.env-var-classification.md.)
+#     # NOW: no env_file line. Every var dgfy-api needs is explicit below --
+#     # bucket B as a literal, bucket A as ${VAR} from deploy-sops.sh's export,
+#     # bucket C as a shell passthrough with its existing default.
 #     environment:
+#       # --- topology (unchanged from the repo's own docker-compose.yml) ---
 #       DB_HOST: mysql
 #       DB_PORT: 3306
 #       DB_DIALECT: mysql
 #       REDIS_URL: redis://redis:6379
 #       PORT: 5100
-#       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
+#       DB_MAX_CONNECTIONS: 200
+#
+#       # --- bucket B: boot-required (BASE_REQUIRED_KEYS) ---
+#       NODE_ENV: production
+#       HOSTING_PROFILE: vps
+#       CORS_ORIGIN: https://dgfy.ph
+#       SESSION_COOKIE_SECURE: "true"
+#       AUTH_BLACKLIST_FAILURE_MODE: fail_closed
+#       TEMP_FILE_STORAGE: local
+#       RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: "900000"
+#       RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: "5"
+#
+#       # --- bucket B: TENANT_SCHEMA_MUTATION_APPROVED -- in NEITHER the
+#       # 2026-08-13 fragment nor the old Appendix A. Its absence is silent
+#       # (entrypoint.sh swallows the failure with || true) -- see
+#       # prod.env-var-classification.md's "Boot-required" section. ---
+#       TENANT_SCHEMA_MUTATION_APPROVED: "true"
+#
+#       # --- bucket B: payment gate (PAYMONGO_MODE=live is what makes the
+#       # PAYMONGO_LIVE_* secrets below actually get read -- leaving this
+#       # unset silently defaults to test mode and ignores them) ---
+#       PAYMONGO_MODE: live
+#       PAYMONGO_API_BASE_URL: <copy literal from live .env -- Phase 3, sensitivity-reviewed>
+#       PAYMONGO_WEBHOOK_ENDPOINT_URL: <copy literal from live .env -- Phase 3>
+#       PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS: "false"
+#       PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS: <copy literal from live .env -- Phase 3>
+#       PAYPAL_MODE: <copy literal from live .env -- Phase 3>
+#       PAYPAL_STANDARD_PLAN_ID: <copy literal from live .env -- Phase 3, sensitivity-reviewed>
+#       PAYPAL_PREMIUM_PLAN_ID: <copy literal from live .env -- Phase 3, sensitivity-reviewed>
+#
+#       # --- bucket B: revenue sharing / tenant payout ---
+#       TENANT_REVENUE_SHARING_ENABLED: <copy literal from live .env -- Phase 3>
+#       TENANT_REVENUE_DEFAULT_RATE_BPS: <copy literal from live .env -- Phase 3>
+#       TENANT_REVENUE_DEFAULT_SETTLEMENT_CYCLE_DAYS: <copy literal from live .env -- Phase 3>
+#       TENANT_AUTOMATIC_PAYOUT_ENABLED: <copy literal from live .env -- Phase 3>
+#       TENANT_EXTERNAL_PAYOUT_APPROVED: <copy literal from live .env -- Phase 3>
+#
+#       # --- bucket B: domains ---
+#       APP_URL: <copy literal from live .env -- Phase 3>
+#       SKUPERVISOR_DOMAIN: <copy literal from live .env -- Phase 3>
+#       POS_DOMAIN: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DOMAIN: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_ALT_DOMAIN: <copy literal from live .env -- Phase 3, may be empty>
+#       DGFY_API_DOMAIN: <copy literal from live .env -- Phase 3, may be empty>
+#       CERT_DOMAIN: <copy literal from live .env -- Phase 3>
+#       SKUPERVISOR_DOMAIN_PROD: <copy literal from live .env -- Phase 3>
+#       POS_DOMAIN_PROD: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DOMAIN_PROD: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_ALT_DOMAIN_PROD: <copy literal from live .env -- Phase 3, may be empty>
+#       CERT_DOMAIN_PROD: <copy literal from live .env -- Phase 3>
+#       PUBLIC_API_CORS_ORIGIN: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_PUBLIC_ORIGIN: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_PAYMENT_RETURN_URL: <copy literal from live .env -- Phase 3>
+#       ROUTE_CALCULATOR_ENDPOINT: <copy literal from live .env -- Phase 3>
+#
+#       # --- bucket B: feature flags / toggles ---
+#       BILLING_FUNNEL_AUDIT_ENABLED: <copy literal from live .env -- Phase 3>
+#       COMMERCE_PAYMENTS_ENABLED: <copy literal from live .env -- Phase 3>
+#       COMMERCE_PAYMONGO_SPLIT_ENABLED: <copy literal from live .env -- Phase 3>
+#       COMMERCE_QRPH_ENABLED: <copy literal from live .env -- Phase 3>
+#       ITEM_IMAGE_GENERATION_ENABLED: <copy literal from live .env -- Phase 3>
+#       MENU_IMPORT_ENABLED: <copy literal from live .env -- Phase 3>
+#       MENU_IMPORT_BATCH_ENABLED: <copy literal from live .env -- Phase 3, ONE line only, see #404>
+#       SCHEMA_INDEX_AUDIT_ENABLED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_CARD_ENABLED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_GCASH_ENABLED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_MAYA_ENABLED: <copy literal from live .env -- Phase 3>
+#       STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: <copy literal from live .env -- Phase 3>
+#       ORIGINAL_LEGACY_ALLOW_TOKEN_ROTATION: <copy literal from live .env -- Phase 3>
+#
+#       # --- bucket B: rate limits / auth expiry / misc tuning ---
+#       RATE_LIMIT_ALERT_THRESHOLD: <copy literal from live .env -- Phase 3>
+#       RATE_LIMIT_MAX_REQUESTS: <copy literal from live .env -- Phase 3>
+#       RATE_LIMIT_MIN_PROD_REQUESTS: <copy literal from live .env -- Phase 3>
+#       JWT_EXPIRY: <copy literal from live .env -- Phase 3>
+#       REFRESH_TOKEN_EXPIRY: <copy literal from live .env -- Phase 3>
+#       HOSTING_INSTANCE_COUNT: <copy literal from live .env -- Phase 3>
+#
+#       # --- bucket B: email delivery (non-secret side) ---
+#       EMAIL_DELIVERY_PROVIDER: <copy literal from live .env -- Phase 3>
+#       EMAIL_FROM: <copy literal from live .env -- Phase 3>
+#       EMAIL_FROM_NAME: <copy literal from live .env -- Phase 3>
+#       SMTP_HOST: <copy literal from live .env -- Phase 3>
+#       SMTP_PORT: <copy literal from live .env -- Phase 3>
+#       SMTP_SECURE: <copy literal from live .env -- Phase 3>
+#       # EMAIL_DELIVERY_FALLBACK_TO_BREVO_API, BREVO_API_KEY, BREVO_API_URL --
+#       # NOT carried forward. #404 + confirmed dead against apps/dgfy-api/src
+#       # before dropping (not taken on #404's word alone).
+#
+#       # --- bucket B: cert/admin bootstrap non-secret ---
+#       CERTBOT_EMAIL: <copy literal from live .env -- Phase 3>
+#       ADMIN_USERNAME: <copy literal from live .env -- Phase 3, arguable -- see sensitivity note>
+#
+#       # --- bucket C: mutable / CI-injected, NOT a literal ---
 #       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
 #       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
 #       SENTRY_RELEASE: ${SENTRY_RELEASE:-}
 #       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
 #       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
 #       SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
-#       # -- secrets, from secrets/shared.env + secrets/dgfy-api.env --
+#
+#       # --- bucket A: secrets, from secrets/shared.env + secrets/dgfy-api.env ---
 #       DB_NAME: ${DB_NAME}
 #       DB_USER: ${DB_USER}
 #       DB_PASSWORD: ${DB_PASSWORD}
@@ -132,6 +244,7 @@
 #       PAYMONGO_LIVE_PUBLIC_KEY: ${PAYMONGO_LIVE_PUBLIC_KEY}
 #       PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET}
 #       PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID}
+#       PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID}
 #       SMTP_PASS: ${SMTP_PASS}
 #       SMTP_USER: ${SMTP_USER}
 #       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
@@ -153,60 +266,66 @@
 #       interval: 15s
 #       timeout: 5s
 #       retries: 5
-#       start_period: 30s
+#       # 300s, NOT the live server's current 30s -- #1014 measured a real
+#       # ~104s PROD boot (49 tenants x ~2s sequential tenant-schema-sync in
+#       # entrypoint.sh) and this repo's own docker-compose.yml has carried
+#       # 300s since 2026-08-25. The live server was never updated to match.
+#       # Applying this fragment fixes that drift as a side effect.
+#       start_period: 300s
 #
-# All non-secret vars above (${DB_MAX_CONNECTIONS:-200}, ${SENTRY_ENABLED:-false},
-# etc.) keep their existing defaults from the repo file -- only the SOURCE of
-# the secret ones changes.
+# Every `<copy literal from live .env -- Phase 3>` placeholder above is a
+# genuinely non-secret value on Pat's own "at least non-sensitive ones"
+# framing, EXCEPT flagged as "arguable" where noted -- those get an explicit
+# sign-off call in Phase 3, not a silent default to bucket B. When
+# unresolved, the safe default is bucket A: one extra encrypted line costs
+# nothing; a wrongly-public value reproduces #239.
 #
-# `frontend`, `frontend-beta`, `nginx`, `certbot`, `redis`, and the top-level
-# `networks:` block are UNCHANGED by this fragment -- none of them carry
-# secrets. nginx's *_PROD domain vars (live-only, see drift inventory above)
-# stay exactly as they are on the server today.
+# `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`, `nginx`, `certbot`, and the
+# top-level `networks:` block are UNCHANGED by this fragment -- none of them
+# carry secrets, and none of the three frontend services take any config at
+# all (confirmed: no `environment:` block on any of them in the repo's own
+# docker-compose.yml). nginx's *_PROD domain vars stay exactly as they are
+# on the server today; #401 (its own separate drift-reconciliation change)
+# covers nginx, not this fragment.
 #
 # =============================================================================
-# MySQL port -- separate line item, not bundled into the env_file rewrite
+# MySQL port -- separate line item, not bundled into this cutover (#402)
 # =============================================================================
 #
-# The live server publishes MySQL to the host:
-#
-#   mysql:
-#     ports:
-#       - "3306:3306" # TEMPORARY! remove once fixed
-#
-# This is not in this repo's docker-compose.yml and is not required by
-# anything this cutover does -- dgfy-migration-runner and dgfy-api both reach
-# mysql over the internal dgfy_internal network by service name, never via
-# the host port. Encrypting MYSQL_ROOT_PASSWORD/DB_PASSWORD while this port
-# stays open to the internet is a real gap: SOPS protects the value at rest,
-# not a listening port using that value for auth. Remove the `ports:` block
-# above as its own reviewable change (own commit, own line in the PR
-# description) so it can be reverted independently if something unexpected
-# turns out to depend on host-level 3306 access -- check for that dependency
-# BEFORE removing, don't assume the "TEMPORARY" comment means it's safe.
+# The live server still publishes MySQL to the host (`ports: ["3306:3306"]
+# # TEMPORARY! remove once fixed`, confirmed live 2026-08-28). Not required
+# by anything this cutover does -- dgfy-migration-runner and dgfy-api both
+# reach mysql over the internal dgfy_internal network by service name, never
+# via the host port. Encrypting MYSQL_ROOT_PASSWORD/DB_PASSWORD while this
+# port stays open to the internet protects the value at rest, not the port
+# authenticating with it. Remove as its own reviewable change (#402), after
+# confirming nothing depends on host-level 3306 access -- don't assume the
+# "TEMPORARY" comment means it's safe.
 #
 # =============================================================================
 # .env delta (prod only)
 # =============================================================================
 #
 # Before this fragment is applied, /opt/dgfy-platform/.env has already been
-# split per docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md Phase 2 -- the 19
-# secret vars listed in the runbook's Appendix A are REMOVED from .env
-# (they now live encrypted in secrets/*.env), the 4 dead Brevo vars are
-# removed, and the duplicate MENU_IMPORT_BATCH_ENABLED line is collapsed to
-# one. Everything else in .env (~69 vars: domains, feature flags, rate
-# limits, IMAGE_TAG, FRONTEND_PROD_IMAGE_TAG) is untouched by this fragment.
+# split per docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md Phase 2 -- the 23
+# secret vars in bucket A above are REMOVED from .env (they now live
+# encrypted in secrets/*.env), FRONTEND_PROD_IMAGE_TAG and the 3 dead Brevo
+# vars are removed, and the duplicate MENU_IMPORT_BATCH_ENABLED line is
+# collapsed to one. After the bucket-B literals above are baked into this
+# compose file, .env should hold at most IMAGE_TAG (bucket C, and arguably
+# droppable since PROD already runs the ${IMAGE_TAG:-latest} default).
 #
-# --- Data/file move (run BEFORE `docker compose up`, while the stack is down) ---
+# --- Data/file move (run BEFORE `docker compose up`, while dgfy-api and
+#     dgfy-migration-runner are the only services being touched -- do NOT
+#     `docker compose down` the whole stack, see the runbook's low-disruption
+#     sequence) ---
 #
 #   cd /opt/dgfy-platform
 #   cp .env .env.pre-sops && chmod 0600 .env.pre-sops
 #   cp docker-compose.yml docker-compose.yml.pre-sops
-#   docker compose down
 #   mkdir -p secrets
 #   # (secrets/*.env already populated + encrypted per runbook Phase 2)
 #   # apply this fragment's 3 service-block edits + the .env delta above
 #   docker compose config >/dev/null   # validates the hand-edited file
-#   ./deploy-sops.sh                   # decrypt + docker compose up -d --remove-orphans
-#   docker compose restart nginx       # NOT reload -- template only re-renders
-#                                       # through envsubst on restart, not reload
+#   ./deploy-sops.sh                   # decrypt + in-image pre-flight gate +
+#                                       # docker compose up -d --remove-orphans
