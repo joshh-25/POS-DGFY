@@ -13,7 +13,7 @@ rollback_note: Disable the mobile order-action route and client replay together;
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-28T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-PHASE-178-LOCAL-IMPLEMENTATION
+preflight_request_ref: NOT-EXECUTED-PHASE-180-LOCAL-IMPLEMENTATION
 ---
 
 # Mobile Offline Order Actions

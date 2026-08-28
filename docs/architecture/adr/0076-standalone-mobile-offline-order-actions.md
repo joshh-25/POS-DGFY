@@ -14,7 +14,7 @@ supersedes_in_part: docs/architecture/adr/0014-multi-template-modes-pos-offline-
 
 ## Status
 
-Accepted on 2026-08-28 for Phase 178. The user explicitly approved Phase 4 of
+Accepted on 2026-08-28 for Phase 180. The user explicitly approved Phase 4 of
 the native cashier rollout in this task.
 
 ## Context
@@ -79,7 +79,7 @@ risks when another terminal changes the same server order.
 ## Approval Record
 
 - Tech-lead approval: **accepted by the user in this task on 2026-08-28**.
-- Platform implementation phase: Phase 178.
+- Platform implementation phase: Phase 180.
 
 ## References
 

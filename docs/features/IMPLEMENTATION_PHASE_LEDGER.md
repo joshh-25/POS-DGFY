@@ -9899,6 +9899,23 @@ each absorb cycle until PR #513 merges.
 
 ---
 
+**Dated note, 2026-08-28 — post-merge phase-number reconciliation:**
+
+Canonical `develop` assigned Phases 178 and 179 to the Storefront fulfillment feedback and staging
+consistency work before this branch merged. The unmerged branch entries previously numbered
+178-180 are therefore renumbered without changing their implementation scope or completion evidence:
+
+| Prior phase | Reconciled phase | Initiative |
+|---:|---:|---|
+| 178 | 180 | Standalone Mobile Offline Order Actions |
+| 179 | 181 | POS Master-Admin Operator Scope Parity |
+| 180 | 182 | Unified Wide Checkout and Discount Workspace |
+
+This follows the existing prior-reservation rule: already-merged `develop` numbers remain unchanged,
+and the absorbing branch takes the next available continuous numbers.
+
+---
+
 ## Phase 177 - POS Checkout State and Discount Financial-Truth Audit
 
 ### Initiative and release
@@ -9972,7 +9989,7 @@ is not a live reference and is not updated by this note.
 
 ---
 
-## Phase 178 - Standalone Mobile Offline Order Actions
+## Phase 180 - Standalone Mobile Offline Order Actions
 
 ### Initiative and release
 
@@ -10020,12 +10037,12 @@ is not a live reference and is not updated by this note.
 
 ### Next eligible phase
 
-Phase 179 after Phase 178 completes; planned Phases 172-175 retain their own
+Phase 181 after Phase 180 completes; planned Phases 172-175 retain their own
 dependencies and approval requirements.
 
 ---
 
-## Phase 179 - POS Master-Admin Operator Scope Parity
+## Phase 181 - POS Master-Admin Operator Scope Parity
 
 ### Initiative and release
 
@@ -10077,12 +10094,12 @@ dependencies and approval requirements.
 
 ### Next eligible phase
 
-Phase 180 after Phase 179 completes; planned Phases 172-175 retain their own
+Phase 182 after Phase 181 completes; planned Phases 172-175 retain their own
 dependencies and approval requirements.
 
 ---
 
-## Phase 180 - Unified Wide Checkout and Discount Workspace
+## Phase 182 - Unified Wide Checkout and Discount Workspace
 
 ### Initiative and release
 
@@ -10149,7 +10166,7 @@ dependencies and approval requirements.
 - ADR 0063 POS split-tender and manual walk-in payment recording.
 - ADR 0066 voucher sale-time price resolution.
 - `docs/features/POS_MODE_PRESENTATION_OWNERSHIP_CONTRACT.md`.
-- Phase 179 completed; this phase does not alter planned Phases 172-175.
+- Phase 181 completed; this phase does not alter planned Phases 172-175.
 
 ### Acceptance and validation evidence
 
@@ -10218,5 +10235,5 @@ dependencies and approval requirements.
 
 ### Next eligible phase
 
-Phase 181 after Phase 180 completes; planned Phases 172-175 retain their own dependencies and
+Phase 183 after Phase 182 completes; planned Phases 172-175 retain their own dependencies and
 approval requirements.
