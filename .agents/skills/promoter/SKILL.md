@@ -77,6 +77,12 @@ whether that PR came directly off `develop` (the default) or off `staging` (the 
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment for the full ladder this collapses
 from three stages into one.
 
+**Stated the other direction, explicitly, since #1097 found this gets over-applied in practice:
+none of this — including `gate:release:local` — runs on the `develop → staging` leg** (the
+`to-staging/<label>` PR, when the optional soak is chosen). That leg's own procedure is in
+`references/promotion-runbook.md`'s "Optional: a `staging` soak first" section and stops at
+`pr-checks.yml`'s build checks; don't reach for this section's gates there.
+
 **Compliance preflight sweep.** For every `major`/`regulatory` impact declaration in the batch still
 carrying a `NOT-EXECUTED-*` `preflight_request_ref`, run the real
 `POST /api/v1/compliance/preflight` against a deployed non-production host (DEV suffices — this
