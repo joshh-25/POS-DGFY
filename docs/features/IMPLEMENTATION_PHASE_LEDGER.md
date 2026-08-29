@@ -10711,3 +10711,76 @@ done until this phase also completes.
 
 The next repository phase is allocated from the authoritative ledger after Phase 188 completes.
 This initiative (#360) is done at that point.
+
+## Phase 189 - Quality-Gate Trust: Evidence Durability and Reporter Fix (#1124)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — audit and re-verify the test/lint/CI pipeline end to end.
+First implementation pass; the epic's other children (#345, #372, #438, #917, #918) remain
+untouched by this phase.
+
+### Objective and scope
+
+Make `promotion-quality-gate.yml`'s evidence durable, observable, and reported — without
+re-arming the gate to block (`continue-on-error` stays exactly as-is on every leg, deliberately).
+Investigation found the gate's evidence pipeline was broken in three independent ways: its one
+automated failure-reporting job (`report-advisory-failures`) had never worked at all (`gh` is not
+installed on the self-hosted runners, confirmed live, exit 127); a real promotion this session
+(run `33241398956`, PR #1164) reached `main` with zero quality signal because the job envelope
+died mid-run, destroying all downstream evidence; and `run-backend-test-matrix.js`'s early-stop
+default (#986) hid the other 8 test groups behind the first failure. Also root-caused and fixed
+#1071 (a test-harness/coupling defect in tenant provisioning), which surfaced a second, deeper,
+still-open production-path defect filed separately as #1166.
+
+### Status
+
+- `in_progress` (2026-08-29) — PR #1167 open against `develop`.
+- Local verification complete: `check:pr-quality-workflow` (27 tests) green, local fast-tier run
+  green (561/561), architecture guardrails and controller boundaries green, `tenantProvisioning
+  .storefrontBootstrap.test.js` fixed and green, real-MySQL reproduction of both #1071 (fixed) and
+  #1166 (filed, not fixed) confirmed live this session.
+- Not yet verified: `actions/github-script@v7`'s reporter actually posts on `sieitz-runner` (no
+  local equivalent — needs a `workflow_dispatch` run on the PR branch before merge), the
+  `salvage-api-evidence` job's same-runner/`_work`-persistence assumptions, and full-matrix wall
+  time under the flipped `#986` default.
+
+### Dependencies
+
+- None blocking. #1063's own root cause was already fixed (PR #1067) prior to this phase.
+
+### Acceptance and validation evidence
+
+- [x] `report-advisory-failures` no longer shells out to `gh`; replaced with
+      `actions/github-script@v7`. Local: `check-pr-quality-workflow.js`'s new
+      `checkReporterHasNoShellBinaryDependency` guard passes.
+- [x] Test-matrix evidence survives a job-envelope death via a step-summary write and a new
+      `salvage-api-evidence` job. Not yet verified live (see Status).
+- [x] `run-backend-test-matrix.js` defaults to continue-on-failure (`#986`); artifact carries
+      `coverage_complete`. Local: `--tier fast` run green, payload confirmed.
+- [x] `to-staging/*→staging` soak leg runs quality jobs advisory-only instead of skipping entirely.
+- [x] #1071 root-caused and fixed — `tenantProvisioning.storefrontBootstrap.test.js` green.
+      `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs` +
+      `apps/dgfy-api/src/services/tenantSchemaBootstrap.js` land the one-seam refactor.
+- [ ] `workflow_dispatch` verification that the reporter and salvage job work live on
+      `sieitz-runner`/`sieitz-lg` — deferred to PR review/merge time, named explicitly rather than
+      silently assumed.
+- [ ] #1166 (the FK/generated-column production defect the new integration test surfaced) — filed,
+      not in this phase's scope; tracked separately.
+
+### Implementation links
+
+- Issue #1124 (epic), #1165 (this phase's own tracked scope), #1071 (closed by this phase), #1166
+  (filed by this phase, not fixed)
+- PR #1167
+- `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/run-backend-test-matrix.js`, `scripts/summarize-backend-test-matrix.js`
+- `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs`,
+  `apps/dgfy-api/src/services/tenantSchemaBootstrap.js`
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 189 completes.
+Phase 189 itself completes once the `workflow_dispatch` verification lands and PR #1167 merges;
+the epic (#1124) remains open for its other children regardless.
+
