@@ -10959,8 +10959,9 @@ Pat to run by hand — not a fix, since the root cause is unknown until that acc
 
 ### Status
 
-`blocked` (2026-08-29) — blocked on Pat's own SSH access to `vm-sieitzstaging`; no role can advance
-this further unattended. Diagnostic runbook to be written as this phase's own deliverable.
+`blocked` (2026-08-29) — this side's own deliverable (the diagnostic runbook) is done, PR #1173
+open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
+past that; no role can advance the actual root-cause investigation unattended.
 
 ### Dependencies
 
@@ -10968,9 +10969,10 @@ None from this repo's side; blocked on infrastructure access outside any agent r
 
 ### Acceptance and validation evidence
 
-- [ ] Diagnostic runbook written (commands to run on `vm-sieitzstaging`: `dmesg`/OOM-killer log
-      check around the failure timestamps, `docker system df`/`docker inspect` history, cron/
-      systemd-timer listing for anything that could sweep `_work` siblings).
+- [x] Diagnostic runbook written: `docs/ops/QUALITY_GATE_RUNNER_DIAGNOSTIC_RUNBOOK.md` (PR #1173)
+      — OOM-killer/`dmesg`/`journalctl` checks, Docker daemon restart/container-death checks,
+      cron/systemd-timer sweep checks for the salvage job's evidence directory, a resource-pressure
+      check, and a labeled set of findings to report back on #1168.
 - [ ] Root cause found (Pat's own run, not automatable from here).
 - [ ] Once known: either exempt `_dgfy_gate_evidence/` from whatever is sweeping it, or redesign
       the salvage path to upload immediately from within `dgfy-api-quality` itself instead of a
@@ -11066,25 +11068,35 @@ genuinely new defect found gets filed separately via `pm`, not buried in the com
 
 ### Status
 
-`planned` (2026-08-29). Read-only investigation — lowest-risk of the phases in this batch, no code
-changes.
+`completed` (2026-08-29). Read-only investigation, no code changes. Findings posted as a comment
+on #1124. Board `Status` left for a human to move to `Done`/close, per `pm`'s own checkpoint
+policy ("closing an issue... ask first") — not done unilaterally by this phase.
 
 ### Dependencies
 
-None blocking. Independent of Phases 190-193, 195-196. Best run against a Phase-189-era run or
-later, so the classification reflects the fixed reporter/salvage mechanism.
+None blocking. Independent of Phases 190-193, 195-196.
 
 ### Acceptance and validation evidence
 
-- [ ] Artifacts from at least one real gate run downloaded (`gh run download <id>`) and read.
-- [ ] Each failure classified into one of the four buckets, cross-referenced against #986, #917,
-      #918, #1022, #1166, #1168 where applicable.
-- [ ] Findings posted as a comment on #1124.
-- [ ] Any new, previously-untracked defect filed as its own issue via `pm` and linked.
+- [x] Artifacts downloaded (`gh run download`) and read from two runs bracketing Phase 189's fix:
+      `33200271336` (pre-fix, both `dgfy-api-quality` and `fnb-playwright-contract` succeeded with
+      full evidence) and `33251641238` (post-fix, one of the 4 `workflow_dispatch` verification
+      runs where `dgfy-api-quality`'s envelope died).
+- [x] Every failure classified: `tenant_storefront_modes` db-tier failure → known-and-tracked,
+      already fixed (#1071/Phase 189-190); the matrix's early-stop hiding 4 remaining groups →
+      known-and-tracked, already fixed (#986/Phase 189); `dgfy-api-quality`'s dead envelope on the
+      post-fix run → known-and-tracked, already filed (#1168). `fnb-playwright-contract`: clean in
+      both runs (`{total:1, expected:1, unexpected:0}`). No real-defect or gate-bug bucket needed
+      for this 2-run sample.
+- [x] Findings posted: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
+- [x] No new, previously-untracked defect found in this sample — explicitly stated as such rather
+      than silently implying full coverage; a wider historical sweep could still turn up something
+      new and was not attempted this pass.
 
 ### Implementation links
 
 - Issue #1157, Refs #1124, #1063, #986
+- Triage comment: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
 
 ### Next eligible phase
 
