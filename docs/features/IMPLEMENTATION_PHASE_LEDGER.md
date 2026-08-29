@@ -10735,7 +10735,7 @@ still-open production-path defect filed separately as #1166.
 
 ### Status
 
-- `in_progress` (2026-08-29) — PR #1167 open against `develop`.
+- `completed` (2026-08-29) — PR #1167 merged into `develop`.
 - Local verification complete: `check:pr-quality-workflow` (27 tests) green, local fast-tier run
   green (561/561), architecture guardrails and controller boundaries green, `tenantProvisioning
   .storefrontBootstrap.test.js` fixed and green, real-MySQL reproduction of both #1071 (fixed) and
@@ -10790,8 +10790,416 @@ still-open production-path defect filed separately as #1166.
 - `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs`,
   `apps/dgfy-api/src/services/tenantSchemaBootstrap.js`
 
+### Completion date
+
+2026-08-29 (PR #1167 merged).
+
 ### Next eligible phase
 
-The next repository phase is allocated from the authoritative ledger after Phase 189 completes.
-Phase 189 itself completes once the `workflow_dispatch` verification lands and PR #1167 merges;
-the epic (#1124) remains open for its other children regardless.
+Phase 190, allocated below — the remaining open work under epic #1124 broken out into its own
+tracked phases (#1165's deployed-verification closeout, #1166's fix, #1168's runner diagnostics,
+#918's web-core lint coverage, #1157's artifact triage, #917's small remainder, #1147's gate-to-CI
+mapping). The epic (#1124) itself remains open until every child phase below completes.
+
+## Phase 190 - Tenant Bootstrap: Fix FK/Generated-Column Collision (#1166)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124), continuing Phase 189's own follow-on findings.
+
+### Objective and scope
+
+Fix the real, still-live production defect Phase 189's new integration test surfaced (currently
+`it.skip()`-ed, not shipped red): `provisionTenant`'s post-sync tenant bootstrap fails with MySQL
+errno 150 ("Cannot add foreign key constraint") when migration `20260824000001`'s
+`addGeneratedColumnIfMissing()` tries to add a STORED generated column derived from
+`employee_break_segments.employee_attendance_session_id` — a column that already carries a real
+FK constraint because `Sequelize.sync()` (which `provisionTenant` runs first) materializes the
+`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` association
+(`src/models/index.js:744`) as a real constraint. The ordinary migration-runner path never hits
+this (there, this migration's own `createTable()` branch builds the table from scratch, with no
+pre-existing FK to collide with) — the failure is specific to the provisioning path's
+`sync()`-then-migrate order.
+
+**Root cause, fully established (empirical, live MySQL 8.0.46 experimentation), one layer deeper
+than #1166's own filing suspected.** It is not "a FK exists on the column" per se — RESTRICT/
+RESTRICT FKs coexist fine with a dependent generated column (confirmed: inline-at-`CREATE TABLE`
+and via a later `ALTER TABLE ADD CONSTRAINT` both work). The actual, unconditional MySQL/InnoDB
+restriction: **a foreign key whose `ON UPDATE`/`ON DELETE` action is `CASCADE` (or `SET NULL`) is
+rejected outright if its own column is the base column of a `STORED` generated column elsewhere in
+the table** — confirmed by direct 4-way experiment (RESTRICT/RESTRICT: success; CASCADE/CASCADE,
+RESTRICT/CASCADE, CASCADE/RESTRICT: all fail with the same errno 150). The actual defect:
+`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` (and the same pattern on 2 other
+associations in this migration's scope) declares `onUpdate: 'RESTRICT', onDelete: 'RESTRICT'`, and
+this migration's own `createTable()` branch matches that — but `Sequelize.sync()` (the tenant-
+provisioning path) materializes the association's FK as `ON UPDATE CASCADE ON DELETE CASCADE`
+instead, confirmed live via `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`. That `sync()`/association
+mismatch is a second, real, adjacent inconsistency this phase does not fix (see Dependencies) — the
+fix implemented here works regardless of which action `sync()` chooses, since MySQL only accepts
+RESTRICT/NO ACTION on this column shape either way.
+
+Of the 3 candidates named in #1166's own filing, none were exactly right once the real restriction
+was known: candidate 2 (drop and recreate the FK around the `ALTER`) is closest, but only works if
+the *recreated* FK uses RESTRICT/RESTRICT explicitly — reusing whatever action the dropped FK
+happened to have (i.e., `sync()`'s buggy CASCADE/CASCADE) reproduces the identical failure on the
+recreate step itself (confirmed empirically before landing on the actual fix).
+
+### Status
+
+`in_progress` (2026-08-29). Fix implemented, verified locally, and merged into `develop` as
+`d4276b6` (PR #1172, `fix/1166-tenant-fk-generated-column`). Per `AGENTS.md`'s Continuous Phase
+Numbering rule ("a phase may be marked `completed` only after its acceptance gates and required
+validation pass"), this stays `in_progress` until the one remaining acceptance item below (the
+DEV/STAGING occurrence check) is either completed or explicitly deferred through its own stated
+decision — not implied by the merge alone. (Corrected 2026-08-29 twice — an earlier version marked
+`completed` while both the merge and the check were still open; a second correction left the PR
+body saying #1172 was still unmerged after it had in fact merged; both flagged by `pr-reviewer`.)
+
+### Dependencies
+
+None blocking. Independent of Phases 191-196 below — ran in parallel with Phase 193.
+
+Spawns one follow-up, not yet filed as its own issue: `Sequelize.sync()` materializing an
+association's FK with `CASCADE`/`CASCADE` when the association itself declares `RESTRICT`/
+`RESTRICT` is a real inconsistency between the ORM's sync-time DDL and the association's own
+declared intent, independent of the generated-column collision this phase fixes. Not fixed here
+(scope stayed narrow: make the migration produce a correct, working schema regardless of what
+`sync()` does) — worth its own issue via `pm` if `sync()`'s behavior matters elsewhere.
+
+### Acceptance and validation evidence
+
+- [x] Root cause of the errno-150 interaction confirmed as a documented-in-practice MySQL/InnoDB
+      restriction (CASCADE/SET NULL forbidden on a generated column's base column), not a version
+      quirk — confirmed via direct experiment on the same MySQL 8.0.46 this repo runs.
+- [x] Fix implemented (`addGeneratedColumnIfMissing` now drops any existing FK on the depended-on
+      column before the `ALTER ADD COLUMN GENERATED`, and always recreates it as RESTRICT/
+      RESTRICT afterward — applied to all 3 call sites in this migration that read an
+      association-FK'd column, not only the one #1166 reproduced).
+      `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`'s two previously-skipped
+      tests un-skipped and green against real MySQL (`dgfy-local-test-mysql-1`, 8.0.46).
+- [x] Confirmed no regression on the ordinary `sequelize-cli`-shaped path: a standalone repro ran
+      this migration's `up()` (via its own `createTable()` branch) against a fresh scratch
+      database twice (idempotency) plus `down()`, all green.
+- [ ] Empirical check of DEV/STAGING provisioning logs/Sentry for prior real occurrences — not run
+      this session; still open, reported here rather than silently dropped.
+- [x] `node scripts/check-compliance-impact.js --staged` — `No compliance-sensitive changes
+      detected`. `check:architecture-guardrails` / `check:controller-boundaries` — both green.
+
+### Implementation links
+
+- Issue #1166, Refs #1071, #1124
+- `apps/dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`
+- `apps/dgfy-api/src/models/index.js` (the `belongsTo` associations — not modified, root-caused
+  only)
+- `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`
+
+### Next eligible phase
+
+Phase 191 (independent, not sequenced after this one).
+
+## Phase 191 - Quality-Gate Trust: Deployed Verification Closeout (#1165)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the deployed-environment verification half of Phase 189's work,
+owned by the Verifier/QA role rather than Worker (`.agents/skills/verifier/SKILL.md`).
+
+### Objective and scope
+
+Phase 189 shipped and merged the evidence-durability/reporter fix; #1165 itself stays open until a
+deployed check confirms the merged change is healthy on STAGING, per
+`docs/process/ISSUE-TAXONOMY.md`'s `For QA` lane semantics. This phase is that check — infra-health
+via `verify-deployment.yml`, plus a best-effort functional read of PR #1167's diff.
+
+### Status
+
+`in_progress` (2026-08-29) — issue #1165 moved to `For QA` on the board (2026-08-29, by hand, since
+PR #1167 was merged directly by Pat rather than through `pr-reviewer`'s own merge-time board
+transition). Verifier ran its first live check against STAGING: infra-health **PASS**
+(`verify-deployment.yml` run `33257210011`, `conclusion: success`, no restart-count/crash-loop
+signature) and a best-effort functional read of PR #1167's diff against all 5 of #1165's own DoD
+items — 4 fully verified by diff + the worker's own documented live `workflow_dispatch` evidence,
+the 5th (evidence survives a dying job) honestly reported as partially working (detection works,
+recovery doesn't — the exact gap tracked as #1168/Phase 192). Per Verifier's own SKILL.md "first
+live use" calibration this is **report-only** — the board `Status` has not been flipped to `Done`
+and the issue has not been closed; that write is still Pat's to confirm.
+
+### Dependencies
+
+PR #1167 merged (done). Independent of Phases 190, 192-196.
+
+### Acceptance and validation evidence
+
+- [x] `verify-deployment.yml` dispatched for STAGING, infra-health PASS recorded (run
+      `33257210011`).
+- [x] Best-effort functional read of PR #1167's diff against #1165's own acceptance criteria —
+      PASS with one already-tracked, honestly-reported gap (#1168).
+- [x] Verdict reported. Not yet auto-applied to the board (`Done`/close) — first live run, per
+      Verifier's own SKILL.md calibration; awaiting Pat's confirmation.
+
+### Implementation links
+
+- Issue #1165, Refs #1124
+- PR #1167 (merged)
+- `.github/workflows/verify-deployment.yml` (run `33257210011`)
+
+### Next eligible phase
+
+Phase 192 (independent, not sequenced after this one).
+
+## Phase 192 - Runner Reliability Diagnostics on `vm-sieitzstaging` (#1168)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the runner-infrastructure investigation Phase 189's own live
+verification surfaced (3 of 4 dispatch runs died in the identical shape).
+
+### Objective and scope
+
+**Explicitly not closeable by any role in this repo's current roster** — #1168's own body states
+this: it needs SSH/log access to `vm-sieitzstaging` to find what actually terminates the
+`dgfy-api-quality` job 3 seconds after its test-matrix step completes (OOM killer, Docker daemon
+restart, a scheduled maintenance script, resource exhaustion), which is outside every role's
+current capability (`incident-responder`'s own stated gap #2, "no live-server observability
+capability exists"). This phase's deliverable from this side is a concrete diagnostic runbook for
+Pat to run by hand — not a fix, since the root cause is unknown until that access is used.
+
+### Status
+
+`blocked` (2026-08-29) — this side's own deliverable (the diagnostic runbook) is done, PR #1173
+open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
+past that; no role can advance the actual root-cause investigation unattended.
+
+### Dependencies
+
+None from this repo's side; blocked on infrastructure access outside any agent role.
+
+### Acceptance and validation evidence
+
+- [x] Diagnostic runbook written: `docs/ops/QUALITY_GATE_RUNNER_DIAGNOSTIC_RUNBOOK.md` (PR #1173)
+      — OOM-killer/`dmesg`/`journalctl` checks, Docker daemon restart/container-death checks,
+      cron/systemd-timer sweep checks for the salvage job's evidence directory, a resource-pressure
+      check, and a labeled set of findings to report back on #1168.
+- [ ] Root cause found (Pat's own run, not automatable from here).
+- [ ] Once known: either exempt `_dgfy_gate_evidence/` from whatever is sweeping it, or redesign
+      the salvage path to upload immediately from within `dgfy-api-quality` itself instead of a
+      separate job that can lose the queue-wait race.
+
+### Implementation links
+
+- Issue #1168, Refs #1124, #1165, #1063
+
+### Next eligible phase
+
+Phase 193 (independent, not sequenced after this one; this phase stays `blocked` until Pat runs
+the diagnostic).
+
+## Phase 193 - `packages/web-core` ESLint Coverage (#918)
+
+### Initiative and release
+
+Frontend-split lint-governance line of work (#322), filed as an #1124 sibling concern but not
+itself part of the quality-gate CI audit.
+
+### Objective and scope
+
+`packages/web-core` (691 source files, the shared trunk all three frontend apps consume) has no
+`.eslintrc.json`, no lint script, and no `devDependencies` — and no app's own lint invocation
+reaches it. ADR 0071 Decision 4 is `[binding]`: `packages/web-core` must never get its own
+`node_modules` or test runner, so coverage has to run from an already-installed app's ESLint via
+`--resolve-plugins-relative-to`, the same pattern its test suite already uses. 3 confirmed real
+`react-hooks/rules-of-hooks` violations need fixing regardless of the rest of the scope.
+
+### Status
+
+`in_progress` (2026-08-29) — implemented on branch `feat/918-web-core-eslint-coverage`, PR #1170
+open against `develop` (`Closes #918`), board `Status` set to `For Review`.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-192, 194-196. Ran in parallel with Phase 190.
+
+### Acceptance and validation evidence
+
+- [x] `packages/web-core/.eslintrc.json` added (rules/ADR-0067 deny list identical to the three
+      apps' own configs; `ecmaVersion` bumped to 2022 only in this file to parse a pre-existing
+      top-level `await` in a test file), coverage wired into
+      `promotion-quality-gate.yml`'s `frontend-ims-quality` job via
+      `npx eslint ../../packages/web-core --resolve-plugins-relative-to .`, advisory per the
+      existing #1063 pattern. No `lint` script or `devDependencies` added to
+      `packages/web-core/package.json` — ADR 0071 Decision 4 confirmed unchanged (no
+      `node_modules` created).
+- [x] `frontend-ims-quality` decided as the owning CI job; verified with
+      `check-pr-quality-workflow.js` (27/27 pass).
+- [x] The 3 `rules-of-hooks` violations fixed (`Components/ai/ActionResultCard.jsx`,
+      `Components/jo/JODetailsModal.jsx` — hooks moved above their early-return guards).
+- [x] Triaged: 10 mechanical `react/no-unescaped-entities` + 1 parsing error fixed. 10 remaining
+      diagnostics (6 `react-hooks/set-state-in-effect`, 2 `react-hooks/refs` in a vendor
+      shadcn/radix primitive, 1 "Cannot create components during render", 1 optimization-only
+      notice) explicitly deferred with stated reasons in the PR body and the ADR amendment — not
+      silently dropped. Before/after: 23 errors/133 warnings → 10 errors (all deferred,
+      explained)/133 warnings (pre-existing, unchanged).
+- [x] ADR 0067's 2026-08-22 amendment updated (2026-08-29 amendment superseding the stale
+      "web-core has no config" description).
+- Also verified: `npm run build:skupervisor/pos/store` all pass; all three apps' `npm run lint`:
+  0 errors; `check:adr --strict`, `check:compliance`, `check:architecture` all pass; no
+  `package.json`/lockfile touched.
+
+### Implementation links
+
+- Issue #918, Refs #322, #917
+- PR #1170
+- `packages/web-core/.eslintrc.json` (new), `packages/web-core/Components/ai/ActionResultCard.jsx`,
+  `packages/web-core/Components/jo/JODetailsModal.jsx`
+- `.github/workflows/promotion-quality-gate.yml` (`frontend-ims-quality` job)
+- `docs/architecture/adr/0067-*` (Layer 3 guardrail amendment)
+
+### Next eligible phase
+
+Phase 194 (independent, not sequenced after this one).
+
+## Phase 194 - Promotion Gate Artifact Triage (#1157)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — closing the feedback-loop gap Pat named directly during the #360
+session: the gate's own advisory-failure artifacts have never been pulled and read.
+
+### Objective and scope
+
+Pull artifacts from a recent `promotion-quality-gate.yml` run, read the failure output, and
+classify each failure into one of four buckets (real defect / environment-infra problem / gate bug
+/ known-and-tracked), then post the classified inventory as a comment on #1124. Explicitly not in
+scope: fixing anything found, or changing `continue-on-error` (that's #1063's/#1147's call). Any
+genuinely new defect found gets filed separately via `pm`, not buried in the comment.
+
+### Status
+
+`completed` (2026-08-29). Read-only investigation, no code changes. Findings posted as a comment
+on #1124. Board `Status` left for a human to move to `Done`/close, per `pm`'s own checkpoint
+policy ("closing an issue... ask first") — not done unilaterally by this phase.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-193, 195-196.
+
+### Acceptance and validation evidence
+
+- [x] Artifacts downloaded (`gh run download`) and read from two runs bracketing Phase 189's fix:
+      `33200271336` (pre-fix, both `dgfy-api-quality` and `fnb-playwright-contract` succeeded with
+      full evidence) and `33251641238` (post-fix, one of the 4 `workflow_dispatch` verification
+      runs where `dgfy-api-quality`'s envelope died).
+- [x] Every failure classified: `tenant_storefront_modes` db-tier failure → known-and-tracked,
+      already fixed (#1071/Phase 189-190); the matrix's early-stop hiding 4 remaining groups →
+      known-and-tracked, already fixed (#986/Phase 189); `dgfy-api-quality`'s dead envelope on the
+      post-fix run → known-and-tracked, already filed (#1168). `fnb-playwright-contract`: clean in
+      both runs (`{total:1, expected:1, unexpected:0}`). No real-defect or gate-bug bucket needed
+      for this 2-run sample.
+- [x] Findings posted: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
+- [x] No new, previously-untracked defect found in this sample — explicitly stated as such rather
+      than silently implying full coverage; a wider historical sweep could still turn up something
+      new and was not attempted this pass.
+
+### Implementation links
+
+- Issue #1157, Refs #1124, #1063, #986
+- Triage comment: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
+
+### Next eligible phase
+
+Phase 195 (independent, not sequenced after this one).
+
+## Phase 195 - Frontend Lint: Last `no-unescaped-entities` Remainder (#917)
+
+### Initiative and release
+
+Frontend-split lint-governance line of work (#322). #917's own substantive scope already shipped
+(commit `af9e73c9`, PR #513) — this phase is only its explicitly deferred remainder.
+
+### Objective and scope
+
+Two `react/no-unescaped-entities` errors remain, both on the same line of
+`apps/dgfy-ims/Pages/Settings.jsx` (line 2917). That file is unconditionally
+`major`-classification-sensitive per `check-compliance-impact.js`, so touching it requires a
+written compliance impact declaration. Pat's own prior call (recorded on #917) was not to trigger
+that declaration for a purely cosmetic text-escaping fix — so this phase's scope is deliberately
+narrow: fix these two characters only alongside a real, substantive change to that file that
+already needs a declaration for its own reasons, or via a separately-approved, deliberate
+declaration scoped to this cosmetic fix alone. Not a standalone "just fix the lint error" phase.
+
+### Status
+
+`planned` (2026-08-29) — genuinely low priority; no substantive `Settings.jsx` change is currently
+in flight to amortize this into, and a standalone compliance declaration for 2 cosmetic characters
+has not been requested. Held open rather than closed, so it isn't lost.
+
+### Dependencies
+
+None blocking. Independent of every other phase in this batch. Gated on either (a) a future
+substantive `Settings.jsx` change landing, or (b) Pat explicitly approving a standalone
+declaration — this phase does not decide that on its own.
+
+### Acceptance and validation evidence
+
+- [ ] Either bundled into a substantive `Settings.jsx` change's own compliance declaration, or a
+      standalone declaration is written and approved.
+- [ ] `apps/dgfy-ims`'s `npm run lint` exits 0 with zero remaining errors (currently 0 errors is
+      already true post-#917 fix except this pair — confirm no regression).
+
+### Implementation links
+
+- Issue #917, Refs #322
+- `apps/dgfy-ims/Pages/Settings.jsx:2917`
+
+### Next eligible phase
+
+Phase 196 (independent, not sequenced after this one).
+
+## Phase 196 - Gate-to-CI Parity Mapping (#1147)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the umbrella decision of which of `gate:release:local`'s 19
+gates move into promotion-triggered CI vs. stay local-only, downstream of (not a substitute for)
+#1124's own root-cause work.
+
+### Objective and scope
+
+Enumerate all 19 `gate:release:local` gates and map each to an existing CI job, a CI job to be
+added, or a documented reason it stays local-only (SOPS-decrypted secrets, the promoter's own
+git-branch state). Decide, gate by gate, whether CI replaces local or the two stay complementary —
+not as one blanket policy. Update `.agents/skills/promoter/SKILL.md`'s pre-`main` gate section once
+a gate's CI job is live and trusted. Must not become an unconditional-on-every-PR job — promotion-
+triggered only, per #1018's and #416's existing constraint. Must also resolve runner-capacity
+overlap: heavy jobs are pinned to `sieitz-lg`, which is the same box serving DEV+STAGING.
+
+### Status
+
+`blocked` (2026-08-29) — #1147's own body names #1015 (splitting the backend test suite into fast/
+DB tiers) as a **hard technical prerequisite**: wiring a DB-backed job into CI before the suite is
+fast reproduces #345's ~14min-per-run problem in a new place. #1015 is confirmed still `OPEN` as of
+this phase's filing. This phase cannot start in earnest until #1015 lands.
+
+### Dependencies
+
+**Blocking:** #1015 (must land first). #1018 (the fast-tier CI subset, this phase's own first
+concrete milestone once unblocked). Independent of Phases 190-195 otherwise.
+
+### Acceptance and validation evidence
+
+- [ ] #1015 confirmed landed before this phase's own gate-by-gate mapping work begins.
+- [ ] All 19 gates enumerated and mapped (CI-existing / CI-to-add / documented local-only reason).
+- [ ] #1018 landed as the first concrete milestone.
+- [ ] Remaining gates decided individually (CI-replaces-local vs. complementary), each with a
+      stated reason.
+- [ ] `promoter`'s SKILL.md pre-`main` gate section updated per gate as each moves to CI.
+- [ ] Runner-capacity conflict with DEV/STAGING on `sieitz-lg` resolved or explicitly accepted.
+
+### Implementation links
+
+- Issue #1147, Refs #1124, #1018, #1015, #1016, #1008, #927, #345
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 196 completes.
+The epic (#1124) remains open until all of Phases 190-196 (and any phase #1147 spawns) complete.
