@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Decrypts the SOPS-encrypted secret files at /opt/dgfy-platform/secrets/ into
+# the shell environment, then hands off to `docker compose up`. Implements
+# docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md Phase 5 / Phase 6, and is what
+# .github/workflows/publish-platform.yml calls for PROD once the cutover is
+# live (see the "PLANNED, NOT YET LIVE" header comment in that file).
+#
+# Run from /opt/dgfy-platform on the server, as whichever account CI's
+# SSH_TARGET names (must be in the `docker` group to read
+# /etc/dgfy/age/keys.txt) -- or by Pat directly for a manual cutover/rollback
+# rehearsal.
+#
+# Requires: sops, age (installed by setup-sops-age.sh, Phase 1), and
+# secrets/{shared,mysql,dgfy-api}.env already present (Phase 2, Pat runs this
+# personally -- see ADR 0060 Decision 7, `binding`).
+set -euo pipefail
+
+# Resolve the project root correctly in BOTH locations this script runs
+# from -- a bug in an earlier version of this file assumed the repo-checkout
+# math (dirname -> ../../..) was a no-op once deployed to
+# /opt/dgfy-platform/deploy-sops.sh, but it is NOT: dirname of that deployed
+# path is /opt/dgfy-platform, and /opt/dgfy-platform/../../.. resolves to
+# "/", not /opt/dgfy-platform -- every subsequent relative secrets/*.env
+# read and `docker compose` invocation would have run against the wrong
+# directory (or failed outright). Detect which layout this actually is:
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+  # Deployed layout: /opt/dgfy-platform/deploy-sops.sh, sitting directly
+  # beside docker-compose.yml and secrets/.
+  PROJECT_ROOT="$SCRIPT_DIR"
+else
+  # Repo-checkout layout: infrastructure/docker/scripts/deploy-sops.sh,
+  # three levels above the repo root.
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+fi
+cd "$PROJECT_ROOT"
+
+export SOPS_AGE_KEY_FILE=/etc/dgfy/age/keys.txt
+SECRET_FILES=(secrets/shared.env secrets/mysql.env secrets/dgfy-api.env)
+
+set -a
+for f in "${SECRET_FILES[@]}"; do
+  if [ ! -f "$f" ]; then
+    echo "::error::deploy-sops.sh: missing secret file $f -- refusing to start with a partial secret set" >&2
+    exit 1
+  fi
+  # read/export, NOT `source <(...)` -- source executes decrypted text as
+  # bash script, corrupting any value containing a literal $ (e.g. a bcrypt
+  # hash -- ADMIN_PASSWORD_HASH and the bcrypt entries inside
+  # ADMIN_ACCOUNTS_JSON both do). See ADR 0060 Decision 6 (binding).
+  while IFS='=' read -r key value; do
+    # Skip blank lines and comments -- sops's dotenv output can carry both,
+    # and `export ""` / `export "# foo"` would otherwise either no-op oddly
+    # or corrupt the env with a junk entry.
+    [ -z "$key" ] && continue
+    case "$key" in \#*) continue ;; esac
+    # sops occasionally emits dotenv values wrapped in double quotes; strip
+    # a matching pair so the exported value matches what was encrypted, not
+    # a quoted string containing the value.
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value#\"}"
+      value="${value%\"}"
+    fi
+    export "$key=$value"
+  done < <(sops decrypt --input-type dotenv "$f")
+done
+set +a
+
+# Pull first -- the validation run below needs the current image, and this
+# also means a pull failure aborts before any container is touched.
+docker compose pull
+
+# Fail loudly, before any container is touched, if the assembled environment
+# is missing something apps/dgfy-api/src/config/productionEnvValidation.cjs
+# requires -- turns the crash-loop failure class into a pre-flight check.
+#
+# Runs INSIDE the dgfy-api image itself (`docker compose run`), not via a
+# host-side copy of productionEnvValidation.cjs -- /opt/dgfy-platform is not
+# a git checkout, so a hand-copied validator file would silently drift from
+# the image the moment the real one changes. `docker compose run --rm
+# --no-deps` resolves the exact same `environment:` block the real `up -d`
+# would give dgfy-api (Compose substitutes ${VAR} from this shell's exports,
+# same as it will for the real service), so this is a genuine dry run of
+# the assembled environment against the image's own, current validator --
+# zero drift, nothing to keep in sync by hand.
+#
+# check-assembled-env.cjs (sibling script) is the local/CI-side variant of
+# this same check, for use outside a full compose context.
+VALIDATE_JS='const { validateProductionEnv, formatValidationFailure } = require("./src/config/productionEnvValidation.cjs");
+const result = validateProductionEnv({ env: process.env });
+if (result.warnings && result.warnings.length > 0) {
+  for (const w of result.warnings) console.error(`[check-assembled-env] WARN: ${w}`);
+}
+if (result.shouldFail) {
+  console.error("[check-assembled-env] FAIL -- this environment would crash-loop dgfy-api at boot:");
+  console.error(formatValidationFailure(result));
+  process.exit(1);
+}
+console.log("[check-assembled-env] OK -- assembled environment passes the production boot check.");'
+
+if ! docker compose run --rm --no-deps --entrypoint node dgfy-api -e "$VALIDATE_JS"; then
+  echo "::error::deploy-sops.sh: assembled environment fails the production boot check -- aborting before docker compose up. Fix the missing/invalid vars, do not retry blind." >&2
+  exit 1
+fi
+
+exec docker compose up -d --remove-orphans

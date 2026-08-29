@@ -78,11 +78,9 @@ risks when another terminal changes the same server order.
 
 ## Approval Record
 
-- Task-level implementation approval was recorded on 2026-08-28.
-- Durable tech-lead acceptance evidence is pending an explicit confirmation
-  comment from `@patterueldev` on
-  [dgfy-platform PR #1134](https://github.com/Sieitzz/dgfy-platform/pull/1134);
-  this record must be updated to the confirmation comment before merge.
+- Tech-lead approval: confirmed by @patterueldev on
+  [dgfy-platform PR #1134](https://github.com/Sieitzz/dgfy-platform/pull/1134#issuecomment-5454776667)
+  (2026-08-29).
 - Platform implementation phase: Phase 180.
 
 ## References
