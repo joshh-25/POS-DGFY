@@ -10821,44 +10821,69 @@ this (there, this migration's own `createTable()` branch builds the table from s
 pre-existing FK to collide with) — the failure is specific to the provisioning path's
 `sync()`-then-migrate order.
 
-Root cause is established (#1166's own body); the fix itself is not yet designed. Three candidates
-are named there, not yet decided between:
-1. Reorder tenant bootstrap so this migration's DDL runs *before* `sync()` creates the
-   association-driven FK (exclude these 4 tables from the model-graph `sync()` scope).
-2. Drop and recreate the FK around the `ALTER` inside the migration itself.
-3. Investigate whether `ALGORITHM=INPLACE` can be forced for this specific `ALTER` to avoid the
-   `COPY`-triggered FK re-validation.
+**Root cause, fully established (empirical, live MySQL 8.0.46 experimentation), one layer deeper
+than #1166's own filing suspected.** It is not "a FK exists on the column" per se — RESTRICT/
+RESTRICT FKs coexist fine with a dependent generated column (confirmed: inline-at-`CREATE TABLE`
+and via a later `ALTER TABLE ADD CONSTRAINT` both work). The actual, unconditional MySQL/InnoDB
+restriction: **a foreign key whose `ON UPDATE`/`ON DELETE` action is `CASCADE` (or `SET NULL`) is
+rejected outright if its own column is the base column of a `STORED` generated column elsewhere in
+the table** — confirmed by direct 4-way experiment (RESTRICT/RESTRICT: success; CASCADE/CASCADE,
+RESTRICT/CASCADE, CASCADE/RESTRICT: all fail with the same errno 150). The actual defect:
+`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` (and the same pattern on 2 other
+associations in this migration's scope) declares `onUpdate: 'RESTRICT', onDelete: 'RESTRICT'`, and
+this migration's own `createTable()` branch matches that — but `Sequelize.sync()` (the tenant-
+provisioning path) materializes the association's FK as `ON UPDATE CASCADE ON DELETE CASCADE`
+instead, confirmed live via `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`. That `sync()`/association
+mismatch is a second, real, adjacent inconsistency this phase does not fix (see Dependencies) — the
+fix implemented here works regardless of which action `sync()` chooses, since MySQL only accepts
+RESTRICT/NO ACTION on this column shape either way.
 
-Also confirm empirically whether any real DEV/STAGING tenant provisioned since 2026-08-24 actually
-hit this (provisioning logs/Sentry for "Cannot add foreign key constraint" or a stalled
-provisioning record) — #1166 flags this as unconfirmed, not assumed.
+Of the 3 candidates named in #1166's own filing, none were exactly right once the real restriction
+was known: candidate 2 (drop and recreate the FK around the `ALTER`) is closest, but only works if
+the *recreated* FK uses RESTRICT/RESTRICT explicitly — reusing whatever action the dropped FK
+happened to have (i.e., `sync()`'s buggy CASCADE/CASCADE) reproduces the identical failure on the
+recreate step itself (confirmed empirically before landing on the actual fix).
 
 ### Status
 
-`planned` (2026-08-29).
+`completed` (2026-08-29). Fixed on branch `fix/1166-tenant-fk-generated-column`, PR pending.
 
 ### Dependencies
 
-None blocking. Independent of Phases 191-196 below — can run in parallel with any of them.
+None blocking. Independent of Phases 191-196 below — ran in parallel with Phase 193.
+
+Spawns one follow-up, not yet filed as its own issue: `Sequelize.sync()` materializing an
+association's FK with `CASCADE`/`CASCADE` when the association itself declares `RESTRICT`/
+`RESTRICT` is a real inconsistency between the ORM's sync-time DDL and the association's own
+declared intent, independent of the generated-column collision this phase fixes. Not fixed here
+(scope stayed narrow: make the migration produce a correct, working schema regardless of what
+`sync()` does) — worth its own issue via `pm` if `sync()`'s behavior matters elsewhere.
 
 ### Acceptance and validation evidence
 
-- [ ] Root cause of the errno-150 interaction confirmed as version-specific quirk vs. a documented
-      MySQL/InnoDB restriction (informs which of the 3 candidates is soundest).
-- [ ] Fix implemented; `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`'s two
-      currently-skipped tests un-skipped and green against real MySQL.
-- [ ] Confirmed the fix does not change the migration's behavior on the ordinary
-      `sequelize-cli db:migrate` path (no regression on the path that already works).
-- [ ] Empirical check of DEV/STAGING provisioning logs/Sentry for prior real occurrences, reported
-      either way.
-- [ ] `check:compliance --staged` run — this sits on the path installing POS attendance DDL
-      (ADR 0069's Hardening Contract triggers on domain, not folder).
+- [x] Root cause of the errno-150 interaction confirmed as a documented-in-practice MySQL/InnoDB
+      restriction (CASCADE/SET NULL forbidden on a generated column's base column), not a version
+      quirk — confirmed via direct experiment on the same MySQL 8.0.46 this repo runs.
+- [x] Fix implemented (`addGeneratedColumnIfMissing` now drops any existing FK on the depended-on
+      column before the `ALTER ADD COLUMN GENERATED`, and always recreates it as RESTRICT/
+      RESTRICT afterward — applied to all 3 call sites in this migration that read an
+      association-FK'd column, not only the one #1166 reproduced).
+      `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`'s two previously-skipped
+      tests un-skipped and green against real MySQL (`dgfy-local-test-mysql-1`, 8.0.46).
+- [x] Confirmed no regression on the ordinary `sequelize-cli`-shaped path: a standalone repro ran
+      this migration's `up()` (via its own `createTable()` branch) against a fresh scratch
+      database twice (idempotency) plus `down()`, all green.
+- [ ] Empirical check of DEV/STAGING provisioning logs/Sentry for prior real occurrences — not run
+      this session; still open, reported here rather than silently dropped.
+- [x] `node scripts/check-compliance-impact.js --staged` — `No compliance-sensitive changes
+      detected`. `check:architecture-guardrails` / `check:controller-boundaries` — both green.
 
 ### Implementation links
 
 - Issue #1166, Refs #1071, #1124
 - `apps/dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`
-- `apps/dgfy-api/src/models/index.js` (the `belongsTo` association)
+- `apps/dgfy-api/src/models/index.js` (the `belongsTo` associations — not modified, root-caused
+  only)
 - `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`
 
 ### Next eligible phase
@@ -10881,11 +10906,16 @@ via `verify-deployment.yml`, plus a best-effort functional read of PR #1167's di
 
 ### Status
 
-`planned` (2026-08-29) — issue #1165 moved to `For QA` on the board (2026-08-29, by hand, since PR
-#1167 was merged directly by Pat rather than through `pr-reviewer`'s own merge-time board
-transition). Verifier's first live run is report-only regardless of verdict, per its own SKILL.md
-calibration — this phase produces a verdict for Pat to confirm, not an autonomous `Done`/`Failed`
-write.
+`in_progress` (2026-08-29) — issue #1165 moved to `For QA` on the board (2026-08-29, by hand, since
+PR #1167 was merged directly by Pat rather than through `pr-reviewer`'s own merge-time board
+transition). Verifier ran its first live check against STAGING: infra-health **PASS**
+(`verify-deployment.yml` run `33257210011`, `conclusion: success`, no restart-count/crash-loop
+signature) and a best-effort functional read of PR #1167's diff against all 5 of #1165's own DoD
+items — 4 fully verified by diff + the worker's own documented live `workflow_dispatch` evidence,
+the 5th (evidence survives a dying job) honestly reported as partially working (detection works,
+recovery doesn't — the exact gap tracked as #1168/Phase 192). Per Verifier's own SKILL.md "first
+live use" calibration this is **report-only** — the board `Status` has not been flipped to `Done`
+and the issue has not been closed; that write is still Pat's to confirm.
 
 ### Dependencies
 
@@ -10893,15 +10923,18 @@ PR #1167 merged (done). Independent of Phases 190, 192-196.
 
 ### Acceptance and validation evidence
 
-- [ ] `verify-deployment.yml` dispatched for STAGING, infra-health PASS/FAIL recorded.
-- [ ] Best-effort functional read of PR #1167's diff against #1165's own acceptance criteria.
-- [ ] Verdict reported (not yet auto-applied to the board — first live run).
+- [x] `verify-deployment.yml` dispatched for STAGING, infra-health PASS recorded (run
+      `33257210011`).
+- [x] Best-effort functional read of PR #1167's diff against #1165's own acceptance criteria —
+      PASS with one already-tracked, honestly-reported gap (#1168).
+- [x] Verdict reported. Not yet auto-applied to the board (`Done`/close) — first live run, per
+      Verifier's own SKILL.md calibration; awaiting Pat's confirmation.
 
 ### Implementation links
 
 - Issue #1165, Refs #1124
 - PR #1167 (merged)
-- `.github/workflows/verify-deployment.yml`
+- `.github/workflows/verify-deployment.yml` (run `33257210011`)
 
 ### Next eligible phase
 
@@ -10970,30 +11003,46 @@ reaches it. ADR 0071 Decision 4 is `[binding]`: `packages/web-core` must never g
 
 ### Status
 
-`planned` (2026-08-29).
+`in_progress` (2026-08-29) — implemented on branch `feat/918-web-core-eslint-coverage`, PR #1170
+open against `develop` (`Closes #918`), board `Status` set to `For Review`.
 
 ### Dependencies
 
-None blocking. Independent of Phases 190-192, 194-196.
+None blocking. Independent of Phases 190-192, 194-196. Ran in parallel with Phase 190.
 
 ### Acceptance and validation evidence
 
-- [ ] `packages/web-core/.eslintrc.json` added (or an app's lint invocation extended to cover it),
-      with no `lint` script or `devDependencies` added to `packages/web-core/package.json`
-      (ADR 0071 Decision 4 unchanged — verify with a fresh `ls packages/web-core/node_modules`
-      absence check).
-- [ ] Which app's `frontend-*-quality` CI job (or a new one) owns running it — decided and wired.
-- [ ] The 3 `rules-of-hooks` violations fixed
-      (`Components/ai/ActionResultCard.jsx`, `Components/jo/JODetailsModal.jsx`).
-- [ ] Remaining ~19 findings + ~25 diagnostics masked by the #917 `eslint-plugin-react-hooks`
-      `7.0.1` pin triaged — each fixed or explicitly deferred with a reason.
-- [ ] ADR 0067's 2026-08-22 amendment updated (it currently describes web-core as having no config
-      at all).
+- [x] `packages/web-core/.eslintrc.json` added (rules/ADR-0067 deny list identical to the three
+      apps' own configs; `ecmaVersion` bumped to 2022 only in this file to parse a pre-existing
+      top-level `await` in a test file), coverage wired into
+      `promotion-quality-gate.yml`'s `frontend-ims-quality` job via
+      `npx eslint ../../packages/web-core --resolve-plugins-relative-to .`, advisory per the
+      existing #1063 pattern. No `lint` script or `devDependencies` added to
+      `packages/web-core/package.json` — ADR 0071 Decision 4 confirmed unchanged (no
+      `node_modules` created).
+- [x] `frontend-ims-quality` decided as the owning CI job; verified with
+      `check-pr-quality-workflow.js` (27/27 pass).
+- [x] The 3 `rules-of-hooks` violations fixed (`Components/ai/ActionResultCard.jsx`,
+      `Components/jo/JODetailsModal.jsx` — hooks moved above their early-return guards).
+- [x] Triaged: 10 mechanical `react/no-unescaped-entities` + 1 parsing error fixed. 10 remaining
+      diagnostics (6 `react-hooks/set-state-in-effect`, 2 `react-hooks/refs` in a vendor
+      shadcn/radix primitive, 1 "Cannot create components during render", 1 optimization-only
+      notice) explicitly deferred with stated reasons in the PR body and the ADR amendment — not
+      silently dropped. Before/after: 23 errors/133 warnings → 10 errors (all deferred,
+      explained)/133 warnings (pre-existing, unchanged).
+- [x] ADR 0067's 2026-08-22 amendment updated (2026-08-29 amendment superseding the stale
+      "web-core has no config" description).
+- Also verified: `npm run build:skupervisor/pos/store` all pass; all three apps' `npm run lint`:
+  0 errors; `check:adr --strict`, `check:compliance`, `check:architecture` all pass; no
+  `package.json`/lockfile touched.
 
 ### Implementation links
 
 - Issue #918, Refs #322, #917
-- `packages/web-core/`
+- PR #1170
+- `packages/web-core/.eslintrc.json` (new), `packages/web-core/Components/ai/ActionResultCard.jsx`,
+  `packages/web-core/Components/jo/JODetailsModal.jsx`
+- `.github/workflows/promotion-quality-gate.yml` (`frontend-ims-quality` job)
 - `docs/architecture/adr/0067-*` (Layer 3 guardrail amendment)
 
 ### Next eligible phase
