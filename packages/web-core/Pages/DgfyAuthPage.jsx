@@ -990,7 +990,7 @@ export default function DgfyAuthPage() {
               </form>
 
               <p className="text-sm" style={{ color: '#64748B' }}>
-                Didn't receive a code?{' '}
+                Didn&apos;t receive a code?{' '}
                 <button
                   type="button"
                   onClick={handleResendCode}
@@ -1041,7 +1041,7 @@ export default function DgfyAuthPage() {
               <Divider />
 
               <p className="text-center text-sm" style={{ color: '#64748B' }}>
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <button type="button" onClick={() => switchMode('create-account')}
                   className="font-bold hover:underline"
                   style={{ color: '#1A4E8D', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
