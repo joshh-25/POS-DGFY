@@ -488,6 +488,7 @@ export default function POSCheckoutTerminal({
         )).length
     ), [safeQueuedCheckouts]);
     const isPrinterAvailable = posHardware.isPrinterAvailable;
+    const isOrderPrinterAvailable = posHardware.isOrderPrinterAvailable;
     const lastReceiptPendingSync = lastReceipt?.offline_sync_state === 'pending_sync';
 
     const {
@@ -1298,6 +1299,7 @@ export default function POSCheckoutTerminal({
         isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
+        isOrderPrinterAvailable,
         isPrinterAvailable,
         isTabletViewport,
         itemDiscountTotals,

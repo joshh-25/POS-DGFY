@@ -75,6 +75,7 @@ const createViewModel = (overrides = {}) => ({
     isCustomerPaymentSufficient: true,
     isEmployeeCreditPayment: false,
     isMsmeMode: false,
+    isOrderPrinterAvailable: false,
     isPrinterAvailable: false,
     isTabletViewport: false,
     openDiscountModal: vi.fn(),
@@ -124,6 +125,19 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         fireEvent.click(screen.getByTestId('pos-checkout-view-order-summary'));
         expect(itemNameReads).toBeGreaterThan(0);
         expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('Brewed Coffee');
+    });
+
+    it('prints the active cart without forwarding the React click event', () => {
+        const handlePrintOrder = vi.fn();
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            handlePrintOrder,
+            isOrderPrinterAvailable: true
+        })} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Print Order' }));
+
+        expect(handlePrintOrder).toHaveBeenCalledOnce();
+        expect(handlePrintOrder).toHaveBeenCalledWith();
     });
 
     it('passes the saved item-discount employee to Employee Credit and blocks ambiguous matches', async () => {

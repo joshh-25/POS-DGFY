@@ -96,7 +96,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
-        isPrinterAvailable,
+        isOrderPrinterAvailable,
         isTabletViewport,
         kitchenNotes,
         openDiscountModal,
@@ -538,9 +538,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                         type="button"
                         variant="outline"
                         onClick={handleBillRequest}
-                        disabled={posActionsBlocked || checkoutLoading || billRequestPrinting || splitPaymentCancelLoading || parkedSaleReleaseLoading || safeCart.length === 0 || !isPrinterAvailable}
+                        disabled={posActionsBlocked || checkoutLoading || billRequestPrinting || splitPaymentCancelLoading || parkedSaleReleaseLoading || safeCart.length === 0 || !isOrderPrinterAvailable}
                         className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                        title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                        title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                         data-testid="pos-bill-request-button"
                     >
                         {billRequestPrinting ? 'Printing…' : 'Bill Request'}
@@ -548,9 +548,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     <Button
                         type="button"
                         variant="outline"
-                        onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isPrinterAvailable}
-                        title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                        onClick={() => handlePrintOrder()}
+                        disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isOrderPrinterAvailable}
+                        title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                         className="h-10 rounded-lg border border-[#1A4E8D] bg-white px-2 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
