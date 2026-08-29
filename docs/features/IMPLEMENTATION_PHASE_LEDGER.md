@@ -10846,14 +10846,14 @@ recreate step itself (confirmed empirically before landing on the actual fix).
 
 ### Status
 
-`in_progress` (2026-08-29). Fix implemented and verified locally on branch
-`fix/1166-tenant-fk-generated-column`, PR #1172 open against `develop`, not yet merged. Per
-`AGENTS.md`'s Continuous Phase Numbering rule ("a phase may be marked `completed` only after its
-acceptance gates and required validation pass"), this stays `in_progress` until PR #1172 merges
-*and* the one still-open acceptance item below (the DEV/STAGING occurrence check) is either
-completed or explicitly deferred through its own stated decision — not implied by an early
-`completed` marking. (Corrected 2026-08-29 — an earlier version of this entry marked it
-`completed` while both conditions were still open; flagged by `pr-reviewer`.)
+`in_progress` (2026-08-29). Fix implemented, verified locally, and merged into `develop` as
+`d4276b6` (PR #1172, `fix/1166-tenant-fk-generated-column`). Per `AGENTS.md`'s Continuous Phase
+Numbering rule ("a phase may be marked `completed` only after its acceptance gates and required
+validation pass"), this stays `in_progress` until the one remaining acceptance item below (the
+DEV/STAGING occurrence check) is either completed or explicitly deferred through its own stated
+decision — not implied by the merge alone. (Corrected 2026-08-29 twice — an earlier version marked
+`completed` while both the merge and the check were still open; a second correction left the PR
+body saying #1172 was still unmerged after it had in fact merged; both flagged by `pr-reviewer`.)
 
 ### Dependencies
 
