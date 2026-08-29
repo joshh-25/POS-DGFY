@@ -10,7 +10,9 @@ topic: sentry_triage_2026_08_29
 # Sentry Triage — 2026-08-29
 
 Org `ch-temp` | region `https://de.sentry.io` | period 7d | **9 unresolved at sweep start**
-(`is:unresolved`), down from 12 on 2026-08-27.
+(`is:unresolved`), down from 12 on 2026-08-27. (The Buckets table below lists 10 rows, not 9: it
+also includes `DGFY-STORE-6`, which was *resolved* at sweep start — so excluded from the 9 — and
+reopened as a correction during this run; see "Two Sentry-status corrections" below.)
 
 Sixth Observer pass. No new issue *types* appeared this run — every bucket below is a continuation
 of a disposition already made on 2026-08-27 or earlier; the "improvement" this run found is in
@@ -85,6 +87,10 @@ GitHub issue or already filed).
 | 3 | #474 reopen only on `timeout of 20000ms` >2×/release | **Not met** — max observed 1/release (11bc5b0e, b5639cd5, cabad60d each 1). #474 stays closed |
 | 4 | No POS fingerprint regression (`DGFY-POS-11` vs `DGFY-POS-Z`) | **PASS** — still one PROD event, still by-design |
 | 5 | DEV frontend release advances | **Not met — explained, not a failure.** DEV hasn't been redeployed since 08-24 (see Release timeline); not evidence of quiet DEV traffic |
+
+**Re-verification for next run:** carry conditions #1, #2, #3, #5 forward unchanged (all still open
+or not-yet-met, per the table above); condition #4 stays a standing check, not a one-time pass. Add
+a new condition once DEV redeploys or #633/#401 lands, whichever comes first.
 
 ## Open, not addressed this run
 
