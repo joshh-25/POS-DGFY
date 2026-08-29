@@ -18,20 +18,24 @@
 # server (see that file's header comment) and, for a fresh server,
 # ./nginx/init-letsencrypt.sh has been run once manually.
 #
-# PLANNED, NOT YET LIVE: ADR 0060 (docs/architecture/adr/
-# 0060-sops-age-encrypted-secrets-at-rest.md) and docs/ops/
-# SOPS_SECRETS_CUTOVER_RUNBOOK.md describe a cutover that will replace the
-# "filled-in .env" assumption above with a smaller non-secret .env plus
-# SOPS-encrypted secrets/*.env, decrypted by a ./deploy-sops.sh wrapper on
-# the server. When that cutover ships, the final two commands of the "Pull
-# and restart platform containers" step below (`docker compose pull &&
-# docker compose up -d --remove-orphans`) become a call to that wrapper,
-# with the staleness guard staying exactly where it is today (it only
-# inspects IMAGE_TAG, which stays in plaintext .env and needs no secret
-# access). No new GitHub secret is required for that change. Do not make
-# this edit until the runbook's Phases 1-4 have actually run on the server
-# -- deploy-sops.sh and secrets/ do not exist there yet, so flipping this
-# workflow ahead of that would break the next deploy.
+# PROD-ONLY SOPS PATH (ADR 0060, docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md):
+# for inputs.environment == 'PROD' only, the final step below calls
+# ./deploy-sops.sh instead of the inline pull+up sequence -- that server no
+# longer keeps a blanket .env; deploy-sops.sh decrypts secrets/*.env,
+# assembles the environment, runs the in-image pre-flight gate, and does
+# `docker compose up -d --remove-orphans` itself. DEV/STAGING are UNCHANGED
+# and keep the inline path below unconditionally -- this workflow is shared
+# by all three environments (deploy.yml -> deployment-orchestrator.yml ->
+# this file), and deploy-sops.sh / secrets/*.env / an age key exist on none of
+# those boxes. The staleness guard stays exactly where it is, before any decrypt
+# step -- it only inspects IMAGE_TAG.
+#
+# DO NOT MERGE THIS CHANGE until docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md's
+# Phases 1-5 have actually run and verified on the PROD server --
+# deploy-sops.sh and secrets/ must already exist there, or the next PROD
+# deploy breaks. No new GitHub secret is required: the age key already
+# lives on the server at /etc/dgfy/age/keys.txt, and the account CI deploys
+# as (gha) is already in the docker group that can read it.
 name: Publish Platform (SSH Deploy)
 
 on:
@@ -140,13 +144,25 @@ jobs:
           # Docker Hub account (new secret, not done here) or mirroring
           # mysql/redis into GHCR -- this retry is the no-new-secrets first
           # move, not the end state.
+          # PROD_SOPS_PATH: only PROD calls deploy-sops.sh, which does its own
+          # `docker compose pull` (image validated by the in-image pre-flight
+          # gate) and `docker compose up -d --remove-orphans` internally --
+          # so on that branch this step does not run those commands itself,
+          # it delegates to the script. DEV/STAGING keep today's inline pull
+          # (with its retry loop) + up unconditionally.
+          PROD_SOPS_PATH=0
+          if [ "${{ inputs.environment }}" = "PROD" ]; then PROD_SOPS_PATH=1; fi
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
             "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
-             ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
-             SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io" \
+             if [ \"$PROD_SOPS_PATH\" = 1 ]; then \
+               SENTRY_RELEASE=\"$SENTRY_RELEASE\" ./deploy-sops.sh && docker logout ghcr.io; \
+             else \
+               ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
+               SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io; \
+             fi" \
             <<< "$GITHUB_TOKEN"
 
       # Hosted runners are ephemeral and threw these away for free. On a

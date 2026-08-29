@@ -9989,7 +9989,424 @@ is not a live reference and is not updated by this note.
 
 ---
 
-## Phase 180 - Standalone Mobile Offline Order Actions
+**Dated note, 2026-08-28 — phase numbers reserved from a `main`-based branch, not `develop`.**
+This initiative's PRs intentionally target `main` directly (Pat's explicit direction, #360 —
+production secrets need to be ready to execute live, not queued behind `develop`'s normal flow;
+see the initiative's own PR/issue trail for the authorization). At the time Phase 180 below was
+reserved, `develop`'s own copy of this ledger was already at Phase 179 (`main`'s was only at 175,
+since `develop` runs 100+ commits ahead) — reserving from 176 would have collided. Checked
+`develop`'s actual highest number directly rather than trusting `main`'s stale view, per this
+file's own established collision-resolution convention (see the 2026-08-16/2026-08-23 notes
+above). This is the same structural gap those notes describe: this reservation is invisible to
+`develop`'s authors until this branch's ledger edit is absorbed there. Reconcile at that point
+using the standard renumber procedure if `develop` has independently claimed 180+ by then.
+
+## Phase 180 - SOPS+age Production Secrets Cutover: Pre-Work
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management, replace dotenv (#360). Fixes the crash-loop defect in
+the originally drafted cutover artifacts (dropping `env_file: .env` from `dgfy-api` without
+replacing the ~69 non-secret vars it supplied) before any of it reaches the production server.
+
+### Objective and scope
+
+- Regenerate the SOPS cutover fragment (`infrastructure/docker/env/prod.sops-cutover-fragment.yml`)
+  and runbook (`docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`) against a fresh 2026-08-28 server
+  capture, replacing the stale 2026-08-13 baseline (retired `frontend`/`frontend-beta`, the #1014
+  `start_period` fix, the corrected A/B/C bucket split).
+- Commit `deploy-sops.sh` (the SOPS decrypt/export loop) and a real pre-flight gate that runs
+  `apps/dgfy-api/src/config/productionEnvValidation.cjs`'s `validateProductionEnv()` **inside the
+  dgfy-api image itself**, not against a host-side copy — `/opt/dgfy-platform` is not a git
+  checkout, so a hand-copied validator would silently drift from the image.
+- Amend ADR 0060 Decision 2: three buckets, not two — non-secret config becomes literal values in
+  `docker-compose.yml` (git-auditable), not a thinner `.env`.
+- Fix a path-resolution bug in `deploy-sops.sh` found by `pr-reviewer` (RF-2 on PR #1135): the
+  script's `cd` logic assumed the repo-checkout math (`dirname/../../..`) was a no-op once deployed
+  to `/opt/dgfy-platform/deploy-sops.sh` — it isn't; that resolves to `/`, not the project root.
+  Now detects the deployed-vs-checkout layout instead of assuming one.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-28. PR #1135 merged to `main` (merge commit `2b5b7158`).
+
+### Dependencies
+
+- ADR 0060 (`docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`), `status: amended`.
+- Runbook Phase 1 (sops/age install, server age keypair) — already done 2026-08-13, unaffected by
+  this phase.
+- None on a prior repository phase — this is this initiative's first ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] `node --check`/`bash -n` on all new/changed scripts; `npm run lint:docs` (29 governed docs,
+  81 ADRs) clean on every doc/ADR commit.
+- [x] `actionlint` clean on the (held) CI change, PR #1136.
+- [x] In-image pre-flight gate verified functionally against a real built `dgfy-api` image
+  (`dgfy-secrets-poc` Lima VM): fails on an empty env with the correct missing-key list, fails on
+  short/placeholder `JWT_SECRET`/`REFRESH_TOKEN_SECRET` values, passes on a complete valid set.
+- [x] `pr-reviewer` review on PR #1135: RF-2 (the `cd` path bug) fixed and independently re-verified
+  (both the deployed-layout and repo-checkout-layout resolution branches tested directly). RF-1
+  (base-branch choice) addressed via PR comment — Pat's explicit authorization for a `main`-based
+  branch on this initiative, not a code change.
+- [x] Names-only extraction from the live production `.env` (100 unique variable names, zero values
+  read — ADR 0060 Decision 7 governs values, not names) reconciled against the code-derived
+  classification; all 14 `BASE_REQUIRED_KEYS` traced to bucket A or B.
+
+### Implementation links
+
+- PR #1135 (merged), PR #1132 (closed, superseded by #1135)
+- `infrastructure/docker/env/prod.sops-cutover-fragment.yml`
+- `infrastructure/docker/env/prod.env-var-classification.md`
+- `infrastructure/docker/scripts/deploy-sops.sh`
+- `infrastructure/docker/scripts/check-assembled-env.cjs`
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md` (2026-08-28 amendment)
+
+### Next eligible phase
+
+Phase 181 (local rehearsal) — already completed alongside this phase; see below.
+
+---
+
+## Phase 181 - SOPS+age Cutover: Local Rehearsal (Mechanism and Migration Proof)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Simulates the full production cutover — including
+rollback — against a disposable local stack before Phase 182/183 touch the real server, per Pat's
+explicit direction that this be rehearsed first.
+
+### Objective and scope
+
+- Rehearse the actual migration of a *running* `env_file:`-based stack to the SOPS+age split — not
+  a greenfield build, which is what the original 2026-08-13 POC did and is why it likely never
+  exercised the crash-loop defect Phase 180 fixed.
+- Prove the in-image pre-flight gate catches a bad assembled environment before any container is
+  touched, and that `TENANT_SCHEMA_MUTATION_APPROVED` survives the bucket split (its absence in
+  `entrypoint.sh` is silent, not a crash — the exact regression class this cutover risks).
+- Rehearse the rollback leg, not just the forward cutover.
+
+### Status
+
+- `completed`
+- Started and completed: 2026-08-28. `dgfy-secrets-poc` Lima VM (bumped 4GiB -> 8GiB RAM),
+  driving `do-not-commit/local-test`'s existing 7-service `env_file:`-based replica.
+
+### Dependencies
+
+- Phase 180 completed (the artifacts under rehearsal).
+- `do-not-commit/local-test` stack and the `dgfy-secrets-poc` Lima VM (pre-existing from the
+  2026-08-13 POC, repurposed here).
+
+### Acceptance and validation evidence
+
+- [x] All 5 service images built successfully inside the poc VM against the real Dockerfiles.
+- [x] Fixture secrets only (rehearsal-only age keypair, generated and used solely inside the VM;
+  never a real production value, per ADR 0060 Decision 7) encrypted correctly with SOPS — ciphertext
+  at rest, keys cleartext, ADR 0060 Decision 6's literal-`$`-in-bcrypt-hash corruption class
+  deliberately included in the fixture and confirmed not to reproduce.
+- [x] Dry-run config render: zero empty interpolations on the touched services (`dgfy-api`,
+  `dgfy-migration-runner`); pre-existing unrelated Sentry/PostHog frontend build-arg defaults
+  correctly excluded from that check.
+- [x] Pre-flight gate caught a real defect in the rehearsal's own fixture (`ADMIN_ACCOUNTS_JSON`
+  wrong shape, undersized bcrypt hash) *before* any container was touched — exactly the failure
+  class this gate exists to convert from a crash loop into a pre-flight check. Passed after the
+  fixture was corrected.
+- [x] Targeted `up -d` (never `down`) recreated only `dgfy-migration-runner`/`dgfy-api`; `dgfy-api`
+  reached `healthy`, `/api/v1/health` reported all subsystems healthy.
+- [x] `[TenantSchemaSync] completed total=45 ok=45 failed=0` in the container log — confirms
+  `TENANT_SCHEMA_MUTATION_APPROVED` (bucket B) survived the `env_file` removal.
+- [x] Rollback rehearsed: restored the pre-sops `docker-compose.yml`, Compose correctly recreated
+  both containers, `dgfy-api` returned to `healthy` with the original `env_file`-sourced config.
+- [x] Two real mistakes surfaced and corrected during the rehearsal, not silently reproduced going
+  forward: reading a dev-only `.env.compose` file for structure and finding it held real
+  credential-shaped values (corrected to names-only extraction for the remainder of this and any
+  future session); two `dgfy-api` container-creation attempts that silently failed network
+  attachment (a stale port conflict from the superseded 2026-08-13 POC container, and running a
+  `docker compose up` invocation outside the decrypt-loop wrapper) — both caught via direct
+  network/health inspection rather than assumed success.
+- [x] All rehearsal scratch state (fixture secrets, scratch scripts, `.pre-sops-rehearsal` backups)
+  removed afterward; `do-not-commit/local-test/docker-compose.yml` confirmed byte-identical to its
+  pre-rehearsal state; the `ch` docker context's working stack restored to healthy.
+
+### Implementation links
+
+- `do-not-commit/local-test/` (not committed to the repo — a local working stack)
+- `dgfy-secrets-poc` Lima VM (`~/.lima/dgfy-secrets-poc`)
+- Phase 180's artifacts (the object of this rehearsal)
+
+### Next eligible phase
+
+Phase 182, after Pat completes the age-key escrow verification (issue #1137) — the one step whose
+failure mode is permanent, per ADR 0060 Decision 3 (`binding`), and so gates everything after it.
+
+---
+
+## Phase 182 - SOPS+age Cutover: Backup and Rollback Prerequisites (Production Server)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Scoped to epic #492's #493/#494/#495 plus the
+age-key/ciphertext-repo backup gap (#1137) — only what this specific cutover needs before it
+executes against production, not the full epic.
+
+### Objective and scope
+
+- Verify the production age key's Bitwarden escrow copy actually decrypts (ADR 0060 Decision 3,
+  `binding` — a missing escrow copy is unrecoverable secret loss with no exceptions). Pat-only.
+- Config backup on the real server (`.env`, `docker-compose.yml`, `nginx/` -> `.pre-sops` copies)
+  and image-digest pinning (PROD runs `:latest`; if the tag moves before a rollback is needed, a
+  file-only restore recovers the file, not the behavior that was running).
+- A fresh production DB dump before cutover — closes the #494 gap (no pre-deploy backup on the live
+  container deploy path) this cutover would otherwise walk past.
+
+### Status
+
+- `completed` (2026-08-29)
+- All four items done. Runbook Phase 2 (`.env` split/encrypt, `Sieitzz/dgfy-secrets` populate) and
+  the server-side backup/digest-pin/DB-dump were run by Pat personally, per ADR 0060 Decision 7,
+  via `phase182.sh` -- a script the AI session wrote and iterated on (three real bugs found and
+  fixed live: `sops --encrypt` needs an explicit `--age` key or a discoverable `.sops.yaml`, a
+  `local`-scoped variable referenced from an `EXIT` trap is unreliable across a `set -e` auto-exit
+  in bash, and `docker inspect` needs the image ID not the container ID to read `RepoDigests`) but
+  never executed by the AI session itself against the real server or real values.
+
+### Dependencies
+
+- Phase 181 completed (rehearsal must pass before this touches the real server).
+- Issue #1137 (age key escrow + ciphertext repo backup/recovery story), filed under epic #492.
+
+### Acceptance and validation evidence
+
+- [x] Bitwarden escrow copy round-trip confirmed to actually decrypt. Verified 2026-08-29 via a
+  4-step local script (file sanity, public-key match against
+  `age1vn735dtf8lupv3djtur3le5mgqlql5x08hekq09r9u9p5g5zrs4s7sjsa4`, a real encrypt/decrypt round
+  trip with a throwaway canary string, and a SHA-256 checksum comparison) — all four passed,
+  including a byte-identical checksum match (`9fb2074570f2d63d5c5a8e34aa48be0280d1d92f94c306fbd00a8ce7b91d826b`)
+  against the server's real `/etc/dgfy/age/keys.txt`. No private key material was ever displayed,
+  transcribed, or handled by the AI session at any point in this verification, per ADR 0060
+  Decision 7.
+- [x] `secrets/{mysql,shared,dgfy-api}.env` created on the server and encrypted (19 + 3 + 1 = 23
+  bucket-A names, matching the plan's classification) and pushed to `Sieitzz/dgfy-secrets`
+  (`prod/dgfy/*.env`, commit `051e0f8` + a follow-up fix `91055bc` restoring `.sops.yaml`/
+  `README.md` content the automation script had incorrectly overwritten on that first run).
+- [x] Config backup and image digests captured and reviewed on the real server: `.env`,
+  `docker-compose.yml` -> `.pre-sops` copies; `nginx/` -> a timestamped tarball; all 5 image
+  digests resolved to real `sha256:...` values (`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`,
+  `dgfy-pos`, `dgfy-storefront`) in `backups/image-digests.pre-sops.20260828-170005.txt`.
+- [x] A fresh production DB dump taken — `backups/db-dump.pre-sops.20260828-170005.sql.gz`
+  (11.7MB compressed).
+
+### Implementation links
+
+- Issue #1137
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` ("Backup and rollback, before this cutover runs")
+- ADR 0060 Decisions 3 and 7
+
+### Next eligible phase
+
+Phase 183, after this phase's acceptance evidence is checked.
+
+---
+
+## Phase 183 - SOPS+age Cutover: Production Execution
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). The actual server-side cutover — Runbook Phases
+2-5, and the low-disruption targeted `up -d` sequence (`dgfy-api`/`dgfy-migration-runner` only;
+`mysql`/`redis`/`nginx`/the three frontends/`certbot` untouched).
+
+### Objective and scope
+
+- Reconcile the live `docker-compose.yml` against the fragment (Runbook Phase 3).
+- Dry-run gate (Runbook Phase 4) then the actual cutover (Runbook Phase 5) in its own deploy window.
+
+### Status
+
+- `completed` (2026-08-29)
+- Executed by Pat personally over SSH per ADR 0060 Decision 7 (real secret values, `sudo`, and
+  physical server access are all AI-excluded); the AI session wrote/tested the reconciliation and
+  gate-check tooling and ran every non-secret-touching step directly (an explicit go given each
+  time it touched the live server), per this repo's Worker checkpoint policy.
+- **Real incident found and fixed live**, not merely a clean run: the compose-reconciliation
+  tooling wrongly hardcoded 3 bucket-B values (`CORS_ORIGIN`, `TEMP_FILE_STORAGE`,
+  `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`) as assumed "policy literals" instead of reading them
+  from the live `.env`. `CORS_ORIGIN` broke production CORS for every non-bare-domain origin
+  (`pos.dgfy.ph` returned `CORS_NOT_ALLOWED`) until caught by Pat's own manual smoke test; the
+  other two were silently wrong (no validator error, just incorrect runtime behavior). Fixed live
+  on the server (confirmed via the same failing request returning `200`), and fixed at the source
+  in `infrastructure/docker/env/prod.sops-cutover-fragment.yml` + ADR 0060's Amendments (PR #1148,
+  merged `52d5624`) so the tooling can't repeat the mistake on a future run. Full incident writeup:
+  ADR 0060, "2026-08-29 — Real cutover incident."
+- **A separate, self-flagged process violation occurred during debugging**: a broad `grep`
+  (run by the AI session) against the live `.env` returned the full `ADMIN_ACCOUNTS_JSON` line,
+  including both admin accounts' complete bcrypt `password_hash` values — a real ADR 0060
+  Decision 7 violation, self-caught and disclosed immediately. Pat's call: defer rotation to a
+  later full-SOPS rotation pass rather than doing it ad hoc (see local memory note
+  `admin-hash-exposure-rotation-deferred.md` for tracking).
+- A separate, genuine data-quality bug was also found and fixed during this phase (not a #360
+  tooling bug): both admin accounts' `ADMIN_ACCOUNTS_JSON` `password_hash` values had every
+  literal `$` doubled to `$$` (a defensive-escaping artifact that was never actually needed for
+  `.env`), failing the boot-time bcrypt-pattern validator. Fixed by undoubling (lossless,
+  no new password needed) after a shape-only diagnostic (never displaying the hash itself)
+  confirmed it was a pure formatting corruption, not truncation.
+- **2026-08-29 amendment (pre-execution sequencing decision, recorded for history):** the original
+  sequencing blocked this phase on PR #1130 (a separate,
+  unrelated `staging`->`main` application-code promotion) merging and being verified healthy first,
+  so a post-cutover problem would be diagnosable against a known-good baseline rather than
+  conflated with a 100-file release. Pat's call: decoupled instead — #1130 (or whatever promotion
+  supersedes it) is not itself the known-good baseline; current `main` already is, post
+  #1135/#1138/#1139. The cutover now runs against current `main` first; the next
+  `develop`->`main` promotion (#1130 or its replacement — promotion branches are throwaway per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`) is verified against the *post-cutover* state afterward
+  instead of the other way around. This also avoids two separate `dgfy-api` recreations
+  close together (one for the cutover, one for the promotion's image bump).
+
+### Dependencies
+
+- Phase 180, 181, 182 completed.
+- (No longer depends on PR #1130 — see the 2026-08-29 sequencing amendment above.)
+
+### Acceptance and validation evidence
+
+- [x] Dry-run gate (Runbook Phase 4): in-image pre-flight gate initially correctly FAILED (caught
+  the pre-existing malformed `ADMIN_ACCOUNTS_JSON` bcrypt hashes before any container was
+  touched), then passed clean after the fix.
+- [x] `docker compose ps` all healthy post-cutover — only `dgfy-api` recreated (twice: once for
+  the cutover, once for the CORS/config fix), everything else (`mysql`, `redis`, `nginx`, three
+  frontends, `certbot`) untouched throughout.
+- [x] `curl -fsS https://dgfy.ph/api/v1/health` — `success: true`, database/redis connected,
+  `tenantSchema.status: "healthy"`, `failed_tenant_count: 0`.
+- [x] `[entrypoint] Tenant schema sync: all active tenants OK.` — present in the production logs.
+- [x] Manual smoke test on the live domain — caught the CORS incident above; re-verified passing
+  (`200`) after the fix.
+- [x] `verify-deployment.yml` dispatched for PROD (read-only) — passed clean, run `33195669066`,
+  "Poll deployed containers for health / crash-loop signature" step green.
+
+### Implementation links
+
+- `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` (Phases 2-5, "Rollback")
+- Phase 180's artifacts
+- PR #1148 (the CORS/TEMP_FILE_STORAGE/rate-limit hardcode fix)
+- ADR 0060, "2026-08-29 — Real cutover incident" amendment
+
+### Next eligible phase
+
+Phase 184, after this phase's acceptance evidence is checked.
+
+---
+
+## Phase 184 - SOPS+age Cutover: CI Cutover (`publish-platform.yml`)
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Flips the PROD deploy path in CI to the SOPS-aware
+script, closing out the initiative.
+
+### Objective and scope
+
+- Merge PR #1136 (`publish-platform.yml`'s PROD-only `deploy-sops.sh` branch) — held, not merged,
+  until Phase 183 has passed. DEV/STAGING are unaffected by this change.
+- Confirm a real `deploy-main.yml` run through the edited workflow succeeds.
+
+### Status
+
+- `completed` (2026-08-29)
+- PR #1136 merged (`61e8614f8`). `deploy-main.yml` dispatched against `main` (run `33202986806`,
+  default full-rebuild inputs) — all 5 image builds succeeded, but `publish / deploy` failed on its
+  first attempt.
+- **Real incident found and fixed live, not a clean first run**: the `publish / deploy` job failed
+  the in-image pre-flight gate with the same symptom text as Phase 183's bcrypt-doubling bug
+  (`ADMIN_ACCOUNTS_JSON account 0 requires a username and valid bcrypt password hash`), but the root
+  cause this time was different — a **file-permissions gap**, not a data-corruption bug. All three
+  `secrets/*.env` files were `pat:pat 640` (owner+group `pat` only); the CI deploy account `gha` is
+  in `gha`/`users`/`docker` but not `pat`, so `sops decrypt` failed permission-denied for `gha`,
+  `deploy-sops.sh`'s export loop silently got zero output, and the assembled environment came up
+  empty — surfacing as the same-shaped "missing bcrypt hash" validator error. Confirmed via
+  `ls -la`/`id`/`groups` (no secret values needed) and independently re-verified the file's actual
+  content was fine via the same shape-only diagnostic used in Phase 183. Fixed by `chgrp docker` +
+  `chmod 640` on all three files (no `sudo` needed — `pat`, as file owner, can `chgrp` to any group
+  it belongs to) — same scoping model already used for `/etc/dgfy/age/keys.txt` (`root:docker
+  0640`), since `docker` already contains both `pat` and `gha`. This gap existed since Phase 182
+  first created these files (as `pat`, manually) and was never hit until this phase's CI-driven,
+  `gha`-executed deploy — Phase 183's manual cutover always ran as `pat`, the files' own owner.
+- Re-ran via `gh run rerun 33202986806 --failed` (reuses the same run's already-succeeded image
+  builds rather than rebuilding) — `publish / deploy` passed clean this time:
+  `[check-assembled-env] OK`, all containers recreated, `dgfy-api` reached `Healthy`.
+- `curl -fsS https://dgfy.ph/api/v1/health` post-deploy: `success: true`, database/redis connected,
+  `tenantSchema.status: "healthy"`, `failed_tenant_count: 0`.
+- `verify-deployment.yml` dispatched for PROD (read-only) — passed clean, run `33204461803`.
+
+### Dependencies
+
+- Phase 183 completed and verified.
+
+### Acceptance and validation evidence
+
+This phase's own objective and scope (above) is exactly two items, and both passed:
+
+- [x] PR #1136 merged.
+- [x] A real `deploy-main.yml` PROD run through the edited workflow succeeds (after the
+  file-permissions fix above; the retry via `--failed` counts as the same dispatch's successful
+  completion, not a separate independent deploy).
+
+Cleanup (stale plaintext shredding) and the `develop` back-port are real remaining work for
+initiative #360, but they are not part of *this* phase's own acceptance gates — they were
+initially listed here unchecked, which is why this phase could not correctly be marked
+`completed` while they stood. Per RF-1 (PR #1152 review), they are moved out to their own
+phase, tracked below, rather than left as permanently-open checkboxes on an otherwise-passed
+phase:
+
+- `.env.pre-sops` and the stale plaintext `.env*` dumps (Runbook Phase 7) shredded — see
+  Phase 188.
+- This initiative's changes back-ported to `develop` — see Phase 188.
+
+### Implementation links
+
+- PR #1136
+- `.github/workflows/publish-platform.yml`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`
+
+### Next eligible phase
+
+Phase 188 (cleanup shred + `develop` back-port for this initiative). #360 is not done until
+Phase 188 also completes.
+---
+
+**Dated note, 2026-08-29 — Phase-number collision between the `main`-based #360 hotfix track and
+the `develop`/`staging` promotion batch, resolved per the same "prior reservation wins, the
+unmerged side renumbers" convention this file has applied every prior time this has happened (see
+the 2026-08-16/2026-08-22/2026-08-23 notes above).**
+
+The #360 SOPS+age cutover initiative reserved and completed Phases 180-184 directly against `main`
+(Pat's explicit direction — production secrets needed to be ready to execute live, not queued
+behind `develop`'s normal flow). Concurrently, and independently, `develop`/`staging` reserved its
+own Phases 180-182 for unrelated POS work (Standalone Mobile Offline Order Actions, POS
+Master-Admin Operator Scope Parity, Unified Wide Checkout and Discount Workspace) as part of the
+batch promoted in PR #1151. Neither side had the other's reservation as an ancestor when it
+claimed the numbers — `main`'s Phase 180 was reserved and completed on 2026-08-28/29, before this
+promotion (`staging` tip `20d43329d`) had a chance to observe it. `main`'s Phase 180-184 entries
+are already `completed` and merged; per the standing convention, the still-unmerged, in-flight side
+renumbers:
+
+| Phase | Owner | Disposition |
+|---:|---|---|
+| 180-184 | `main`'s #360 SOPS+age cutover (this initiative) | unchanged — prior reservation, already `completed` and merged to `main` |
+| 185 | This promotion's Standalone Mobile Offline Order Actions | **moved from 180** |
+| 186 | This promotion's POS Master-Admin Operator Scope Parity | **moved from 181** |
+| 187 | This promotion's Unified Wide Checkout and Discount Workspace | **moved from 182** |
+
+No implementation or evidence content changes — only the ledger heading, each entry's own internal
+"Next eligible phase"/"Dependencies" cross-references, and this note are new. Confirmed via
+`git grep` that no other doc or code comment references "Phase 180", "Phase 181", or "Phase 182" by
+number for this POS work, so no further cross-reference updates are needed outside this file.
+
+---
+
+## Phase 185 - Standalone Mobile Offline Order Actions
 
 ### Initiative and release
 
@@ -10037,12 +10454,12 @@ is not a live reference and is not updated by this note.
 
 ### Next eligible phase
 
-Phase 181 after Phase 180 completes; planned Phases 172-175 retain their own
+Phase 186 after Phase 185 completes; planned Phases 172-175 retain their own
 dependencies and approval requirements.
 
 ---
 
-## Phase 181 - POS Master-Admin Operator Scope Parity
+## Phase 186 - POS Master-Admin Operator Scope Parity
 
 ### Initiative and release
 
@@ -10094,12 +10511,12 @@ dependencies and approval requirements.
 
 ### Next eligible phase
 
-Phase 182 after Phase 181 completes; planned Phases 172-175 retain their own
+Phase 187 after Phase 186 completes; planned Phases 172-175 retain their own
 dependencies and approval requirements.
 
 ---
 
-## Phase 182 - Unified Wide Checkout and Discount Workspace
+## Phase 187 - Unified Wide Checkout and Discount Workspace
 
 ### Initiative and release
 
@@ -10166,7 +10583,7 @@ dependencies and approval requirements.
 - ADR 0063 POS split-tender and manual walk-in payment recording.
 - ADR 0066 voucher sale-time price resolution.
 - `docs/features/POS_MODE_PRESENTATION_OWNERSHIP_CONTRACT.md`.
-- Phase 181 completed; this phase does not alter planned Phases 172-175.
+- Phase 186 completed; this phase does not alter planned Phases 172-175.
 
 ### Acceptance and validation evidence
 
@@ -10235,5 +10652,62 @@ dependencies and approval requirements.
 
 ### Next eligible phase
 
-Phase 183 after Phase 182 completes; planned Phases 172-175 retain their own dependencies and
+Phase 188 after Phase 187 completes; planned Phases 172-175 retain their own dependencies and
 approval requirements.
+
+## Phase 188 - SOPS+age Cutover: Cleanup Shred and `develop` Back-port
+
+### Initiative and release
+
+DevOps Initiative 1 — secrets management (#360). Closing work split out of Phase 184 per RF-1
+(PR #1152 review, 2026-08-29): Phase 184's own objective (CI cutover through
+`publish-platform.yml`) fully passed and is `completed`; these two remaining items are real but
+were incorrectly listed as that phase's own unchecked acceptance gates. #360 as a whole is not
+done until this phase also completes.
+
+### Objective and scope
+
+- Shred `.env.pre-sops` and the stale plaintext `.env*` dumps on the production server (Runbook
+  Phase 7 / #403), gated on one further **independent** successful `deploy-main.yml` /
+  `publish-platform.yml` PROD dispatch beyond Phase 184's own (i.e. not the same run/rerun already
+  counted there).
+- Back-port this initiative's `main`-only changes to `develop`: a fresh GitHub issue (via `pm` —
+  a closed/merged `main` PR cannot itself `Refs` into a `For QA` transition), a branch off fresh
+  `origin/develop`, `git merge origin/main`, and an ordinary PR into `develop`, per
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port procedure.
+
+### Status
+
+- `in_progress` (2026-08-29)
+- The back-port half is underway: issue #1153 filed and parented under #360, and the back-port PR
+  is open against `develop` from `chore/360-backport-main-to-develop`. `develop` was a strict
+  ancestor of `main` at cut time (`git rev-list --count origin/main..origin/develop` → 0), so
+  `git merge origin/main` was a fast-forward with no conflicts — the eight `main`-only files
+  arrive byte-identical, and this entry is the branch's only edit of its own.
+- The shred half has **not** started and cannot until the independent CI deploy it is gated on
+  happens. Deliberately left open rather than pre-checked.
+
+### Dependencies
+
+- Phase 184 completed (it is).
+- The independent CI deploy the shred step is gated on has not yet occurred.
+
+### Acceptance and validation evidence
+
+- [ ] A second, independent `deploy-main.yml`/`publish-platform.yml` PROD dispatch (beyond
+  Phase 184's own) succeeds.
+- [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps shredded on the server, confirmed via a
+  names-only listing (no file content/value ever read or displayed).
+- [x] Fresh back-port issue filed via `pm` — #1153, parented under #360.
+- [x] Back-port PR opened against `develop`, `Refs`ing that issue.
+
+### Implementation links
+
+- Issue #1153
+- `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+- `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 188 completes.
+This initiative (#360) is done at that point.

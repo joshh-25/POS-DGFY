@@ -60,6 +60,7 @@ describe('usePosHardware authentication boundary', () => {
             id: 'future_vendor_driver',
             capabilities: [
                 POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+                POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET,
                 POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT
             ]
         });
@@ -68,8 +69,23 @@ describe('usePosHardware authentication boundary', () => {
         await waitFor(() => expect(result.current.driver?.id).toBe('future_vendor_driver'));
 
         expect(result.current.isPrinterAvailable).toBe(true);
+        expect(result.current.isOrderPrinterAvailable).toBe(true);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT)).toBe(true);
+        expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET)).toBe(true);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)).toBe(true);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER)).toBe(false);
+    });
+
+    it('keeps receipt and order-ticket availability independent', async () => {
+        resolvePosHardwareDriver.mockResolvedValue({
+            id: 'receipt_only_driver',
+            capabilities: [POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT]
+        });
+        const { result } = renderHook(() => usePosHardware({ enabled: true }));
+
+        await waitFor(() => expect(result.current.driver?.id).toBe('receipt_only_driver'));
+
+        expect(result.current.isPrinterAvailable).toBe(true);
+        expect(result.current.isOrderPrinterAvailable).toBe(false);
     });
 });

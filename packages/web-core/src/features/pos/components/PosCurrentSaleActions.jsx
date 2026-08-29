@@ -70,9 +70,9 @@ export function PosCurrentSaleActions({
       <Button
         type="button"
         variant="outline"
-        onClick={onPrintOrder}
+        onClick={() => onPrintOrder?.()}
         disabled={printOrderDisabled}
-        title={printerAvailable ? undefined : 'No printer detected on this device.'}
+        title={printerAvailable ? undefined : 'No order-ticket printer detected on this device.'}
         className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <Printer size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
