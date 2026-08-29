@@ -510,20 +510,11 @@ export const provisionTenant = async (options) => {
             // This database was just created. Create the declared model graph
             // without running Sequelize's destructive schema-diff algorithm.
             await tenantSequelize.sync();
-            const { repairItemFolderCategoryLifecycleSchema } = await import('../../scripts/sync-tenant-schemas.js');
-            await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
-            // Sequelize sync cannot express the generated active-state columns used by the
-            // cashier attendance/operator-session uniqueness contract. Apply the idempotent
-            // Phase 157 migration immediately after the model graph is created so a brand-new
-            // tenant has the same constraints as an existing tenant repaired by migrations.
-            const { default: cashierAttendanceMigration } = await import(
-                '../../../dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'
-            );
-            await cashierAttendanceMigration.up(tenantSequelize.getQueryInterface(), Sequelize);
-            const { default: attendanceIdempotencyMigration } = await import(
-                '../../../dgfy-migration-runner/migrations/20260824000002-add-pos-attendance-idempotency.cjs'
-            );
-            await attendanceIdempotencyMigration.up(tenantSequelize.getQueryInterface(), Sequelize);
+            // #1071/#1124: routed through one seam (schema repairs + the Phase 157 tenant-bootstrap
+            // migrations) instead of importing the repair function and two migration files
+            // separately by literal path here -- see tenantSchemaBootstrap.js's own comment for why.
+            const { applyPostSyncTenantSchema } = await import('./tenantSchemaBootstrap.js');
+            await applyPostSyncTenantSchema(tenantSequelize, Sequelize, { dbName });
             logger.info(`[Provisioning] Schema synced successfully`);
 
             // 4. Seed Admin User
