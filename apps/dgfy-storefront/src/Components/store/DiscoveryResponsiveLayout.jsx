@@ -290,7 +290,7 @@ export function DiscoveryHeader({
                   <button
                     type="button"
                     onClick={onAuthClick}
-                    className="discovery-header__menuSecondaryAction"
+                    className="discovery-header__menuSecondaryAction discovery-header__menuCta"
                   >
                     <UserCircle2 size={16} />
                     {authLabel}
