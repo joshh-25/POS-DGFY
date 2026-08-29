@@ -735,6 +735,17 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # packages/web-core has no lint script/devDependencies of its own (ADR 0071 Decision 4
+      # [binding] -- it must never get its own node_modules or test runner), so coverage runs from
+      # dgfy-ims's already-installed ESLint via --resolve-plugins-relative-to, the same pattern the
+      # "Run shared F&B contract tests" step below already uses for web-core's test suite. #918.
+      - name: Run web-core lint
+        id: run_web_core_lint
+        working-directory: apps/dgfy-ims
+        run: npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .
+        continue-on-error: true
+        timeout-minutes: 5
+
       - name: Run shared F&B contract tests
         id: run_shared_fnb_contract_tests
         working-directory: apps/dgfy-ims
@@ -760,6 +771,7 @@ jobs:
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
+            Run web-core lint|${{ steps.run_web_core_lint.outcome }}
             Run shared F&B contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)

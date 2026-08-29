@@ -70,6 +70,11 @@ const ENTITY_PATHS = {
 };
 
 export default function ActionResultCard({ result, onViewDetails }) {
+  // State for pagination/truncation -- must run before any early return so hooks stay in the
+  // same order on every render (react-hooks/rules-of-hooks, #918).
+  const [showAllImpact, setShowAllImpact] = React.useState(false);
+  const [showAllDetails, setShowAllDetails] = React.useState(false);
+
   if (!result) return null;
 
   const resultType = result.success ? 'success' : (result.error ? 'error' : 'info');
@@ -103,9 +108,6 @@ export default function ActionResultCard({ result, onViewDetails }) {
     }
   }
 
-  // State for pagination/truncation
-  const [showAllImpact, setShowAllImpact] = React.useState(false);
-  const [showAllDetails, setShowAllDetails] = React.useState(false);
   const ITEMS_TO_SHOW = 8; // Number of items to show initially
 
   // 2. Resolve Key Details (Chips)
