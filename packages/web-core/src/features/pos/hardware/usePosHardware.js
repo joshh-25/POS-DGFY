@@ -83,6 +83,7 @@ export const usePosHardware = ({ enabled = true } = {}) => {
         // has been resolved. Print/drawer controls should read this instead of
         // failing silently on click.
         isPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT),
+        isOrderPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET),
         capabilities,
         supportsCapability,
         loading,

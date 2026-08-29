@@ -10678,7 +10678,14 @@ done until this phase also completes.
 
 ### Status
 
-- `planned`
+- `in_progress` (2026-08-29)
+- The back-port half is underway: issue #1153 filed and parented under #360, and the back-port PR
+  is open against `develop` from `chore/360-backport-main-to-develop`. `develop` was a strict
+  ancestor of `main` at cut time (`git rev-list --count origin/main..origin/develop` → 0), so
+  `git merge origin/main` was a fast-forward with no conflicts — the eight `main`-only files
+  arrive byte-identical, and this entry is the branch's only edit of its own.
+- The shred half has **not** started and cannot until the independent CI deploy it is gated on
+  happens. Deliberately left open rather than pre-checked.
 
 ### Dependencies
 
@@ -10691,11 +10698,12 @@ done until this phase also completes.
   Phase 184's own) succeeds.
 - [ ] `.env.pre-sops` and the stale plaintext `.env*` dumps shredded on the server, confirmed via a
   names-only listing (no file content/value ever read or displayed).
-- [ ] Fresh back-port issue filed via `pm`.
-- [ ] Back-port PR opened against `develop`, `Refs`ing that issue.
+- [x] Fresh back-port issue filed via `pm` — #1153, parented under #360.
+- [x] Back-port PR opened against `develop`, `Refs`ing that issue.
 
 ### Implementation links
 
+- Issue #1153
 - `docs/ops/RELEASE_CANDIDATE_POLICY.md`
 - `docs/architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md`
 

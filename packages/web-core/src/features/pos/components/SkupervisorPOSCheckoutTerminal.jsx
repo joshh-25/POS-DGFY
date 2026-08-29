@@ -526,6 +526,7 @@ export default function POSCheckoutTerminal({
         )).length
     ), [queuedCheckouts]);
     const isPrinterAvailable = posHardware.isPrinterAvailable;
+    const isOrderPrinterAvailable = posHardware.isOrderPrinterAvailable;
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -2501,7 +2502,8 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || cart.length === 0}
+                        disabled={posActionsBlocked || cart.length === 0 || !isOrderPrinterAvailable}
+                        title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                     >
                         Print Order
                     </Button>

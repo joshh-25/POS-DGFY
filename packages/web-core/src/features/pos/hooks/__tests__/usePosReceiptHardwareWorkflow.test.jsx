@@ -145,6 +145,22 @@ describe('usePosReceiptHardwareWorkflow', () => {
         }));
     });
 
+    it('uses the active cart when a click event is passed to the print handler', async () => {
+        const { result, props } = renderWorkflow();
+
+        await act(async () => {
+            await result.current.handlePrintOrder({
+                preventDefault: vi.fn(),
+                nativeEvent: {}
+            });
+        });
+
+        expect(props.posHardware.printOrderTicket).toHaveBeenCalledWith(expect.objectContaining({
+            cart: props.safeCart,
+            orderMethod: 'dine_in'
+        }));
+    });
+
     it('authorizes a cashier drawer opening with the same idempotency key as the hardware command', async () => {
         const { result, props } = renderWorkflow();
 
