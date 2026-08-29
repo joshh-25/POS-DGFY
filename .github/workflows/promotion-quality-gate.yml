@@ -1096,7 +1096,21 @@ jobs:
     permissions:
       contents: read
       issues: write
+      # #1124: listJobsForWorkflowRun (the real, non-overridden job conclusion lookup this job's
+      # own step now makes, see its comment) needs read access to this run's own Actions data.
+      actions: read
     steps:
+      # 2026-08-29 (#1124/#1165), live `workflow_dispatch` verification on PR #1167 caught a real
+      # design bug in this step's first version: `needs.<job>.result` is NOT the job's true
+      # conclusion when that job carries job-level `continue-on-error: true` (every quality job
+      # does, per the sanctioned #1063 shape) -- GitHub Actions overrides `result` to `success` for
+      # a downstream job's `needs` context regardless of what actually happened inside, confirmed
+      # live: `dgfy-api-quality`'s job envelope died mid-run on that dispatch (matrix step
+      # succeeded, job died 3s into the next step, real conclusion `failure`, steps after the
+      # matrix never ran) and this job still saw `needs.dgfy-api-quality.result == 'success'`. The
+      # REST Jobs API's own `.conclusion` field is NOT overridden the same way -- it matches the
+      # check-run shown in the UI -- so that's what this queries instead, replacing the `*_RESULT`
+      # env vars the first version relied on.
       - name: Report real quality-job failures
         id: report_failures
         continue-on-error: true
@@ -1107,44 +1121,47 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PR_URL: ${{ github.event.pull_request.html_url || '' }}
           DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}
-          DGFY_API_RESULT: ${{ needs.dgfy-api-quality.result }}
           MIGRATION_RUNNER_FAILURES: ${{ needs.migration-runner-quality.outputs.real_failures }}
-          MIGRATION_RUNNER_RESULT: ${{ needs.migration-runner-quality.result }}
           IMS_FAILURES: ${{ needs.frontend-ims-quality.outputs.real_failures }}
-          IMS_RESULT: ${{ needs.frontend-ims-quality.result }}
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
-          POS_RESULT: ${{ needs.frontend-pos-quality.result }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
-          STOREFRONT_RESULT: ${{ needs.frontend-storefront-quality.result }}
           REPOSITORY_FAILURES: ${{ needs.repository-quality.outputs.real_failures }}
-          REPOSITORY_RESULT: ${{ needs.repository-quality.result }}
         with:
           github-token: ${{ github.token }}
           script: |
             const trackingIssue = Number(process.env.ADVISORY_TRACKING_ISSUE);
             const headSha = process.env.HEAD_SHA;
-            const runId = process.env.RUN_ID;
+            const runId = Number(process.env.RUN_ID);
             const prUrl = process.env.PR_URL;
+
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo,
+              run_id: runId,
+            });
+            const realConclusionOf = (jobName) => jobs.find((j) => j.name === jobName)?.conclusion;
 
             const lines = [];
             // #1124 RF (forbidden-token check, scripts/check-pr-quality-workflow.js): each call's
-            // second/third args must be the SAME env vars this job's real_failures/result outputs
-            // were assigned to above -- a swapped or misspelled reference here silently drops (or
-            // misreports) that job's findings instead of surfacing them, same class of bug #1066
-            // RF-5 guarded against for the old shell form.
-            const addIfPresent = (jobName, failures, result) => {
+            // second arg must be the SAME env var this job's real_failures output was assigned to
+            // above -- a swapped or misspelled reference here silently drops that job's findings
+            // instead of surfacing them, same class of bug #1066 RF-5 guarded against for the old
+            // shell form.
+            const addIfPresent = (jobName, failures) => {
               if (failures && failures.trim()) {
                 lines.push(`- **${jobName}**: ${failures.trim()}`);
-              } else if (result && result !== 'success' && result !== 'skipped') {
-                lines.push(`- **${jobName}**: job envelope did not complete (result=\`${result}\`) -- no per-step evidence was recorded for this run`);
+                return;
+              }
+              const conclusion = realConclusionOf(jobName);
+              if (conclusion && conclusion !== 'success' && conclusion !== 'skipped') {
+                lines.push(`- **${jobName}**: job envelope did not complete (conclusion=\`${conclusion}\`) -- no per-step evidence was recorded for this run`);
               }
             };
-            addIfPresent('dgfy-api-quality', process.env.DGFY_API_FAILURES, process.env.DGFY_API_RESULT);
-            addIfPresent('migration-runner-quality', process.env.MIGRATION_RUNNER_FAILURES, process.env.MIGRATION_RUNNER_RESULT);
-            addIfPresent('frontend-ims-quality', process.env.IMS_FAILURES, process.env.IMS_RESULT);
-            addIfPresent('frontend-pos-quality', process.env.POS_FAILURES, process.env.POS_RESULT);
-            addIfPresent('frontend-storefront-quality', process.env.STOREFRONT_FAILURES, process.env.STOREFRONT_RESULT);
-            addIfPresent('repository-quality', process.env.REPOSITORY_FAILURES, process.env.REPOSITORY_RESULT);
+            addIfPresent('dgfy-api-quality', process.env.DGFY_API_FAILURES);
+            addIfPresent('migration-runner-quality', process.env.MIGRATION_RUNNER_FAILURES);
+            addIfPresent('frontend-ims-quality', process.env.IMS_FAILURES);
+            addIfPresent('frontend-pos-quality', process.env.POS_FAILURES);
+            addIfPresent('frontend-storefront-quality', process.env.STOREFRONT_FAILURES);
+            addIfPresent('repository-quality', process.env.REPOSITORY_FAILURES);
 
             if (lines.length === 0) {
               console.log('No real step failures or dead job envelopes reported by any quality job this run -- nothing to report.');
@@ -1192,9 +1209,20 @@ jobs:
   # persist its JSON after every chunk instead of only at the very end, a mid-run kill now leaves a
   # partial-but-valid artifact there for this job to pick up, not nothing.
   #
-  # Only runs when dgfy-api-quality did NOT succeed -- on a clean pass, the normal in-job upload
-  # already covered it, and this job has nothing worth salvaging. No `actions/checkout` -- checkout
-  # would wipe the workspace this job depends on, and it needs no repo content of its own.
+  # Only actually uploads when dgfy-api-quality did NOT really succeed -- on a clean pass, the
+  # normal in-job upload already covered it, and this job has nothing worth salvaging. No
+  # `actions/checkout` -- checkout would wipe the workspace this job depends on, and it needs no
+  # repo content of its own.
+  #
+  # 2026-08-29 (#1124/#1165), live `workflow_dispatch` verification on PR #1167: this job's own
+  # `if:` originally read `needs.dgfy-api-quality.result != 'success'` -- and never fired, even on
+  # a run where dgfy-api-quality's job envelope genuinely died mid-run (real conclusion `failure`,
+  # confirmed live). `needs.<job>.result` is overridden to `success` by that job's own job-level
+  # `continue-on-error: true` regardless of its real outcome -- the same GitHub Actions quirk
+  # report-advisory-failures' own comment now documents. A job's `if:` can only reference
+  # `needs`/`vars`/`github` contexts, not run arbitrary script -- there is no `if:`-level fix -- so
+  # the decision moved inside a step, which *can* call the REST Jobs API for the real, non-
+  # overridden conclusion the same way report-advisory-failures does.
   #
   # Two assumptions, stated plainly rather than silently relied on: (a) exactly one runner carries
   # the `sieitz-lg` label, so this job schedules onto the same box dgfy-api-quality ran on --
@@ -1210,15 +1238,35 @@ jobs:
   # as full recovery.
   salvage-api-evidence:
     needs: [gate, dgfy-api-quality]
-    if: >-
-      always() && needs.gate.outputs.is_promotion == 'true' &&
-      needs.dgfy-api-quality.result != 'success'
+    if: always() && needs.gate.outputs.is_promotion == 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     steps:
+      - name: Check dgfy-api-quality's real job conclusion
+        id: check_api_quality_envelope
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          RUN_ID: ${{ github.run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo,
+              run_id: Number(process.env.RUN_ID),
+            });
+            const job = jobs.find((j) => j.name === 'dgfy-api-quality');
+            const needsSalvage = Boolean(job) && job.conclusion !== 'success';
+            core.setOutput('needs_salvage', String(needsSalvage));
+            console.log(`dgfy-api-quality real conclusion: ${job?.conclusion ?? 'not found'} -> needs_salvage=${needsSalvage}`);
+
       - name: Upload salvaged API test-matrix evidence
         id: upload_salvaged_evidence
+        if: steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:

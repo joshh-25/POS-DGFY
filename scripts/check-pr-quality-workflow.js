@@ -562,7 +562,7 @@ function checkAdvisoryFailureReportingShape(qualityWorkflowText) {
       // `gh`-not-installed bug survived undetected -- fixing the code without also fixing the
       // reasoning here would reproduce that pattern.
       const addIfPresentMatch = reporterBlock.match(
-        new RegExp(`addIfPresent\\(\\s*'${name}'\\s*,\\s*process\\.env\\.(\\w+)\\s*,`)
+        new RegExp(`addIfPresent\\(\\s*'${name}'\\s*,\\s*process\\.env\\.(\\w+)\\s*[,)]`)
       );
       if (!addIfPresentMatch) {
         problems.push(
