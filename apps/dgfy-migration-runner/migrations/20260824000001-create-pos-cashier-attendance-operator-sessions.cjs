@@ -53,14 +53,85 @@ const dropForeignKeyForColumn = async (queryInterface, tableName, columnName) =>
     );
 };
 
-const addGeneratedColumnIfMissing = async (queryInterface, tableName, columnName, expression, columnType = 'INTEGER') => {
+// #1166: which table/column an existing FK on (tableName, columnName) references, so it can be
+// dropped and recreated around a DDL change that MySQL/InnoDB otherwise rejects with it present.
+// Distinct from findForeignKeyForColumn above (which only needs the constraint name for a plain
+// drop) -- this also captures what to reference when recreating it.
+const getForeignKeyDefinition = async (queryInterface, tableName, columnName) => {
+    const [rows] = await queryInterface.sequelize.query(`
+        SELECT k.CONSTRAINT_NAME AS constraintName,
+               k.REFERENCED_TABLE_NAME AS referencedTable,
+               k.REFERENCED_COLUMN_NAME AS referencedColumn
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+        WHERE k.CONSTRAINT_SCHEMA = DATABASE()
+          AND k.TABLE_NAME = '${tableName}'
+          AND k.COLUMN_NAME = '${columnName}'
+          AND k.REFERENCED_TABLE_NAME IS NOT NULL
+    `);
+    return rows?.[0] || null;
+};
+
+// #1166: root cause, established by live reproduction against real MySQL 8.0.46 (not just the
+// errno-150 message): MySQL/InnoDB unconditionally rejects a foreign key whose ON UPDATE/ON
+// DELETE action is CASCADE or SET NULL when the FK's own column is also the base column of a
+// STORED generated column elsewhere in the table -- confirmed by direct experiment (RESTRICT
+// succeeds, CASCADE/SET NULL fail, regardless of whether the FK was added inline at CREATE TABLE
+// time or via a later ALTER). The actual defect is one layer up from what #1166 first suspected:
+// this migration's own `createTable()` branch above declares `onUpdate: 'RESTRICT', onDelete:
+// 'RESTRICT'` for every one of these columns, matching what these associations
+// (`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` etc., src/models/index.js)
+// also declare -- but `Sequelize.sync()` (the tenant-provisioning path, not this migration's own
+// createTable()) materializes the association's FK as `ON UPDATE CASCADE ON DELETE CASCADE`
+// instead, confirmed live via INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS. That CASCADE/CASCADE
+// FK is what collides with the generated column, not merely "a FK existing" as first suspected.
+// The fix here does not touch the sync()/association mismatch itself (a separate, real
+// inconsistency, tracked as its own follow-up) -- it drops whatever FK sync() left behind and
+// recreates it as RESTRICT/RESTRICT, matching this migration's own createTable() intent, which is
+// also the only action MySQL will accept here regardless of what sync() originally chose.
+const addGeneratedColumnIfMissing = async (
+    queryInterface,
+    tableName,
+    columnName,
+    expression,
+    columnType = 'INTEGER',
+    { dependsOnColumn } = {}
+) => {
     if (await columnExists(queryInterface, tableName, columnName)) return;
 
-    await queryInterface.sequelize.query(`
-        ALTER TABLE \`${tableName}\`
-        ADD COLUMN \`${columnName}\` ${columnType}
-        GENERATED ALWAYS AS (${expression}) STORED
-    `);
+    const fk = dependsOnColumn
+        ? await getForeignKeyDefinition(queryInterface, tableName, dependsOnColumn)
+        : null;
+    if (fk) {
+        await dropForeignKeyForColumn(queryInterface, tableName, dependsOnColumn);
+    }
+
+    let alterError = null;
+    try {
+        await queryInterface.sequelize.query(`
+            ALTER TABLE \`${tableName}\`
+            ADD COLUMN \`${columnName}\` ${columnType}
+            GENERATED ALWAYS AS (${expression}) STORED
+        `);
+    } catch (error) {
+        alterError = error;
+    }
+
+    if (fk) {
+        // Recreate the FK regardless of whether the ALTER above succeeded -- leaving the table
+        // permanently missing a constraint the model still declares would be a silent integrity
+        // regression, worse than surfacing the original ALTER failure (if any) below. Always
+        // RESTRICT/RESTRICT: it's what this migration's own createTable() branch already uses for
+        // this exact column, and it's the only action MySQL accepts on a generated column's base
+        // column -- never re-derive this from whatever action the dropped FK happened to have.
+        await queryInterface.sequelize.query(`
+            ALTER TABLE \`${tableName}\`
+            ADD CONSTRAINT \`${fk.constraintName}\`
+            FOREIGN KEY (\`${dependsOnColumn}\`) REFERENCES \`${fk.referencedTable}\` (\`${fk.referencedColumn}\`)
+            ON UPDATE RESTRICT ON DELETE RESTRICT
+        `);
+    }
+
+    if (alterError) throw alterError;
 };
 
 module.exports = {
@@ -108,7 +179,9 @@ module.exports = {
             queryInterface,
             'employee_attendance_sessions',
             'active_user_id',
-            "CASE WHEN status = 'open' THEN user_id ELSE NULL END"
+            "CASE WHEN status = 'open' THEN user_id ELSE NULL END",
+            'INTEGER',
+            { dependsOnColumn: 'user_id' }
         );
         await addIndexIfMissing(queryInterface, 'employee_attendance_sessions', ['active_user_id'], {
             name: 'uq_employee_attendance_sessions_active_user',
@@ -155,7 +228,9 @@ module.exports = {
             queryInterface,
             'employee_break_segments',
             'active_attendance_session_id',
-            "CASE WHEN status = 'open' THEN employee_attendance_session_id ELSE NULL END"
+            "CASE WHEN status = 'open' THEN employee_attendance_session_id ELSE NULL END",
+            'INTEGER',
+            { dependsOnColumn: 'employee_attendance_session_id' }
         );
         await addIndexIfMissing(queryInterface, 'employee_break_segments', ['active_attendance_session_id'], {
             name: 'uq_employee_break_segments_active_session',
@@ -219,7 +294,9 @@ module.exports = {
             queryInterface,
             'pos_terminal_operator_sessions',
             'active_operator_user_id',
-            "CASE WHEN status = 'active' THEN user_id ELSE NULL END"
+            "CASE WHEN status = 'active' THEN user_id ELSE NULL END",
+            'INTEGER',
+            { dependsOnColumn: 'user_id' }
         );
         await addIndexIfMissing(queryInterface, 'pos_terminal_operator_sessions', ['active_terminal_id'], {
             name: 'uq_pos_terminal_operator_sessions_active_terminal',
