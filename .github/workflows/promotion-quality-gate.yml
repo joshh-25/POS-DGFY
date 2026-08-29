@@ -409,10 +409,15 @@ jobs:
       #      directory instead of the default `.tmp/release-gates` (which dies with the job) --
       #      salvage-api-evidence (bottom of this file) uploads straight from there even if this
       #      step itself is killed mid-run, and #1124's persist-after-every-chunk change to the
-      #      script means a partial JSON survives that too. `${{ runner.workspace }}/..` is
+      #      script means a partial JSON survives that too. `dirname "$RUNNER_WORKSPACE"` is
       #      `_work`'s parent, not `runner.temp` (`_work/_temp`) -- the latter is wiped per job,
       #      the former isn't (confirmed by this file's own long-standing reliance on a fixed
-      #      3306/6379 port pair surviving across jobs on the same runner).
+      #      3306/6379 port pair surviving across jobs on the same runner). Resolved via shell
+      #      (`dirname`) into `$GITHUB_ENV` rather than written as `${{ runner.workspace }}/..`
+      #      directly in YAML -- confirmed live (#1124/#1165, PR #1167 dispatch verification) that
+      #      `actions/upload-artifact@v4` rejects any `path:` glob containing a literal `..`
+      #      ("Relative pathing '.' and '..' is not allowed"), so the artifact upload step below
+      #      needs an already-resolved, `..`-free absolute path to reference.
       #   3. The step summary write (scripts/summarize-backend-test-matrix.js) makes this step's
       #      own result visible in the GitHub Checks UI's summary panel even if it's the *next*
       #      step that kills the job -- $GITHUB_STEP_SUMMARY is flushed when a step ends, which
@@ -423,6 +428,8 @@ jobs:
         working-directory: .
         run: |
           set +e
+          echo "RELEASE_GATES_EVIDENCE_ROOT=$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_ENV"
+          export RELEASE_GATES_EVIDENCE_ROOT="$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}"
           node scripts/run-backend-test-matrix.js
           status=$?
           node scripts/summarize-backend-test-matrix.js >> "$GITHUB_STEP_SUMMARY" || true
@@ -448,7 +455,6 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
           RELEASE_TARGET_SHA: ${{ github.sha }}
-          RELEASE_GATES_EVIDENCE_ROOT: ${{ runner.workspace }}/../_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Run F&B contracts with open-handle diagnostics
         id: run_fnb_contracts
@@ -511,7 +517,7 @@ jobs:
         continue-on-error: true
         with:
           name: dgfy-api-test-matrix-${{ github.sha }}
-          path: ${{ runner.workspace }}/../_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}/**
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
           if-no-files-found: error
           retention-days: 30
 
@@ -1246,6 +1252,17 @@ jobs:
       contents: read
       actions: read
     steps:
+      # Independently recomputes the same durable path dgfy-api-quality's matrix step resolved --
+      # this is a separate job, so it has no access to that job's $GITHUB_ENV. Deterministic given
+      # the same run id/attempt and the two jobs sharing a runner (see the assumptions above), so
+      # recomputing here is correct, not fragile. `dirname "$RUNNER_WORKSPACE"` rather than a
+      # literal `${{ runner.workspace }}/..` -- confirmed live (#1124/#1165, PR #1167 dispatch
+      # verification) that actions/upload-artifact@v4 rejects any `path:` glob containing `..`.
+      - name: Resolve durable evidence path
+        id: resolve_evidence_path
+        continue-on-error: true
+        run: echo "RELEASE_GATES_EVIDENCE_ROOT=$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_ENV"
+
       - name: Check dgfy-api-quality's real job conclusion
         id: check_api_quality_envelope
         continue-on-error: true
@@ -1271,7 +1288,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dgfy-api-test-matrix-salvaged-${{ github.sha }}
-          path: ${{ runner.workspace }}/../_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}/**
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
           if-no-files-found: warn
           retention-days: 30
 
@@ -1279,4 +1296,4 @@ jobs:
         id: sweep_salvaged_evidence
         if: always()
         continue-on-error: true
-        run: rm -rf "${{ runner.workspace }}/../_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}"
+        run: rm -rf "${{ env.RELEASE_GATES_EVIDENCE_ROOT }}"
