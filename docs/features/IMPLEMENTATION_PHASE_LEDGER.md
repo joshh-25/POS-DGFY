@@ -10740,10 +10740,18 @@ still-open production-path defect filed separately as #1166.
   green (561/561), architecture guardrails and controller boundaries green, `tenantProvisioning
   .storefrontBootstrap.test.js` fixed and green, real-MySQL reproduction of both #1071 (fixed) and
   #1166 (filed, not fixed) confirmed live this session.
-- Not yet verified: `actions/github-script@v7`'s reporter actually posts on `sieitz-runner` (no
-  local equivalent — needs a `workflow_dispatch` run on the PR branch before merge), the
-  `salvage-api-evidence` job's same-runner/`_work`-persistence assumptions, and full-matrix wall
-  time under the flipped `#986` default.
+- Live `workflow_dispatch` verification completed on the PR branch (4 dispatch runs): confirmed
+  positive — `report-advisory-failures`'s `actions/github-script@v7` reporter correctly resolves
+  on `sieitz-runner` and posts to #1124 using the REST Jobs API's real (non-overridden)
+  conclusion, catching two bugs the plan hadn't anticipated (`needs.<job>.result` silently
+  overridden by job-level `continue-on-error`, and `actions/upload-artifact@v4` rejecting a `..`
+  path segment), both fixed and re-verified live. Confirmed negative — `salvage-api-evidence`
+  correctly detected the dead `dgfy-api-quality` envelope and triggered, but found its evidence
+  directory already empty by salvage time; recovery was not achieved. That gap, and the
+  dead-envelope pattern itself recurring on `vm-sieitzstaging` (3 of 4 verification runs), is now
+  tracked as #1168 rather than silently accepted as this phase's own success.
+- Not yet measured: full-matrix wall time under the flipped `#986` default on a real
+  `sieitz-lg` run.
 
 ### Dependencies
 
@@ -10755,23 +10763,27 @@ still-open production-path defect filed separately as #1166.
       `actions/github-script@v7`. Local: `check-pr-quality-workflow.js`'s new
       `checkReporterHasNoShellBinaryDependency` guard passes.
 - [x] Test-matrix evidence survives a job-envelope death via a step-summary write and a new
-      `salvage-api-evidence` job. Not yet verified live (see Status).
+      `salvage-api-evidence` job. Live-verified only for the step-summary path; the salvage job's
+      own recovery path did not succeed live (evidence directory already empty by salvage time —
+      see Status and #1168).
 - [x] `run-backend-test-matrix.js` defaults to continue-on-failure (`#986`); artifact carries
       `coverage_complete`. Local: `--tier fast` run green, payload confirmed.
 - [x] `to-staging/*→staging` soak leg runs quality jobs advisory-only instead of skipping entirely.
 - [x] #1071 root-caused and fixed — `tenantProvisioning.storefrontBootstrap.test.js` green.
       `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs` +
       `apps/dgfy-api/src/services/tenantSchemaBootstrap.js` land the one-seam refactor.
-- [ ] `workflow_dispatch` verification that the reporter and salvage job work live on
-      `sieitz-runner`/`sieitz-lg` — deferred to PR review/merge time, named explicitly rather than
-      silently assumed.
+- [x] `workflow_dispatch` verification that the reporter and salvage job work live on
+      `sieitz-runner`/`sieitz-lg` — completed (4 dispatch runs). Reporter: confirmed working.
+      Salvage: confirmed triggering correctly, recovery itself not yet successful — tracked as
+      #1168, not silently folded into this checkbox as a pass.
 - [ ] #1166 (the FK/generated-column production defect the new integration test surfaced) — filed,
       not in this phase's scope; tracked separately.
 
 ### Implementation links
 
-- Issue #1124 (epic), #1165 (this phase's own tracked scope), #1071 (closed by this phase), #1166
-  (filed by this phase, not fixed)
+- Issue #1124 (epic), #1165 (this phase's own tracked scope), #1071 (closes on PR #1167 merge,
+  still open until then), #1166 (filed by this phase, not fixed), #1168 (filed by this phase's own
+  live verification — dead job envelope / salvage-recovery gap)
 - PR #1167
 - `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
   `scripts/run-backend-test-matrix.js`, `scripts/summarize-backend-test-matrix.js`
@@ -10783,4 +10795,3 @@ still-open production-path defect filed separately as #1166.
 The next repository phase is allocated from the authoritative ledger after Phase 189 completes.
 Phase 189 itself completes once the `workflow_dispatch` verification lands and PR #1167 merges;
 the epic (#1124) remains open for its other children regardless.
-
