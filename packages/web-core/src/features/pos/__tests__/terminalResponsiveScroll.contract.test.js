@@ -163,7 +163,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(currentSaleSection).not.toContain('Payment Type');
     expect(checkoutDialogSection).toContain('presentationBundle={posPresentationBundle}');
     expect(checkoutDialogSection).toContain('servicesClientName={servicesClientName}');
-    expect(checkoutDialogSection).toContain('onClick={handlePrintOrder}');
+    expect(checkoutDialogSection).toContain('onClick={() => handlePrintOrder()}');
     expect(checkoutDialogSection).toContain('Print Order');
     expect(checkoutDialogSection).toContain('grid grid-cols-3 gap-2');
     expect(posCheckoutContent).toContain('!isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)');

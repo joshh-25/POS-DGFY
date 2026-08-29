@@ -77,6 +77,7 @@ describe('PosCurrentSaleActions', () => {
 
     expect(actions.onCheckout).toHaveBeenCalledOnce();
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();
+    expect(actions.onPrintOrder).toHaveBeenCalledWith();
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
   });
 

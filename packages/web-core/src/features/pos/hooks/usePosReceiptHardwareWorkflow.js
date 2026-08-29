@@ -159,16 +159,20 @@ export const usePosReceiptHardwareWorkflow = ({
     }, [cartTotal, isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, safeCart, setCheckoutConfirmModalOpen, tableNumber]);
 
     const handlePrintOrder = useCallback(async (transaction = null) => {
-        const orderCart = transaction ? buildOrderTicketCart(transaction) : safeCart;
+        const transactionId = Number(transaction?.pos_transaction_id);
+        const selectedTransaction = Number.isInteger(transactionId) && transactionId > 0
+            ? transaction
+            : null;
+        const orderCart = selectedTransaction ? buildOrderTicketCart(selectedTransaction) : safeCart;
         if (orderCart.length === 0) {
             toast.error('Add at least one item before printing an order.');
             return;
         }
 
-        const printOrderMethod = transaction?.order_method || orderMethod;
-        const printFnbContext = transaction?.fnb_metadata || normalizedFnbContext;
-        const printTableNumber = transaction?.fnb_table_label_snapshot || tableNumber;
-        const printOrderNotes = transaction?.special_instructions || kitchenNotes;
+        const printOrderMethod = selectedTransaction?.order_method || orderMethod;
+        const printFnbContext = selectedTransaction?.fnb_metadata || normalizedFnbContext;
+        const printTableNumber = selectedTransaction?.fnb_table_label_snapshot || tableNumber;
+        const printOrderNotes = selectedTransaction?.special_instructions || kitchenNotes;
         const outcome = await posHardware.printOrderTicket({
             cart: orderCart,
             terminalId: normalizedTerminalId,
@@ -178,7 +182,7 @@ export const usePosReceiptHardwareWorkflow = ({
                 tableNumber: printTableNumber,
                 orderMethod: printOrderMethod
             }),
-            orderNotes: transaction
+            orderNotes: selectedTransaction
                 ? printOrderNotes
                 : isFnbWorkflow
                 ? buildFnbGlobalOrderNote({ kitchenNotes })

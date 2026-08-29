@@ -456,7 +456,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}');
     expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(skupervisorCheckoutTerminalContent).toContain('notifyPosActionBlocked');
-    expect(skupervisorCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
+    expect(skupervisorCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0 || !isOrderPrinterAvailable}');
   });
 
   it('keeps dedicated operations workspace content mapping for every sidebar mode', () => {

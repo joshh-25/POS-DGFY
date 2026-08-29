@@ -122,6 +122,7 @@ export function POSCheckoutTerminalReceiptDialogs({
     posActionsBlocked,
     receiptPrinting,
     isPrinterAvailable,
+    isOrderPrinterAvailable,
     handlePrintReceipt,
     handlePrintOrder,
     OrderPreviewView
@@ -292,8 +293,8 @@ export function POSCheckoutTerminalReceiptDialogs({
                                 type="button"
                                 variant="outline"
                                 data-testid="pos-receipt-modal-print-order"
-                                disabled={posActionsBlocked || !lastReceipt || !isPrinterAvailable}
-                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}
+                                title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                                 onClick={() => handlePrintOrder(lastReceipt)}
                                 className="h-9 rounded-lg border border-[#1A4E8D] bg-white px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                             >

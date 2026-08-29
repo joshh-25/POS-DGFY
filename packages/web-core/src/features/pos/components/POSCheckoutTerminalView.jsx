@@ -219,6 +219,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         imagePreview,
         isEmployeeCreditPayment,
         isMsmeMode,
+        isOrderPrinterAvailable,
         isPrinterAvailable,
         isTabletViewport,
         itemDiscountTotals,
@@ -1381,8 +1382,8 @@ return (
                         checkoutLoading={checkoutLoading}
                         itemCount={safeCart.length}
                         onPrintOrder={handlePrintOrder}
-                        printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
-                        printerAvailable={isPrinterAvailable}
+                        printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}
+                        printerAvailable={isOrderPrinterAvailable}
                         onOpenCashDrawer={() => handleOpenDrawer({
                             transactionId: Number(lastReceipt?.pos_transaction_id) || null,
                             reason: 'manual_drawer_panel'
@@ -1649,6 +1650,7 @@ return (
                 posActionsBlocked={posActionsBlocked}
                 receiptPrinting={receiptPrinting}
                 isPrinterAvailable={isPrinterAvailable}
+                isOrderPrinterAvailable={isOrderPrinterAvailable}
                 handlePrintReceipt={handlePrintReceipt}
                 handlePrintOrder={handlePrintOrder}
                 OrderPreviewView={OrderPreviewView}
