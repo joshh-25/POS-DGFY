@@ -14,15 +14,16 @@ import { applyPostSyncTenantSchema } from '../src/services/tenantSchemaBootstrap
 // unmocked `applyPostSyncTenantSchema` -- the same call `provisionTenant` makes -- then asserts the
 // Phase 157 tables/columns/indexes it's supposed to leave behind actually exist.
 //
-// **Currently skipped -- #1166.** Running this for real (this session) found a second, deeper, and
-// still-live defect distinct from #1071's own mock-gap finding: `EmployeeBreakSegment.belongsTo(
-// EmployeeAttendanceSession, ...)` (src/models/index.js:744) makes `sync()` create a real MySQL FK
-// on `employee_break_segments.employee_attendance_session_id`, and 20260824000001's
-// `addGeneratedColumnIfMissing()` then fails with `Cannot add foreign key constraint` (errno 150)
-// trying to add a STORED generated column derived from that same FK'd column -- a combination the
-// ordinary migration-runner path never hits (there this migration's own `createTable()` branch
-// builds the table from scratch, with no pre-existing FK to collide with). Un-skip once #1166 lands
-// a real fix; the assertions below already encode the expected passing behavior.
+// Un-skipped by #1166's fix: `EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)`
+// (src/models/index.js:744) makes `sync()` create a real MySQL FK on
+// `employee_break_segments.employee_attendance_session_id`, and 20260824000001's
+// `addGeneratedColumnIfMissing()` used to fail with `Cannot add foreign key constraint`
+// (errno 150) trying to add a STORED generated column derived from that same FK'd column -- a
+// combination the ordinary migration-runner path never hit (there this migration's own
+// `createTable()` branch builds the table from scratch, with no pre-existing FK to collide
+// with). The migration now drops any such FK before the ALTER and recreates it identically
+// afterward (applied defensively to all three generated columns in this migration that read an
+// association-FK'd column, not just the one #1166 reproduced).
 describe('tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)', () => {
     let ctx;
 
@@ -33,7 +34,7 @@ describe('tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)', () 
         }
     });
 
-    it.skip('applies the Phase 157 tenant-bootstrap migrations against a freshly-synced tenant database', async () => {
+    it('applies the Phase 157 tenant-bootstrap migrations against a freshly-synced tenant database', async () => {
         ctx = await createTestTenant('schema-bootstrap');
 
         await applyPostSyncTenantSchema(ctx.tenantSeq, Sequelize, { dbName: ctx.dbName });
@@ -59,7 +60,7 @@ describe('tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)', () 
         expect(attendanceColumns).toHaveProperty('end_idempotency_key');
     });
 
-    it.skip('is idempotent -- applying it twice against the same tenant does not throw', async () => {
+    it('is idempotent -- applying it twice against the same tenant does not throw', async () => {
         ctx = await createTestTenant('schema-bootstrap-idempotent');
 
         await applyPostSyncTenantSchema(ctx.tenantSeq, Sequelize, { dbName: ctx.dbName });
