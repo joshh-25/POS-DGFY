@@ -69,4 +69,8 @@ promotion-time compliance preflight remains required.
 
 No database migration or deployment sequencing is required. Roll back by
 reverting the callback normalization, capability gating, tests, and this
-declaration together.
+declaration together. LAN-bridge terminals (`lan_escpos_bridge`) will now show
+Print Order and Bill Request disabled because that driver implements no
+order-ticket path; previously those actions were enabled and returned
+`NOT_SUPPORTED`. Verify this disabled state during the deferred physical-device
+QA alongside order printing on a supported device.

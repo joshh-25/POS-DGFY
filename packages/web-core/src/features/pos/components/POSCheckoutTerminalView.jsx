@@ -1478,8 +1478,8 @@ return (
                                 size="sm"
                                 data-testid="pos-receipt-print-order"
                                 onClick={() => handlePrintOrder(lastReceipt)}
-                                disabled={posActionsBlocked || !lastReceipt || !isPrinterAvailable}
-                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}
+                                title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                             >
                                 <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                                 Print Order

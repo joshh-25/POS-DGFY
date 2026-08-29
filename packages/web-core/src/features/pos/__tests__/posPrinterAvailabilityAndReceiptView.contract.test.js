@@ -20,14 +20,17 @@ describe('POS printer availability and post-checkout receipt view', () => {
     it('gates receipt and order-ticket actions on their distinct hardware capabilities', () => {
         const source = readCheckoutRenderSource();
         const currentSaleActionsSource = read('../components/PosCurrentSaleActions.jsx');
+        const receiptDialogsSource = read('../components/POSCheckoutTerminalReceiptDialogs.jsx');
         const skupervisorSource = read('../components/SkupervisorPOSCheckoutTerminal.jsx');
+        const viewSource = read('../components/POSCheckoutTerminalView.jsx');
         expect(source).toContain('const isPrinterAvailable = posHardware.isPrinterAvailable;');
         expect(source).toContain('const isOrderPrinterAvailable = posHardware.isOrderPrinterAvailable;');
         expect(source).toContain('printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}');
         expect(currentSaleActionsSource).toContain('disabled={printOrderDisabled}');
         expect(source).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isOrderPrinterAvailable}');
         expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}');
-        expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}');
+        expect(receiptDialogsSource).toContain('disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}');
+        expect(viewSource).toContain('disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}');
         expect(skupervisorSource).toContain('disabled={posActionsBlocked || cart.length === 0 || !isOrderPrinterAvailable}');
     });
 
