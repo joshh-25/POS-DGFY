@@ -12,7 +12,17 @@ const JEST_BIN = path.join(APP_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
 const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
-const CONTINUE_ON_FAILURE = process.argv.includes('--continue-on-failure') || process.env.BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE === 'true';
+// #986/#1124: the early-stop-on-first-failure default was a cost optimization from when the full
+// matrix took ~19.6min (#345); #1015/#1016 cut that to ~2-4min, so the premise that "stopping early
+// saves meaningful time" no longer holds, while the cost of stopping early -- every later group's
+// coverage silently going unknown, exactly what hid the #1071 defect behind an unrelated failure on
+// a real promotion -- is unchanged. Default flipped to continue-on-failure; `--fail-fast` /
+// BACKEND_TEST_MATRIX_FAIL_FAST=true is the explicit opt-out for someone who wants the old
+// fail-on-first behavior back (e.g. iterating locally on one known-broken group).
+// `--continue-on-failure` / BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE=true are kept accepted as
+// documented no-op aliases for back-compat with any existing caller/doc that references them.
+const FAIL_FAST = process.argv.includes('--fail-fast') || process.env.BACKEND_TEST_MATRIX_FAIL_FAST === 'true';
+const CONTINUE_ON_FAILURE = !FAIL_FAST;
 const SKIP_SCHEMA_PREFLIGHT = process.argv.includes('--skip-schema-preflight')
   || process.env.BACKEND_TEST_MATRIX_SKIP_SCHEMA_PREFLIGHT === 'true';
 // The fast tier deliberately points DB_HOST/DB_PORT nowhere reachable by default -- a permanent
@@ -159,6 +169,18 @@ function chunk(array, size) {
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+// #1124: persisted after every chunk/tier completes, not only once at the very end -- so a job
+// killed mid-run (a self-hosted runner's job envelope dying, observed live on run 33241398956)
+// still leaves a partial-but-valid backend_test_matrix.json behind for the salvage job to upload,
+// instead of nothing at all. `partial` records whether this write happened before the run finished
+// (only meaningful to a reader who finds this file without also finding a `verdict` they trust --
+// the final write always has partial:false).
+function persistMatrixState(evidenceRoot, payload, { partial }) {
+  const outputFile = path.join(evidenceRoot, 'backend_test_matrix.json');
+  fs.writeFileSync(outputFile, JSON.stringify({ ...payload, partial }, null, 2));
+  return outputFile;
 }
 
 function safeName(value) {
@@ -329,7 +351,11 @@ function runFastTier(tests, evidenceDir) {
   };
 }
 
-function runDbTier(dbTests, evidenceRoot) {
+// `onProgress` (#1124) is called after schema preflight and after every chunk completes, with the
+// mutable-so-far { schemaPreflight, chunks, failed } -- the caller uses it to persist a partial
+// snapshot so a job killed mid-loop (a self-hosted runner's job envelope dying, observed live) still
+// leaves behind everything that finished before the kill, not nothing.
+function runDbTier(dbTests, evidenceRoot, onProgress) {
   const schemaPreflight = runSchemaPreflight(evidenceRoot);
   const grouped = new Map(GROUPS.map((group) => [group.name, []]));
   for (const testPath of dbTests) {
@@ -350,6 +376,8 @@ function runDbTier(dbTests, evidenceRoot) {
 
   const chunks = [];
   let failed = false;
+  let earlyStopped = false;
+  if (onProgress) onProgress({ schemaPreflight, chunks, failed });
 
   for (const group of selectedGroups) {
     const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
@@ -364,12 +392,13 @@ function runDbTier(dbTests, evidenceRoot) {
       const result = runChunk(group.name, index, testChunks[index], evidenceRoot);
       chunks.push(result);
       console.log(`[backend-test-matrix] ${result.status.toUpperCase()} tier=db group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
+      if (onProgress) onProgress({ schemaPreflight, chunks, failed: failed || result.status !== 'pass' });
       if (result.status !== 'pass') {
         failed = true;
-        if (!CONTINUE_ON_FAILURE) break;
+        if (!CONTINUE_ON_FAILURE) { earlyStopped = true; break; }
       }
     }
-    if (failed && !CONTINUE_ON_FAILURE) break;
+    if (failed && !CONTINUE_ON_FAILURE) { earlyStopped = true; break; }
   }
 
   return {
@@ -381,6 +410,7 @@ function runDbTier(dbTests, evidenceRoot) {
     })),
     chunks,
     failed,
+    earlyStopped,
   };
 }
 
@@ -406,43 +436,30 @@ function main() {
   }
 
   const targetSha = getTargetSha();
-  const evidenceRoot = path.join(ROOT, '.tmp', 'release-gates', targetSha, 'backend-test-matrix');
+  // #1124/#1165: overridable so a CI job whose own workspace can die mid-run (a self-hosted
+  // runner's job envelope, observed live killing this job 3s into the *next* step on
+  // run 33241398956) can point this at a durable, job-external directory instead -- the salvage
+  // job in promotion-quality-gate.yml uploads straight from there. Default is byte-identical to
+  // before this change, so `gate:release:local` and every local/manual invocation are unaffected.
+  const evidenceRootBase = process.env.RELEASE_GATES_EVIDENCE_ROOT || path.join(ROOT, '.tmp', 'release-gates');
+  const evidenceRoot = path.join(evidenceRootBase, targetSha, 'backend-test-matrix');
   ensureDir(evidenceRoot);
 
   const activeTests = listTests();
   const { dbTests, fastTests, manifestCount } = partitionByDbManifest(activeTests);
 
   const startedAt = new Date();
-  const chunks = [];
+  let chunks = [];
   let failed = false;
+  let earlyStopped = false;
   let schemaPreflight = { status: 'not_run', reason: `tier=${TIER}` };
   let dbGroups = [];
 
-  console.log(`[backend-test-matrix] tier=${TIER} active_tests=${activeTests.length} fast_tests=${fastTests.length} db_tests=${dbTests.length} (manifest=${manifestCount})`);
-
-  if (TIER === 'fast' || TIER === 'all') {
-    const fastResult = runFastTier(fastTests, evidenceRoot);
-    chunks.push(fastResult);
-    console.log(`[backend-test-matrix] ${fastResult.status.toUpperCase()} tier=fast tests=${fastResult.test_count} duration_ms=${fastResult.duration_ms} db_pinned_unreachable=${fastResult.db_pinned_unreachable} log=${fastResult.log_file}`);
-    if (fastResult.status !== 'pass') {
-      failed = true;
-    }
-  }
-
-  const skipDbTier = failed && !CONTINUE_ON_FAILURE && TIER === 'all';
-  if ((TIER === 'db' || TIER === 'all') && !skipDbTier) {
-    const dbResult = runDbTier(dbTests, evidenceRoot);
-    schemaPreflight = dbResult.schemaPreflight;
-    dbGroups = dbResult.groups;
-    chunks.push(...dbResult.chunks);
-    if (dbResult.failed) failed = true;
-  } else if (skipDbTier) {
-    console.log('[backend-test-matrix] fast tier failed; skipping db tier (pass --continue-on-failure to run both regardless)');
-  }
-
-  const completedAt = new Date();
-  const payload = {
-    generated_at: completedAt.toISOString(),
+  // #1124: builds the payload from current mutable state -- called after every unit of work
+  // completes (not only once at the very end) so a job killed mid-run leaves a partial-but-valid
+  // artifact for the salvage job to pick up, instead of nothing.
+  const buildPayload = () => ({
+    generated_at: new Date().toISOString(),
     started_at: startedAt.toISOString(),
     target_sha: targetSha,
     tier: TIER,
@@ -455,14 +472,52 @@ function main() {
     selected_group: groupFilter || null,
     selected_chunk: chunkFilter,
     chunk_timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
+    fail_fast: FAIL_FAST,
+    // Kept alongside fail_fast (#986/#1124: the flag this mirrors was inverted) so any existing
+    // reader of this field's old meaning keeps working without a migration.
     continue_on_failure: CONTINUE_ON_FAILURE,
+    // #986/#1124: lets a reader distinguish "green because everything passed" from "green because
+    // an early stop meant we stopped looking" -- false whenever a fail-fast stop (chunk-loop,
+    // group-loop, or the fast->db skip) cut this run short of its full scope.
+    coverage_complete: !earlyStopped,
     // Only meaningful for the db tier -- the fast tier has no schema preflight by construction.
     schema_preflight: schemaPreflight,
     groups: dbGroups,
     chunks,
-  };
-  const outputFile = path.join(evidenceRoot, 'backend_test_matrix.json');
-  fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2));
+  });
+  const persist = (partial) => persistMatrixState(evidenceRoot, buildPayload(), { partial });
+
+  console.log(`[backend-test-matrix] tier=${TIER} active_tests=${activeTests.length} fast_tests=${fastTests.length} db_tests=${dbTests.length} (manifest=${manifestCount})`);
+
+  if (TIER === 'fast' || TIER === 'all') {
+    const fastResult = runFastTier(fastTests, evidenceRoot);
+    chunks.push(fastResult);
+    console.log(`[backend-test-matrix] ${fastResult.status.toUpperCase()} tier=fast tests=${fastResult.test_count} duration_ms=${fastResult.duration_ms} db_pinned_unreachable=${fastResult.db_pinned_unreachable} log=${fastResult.log_file}`);
+    if (fastResult.status !== 'pass') {
+      failed = true;
+    }
+    persist(true);
+  }
+
+  const skipDbTier = failed && !CONTINUE_ON_FAILURE && TIER === 'all';
+  if (skipDbTier) earlyStopped = true;
+  if ((TIER === 'db' || TIER === 'all') && !skipDbTier) {
+    const dbResult = runDbTier(dbTests, evidenceRoot, (progress) => {
+      schemaPreflight = progress.schemaPreflight;
+      chunks = TIER === 'all' ? [chunks[0], ...progress.chunks] : [...progress.chunks];
+      failed = failed || progress.failed;
+      persist(true);
+    });
+    schemaPreflight = dbResult.schemaPreflight;
+    dbGroups = dbResult.groups;
+    chunks = TIER === 'all' ? [chunks[0], ...dbResult.chunks] : [...dbResult.chunks];
+    if (dbResult.failed) failed = true;
+    if (dbResult.earlyStopped) earlyStopped = true;
+  } else if (skipDbTier) {
+    console.log('[backend-test-matrix] fast tier failed; skipping db tier (--fail-fast is the opt-out flag now -- continue-on-failure is the default, see #986; drop it to run both regardless)');
+  }
+
+  const outputFile = persist(false);
   console.log(`[backend-test-matrix] artifact=${path.relative(ROOT, outputFile).replace(/\\/g, '/')}`);
   if (failed) process.exit(2);
 }
