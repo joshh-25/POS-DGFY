@@ -23,6 +23,12 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 COPY apps/dgfy-pos/ ./
 
 ARG VITE_API_URL=/api/v1
+# Origin serving /uploads/storefront-assets when it is NOT the POS SPA's own origin
+# (a CDN or a split API host). Left empty by default: unset, resolveAssetOrigin
+# returns '' and both the receipt preview and iminHardwareBridge's native logo path
+# fall back to the page origin, which every POS edge vhost already proxies /uploads
+# through. Mirrors apps/dgfy-ims/.env.vps.example. See issue #321.
+ARG VITE_ASSET_BASE_URL=""
 ARG VITE_BUILD_STAMP=""
 # Cross-app (pos <-> skupervisor/storefront) link overrides. Not strictly
 # required for correctness -- the relevant web-core modules already derive
@@ -68,6 +74,7 @@ ARG SENTRY_ORG=""
 ARG SENTRY_PROJECT_POS=""
 ARG SENTRY_URL=""
 ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL} \
     VITE_BUILD_STAMP=${VITE_BUILD_STAMP} \
     VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL} \
     VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL} \
