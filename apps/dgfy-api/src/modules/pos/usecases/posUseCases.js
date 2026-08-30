@@ -16,6 +16,7 @@ import { resolveMovementLocation } from '../../inventory/index.js';
 import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
+    resolveActiveAffiliateEnrollmentById,
     reverseAffiliateCommissionForOrder,
     settleAffiliateCommissionForOrder
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
@@ -4403,22 +4404,51 @@ export const buildCheckoutPosUseCase = ({
             // the sale that already succeeded - mirrors recordDgfyOrderActivity's convention.
             if (affiliateEnrollment) {
                 try {
-                    await accrueEarnedForInStoreSale({
+                    // #1199 (Phase 220, decided 2026-08-31): re-verify the enrollment against the
+                    // database at commit time rather than trusting the pre-commit resolve above.
+                    // affiliateEnrollment is a snapshot taken before the transaction ran; a checkout
+                    // can span real work in between (inventory movements, discount approval, the
+                    // commit itself), and if the affiliate was revoked/suspended - or the tenant's
+                    // program disabled - inside that window, the cached object is stale. This is
+                    // the same by-id re-verify Phase 206 (#450 D2) already applies on the storefront
+                    // checkout path, extended to in-store. Plain, non-locking read on the default
+                    // connection - no lock, no FOR UPDATE, no transaction handle needed or wanted
+                    // here (accrual is already idempotent on (tenant_id, order_reference)).
+                    const verifiedEnrollment = await resolveActiveAffiliateEnrollmentById({
                         tenantId,
-                        enrollment: affiliateEnrollment,
-                        orderReference: String(posTransactionId),
-                        posTransactionId,
-                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount)),
-                        // #448 (Phase 209): per-line weights ONLY - the commissionable base above is
-                        // unchanged and stays the single source of the total. line_subtotal here is
-                        // already discount-allocated (see the rewrite ~:3877) but its SUM is
-                        // netItemsTotal, which subtracts vat_removed on the governed senior/PWD
-                        // branch - so these are relative weights, never absolute bases.
-                        commissionLines: preparedLines.map((line) => ({
-                            folderId: line.folder_id_snapshot ?? null,
-                            weightCentavos: Math.max(0, toCurrencyCents(line.line_subtotal))
-                        }))
+                        enrollmentId: affiliateEnrollment.enrollment_id
                     });
+                    if (verifiedEnrollment) {
+                        await accrueEarnedForInStoreSale({
+                            tenantId,
+                            enrollment: verifiedEnrollment,
+                            orderReference: String(posTransactionId),
+                            posTransactionId,
+                            commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount)),
+                            // #448 (Phase 209): per-line weights ONLY - the commissionable base above is
+                            // unchanged and stays the single source of the total. line_subtotal here is
+                            // already discount-allocated (see the rewrite ~:3877) but its SUM is
+                            // netItemsTotal, which subtracts vat_removed on the governed senior/PWD
+                            // branch - so these are relative weights, never absolute bases.
+                            commissionLines: preparedLines.map((line) => ({
+                                folderId: line.folder_id_snapshot ?? null,
+                                weightCentavos: Math.max(0, toCurrencyCents(line.line_subtotal))
+                            }))
+                        });
+                    } else {
+                        // In-flight attribution drop (#1199 D2, mirroring #450 D2 on storefront):
+                        // the entry-time 422 gate (~:2984) already hard-rejects an unresolvable code
+                        // before any write, so on POS - unlike storefront - a null re-check here is
+                        // always the in-flight case, never an already-stale one. A bare else, not
+                        // else-if. The sale stands; only the commission is withheld. Logged (never
+                        // thrown) so the drop is attributable later - same non-blocking convention
+                        // as the catch block below.
+                        logger.warn('[PosUseCases] Affiliate attribution dropped: enrollment inactive at commit', {
+                            tenantId,
+                            posTransactionId,
+                            enrollment_id: affiliateEnrollment.enrollment_id
+                        });
+                    }
                 } catch (accrualError) {
                     logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {
                         tenantId,
