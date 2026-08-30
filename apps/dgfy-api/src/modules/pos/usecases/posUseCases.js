@@ -155,14 +155,20 @@ const POS_OPERATION_KEYS = Object.freeze({
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
-// This is ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
+// This was ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
 // tenders it classifies as `merchant_owned`. #825's own scope line named only "cash + gcash"; that
 // reads as an example rather than an exhaustive list, since clause 5 (what an attestation must
 // persist) and clause 6 (explicit confirmation) already govern all four identically and nothing
 // per-method has to be invented. `card` here is a store-owned card terminal, never PayMongo card --
 // no balance leg ever touches a provider (ADR 0069 clause 2 [binding], carried forward verbatim by
 // ADR 0070; ADR 0063 clause 12 [binding]).
-const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer']);
+//
+// Phase 202 (#1085) adds `cheque` as a sixth method. ADR 0063 clause 4 is `[binding]`, so widening
+// it took a scoped-supersession ADR rather than an amendment: ADR 0077 supersedes clause 4 only,
+// replacing the V1 five-tender enumeration with this six-tender set; every other clause of ADR 0063
+// is unaffected. Cheque is merchant-owned by construction (no branch added below), and its number
+// is `payment_reference` under this method -- no new column.
+const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']);
 const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
     pickup: 'ready_for_pickup',
     delivery: 'out_for_delivery'
