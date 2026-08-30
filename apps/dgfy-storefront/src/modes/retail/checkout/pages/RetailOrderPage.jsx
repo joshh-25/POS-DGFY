@@ -11,6 +11,7 @@ import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/chec
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
@@ -91,6 +92,7 @@ export function RetailOrderPage({
   onPaymentTypeChange,
   orderMethod = 'delivery',
   orderMethodOptions = null,
+  orderTimingPolicy = resolveOrderTimingPolicy(),
   paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
@@ -276,6 +278,7 @@ export function RetailOrderPage({
             <RetailOrderFulfillmentStep
               canAddPinnedLocation={canAddPinnedLocation}
               orderMethodOptions={orderMethodOptions}
+              orderTimingPolicy={orderTimingPolicy}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}

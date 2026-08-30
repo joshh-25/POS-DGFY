@@ -3,8 +3,9 @@ import { DeliveryPinMap } from '../../../features/locations/components/DeliveryP
 import { SelectableOptionCard } from '../checkout/SelectableOptionCard.jsx';
 import { SavedAddressCard } from '../checkout/SavedAddressCard.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../model/storefrontConstants.js';
-import { resolveFulfillmentSelectorPresentation } from '../../model/storefrontFulfillmentPresentation.js';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../checkout/FulfillmentMethodNotice.jsx';
+import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../model/storefrontOrderTimingPolicy.js';
 
 const DEFAULT_ACCENT = '#1a4e8d';
 const DEFAULT_ACCENT_DARK = '#1a4586';
@@ -52,7 +53,8 @@ export function DefaultOrderFulfillmentStep({
   orderMethodOptions = null,
   scheduleMode = 'asap',
   scheduledFor = '',
-  selectedAddressId = ''
+  selectedAddressId = '',
+  orderTimingPolicy = resolveOrderTimingPolicy()
 }) {
   const isDeliveryOrder = orderMethod === 'delivery';
   const choiceGridColumns = isMobileViewport ? '1fr' : '1fr 1fr';
@@ -62,6 +64,8 @@ export function DefaultOrderFulfillmentStep({
   // exists so the page cannot drift from the rule once it is wired to a real location.
   const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
     resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
+  const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -109,8 +113,9 @@ export function DefaultOrderFulfillmentStep({
         )}
 
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '2' : '1'}. When would you like your order?</div>
-          <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
+          {showTimingStep ? <>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
+          {showTimingChooser ? <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('asap')}
               label="NOW"
@@ -155,8 +160,18 @@ export function DefaultOrderFulfillmentStep({
               iconSize={isMobileViewport ? 18 : 20}
               showCheck={false}
             />
-          </div>
-          {scheduleMode === 'asap' ? (
+          </div> : null}
+          {showSchedule && !showImmediate ? <>
+            <FulfillmentMethodNotice accentColor={DEFAULT_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={scheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} /></label>
+          </> : null}
+          {showImmediate && !showSchedule ? (
+            <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
+            </div>
+          ) : null}
+          {showTimingChooser ? (scheduleMode === 'asap' ? (
             <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
@@ -187,14 +202,14 @@ export function DefaultOrderFulfillmentStep({
                 />
               </div>
             </label>
-          )}
+          )) : null}</> : <FulfillmentMethodNotice accentColor={DEFAULT_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
         </div>
       </div>
 
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '3' : '2'}. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Saved locations</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>

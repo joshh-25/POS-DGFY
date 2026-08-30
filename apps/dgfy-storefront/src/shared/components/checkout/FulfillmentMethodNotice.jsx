@@ -11,7 +11,8 @@ import { Info } from 'lucide-react';
 export function FulfillmentMethodNotice({
   accentColor = '#1a4e8d',
   message = '',
-  variant = 'info'
+  variant = 'info',
+  ...props
 }) {
   if (!message) return null;
   const isWarning = variant === 'warning';
@@ -23,6 +24,7 @@ export function FulfillmentMethodNotice({
     <div
       role={isWarning ? 'alert' : 'note'}
       data-testid="fulfillment-method-notice"
+      {...props}
       style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${border}`, background, borderRadius: 12, padding: '10px 12px', boxSizing: 'border-box' }}
     >
       <Info size={14} color={isWarning ? '#b45309' : accentColor} style={{ flexShrink: 0 }} />

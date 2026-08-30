@@ -63,3 +63,10 @@ export function resolveFulfillmentSelectorPresentation(options = []) {
     notice: soleOption ? getSoleFulfillmentMethodNotice(soleOption) : NO_FULFILLMENT_METHOD_NOTICE
   };
 }
+
+export function buildCheckoutSectionNumbers({ showOrderMethodSelector = true, showTimingStep = true } = {}) {
+  let next = 1;
+  const orderMethod = showOrderMethodSelector ? next++ : null;
+  const timing = showTimingStep ? next++ : null;
+  return { orderMethod, timing, address: next };
+}

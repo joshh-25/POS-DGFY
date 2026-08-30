@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FnbCheckoutFulfillmentChoices } from './FnbCheckoutFulfillmentChoices.jsx';
+
+// #1218: this file's added (a)-(d) cases reuse overlapping queries ("NOW", "Schedule") across
+// several `it` blocks in the same describe -- explicit cleanup keeps each render isolated
+// regardless of whether the runner's implicit auto-cleanup is active.
+afterEach(() => cleanup());
 
 // #1217: identical treatment to RetailOrderFulfillmentStep.test.jsx -- a single available
 // fulfillment method hides the chooser and its heading, replacing them with a static notice;
@@ -58,5 +63,68 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pickup' }));
     expect(onOrderMethodChange).toHaveBeenCalledWith('pickup');
     expect(screen.getByText('2. When would you like your order?')).toBeTruthy();
+  });
+
+  // #1218: the four delivery-timing-policy combinations. Default keeps today's exact behaviour
+  // (non-regression pin); the other three are the new collapsing behaviours.
+  const twoFulfillmentOptions = [
+    { value: 'delivery', label: 'Delivery', available: true },
+    { value: 'pickup', label: 'Pickup', available: true }
+  ];
+
+  it('(a) default policy: NOW and Schedule both present, headings unchanged', () => {
+    render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      onOrderMethodChange={vi.fn()}
+      fulfillmentOptions={twoFulfillmentOptions}
+    />);
+
+    expect(screen.getByText('2. When would you like your order?')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'NOW' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Schedule' })).toBeTruthy();
+    expect(screen.queryByTestId('order-timing-expectation')).toBeNull();
+  });
+
+  it('(b) scheduling disabled: no Schedule card, no datetime-local input', () => {
+    render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      onOrderMethodChange={vi.fn()}
+      fulfillmentOptions={twoFulfillmentOptions}
+      orderTimingPolicy={{ showSchedule: false, showImmediate: true, showTimingChooser: false, showTimingStep: true, leadTimeMinDays: null, leadTimeMaxDays: null, hasLeadTime: false }}
+    />);
+
+    expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(screen.getByText(/deliver your order NOW/)).toBeTruthy();
+  });
+
+  it('(c) immediate fulfillment disabled: no NOW card, no green callout, lead-time string present', () => {
+    render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      onOrderMethodChange={vi.fn()}
+      fulfillmentOptions={twoFulfillmentOptions}
+      orderTimingPolicy={{ showSchedule: true, showImmediate: false, showTimingChooser: false, showTimingStep: true, leadTimeMinDays: 3, leadTimeMaxDays: 3, hasLeadTime: true }}
+    />);
+
+    expect(screen.queryByRole('button', { name: 'NOW' })).toBeNull();
+    expect(screen.queryByText(/deliver your order NOW/)).toBeNull();
+    expect(screen.getByText('Your order will be delivered within 3 days.')).toBeTruthy();
+    expect(document.querySelector('input[type="datetime-local"]')).toBeTruthy();
+  });
+
+  it('(d) both disabled: no heading, no cards, exactly one order-timing-expectation notice', () => {
+    render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      onOrderMethodChange={vi.fn()}
+      fulfillmentOptions={twoFulfillmentOptions}
+      orderTimingPolicy={{ showSchedule: false, showImmediate: false, showTimingChooser: false, showTimingStep: false, leadTimeMinDays: 7, leadTimeMaxDays: 14, hasLeadTime: true }}
+    />);
+
+    expect(screen.queryByText(/When would you like your order/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'NOW' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(screen.getAllByTestId('order-timing-expectation')).toHaveLength(1);
+    expect(screen.getByText('Your order will be delivered in 7-14 days.')).toBeTruthy();
   });
 });

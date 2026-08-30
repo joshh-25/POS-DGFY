@@ -1915,6 +1915,277 @@ describe('store use-cases application result contract', () => {
         );
     });
 
+    // #1218: assertCheckoutLocationOperationalReadiness's new scheduling guard. 409, matching the
+    // three sibling checks in the same function (inactive / closed / unsupported method) --
+    // deliberately not a 422, and deliberately asymmetric: no symmetric rejection exists for an
+    // absent scheduled_for against immediate_fulfillment_enabled: false (that flag is
+    // presentation/expectation-setting only in this phase, not an order-acceptance rule).
+    it('storeCheckout rejects a scheduled order against a location with scheduling disabled', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => { transaction.finished = 'commit'; }),
+            rollback: jest.fn(async () => { transaction.finished = 'rollback'; })
+        };
+        const createOnlineTransactionWithLines = jest.fn();
+        const useCase = buildStoreCheckoutUseCase({
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 11,
+                        name: 'Packaged Beverage',
+                        current_stock: 10,
+                        default_sale_price: 65,
+                        cost_per_unit: 30,
+                        unit_of_measure: 'bottle',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15,
+                    scheduling_enabled: false,
+                    immediate_fulfillment_enabled: true
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ]),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createOnlineTransactionWithLines
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                idempotency_key: 'scheduled-against-disabled-location',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                lines: [{ item_id: 11, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.message).toMatch(/does not accept scheduled orders/);
+        expect(createOnlineTransactionWithLines).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(transaction.commit).not.toHaveBeenCalled();
+    });
+
+    it('storeCheckout accepts a scheduled order against a location with scheduling enabled (unchanged)', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => { transaction.finished = 'commit'; }),
+            rollback: jest.fn(async () => { transaction.finished = 'rollback'; }),
+            LOCK: { UPDATE: 'UPDATE' }
+        };
+        const createOnlineTransactionWithLines = jest.fn().mockResolvedValue(902);
+        const useCase = buildStoreCheckoutUseCase({
+            revenueSharingEnabled: false,
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15,
+                    scheduling_enabled: true,
+                    immediate_fulfillment_enabled: true
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createOnlineTransactionWithLines,
+                getOrderById: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 902,
+                    tracking_pin: 'SK-SCHED1',
+                    invoice_number: 'INV-000902',
+                    order_source: 'online_store',
+                    order_method: 'pickup',
+                    payment_type: 'cash',
+                    payment_status: 'unpaid',
+                    fulfillment_status: 'placed',
+                    subtotal_amount: 100,
+                    discount_amount: 0,
+                    service_fee_amount: 1,
+                    delivery_fee: 0,
+                    total_amount: 101,
+                    customer_name: 'Buyer',
+                    customer_phone: '0917',
+                    customer_email: null,
+                    scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                    location: { location_id: 2, name: 'Main', address_line: 'Address' },
+                    lines: []
+                }),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000902'),
+                isTrackingPinTaken: jest.fn().mockResolvedValue(false)
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                idempotency_key: 'scheduled-against-enabled-location',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                customer_email: 'buyer@example.com',
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: '11111111-1111-4111-8111-111111111111',
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'scheduled-against-enabled-location'
+                }),
+                scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+    });
+
+    it('storeCheckout accepts an unscheduled (ASAP) order against a location with scheduling disabled (the deliberate asymmetry)', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async () => { transaction.finished = 'commit'; }),
+            rollback: jest.fn(async () => { transaction.finished = 'rollback'; }),
+            LOCK: { UPDATE: 'UPDATE' }
+        };
+        const createOnlineTransactionWithLines = jest.fn().mockResolvedValue(903);
+        const useCase = buildStoreCheckoutUseCase({
+            revenueSharingEnabled: false,
+            storeRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 2,
+                    name: 'Main',
+                    address_line: 'Address',
+                    latitude: 10.7,
+                    longitude: 122.5,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false,
+                    current_wait_time_minutes: 15,
+                    scheduling_enabled: false,
+                    immediate_fulfillment_enabled: false,
+                    fulfillment_lead_time_min_days: 3,
+                    fulfillment_lead_time_max_days: 5
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
+                    { setting_key: 'store_delivery_fee', setting_value: '20' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ]),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([
+                    {
+                        item_id: 40,
+                        name: 'Chicken Meal',
+                        current_stock: 10,
+                        default_sale_price: 100,
+                        cost_per_unit: 40,
+                        unit_of_measure: 'plate',
+                        vat_type: 'vatable'
+                    }
+                ]),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createOnlineTransactionWithLines,
+                getOrderById: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 903,
+                    tracking_pin: 'SK-ASAP1',
+                    invoice_number: 'INV-000903',
+                    order_source: 'online_store',
+                    order_method: 'pickup',
+                    payment_type: 'cash',
+                    payment_status: 'unpaid',
+                    fulfillment_status: 'placed',
+                    subtotal_amount: 100,
+                    discount_amount: 0,
+                    service_fee_amount: 1,
+                    delivery_fee: 0,
+                    total_amount: 101,
+                    customer_name: 'Buyer',
+                    customer_phone: '0917',
+                    customer_email: null,
+                    scheduled_for: null,
+                    location: { location_id: 2, name: 'Main', address_line: 'Address' },
+                    lines: []
+                }),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000903'),
+                isTrackingPinTaken: jest.fn().mockResolvedValue(false)
+            }
+        });
+
+        const result = await useCase({
+            tenantId: '11111111-1111-4111-8111-111111111111',
+            payload: {
+                location_id: 2,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                idempotency_key: 'asap-against-disabled-scheduling-location',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                customer_email: 'buyer@example.com',
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: '11111111-1111-4111-8111-111111111111',
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'asap-against-disabled-scheduling-location'
+                }),
+                lines: [{ item_id: 40, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+    });
+
     it('trackStoreOrder returns tracking payload for valid pin', async () => {
         const tenantId = '11111111-1111-4111-8111-111111111111';
         const useCase = buildTrackStoreOrderUseCase({
