@@ -11480,6 +11480,90 @@ planned:
 Per #446's own sequencing comment (2026-08-30), this order was stated in advance and is unchanged
 by anything found during execution.
 
+## Phase 203 - Per-Store Cash/COD Payment Toggle (#626)
+
+### Initiative and release
+
+Surebiz Wave 1 (#1183), Phase 203. Ledger high-water at planning was 198; Phases 199-202 are
+sibling worktrees in the same wave.
+
+### Objective and scope
+
+#626's body describes three things — only one is in scope here. Gap 1 (cash is hardcoded
+always-available, no per-store way to disable it) is the whole of this phase. Gap 2 (Retail
+checkout hardcoded placeholder payment options) was **already closed** by Phase 142 (#823) before
+this phase started — no work needed, #626's "current state" section was stale on that point.
+Card-only for Surebiz (card as a live rail) is **out of scope**, gated on #477 (PayMongo card is
+still blocked/deferred for storefront; QRPh is the only constructible online method today).
+
+### Status
+
+`completed` (2026-08-30), Tier 0 passing. PR: see Implementation links below (opened, not yet
+merged at ledger-write time).
+
+### Dependencies
+
+**#477 for the card-only half of #626 — not satisfied, out of scope for this phase.** A Surebiz
+store that turns cash off today is left with QRPh as its only online rail until #477 lands.
+
+### Acceptance and validation evidence
+
+- [x] New setting `storefront_cash_payment_enabled` (boolean, fail-open default `true`),
+      following #622's `storefront_guest_checkout_enabled` precedent exactly: registered in
+      `CUSTOMER_ACCESS_SETTING_KEYS`, normalized via `normalizeCashPaymentEnabled`, resolved into
+      `access_policy.cash_payment_enabled` in `resolveAccessPolicyFromSettings`
+      (`apps/dgfy-api/src/modules/shared/utils/customerAccessPolicy.js`).
+- [x] Advertise: a `cash` key merged into `payment_capabilities` at the `listStoreCatalog` call
+      site (`storeUseCases.js`), after the existing `Promise.all` resolves — deliberately not
+      inside `resolveStorefrontPaymentCapabilities`, which has six early PayMongo-readiness
+      `disabled(...)` returns that must never gate cash.
+- [x] Enforce (fail closed): a new check immediately before the existing
+      `assertGuestCheckoutAllowed` call in the order-placing path rejects
+      `payment_type: 'cash'` with 422 `STORE_CASH_DISABLED` when the store has disabled cash —
+      closes the gap where hiding the UI option alone was not enforcement.
+      `apps/dgfy-storefront/src/shared/model/storefrontCheckoutPaymentOptions.js`'s
+      `isEnabledStorefrontCheckoutPaymentType` cash arm changed from unconditional to
+      `paymentCapabilities?.cash?.enabled !== false` (fail-open, no call-site changes needed).
+- [x] Validator (`settingsValidator.js`, both bulk and single-key blocks) and provisioning
+      (`tenantProvisioningService.js`, seeded `true` for **every** vertical — no vertical-specific
+      default, unlike #622, since the card-only motivation is Surebiz-specific and gated on #477)
+      updated.
+- [x] Operator toggle ("Accept Cash on Delivery/Pickup") added to
+      `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`, mirroring
+      the existing "Allow Guest Checkout" toggle idiom exactly.
+- [x] Compliance impact declaration written and `npm run check:compliance` passing:
+      `docs/compliance/impact-declarations/2026-08-30-storefront-per-store-cash-payment-toggle.md`.
+- [x] `npm run check:architecture` passing (guardrails + controller boundaries).
+- [x] Tier 0: `node --check` on all four changed `apps/dgfy-api` files; `npm run build:store`,
+      `npm run build:pos`, `npm run build:skupervisor` all green (`packages/web-core` is touched
+      and is the shared trunk for all three frontend apps).
+- [x] Tier 1/2 (opportunistic, run this phase): `apps/dgfy-api/tests/customerAccessPolicy.test.js`
+      17/17 (4 new cases), `apps/dgfy-storefront/src/__tests__/retailCheckoutOnlinePayments.contract.test.js`
+      9/9 (2 new cases), 8 related `storeUseCases`/settings-validator test files 119/119 (one
+      pre-existing strict-equality assertion in `storeUsecases.applicationResult.test.js` updated
+      to include the now-always-present `cash` key in `payment_capabilities` — not a regression,
+      an intentional shape change), `posSettingsStrictBinding.contract.test.js` +
+      `customerAccessModeCards.contract.test.js` (web-core, run from `apps/dgfy-ims`) 4/4.
+
+### Known residual gaps, accepted rather than solved (state explicitly, not silently)
+
+- **Half a feature by design.** Turning cash off today leaves QRPh as the only rail (card is
+  #477's). No tenant's toggle is flipped by this phase — this only ships the mechanism.
+- **`hideCash` and `cash.enabled` now both suppress cash**, for different reasons (presentation vs.
+  operator decision) — they compose (either hides it), documented in the model file's own comment.
+- **Draft-restore validation** calls `isEnabledStorefrontCheckoutPaymentType` directly; a customer
+  with a saved cash draft at a store that later disabled cash will now correctly have that draft's
+  payment type rejected. Intended, not separately covered by an automated test this phase.
+
+### Implementation links
+
+- Issue #626 (Refs, not Closes — #626's card-only half stays open, gated on #477), Refs #1183
+- PR #1194: `feature/626-per-store-cash-payment-toggle` -> `develop`
+
+### Next eligible phase
+
+Phase 204 — next available slot in this wave; not otherwise claimed by this plan.
+
 **Superseded, in part, later on 2026-08-30**: the four open policy questions above were resolved by
 Pat the same day, via a Q&A recorded on #450, #872, #567, #449, and #448 (see Phase 206 below for
 the concrete phase this unblocked). #449 was confirmed independent of #488 and stays open for later

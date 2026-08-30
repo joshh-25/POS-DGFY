@@ -28,6 +28,26 @@ describe('Retail Storefront online payment contract', () => {
     ]);
   });
 
+  // #626 (Phase 203): an operator-disabled store must omit cash even with no hideCash/downpayment
+  // reason at all -- this is the new capability-gated path, distinct from the presentation-only
+  // hideCash test below.
+  it('omits cash when the store has disabled it via payment_capabilities', () => {
+    const options = buildStorefrontCheckoutPaymentOptions({
+      cash: { enabled: false },
+      qrph: { enabled: true }
+    });
+    expect(options.some((option) => option.value === 'cash')).toBe(false);
+  });
+
+  // #626 (Phase 203): fail-open regression guard -- every existing caller/test passes capabilities
+  // with no `cash` key, and this must keep resolving to cash enabled.
+  it('keeps cash enabled when payment_capabilities has no cash key (fail-open)', () => {
+    const options = buildStorefrontCheckoutPaymentOptions({
+      qrph: { enabled: true }
+    });
+    expect(options.some((option) => option.value === 'cash')).toBe(true);
+  });
+
   it('hides cash for a downpayment-required Retail store', () => {
     const options = buildStorefrontCheckoutPaymentOptions(
       { qrph: { enabled: true, environment: 'test' } },

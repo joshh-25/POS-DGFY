@@ -203,6 +203,13 @@ describe('store use-cases application result contract', () => {
                 enabled: true,
                 environment: 'live',
                 reason_code: null
+            },
+            // #626 (Phase 203): cash is now always merged into payment_capabilities, fail-open
+            // enabled when no access-policy row disables it (none is seeded/mocked here).
+            cash: {
+                enabled: true,
+                environment: null,
+                reason_code: null
             }
         });
     });
