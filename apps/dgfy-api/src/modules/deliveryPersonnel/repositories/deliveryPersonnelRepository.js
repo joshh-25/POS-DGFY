@@ -28,12 +28,13 @@ export const deliveryPersonnelRepository = {
     });
   },
 
-  findActiveByDisplayName(displayName, { locationId = null, ...options } = {}) {
+  findActiveByDisplayName(displayName, { locationId = null, excludeId = null, ...options } = {}) {
     const normalized = String(displayName || '').trim();
     return dbStore.get('DeliveryPersonnel').findOne({
       where: {
         is_active: true,
         location_id: locationId ?? null,
+        ...(excludeId ? { delivery_personnel_id: { [Op.ne]: excludeId } } : {}),
         [Op.and]: [
           sequelizeWhere(fn('LOWER', col('display_name')), normalized.toLowerCase())
         ]

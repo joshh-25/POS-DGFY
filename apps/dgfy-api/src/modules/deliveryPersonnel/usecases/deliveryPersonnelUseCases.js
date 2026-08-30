@@ -87,6 +87,27 @@ export const buildUpdateDeliveryPersonnelUseCase = ({ repository }) => async ({ 
     if (payload.notes !== undefined) updates.notes = payload.notes || null;
     if (payload.location_id !== undefined) updates.location_id = await validateLocation(repository, payload.location_id, transaction);
     if (payload.is_active !== undefined) updates.is_active = Boolean(payload.is_active);
+
+    // Phase 205 (#1080) RF-2: the create-time duplicate-name guard has no PATCH equivalent --
+    // a rename, a location move, or a reactivation can all land an active row on the same
+    // case-insensitive name+location pair as another active row, which breaks the registry's
+    // datalist name-to-ID match. Re-run the same guard whenever the update would leave the row
+    // active under a name/location that isn't its current one.
+    const nextDisplayName = updates.display_name !== undefined ? updates.display_name : deliveryPersonnel.display_name;
+    const nextLocationId = updates.location_id !== undefined ? updates.location_id : deliveryPersonnel.location_id;
+    const nextIsActive = updates.is_active !== undefined ? updates.is_active : deliveryPersonnel.is_active;
+    if (nextIsActive) {
+      const duplicate = await repository.findActiveByDisplayName(nextDisplayName, {
+        locationId: nextLocationId,
+        excludeId: normalizedId,
+        transaction,
+        lock: true
+      });
+      if (duplicate) {
+        throw new DomainError(DomainErrorCode.CONFLICT, 'An active delivery personnel record with this name already exists', { statusCode: 409 });
+      }
+    }
+
     await repository.update(deliveryPersonnel, updates, { transaction });
     await repository.createAuditLog({
       user_id: normalizedActorUserId,

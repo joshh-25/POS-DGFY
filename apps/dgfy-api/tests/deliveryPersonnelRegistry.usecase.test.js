@@ -32,11 +32,12 @@ const buildRepository = (seed = {}) => {
         async findById(id) {
             return rows.get(id) || null;
         },
-        async findActiveByDisplayName(displayName, { locationId = null } = {}) {
+        async findActiveByDisplayName(displayName, { locationId = null, excludeId = null } = {}) {
             const normalized = String(displayName || '').trim().toLowerCase();
             return [...rows.values()].find((row) => row.is_active
                 && String(row.display_name).trim().toLowerCase() === normalized
-                && (row.location_id ?? null) === (locationId ?? null)) || null;
+                && (row.location_id ?? null) === (locationId ?? null)
+                && (!excludeId || row.delivery_personnel_id !== excludeId)) || null;
         },
         async findActiveLocation(locationId) {
             return activeLocations.has(locationId) ? { location_id: locationId } : null;
@@ -121,6 +122,68 @@ describe('delivery personnel registry use cases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        jest.restoreAllMocks();
+    });
+
+    it('rejects a PATCH rename that collides with another active row in the same location with 409', async () => {
+        const repository = buildRepository({
+            rows: [
+                [1, plainRow({ delivery_personnel_id: 1, display_name: 'Juan Rider', location_id: 7, is_active: true })],
+                [2, plainRow({ delivery_personnel_id: 2, display_name: 'Pedro Rider', location_id: 7, is_active: true })]
+            ]
+        });
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: async () => createTransaction() } });
+        const updateDeliveryPersonnelUseCase = buildUpdateDeliveryPersonnelUseCase({ repository });
+
+        const result = await updateDeliveryPersonnelUseCase({
+            deliveryPersonnelId: 2,
+            payload: { display_name: 'juan rider' },
+            actorUserId: 3
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(repository.rows.get(2).display_name).toBe('Pedro Rider');
+        jest.restoreAllMocks();
+    });
+
+    it('rejects a PATCH reactivation that collides with another active row with 409', async () => {
+        const repository = buildRepository({
+            rows: [
+                [1, plainRow({ delivery_personnel_id: 1, display_name: 'Juan Rider', location_id: 7, is_active: true })],
+                [2, plainRow({ delivery_personnel_id: 2, display_name: 'Juan Rider', location_id: 7, is_active: false })]
+            ]
+        });
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: async () => createTransaction() } });
+        const updateDeliveryPersonnelUseCase = buildUpdateDeliveryPersonnelUseCase({ repository });
+
+        const result = await updateDeliveryPersonnelUseCase({
+            deliveryPersonnelId: 2,
+            payload: { is_active: true },
+            actorUserId: 3
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(repository.rows.get(2).is_active).toBe(false);
+        jest.restoreAllMocks();
+    });
+
+    it('allows a PATCH that keeps the same name/location on the same row (no self-collision)', async () => {
+        const repository = buildRepository({
+            rows: [[1, plainRow({ delivery_personnel_id: 1, display_name: 'Juan Rider', location_id: 7, is_active: true })]]
+        });
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: async () => createTransaction() } });
+        const updateDeliveryPersonnelUseCase = buildUpdateDeliveryPersonnelUseCase({ repository });
+
+        const result = await updateDeliveryPersonnelUseCase({
+            deliveryPersonnelId: 1,
+            payload: { phone: '0917-000-0000' },
+            actorUserId: 3
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.rows.get(1).phone).toBe('0917-000-0000');
         jest.restoreAllMocks();
     });
 

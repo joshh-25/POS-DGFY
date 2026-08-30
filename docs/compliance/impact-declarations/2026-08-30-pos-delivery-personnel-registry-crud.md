@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: none
 policy_version: 2026.08.30
-verification_evidence: apps/dgfy-api/tests/deliveryPersonnelRegistry.usecase.test.js (6 new cases),apps/dgfy-api/tests/posValidator.deliveryPersonnelRegistry.test.js (7 new cases),existing posDeliveryAssignment.usecase.test.js/posDeliveryJobStatus.usecase.test.js/posDeliveryCompletionGuard.usecase.test.js/posDeliveryPersonnel.repository.test.js/posValidator.deliveryAssignment.test.js re-run unmodified (27 cases, all green),node --check on every changed apps/dgfy-api .js file,npm run check:architecture,npm run build:pos,npm run build:skupervisor
+verification_evidence: apps/dgfy-api/tests/deliveryPersonnelRegistry.usecase.test.js (6 new cases, +3 in the PR #1208 review-fix amendment below),apps/dgfy-api/tests/posValidator.deliveryPersonnelRegistry.test.js (7 new cases),existing posDeliveryAssignment.usecase.test.js/posDeliveryJobStatus.usecase.test.js/posDeliveryCompletionGuard.usecase.test.js/posDeliveryPersonnel.repository.test.js/posValidator.deliveryAssignment.test.js re-run unmodified (27 cases, all green),node --check on every changed apps/dgfy-api .js file,npm run check:architecture,npm run build:pos,npm run build:skupervisor
 rollback_note: Revert this commit. No migration and no schema change were made -- delivery_personnel already carried every column this phase uses. The three new routes are additive-only; the existing GET /pos/delivery-personnel route, its use case, and posUseCases.js/posRepository.js are untouched. Reverting removes the registry CRUD routes, the admin panel, and the picker's datalist/id-submission path; every existing free-text delivery assignment keeps working unchanged both before and after a revert.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -135,6 +135,38 @@ choice; this phase implements what it already requires.
 - `docs/api/specification.md`
 - `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
 - `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
+
+## Amendments
+
+### 2026-08-30: PR #1208 review-fix (RF-2, RF-3)
+
+`pr-reviewer`'s review of PR #1208 raised two should-fix findings against this same feature, both
+addressed in the same PR rather than as a separate declaration -- neither changes the classification
+or affected-surfaces list above:
+
+- **RF-2** -- the duplicate-active-name guard described above only ran on create. `PATCH` could
+  rename, relocate, or reactivate a row into a collision with another active row, undermining the
+  registry's case-insensitive name uniqueness invariant. `buildUpdateDeliveryPersonnelUseCase` now
+  re-runs `findActiveByDisplayName` (extended with an `excludeId` option) inside the same
+  transaction whenever the update leaves the row active under a name/location that isn't its
+  current one, returning the same `409 CONFLICT`. Regression coverage:
+  `deliveryPersonnelRegistry.usecase.test.js` gains 3 cases -- rename collision, reactivation
+  collision, and a same-row no-op PATCH proving no self-collision false positive.
+- **RF-3** -- `DeliveryPersonnelManagementPanel` already reported its freshly-loaded registry via
+  an `onDeliveryPersonnelChanged` prop after every create/update/toggle, but nothing consumed it:
+  the panel was mounted without the prop in `TerminalOperationsWorkspace.jsx`, and
+  `TerminalPage.jsx`'s picker fetch was one-shot. Wired `onDeliveryPersonnelChanged` through
+  `TerminalPage.jsx` -> `TerminalPageLayout.jsx` -> `TerminalOperationsWorkspace.jsx` into the panel,
+  so an admin create/edit/reactivate now updates the terminal's `deliveryPersonnelState` in place
+  and the picker's `<datalist>` reflects it without a reload.
+- The RF-1 blocker (the contract test not updated for this phase's actual picker/callback
+  contract) was a test-only fix -- `deliveryAssignmentControl.contract.test.js` now asserts the
+  datalist copy and the `{ id }`/`{ name }` object callback the component already implements. No
+  production behavior changed for RF-1.
+
+Verification: `deliveryPersonnelRegistry.usecase.test.js` (9 cases, all green),
+`deliveryAssignmentControl.contract.test.js` (2 cases, all green), `node --check` on both changed
+`apps/dgfy-api` files, `npm run build:pos`, `npm run build:skupervisor`.
 
 ## Preflight Reconciliation
 
