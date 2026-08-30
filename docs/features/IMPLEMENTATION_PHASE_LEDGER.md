@@ -12292,3 +12292,186 @@ affiliate-allocation) remains unscheduled as a separate child of #446. #1206 (ca
 end-date model) and the Phase 2 volume tiers remain explicitly out of scope and unscheduled. If Pat
 wants A1's semantics reversed (end date halts accrual instead of expiring the cap), that is a small,
 named flip (§4 of the plan) rather than a new design.
+
+## Phase 209 - Per-Category Affiliate Commission Rates (#448)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #448's asked-for shape: per-category affiliate
+commission rates (e.g. "20% food / 30% beverage") instead of one flat scalar rate, using
+`item_folders.folder_id` as the category key (per #448's own 2026-08-30 decision comment) and
+`enrollment override > category rate > tenant default` as the resolution precedence.
+
+### Objective and scope
+
+Add a per-`(tenant, enrollment, folder)` commission rate tier, resolved at accrual time on both
+commission-accrual channels (POS and storefront), gated behind a new
+`tenant_affiliate_settings.category_rates_enabled` flag defaulting `false`. Explicitly out of
+scope, per #448's own "What this issue covers" (never asks for the other two tiers from the
+2026-08-14 comment's "default → category → item → exceptions" framing, which was scoping
+exploration, not a commitment) and this phase's own §0/§11: per-**item** commission rates,
+**exceptions** (a default rate with items/categories excluded), parent-folder rate inheritance
+(A3), and a merchant-facing UI (A5) — all filed as follow-ups for `pm`, not built here.
+
+Two findings corrected the task brief's premise during planning (§1 of the plan, verified against
+fresh reads on `origin/develop @ 1a92c9e71`), and seven judgment calls (A1-A7) resolved ambiguities
+#448 left open:
+
+- **Finding 1 — `resolveCommissionRateBps` is not the single resolution point.** The storefront's
+  production caller (`storeUseCases.js`) always pre-builds `resolvedCommission` and bypasses it
+  entirely at accrual time. Changing only the POS path (`posUseCases.js`) would have shipped a
+  feature that silently no-ops online — both `storeUseCases.js:~1390-1420` (the price-rule/settings
+  resolution) and `~3410-3455` (the accrual block's `PERCENTAGE_OF_BASE` branch) needed the
+  category-rate change, not just the resolver itself (which is left with an unchanged signature).
+- **Finding 2 — `folder_id` was already selected but not threaded onto `preparedLines`.** Both
+  `posRepository.findSellableItemsByIds` and `storeRepository.findSellableItemsByIds` already
+  select `folder_id`; it just wasn't snapshotted onto the line objects the post-commit accrual
+  block reads. One field added per line-push on each channel closed the gap.
+- **A1 (table scope)** — per-`(tenant, enrollment, folder)`, with `enrollment_id = 0` as the
+  tenant-wide template sentinel, byte-for-byte the scoping `dgfy_affiliate_price_rules` already
+  uses. Chosen over a per-`(tenant, category)`-only table because it is strictly the wider option
+  and mirrors an existing, understood convention.
+- **A2 (multi-category carts) — the consequential call.** A cart mixing categories with different
+  rates computes a **weighted per-line split, collapsed into the existing single ledger row** —
+  proportional (largest-remainder) allocation of the unchanged `commissionableBaseCentavos`, with a
+  blended `rate_bps_snapshot`. **Not** true per-line ledger rows, which the plan's own §5.4 names as
+  a materially larger redesign (would need to drop/replace the `UNIQUE (tenant_id,
+  order_reference)` index every idempotency guarantee in this module rests on, rewrite the
+  find-or-create commission writers into set writers, re-derive Phase 208's cap against a multi-row
+  order, and re-derive the cashout/earnings-summary reads) — out of scope for this issue, filed
+  as a follow-up only if per-line **reporting** (not accuracy — this phase already delivers
+  per-category accuracy in the money amount) is ever actually wanted.
+  - **Consequence that must not be assumed away**: on a genuinely mixed-category order, the blended
+    `rate_bps_snapshot` no longer satisfies `amount ≡ round(base × rate / 10000)` exactly — it can
+    be off by a few centavos from the blended round-trip, by construction of the per-line
+    allocation. This does **not** break Phase 208's earnings cap (which compares the computed
+    `amount` directly, never re-derives it from the snapshot), but a future reader must not assume
+    the single-rate invariant still holds exactly on a mixed-category row.
+  - **The senior/PWD (governed discount) trap this design defends against**: on POS's governed
+    branch, `sum(line_subtotal) != commissionableBaseCentavos` because VAT is separately removed
+    there. Using per-line amounts as absolute bases (rather than relative weights via
+    largest-remainder allocation of the unchanged total) would have silently changed the commission
+    total on every senior/PWD sale.
+- **A3 (no parent-folder inheritance)** — a rate configured on a parent folder does not apply to
+  its children; exact `folder_id` match only. Rejected for this phase because the folder tree lives
+  in the tenant DB while accrual runs against the landlord DB with only a `folder_id` integer in
+  hand — inheritance would mean a tenant-DB query plus a recursive walk on the hot, best-effort
+  accrual path. Filed as a follow-up (§11).
+- **A4 (no "all categories" sentinel)** — `folder_id = 0` is rejected by the upsert endpoint
+  (422) rather than treated as a second spelling of "tenant default"; that concept already exists
+  as `default_rate_bps`, and a second spelling would need an undefined tie-break rule against it.
+- **A5 (backend only)** — no `packages/web-core`/app file touched, matching Phase 208's own
+  precedent; nothing existing breaks (the flag defaults `false`, no admin UI has a category-rate
+  affordance to break), and a real UI needs a tenant-DB folder picker the affiliate admin screens
+  don't currently talk to at all — filed as a follow-up (§11).
+- **A6 (shadowing guard)** — the upsert endpoint rejects (422
+  `AFFILIATE_CATEGORY_RATE_SHADOWED_BY_OVERRIDE`) creating an enrollment-scoped category rate on an
+  affiliate who already has `commission_rate_bps` set, since that override always wins outright and
+  the row would be dead config a merchant could easily believe was live. Fail-closed, matching this
+  repo's existing habit (cited in the plan: ADR 0066's `[binding]` fail-closed clause).
+- **A7 (feature flag)** — `tenant_affiliate_settings.category_rates_enabled`, defaulting `false`.
+  With it off, `loadApplicableCategoryRates` returns `[]` before issuing any query, and
+  `computeCategoryAwareCommission`'s step 1 (every line resolves to the same rate) takes the
+  byte-identical pre-Phase-209 formula — the regression guarantee is structural, not merely
+  behavioral: the new code path is not entered, not just equivalent.
+
+### Status
+
+`completed` (2026-09-01). PR #1214 opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on the Phase 1 affiliate pricing rule engine (`dgfy_affiliate_price_rules`'s scoping
+convention this phase mirrors one tier narrower) and Phase 208's `resolveEarningsCap` /
+`evaluateEarningsCap` pure/async split, which this phase's `resolveCategoryRateBps` /
+`loadApplicableCategoryRates` split copies exactly. Independent of Phase 207 (a different code
+path — enrollment status transitions, not commission accrual).
+
+### Acceptance and validation evidence
+
+- [x] Landlord migration `20260901000001-add-affiliate-category-rates.cjs` adds
+      `dgfy_affiliate_category_rates` (`UNIQUE (tenant_id, enrollment_id, folder_id)`,
+      `folder_id` held by value with no cross-database FK) and
+      `tenant_affiliate_settings.category_rates_enabled` (default `false`). Every existing tenant
+      resolves identically to today's behavior.
+- [x] `resolveCategoryRateBps` / `resolveLineCommissionRateBps` (pure) and
+      `loadApplicableCategoryRates` (async, zero queries when the flag is off or an enrollment
+      override shadows it) mirror Phase 208's `resolveEarningsCap`/`evaluateEarningsCap` split.
+      `resolveCommissionRateBps`'s existing signature and all three of its existing call sites are
+      unchanged.
+- [x] `computeCategoryAwareCommission` implements §5.2's two-branch algorithm: uniform-rate carts
+      take the identical unchanged formula; genuinely mixed carts allocate the unchanged
+      commissionable base by largest remainder (`Σ Bᵢ ≡ B` exactly) before applying each line's own
+      resolved rate.
+- [x] Both accrual functions (`accrueEarnedForInStoreSale`, `accruePendingForOnlineOrder`) accept
+      an optional `commissionLines` parameter; every existing caller that omits it is provably
+      unchanged (same argument the existing `resolvedCommission` parameter's own comment makes).
+- [x] Both channels wired: POS (`posUseCases.js`, `folder_id_snapshot` + `commissionLines` at the
+      existing post-commit accrual call, `commissionableBaseCentavos` untouched) and storefront
+      (`storeUseCases.js`, `folder_id_snapshot` + `base_line_subtotal` on `preparedLines`,
+      `categoryRates` + `fallbackRateBps` returned from `resolveAffiliatePricingForCheckout`
+      alongside the existing `commissionRule` whose `rateBps` is now documented as the fallback
+      only, and the accrual block's `PERCENTAGE_OF_BASE` branch calling
+      `computeCategoryAwareCommission` with `fallbackRateBps` rather than re-deriving the
+      enrollment-override tier a second time).
+- [x] Three admin endpoints (`GET/PUT /category-rates`, `DELETE /category-rates/:id`) mirroring
+      `/price-rules` exactly, including the A6 shadowing guard and A4's folder_id-0 rejection.
+      **No frontend change** — no `packages/web-core`/app file touched.
+- [x] **Compliance declaration required and written** —
+      `docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md`,
+      `major`, surfaces `pos,terminal,payments` (this phase touches `posUseCases.js` and
+      `storeUseCases.js`, unlike Phase 208 which stayed clear of both). `npm run check:compliance`
+      → PASS.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js`/`.cjs` file (no build
+      step exists for `apps/dgfy-api`). New `affiliateCategoryRates.unit.test.js` — 16/16 passing
+      (pure resolver precedence, the full ladder incl. the A7 zero-query guarantee, the §5.2
+      allocation algorithm incl. exact mixed-cart arithmetic and the byte-identical uniform-rate
+      collapse, and wiring incl. the Phase 208 cap interaction on a blended amount). Existing
+      `affiliateEarningsCap.unit.test.js` and `affiliateCommissionAccrual.unit.test.js` pass
+      **unmodified** (confirming the §5.2 step-1 collapse is exact, per the plan's own instruction
+      that an edit there would mean the code, not the test, is wrong).
+      `storeCheckoutAffiliatePricing.unit.test.js` (13/13) and the POS regression suites
+      (`posCheckoutFnbContracts.usecase.test.js`, `posUsecases.applicationResult.test.js`, 79/79)
+      also pass unmodified. Two unrelated suites
+      (`dgfyAffiliateRepository.slotEnforcement.unit.test.js`,
+      `dgfyAffiliateReactivationUseCase.unit.test.js`) needed `DgfyAffiliateCategoryRate` added to
+      their exhaustive `models/index.js` mocks to keep loading — fixed, both pass. Also ran
+      `npm run check:architecture` (guardrails + controller boundaries, both OK) and
+      `npm run lint:docs`/`check:adr --strict` (both OK) as extra checks beyond the required Tier 0
+      list.
+- [x] Linked `Closes #448` — #448's own "What this issue covers" only asks for the category tier
+      and the resolution-order decision, both delivered in full; the per-item and exceptions tiers
+      named in an earlier exploratory comment were never part of "what this issue covers" and have
+      no separate tracking issue as of this phase (confirmed via search, not assumed) — filed as
+      follow-ups for `pm` (§11) rather than left implied-open on this issue.
+
+### Known limitations, not fixed here
+
+- **A3** — no parent-folder rate inheritance; a rate on a parent folder does not cover its
+  children. Workaround today is one row per leaf folder. See above for why.
+- **A2's blended snapshot** — `rate_bps_snapshot` on a mixed-category order is no longer an exact
+  round-trip of `amount`; see above.
+- **No frontend category-rate editor** — the API carries the data; an owner-facing editor UI is a
+  separate, unscoped ask (A5).
+- **Per-item rates and exceptions** — the third and fourth tiers from #448's own exploratory
+  four-level framing remain unbuilt; the resolution ladder has room for them (mirrors #449 Phase
+  208's own "next eligible phase" framing of leaving room without building ahead of demand).
+
+### Implementation links
+
+- Issue #448 (Closes — see above)
+- PR #1214: https://github.com/Sieitzz/dgfy-platform/pull/1214
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md`
+- No ADR — this adds a new, additive rate tier within the existing affiliate commission model; it
+  neither contradicts nor amends ADR 0036 or ADR 0050 (same framing Phase 208 used for its own cap
+  addition).
+
+### Next eligible phase
+
+None allocated by this phase. Four follow-ups filed for `pm` rather than built here: a
+merchant-facing category-rate editor UI (A5), parent-folder rate inheritance (A3), per-item
+commission rates, and commission-rate exceptions (the third and fourth tiers from #448's own
+four-level framing). Per-line commission *reporting* (as opposed to accuracy, already delivered)
+remains an optional, low-priority follow-up only if the §5.4 ledger redesign is ever actually
+wanted.

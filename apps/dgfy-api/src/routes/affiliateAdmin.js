@@ -18,7 +18,10 @@ import {
     updateAffiliateSettings,
     listAffiliatePriceRules,
     upsertAffiliatePriceRule,
-    deactivateAffiliatePriceRule
+    deactivateAffiliatePriceRule,
+    listAffiliateCategoryRates,
+    upsertAffiliateCategoryRate,
+    deactivateAffiliateCategoryRate
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
@@ -106,6 +109,26 @@ router.delete(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
     deactivateAffiliatePriceRule
+);
+// #448 (Phase 209) - the category tier of the commission rate ladder. Inserted immediately after
+// the price-rules block, same authenticate + checkPermission pairs.
+router.get(
+    '/category-rates',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateCategoryRates
+);
+router.put(
+    '/category-rates',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    upsertAffiliateCategoryRate
+);
+router.delete(
+    '/category-rates/:category_rate_id',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    deactivateAffiliateCategoryRate
 );
 router.get(
     '/cashouts',

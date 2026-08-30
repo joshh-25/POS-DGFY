@@ -13,7 +13,11 @@ import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeatur
 import {
     accruePendingForOnlineOrder,
     resolveActiveAffiliateEnrollmentById,
-    resolveCommissionRateBps
+    resolveCommissionRateBps,
+    // #448 (Phase 209) - the category-aware commission ladder, shared with the POS path so the two
+    // channels can never diverge.
+    loadApplicableCategoryRates,
+    computeCategoryAwareCommission
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
 import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
@@ -980,6 +984,13 @@ const prepareCheckoutLines = ({
 
         preparedLines.push({
             item_id: item.item_id,
+            // #448 (Phase 209) - snapshotted so post-commit affiliate accrual can resolve a
+            // per-category commission rate without re-querying the item. Nullable: an
+            // uncategorized item matches no category rate and falls to the tenant default.
+            folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
+            // Phase 209 weight source for commission_base_mode: 'base_price_subtotal' - the
+            // per-line twin of the aggregate baseSubtotalAmount this function already returns.
+            base_line_subtotal: baseLineSubtotal,
             item_name: item.name,
             item_name_snapshot: item.name || null,
             sku_snapshot: item.sku_code || null,
@@ -1389,13 +1400,19 @@ const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) =>
     const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
     if (!enrollment) return null;
 
-    const [settings, priceRule] = await Promise.all([
-        dgfyAffiliateRepository.getSettings(tenantId),
+    // #448 (Phase 209): settings must be fetched BEFORE the Promise.all below, because
+    // loadApplicableCategoryRates' category_rates_enabled / enrollment-override guard needs it to
+    // decide whether the category-rate fetch runs at all. An unconditional fetch here would
+    // violate A7's zero-added-query guarantee on every attributed storefront checkout.
+    const settings = await dgfyAffiliateRepository.getSettings(tenantId);
+
+    const [priceRule, categoryRates] = await Promise.all([
         dgfyAffiliateRepository.resolveActivePriceRule({
             tenantId,
             enrollmentId: enrollment.enrollment_id,
             itemId: 0
-        })
+        }),
+        loadApplicableCategoryRates({ tenantId, enrollment, settings })
     ]);
 
     const sellingPriceRule = priceRule
@@ -1411,9 +1428,24 @@ const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) =>
         enrollment,
         priceRule,
         sellingPriceRule,
+        // commissionRule.rateBps is now the FALLBACK rate only (correct: with no cart in hand
+        // there is no per-line category to resolve against). The applied rate is resolved per-line
+        // at accrual time by computeCategoryAwareCommission - do not mistake this for the applied
+        // rate on a category-aware tenant.
         commissionRule: { type: commissionType, rateBps: commissionRateBps },
         settlementPolicy: settings?.settlement_policy || null,
-        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal'
+        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal',
+        // #448 (Phase 209). Category rows applicable to this enrollment (both the enrollment's own
+        // scope and the tenant-wide template scope, every folder) - [] when category_rates_enabled
+        // is off, or when the enrollment override shadows it outright (loadApplicableCategoryRates'
+        // own zero-query guard - see its comment). Precedence within this set is resolved per-line
+        // at accrual time, not here.
+        categoryRates,
+        // Carried through separately so the accrual block (storeUseCases.js's else branch, §7.3)
+        // doesn't need to re-derive the enrollment/tenant-default ladder itself - that would
+        // duplicate resolveCommissionRateBps's own ladder in two places, the exact drift its header
+        // comment warns against.
+        fallbackRateBps: commissionRateBps
     };
 };
 
@@ -3412,12 +3444,33 @@ export const buildStoreCheckoutUseCase = ({
                             resellerMarginCentavos = Math.max(0, buyerSubtotalCentavos - baseSubtotalCentavos);
                             resolvedCommission = { rateBps: 0, amountCentavos: resellerMarginCentavos };
                         } else {
-                            const rateBps = Number.isInteger(affiliatePricing?.commissionRule?.rateBps)
-                                ? affiliatePricing.commissionRule.rateBps
+                            // #448 (Phase 209). Weights follow commission_base_mode, matching how
+                            // commissionableBaseCentavos itself was derived ~20 lines up, so the
+                            // split is always consistent with the total it is splitting. The
+                            // enrollment-override tier has already been applied upstream (see
+                            // resolveAffiliatePricingForCheckout's fallbackRateBps), so this passes
+                            // fallbackRateBps rather than a raw enrollment/settings pair - re-deriving
+                            // the override here would duplicate the ladder in two places.
+                            const commissionLines = resolved.prepared.preparedLines.map((line) => ({
+                                folderId: line.folder_id_snapshot ?? null,
+                                weightCentavos: Math.max(0, toCentavos(
+                                    commissionBaseMode === 'base_price_subtotal'
+                                        ? line.base_line_subtotal
+                                        : line.line_subtotal
+                                ))
+                            }));
+                            const fallbackRateBps = Number.isInteger(affiliatePricing?.fallbackRateBps)
+                                ? affiliatePricing.fallbackRateBps
                                 : 500;
+                            const computed = computeCategoryAwareCommission({
+                                fallbackRateBps,
+                                categoryRateRows: affiliatePricing?.categoryRates || [],
+                                lines: commissionLines,
+                                commissionableBaseCentavos
+                            });
                             resolvedCommission = {
-                                rateBps,
-                                amountCentavos: Math.round(commissionableBaseCentavos * rateBps / 10000)
+                                rateBps: computed.rateBpsSnapshot,
+                                amountCentavos: computed.amountCentavos
                             };
                         }
 

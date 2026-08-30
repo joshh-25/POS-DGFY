@@ -18,6 +18,169 @@ export const resolveCommissionRateBps = (enrollment, settings) => (
         : (Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS)
 );
 
+// #448 (Phase 209). The category tier of the rate ladder, kept PURE and synchronous like
+// resolveCommissionRateBps above - the row fetch is loadApplicableCategoryRates' job, exactly the
+// resolveEarningsCap/evaluateEarningsCap split #449 established.
+//
+// Precedence WITHIN the category tier: an enrollment-scoped row beats the tenant-wide template
+// row (enrollment_id = 0) for the same folder, matching resolveActivePriceRule's own ordering.
+// Returns null when nothing matches - the caller falls through to the tenant default. That is
+// not an error and is never logged.
+export const resolveCategoryRateBps = (categoryRateRows, folderId) => {
+    if (!Array.isArray(categoryRateRows) || categoryRateRows.length === 0) return null;
+    if (folderId === null || folderId === undefined) return null;
+    const targetFolderId = Number(folderId);
+    if (!Number.isInteger(targetFolderId)) return null;
+
+    const activeRowsForFolder = categoryRateRows.filter((row) => (
+        row?.active !== false && Number(row?.folder_id) === targetFolderId
+    ));
+    if (activeRowsForFolder.length === 0) return null;
+
+    const enrollmentScoped = activeRowsForFolder.find((row) => Number(row?.enrollment_id) !== 0);
+    const templateScoped = activeRowsForFolder.find((row) => Number(row?.enrollment_id) === 0);
+    const winner = enrollmentScoped || templateScoped;
+    return winner && Number.isInteger(winner.rate_bps) ? winner.rate_bps : null;
+};
+
+// Core, shared by both resolveLineCommissionRateBps (POS - has a real enrollment/settings) and
+// computeCategoryAwareCommission's storefront entry (which only has an already-resolved
+// `fallbackRate` - see its own comment for why re-deriving the enrollment tier there would
+// duplicate the ladder in two places). `fallbackRate` must already be the correct
+// enrollment-override-or-tenant-default value; this only adds the category tier on top, and still
+// re-checks the enrollment override itself as defense in depth (harmless: loadApplicableCategoryRates
+// already guarantees categoryRateRows is [] whenever the override applies, so this branch is
+// normally a no-op).
+const resolveLineRateGivenFallback = (enrollment, categoryRateRows, folderId, fallbackRate) => {
+    if (Number.isInteger(enrollment?.commission_rate_bps)) return enrollment.commission_rate_bps;
+    const categoryRate = resolveCategoryRateBps(categoryRateRows, folderId);
+    return categoryRate !== null ? categoryRate : fallbackRate;
+};
+
+// The full ladder for ONE line. Precedence per #448's decision comment:
+//   enrollment.commission_rate_bps  >  category rate for this line's folder_id  >  tenant default  >  500
+// NOTE the enrollment override is checked FIRST and wins outright: a negotiated per-affiliate rate
+// is a ceiling/floor regardless of what they sell, so an enrollment-scoped category row on an
+// affiliate who also has commission_rate_bps set is DEAD CONFIG. The upsert endpoint rejects
+// creating that combination (422 AFFILIATE_CATEGORY_RATE_SHADOWED_BY_OVERRIDE) rather than
+// letting a merchant configure something that silently never fires.
+export const resolveLineCommissionRateBps = (enrollment, settings, categoryRateRows, folderId) => {
+    const tenantDefault = Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS;
+    return resolveLineRateGivenFallback(enrollment, categoryRateRows, folderId, tenantDefault);
+};
+
+// #448 (Phase 209). Returns [] without issuing a query when the tenant hasn't opted in, or when
+// the enrollment override wins anyway (in which case no category row can ever apply). Zero added
+// queries for every tenant on develop today - the same discipline #449 Phase 208 held itself to.
+export const loadApplicableCategoryRates = async ({
+    tenantId,
+    enrollment,
+    settings,
+    repository = dgfyAffiliateRepository
+}) => {
+    if (settings?.category_rates_enabled !== true) return [];
+    if (Number.isInteger(enrollment?.commission_rate_bps)) return [];
+    if (!tenantId || !enrollment?.enrollment_id) return [];
+    return repository.listActiveCategoryRatesForEnrollment(tenantId, enrollment.enrollment_id);
+};
+
+// Largest-remainder allocation of `totalCentavos` across `weights` (both integers), so the parts
+// always sum EXACTLY to the whole regardless of rounding. Ties in the fractional remainder break
+// by ascending index, for a deterministic result. Returns an array of centavos, same length/order
+// as `weights`.
+// Exported (only) as a test seam - #448 RF-2 (PR #1214 review) - so a caller can independently
+// assert Σ allocatedBases === totalCentavos on an uneven base without duct-taping a recomputation
+// of the allocation logic itself into the test. Not called directly by any other module; every
+// production caller goes through computeCategoryAwareCommission below.
+export const allocateLargestRemainder = (totalCentavos, weights) => {
+    const totalWeight = weights.reduce((sum, w) => sum + Math.max(0, Number(w) || 0), 0);
+    if (totalWeight <= 0 || totalCentavos <= 0) {
+        return weights.map(() => 0);
+    }
+
+    const raw = weights.map((w) => (Math.max(0, Number(w) || 0) * totalCentavos) / totalWeight);
+    const floored = raw.map((value) => Math.floor(value));
+    let remaining = totalCentavos - floored.reduce((sum, value) => sum + value, 0);
+
+    const remainderOrder = raw
+        .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+        .sort((a, b) => (b.fraction - a.fraction) || (a.index - b.index));
+
+    const result = [...floored];
+    for (let i = 0; i < remainderOrder.length && remaining > 0; i += 1) {
+        result[remainderOrder[i].index] += 1;
+        remaining -= 1;
+    }
+    return result;
+};
+
+// #448 (Phase 209). See PHASE_209_PLAN.md §5. `lines` is [{ folderId, weightCentavos }].
+// Returns { amountCentavos, rateBpsSnapshot }.
+//
+// Step 1 (uniform rate) is byte-identical to the pre-Phase-209 formula and is the path every
+// existing tenant takes - it INCLUDES every no-category-rate cart and every cart where the
+// enrollment override wins (both resolve every line to the same rate). Only a genuinely mixed
+// cart (different folders resolving to different rates) enters the largest-remainder allocation
+// path in step 2. `lines`' weights are used as RELATIVE WEIGHTS ONLY, never as absolute bases -
+// on POS's senior/PWD (governed discount) branch, sum(line_subtotal) != commissionableBaseCentavos
+// because VAT is separately removed there (see posUseCases.js's governed netItemsTotal), so using
+// weights as absolute amounts would silently change the commission total on every senior/PWD sale.
+// The largest-remainder allocation of `commissionableBaseCentavos` itself is what keeps the parts
+// summing exactly to the unchanged whole regardless of what the weights sum to.
+export const computeCategoryAwareCommission = ({
+    enrollment = null,
+    settings = null,
+    fallbackRateBps = null,
+    categoryRateRows = [],
+    lines = [],
+    commissionableBaseCentavos
+}) => {
+    const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
+    const fallbackRate = Number.isInteger(fallbackRateBps)
+        ? fallbackRateBps
+        : resolveCommissionRateBps(enrollment, settings);
+
+    const safeLines = Array.isArray(lines) ? lines : [];
+    const totalWeight = safeLines.reduce((sum, line) => sum + Math.max(0, Number(line?.weightCentavos) || 0), 0);
+
+    if (safeLines.length === 0 || totalWeight <= 0) {
+        return {
+            amountCentavos: Math.round(baseCentavos * fallbackRate / 10000),
+            rateBpsSnapshot: fallbackRate
+        };
+    }
+
+    const rates = safeLines.map((line) => (
+        resolveLineRateGivenFallback(enrollment, categoryRateRows, line?.folderId ?? null, fallbackRate)
+    ));
+
+    // Step 1: every line resolves to the same rate (includes the enrollment-override case, since
+    // resolveLineRateGivenFallback returns the same override for every line, and the
+    // no-category-rate case, since every line falls through to the same fallback rate). Take the
+    // IDENTICAL pre-Phase-209 expression, unchanged, bit for bit.
+    const uniformRate = rates.every((rate) => rate === rates[0]) ? rates[0] : null;
+    if (uniformRate !== null) {
+        return {
+            amountCentavos: Math.round(baseCentavos * uniformRate / 10000),
+            rateBpsSnapshot: uniformRate
+        };
+    }
+
+    // Step 2: a genuinely mixed cart. Allocate the UNCHANGED commissionable base across lines by
+    // weight (largest remainder, so the parts sum exactly to the whole), then apply each line's
+    // own resolved rate to its allocated share.
+    const weights = safeLines.map((line) => Math.max(0, Number(line?.weightCentavos) || 0));
+    const allocatedBases = allocateLargestRemainder(baseCentavos, weights);
+    const amountCentavos = allocatedBases.reduce((sum, lineBase, index) => (
+        sum + Math.round(lineBase * rates[index] / 10000)
+    ), 0);
+    const rateBpsSnapshot = baseCentavos > 0
+        ? Math.round(amountCentavos * 10000 / baseCentavos)
+        : fallbackRate;
+
+    return { amountCentavos, rateBpsSnapshot };
+};
+
 // #449 (Phase 208). Resolves the applicable cap config as a PAIR - an enrollment-level cap brings
 // its own end date, never the tenant's - mirroring resolveCommissionRateBps's override ladder above.
 // Returns null when no cap applies, which is the case for every tenant that hasn't opted in.
@@ -124,6 +287,13 @@ export const accrueEarnedForInStoreSale = async ({
     // module doesn't need to know about selling-price rules at all. Omitted entirely by every
     // existing caller (in-store POS), so default behavior is provably unchanged.
     resolvedCommission = null,
+    // #448 (Phase 209). [{ folderId, weightCentavos }] - one entry per sold line, weight in
+    // centavos, used as a RELATIVE WEIGHT ONLY (never an absolute base - see
+    // computeCategoryAwareCommission's own header for why). Ignored entirely when
+    // resolvedCommission is supplied (that bypass is unconditional, unchanged). When omitted
+    // (every existing caller on develop today), behavior is provably unchanged: falls through to
+    // resolveCommissionRateBps + roundBpsAmount exactly as before this parameter existed.
+    commissionLines = null,
     // Optional Phase 1 snapshot fields, persisted alongside the commission row for audit/reporting.
     // All default to null - a row accrued with no affiliate price rule attached leaves them NULL.
     snapshot = null,
@@ -146,12 +316,30 @@ export const accrueEarnedForInStoreSale = async ({
 
     const settings = await repository.getSettings(tenantId);
     const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
-    const rateBps = resolvedCommission
-        ? Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0))
-        : resolveCommissionRateBps(enrollment, settings);
-    const amountCentavos = resolvedCommission
-        ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
-        : roundBpsAmount(baseCentavos, rateBps);
+    let rateBps;
+    let amountCentavos;
+    if (resolvedCommission) {
+        rateBps = Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0));
+        amountCentavos = Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0));
+    } else if (Array.isArray(commissionLines) && commissionLines.length > 0) {
+        // #448 (Phase 209) - the category-aware ladder. loadApplicableCategoryRates returns []
+        // (no query) when the tenant hasn't opted in or the enrollment override shadows it, in
+        // which case computeCategoryAwareCommission's step 1 collapses to the identical
+        // pre-Phase-209 formula below.
+        const categoryRateRows = await loadApplicableCategoryRates({ tenantId, enrollment, settings, repository });
+        const computed = computeCategoryAwareCommission({
+            enrollment,
+            settings,
+            categoryRateRows,
+            lines: commissionLines,
+            commissionableBaseCentavos: baseCentavos
+        });
+        rateBps = computed.rateBpsSnapshot;
+        amountCentavos = computed.amountCentavos;
+    } else {
+        rateBps = resolveCommissionRateBps(enrollment, settings);
+        amountCentavos = roundBpsAmount(baseCentavos, rateBps);
+    }
 
     // #449 (Phase 208) - lifetime earnings cap. Silent stop: the sale already committed and stands
     // unchanged; only the affiliate's cut is withheld, logged rather than thrown. Same "silent drop,
@@ -257,6 +445,12 @@ export const accruePendingForOnlineOrder = async ({
     // See accrueEarnedForInStoreSale's resolvedCommission/snapshot for the full rationale - same
     // Phase 1 affiliate pricing rule engine override, mirrored here for the online path.
     resolvedCommission = null,
+    // #448 (Phase 209). Identical contract to accrueEarnedForInStoreSale's own commissionLines -
+    // see its comment for the full rationale. In practice the storefront's production caller
+    // always passes resolvedCommission (§1.1 of the plan), so this is the dormant twin: kept for
+    // symmetry and so a future caller that stops pre-resolving commission gets the same
+    // category-aware ladder for free, with no drift between the two channels.
+    commissionLines = null,
     snapshot = null,
     repository = dgfyAffiliateRepository
 }) => {
@@ -275,12 +469,26 @@ export const accruePendingForOnlineOrder = async ({
 
     const settings = await repository.getSettings(tenantId);
     const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
-    const rateBps = resolvedCommission
-        ? Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0))
-        : resolveCommissionRateBps(enrollment, settings);
-    const amountCentavos = resolvedCommission
-        ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
-        : roundBpsAmount(baseCentavos, rateBps);
+    let rateBps;
+    let amountCentavos;
+    if (resolvedCommission) {
+        rateBps = Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0));
+        amountCentavos = Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0));
+    } else if (Array.isArray(commissionLines) && commissionLines.length > 0) {
+        const categoryRateRows = await loadApplicableCategoryRates({ tenantId, enrollment, settings, repository });
+        const computed = computeCategoryAwareCommission({
+            enrollment,
+            settings,
+            categoryRateRows,
+            lines: commissionLines,
+            commissionableBaseCentavos: baseCentavos
+        });
+        rateBps = computed.rateBpsSnapshot;
+        amountCentavos = computed.amountCentavos;
+    } else {
+        rateBps = resolveCommissionRateBps(enrollment, settings);
+        amountCentavos = roundBpsAmount(baseCentavos, rateBps);
+    }
 
     // #449 (Phase 208) - lifetime earnings cap. See accrueEarnedForInStoreSale's identical block for
     // the full "silent stop, attribution still recorded" rationale.
@@ -356,6 +564,10 @@ export default {
     resolveActiveAffiliateEnrollment,
     resolveActiveAffiliateEnrollmentById,
     resolveCommissionRateBps,
+    resolveCategoryRateBps,
+    resolveLineCommissionRateBps,
+    loadApplicableCategoryRates,
+    computeCategoryAwareCommission,
     resolveEarningsCap,
     evaluateEarningsCap,
     accrueEarnedForInStoreSale,

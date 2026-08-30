@@ -79,6 +79,15 @@ export default (sequelize) => {
         earnings_cap_active_until: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // #448 (Phase 209): gates the per-category commission rate lookup entirely. Defaults
+        // false for every existing tenant - zero added queries, commission resolves exactly as it
+        // did before this column existed. See dgfy_affiliate_category_rates and
+        // affiliateCommissionAccrual.js's loadApplicableCategoryRates.
+        category_rates_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         }
     }, {
         sequelize,

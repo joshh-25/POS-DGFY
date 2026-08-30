@@ -3417,6 +3417,11 @@ export const buildCheckoutPosUseCase = ({
                 preparedLines.push({
                     line_ref: String(line.line_ref || '').trim() || null,
                     item_id: item.item_id,
+                    // #448 (Phase 209) - snapshotted so post-commit affiliate accrual can resolve
+                    // a per-category commission rate without re-querying the item. Nullable:
+                    // an uncategorized item matches no category rate and falls to the tenant
+                    // default, which is correct, not an error.
+                    folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
                     item_name: item.name,
                     item_name_snapshot: item.name || null,
                     sku_snapshot: item.sku_code || null,
@@ -4387,7 +4392,16 @@ export const buildCheckoutPosUseCase = ({
                         enrollment: affiliateEnrollment,
                         orderReference: String(posTransactionId),
                         posTransactionId,
-                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount))
+                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount)),
+                        // #448 (Phase 209): per-line weights ONLY - the commissionable base above is
+                        // unchanged and stays the single source of the total. line_subtotal here is
+                        // already discount-allocated (see the rewrite ~:3877) but its SUM is
+                        // netItemsTotal, which subtracts vat_removed on the governed senior/PWD
+                        // branch - so these are relative weights, never absolute bases.
+                        commissionLines: preparedLines.map((line) => ({
+                            folderId: line.folder_id_snapshot ?? null,
+                            weightCentavos: Math.max(0, toCurrencyCents(line.line_subtotal))
+                        }))
                     });
                 } catch (accrualError) {
                     logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {

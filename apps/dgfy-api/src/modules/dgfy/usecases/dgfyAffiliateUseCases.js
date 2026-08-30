@@ -31,6 +31,11 @@ const PRICE_RULE_TYPE_VALUES = new Set(AFFILIATE_SELLING_PRICE_RULE_TYPES);
 // backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
 const PRICE_RULE_SCOPE_ALL = 0;
 
+// #448 (Phase 209) - a SEPARATE named constant from PRICE_RULE_SCOPE_ALL (see
+// dgfyAffiliateRepository.js's own comment on this) so the two tables' sentinels can diverge later
+// without a silent coupling.
+const CATEGORY_RATE_SCOPE_ALL = 0;
+
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
     return new DomainError(DomainErrorCode.INTERNAL_ERROR, fallbackMessage, {
@@ -247,6 +252,11 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
                 }
                 updates.commission_base_mode = commissionBaseMode;
             }
+
+            // #448 (Phase 209) - gates the per-category commission rate lookup entirely. A merchant
+            // may configure category rate rows first and flip this after (validation on the rows
+            // themselves does not require it) - that is the natural order.
+            if (body.category_rates_enabled !== undefined) updates.category_rates_enabled = body.category_rates_enabled === true;
 
             // #449 (Phase 208), §2.3 - only fetch/check when this PATCH actually touches either
             // cap field; every other settings PATCH pays no extra read.
@@ -788,6 +798,94 @@ export const buildDeactivateAffiliatePriceRuleUseCase = ({ repository = dgfyAffi
             return ok({ price_rule: priceRule });
         } catch (error) {
             return fail(mapError(error, 'Failed to deactivate affiliate price rule'));
+        }
+    }
+);
+
+// --- Affiliate category rates (#448, Phase 209) - the category tier of the commission rate
+// ladder. Mirrors the price-rule endpoints above one-for-one; see affiliateCommissionAccrual.js
+// for how these rows are actually resolved at accrual time. ---
+
+export const buildListAffiliateCategoryRatesUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const categoryRates = await repository.listCategoryRatesForTenant(tenant);
+            return ok({ category_rates: categoryRates });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list affiliate category rates'));
+        }
+    }
+);
+
+// Creates or updates the single category rate at a given scope (tenant template when
+// enrollment_id is omitted/0, or a specific affiliate's override). See A6 below for the
+// shadowed-by-override guard, and A4 for why folder_id = 0 is rejected rather than treated as an
+// "all categories" sentinel.
+export const buildUpsertAffiliateCategoryRateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, body = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const enrollmentId = parseOptionalPositiveInt(body.enrollment_id, { field: 'enrollment_id', min: 0 }) ?? CATEGORY_RATE_SCOPE_ALL;
+
+            // A4: folder_id is required and must be a real item_folders.folder_id - there is no
+            // "all categories" sentinel (that concept already exists as default_rate_bps).
+            const folderId = parseOptionalPositiveInt(body.folder_id, { field: 'folder_id', min: 1 });
+            if (folderId === undefined || folderId === null) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    "folder_id must be a real item_folders.folder_id; there is no 'all categories' sentinel — set default_rate_bps instead.",
+                    { statusCode: 422, details: { reason_code: 'AFFILIATE_CATEGORY_RATE_FOLDER_ID_REQUIRED' } }
+                );
+            }
+
+            const rateBps = parseRequiredRateBps(body.rate_bps, { field: 'rate_bps' });
+            const active = body.active !== undefined ? body.active === true : true;
+
+            if (enrollmentId !== CATEGORY_RATE_SCOPE_ALL) {
+                const enrollment = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!enrollment) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+                // A6: an enrollment-scoped category rate on an affiliate who ALSO has
+                // commission_rate_bps set is dead config - the enrollment override wins outright
+                // and this row would never fire. Reject rather than let a merchant configure
+                // something that silently never applies (fail-closed, matching this repo's
+                // existing habit - see ADR 0066's [binding] fail-closed clause).
+                if (Number.isInteger(enrollment.commission_rate_bps)) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'This affiliate has a commission_rate_bps override set, which always wins over a category rate. Clear this affiliate\'s commission_rate_bps first.',
+                        { statusCode: 422, details: { reason_code: 'AFFILIATE_CATEGORY_RATE_SHADOWED_BY_OVERRIDE' } }
+                    );
+                }
+            }
+
+            const categoryRate = await repository.upsertCategoryRate({
+                tenantId: tenant,
+                enrollmentId,
+                folderId,
+                rateBps,
+                active
+            });
+            return ok({ category_rate: categoryRate });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to save affiliate category rate'));
+        }
+    }
+);
+
+export const buildDeactivateAffiliateCategoryRateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, categoryRateId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const categoryRate = await repository.deactivateCategoryRate(tenant, categoryRateId);
+            if (!categoryRate) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate category rate not found.', { statusCode: 404 });
+            }
+            return ok({ category_rate: categoryRate });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to deactivate affiliate category rate'));
         }
     }
 );
