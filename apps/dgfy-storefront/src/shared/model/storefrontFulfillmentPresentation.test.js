@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NO_FULFILLMENT_METHOD_NOTICE,
+  buildCheckoutSectionNumbers,
   resolveFulfillmentSelectorPresentation
 } from './storefrontFulfillmentPresentation.js';
 
@@ -70,5 +71,12 @@ describe('resolveFulfillmentSelectorPresentation', () => {
     expect(() => resolveFulfillmentSelectorPresentation(null)).not.toThrow();
     expect(() => resolveFulfillmentSelectorPresentation(undefined)).not.toThrow();
     expect(resolveFulfillmentSelectorPresentation(null).showSelector).toBe(true);
+  });
+
+  it('numbers address after whichever checkout sections remain', () => {
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: true })).toEqual({ orderMethod: 1, timing: 2, address: 3 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: true })).toEqual({ orderMethod: null, timing: 1, address: 2 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: false })).toEqual({ orderMethod: 1, timing: null, address: 2 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: false })).toEqual({ orderMethod: null, timing: null, address: 1 });
   });
 });
