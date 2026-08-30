@@ -1,6 +1,8 @@
 import { CalendarDays, Clock3, Zap } from 'lucide-react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { SimpleOrderMethodSelector } from './SimpleOrderMethodSelector.jsx';
+import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_SHADOW_STRONG = 'rgba(23,107,58,0.16)';
@@ -21,8 +23,13 @@ export function SimpleCheckoutFulfillmentChoices({
   orderMethod,
   simpleOrderMethodOptions = []
 }) {
+  // #1217: a single available method is a statement, not a question.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions);
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
+      {showOrderMethodSelector ? (
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <SimpleOrderMethodSelector
@@ -32,9 +39,16 @@ export function SimpleCheckoutFulfillmentChoices({
           onOrderMethodChange={onOrderMethodChange}
         />
       </div>
+      ) : (
+        <FulfillmentMethodNotice
+          accentColor={SIMPLE_BRAND}
+          message={orderMethodNotice}
+          variant={soleOrderMethod ? 'info' : 'warning'}
+        />
+      )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '2' : '1'}. When would you like your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
           <SelectableOptionCard
             onClick={() => onScheduleModeChange('asap')}

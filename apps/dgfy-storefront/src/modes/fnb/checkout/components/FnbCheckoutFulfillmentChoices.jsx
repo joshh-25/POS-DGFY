@@ -2,6 +2,8 @@ import { CalendarDays, Clock3, ShoppingBag, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { getUnavailableFulfillmentMessage, resolveStorefrontFulfillmentOptions } from '../../../../shared/model/storefrontFulfillmentOptions.js';
+import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 
 const deliveryIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Im0xOCAxNC0xLTMiLz48cGF0aCBkPSJtMyA5IDYgMmEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDEuOTkgMS44MSIvPjxwYXRoIGQ9Ik04IDE3aDNhMSAxIDAgMCAwIDEtMSA2IDYgMCAwIDEgNi02IDEgMSAwIDAgMCAxLTF2LS43NUE1IDUgMCAwIDAgMTcgNSIvPjxjaXJjbGUgY3g9IjE5IiBjeT0iMTciIHI9IjMiLz48Y2lyY2xlIGN4PSI1IiBjeT0iMTciIHI9IjMiLz48L3N2Zz4=';
 
@@ -67,6 +69,9 @@ export function FnbCheckoutFulfillmentChoices({
   scheduleHoursLabel
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
+  // #1217: a single available method is a statement, not a question.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(fulfillmentOptions);
   const choiceGridColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
   const choiceProps = {
     brand: fnbOrderBrand,
@@ -80,6 +85,7 @@ export function FnbCheckoutFulfillmentChoices({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
+      {showOrderMethodSelector ? (
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
@@ -105,9 +111,16 @@ export function FnbCheckoutFulfillmentChoices({
         </div>
         {unavailableMessage ? <div role="alert" style={{ color: '#9f1239', fontSize: 13, fontWeight: 600 }}>{unavailableMessage}</div> : null}
       </div>
+      ) : (
+        <FulfillmentMethodNotice
+          accentColor={fnbOrderBrand}
+          message={orderMethodNotice}
+          variant={soleOrderMethod ? 'info' : 'warning'}
+        />
+      )}
 
       <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '2' : '1'}. When would you like your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
           <SelectableOptionCard
             {...buildChoiceCardProps({
