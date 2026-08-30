@@ -60,8 +60,16 @@ describe('POS balance-payment proof capture (Phase 204, #965)', () => {
   it('carries the audit-aid copy -- never framed as DGFY-verified evidence', () => {
     renderDialog({ method: 'gcash' });
 
-    expect(screen.getByText(/audit aid only/i)).toBeTruthy();
-    expect(screen.getByText(/not proof that dgfy verified the payment/i)).toBeTruthy();
+    // Both the reference-number note and the proof-capture note carry their own "audit aid
+    // only... not proof that DGFY verified the payment" disclaimer, so a loose /audit aid only/i
+    // or /not proof that dgfy verified the payment/i query matches two elements and throws
+    // (caught only once this suite was actually executed, not just syntax-checked -- see PR
+    // #1210's RF-2). Match each note's full text instead of a shared substring.
+    expect(screen.getAllByText(/audit aid only/i)).toHaveLength(2);
+    expect(screen.getByText('An audit aid only. It is not proof that DGFY verified the payment.')).toBeTruthy();
+    expect(screen.getByText(
+      'An audit aid only. An attached photo is evidence the store captured at the counter -- it is not proof that DGFY verified the payment.'
+    )).toBeTruthy();
   });
 
   it('choosing a file never gates submit -- the proof is optional', () => {

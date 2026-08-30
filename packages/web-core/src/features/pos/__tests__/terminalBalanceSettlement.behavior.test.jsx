@@ -155,8 +155,12 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     // the copy must not let staff believe otherwise.
     renderDialog({ method: 'gcash' });
 
+    // Phase 204 (#965) added a second "...not proof that DGFY verified the payment" note (the
+    // proof-capture field, alongside this one for the reference field), so the loose regex below
+    // now matches two elements and throws -- only surfaced once this suite was actually executed,
+    // not just syntax-checked (PR #1210's RF-2). Match this note's exact text instead.
     expect(screen.getByText(/not verified by DGFY/i)).toBeTruthy();
-    expect(screen.getByText(/not proof that DGFY verified the payment/i)).toBeTruthy();
+    expect(screen.getByText('An audit aid only. It is not proof that DGFY verified the payment.')).toBeTruthy();
   });
 
   // Phase 202 (#1085): ADR 0077 scoped-supersedes ADR 0063 clause 4 to add `cheque` as a sixth
