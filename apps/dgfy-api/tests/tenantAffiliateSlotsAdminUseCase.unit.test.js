@@ -116,7 +116,7 @@ describe('updateTenantAffiliateSlotsUseCase (#1190, Phase 213)', () => {
         expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledTimes(1);
     });
 
-    it('calls acquireAffiliateSlotLock before getSettings, passing the same transaction to the lock, the write, and the audit insert (A5)', async () => {
+    it('calls acquireAffiliateSlotLock before getSettings, passing the same transaction to the lock, getSettings, the write, and the audit insert (A5, RF-1)', async () => {
         const tenantAdminRepository = makeTenantAdminRepository();
         const dgfyAffiliateRepository = makeDgfyAffiliateRepository();
         const callOrder = [];
@@ -129,6 +129,10 @@ describe('updateTenantAffiliateSlotsUseCase (#1190, Phase 213)', () => {
         expect(callOrder).toEqual(['lock', 'getSettings']);
         const tx = { id: 'tx' };
         expect(dgfyAffiliateRepository.acquireAffiliateSlotLock).toHaveBeenCalledWith(TENANT_ID, { transaction: tx });
+        // RF-1 (PR #1228 round-1 review): getSettings must read on the same transaction as the
+        // lock/write/audit-insert, not an implicit separate connection -- before_snapshot would
+        // otherwise not be guaranteed to reflect the locked row.
+        expect(dgfyAffiliateRepository.getSettings).toHaveBeenCalledWith(TENANT_ID, { transaction: tx });
         expect(dgfyAffiliateRepository.upsertSettings).toHaveBeenCalledWith(TENANT_ID, { max_affiliate_slots: 2 }, { transaction: tx });
         expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.anything(), { transaction: tx });
     });
