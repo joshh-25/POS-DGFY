@@ -41,11 +41,22 @@ const load = async (key) => {
     return entry.value;
 };
 const consume = async (key) => {
-    const value = await load(key);
     const redis = useRedis();
-    if (redis) await redis.del(key);
-    else memoryTransactions.delete(key);
-    return value;
+    if (redis) {
+        // Redis GETDEL makes authorization codes, PAR request URIs, and
+        // access-token revocations single-use under concurrent requests.
+        if (typeof redis.getDel === 'function') {
+            const raw = await redis.getDel(key);
+            return raw ? JSON.parse(raw) : null;
+        }
+        const value = await load(key);
+        if (value) await redis.del(key);
+        return value;
+    }
+    const entry = memoryTransactions.get(key);
+    memoryTransactions.delete(key);
+    if (!entry || entry.expiresAt <= Date.now()) return null;
+    return entry.value;
 };
 
 export const authenticateDglaundryAccessToken = async (req, res, next) => {
@@ -123,8 +134,10 @@ export const oidcPar = async (req, res, next) => {
             return res.status(400).json({ error: 'invalid_request', error_description: 'Authorization Code with PKCE S256 and the registered redirect URI are required.' });
         }
         const requestUri = `urn:ietf:params:oauth:request_uri:${crypto.randomUUID()}`;
+        const safeInput = { ...input };
+        delete safeInput.client_secret;
         const stored = await store(`dglaundry:oidc:par:${requestUri}`, {
-            ...input,
+            ...safeInput,
             client_id: input.client_id || basicClientId,
             created_at: Date.now()
         });
@@ -138,7 +151,7 @@ export const buildOidcAuthorizeHandler = ({ chooseCompany }) => async (req, res,
         const input = formOrJson(req);
         let params = input;
         if (input.request_uri) {
-            params = await load(`dglaundry:oidc:par:${input.request_uri}`);
+            params = await consume(`dglaundry:oidc:par:${input.request_uri}`);
             if (!params) return res.status(400).json({ error: 'invalid_request_uri' });
         }
         if (params.client_id !== CLIENT_ID || params.redirect_uri !== REDIRECT_URI || params.response_type !== 'code' || params.code_challenge_method !== 'S256') {
