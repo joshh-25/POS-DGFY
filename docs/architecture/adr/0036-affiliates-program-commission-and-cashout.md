@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-24
-last_reviewed: 2026-08-30
+last_reviewed: 2026-08-31
 review_by: 2027-01-24
 applies_to: affiliates_program, backend, pos_frontend, storefront
 topic: affiliates_program_commission_and_cashout
@@ -206,3 +206,67 @@ build log). It touches money handling already governed by two prior ADRs:
   `AGENTS.md`'s leave-alone rule for dated/historical records applies — this Amendments block is
   where the current, governing truth lives).
 - PR: #452, Phase 212 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)
+
+### 2026-08-31 — Per-tenant enrollment cap (retro-documented) and its landlord-admin write path (#1190, Phase 213)
+- Clause amended: none directly — this is new material this ADR omitted, not a
+  correction of an existing Decision. Filed under the `[default]`/untagged route
+  per ADR 0039 (no `[binding]` clause governs enrollment capacity today).
+- **Retro-documentation of a shipped mechanism (Phase 198, #1177, PR #1187,
+  not previously recorded here):** every tenant carries a per-tenant affiliate
+  enrollment cap, `tenant_affiliate_settings.max_affiliate_slots`
+  (`NOT NULL DEFAULT 1`). "Consumed" slots are active enrollments plus live
+  pending invites (revoked/suspended enrollments and
+  expired/cancelled invites do not consume). Every write that can consume a
+  new slot (`createEnrollment`, `createInvite`,
+  `materializeInviteEnrollment`, and the #1191/Phase 207 reactivation
+  endpoint) calls `assertAffiliateSlotAvailable` inside its own transaction,
+  which first takes a row lock on the tenant's settings row
+  (`acquireAffiliateSlotLock`) so two concurrent slot-consuming writes for
+  the same tenant serialize rather than both reading a stale count (#1187
+  RF-1/RF-6). Before this cap shipped, enrollment was unbounded (#447's own
+  precondition) — a production reconciliation of tenants that were already
+  over this cap at cutover remains a manual, un-automated step, not
+  discharged by any phase to date.
+- **New surface (this phase): the only write path for the cap.**
+  `PATCH /api/v1/admin/tenants/:id/affiliate-slots` (plus `GET` and
+  `GET .../audit-logs` siblings) is the sole way to change
+  `max_affiliate_slots` — a hand-written `UPDATE` against the production
+  landlord DB was the only way to do this before. Two decisions Pat made on
+  #1190 (2026-08-31), both binding on this endpoint's behavior:
+  - **Access (E1):** delegable to any `admin.tenants` holder, not
+    Platform-Master-Admin-only — mounted under
+    `/api/v1/admin/tenants/:id/…`, which `resolvePlatformAdminRoutePolicy`
+    (`middleware/auth.js`) grants automatically via its existing
+    `admin.tenants` path-regex row. This matches how `capabilities` and
+    `pos-metadata` are scoped (delegable), unlike `admin/templates`
+    (platform-wide curation, kept master-only on the reasoning that a
+    published template shapes what every future tenant provisions with —
+    that reasoning does not apply to a single tenant's own cap).
+  - **Lowering the cap (E2):** allowed, including below current
+    consumption. Every existing enrollment and pending invite is
+    grandfathered — lowering the cap **never** suspends, revokes, or
+    otherwise mutates any of them; it binds only future slot-consuming
+    writes. The observed `slots_used` at write time is recorded on the
+    audit row (`before_snapshot.slots_used`,
+    `metadata.over_cap_after_write`) and in the endpoint's own response
+    (`over_cap`), so an over-cap tenant is visible in the record, not
+    hidden by it. This governs only what a *human platform admin* may do —
+    it does not establish any automated lapse/dunning downgrade behavior,
+    which remains unbuilt.
+  - Raising the cap is still exactly what #447 D5 already established: "a
+    manual, out-of-band admin action, negotiated between DGFY and the
+    Business" — this phase gives that action an authenticated, validated,
+    audited interface, it does not make the cap self-serve. The
+    merchant-facing `PUT /affiliates/settings` allowlist
+    (`buildUpdateAffiliateSettingsUseCase`) still cannot write
+    `max_affiliate_slots`, unchanged by this phase.
+  - Audited via the existing `tenant_admin_audit_logs` table (one new
+    `action` enum value, `affiliate_slots_update`) rather than a new table —
+    that table already carries every field this write needs
+    (`actor_username`, `reason` `NOT NULL`, `before_snapshot`,
+    `after_snapshot`, `metadata`, `created_at`), keyed per-tenant.
+- Explicitly out of scope, named rather than silently absent: a billing/
+  purchase flow for buying additional slots, a generic tenant × resource ×
+  limit entitlements primitive, and any system-driven downgrade on payment
+  lapse — all three remain #488/#491's open scope, not this ADR's.
+- PR: #1190, Phase 213 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)

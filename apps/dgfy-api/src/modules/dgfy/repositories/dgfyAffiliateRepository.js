@@ -102,8 +102,8 @@ const ENROLLMENT_ACCOUNT_INCLUDE = {
 };
 
 export const dgfyAffiliateRepository = {
-    async getSettings(tenantId) {
-        const row = await TenantAffiliateSettings.findByPk(tenantId);
+    async getSettings(tenantId, { transaction = null } = {}) {
+        const row = await TenantAffiliateSettings.findByPk(tenantId, { transaction });
         if (row) return toPlain(row);
         return { tenant_id: tenantId, ...DEFAULT_SETTINGS };
     },
@@ -248,13 +248,14 @@ export const dgfyAffiliateRepository = {
         await this.assertSlotCountWithinCap(tenantId, { transaction, excludeInviteId });
     },
 
-    async upsertSettings(tenantId, payload = {}) {
+    async upsertSettings(tenantId, payload = {}, { transaction = null } = {}) {
         const [row] = await TenantAffiliateSettings.findOrCreate({
             where: { tenant_id: tenantId },
-            defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS }
+            defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS },
+            transaction
         });
-        await row.update(payload);
-        return toPlain(await row.reload());
+        await row.update(payload, { transaction });
+        return toPlain(await row.reload({ transaction }));
     },
 
     findAccountByEmail(email) {

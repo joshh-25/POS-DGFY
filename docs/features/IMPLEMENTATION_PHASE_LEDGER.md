@@ -13142,6 +13142,207 @@ hand to `pm` if ever wanted): a general short-link/redirect service, a server-si
 fixing #972's shared-IP keying gap, telemetry on `?p=` vs. path arrivals, and a vanity affiliate
 handle.
 
+## Phase 213 - Landlord-Admin Write Endpoint for `max_affiliate_slots` (#1190)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #1190: the only write path Phase 198 (#1177, PR
+#1187) left unbuilt for `tenant_affiliate_settings.max_affiliate_slots` was a hand-written `UPDATE`
+against the production landlord DB — no actor, no reason, no record. This phase replaces that with
+an authenticated, validated, audited platform-admin endpoint, per #447 D5's "manual, out-of-band,
+negotiated between DGFY and the Business" cap-raise model.
+
+### Objective and scope
+
+`PHASE_213_PLAN.md` raised two escalations, both decided by Pat on #1190 (2026-08-31) and recorded
+in full in the ADR 0036 Amendments block added by this phase:
+
+- **E1 (who may raise/lower the cap)** — delegable to any `admin.tenants` holder, not
+  Platform-Master-Admin-only. Mounted at `/api/v1/admin/tenants/:id/affiliate-slots`, which
+  `resolvePlatformAdminRoutePolicy` (`middleware/auth.js`) grants automatically via its existing
+  `admin.tenants` path-regex row — matching how `capabilities` and `pos-metadata` are scoped
+  (delegable), unlike `admin/templates` (platform-wide curation, kept master-only). The URL choice
+  *is* the authorization choice for this middleware, so this decision drove the route's mount
+  point, not a separate permission check.
+- **E2 (lowering the cap below current consumption)** — allowed. Every existing enrollment and
+  pending invite is grandfathered: lowering the cap never suspends, revokes, or otherwise mutates
+  any of them, and binds only future slot-consuming writes. The observed `slots_used` at write time
+  is recorded on the audit row (`before_snapshot.slots_used`, `metadata.over_cap_after_write`) and
+  in the endpoint's own response (`over_cap`), so an over-cap tenant is visible in the record, not
+  hidden.
+
+Every other judgment call (A1–A11 in the plan's READ FIRST table) was decided in-plan and followed
+as-is: reuse `tenant_admin_audit_logs` with one new `action` enum value (A1, no new table); the use
+case lives in `modules/tenants` mirroring `updateTenantPosMetadataUseCase.js` (A2); `reason`
+required, 3–500 chars (A3); `max_affiliate_slots` bounded `1..100` — `min(1)` because `0` already
+means `program_enabled: false`, `max(100)` a defensive typo bound, not a product limit (A4); the
+write is wrapped in a transaction reusing `acquireAffiliateSlotLock` — the #1187 RF-1/RF-6 lock,
+taken as the very first statement (A5); a no-op (same-value) write still audits (A6); `GET` returns
+only `max_affiliate_slots` + `slots_used` (+ `program_enabled`/`over_cap`), no consumption
+breakdown (A7); backend only this phase, no `TenantManager.jsx` panel (A8); compliance
+classification `regulatory` — a declaration was required and drafted, not negotiated down (A9); a
+dated ADR 0036 `## Amendments` block both retro-documents Phase 198's cap and records this phase's
+write path (A10); phase number 213 confirmed against the ledger's own highest entry (212, no 211
+entry yet — 211 is being planned in a sibling worktree) before writing this entry, per `AGENTS.md`'s
+Continuous Phase Numbering rule 10 (A11).
+
+### Status
+
+`in_progress`. PR opened against `develop`, `Refs #1190` (not `Closes` — a new landlord-admin write
+path needs deployed verification before the issue is done, per `docs/process/ISSUE-TAXONOMY.md`'s
+linkage rule; the issue stays open through merge for `verifier`).
+
+### Dependencies
+
+Phase 198 (#1177, PR #1187) — the `max_affiliate_slots` column and its slot-cap enforcement
+(`assertAffiliateSlotAvailable`/`countConsumedSlots`/`acquireAffiliateSlotLock`), all reused
+unchanged. Phase 207 (#1191) — affiliate reactivation, the other slot-consuming path this phase
+does not touch. Independent of Phases 208/209/212 — a different surface entirely (a landlord-admin
+settings write, not commission/earnings math or the share-link path).
+
+### Acceptance and validation evidence
+
+- [x] Repository: `dgfyAffiliateRepository.upsertSettings` gains an optional `{ transaction }`
+      argument, threaded into `findOrCreate`/`update`/`reload`; every existing caller (two
+      positional arguments) is unaffected. `dgfyAffiliateRepository` exported from
+      `modules/dgfy/index.js` (new import + `export`), the established cross-module DI seam
+      already used by `dgfyAccountRepository`.
+- [x] Use cases (new, `modules/tenants/usecases/updateTenantAffiliateSlotsUseCase.js`):
+      `buildUpdateTenantAffiliateSlotsUseCase` validates `reason` and bounds, 404s an unknown
+      tenant, then inside one transaction — `acquireAffiliateSlotLock` first, `getSettings` +
+      `countConsumedSlots` next, `upsertSettings`, then `createTenantAdminAuditLog` — all committing
+      or failing together (deliberately unlike `updateTenantPosMetadataUseCase`'s audit-outside-
+      transaction shape, since a cap write landing without its audit row is exactly the state
+      #1190 exists to eliminate). `buildGetTenantAffiliateSlotsUseCase` returns
+      `{ max_affiliate_slots, slots_used, program_enabled, over_cap }` read-only.
+      `buildListTenantAffiliateSlotsAuditLogsUseCase` added as a third thin wrapper alongside the
+      existing capability/pos-metadata ones in `listTenantCapabilityAuditLogsUseCase.js` — zero new
+      logic, zero repository change. All three wired into `modules/tenants/index.js`'s DI block.
+- [x] Validator: `tenantAffiliateSlotsPatchSchema` (`max_affiliate_slots` integer `1..100`
+      required, `reason` string `3..500` required, `unknown(false)`) exported as
+      `validateTenantAffiliateSlotsPatch`; the existing `validateTenantCapabilityAuditLogQuery` is
+      reused unchanged for the audit-log query, matching the pos-metadata routes' own pattern.
+- [x] Handlers/routes: three handlers added to `adminTenantHandlers.js`
+      (`getTenantAffiliateSlots`, `listTenantAffiliateSlotsAuditLogs`, `updateTenantAffiliateSlots`)
+      mirroring the pos-metadata trio's actor/metadata/telemetry shape; propagated through **all
+      three** places in the `adminTenantController.js` barrel (import list, second import list,
+      `export default`) and into `routes/adminTenants.js`'s import list plus three new routes
+      inserted immediately after the pos-metadata block, matching this file's existing ordering
+      convention. No `checkPermission`, no new middleware, no new permission key — authorization
+      arrives entirely via E1's mount-path decision.
+- [x] Migration: `20260831000001-extend-tenant-admin-audit-actions-affiliate-slots.cjs` adds
+      `'affiliate_slots_update'` to the `tenant_admin_audit_logs.action` ENUM, copying all six
+      existing values verbatim from `20260625000001-add-platform-admin-assisted-provisioning.cjs`;
+      `down()` re-maps any `affiliate_slots_update` row to `capability_update` before shrinking the
+      ENUM, matching the existing precedent's own (lossy-by-construction) `down()` behavior. Model
+      (`TenantAdminAuditLog.js`) updated in lockstep. Landlord table only — no tenant-schema
+      interaction, no deploy-order dependency on
+      `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (stated explicitly, pre-empting the
+      RF-3-class review comment Phase 198's PR received for the same omission).
+- [x] **Compliance declaration required and written** —
+      `docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md`,
+      `regulatory`, surfaces `settings,compliance`, per `check-compliance-impact.js`'s three
+      `adminTenants`/`adminTenantController`/`adminTenantHandlers` rules — all three unavoidably
+      touched. A routing-around option (a fresh, unclassified path) was named and explicitly
+      rejected in both the plan and the declaration. `npm run check:compliance` confirmed to fail
+      first (three sensitive files, no declaration), then pass once the declaration was added.
+- [x] ADR 0036: a dated `## Amendments` block (2026-08-31) added, retro-documenting Phase 198's
+      per-tenant cap (never previously recorded in this ADR — `grep -n "slot\|cap\|max_affiliate"`
+      on the pre-amendment file returned only unrelated hits) and recording this phase's write path
+      plus both of Pat's E1/E2 decisions verbatim. `last_reviewed` refreshed to 2026-08-31 in the
+      same commit (not deferred to a follow-up, unlike Phase 212's own first pass).
+      `npm run check:adr --strict` → PASS (84 ADRs validated, run after the amendment).
+- [x] `docs/api/specification.md` — the three new endpoints documented alongside the existing
+      `pos-metadata` entries, including the grandfathering/`over_cap` behavior.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api` and
+      `apps/dgfy-migration-runner` file (no build step exists for `dgfy-api`). Frontend builds not
+      applicable — this phase is backend-only (A8), no `packages/web-core` or frontend app file
+      changed. `apps/dgfy-api`'s own `node_modules` were installed fresh to run these checks in
+      this environment; `git diff --exit-code -- package-lock.json` confirmed clean (no
+      `package.json` was touched by this phase's diff). `npm run check:architecture` (guardrails +
+      controller boundaries) → both OK.
+- [x] New tests: `tenantAffiliateSlotsAdminUseCase.unit.test.js` (12/12 — raise-and-audit, missing/
+      short-reason 422 with no writes, unknown-tenant 404 with no writes, `before_snapshot.slots_used`
+      accuracy, no-op-write-still-audits (A6), lock-before-read ordering with shared-transaction
+      propagation to the write and the audit insert (A5), the E2 below-consumption case asserting
+      `over_cap: true` and no enrollment/invite mutation, the §1.3 regression pin on
+      `buildUpdateAffiliateSettingsUseCase` never writing `max_affiliate_slots`, and the GET path)
+      and `tenantAffiliateSlotsValidator.test.js` (10/10 — bounds/required-field cases for both
+      fields plus an unknown-key rejection). Extended:
+      `platformAdminRouteClassification.test.js` (two new rows asserting
+      `{ permissions: ['admin.tenants'] }` for the new paths — the checked-in expression of the E1
+      decision), `tenantAdminAuditLogActions.contract.test.js` (asserts the new enum value in the
+      model and the new migration file). Two pre-existing transport-contract suites that mock the
+      full controller/use-case module surface needed their mock objects extended with the three new
+      names so the router's static imports would resolve under the mock —
+      `adminTenantHandlers.transport.test.js` and `adminTenantCapabilities.transport.test.js`
+      (both passed after the extension). Regression check, unmodified and passing:
+      `adminTenantCapabilityValidator.test.js`, `dgfyAffiliateRepository.slotEnforcement.unit.test.js`
+      (Phase 198's own suite — confirms this phase does not perturb slot-cap enforcement),
+      `dgfyAffiliateReactivationUseCase.unit.test.js`.
+- [x] **What this phase cannot verify itself, stated rather than skipped**: the migration is not
+      executed against a live MySQL instance (no reachable DB with working credentials in this
+      sandbox, the same limitation Phase 198's and Phase 207's PRs recorded); no live end-to-end
+      authorization check confirms an `admin.tenants` delegate actually reaches the endpoint on a
+      running server (asserted only against the resolver function via
+      `platformAdminRouteClassification.test.js`); the production over-cap census (#447's own
+      precondition, deferred by Phase 198) remains a manual pre-deploy step, not discharged here.
+- [x] Linked `Refs #1190` — see Status above for why `Refs`, not `Closes`.
+- [x] **`pr-reviewer` round-1 review (PR #1228, verdict COMMENT, no blockers) addressed** — RF-1:
+      `updateTenantAffiliateSlotsUseCase`'s before-snapshot read (`getSettings`) now passes the
+      write's own transaction, so it is guaranteed to read the row `acquireAffiliateSlotLock` just
+      locked rather than a separate implicit connection; `dgfyAffiliateRepository.getSettings`
+      gains the matching optional `{ transaction }` parameter, and the A5 test now asserts this
+      propagation directly. RF-2: the shared `buildListTenantAdminAuditLogsUseCase` builder (used
+      by the capability, pos-metadata, *and* this phase's new affiliate-slots listing) returned
+      `tenant_id: Number(id)` in its response envelope — `NaN`, serializing as `null`, for every
+      UUID tenant; fixed to return the validated `tenant.id` from `findTenantById` instead, with a
+      new UUID regression test (`listTenantCapabilityAuditLogs.usecase.test.js`) covering the new
+      wrapper. Fixing the shared builder also corrects this for the two pre-existing
+      capability/pos-metadata audit-log endpoints, not just the new one. Two pre-existing suites
+      (`adminForceNonCompliant.handler.test.js`, `adminForceNonCompliant.transport.test.js`) that
+      also mock the full `modules/tenants/index.js`/`adminTenantController.js` module surface were
+      found broken by a full local test-suite run during this fixup — missed by the original PR's
+      targeted regression set — and extended with the same three mock entries as the two transport
+      suites caught the first time.
+
+### Known limitations, not fixed here
+
+- **No live authorization check** — whether an `admin.tenants` delegate actually reaches the
+  endpoint on a running server is asserted against the resolver function, not by an end-to-end
+  request; that is `verifier`'s job post-deploy.
+- **The migration is not executed** in this sandbox (no reachable MySQL with working credentials).
+- **The production over-cap census** (#447's own precondition) remains a manual, un-automated
+  pre-deploy step, inherited from Phase 198 and not discharged by this phase.
+- **No billing/purchase flow, no generic entitlements primitive, no lapse/dunning downgrade** —
+  all three remain #488/#491's open scope, named explicitly rather than silently absent (plan §11).
+- **No TenantManager.jsx UI panel** (A8) — until one ships, raising or lowering a cap means an
+  authenticated API call, not a form; §7.3 of the plan specifies the exact slice if ever wanted.
+- **The pre-existing `tenant_id: Number(id)` bug** in `listTenantCapabilityAuditLogsUseCase.js`'s
+  serializer (`Number('<uuid>')` is `NaN`) was inherited by the new audit-log wrapper via the
+  shared private builder, not fixed — out of scope per the plan (§3.5, §11), flagged for `pm`.
+
+### Implementation links
+
+- Issue #1190 (Refs — see Status above)
+- PR: opened against `develop`, link recorded in the PR itself
+- #447 (D1–D6, the decision comment this phase implements D5 of), #488 (the eventual
+  entitlements/billing consumer, still exploratory), #446 (epic)
+- PR #1187 (Phase 198 — the column and its enforcement this phase writes to)
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-31 entry)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md`
+- Migration: `apps/dgfy-migration-runner/migrations/20260831000001-extend-tenant-admin-audit-actions-affiliate-slots.cjs`
+
+### Next eligible phase
+
+None allocated by this phase. Out-of-scope items named rather than silently dropped (plan §11,
+hand to `pm` if ever wanted): a billing/purchase flow for buying additional slots, a generic
+tenant × resource × limit entitlements primitive, lapse/dunning downgrade behavior, a
+TenantManager UI panel, a GET consumption breakdown (active enrollments vs. pending invites), the
+`tenant_id: Number(id)` serializer bug, the production over-cap census, and a bulk/multi-tenant
+write.
 ## Phase 219 - Storefront: Versioned Non-Refundable Downpayment Terms, Drafted and Linked (#1220)
 
 ### Initiative and release
