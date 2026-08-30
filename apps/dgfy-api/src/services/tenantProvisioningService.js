@@ -40,6 +40,7 @@ const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 const GUEST_CHECKOUT_ENABLED_SETTING_KEY = 'storefront_guest_checkout_enabled';
+const CASH_PAYMENT_ENABLED_SETTING_KEY = 'storefront_cash_payment_enabled';
 
 const parsePositiveId = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -342,6 +343,18 @@ const seedDefaultCustomerAccessSettings = async (tenantSequelize, workflowMode =
             value: resolveDefaultGuestCheckoutEnabledForWorkflowMode(workflowMode),
             dataType: 'boolean',
             description: 'Allows customers to check out or book without a DGFY account'
+        },
+        {
+            // #626 (Phase 203): unlike guest checkout above, no vertical-specific default -- the
+            // card-only motivation is Surebiz-specific and gated on #477, so seeding Retail
+            // cash-off here would break every other Retail tenant. Every vertical seeds `true`;
+            // a Surebiz tenant flips its own toggle once card is actually live. NOT
+            // overwriteExisting, same rationale as guest checkout -- a re-run of provisioning must
+            // never stomp a merchant's own toggle choice.
+            key: CASH_PAYMENT_ENABLED_SETTING_KEY,
+            value: true,
+            dataType: 'boolean',
+            description: 'Allows customers to pay cash on delivery/pickup at checkout'
         }
     ];
 
