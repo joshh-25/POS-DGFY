@@ -11480,6 +11480,11 @@ Per #446's own sequencing comment (2026-08-30), this order was stated in advance
 by anything found during execution. Separately, Phase 202 below (#1085, Surebiz Wave 1) is
 unrelated to this chain and was allocated its own number directly by #1183.
 
+**Superseded, in part, later on 2026-08-30**: the four open policy questions above were resolved by
+Pat the same day, via a Q&A recorded on #450, #872, #567, #449, and #448 (see Phase 206 below for
+the concrete phase this unblocked). #449 was confirmed independent of #488 and stays open for later
+scoping; #448 stays open for later scoping; #452 remains untouched. #1191 was picked up as Phase 207.
+
 ## Phase 202 - Settle Balance: Cheque Tender + Cheque-Number Capture (#1085)
 
 ### Initiative and release
@@ -11612,3 +11617,214 @@ merged.
 Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard collision on
 `BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
 surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
+
+## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). First phase in a second successive chain, unblocked by Pat's
+2026-08-30 Q&A resolving #450's four open policy questions (D1-D4, recorded on #450). Independent
+of Phases 197-199, which had already closed out as a deliberate chain-end.
+
+### Objective and scope
+
+Decision D2 ("in-flight attribution drops silently"): if an affiliate's enrollment is
+revoked/suspended, or the tenant's program disabled, between when storefront checkout resolves
+pricing and when the order actually commits, the order must still succeed but the commission must
+not be accrued to that enrollment, with no error surfaced to the buyer.
+
+### Status
+
+`completed` (2026-08-30). PR #1200 merged into `develop` as commit
+`2eca5990254c014dd464474284b161338cc26142`.
+
+### Dependencies
+
+None on Phases 197-199 (different code path — storefront checkout accrual, not
+cashout/slots/revocation-stamping). Depended only on #450 D2 being decided.
+
+### Acceptance and validation evidence
+
+- [x] `storeUseCases.js`'s post-commit affiliate accrual block now unconditionally re-resolves the
+      enrollment via `resolveActiveAffiliateEnrollmentById` at commit time, replacing the previous
+      `||`-on-pricing-time-cached-object fallback that only fired when the cached object was
+      *missing*, never when it was *stale*.
+- [x] Verified as a plain, non-locking, post-`transaction.commit()` read — no lock, no transaction
+      handle, no snapshot-isolation concern (Phase 198's RF-6 finding does not apply to a read after
+      the relevant transaction has already committed). No lock added.
+- [x] Silent-drop implemented as a narrow `else if (affiliatePricing?.enrollment)` guard (not a bare
+      `else`) specifically to avoid logging the common, high-frequency, non-drop case of an
+      attribution cookie that was already stale at pricing time.
+- [x] Pricing/discount math untouched — only which enrollment object is used to decide
+      whether/whom to accrue commission to.
+- [x] In-store POS path (`posUseCases.js`) investigated and explicitly deferred, on corrected
+      grounds: the planning pass verified a real transaction boundary and ~1,400 lines of DB work
+      exist between POS's resolve and accrual points (the dispatch brief's initial premise that no
+      such boundary existed was factually wrong and was not carried into the code or PR). Deferred
+      instead because POS treats an affiliate code as a hard, operator-facing precondition (a bad
+      code hard-rejects the sale with 422 before it proceeds), making silent-drop-after-the-fact a
+      distinct product decision, not a mechanical port of this fix. Follow-up filed: **#1199**.
+- [x] Compliance impact declaration added and required (`major`/`payments` — `modules/store/**`
+      matches `check-compliance-impact.js`'s sensitive-path rule; corrects the assumption carried
+      from Phases 197-199 that no affiliate-adjacent module needed one — that was true for
+      `modules/dgfy/` and the migration runner, not for `modules/store/`).
+      `preflight_request_ref: NOT-EXECUTED-450-...` is correct and expected on a `develop`-targeting
+      PR per the standing preflight protocol.
+- [x] Extended (not duplicated) `tests/storeCheckoutAffiliatePricing.unit.test.js` — 13/13 passing
+      (4 new), including a call-count assertion on `findEnrollmentById` that actually pins the new
+      twice-per-checkout behavior rather than merely re-testing the old baseline.
+- [x] One transient CI failure (`dgfy-api-build-check`'s "Set up job" step, a runner-infra tarball
+      lookup error unrelated to the diff) — reran clean; not a defect in this change.
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker — `APPROVE`, no findings. Correctly *not*
+      treated as a first-live-use report-only run (explicit precedent cited in the dispatch: PRs
+      #1184/#1187/#1189/#1193 already reviewed-and-merged by this same role/model pair).
+      Merged with a true merge commit, checks green, `mergeStateStatus: CLEAN`.
+- [x] Linked `Refs #450` (not `Closes`) — #450 still carries other, unrelated content.
+
+### Open items outstanding, not specific to this phase
+
+- Follow-up issue **#1199** (POS in-store affiliate attribution silent-drop vs. hard-validated-code
+  semantics) — filed via `pm`, `Refs #450`, not scheduled into this chain.
+- The ledger-numbering gap for Phases 200-205 (see the note above Phase 206's heading) is not this
+  initiative's to resolve — those phases belong to a concurrent Surebiz orchestration run in a
+  sibling session; confirmed via cross-session coordination on 2026-08-30 (200=#475/PR #1188,
+  201=#852/PR #1192, both already merged; 202-203 in flight; 204-205 reserved). This affiliate
+  initiative continues at 206/207 by explicit agreement between the two sessions to avoid a
+  numbering collision, not because 200-205 were skipped or unavailable to this initiative.
+
+### Implementation links
+
+- Issue #450 (decision D2), Refs #446
+- PR #1200: https://github.com/Sieitzz/dgfy-platform/pull/1200
+- Review: `## Review — APPROVE` comment on PR #1200 (Codex GPT-5.6-Luna, pr-reviewer)
+- Follow-up issue: #1199 (POS attribution silent-drop, deferred)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-affiliate-attribution-commit-time-recheck.md`
+
+### Next eligible phase
+
+**Phase 207** — dedicated affiliate reactivate flow, closing #1191's slot-cap bypass gap per #450
+D4 ("distinct reactivate flow, not a reuse of the generic PATCH"). In progress as of this entry.
+
+## Phase 207 - Affiliate Reactivation Endpoint with Slot-Cap Enforcement (#1191)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Continues the 197-199 chain's own explicitly-deferred item:
+Phase 199's ledger entry named this exact gap ("Known gap found and filed separately, not fixed
+here") and filed it as #1191 rather than silently appending it to that chain.
+
+### Objective and scope
+
+Phase 198 (#1177) added `max_affiliate_slots` cap enforcement to `createEnrollment`/`createInvite`,
+but the generic `PATCH /affiliates/:enrollment_id` could still reactivate a `suspended`/`revoked`
+enrollment (`status: 'active'`) through `updateEnrollment`, which has no cap check at all — a
+merchant already at cap could revoke-then-reactivate to exceed it without ever hitting Phase 198's
+enforcement. This phase closes that gap with a dedicated reactivation endpoint, and — because
+planning found the backend-only fix would break a live merchant-facing "Reactivate" button in the
+same deploy — also repoints that button at the new endpoint in the same PR.
+
+### Status
+
+`completed` (2026-08-30). PR #1204 merged into `develop` as commit
+`96dc8bf87327b4b589248925a376f6ce1497bdb2`. Issue #1191 closed. Reviewed by an isolated Codex
+GPT-5.6-Luna worker — `APPROVE`, no findings; verified locally (repository lock-first ordering,
+`revoked_at`/`revoked_by`/`revocation_reason`/`activated_at` all preserved on reactivate, frontend
+button correctly repointed) in addition to the standard checks, and confirmed `mergeStateStatus:
+CLEAN` before merging.
+
+### Dependencies
+
+Depends on Phases 198 (#1177, slot-cap enforcement mechanism reused unchanged) and 199 (#450,
+revocation-audit-stamp columns preserved unchanged) — both merged. Independent of Phase 206 (a
+different code path — storefront checkout accrual, not the admin enrollment-status endpoints).
+
+### Acceptance and validation evidence
+
+- [x] New repository method `reactivateEnrollment` — deliberately not an extension of
+      `updateEnrollment`, so the generic path can never bypass the cap check by construction. Owns
+      its own transaction and calls `assertAffiliateSlotAvailable` as the FIRST statement, per
+      `acquireAffiliateSlotLock`'s #1187 RF-6 ordering contract (mirrors `createEnrollment`'s
+      existing ordering).
+- [x] Writes only `status`. `revoked_at`/`revoked_by`/`revocation_reason` are preserved, not
+      cleared — Phase 199's own shipped acceptance criterion, re-verified rather than re-opened
+      this phase (confirmed: `grep -rn "revoked_at\|revoked_by\|revocation_reason" apps packages`
+      shows zero query filters, serializer projections, or conditionals on these three columns for
+      `dgfy_affiliate_enrollments` outside the model, migration, `buildUpdateAffiliateEnrollmentUseCase`,
+      and Phase 199's own tests). `activated_at` (the original enrollment date, rendered to the
+      affiliate as "Enrolled `<date>`" in the storefront customer dashboard) is never touched.
+- [x] New use case `buildReactivateAffiliateEnrollmentUseCase`: 404 if the enrollment is missing,
+      409 `AFFILIATE_ALREADY_ACTIVE` if already active, 409 `AFFILIATE_NOT_REACTIVATABLE` if not
+      `suspended`/`revoked` (i.e. `pending`), 409 `AFFILIATE_SLOT_CAP_REACHED` thrown unchanged by
+      the repository. `reactivatedBy` is accepted and threaded through but not persisted — no
+      `reactivated_by` column exists; adding one is a landlord migration out of scope for an
+      enforcement-gap fix (follow-up filed, see below).
+- [x] The generic PATCH now rejects `status: 'active'` with 422 `AFFILIATE_REACTIVATION_MOVED` —
+      one enforcement path, no drift risk between two. `suspended`/`revoked` targets are unaffected.
+- [x] **Frontend change shipped in the same PR, deliberately** (not split out): the owner-facing
+      affiliates workspace panel's "Reactivate" button (`AffiliatesWorkspacePanel.jsx`) previously
+      called the PATCH directly with `status: 'active'` — the moment the backend restriction above
+      ships, that button would fail with a toast error for every merchant. Repointed at a new
+      `handleReactivate` handler calling the new endpoint, same busy/toast/reload shape as the
+      existing handler.
+- [x] Compliance impact declaration added and required — `major`/`pos,terminal`, triggered solely
+      by the `packages/web-core/src/features/pos/**` touch (nothing under `apps/dgfy-api` is
+      compliance-sensitive on its own). `preflight_request_ref: NOT-EXECUTED-PHASE-207` is correct
+      and expected on a `develop`-targeting PR per the standing preflight protocol (#884).
+- [x] New test file `dgfyAffiliateReactivationUseCase.unit.test.js` — 11/11 passing, driving the
+      real use case through the real repository against fake models (harness copied from Phase
+      198's slot-enforcement suite). Covers both reactivatable source statuses symmetrically,
+      cap-rejection with the row left unchanged (with and without a seeded settings row),
+      terminal-state guards, tenant scoping, audit-stamp/`activated_at` preservation, the PATCH
+      restriction plus its regression guard for `suspended`/`revoked`, and a concurrency case at
+      the cap boundary mirroring Phase 198's #1187 RF-1 test shape including its honest
+      limitations note (proves the fake's lock-queue serialization, not real MySQL `SELECT ... FOR
+      UPDATE` behaviour).
+- [x] Two pre-existing tests in `dgfyAffiliateEnrollmentUseCases.unit.test.js` (tests 3 and 4)
+      previously asserted that `PATCH {status:'active'}` performs a stamp-preserving reactivation —
+      that behavior moved to the new endpoint this phase, so both were retitled and reassigned to
+      assert the new rejection instead; the stamp-preservation property they used to prove is now
+      covered by the new suite's own test 8, against the real endpoint. Test 8 in the same file was
+      retitled per the plan: the D7 `revocation_reason` guard is now unreachable for
+      `status: 'active'` bodies since the new status check short-circuits first; assertions
+      unchanged, still covered for reason-only bodies by test 9.
+- [x] Full Tier 0 self-verification: `node --check` on all five changed `apps/dgfy-api` files
+      (syntax-only, no build step exists for this app); all three frontend apps built
+      (`build:skupervisor`, `build:pos`, `build:store` — `packages/web-core` is the shared trunk
+      all three consume); 42/42 tests passing across the three affected suites;
+      `npm run check:compliance` PASS.
+- [x] Linked `Closes #1191` — this is a complete fix of the issue as filed, unlike Phases 199/206's
+      `Refs` linkage.
+
+### Known limitation, not fixed here
+
+No `AffiliatesWorkspacePanel.jsx` component test exists (before or after this phase) — the only
+test under `packages/web-core/src/features/pos/__tests__/` touching this area
+(`affiliatePricingPreview.test.js`) is unrelated, and adding one is out of scope for this issue.
+
+### Open items outstanding, not specific to this phase
+
+- **Board `Status` write could not be performed** — GitHub's GraphQL API was rate-limited
+  session-wide at the time of this PR (same class of issue Phase 199's own ledger entry recorded).
+  Best-effort per `pm`'s board-operations policy; #1191's card needs a manual `Status` →
+  `For Review` write once the rate limit clears.
+- Follow-up issues #1202 (status-history: `reactivated_at`/`reactivated_by` or a proper events
+  table) and #1203 (admin UI never surfaces the revocation audit columns the API already returns)
+  filed but not scheduled into this chain.
+
+### Implementation links
+
+- Issue #1191, Refs #450
+- PR #1204: https://github.com/Sieitzz/dgfy-platform/pull/1204
+- Follow-up issues: #1202 (status-history), #1203 (admin UI audit-column surfacing)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-affiliate-reactivation-endpoint.md`
+
+### Next eligible phase
+
+None allocated by this phase. #1191 was the last remaining item explicitly named in Phase 199's own
+"Next eligible phase" list that was mechanical enough to schedule without a further product-policy
+call; #1202/#1203 are new follow-up candidates from this phase's own planning, not yet scheduled.
+Everything else in the affiliate backlog still needs a human scheduling/policy call (see Phase
+199's and Phase 206's own "Next eligible phase" sections for the fuller list, unchanged by this
+phase).
