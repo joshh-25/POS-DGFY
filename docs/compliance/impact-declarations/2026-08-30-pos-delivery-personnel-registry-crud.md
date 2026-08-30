@@ -168,6 +168,10 @@ Verification: `deliveryPersonnelRegistry.usecase.test.js` (9 cases, all green),
 `deliveryAssignmentControl.contract.test.js` (2 cases, all green), `node --check` on both changed
 `apps/dgfy-api` files, `npm run build:pos`, `npm run build:skupervisor`.
 
+Landed as two batched commits per `docs/ai/PR.md` (backend + RF-1 test fix, then the RF-3
+frontend prop wiring listed above) -- both amend this same declaration, not two separate
+declarations, since they're one reviewed change set on one PR.
+
 ## Preflight Reconciliation
 
 Not yet run. `preflight_request_ref: NOT-EXECUTED-1080-POS-DELIVERY-PERSONNEL-REGISTRY-CRUD` is

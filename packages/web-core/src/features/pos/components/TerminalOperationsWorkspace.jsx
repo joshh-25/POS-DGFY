@@ -7928,7 +7928,10 @@ function SettingsWorkspace({
         />
       ) : null}
       {canManageDeliveryPersonnel ? (
-        <DeliveryPersonnelManagementPanel disabled={locked || loading} />
+        <DeliveryPersonnelManagementPanel
+          disabled={locked || loading}
+          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
+        />
       ) : null}
       {canManageEmployeeCredit ? (
         <EmployeeCreditManagementPanel
@@ -9052,6 +9055,7 @@ export default function TerminalOperationsWorkspace({
   handleDeliveryJobStatusChange = () => {},
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
+  onDeliveryPersonnelChanged = () => {},
   handleOpenCashCollection = () => {},
   // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
   // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it

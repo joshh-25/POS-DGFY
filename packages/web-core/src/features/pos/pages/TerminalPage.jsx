@@ -685,6 +685,21 @@ export default function TerminalPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Phase 205 (#1080) RF-3: DeliveryPersonnelManagementPanel already re-fetches and reports the
+  // full registry after every create/update/activation-toggle via onDeliveryPersonnelChanged --
+  // forward that straight into the picker's own state so an admin edit is reflected without a
+  // reload, instead of leaving the one-shot ensureDeliveryPersonnelLoaded() fetch stale.
+  const handleDeliveryPersonnelChanged = useCallback((personnelRows) => {
+    deliveryPersonnelFetchStartedRef.current = true;
+    setDeliveryPersonnelState({
+      loading: false,
+      loaded: true,
+      personnel: Array.isArray(personnelRows) ? personnelRows : [],
+      accessState: 'allowed',
+      errorMessage: ''
+    });
+  }, []);
+
   useEffect(() => {
     const orders = incomingOrdersState.orders;
     if (!Array.isArray(orders) || orders.length === 0) return;
@@ -6529,6 +6544,7 @@ function PosRestorationLoadingScreen() {
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
+          onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
