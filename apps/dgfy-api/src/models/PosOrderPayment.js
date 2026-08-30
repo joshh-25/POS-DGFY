@@ -31,7 +31,10 @@ const PosOrderPayment = sequelize.define('PosOrderPayment', {
         allowNull: false
     },
     payment_method: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). Settle Balance is this column's own writer (posUseCases.js
+        // BALANCE_SETTLEMENT_METHODS).
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque'),
         allowNull: false
     },
     idempotency_key: {

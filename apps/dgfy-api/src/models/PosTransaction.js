@@ -147,7 +147,11 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). Split-tender allocations copy their method onto this column
+        // (splitPaymentUseCases.js), so it has to widen alongside pos_order_payments and
+        // pos_payment_allocations or a cheque split allocation fails at the write.
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque'),
         allowNull: false,
         defaultValue: 'cash'
     },

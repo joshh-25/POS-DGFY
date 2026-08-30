@@ -11462,9 +11462,8 @@ from an audit-trail stamp.
 
 ### Next eligible phase
 
-**None allocated. This is the deliberate end of the 197-199 chain.** Everything remaining in the
-affiliate backlog needs a product-policy decision only Pat can make before another phase is
-planned:
+**None allocated in the 197-199 chain itself.** Everything remaining in the affiliate backlog
+needs a product-policy decision only Pat can make before another phase in that chain is planned:
 
 - #450's own four open policy questions (commission-balance fate, in-flight attributions,
   re-invite policy, revocation reversibility)
@@ -11478,7 +11477,8 @@ planned:
   silently appended to this chain)
 
 Per #446's own sequencing comment (2026-08-30), this order was stated in advance and is unchanged
-by anything found during execution.
+by anything found during execution. Separately, Phase 202 below (#1085, Surebiz Wave 1) is
+unrelated to this chain and was allocated its own number directly by #1183.
 
 ## Phase 203 - Per-Store Cash/COD Payment Toggle (#626)
 
@@ -11568,6 +11568,139 @@ Phase 204 — next available slot in this wave; not otherwise claimed by this pl
 Pat the same day, via a Q&A recorded on #450, #872, #567, #449, and #448 (see Phase 206 below for
 the concrete phase this unblocked). #449 was confirmed independent of #488 and stays open for later
 scoping; #448 stays open for later scoping; #452 remains untouched. #1191 was picked up as Phase 207.
+
+## Phase 202 - Settle Balance: Cheque Tender + Cheque-Number Capture (#1085)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark in this worktree was Phase 198; #1183 assigns
+this work number 202 directly (phases 199-201 are allocated to sibling worktrees and are expected
+to land separately). Adds `cheque` as a sixth tender method for POS Settle Balance
+(`POST /pos/orders/:id/record-payment`, Phase 148 / #825) and, in scope for this same phase, for
+split-tender allocation.
+
+### Objective and scope
+
+Cheque did not exist anywhere in the codebase as a payment method before this phase (confirmed by
+grep: zero occurrences of `cheque`/`check_no`/`cheque_number` under `apps/`, `packages/`, `docs/`).
+A cashier taking a cheque had to mis-record it as `bank_transfer` and stuff the cheque number into
+the free-text `payment_reference` field — a false tender classification in the ledger, invisible to
+per-method reconciliation (`pos_merchant_tender_reconciliations`). This phase widens three ENUM
+columns (`pos_order_payments.payment_method`, `pos_transactions.payment_type`,
+`pos_payment_allocations.payment_method`), the two dependent validator method sets
+(`SPLIT_PAYMENT_METHODS`, the record-payment `Joi.valid(...)` list), `BALANCE_SETTLEMENT_METHODS`,
+and the Settle Balance dialog's picker and copy. No new database column: the cheque number is
+carried in the existing optional `payment_reference` field, matching every other tender's pattern
+exactly.
+
+**Governance deliverable, ahead of the code.** ADR 0063 clause 4 `[binding]` enumerated the V1
+five-tender set closed; adding `cheque` directly contradicted it. Per ADR 0039's strictness tiers, a
+`[binding]` clause change takes a new superseding ADR plus tech-lead approval — a dated `##
+Amendments` block (ADR 0063's own prior 2026-08-13 change) is sanctioned only for
+`[default]`/untagged clauses. Three routes were put to Pat (full superseding ADR; a
+**scoped-supersession ADR** narrow to clause 4 only, precedent ADR 0064's scoped supersession of
+ADR 0057 clause 3; or an in-place amendment, not defensible given the `[binding]` tag). **Pat
+approved the scoped-supersession route (B2) via the coordinator on 2026-08-30.** ADR 0077 is that
+approved route — it supersedes ADR 0063 clause 4 only, replacing the five-tender enumeration with a
+six-tender set; every other clause of ADR 0063 is unaffected.
+
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/1085-pos-cheque-tender-method`, cut off fresh `origin/develop`. PR opened, `Refs #1085`
+(deployed verification still needed — never `Closes`).
+
+### Dependencies
+
+None on Phases 199-201 (sibling worktrees, different scope). Depends on Phase 148 (#825, Settle
+Balance itself) and ADR 0063 (POS Split Tender and Manual Walk-in Payment Recording), both already
+merged.
+
+### Acceptance and validation evidence
+
+- [x] ADR 0077 authored (scoped supersession of ADR 0063 clause 4 only), `docs/architecture/adr/`
+      INDEX regenerated via `npm run check:adr -- --write-index`. **`npm run check:adr` passes**
+      with both ADRs live — the actual proof the scoped-supersession route satisfies the
+      `[binding]`-clause gate, not just a claim that it does. Cross-reference added to ADR 0063's
+      own `## References` section.
+- [x] Three ENUM columns widened in one migration
+      (`apps/dgfy-migration-runner/migrations/20260830000003-add-cheque-payment-method.cjs`),
+      fanned out across every active tenant database (`tenants WHERE status = 'active'`), guarded
+      by `tableExists` per table per tenant — copies
+      `20260817000001-expand-storefront-paymongo-payment-methods.cjs`'s structure (the
+      grab_pay/shopeepay precedent) verbatim. `down()` refuses per tenant per table once any
+      `cheque` row exists — loud failure over silent financial-data mutation, same posture as the
+      precedent.
+- [x] Migration reviewed by Pat at Checkpoint A (implement/SKILL.md's migration checkpoint) before
+      being staged — full `up()`/`down()` body shown via the coordinator, reply received before
+      `git add`.
+- [x] Three model ENUM definitions widened to match (`PosOrderPayment.js`, `PosTransaction.js`,
+      `PosPaymentAllocation.js`), landed in the same commit as the migration so Sequelize's
+      in-process validation never diverges from what the database accepts.
+- [x] `SPLIT_PAYMENT_METHODS` and the record-payment `Joi.valid(...)` list both widened
+      (`posValidator.js`); `PAYMENT_TYPES` (the checkout method set) deliberately untouched —
+      cheque is not a walk-in-checkout tender in this phase.
+- [x] `BALANCE_SETTLEMENT_METHODS` widened (`posUseCases.js`); zero other lines in
+      `buildRecordOrderBalancePaymentUseCase` changed — the cash/non-cash discrimination, exact-
+      amount guard, fail-closed confirmation, ledger write, audit log, and response payload were
+      already method-agnostic.
+- [x] `BalanceSettlementDialog.jsx`: `Cheque` option added to the picker; the existing optional
+      reference field becomes method-aware (`Cheque number` label, presented-not-cleared copy); the
+      attestation checkbox gets a cheque-specific variant (received a cheque, not an account
+      transfer; not confirmation of clearance).
+- [x] `apps/dgfy-api/scripts/sync-tenant-schemas.js` kept in sync with the migration (matching what
+      the grab_pay/shopeepay precedent did): the `pos_order_payments` and `pos_payment_allocations`
+      `CREATE TABLE` literals in `REQUIRED_TENANT_SCHEMA_TABLES` widened, and
+      `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS` gained/widened the `ALTER ... MODIFY COLUMN`
+      drift-repair entries for all three columns — a tenant that falls out of sync with the
+      migration still repairs to the correct enum, not silently back to the pre-cheque set. This
+      was not in the original phase plan; added because the precedent migration touched the same
+      file for the same reason (confirmed via `git log -p`).
+- [x] Cheque number kept optional, matching every other tender's `payment_reference` pattern
+      exactly — no `canSubmit` change, no new server guard. Cheque falls on the existing non-cash
+      validator branch by construction.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md`), classification
+      `major`, modeled on `2026-08-23-downpayment-balance-settlement.md`. `npm run check:compliance`
+      confirmed to fail first (missing declaration), then pass once added.
+- [x] Tests: `posOrderBalanceSettlement.usecase.test.js` extended (cheque added to the existing
+      merchant-owned `it.each`, plus a dedicated test pinning that the cheque number reaches both
+      the ledger row and the audit log); `posSplitPayment.schema.contract.test.js` extended
+      (`PosPaymentAllocation.payment_method` enum assertion now includes `cheque`);
+      `terminalBalanceSettlement.behavior.test.jsx` extended (cheque in the picker, the
+      cheque-number label, presented-not-cleared copy, fail-closed submit gate, cheque-specific
+      attestation copy).
+- [x] `npm run build:pos` (real Vite build of the POS app consuming the widened dialog) — succeeded.
+- [x] `node --check` on every changed `apps/dgfy-api` file and the new migration file.
+- [x] `npm run check:architecture` — passed.
+
+### Known residual gaps, accepted rather than solved
+
+- **No split-tender picker UI for cheque.** ADR 0077 Decision 5, explicit and accepted for this
+  phase. Cheque is selectable via the split-tender allocation API once the schema and validator
+  widen, but `packages/web-core`'s split-tender picker component was not updated to offer it. Not a
+  blocker; tracked as a UI follow-up, not silently left undiscoverable.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+- **Attestation remains trust, by design** — inherited unchanged from ADR 0063 clause 5. A cashier
+  can record a cheque that never arrived or later bounces; this phase (and the ADR it extends) makes
+  no stronger claim. No reversal path exists for a mis-recorded cheque settlement either, same
+  inherited gap ADR 0063 clause 10 already names for merchant-owned settlements generally.
+
+### Implementation links
+
+- Issue #1085, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- ADR 0077: `docs/architecture/adr/0077-pos-cheque-tender-method-scoped-supersession.md`
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md`
+- PR #1196: https://github.com/Sieitzz/dgfy-platform/pull/1196
+
+### Next eligible phase
+
+Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard collision on
+`BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
+surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
 
 ## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
 

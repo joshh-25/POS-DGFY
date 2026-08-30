@@ -30,7 +30,9 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
         defaultValue: 'pending'
     },
     payment_method: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). SPLIT_PAYMENT_METHODS (posValidator.js) is this column's request-side gate.
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'),
         allowNull: false
     },
     payment_handoff_mode: {

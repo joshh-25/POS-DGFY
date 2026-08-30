@@ -10,7 +10,8 @@ const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
 const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
-const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+// 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
+const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'];
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
@@ -778,18 +779,22 @@ const collectCashPickupOrderSchema = Joi.object({
 
 // Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance. Distinct
 // from collectCashPickupOrderSchema above -- that one is the plain-COD path and is deliberately
-// untouched. Method set is ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
-// store-owned terminal, never PayMongo card.
+// untouched. Method set was ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
+// store-owned terminal, never PayMongo card. Phase 202 (#1085) adds `cheque` as a sixth method --
+// ADR 0077 scoped-supersedes clause 4 for exactly this widening, ADR 0063 itself is otherwise
+// unchanged.
 //
 // The cash/non-cash split is structural, not cosmetic: cash is TENDERED (change is possible, so
 // the server computes it from cash_received), while a merchant-owned digital tender is an EXACT
 // amount the client must echo back. `manual_payment_received` is ADR 0063 clause 6 [binding]'s
 // explicit request-side confirmation -- required for every non-cash method and forbidden as a
-// substitute for it on cash, so it can never be sent as a blanket "trust me" flag.
+// substitute for it on cash, so it can never be sent as a blanket "trust me" flag. Cheque falls on
+// the non-cash branch by construction, so it inherits the same fail-closed attestation and the
+// same optional `payment_reference` (the cheque number) with no new branch or guard.
 const recordOrderBalancePaymentSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
-    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer').required(),
+    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque').required(),
     cash_received: Joi.number().positive().precision(4).when('payment_method', {
         is: 'cash',
         then: Joi.required(),

@@ -710,7 +710,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL,\n"
             + "  `payment_handoff_mode` enum('external','internal') DEFAULT NULL,\n"
             + "  `applied_amount` decimal(14,4) NOT NULL,\n"
             + "  `cash_tendered` decimal(14,4) DEFAULT NULL,\n"
@@ -1476,7 +1476,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `kind` enum('downpayment','balance','refund','forfeiture') NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
             + "  `amount` decimal(14,4) NOT NULL,\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL,\n"
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
             + "  `payment_provider` varchar(40) DEFAULT NULL,\n"
@@ -2034,9 +2034,11 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085), migration 20260830000003.
         payment_type: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL DEFAULT 'cash'"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL DEFAULT 'cash'"
         }),
         // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).
         // Backstop for tenants outside the migration's own fan-out (20260821000003).
@@ -2051,6 +2053,23 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         service_fee_method_snapshot: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NULL"
+        })
+    }),
+    // Phase 202 (#1085), ADR 0077: every active tenant already has these two tables (created by
+    // earlier migrations), so a tenant that predates the cheque widening needs the same
+    // ALTER...MODIFY drift-repair path as pos_transactions.payment_type above, not just the
+    // CREATE TABLE definition in REQUIRED_TENANT_SCHEMA_TABLES (which only helps a tenant missing
+    // the table entirely).
+    pos_order_payments: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_order_payments` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL"
+        })
+    }),
+    pos_payment_allocations: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']),
+            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({

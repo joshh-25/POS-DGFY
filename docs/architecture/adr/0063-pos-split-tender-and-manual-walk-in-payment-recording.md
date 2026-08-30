@@ -122,6 +122,9 @@ tenant-local manager review record:
 
 ## References
 
+- ADR 0077 (POS Cheque Tender Method) — scoped-supersedes clause 4 only, replacing the V1
+  five-tender enumeration with a six-tender set adding `cheque`. Clauses 1, 2, 3, and 5 through 14
+  are unaffected.
 - `docs/START_HERE.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
