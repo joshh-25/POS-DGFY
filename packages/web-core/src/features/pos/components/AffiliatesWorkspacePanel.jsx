@@ -31,6 +31,7 @@ import {
     markAffiliateCashoutPaid,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
+    reactivateAffiliateEnrollment,
     updateAffiliateSettings,
     fetchAffiliatePriceRules,
     upsertAffiliatePriceRule,
@@ -412,6 +413,21 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
             await loadData();
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to update affiliate status');
+        } finally {
+            setRowBusyId(null);
+        }
+    };
+
+    // #1191 (Phase 207) - reactivation has its own endpoint; handleStatusChange below now only
+    // ever demotes ('suspended'/'revoked'), which the backend PATCH still accepts.
+    const handleReactivate = async (enrollment) => {
+        setRowBusyId(enrollment.enrollment_id);
+        try {
+            await reactivateAffiliateEnrollment(enrollment.enrollment_id);
+            toast.success('Affiliate reactivated');
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to reactivate affiliate');
         } finally {
             setRowBusyId(null);
         }
@@ -819,7 +835,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                                         <Ban className="mr-1 h-3.5 w-3.5" /> Suspend
                                                     </Button>
                                                 ) : affiliate.status === 'suspended' ? (
-                                                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => handleStatusChange(affiliate, 'active')}>
+                                                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => handleReactivate(affiliate)}>
                                                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Reactivate
                                                     </Button>
                                                 ) : null}

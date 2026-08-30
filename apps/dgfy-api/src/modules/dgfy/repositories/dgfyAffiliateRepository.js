@@ -355,6 +355,40 @@ export const dgfyAffiliateRepository = {
         return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE] }));
     },
 
+    // #1191 (Phase 207) - deliberately NOT an extension of updateEnrollment above. Reactivation is
+    // the only status transition that consumes a slot, and keeping it on its own method is what
+    // makes the cap check non-bypassable: a future caller reaching for the generic updateEnrollment
+    // cannot accidentally flip a row to 'active' without a cap check, because the generic path no
+    // longer accepts that transition at all (see buildUpdateAffiliateEnrollmentUseCase's explicit
+    // `status: 'active'` rejection). Two paths would have been two places to forget.
+    //
+    // Owns its transaction rather than accepting one, on purpose: acquireAffiliateSlotLock's #1187
+    // RF-6 contract is "must be the FIRST statement of its transaction, before any other read,
+    // plain or locking." An optional caller-supplied transaction would move that guarantee out of
+    // this method and into every caller, where a single prior plain read silently breaks it. No
+    // caller needs an outer transaction today.
+    //
+    // Only `status` is written. Reactivation does not clear revoked_at/revoked_by/
+    // revocation_reason (#450 Phase 199 - an audit trail of the most recent revocation, not a
+    // live-status mirror) and does not touch activated_at (the ORIGINAL enrollment date, rendered
+    // to the affiliate as "Enrolled <date>").
+    async reactivateEnrollment(tenantId, enrollmentId) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            // FIRST statement of the transaction, before the findOne below - identical ordering to
+            // createEnrollment (~line 332). See acquireAffiliateSlotLock's own comment for the full
+            // MySQL REPEATABLE READ snapshot-anchoring reasoning.
+            await this.assertAffiliateSlotAvailable(tenantId, { transaction });
+
+            const row = await DgfyAffiliateEnrollment.findOne({
+                where: { tenant_id: tenantId, enrollment_id: enrollmentId },
+                transaction
+            });
+            if (!row) return null;
+            await row.update({ status: 'active' }, { transaction });
+            return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE], transaction }));
+        });
+    },
+
     // --- Affiliate invites (email invitations that predate an enrollment / DGFY account) ---
 
     async createInvite({ tenantId, email, tokenHash, commissionRateBps = null, invitedBy = null, expiresAt }) {

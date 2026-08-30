@@ -20,6 +20,7 @@ import {
     listMyAffiliateEnrollmentsUseCase,
     markAffiliateCashoutPaidUseCase,
     provisionAffiliateUseCase,
+    reactivateAffiliateEnrollmentUseCase,
     rejectAffiliateCashoutUseCase,
     requestAffiliateCashoutUseCase,
     setDefaultAffiliatePayoutMethodUseCase,
@@ -140,6 +141,20 @@ export const updateAffiliateEnrollment = async (req, res, next) => {
             revokedBy: req.user?.user_id ?? null
         }), {
             message: 'Affiliate enrollment updated successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reactivateAffiliateEnrollment = async (req, res, next) => {
+    try {
+        return send(res, await reactivateAffiliateEnrollmentUseCase({
+            tenantId: req.user?.tenant_id,
+            enrollmentId: req.params.enrollment_id,
+            reactivatedBy: req.user?.user_id ?? null
+        }), {
+            message: 'Affiliate enrollment reactivated successfully'
         });
     } catch (error) {
         next(error);

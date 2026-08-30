@@ -66,31 +66,34 @@ describe('buildUpdateAffiliateEnrollmentUseCase — revocation audit trail (#450
         expect(result.data.enrollment.revocation_reason).toBeNull();
     });
 
-    test('3: suspended -> active (reactivation) leaves an existing stamp unchanged', async () => {
+    // #1191 (Phase 207): reactivation via this generic PATCH is no longer possible at all - the
+    // new AFFILIATE_REACTIVATION_MOVED guard rejects `status: 'active'` before the stamp-preserving
+    // behaviour these two tests originally exercised is ever reached. Retitled and reassigned to
+    // assert the rejection rather than deleted, so the "reactivation preserves the stamp" property
+    // stays covered - now by dgfyAffiliateReactivationUseCase.unit.test.js test 8, which asserts it
+    // against the real reactivation endpoint instead of the now-removed PATCH path.
+    test('3: suspended -> active via PATCH is rejected (#1191), not a reactivation path anymore', async () => {
         const stampedAt = new Date('2026-08-01T00:00:00.000Z');
-        const repository = makeFakeRepository({
-            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 3, status: 'suspended', revoked_at: stampedAt, revoked_by: 5, revocation_reason: 'past reason' }]
-        });
+        const enrollments = [{ tenant_id: TENANT_ID, enrollment_id: 3, status: 'suspended', revoked_at: stampedAt, revoked_by: 5, revocation_reason: 'past reason' }];
+        const repository = makeFakeRepository({ enrollments });
         const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
         const result = await useCase({ tenantId: TENANT_ID, enrollmentId: 3, body: { status: 'active' } });
-        expect(result.success).toBe(true);
-        expect(result.data.enrollment.status).toBe('active');
-        expect(result.data.enrollment.revoked_at).toBe(stampedAt);
-        expect(result.data.enrollment.revoked_by).toBe(5);
-        expect(result.data.enrollment.revocation_reason).toBe('past reason');
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toMatchObject({ reason_code: 'AFFILIATE_REACTIVATION_MOVED' });
+        expect(enrollments[0].status).toBe('suspended');
     });
 
-    test('4: revoked -> active leaves an existing stamp unchanged', async () => {
+    test('4: revoked -> active via PATCH is rejected (#1191), not a reactivation path anymore', async () => {
         const stampedAt = new Date('2026-08-01T00:00:00.000Z');
-        const repository = makeFakeRepository({
-            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 4, status: 'revoked', revoked_at: stampedAt, revoked_by: 9, revocation_reason: 'past reason' }]
-        });
+        const enrollments = [{ tenant_id: TENANT_ID, enrollment_id: 4, status: 'revoked', revoked_at: stampedAt, revoked_by: 9, revocation_reason: 'past reason' }];
+        const repository = makeFakeRepository({ enrollments });
         const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
         const result = await useCase({ tenantId: TENANT_ID, enrollmentId: 4, body: { status: 'active' } });
-        expect(result.success).toBe(true);
-        expect(result.data.enrollment.revoked_at).toBe(stampedAt);
-        expect(result.data.enrollment.revoked_by).toBe(9);
-        expect(result.data.enrollment.revocation_reason).toBe('past reason');
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toMatchObject({ reason_code: 'AFFILIATE_REACTIVATION_MOVED' });
+        expect(enrollments[0].status).toBe('revoked');
     });
 
     test('5: PATCH commission_type only never triggers the prior-status read and never stamps', async () => {
@@ -147,7 +150,10 @@ describe('buildUpdateAffiliateEnrollmentUseCase — revocation audit trail (#450
         jest.useRealTimers();
     });
 
-    test('8: revocation_reason with status: active is rejected (422), not silently dropped', async () => {
+    // #1191 (Phase 207): status: 'active' is now rejected by the earlier AFFILIATE_REACTIVATION_MOVED
+    // guard, so the D7 revocation_reason guard below is unreachable for this body shape - it stays
+    // covered by test 9 (reason-only body) instead. Assertions are unchanged from before Phase 207.
+    test('8: status: active is rejected (422) before the revocation_reason guard is reached (#1191)', async () => {
         const repository = makeFakeRepository({
             enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 8, status: 'suspended', revoked_at: null, revoked_by: null, revocation_reason: null }]
         });
