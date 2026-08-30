@@ -377,6 +377,7 @@ function IncomingQueueWorkspace({
   deliveryPersonnelState,
   handleOpenCashCollection,
   handleOpenBalanceSettlement,
+  handleViewBalancePaymentProof,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
@@ -593,6 +594,24 @@ function IncomingQueueWorkspace({
                 >
                   <Wallet className="mr-2 h-4 w-4 shrink-0" />
                   Settle Balance
+                </Button>
+              );
+            }
+            // Phase 204 (#965): "View proof" -- the smallest place the settled payment is already
+            // displayed, not a full evidence-browser UI. Independent of canSettleBalance: the
+            // balance may already be settled (payment_status moved off 'partially_paid') while the
+            // order is still visible in this queue during fulfillment.
+            if (order.has_payment_proof) {
+              buttons.push(
+                <Button
+                  key="view_payment_proof"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleViewBalancePaymentProof?.(order)}
+                >
+                  <Receipt className="mr-2 h-4 w-4 shrink-0" />
+                  View Proof
                 </Button>
               );
             }

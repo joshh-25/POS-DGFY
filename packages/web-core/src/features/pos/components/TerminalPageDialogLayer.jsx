@@ -34,6 +34,13 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceSettlementOrder,
     balanceSettlementReference,
     balanceSettlementSaving,
+    balanceProofFile,
+    balanceProofUploading,
+    balanceProofError,
+    balanceProofViewerUrl,
+    balanceProofViewerLoading,
+    setBalanceProofFile,
+    handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
     canOpenShift,
     canSubmitOpenShift,
@@ -211,7 +218,31 @@ export default function TerminalPageDialogLayer({ model }) {
           onReferenceChange={setBalanceSettlementReference}
           onConfirmedChange={setBalanceSettlementConfirmed}
           onSubmit={handleSettleBalance}
+          proofFile={balanceProofFile}
+          onProofFileChange={setBalanceProofFile}
+          proofUploading={balanceProofUploading}
+          proofError={balanceProofError}
         />
+        {/* Phase 204 (#965): the "View proof" affordance -- a minimal viewer, not a full
+            evidence-browser UI. The blob URL is owned by TerminalPage.jsx and revoked on close. */}
+        <Dialog open={Boolean(balanceProofViewerUrl) || balanceProofViewerLoading} onOpenChange={(open) => { if (!open) handleCloseBalancePaymentProofViewer?.(); }}>
+          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black text-slate-950">Proof of Payment</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                An audit aid only. An attached photo is evidence the store captured at the counter -- it is not proof that DGFY verified the payment.
+              </DialogDescription>
+            </DialogHeader>
+            {balanceProofViewerLoading ? (
+              <p className="text-sm text-slate-600">Loading...</p>
+            ) : balanceProofViewerUrl ? (
+              <img src={balanceProofViewerUrl} alt="Proof of payment" className="max-h-[70vh] w-full rounded-lg border border-slate-200 object-contain" />
+            ) : null}
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => handleCloseBalancePaymentProofViewer?.()}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
           if (submitting) return;
           if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock' || cashierResumeUnlock || cashierTakeoverUnlock || adminReauthUnlock)) {
