@@ -11332,8 +11332,9 @@ Phases 190-196.
 - [x] Two findings deliberately **not** acted on, correctly scoped by the reviewing round itself:
       RF-4 (checks were mid-run at review time — resolved on its own once CI finished) and RF-5
       (the production active-enrollment count/distribution) — see the open item below.
-- [x] 52/52 tests passing across the slot-enforcement suite and the two sibling affiliate suites
-      by the final round.
+- [x] `20/20` on the slot-enforcement suite
+      (`dgfyAffiliateRepository.slotEnforcement.unit.test.js`) plus `52/52` combined across the two
+      sibling affiliate suites — `72/72` total, no regressions, by the final round.
 
 ### Known residual gaps, accepted rather than solved (state explicitly, not silently)
 
