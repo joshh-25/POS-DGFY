@@ -193,6 +193,7 @@ import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMeth
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
+import DgfyAffiliateCategoryRateFactory from './Landlord/DgfyAffiliateCategoryRate.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
@@ -268,6 +269,7 @@ const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
+const DgfyAffiliateCategoryRate = DgfyAffiliateCategoryRateFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
@@ -442,6 +444,12 @@ DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' })
 // Sequelize include.
 Tenant.hasMany(DgfyAffiliatePriceRule, { foreignKey: 'tenant_id', as: 'affiliatePriceRules' });
 DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #448 (Phase 209) - same rationale as dgfy_affiliate_price_rules above: enrollment_id/folder_id
+// use the sentinel-0 "applies to all" convention, so only tenant_id gets a strict association.
+// Resolution queries filter directly on tenant_id/enrollment_id/folder_id instead of an include.
+Tenant.hasMany(DgfyAffiliateCategoryRate, { foreignKey: 'tenant_id', as: 'affiliateCategoryRates' });
+DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -1249,6 +1257,7 @@ const db = {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
   TenantAffiliateSettings
   ,TenantDownpaymentSettings
   ,PlatformAdminUser
@@ -1462,6 +1471,7 @@ export {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
   TenantAffiliateSettings,
   TenantDownpaymentSettings,
   PlatformAdminUser,
