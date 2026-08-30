@@ -663,9 +663,13 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
 // needs the #1177/Phase 198 cap check. Demotions to `suspended`/`revoked` only ever FREE a slot and
 // stay on the generic PATCH, unchanged.
 export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, enrollmentId, reactivatedBy = null, reactivatedByUsername = null }) => {
+    async ({ tenantId, enrollmentId, reactivatedBy = null, reactivatedByUsername = null, reason = undefined }) => {
         try {
             const tenant = ensureTenantId(tenantId);
+            // #1202 (Phase 214) J4, per PR #1232 review RF-3 - optional, ≤500 chars, additive: an
+            // omitted/empty reason stays null, exactly as before this field existed, so no
+            // existing caller of this endpoint breaks.
+            const reactivationReason = reason ? String(reason).trim().slice(0, 500) : null;
 
             const existing = await repository.findEnrollmentById(tenant, enrollmentId);
             if (!existing) {
@@ -701,7 +705,8 @@ export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAff
             // instead of a dedicated column.
             const enrollment = await repository.reactivateEnrollment(tenant, enrollmentId, {
                 actorUserId: reactivatedBy,
-                actorUsername: reactivatedByUsername
+                actorUsername: reactivatedByUsername,
+                reason: reactivationReason
             });
             if (!enrollment) {
                 // Deleted between the read above and the transactional re-read inside the

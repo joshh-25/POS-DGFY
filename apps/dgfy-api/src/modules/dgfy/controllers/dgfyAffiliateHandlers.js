@@ -167,7 +167,10 @@ export const reactivateAffiliateEnrollment = async (req, res, next) => {
             tenantId: req.user?.tenant_id,
             enrollmentId: req.params.enrollment_id,
             reactivatedBy: req.user?.user_id ?? null,
-            reactivatedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null
+            reactivatedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null,
+            // #1202 (Phase 214) J4, implemented per PR #1232 review RF-3 - optional, additive: an
+            // omitted body or missing `reason` key is unaffected, no existing caller breaks.
+            reason: req.body?.reason
         }), {
             message: 'Affiliate enrollment reactivated successfully'
         });
