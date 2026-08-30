@@ -208,12 +208,18 @@ export const buildListAffiliatesUseCase = ({ repository = dgfyAffiliateRepositor
     async ({ tenantId }) => {
         try {
             const tenant = ensureTenantId(tenantId);
-            const enrollments = await repository.listEnrollmentsForTenant(tenant);
+            const [enrollments, slotsMax, slotsUsed] = await Promise.all([
+                repository.listEnrollmentsForTenant(tenant),
+                repository.getMaxAffiliateSlots(tenant),
+                repository.countConsumedSlots(tenant)
+            ]);
             const withEarnings = await Promise.all(enrollments.map(async (enrollment) => ({
                 ...enrollment,
                 earnings: await repository.getEarningsSummary(enrollment.dgfy_account_id, tenant)
             })));
-            return ok({ affiliates: withEarnings });
+            // Read-only (#1177, #447 D5) - raising the cap is a manual/out-of-band admin action,
+            // never a field this response accepts a write for.
+            return ok({ affiliates: withEarnings, slots_used: slotsUsed, slots_max: slotsMax });
         } catch (error) {
             return fail(mapError(error, 'Failed to list affiliates'));
         }

@@ -18,6 +18,7 @@ import {
     resolvePriceRuleFromCandidates,
     hasDuplicatePriceRuleScope
 } from '../utils/affiliatePriceRuleResolution.js';
+import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
 // Sentinel meaning "applies to all" for enrollment_id/item_id - see
 // backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
@@ -61,6 +62,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     attribution_window_days: 60,
     min_cashout_centavos: 20000,
     auto_approve_enrollment: false,
+    // #1177 (Phase 198, per #447 D1-D6): a tenant with no settings row yet still enforces the
+    // default cap of 1 - see countConsumedSlots/assertAffiliateSlotAvailable below. Mirrors the
+    // model-level default in TenantAffiliateSettings.js.
+    max_affiliate_slots: 1,
     // Phase 1 affiliate pricing rule engine defaults - see
     // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md. Mirrors the model-level
     // defaults in TenantAffiliateSettings.js so a tenant with no settings row yet resolves
@@ -69,6 +74,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     settlement_policy: null,
     commission_base_mode: 'discounted_subtotal'
 });
+
+// The reason_code an over-cap rejection carries in DomainError.details - distinct from the
+// existing "already enrolled" 409 CONFLICT so a caller (and a human reading the response) can
+// tell the two 409s apart without parsing prose.
+const AFFILIATE_SLOT_CAP_REASON_CODE = 'AFFILIATE_SLOT_CAP_REACHED';
 
 const ENROLLMENT_ACCOUNT_INCLUDE = {
     model: DgfyAccount,
@@ -81,6 +91,70 @@ export const dgfyAffiliateRepository = {
         const row = await TenantAffiliateSettings.findByPk(tenantId);
         if (row) return toPlain(row);
         return { tenant_id: tenantId, ...DEFAULT_SETTINGS };
+    },
+
+    // --- max_affiliate_slots enforcement (#1177, Phase 198, per #447 D1-D6) ---
+    //
+    // Deliberately lives here, not in the use-case layer: the registration flow
+    // (dgfyAuthUseCases.js -> repository.mirrorPendingAffiliateInvitesForAccount ->
+    // materializeInviteEnrollment) creates enrollments without ever going through a use case, so a
+    // use-case-only check would leak past it. Every write that can consume a new slot calls
+    // assertAffiliateSlotAvailable immediately beforehand, in the same transaction as the write.
+
+    async getMaxAffiliateSlots(tenantId, { transaction = null } = {}) {
+        const row = await TenantAffiliateSettings.findByPk(tenantId, { transaction });
+        if (row && Number.isInteger(row.max_affiliate_slots)) return row.max_affiliate_slots;
+        return DEFAULT_SETTINGS.max_affiliate_slots;
+    },
+
+    // Consumed slots = active enrollments + pending, non-expired invites (#447 D3 - counting
+    // enrollments alone lets a merchant mint invites under the cap and blow past it when they all
+    // accept). Revoked/suspended enrollments and expired/cancelled invites do not consume (#447 D4).
+    async countConsumedSlots(tenantId, { transaction = null } = {}) {
+        const [activeEnrollments, pendingInvites] = await Promise.all([
+            DgfyAffiliateEnrollment.count({
+                where: { tenant_id: tenantId, status: 'active' },
+                transaction
+            }),
+            DgfyAffiliateInvite.count({
+                where: { tenant_id: tenantId, status: 'pending', expires_at: { [Op.gt]: new Date() } },
+                transaction
+            })
+        ]);
+        return activeEnrollments + pendingInvites;
+    },
+
+    // Throws a distinct 409 (reason_code AFFILIATE_SLOT_CAP_REACHED - never the existing "already
+    // enrolled" CONFLICT) when the tenant is already at or over its cap. Call this immediately
+    // before any write that would consume a new slot, inside that same write's transaction.
+    //
+    // Concurrency note: when a transaction is supplied, this also takes a row lock on the tenant's
+    // settings row (if one exists) so two concurrent slot-consuming writes for the same tenant
+    // serialize on this check rather than both reading a stale count. A tenant with no settings row
+    // yet has nothing to lock; the count-based check still applies there, just without that extra
+    // guard for that rarer, never-configured-settings case.
+    async assertAffiliateSlotAvailable(tenantId, { transaction = null } = {}) {
+        if (transaction) {
+            await TenantAffiliateSettings.findByPk(tenantId, { transaction, lock: transaction.LOCK.UPDATE });
+        }
+        const [maxSlots, consumedSlots] = await Promise.all([
+            this.getMaxAffiliateSlots(tenantId, { transaction }),
+            this.countConsumedSlots(tenantId, { transaction })
+        ]);
+        if (consumedSlots >= maxSlots) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `This store has reached its affiliate slot limit (${maxSlots}). Raise max_affiliate_slots or free up a slot before adding another affiliate.`,
+                {
+                    statusCode: 409,
+                    details: {
+                        reason_code: AFFILIATE_SLOT_CAP_REASON_CODE,
+                        max_affiliate_slots: maxSlots,
+                        consumed_slots: consumedSlots
+                    }
+                }
+            );
+        }
     },
 
     async upsertSettings(tenantId, payload = {}) {
@@ -175,18 +249,25 @@ export const dgfyAffiliateRepository = {
         invitedEmail = null,
         activatedAt = null
     }) {
-        const row = await DgfyAffiliateEnrollment.create({
-            dgfy_account_id: dgfyAccountId,
-            tenant_id: tenantId,
-            short_code: shortCode,
-            share_code_hash: shareCodeHash,
-            commission_rate_bps: commissionRateBps,
-            status,
-            source,
-            invited_email: invitedEmail,
-            activated_at: activatedAt
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            // A non-active status (unused today - every current call site passes 'active') never
+            // consumes a slot, matching countConsumedSlots' own definition of "consumed".
+            if (status === 'active') {
+                await this.assertAffiliateSlotAvailable(tenantId, { transaction });
+            }
+            const row = await DgfyAffiliateEnrollment.create({
+                dgfy_account_id: dgfyAccountId,
+                tenant_id: tenantId,
+                short_code: shortCode,
+                share_code_hash: shareCodeHash,
+                commission_rate_bps: commissionRateBps,
+                status,
+                source,
+                invited_email: invitedEmail,
+                activated_at: activatedAt
+            }, { transaction });
+            return toPlain(row);
         });
-        return toPlain(row);
     },
 
     async updateEnrollment(tenantId, enrollmentId, updates = {}) {
@@ -201,17 +282,24 @@ export const dgfyAffiliateRepository = {
     // --- Affiliate invites (email invitations that predate an enrollment / DGFY account) ---
 
     async createInvite({ tenantId, email, tokenHash, commissionRateBps = null, invitedBy = null, expiresAt }) {
-        const row = await DgfyAffiliateInvite.create({
-            tenant_id: tenantId,
-            email: normalizeEmail(email),
-            token_hash: tokenHash,
-            commission_rate_bps: commissionRateBps,
-            invited_by: invitedBy,
-            status: 'pending',
-            expires_at: expiresAt,
-            last_sent_at: new Date()
+        return DgfyAffiliateInvite.sequelize.transaction(async (transaction) => {
+            // A brand-new pending invite consumes a slot the moment it's minted (#1177) - reject
+            // here so the cap is hit at invite time, not surprise-rejected at acceptance.
+            // refreshInvite (re-invite/resend of an already-pending invite) does not go through
+            // this path and must not re-consume.
+            await this.assertAffiliateSlotAvailable(tenantId, { transaction });
+            const row = await DgfyAffiliateInvite.create({
+                tenant_id: tenantId,
+                email: normalizeEmail(email),
+                token_hash: tokenHash,
+                commission_rate_bps: commissionRateBps,
+                invited_by: invitedBy,
+                status: 'pending',
+                expires_at: expiresAt,
+                last_sent_at: new Date()
+            }, { transaction });
+            return toPlain(row);
         });
-        return toPlain(row);
     },
 
     // Reuses an existing pending invite row (re-invite / resend) rather than piling up duplicates:
@@ -291,6 +379,14 @@ export const dgfyAffiliateRepository = {
         let enrollment = existing;
         let created = false;
         if (!existing) {
+            // #1177: this is the seam a use-case-only cap check would miss - the register flow
+            // (dgfyAuthUseCases.js -> mirrorPendingAffiliateInvitesForAccount) reaches this
+            // directly, never through a use case. Runs inside `transaction` when supplied (the
+            // register path always supplies one) so the check and the create commit atomically.
+            // The idempotent "already accepted" branch above never reaches here (existing is set),
+            // so re-accepting an already-materialized invite never re-consumes.
+            await this.assertAffiliateSlotAvailable(invite.tenant_id, { transaction });
+
             // generateUniqueShareCode reads without the transaction, but the unique short_code/
             // share_code_hash indexes are the real guarantee against collisions.
             const { shortCode, shareCodeHash } = await this.generateUniqueShareCode();
