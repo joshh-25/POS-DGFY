@@ -1632,13 +1632,20 @@
   z-index: 80;
 }
 
-/* #475 — MapLibre applies `touch-action: none` only to its own canvas container.
-   Every overlay chip on a storefront map is an absolutely-positioned sibling of
-   that container, so a pinch starting on a chip falls through to the browser and
-   zooms the page instead of the map. Claim those gestures for the map surface.
-   Two selector depths: overlays that are siblings of the MapLibre root itself
-   (DeliveryPinMap, StoresMap), and overlays one level up, siblings of a wrapper
-   that holds the root (DiscoveryHeroMapStage). */
+/* #475 RF-1 — this rule alone is NOT the fix. MapLibre's TouchZoomRotateHandler binds
+   its touch listeners to map.getCanvasContainer() and only accepts a touch whose
+   original DOM target is a descendant of that element (maplibre-gl's own
+   handler_manager.ts: `this._el.contains(target)`). Setting touch-action: none on a
+   sibling overlay only suppresses the browser's default page-zoom gesture for that
+   element -- a pinch that starts on a sibling chip still never reaches the map's zoom
+   handler, because a DOM touch event keeps the element it started on for the whole
+   gesture and never retargets sideways. The actual fix is in JS: DeliveryPinMap.jsx,
+   StoresMap.jsx, and DiscoveryHeroMapStage.jsx now portal their interactive overlay
+   chips/buttons into map.getCanvasContainer() itself, so a pinch starting on them is a
+   genuine map touch by MapLibre's own containment check. This CSS rule is kept as a
+   defense-in-depth backstop (belt-and-suspenders with the touchAction: 'none' inline
+   styles on each portaled overlay) for any sibling overlay not yet covered by that
+   fix, and to suppress default browser handling even where it's already redundant. */
 .maplibregl-map ~ *,
 .maplibregl-map ~ * *,
 :has(> .maplibregl-map) ~ *,
