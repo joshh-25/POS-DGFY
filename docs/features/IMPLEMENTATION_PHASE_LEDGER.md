@@ -11479,3 +11479,96 @@ planned:
 
 Per #446's own sequencing comment (2026-08-30), this order was stated in advance and is unchanged
 by anything found during execution.
+
+**Superseded, in part, later on 2026-08-30**: the four open policy questions above were resolved by
+Pat the same day, via a Q&A recorded on #450, #872, #567, #449, and #448 (see Phase 206 below for
+the concrete phase this unblocked). #449 was confirmed independent of #488 and stays open for later
+scoping; #448 stays open for later scoping; #452 remains untouched. #1191 was picked up as Phase 207.
+
+## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). First phase in a second successive chain, unblocked by Pat's
+2026-08-30 Q&A resolving #450's four open policy questions (D1-D4, recorded on #450). Independent
+of Phases 197-199, which had already closed out as a deliberate chain-end.
+
+### Objective and scope
+
+Decision D2 ("in-flight attribution drops silently"): if an affiliate's enrollment is
+revoked/suspended, or the tenant's program disabled, between when storefront checkout resolves
+pricing and when the order actually commits, the order must still succeed but the commission must
+not be accrued to that enrollment, with no error surfaced to the buyer.
+
+### Status
+
+`completed` (2026-08-30). PR #1200 merged into `develop` as commit
+`2eca5990254c014dd464474284b161338cc26142`.
+
+### Dependencies
+
+None on Phases 197-199 (different code path — storefront checkout accrual, not
+cashout/slots/revocation-stamping). Depended only on #450 D2 being decided.
+
+### Acceptance and validation evidence
+
+- [x] `storeUseCases.js`'s post-commit affiliate accrual block now unconditionally re-resolves the
+      enrollment via `resolveActiveAffiliateEnrollmentById` at commit time, replacing the previous
+      `||`-on-pricing-time-cached-object fallback that only fired when the cached object was
+      *missing*, never when it was *stale*.
+- [x] Verified as a plain, non-locking, post-`transaction.commit()` read — no lock, no transaction
+      handle, no snapshot-isolation concern (Phase 198's RF-6 finding does not apply to a read after
+      the relevant transaction has already committed). No lock added.
+- [x] Silent-drop implemented as a narrow `else if (affiliatePricing?.enrollment)` guard (not a bare
+      `else`) specifically to avoid logging the common, high-frequency, non-drop case of an
+      attribution cookie that was already stale at pricing time.
+- [x] Pricing/discount math untouched — only which enrollment object is used to decide
+      whether/whom to accrue commission to.
+- [x] In-store POS path (`posUseCases.js`) investigated and explicitly deferred, on corrected
+      grounds: the planning pass verified a real transaction boundary and ~1,400 lines of DB work
+      exist between POS's resolve and accrual points (the dispatch brief's initial premise that no
+      such boundary existed was factually wrong and was not carried into the code or PR). Deferred
+      instead because POS treats an affiliate code as a hard, operator-facing precondition (a bad
+      code hard-rejects the sale with 422 before it proceeds), making silent-drop-after-the-fact a
+      distinct product decision, not a mechanical port of this fix. Follow-up filed: **#1199**.
+- [x] Compliance impact declaration added and required (`major`/`payments` — `modules/store/**`
+      matches `check-compliance-impact.js`'s sensitive-path rule; corrects the assumption carried
+      from Phases 197-199 that no affiliate-adjacent module needed one — that was true for
+      `modules/dgfy/` and the migration runner, not for `modules/store/`).
+      `preflight_request_ref: NOT-EXECUTED-450-...` is correct and expected on a `develop`-targeting
+      PR per the standing preflight protocol.
+- [x] Extended (not duplicated) `tests/storeCheckoutAffiliatePricing.unit.test.js` — 13/13 passing
+      (4 new), including a call-count assertion on `findEnrollmentById` that actually pins the new
+      twice-per-checkout behavior rather than merely re-testing the old baseline.
+- [x] One transient CI failure (`dgfy-api-build-check`'s "Set up job" step, a runner-infra tarball
+      lookup error unrelated to the diff) — reran clean; not a defect in this change.
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker — `APPROVE`, no findings. Correctly *not*
+      treated as a first-live-use report-only run (explicit precedent cited in the dispatch: PRs
+      #1184/#1187/#1189/#1193 already reviewed-and-merged by this same role/model pair).
+      Merged with a true merge commit, checks green, `mergeStateStatus: CLEAN`.
+- [x] Linked `Refs #450` (not `Closes`) — #450 still carries other, unrelated content.
+
+### Open items outstanding, not specific to this phase
+
+- Follow-up issue **#1199** (POS in-store affiliate attribution silent-drop vs. hard-validated-code
+  semantics) — filed via `pm`, `Refs #450`, not scheduled into this chain.
+- The ledger-numbering gap for Phases 200-205 (see the note above Phase 206's heading) is not this
+  initiative's to resolve — those phases belong to a concurrent Surebiz orchestration run in a
+  sibling session; confirmed via cross-session coordination on 2026-08-30 (200=#475/PR #1188,
+  201=#852/PR #1192, both already merged; 202-203 in flight; 204-205 reserved). This affiliate
+  initiative continues at 206/207 by explicit agreement between the two sessions to avoid a
+  numbering collision, not because 200-205 were skipped or unavailable to this initiative.
+
+### Implementation links
+
+- Issue #450 (decision D2), Refs #446
+- PR #1200: https://github.com/Sieitzz/dgfy-platform/pull/1200
+- Review: `## Review — APPROVE` comment on PR #1200 (Codex GPT-5.6-Luna, pr-reviewer)
+- Follow-up issue: #1199 (POS attribution silent-drop, deferred)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-affiliate-attribution-commit-time-recheck.md`
+
+### Next eligible phase
+
+**Phase 207** — dedicated affiliate reactivate flow, closing #1191's slot-cap bypass gap per #450
+D4 ("distinct reactivate flow, not a reuse of the generic PATCH"). In progress as of this entry.
