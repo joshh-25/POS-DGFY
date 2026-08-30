@@ -8,6 +8,7 @@ import {
     getAffiliateSettings,
     inviteAffiliate,
     listAffiliateCashouts,
+    listAffiliateEnrollmentStatusEvents,
     listAffiliateInvites,
     listAffiliates,
     markAffiliateCashoutPaid,
@@ -88,6 +89,14 @@ router.get(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
     getAffiliateQrPayload
+);
+// #1202 (Phase 214) - status-transition history (J7). Read permission, matching /qr above - not
+// MANAGE_AFFILIATES. Merchant-only surface; no affiliate-facing equivalent exists (J2).
+router.get(
+    '/affiliates/:enrollment_id/status-events',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateEnrollmentStatusEvents
 );
 // Phase 1 affiliate pricing rule engine (see
 // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Selling-price rule only -

@@ -10,6 +10,7 @@ import {
     DgfyAffiliateInvite,
     DgfyAffiliatePriceRule,
     DgfyAffiliateCategoryRate,
+    DgfyAffiliateEnrollmentStatusEvent,
     StorefrontDiscoveryIndex,
     Tenant,
     TenantAffiliateSettings
@@ -330,6 +331,54 @@ export const dgfyAffiliateRepository = {
         throw new Error('Failed to generate a unique affiliate share code after multiple attempts');
     },
 
+    // #1202 (Phase 214) - the single write helper for
+    // dgfy_affiliate_enrollment_status_events, called from all four status-write sites below.
+    // ALWAYS takes the caller's transaction; never opens its own - the whole point is that the
+    // event and the status change it records commit (or roll back) as one unit (J10). See
+    // PHASE_214_PLAN.md §4.4 for the per-site wiring this is called from.
+    async recordEnrollmentStatusEvent({
+        enrollmentId,
+        tenantId,
+        fromStatus = null,
+        toStatus,
+        eventType,
+        actorType,
+        actorUserId = null,
+        actorUsername = null,
+        actorDgfyAccountId = null,
+        reason = null,
+        source,
+        metadata = null
+    }, { transaction }) {
+        return DgfyAffiliateEnrollmentStatusEvent.create({
+            enrollment_id: enrollmentId,
+            tenant_id: tenantId,
+            from_status: fromStatus,
+            to_status: toStatus,
+            event_type: eventType,
+            actor_type: actorType,
+            actor_user_id: actorUserId,
+            actor_username: actorUsername,
+            actor_dgfy_account_id: actorDgfyAccountId,
+            reason,
+            source,
+            metadata
+        }, { transaction });
+    },
+
+    // #1202 (Phase 214) - the read side of the status-events table (J7). Filters on BOTH tenant_id
+    // and enrollment_id - belt and braces alongside the caller's own findEnrollmentById 404 check,
+    // so this can never leak another tenant's history even if called directly.
+    async listStatusEventsForEnrollment(tenantId, enrollmentId, { limit = 25 } = {}) {
+        const clampedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 25, 1), 100);
+        const rows = await DgfyAffiliateEnrollmentStatusEvent.findAll({
+            where: { tenant_id: tenantId, enrollment_id: enrollmentId },
+            order: [['created_at', 'DESC'], ['status_event_id', 'DESC']],
+            limit: clampedLimit
+        });
+        return rows.map(toPlain);
+    },
+
     async createEnrollment({
         dgfyAccountId,
         tenantId,
@@ -339,7 +388,9 @@ export const dgfyAffiliateRepository = {
         status = 'active',
         source = 'admin_provisioned',
         invitedEmail = null,
-        activatedAt = null
+        activatedAt = null,
+        actorUserId = null,
+        actorUsername = null
     }) {
         return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
             // A non-active status (unused today - every current call site passes 'active') never
@@ -358,17 +409,61 @@ export const dgfyAffiliateRepository = {
                 invited_email: invitedEmail,
                 activated_at: activatedAt
             }, { transaction });
+            // #1202 site 1 - after the create, well after assertAffiliateSlotAvailable. The RF-6
+            // lock-first contract constrains READS; an insert is not a read, but keeping this last
+            // removes the question entirely (PHASE_214_PLAN.md §4.4).
+            await this.recordEnrollmentStatusEvent({
+                enrollmentId: row.enrollment_id,
+                tenantId,
+                fromStatus: null,
+                toStatus: status,
+                eventType: 'enrolled',
+                actorType: 'tenant_user',
+                actorUserId,
+                actorUsername,
+                source: 'admin_api'
+            }, { transaction });
             return toPlain(row);
         });
     },
 
-    async updateEnrollment(tenantId, enrollmentId, updates = {}) {
-        const row = await DgfyAffiliateEnrollment.findOne({
-            where: { tenant_id: tenantId, enrollment_id: enrollmentId }
+    // #1202 (Phase 214) site 3 - the only structural change among the four write sites. Wrapped in
+    // its own transaction (this method previously had none) so the `from_status` read below shares
+    // the same snapshot as the write it feeds - the same RF-1-class correction PR #1228 applied to
+    // Phase 213: a plain read on a separate implicit connection is not guaranteed to match the
+    // locked/written row. No slot lock here - this method only ever demotes (Phase 207 moved
+    // reactivation to its own path below), demotions only free slots, and taking
+    // acquireAffiliateSlotLock here would add contention on the tenant settings row for every
+    // commission-rate edit that has nothing to do with slots.
+    async updateEnrollment(tenantId, enrollmentId, updates = {}, { actorUserId = null, actorUsername = null } = {}) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const row = await DgfyAffiliateEnrollment.findOne({
+                where: { tenant_id: tenantId, enrollment_id: enrollmentId },
+                transaction
+            });
+            if (!row) return null;
+            const fromStatus = row.status;
+            await row.update(updates, { transaction });
+            // Emit an event only when `updates.status` is present and actually differs from the
+            // row's prior status - mirroring the use case's own `stamped` condition exactly, so the
+            // event and the revoked_at stamp can never disagree about whether a transition
+            // occurred (test #6, PHASE_214_PLAN.md §6).
+            if (updates.status !== undefined && updates.status !== fromStatus) {
+                await this.recordEnrollmentStatusEvent({
+                    enrollmentId,
+                    tenantId,
+                    fromStatus,
+                    toStatus: updates.status,
+                    eventType: updates.status,
+                    actorType: 'tenant_user',
+                    actorUserId,
+                    actorUsername,
+                    reason: updates.revocation_reason ?? null,
+                    source: 'admin_api'
+                }, { transaction });
+            }
+            return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE], transaction }));
         });
-        if (!row) return null;
-        await row.update(updates);
-        return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE] }));
     },
 
     // #1191 (Phase 207) - deliberately NOT an extension of updateEnrollment above. Reactivation is
@@ -388,7 +483,7 @@ export const dgfyAffiliateRepository = {
     // revocation_reason (#450 Phase 199 - an audit trail of the most recent revocation, not a
     // live-status mirror) and does not touch activated_at (the ORIGINAL enrollment date, rendered
     // to the affiliate as "Enrolled <date>").
-    async reactivateEnrollment(tenantId, enrollmentId) {
+    async reactivateEnrollment(tenantId, enrollmentId, { actorUserId = null, actorUsername = null } = {}) {
         return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
             // FIRST statement of the transaction, before the findOne below - identical ordering to
             // createEnrollment (~line 332). See acquireAffiliateSlotLock's own comment for the full
@@ -400,7 +495,22 @@ export const dgfyAffiliateRepository = {
                 transaction
             });
             if (!row) return null;
+            const fromStatus = row.status;
             await row.update({ status: 'active' }, { transaction });
+            // #1202 site 4 - after row.update, before reload (PHASE_214_PLAN.md §4.4). from_status
+            // reflects whichever REACTIVATABLE_STATUSES value the row actually held, asserted
+            // symmetrically for both 'suspended' and 'revoked' sources (test #8).
+            await this.recordEnrollmentStatusEvent({
+                enrollmentId,
+                tenantId,
+                fromStatus,
+                toStatus: 'active',
+                eventType: 'reactivated',
+                actorType: 'tenant_user',
+                actorUserId,
+                actorUsername,
+                source: 'admin_api'
+            }, { transaction });
             return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE], transaction }));
         });
     },
@@ -500,10 +610,16 @@ export const dgfyAffiliateRepository = {
     // so the cap re-check, enrollment insert, and invite-status update still commit as one unit and
     // the row lock in assertAffiliateSlotAvailable actually engages (#1187 RF-2) - without this, that
     // path's slot check could never serialize against a concurrent acceptance for the same tenant.
-    async materializeInviteEnrollment(invite, account, { transaction = null } = {}) {
+    // #1202 (Phase 214) - autoEnroll distinguishes this method's two callers for the status-event
+    // it writes: an explicit accept (buildAcceptAffiliateInviteUseCase, autoEnroll: false/default)
+    // is a `dgfy_account`-actor event, while the on-register hook
+    // (mirrorPendingAffiliateInvitesForAccount, autoEnroll: true) is a `system`-actor event.
+    // Threaded through options rather than sniffed from the caller (PHASE_214_PLAN.md §4.4, site
+    // 2b) so this method's own logic doesn't have to guess.
+    async materializeInviteEnrollment(invite, account, { transaction = null, autoEnroll = false } = {}) {
         if (!transaction) {
             return DgfyAffiliateEnrollment.sequelize.transaction((ownTransaction) => (
-                this.materializeInviteEnrollment(invite, account, { transaction: ownTransaction })
+                this.materializeInviteEnrollment(invite, account, { transaction: ownTransaction, autoEnroll })
             ));
         }
         // #1187 RF-6: the settings-row lock MUST be acquired before ANY other read in this
@@ -558,6 +674,18 @@ export const dgfyAffiliateRepository = {
                 activated_at: new Date()
             }, { transaction });
             created = true;
+            // #1202 sites 2a/2b - MUST be inside `if (!existing)`: the idempotent re-accept branch
+            // above must not emit a second `enrolled` event (test #3, PHASE_214_PLAN.md §4.4/§6).
+            await this.recordEnrollmentStatusEvent({
+                enrollmentId: enrollment.enrollment_id,
+                tenantId: invite.tenant_id,
+                fromStatus: null,
+                toStatus: 'active',
+                eventType: 'enrolled',
+                actorType: autoEnroll ? 'system' : 'dgfy_account',
+                actorDgfyAccountId: autoEnroll ? null : account.id,
+                source: autoEnroll ? 'auto_enroll' : 'invite_accept'
+            }, { transaction });
         }
 
         const inviteRow = await DgfyAffiliateInvite.findByPk(invite.invite_id, { transaction });
@@ -599,7 +727,7 @@ export const dgfyAffiliateRepository = {
             const plainInvite = toPlain(invite);
             try {
                 // eslint-disable-next-line no-await-in-loop
-                const result = await this.materializeInviteEnrollment(plainInvite, account, { transaction });
+                const result = await this.materializeInviteEnrollment(plainInvite, account, { transaction, autoEnroll: true });
                 results.push(result);
             } catch (error) {
                 if (error?.details?.reason_code !== AFFILIATE_SLOT_CAP_REASON_CODE) throw error;

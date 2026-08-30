@@ -331,7 +331,7 @@ export const buildListAffiliatesUseCase = ({ repository = dgfyAffiliateRepositor
 );
 
 export const buildProvisionAffiliateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, body = {} }) => {
+    async ({ tenantId, body = {}, actorUserId = null, actorUsername = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
             const rateBps = parseOptionalRateBps(body.commission_rate_bps, { field: 'commission_rate_bps' });
@@ -368,7 +368,9 @@ export const buildProvisionAffiliateUseCase = ({ repository = dgfyAffiliateRepos
                 status: 'active',
                 source: 'admin_provisioned',
                 invitedEmail: account.email,
-                activatedAt: new Date()
+                activatedAt: new Date(),
+                actorUserId,
+                actorUsername
             });
             return ok({ enrollment });
         } catch (error) {
@@ -541,7 +543,7 @@ export const buildAcceptAffiliateInviteUseCase = ({ repository = dgfyAffiliateRe
 );
 
 export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, enrollmentId, body = {}, revokedBy = null }) => {
+    async ({ tenantId, enrollmentId, body = {}, revokedBy = null, revokedByUsername = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
             const updates = {};
@@ -635,7 +637,13 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, "revocation_reason is only accepted on a transition into 'revoked' or 'suspended'.", { statusCode: 422 });
             }
 
-            const enrollment = await repository.updateEnrollment(tenant, enrollmentId, updates);
+            // #1202 (Phase 214) - actorUsername threaded to the repository so the status-events
+            // row it may write carries a renderable name (F4), independent of whether this PATCH
+            // actually triggers a stamp (the repository itself decides whether to write an event).
+            const enrollment = await repository.updateEnrollment(tenant, enrollmentId, updates, {
+                actorUserId: revokedBy,
+                actorUsername: revokedByUsername
+            });
             if (!enrollment) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
             }
@@ -655,7 +663,7 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
 // needs the #1177/Phase 198 cap check. Demotions to `suspended`/`revoked` only ever FREE a slot and
 // stay on the generic PATCH, unchanged.
 export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, enrollmentId, reactivatedBy = null }) => {
+    async ({ tenantId, enrollmentId, reactivatedBy = null, reactivatedByUsername = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
 
@@ -685,14 +693,16 @@ export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAff
             // which is the ORIGINAL enrollment date and is rendered to the affiliate as
             // "Enrolled <date>" (dgfy-storefront customer-dashboard AffiliateSection.jsx).
             //
-            // `reactivatedBy` is accepted and threaded through from the controller but not
-            // persisted: no `reactivated_by` column exists, and adding one is a landlord migration
-            // outside this phase's scope (#1191 is an enforcement-gap fix). Keeping the parameter
-            // means the route/controller/use-case shape does not change when a follow-up adds the
-            // column. See the PR body's "Deliberate omissions" note.
-            void reactivatedBy;
-
-            const enrollment = await repository.reactivateEnrollment(tenant, enrollmentId);
+            // #1202 (Phase 214) - `reactivatedBy` finally gets used. Phase 207 threaded it through
+            // the controller and use case and deliberately left it unpersisted (there was no
+            // `reactivated_by` column and adding one is explicitly rejected - see PHASE_214_PLAN.md
+            // §3, "Do not add reactivated_at/reactivated_by columns"). Phase 214 is that follow-up:
+            // it is now passed to the repository, which records it on the new status-events row
+            // instead of a dedicated column.
+            const enrollment = await repository.reactivateEnrollment(tenant, enrollmentId, {
+                actorUserId: reactivatedBy,
+                actorUsername: reactivatedByUsername
+            });
             if (!enrollment) {
                 // Deleted between the read above and the transactional re-read inside the
                 // repository - vanishingly rare, but do not return a null enrollment as success.
@@ -701,6 +711,45 @@ export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAff
             return ok({ enrollment });
         } catch (error) {
             return fail(mapError(error, 'Failed to reactivate affiliate enrollment'));
+        }
+    }
+);
+
+// #1202 (Phase 214, J7) - dedicated read endpoint, mirroring Phase 213's own
+// GET /:id/affiliate-slots/audit-logs sibling rather than inlining an unbounded history array into
+// GET /affiliates. No affiliate-facing surface (J2) - merchant-only visibility, see
+// PHASE_214_PLAN.md §4.5.
+export const buildListAffiliateEnrollmentStatusEventsUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, enrollmentId, limit = 25 }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            // findEnrollmentById first - the tenant-isolation boundary. Do NOT query events by
+            // enrollment_id alone; a 404 here is what stops one tenant reading another's history
+            // (test #12, PHASE_214_PLAN.md §6).
+            const enrollment = await repository.findEnrollmentById(tenant, enrollmentId);
+            if (!enrollment) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            const statusEvents = await repository.listStatusEventsForEnrollment(tenant, enrollmentId, { limit });
+            return ok({
+                status_events: statusEvents.map((event) => ({
+                    status_event_id: event.status_event_id,
+                    enrollment_id: event.enrollment_id,
+                    from_status: event.from_status,
+                    to_status: event.to_status,
+                    event_type: event.event_type,
+                    actor_type: event.actor_type,
+                    actor_user_id: event.actor_user_id,
+                    actor_username: event.actor_username,
+                    actor_dgfy_account_id: event.actor_dgfy_account_id,
+                    reason: event.reason,
+                    source: event.source,
+                    created_at: event.created_at
+                })),
+                enrollment_id: Number(enrollmentId)
+            });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to load affiliate enrollment status events'));
         }
     }
 );
