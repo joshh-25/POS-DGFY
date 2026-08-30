@@ -43,6 +43,15 @@ const tenantPosMetadataPatchSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(500).required()
 }).xor('software_settings', 'pending_action').unknown(false);
 
+// #1190 (Phase 213): landlord-admin write path for the per-tenant affiliate-enrollment cap
+// (#447 D5). min(1): 0 already has a meaning -- program_enabled: false -- and two mechanisms for
+// "no affiliates" is how a tenant ends up disabled two different ways that disagree. max(100) is
+// a defensive typo bound, not a product limit -- see PHASE_213_PLAN.md A4.
+const tenantAffiliateSlotsPatchSchema = Joi.object({
+    max_affiliate_slots: Joi.number().integer().min(1).max(100).required(),
+    reason: Joi.string().trim().min(3).max(500).required()
+}).unknown(false);
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -101,6 +110,21 @@ export const validateTenantCapabilityAuditLogQuery = (req, res, next) => {
 
 export const validateTenantPosMetadataPatch = (req, res, next) => {
     const { error, value } = tenantPosMetadataPatchSchema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: true,
+        convert: true
+    });
+
+    if (error) {
+        return res.status(422).json(buildValidationErrorResponse(error));
+    }
+
+    req.validatedData = value;
+    return next();
+};
+
+export const validateTenantAffiliateSlotsPatch = (req, res, next) => {
+    const { error, value } = tenantAffiliateSlotsPatchSchema.validate(req.body, {
         abortEarly: false,
         stripUnknown: true,
         convert: true
