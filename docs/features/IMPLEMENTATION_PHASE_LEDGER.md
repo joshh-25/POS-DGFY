@@ -13141,3 +13141,95 @@ hand to `pm` if ever wanted): a general short-link/redirect service, a server-si
 `/s/{code}`, retiring the `?p=` shim on a future date (moot — E1 retired it outright instead),
 fixing #972's shared-IP keying gap, telemetry on `?p=` vs. path arrivals, and a vanity affiliate
 handle.
+
+## Phase 219 - Storefront: Versioned Non-Refundable Downpayment Terms, Drafted and Linked (#1220)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178); downpayment epic #815. Planned by Claude
+(`PHASE_219_PLAN.md`, planning-only dispatch, 2026-08-31); implemented and opened for PR by a
+separate Sonnet session the same day.
+
+### Objective and scope
+
+Customers fund non-refundable downpayments in production under terms they have never been shown.
+This phase ships an interim, versioned, explicitly-unreviewed draft of those terms and surfaces it
+as an optional link at the downpayment step of all three storefront checkout modes (Simple, F&B,
+Retail), via the one shared `DownpaymentPaymentCallout.jsx` all three already render — closing the
+gap recorded as Compliance Precondition 9 of the 2026-08-22 downpayment refund/forfeiture
+declaration. Storefront + docs only: new `downpaymentTermsDocument.js` (single source of the text,
+`terms_version: downpayment-nonrefundable-v1`), a generated `docs/legal/downpayment-nonrefundable-terms-v1.md`,
+a new `DownpaymentTermsModal.jsx` overlay, a link added to `DownpaymentPaymentCallout.jsx` on the
+existing `refundable === false` gate, and a comment-only edit to
+`storefrontDownpaymentPresentation.js`. No backend, no migration, no schema change.
+
+One deliberate deviation from the plan's own embedded prototype (plan §6), made by the implementing
+session per Pat's explicit instruction: the prototype rendered the pending-legal-review notice as a
+visible banner inside the customer-facing modal. Pat's decision overrides #1220's own instruction on
+this point — the draft/pending-review status is recorded **internally only** (module header comment,
+`docs/legal/` front matter, PR body, this ledger entry) and **not** shown to the customer. Both new
+test files were updated accordingly, including a regression assertion that the customer-facing
+dialog and plain text do not contain review-status language while the internal reviewable markdown
+doc still does.
+
+Explicitly out of scope, named rather than silently dropped: recording acceptance/consent (#1086,
+whose version+hash record this phase's `terms_version` makes implementable); lawyer-reviewed wording
+(#280, which this phase does not close — the terms are an AI-drafted, unreviewed first pass and Pat
+reads them himself before any CEO/lawyer review); any gating of the pay action (no checkbox, no "I
+agree", the pay action is never disabled — pinned by tests).
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged. The drafted terms text
+itself still needs Pat's own read before anyone treats it as final — that is separate from and does
+not block this PR's own merge readiness.
+
+### Dependencies
+
+None blocking. Independent of the 213–218 chain. Supplies the versioned text #1086 requires;
+precedes #280's replacement wording, which ships as a new version identifier, never an in-place
+edit of `downpayment-nonrefundable-v1`.
+
+### Acceptance and validation evidence
+
+- [x] The terms link appears at the downpayment step in all three checkout modes (via the one
+      shared `DownpaymentPaymentCallout.jsx`), only when `display.refundable === false`, never when
+      `true` or `null` — pinned by `downpaymentTermsDisclosure.test.jsx`.
+- [x] Opening the terms shows the full text with the version identifier and effective date; the
+      pending-legal-review status is recorded internally only, not as a customer-facing banner
+      (Pat's override, above) — pinned by both new test files.
+- [x] The checkout step stays mounted while the terms overlay is open, and closing returns to it
+      with no state lost — pinned by test.
+- [x] No checkbox, no "I agree", and the pay action is never disabled on an unread state — pinned
+      by test; confirmed by inspection that `termsOpen` state never reaches any submit/pay control.
+- [x] `docs/legal/downpayment-nonrefundable-terms-v1.md` exists, carries `status: draft` and
+      `legal_review_status: pending (#280)`, and matches the rendering module byte-for-byte —
+      pinned by test.
+- [x] 9 new tests (`downpaymentTermsDocument.test.js`, `downpaymentTermsDisclosure.test.jsx`), all
+      passing; 34 existing downpayment tests (`storefrontDownpaymentPresentation.test.js`,
+      `downpaymentTrackingSummary.test.jsx`, `useCheckoutTotalsAndGating.downpayment.test.js`)
+      unchanged and passing — both re-run and confirmed by the implementing session, not only
+      trusted from the plan.
+- [x] `npm run build:store` (real Vite build) re-run and confirmed green by the implementing
+      session; `npx eslint` on every new/changed file (0 errors); `check:compliance` (PASS — no
+      compliance-sensitive changes detected, declaration filed voluntarily),
+      `check:architecture` (OK), `lint:docs` (OK — 29 governed docs, 84 ADRs).
+- [ ] No live mobile-device pass — layout verified only in jsdom and the Vite build, stated in the
+      PR rather than implied as covered.
+
+### Implementation links
+
+- Issue #1220 (Refs — the terms need Pat's own read and deployed verification before closing),
+  parent epic #1178
+- Related: #1086 (acceptance capture, downstream consumer of `terms_version`), #280 (T&C lawyer
+  review, not closed by this phase), #824/Phase 144 (the existing neutral disclosure note, now the
+  summary line), #815 (downpayment epic)
+- ADR 0069 clause 1b `[binding]` / clause 8, carried by ADR 0070
+- `docs/compliance/impact-declarations/2026-08-31-downpayment-nonrefundable-terms-disclosure.md`
+- `docs/legal/downpayment-nonrefundable-terms-v1.md`
+- `PHASE_219_PLAN.md` (planning artifact; not committed to the repo — superseded by this ledger
+  entry and the PR itself as the durable record)
+
+### Next eligible phase
+
+220.
