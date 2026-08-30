@@ -35,6 +35,14 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: false
         },
+        // #1177 (Phase 198, per #447 D1-D6): the code-enforced cap on concurrently-consumed
+        // affiliate slots for this tenant (active enrollments + pending, non-expired invites).
+        // Raised only by internal admin action - no self-serve purchase path (#447 D5).
+        max_affiliate_slots: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1
+        },
         // Defaults to PERCENTAGE_OF_BASE - every affiliate today implicitly earns a
         // percentage-of-base commission via commission_rate_bps, so this preserves current
         // behavior for every existing tenant.
