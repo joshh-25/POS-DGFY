@@ -12014,9 +12014,12 @@ enrollment status transitions, not commission accrual).
       (byte-identical, no edit needed) and `dgfyAffiliatePriceRuleUseCases.unit.test.js`. Also ran
       `npm run check:architecture` (guardrails + controller boundaries, both OK) as a cheap extra
       check beyond the plan's own required Tier 0 list.
-- [x] Linked `Refs #449`, not `Closes` — #449's title also covers "milestone bonuses," which this
-      phase does not build (and #449's own correction note reassigns that half elsewhere as a
-      separate child of #446), so the issue is not fully resolved by this PR.
+- [x] Linked `Closes #449` — #449's title still reads "milestone bonuses," but that half is stale
+      relative to #449's own 2026-08-14 correction note, which reassigns it as a separate,
+      already-filed issue, #488 ("Affiliate allocation entitlement and pricing"), not merely "a
+      child of #446" left to be created later. #449's own three named open questions (cap period,
+      cap vs. tier, at-cap behavior) are all resolved and implemented by this phase, so nothing of
+      #449's actual scope remains open.
 
 ### Known limitations, not fixed here
 
