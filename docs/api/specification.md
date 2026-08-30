@@ -2719,6 +2719,11 @@ Payment handoff policy (current contract):
   - non-cash (`gcash`, `maya`, `card`, `bank_transfer`) -> `external`
 - When BSP OPS controls are incomplete, internal non-cash flows are denied with reason-coded compliance errors; external handoff remains allowed.
 
+Affiliate attribution (current contract, #1239 / Phase 222):
+- Optional request field: `affiliate_code` (string, up to 40 characters, `''`/`null` both mean "no attribution").
+- In-store affiliate attribution only — it has no effect on price, VAT, discount, or receipt content.
+- An unresolvable code (unknown, revoked, or the affiliate program disabled for the tenant) rejects the checkout: `422` with `reason_code: AFFILIATE_CODE_INVALID`, no transaction created.
+
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 

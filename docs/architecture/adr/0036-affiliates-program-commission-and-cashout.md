@@ -417,3 +417,40 @@ build log). It touches money handling already governed by two prior ADRs:
   as a gap, not proposed as work.
 - PR: #1200 (storefront, Phase 206), #1242 (POS, Phase 220) — see
   `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
+
+### 2026-08-31 — POS primary checkout route restores `affiliate_code`, retiring the 2026-08-31 block's "cannot reach this fix" limitation (#1239, Phase 222)
+
+- Clause amended: none — the ADR's only `[binding]` clause (Decision 2, rate snapshotting) is
+  untouched. Filed under ADR 0039's `[default]`/untagged tier, same route the two amendments above
+  took: this is new material narrowing a known limitation the ADR already named, not a correction
+  of a Decision clause.
+- **What changed.** `checkoutPosSchema` (`apps/dgfy-api/src/validators/posValidator.js`) now
+  declares `affiliate_code` (`Joi.string().trim().max(40).allow('', null).optional()`), so
+  `POST /pos/checkouts` — the primary, highest-volume POS checkout route — stops stripping the
+  field via `stripUnknown: true`. The field now reaches `checkoutPosUseCase` exactly as it already
+  did on the split-payment-completion and mobile-offline-sync paths (no per-path branch exists
+  between the validator and the use case).
+- **This retires the immediately preceding amendment's "Known limitation" bullet** (2026-08-31,
+  opening words *"Known limitation, named rather than silently absent — POS's primary checkout
+  route cannot reach this fix today."*) — that bullet is now stale and is superseded by this block,
+  not edited in place, per `AGENTS.md`'s standing rule against rewriting dated historical records.
+  In-store affiliate attribution is, as of this amendment, live on all three POS entry points for
+  the first time.
+- **Unchanged: this amendment's own semantics.** The commit-time re-verify described in the
+  preceding block (re-resolving the enrollment by id at commit, silent drop + `logger.warn` if it
+  is no longer `active`) is not touched — this phase changes only *reachability* of the field on
+  the primary route, not any accrual, drop, or logging behavior.
+- **New, user-visible consequence: a previously-unreachable 422 is now reachable on the primary
+  route.** `checkoutPosUseCase`'s entry-time gate (`AFFILIATE_CODE_INVALID`, unresolvable code)
+  could never fire on `POST /pos/checkouts` while the field was stripped; it now can, exactly as it
+  already does on split-payment at session-create time. A cashier who types an unresolvable code
+  now has the whole checkout rejected (transaction rolled back, nothing written) instead of the
+  code being silently discarded. This is the gate's intended behavior, not a new gate.
+- **Still open, not touched by this amendment** — do not read this block as having closed all three
+  "Known limitation" bullets above: the pre-existing POS split-payment rollback hazard (filed as
+  #1241) and the offline-sync hard-reject on a revoked affiliate (filed as #1240) remain exactly as
+  described in the preceding block.
+- No compliance impact declaration was filed for this change — verified empirically that
+  `scripts/check-compliance-impact.js`'s `validators/` rule matches only
+  `complianceValidator.js`, not `posValidator.js` (`PHASE_221_PLAN.md` §F6/J5).
+- PR: Refs #1239 (POS, Phase 222) — see `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
