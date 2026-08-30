@@ -330,10 +330,17 @@ build log). It touches money handling already governed by two prior ADRs:
   genuinely unknowable from the three legacy columns alone (they conflate `suspended`/`revoked` and
   never recorded a reactivation timestamp), and fabricating either field would be worse than a gap.
   Backfilled rows carry `source: 'backfill'`, never conflated with a captured event.
-- Explicitly out of scope, named rather than silently absent: any UI (#1203/Phase 215 — pure
-  frontend against `GET /affiliates`'s existing columns plus this phase's new read endpoint, no
-  further backend work needed); status events for invites, cashouts, or commissions (each already
-  has its own state machine/columns); changing what `revoked_at` means (its suspend/revoke
-  conflation stops mattering for anything reading the new table, but is not itself corrected);
-  retention/pruning of status events (neither existing landlord audit table has one either).
-- PR: TBD, Phase 214 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)
+- Explicitly out of scope, named rather than silently absent: status events for invites, cashouts,
+  or commissions (each already has its own state machine/columns); changing what `revoked_at` means
+  (its suspend/revoke conflation stops mattering for anything reading the new table, but is not
+  itself corrected); retention/pruning of status events (neither existing landlord audit table has
+  one either).
+- **Correction (PR #1232 review RF-4):** this amendment originally described #1203/Phase 215 as the
+  pure-frontend consumer of this phase's new read endpoint. **That is wrong — #1203/Phase 215
+  already merged independently, as PR #1231, before this correction was written, and does not call
+  or depend on `GET .../status-events` at all** (it only renders the pre-existing
+  `revoked_at`/`revoked_by`/`revocation_reason` columns already on `GET /affiliates`, per its own
+  `IMPLEMENTATION_PHASE_LEDGER.md` entry). This phase's new endpoint currently has **no** frontend
+  consumer; the eventual UI for a real per-affiliate timeline with names is unscheduled follow-up
+  work, not something #1203/Phase 215 covers.
+- PR: #1232, Phase 214 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)

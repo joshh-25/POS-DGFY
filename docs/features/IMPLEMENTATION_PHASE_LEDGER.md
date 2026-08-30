@@ -13490,11 +13490,14 @@ in-plan and followed as-is except J2, which is Pat's to make and does not gate t
   ('suspended','revoked')` (the demotion target is knowable there, `from_status` assumed `active`
   and flagged in `metadata`); rows where `revoked_at` is set but status is now `active`/`pending`
   are skipped outright - the target is unknowable and fabricating it would be worse than a gap.
-- **J4 (`reactivate` accepts an optional `reason`)** - not added in this pass; `reactivatedBy`
-  (Phase 207's previously-unpersisted parameter) is now persisted onto the events row, but adding a
-  reason *input* to the reactivate endpoint was judged separable UI/API-contract scope and left for
-  whoever builds the affiliate-facing or merchant UI next, rather than folded silently into this
-  backend-only phase.
+- **J4 (`reactivate` accepts an optional `reason`)** - implemented, per PR #1232 review RF-3: the
+  original PR body claimed J4 was "followed as-is" while this ledger entry (this exact bullet, in
+  its pre-fix wording) said it was deferred - a real contradiction between the two documents,
+  caught in round-1 review rather than silently left. Resolved by implementing it rather than
+  correcting the claim downward: `POST .../reactivate` now accepts an optional `reason` (≤500
+  chars, additive - an omitted body is unaffected), threaded through the controller → use case →
+  `reactivateEnrollment` → the reactivated event's `reason` field. `reactivatedBy` (Phase 207's
+  previously-unpersisted parameter) remains persisted onto the same events row.
 - **J5 (retire the three Phase 199 columns)** - no. They stay exactly as they are, documented as a
   denormalized cache of the most recent demotion event, not the authority. Phase 207's compliance
   declaration lists their preservation as a verified precondition; retiring them is a breaking
@@ -13615,28 +13618,72 @@ read surface) and the dedicated-audit-endpoint shape (`GET .../audit-logs`) this
       `apps/dgfy-migration-runner` file (no build step exists for `dgfy-api`). Frontend builds not
       applicable - no `packages/web-core` or frontend app file changed (DO-NOT list item 4). No
       `package.json` touched, so no lockfile step.
-- [x] New tests: `dgfyAffiliateStatusEvents.unit.test.js` (13/13 - one `enrolled` event per
-      provision/invite-accept/auto-enroll write site with the correct `actor_type`/`source`, no
-      second event on an idempotent re-accept, one `suspended`/`revoked` event on a real PATCH
-      transition *and* the revocation stamp both landing together, no event on an idempotent
-      re-PATCH or a non-status PATCH, `reactivated` events symmetric for both `suspended`- and
-      `revoked`-sourced reactivations preserving the Phase 199 stamp and `activated_at`, a
+- [x] New tests: `dgfyAffiliateStatusEvents.unit.test.js` (17/17 after the round-1 fixup below -
+      one `enrolled` event per provision/self-serve/invite-accept/auto-enroll write site with the
+      correct `actor_type`/`source`, no second event on an idempotent re-accept, one
+      `suspended`/`revoked` event on a real PATCH transition *and* the revocation stamp both
+      landing together, no event on an idempotent re-PATCH or a non-status PATCH, `reactivated`
+      events symmetric for both `suspended`- and `revoked`-sourced reactivations preserving the
+      Phase 199 stamp and `activated_at`, an optional reactivation reason threaded through (J4), a
       four-transition sequence proving the §3.1 scenario - four events survive while the
       enrollment's own columns reflect only the last demotion, the read endpoint's newest-first
-      ordering/limit clamp and its cross-tenant 404, and a failing event insert propagating as a
-      rejection of the whole `updateEnrollment` call). Extended (new
-      `DgfyAffiliateEnrollmentStatusEvent` fake model registered, since the repository now imports
-      and writes it on every status-changing call): `dgfyAffiliateReactivationUseCase.unit.test.js`
-      (11/11, unchanged assertions) and `dgfyAffiliateRepository.slotEnforcement.unit.test.js`
-      (regression, unchanged assertions) - both would otherwise throw on the now-real
-      `DgfyAffiliateEnrollmentStatusEvent.create(...)` call inside `createEnrollment`/
-      `materializeInviteEnrollment`. `dgfyAffiliateEnrollmentUseCases.unit.test.js` needed no
-      change - its fake repository's `updateEnrollment(tenantId, enrollmentId, updates)` simply
-      ignores the new fourth `{ actorUserId, actorUsername }` argument. All four suites run via a
-      fresh `npm install` in `apps/dgfy-api` (no `node_modules` present in this worktree
-      beforehand) - `apps/dgfy-api`'s own `node_modules` is untracked/gitignored, so this needed no
-      `package-lock.json` change and none was made: 62/62 passing.
+      ordering/limit clamp and its cross-tenant 404, a failing event insert propagating as a
+      rejection of the whole `updateEnrollment` call, and two concurrency regression tests for
+      RF-2 (below)). Extended (new `DgfyAffiliateEnrollmentStatusEvent` fake model registered,
+      since the repository now imports and writes it on every status-changing call):
+      `dgfyAffiliateReactivationUseCase.unit.test.js` (11/11, unchanged assertions) and
+      `dgfyAffiliateRepository.slotEnforcement.unit.test.js` (regression, unchanged assertions) -
+      both would otherwise throw on the now-real `DgfyAffiliateEnrollmentStatusEvent.create(...)`
+      call inside `createEnrollment`/`materializeInviteEnrollment`.
+      `dgfyAffiliateEnrollmentUseCases.unit.test.js` needed no change - its fake repository's
+      `updateEnrollment(tenantId, enrollmentId, updates)` simply ignores the new fourth
+      `{ actorUserId, actorUsername }` argument. All four suites run via a fresh `npm install` in
+      `apps/dgfy-api` (no `node_modules` present in this worktree beforehand) -
+      `apps/dgfy-api`'s own `node_modules` is untracked/gitignored, so this needed no
+      `package-lock.json` change and none was made: 67/67 passing.
 - [x] Linked `Refs #1202` - see Status above for why `Refs`, not `Closes`.
+- [x] **`pr-reviewer` round-1 review (PR #1232, verdict BLOCK, RF-1/RF-2 blockers) addressed** —
+      **RF-1**: `createEnrollment` (site 1) is shared by `buildProvisionAffiliateUseCase` (a
+      merchant/tenant-user action) and `buildEnrollSelfServeAffiliateUseCase` (the DGFY account
+      enrolling ITSELF), but hard-coded `actorType: 'tenant_user'`/`source: 'admin_api'` for both -
+      a self-serve enrollment was misrecorded in the audit trail as a merchant action. Fixed by
+      deriving the event's actor/source from the enrollment's own `source` field (already distinct
+      per caller - `'self_serve'` vs `'admin_provisioned'`): a self-serve enrollment now records
+      `actor_type: 'dgfy_account'`, `actor_dgfy_account_id`, `source: 'self_serve'`. Added a
+      dedicated `'self_serve'` value to both the migration's and the model's `source` ENUM (the
+      table's own `CREATE TABLE` migration, not yet deployed anywhere, was edited in place rather
+      than bolting on a second `ALTER TABLE` migration for a table this same PR introduces). New
+      regression test (`dgfyAffiliateStatusEvents.unit.test.js` test 1b).
+      **RF-2**: `updateEnrollment`'s and `reactivateEnrollment`'s pre-write `findOne` was a plain
+      (non-locking) read - under MySQL/InnoDB REPEATABLE READ, two concurrent transitions on the
+      SAME enrollment could each derive `from_status` from a stale snapshot and each write their
+      own status event, even though the second transition was actually a no-op by the time its
+      `UPDATE` ran. Fixed by adding `lock: transaction.LOCK.UPDATE` to both `findOne` calls (a
+      SECOND, enrollment-row-scoped lock - distinct from and not in conflict with
+      `acquireAffiliateSlotLock`'s own #1187 RF-6 "first read of the transaction" contract, which
+      governs only the tenant-settings-row lock's ordering) and, for `reactivateEnrollment`
+      specifically, revalidating the locked read before writing - if the row is already `active`
+      by the time the lock is acquired (a concurrent reactivate already committed), the call now
+      returns the current row as-is instead of re-writing status and firing a second, incorrect
+      `active -> active` `reactivated` event. Two new regression tests (`dgfyAffiliateStatusEvents
+      .unit.test.js` tests 14/15) reuse the same in-memory lock-queue mechanism the existing
+      `#1187 RF-1` concurrency test already relies on to force genuine interleaving; both were
+      confirmed to actually FAIL against the pre-fix code before being confirmed passing against
+      the fix (not merely written to pass).
+      **RF-3 (should-fix)**: the PR body claimed J4 was "followed as-is," but the optional
+      reactivation reason was not implemented, contradicting this very ledger entry's own
+      (pre-fix) "deferred" wording - a real cross-document inconsistency, not just an
+      under-implementation. Resolved by implementing J4 (see the updated J4 bullet above) rather
+      than downgrading the claim.
+      **RF-4 (should-fix)**: the ADR 0036 amendment said "PR: TBD" and described #1203/Phase 215 as
+      this endpoint's consumer; corrected to "PR: #1232" and to state plainly that #1203 merged
+      independently (PR #1231) and does not use this endpoint.
+      **RF-5 (should-fix)**: the PR body did not state this migration's tenant-schema-sync
+      deploy-order posture; added an explicit statement (landlord-only, no tenant-schema
+      dependency - see the PR body's Testing Evidence section).
+      **RF-6 (should-fix)**: branch was several commits behind `origin/develop` at review time;
+      merged fresh `origin/develop` (no conflicts in this phase's own files) before pushing the
+      fixup.
 
 ### Known limitations, not fixed here
 
@@ -13652,20 +13699,22 @@ read surface) and the dedicated-audit-endpoint shape (`GET .../audit-logs`) this
   are named, not fixed - frontend gaps for whoever builds the next merchant-facing UI slice.
 - **J9 (retention/pruning of status events) is named, not solved** - cross-cutting with the two
   existing landlord audit tables, neither of which has one either.
-- **The Phase 215/#1202 relationship stated in the plan's own J8 turned out to be wrong** (see
-  Objective and scope, J8 above) - Phase 215 shipped independently, consuming only the pre-existing
-  Phase 199 columns, and does not consume this phase's new endpoint. This phase's
-  `GET .../status-events` endpoint currently has no frontend consumer.
+- **The Phase 215/#1203 relationship stated in the plan's own J8 turned out to be wrong** (see
+  Objective and scope, J8 above; corrected in the ADR 0036 amendment per PR #1232 review RF-4) -
+  Phase 215 shipped independently as PR #1231, consuming only the pre-existing Phase 199 columns,
+  and does not consume this phase's new endpoint. This phase's `GET .../status-events` endpoint
+  currently has no frontend consumer.
 
 ### Implementation links
 
 - Issue #1202 (Refs - see Status above)
-- PR: opened against `develop`, link recorded in the PR itself
+- PR: #1232, against `develop`
 - #450 (Phase 199, the three columns this phase caches from), #1191 (Phase 207, reactivation - one
   of the four write sites), #1190/Phase 213 (the sibling audit-table precedent and dedicated-
   endpoint shape this phase follows), #446 (epic)
 - ADR 0036 Amendments block:
-  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-09-01 entry)
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-09-01 entry,
+  corrected under PR #1232 review RF-4)
 - Migration:
   `apps/dgfy-migration-runner/migrations/20260901000004-add-affiliate-enrollment-status-events.cjs`
 - `PHASE_214_PLAN.md` (this branch's root) - the full plan this entry implements
