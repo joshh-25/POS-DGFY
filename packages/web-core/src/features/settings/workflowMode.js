@@ -8,6 +8,7 @@ export * from '@sieitzz/shared-constants/workflowModes';
 export const WORKFLOW_MODE_SELECT_VALUES = Object.freeze([
   'retail',
   'services',
+  'laundry',
   'food_manufacturing',
   'fnb',
   'hospitality',

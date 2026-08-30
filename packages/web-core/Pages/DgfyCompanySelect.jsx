@@ -8,6 +8,7 @@ import {
   exchangeDgfyHandoff,
   fetchDgfyMe,
   getStoredDgfyToken,
+  launchDgfyLaundryOperations,
   listDgfyAccountCompanies,
   logoutDgfyAccount,
   startDgfyTenantSession
@@ -32,6 +33,9 @@ const SKUPERVISOR_AUTH_ROUTE_PATTERN = /^\/(login|dgfy\/auth|dgfy\/companies|dgf
 const isSwitchable = (company) => Boolean(company?.can_switch);
 const isPendingInvite = (company) => company?.requires_action === 'accept_invitation';
 const isUnavailable = (company) => company?.requires_action === 'unavailable';
+const isLaundryCompany = (company) => company?.business_mode === 'laundry'
+  || company?.runtime_owner === 'dglaundry';
+const DGLAUNDRY_OPERATIONS_ORIGIN = 'https://laundry.dgfy.ph';
 
 /**
  * SKUpervisor's landing spot for a signed-in DGFY account that does not yet
@@ -64,10 +68,21 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
   // Shared by the auto-select path below and the manual "Continue" button -
   // starting a tenant session is the same call either way, only the trigger
   // differs.
-  const activateCompany = useCallback(async (tenantId, targetPath) => {
+  const activateCompany = useCallback(async (tenantId, targetPath, selectedCompanyOverride = null) => {
     setSelectingTenantId(tenantId);
     setActionError('');
     try {
+      const selectedCompany = selectedCompanyOverride
+        || companies.find((company) => String(company.tenant_id) === String(tenantId));
+      if (isLaundryCompany(selectedCompany)) {
+        const launch = await launchDgfyLaundryOperations({ companyId: tenantId });
+        const targetUrl = String(launch?.url || DGLAUNDRY_OPERATIONS_ORIGIN).trim();
+        if (targetUrl !== DGLAUNDRY_OPERATIONS_ORIGIN) {
+          throw new Error('The DGLaundry operations launch returned an untrusted destination.');
+        }
+        window.location.assign(targetUrl);
+        return;
+      }
       const targetPathname = String(targetPath || '').split('?')[0].trim();
       const tenantSession = await startDgfyTenantSession({
         tenantId,
@@ -84,7 +99,7 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
       setSelectingTenantId(null);
       setStatus('ready');
     }
-  }, [navigate, targetSurface]);
+  }, [companies, navigate, targetSurface]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,7 +157,7 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
         const hinted = tenantIdHint ? switchable.find((company) => String(company.tenant_id) === tenantIdHint) : null;
         const autoTarget = hinted || (switchable.length === 1 ? switchable[0] : null);
         if (autoTarget) {
-          await activateCompany(autoTarget.tenant_id, requestedNext);
+          await activateCompany(autoTarget.tenant_id, requestedNext, autoTarget);
           return;
         }
         if (!cancelled) setStatus('ready');
@@ -229,7 +244,7 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
                     <button
                       key={company.membership_id}
                       type="button"
-                      onClick={() => activateCompany(company.tenant_id, nextPath)}
+                      onClick={() => activateCompany(company.tenant_id, nextPath, company)}
                       disabled={selectingTenantId !== null}
                       className="w-full flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-4 text-left transition hover:border-[#1A4E8D] hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
                     >

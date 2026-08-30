@@ -101,6 +101,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `accepted` | customer_delivery_fee_modes | 2027-03-01 | 4 |
+| 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 
 ## Renumbered (collision stubs)
 
