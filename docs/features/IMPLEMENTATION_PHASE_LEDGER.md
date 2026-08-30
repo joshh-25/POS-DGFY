@@ -12780,3 +12780,218 @@ reaches `commerceOrderLifecycleUseCase` from two origins (`placed` and the newly
 
 None allocated by this phase. Follow-ups named above (retention/purge policy for the address audit
 table, `cancelled`-reason widening) belong to `pm` to shape and file rather than being built here.
+
+## Phase 212 - Affiliate Share Link: Short Code in the /s/ Path, Retire ?p= (#452)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #452's asked-for shape: the affiliate share link
+moves from `/s/{store-slug}?p={short_code}` to a compact, path-only `/s/{short_code}` — a "clean
+personal link" (Pat's own framing on #452) instead of one that reads as carrying a tracking
+parameter, and a smaller QR payload. Bundled with an explicit nginx `/s/` routing contract per
+Pat's "fix it in the same pass" call on #452.
+
+### Objective and scope
+
+Add a public, unauthenticated `GET /api/v1/dgfy/affiliate/s/:short_code` resolver that turns a
+short code into a store slug (and nothing else), rewrite `buildAffiliateShareUrl` to emit
+path-only links, and make the storefront read the code from the `/s/` path segment instead of
+`?p=`. `?p=` is retired **entirely** — not kept as a back-compat read shim — per Pat's 2026-08-30
+decision on #452 (E1): the feature was not yet meaningfully distributed, so an indefinite fallback
+was judged not worth the extra surface. This is a **stricter cutover** than the plan
+(`PHASE_212_PLAN.md`) itself proposed as its default answer to E1 (an indefinite shim) — Pat
+picked the narrower option when asked. Lands a dated `## Amendments` block on ADR 0036 qualifying
+Decision 7's anti-enumeration property honestly (E2), since a resolver that turns a valid code into
+a store slug is a real, if narrowed, existence oracle that Decision 7's original text did not
+anticipate.
+
+Two escalations were raised in the plan and decided by Pat on 2026-08-30, both recorded in full in
+the ADR 0036 Amendments block added by this phase:
+
+- **E1 (back-compat window)** — no shim. `readAffiliateShortCode()` reads the `/s/{short_code}`
+  path only; `?p=` is retired from both emission and the storefront's read path in this same
+  phase. A visitor holding a pre-cutover `?p=` link still resolves to the right *store* (the slug
+  is still in that URL's path segment) but is no longer attributed to the affiliate — the
+  storefront falls through to the ordinary discovery-home degrade path for the short-code portion
+  specifically. Flagged, not silently assumed: if printed/live `?p=` codes turn out to be in use
+  after all, that is a follow-up, not a reason to revisit this phase's own scope.
+- **E2 (anti-enumeration qualification)** — shipped as planned. The new resolver returns a uniform
+  HTTP 200 with `{ resolved: false }` on every miss (unknown code, wrong format, program disabled,
+  no discovery-index row), never a 4xx; the response body carries only `{ resolved, store_slug,
+  short_code }`; the code space is `AF-` + 6 characters from a 32-symbol alphabet (~1.07 × 10⁹
+  combinations); and the route is mounted on a dedicated browse-tier limiter
+  (`affiliateShareResolveLimiter`, ~90/min), not `authLimiter`.
+
+Additional judgment calls, all decided in-plan (A1-A7 per the plan's READ FIRST table) and followed
+as-is per this phase's own task brief:
+
+- **A1 (discriminator)** — a strict, short-code-first regex
+  (`/^AF-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/i`, the exact generator alphabet from
+  `dgfyAffiliateRepository.js`), applied in `readRouteSlug()` **before** any slug-pattern
+  handling. This is the phase's highest-severity finding (plan §1.3): without it, a short code
+  landing on `/s/AF-ABC234` would be handed to `resolveTenantByStoreSlug` as the slug
+  `af-abc234`, feeding the unknown-slug miss-repair sweep a stream of distinct misses — the exact
+  amplifier behind the 2026-07-27 stage connection-exhaustion outage. Covered by a named
+  regression-guard unit test (T12).
+- **A2 (new endpoint, not reusing the capture POST)** — `GET /affiliate/s/:short_code` on its own
+  browse-tier limiter. Forced by a code fact: the capture POST sits on `authLimiter` (5
+  requests/5 minutes, IP-keyed, no `skipSuccessfulRequests` exemption for this path), survivable
+  for a fire-and-forget write but not for what is now a page-load dependency.
+- **A3 (resolve-failure degrade)** — silent fallthrough to the ordinary storefront discovery home;
+  no error page, no toast, no retry. Matches the existing best-effort posture of the whole
+  attribution path (ADR 0036 Decision 7).
+- **A4 (no address-bar rewrite)** — `/s/{code}` stays in the address bar once resolved; only
+  in-app navigation emits `/tenant-store/{slug}` via the untouched `storePath()`. Rewriting on
+  load would undo the clean-link feature one frame after delivering it.
+- **A5 (nginx guardrail)** — an explicit `location /s/` block added to all six identified configs
+  (`nginx.conf.template`, `nginx.conf.local-ports.template`, `conf.d.local-test/storefront.conf`,
+  `dev.dgfy.ph.conf`, `stage.dgfy.ph.conf`, `nginx/dgfy.ph.conf`), each with a `Cache-Control:
+  no-store` header. Honest framing per the plan's own correction to Pat's decision-comment premise
+  (§1.2): every storefront-serving block already ends in a catch-all `location /` to the same
+  upstream and the container's own `try_files … /index.html` already serves `/s/` today — so this
+  is a documented contract guardrail, not a functional fix. It is also **inert until the next
+  deploy renders the templates** — not self-verifying in this PR.
+- **A6 (ADR route)** — a dated `## Amendments` block on ADR 0036 (untagged/`[default]` Decision 7
+  per ADR 0039), not a new superseding ADR. `docs/proposals/2026-07-22-affiliates-program-study.md`
+  (P5) is left unedited as a dated, "Status: not implemented" study per `AGENTS.md`'s leave-alone
+  rule.
+- **A7 (phase number)** — 212, as assigned. Reconciled against this ledger's own highest entry
+  (209, Phase 209 immediately above) before writing this entry, per `AGENTS.md`'s Continuous Phase
+  Numbering rule 10 — confirmed unchanged from the plan's own reconciliation note, no escalation
+  needed.
+
+### Status
+
+`in_progress`. PR opened against `develop`, `Refs #452` (not `Closes` — end-to-end short-code
+resolution and the nginx guardrail's actual effect both need deployed verification per the plan's
+§9.4, so the issue stays open through merge for `verifier` per
+`docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+Depends on the Phase 1 affiliate attribution capture path (ADR 0036 Decision 7, the
+`sku_aff_attr` cookie / checkout-chain integration, left entirely untouched by this phase) and the
+`unique_dgfy_affiliate_enrollments_short_code` global-uniqueness index from migration
+`20260723000001-create-affiliates-program.cjs`, which is what makes a tenant-less
+`/s/{short_code}` lookup well-defined. Independent of Phases 207/208/209 — a different code path
+entirely (share-link construction and storefront routing, not commission accrual or enrollment
+status).
+
+### Acceptance and validation evidence
+
+- [x] Backend: `findActiveEnrollmentByShortCode` (global, hash-indexed lookup, no `tenantId`) added
+      alongside — not replacing — the existing tenant-scoped `findActiveEnrollmentByShareCode`.
+      `buildResolveAffiliateShareCodeUseCase` implements the plan's exact miss-shape ladder (empty
+      code → unknown code → `program_enabled: false` → no discovery-index slug → all `ok({
+      resolved: false })`, never a 4xx). Wired through a new handler
+      (`resolveAffiliateShareCode`), `index.js`, and `GET /affiliate/s/:short_code` on a new
+      `affiliateShareResolveLimiter` (~90/min, IP + short-code keyed) — added to
+      `docs/api/RATE_LIMITING.md`'s browse-tier table in the same PR, including its known
+      shared-IP/CGNAT keying gap (#972, inherited, not fixed).
+- [x] `buildAffiliateShareUrl` rewritten to path-only (`/s/{SHORT_CODE}`, uppercased, no
+      slug/query), with both call sites (`buildGetAffiliateQrPayloadUseCase`,
+      `buildListMyAffiliateEnrollmentsUseCase`) updated. `getStorefrontAffiliateSlug`'s call is
+      **kept** at the QR-payload call site — the slug is no longer used to build the URL but is
+      still returned as its own `slug` field. The QR payload's `param: 'p'` field (now
+      meaningless) replaced with `share_kind: 'path'`; verified by grep, not assumption, that no
+      `packages/web-core` consumer reads the old `param` key (`AffiliatesWorkspacePanel.jsx` only
+      reads `payload.url`/`short_code`/`dataUrl`) — so `packages/web-core` needed **no change**,
+      keeping this phase clear of that compliance-sensitive path.
+- [x] Storefront: `readRouteSlug()` gained a strict short-code guard before its existing pattern
+      loops (A1); `readAffiliateShortCode()` is now path-first with **no** `?p=` fallback (E1);
+      `setAffiliateShareRouteSlug` added as a dedicated module-level value, deliberately separate
+      from `setCustomStorefrontRouteContext` (reusing that would corrupt every outbound link on
+      `dgfy.ph`, per the plan's own warning). `useAffiliateAttributionCapture` rewritten to
+      resolve-then-capture (a `resolvedRef` guard alongside the existing `capturedRef`, at most one
+      resolve and one capture per mount); `StorefrontApp.jsx` wires `onShareRouteResolved:
+      setRouteSlug` into the hook. `storePath()`, `readStoreSubpage()`, and the custom-domain probe
+      are all untouched, matching the plan's explicit "do not touch" list.
+- [x] Money path untouched, by construction: `POST /affiliate/attribution/capture`, the
+      `sku_aff_attr` cookie, and `storeHandlers.js`'s checkout-side cookie read are byte-identical
+      to before this phase — the storefront now simply calls capture *after* resolution instead of
+      immediately, passing the same `{ short_code, store_slug }` shape the endpoint already
+      accepted.
+- [x] nginx: `location /s/` (with `Cache-Control: no-store`) added to all six identified configs,
+      before each file's existing `location /`, upstream `set` line copied verbatim per file (some
+      proxy to `dgfy-storefront:8083`, the two host configs to `localhost:8083`/`localhost:9083`,
+      the legacy `nginx/dgfy.ph.conf` to `127.0.0.1:5175`). `infrastructure/docker/dgfy-storefront/nginx.conf`
+      (the container's own SPA-fallback config) deliberately **not touched** — a `/s/` block there
+      would duplicate its existing `try_files … /index.html` catch-all.
+- [x] ADR 0036: a dated `## Amendments` block (2026-08-30) added, qualifying Decision 7's
+      anti-enumeration property honestly (E2) rather than leaving it read as unconditional, and
+      recording the `?p=` retirement (E1) and the new resolver's shape/limiter/degrade behavior.
+      Supersedes P5 in the dated affiliate-program study, left otherwise unedited. `npm run
+      lint:docs` (chains `check:adr --strict`) → PASS (84 ADRs validated).
+- [x] **Compliance declaration NOT required, confirmed by tool, not assumed** — `npm run
+      check:compliance` → "No compliance-sensitive changes detected." No path this phase touches
+      (`apps/dgfy-api/src/modules/dgfy/**`, `routes/dgfy.js`, `middleware/rateLimiter.js`,
+      `apps/dgfy-storefront/**`, `infrastructure/**`, `nginx/**`, `docs/**`) matches any
+      `COMPLIANCE_SENSITIVE_RULES` entry — the one condition that would have flipped this
+      (a `packages/web-core/src/features/pos/**` change) did not occur.
+- [x] **No database migration, no schema change** — the existing
+      `unique_dgfy_affiliate_enrollments_short_code` index is sufficient; the tenant-schema-sync
+      residual-risk tracker is not engaged by this phase.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js` file under
+      `apps/dgfy-api` (no build step exists for that app); `npm run build:store` for
+      `apps/dgfy-storefront` — a real Vite build, succeeded (2,428 modules transformed, no
+      unresolved import/JSX error). No `package.json` was touched by this phase's own diff; both
+      apps' `node_modules` were installed fresh to actually run these checks in this environment,
+      and `git diff --exit-code` on both `package-lock.json` files confirmed clean (no drift) both
+      times. Local nginx syntax check
+      (`docker run --rm -v .../conf.d.local-test:/etc/nginx/conf.d:ro nginx:alpine nginx -t`) →
+      "syntax is ok" / "test is successful". `npm run check:architecture` (guardrails + controller
+      boundaries) → both OK.
+- [x] New tests: `affiliateShareCodeResolve.unit.test.js` (11/11 passing — T1-T7 covering the
+      resolve use case's every branch including the exact response-key-set assertion (T7), T8-T10
+      covering `buildAffiliateShareUrl`'s path-only emission and uppercasing, plus an
+      empty-code-returns-null case) and
+      `apps/dgfy-storefront/src/app/routing/storefrontAffiliateShareRouting.test.js` (8/8 passing —
+      T11-T13 and T15-T18 from the plan's own numbering, plus one test recording the **E1-driven
+      deviation** from the plan's own T14: a `/s/{slug}?p={code}` old link now resolves the slug
+      but **not** the short code, since `?p=` was fully retired rather than kept as a shim).
+      **Existing suites pass unmodified**, per the plan's own "an edit there means the code is
+      wrong, not the test" rule:
+      `apps/dgfy-storefront/src/__tests__/storefrontCustomDomainRouting.test.js` (3/3),
+      `apps/dgfy-storefront/src/app/routing/storefrontNavigation.test.js` (10/10),
+      `apps/dgfy-storefront/src/__tests__/fnbStorefront.contract.test.js` (22/22),
+      `affiliateCommissionAccrual.unit.test.js`, `affiliateEarningsCap.unit.test.js`,
+      `affiliateCategoryRates.unit.test.js`, `dgfyAffiliateEnrollmentUseCases.unit.test.js`, and
+      `rateLimiterExemptionCoverage.contract.test.js` (95/95 combined).
+- [x] Linked `Refs #452` — see Status above for why `Refs`, not `Closes`.
+
+### Known limitations, not fixed here
+
+- **The nginx `/s/` rule is inert until the next deploy renders the templates** — this PR does not
+  and cannot verify it in production; that is `verifier`'s job post-deploy against a live
+  environment (plan §9.4).
+- **No live QR scan verification** — nobody scans a printed code in CI; end-to-end scan
+  verification against a real short code is also `verifier`'s job.
+- **The known shared-IP/CGNAT rate-limiter keying gap (#972)** is inherited by
+  `affiliateShareResolveLimiter`, not fixed by this phase.
+- **No production telemetry exists on how many `?p=` links were actually in circulation** — the E1
+  decision to retire the fallback rather than keep it was a judgment call made without that
+  number, not a measured one; stated honestly rather than implying it was measured.
+- **A vanity/user-chosen affiliate handle** (`/s/juan` instead of `/s/AF-ABC234`) was considered
+  and explicitly rejected as out of scope for this phase — it needs a
+  uniqueness/reservation/moderation design this phase has no mandate for.
+
+### Implementation links
+
+- Issue #452 (Refs — see Status above)
+- PR: opened against `develop` in this same change; see the PR body for the live link (not yet
+  known at ledger-write time, per this phase's own execute-step convention of writing the ledger
+  entry in the same PR it describes).
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-30 entry)
+- `docs/api/RATE_LIMITING.md` — `affiliateShareResolveLimiter` row added to the storefront/
+  customer-facing browse-limiters table
+- Cross-referenced #793 (the broader storefront/POS URL-verbosity epic) in the PR body, per Pat's
+  explicit flag on #452 — not merged into it, a related but separate initiative.
+
+### Next eligible phase
+
+None allocated by this phase. Out-of-scope items named rather than silently dropped (plan §11,
+hand to `pm` if ever wanted): a general short-link/redirect service, a server-side 302 for
+`/s/{code}`, retiring the `?p=` shim on a future date (moot — E1 retired it outright instead),
+fixing #972's shared-IP keying gap, telemetry on `?p=` vs. path arrivals, and a vanity affiliate
+handle.

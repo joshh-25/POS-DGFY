@@ -153,3 +153,56 @@ build log). It touches money handling already governed by two prior ADRs:
   this ADR's own scope at the time it was written and is superseded by ADR
   0050's consequences, not restated here.
 - PR: affiliate pricing rule engine, Phase 1
+
+### 2026-08-30 — Share link moves to a path-based short code; `?p=` retired (Decision 7, #452 / Phase 212)
+- Clause amended: Decision 7 (untagged, therefore `[default]` per ADR 0039)
+- Change: the affiliate share URL is now `{STOREFRONT_PUBLIC_ORIGIN}/s/{short_code}` — the store
+  slug is no longer carried in the link at all, and `?p={short_code}` is **retired entirely**, both
+  from emission and from the storefront's read path. This is a stricter cutover than Decision 7's
+  original context line ("tracked via a public `share_code`/`?p=` link") anticipated: there is no
+  back-compat shim for `?p=` links already in the wild (Pat's 2026-08-30 decision on #452: the
+  feature was not yet meaningfully distributed, so an indefinite read-only fallback was judged not
+  worth the extra surface). A visitor holding a pre-cutover `?p=` link lands on the storefront's
+  ordinary discovery home instead of being attributed — see the new resolver's degrade behavior
+  below.
+- New surface: a public, unauthenticated `GET /api/v1/dgfy/affiliate/s/:short_code` resolves a
+  short code to a store slug (and nothing else — no `tenant_id`, `enrollment_id`, or affiliate
+  identity) so the storefront can boot the right store from a path-only link before the existing
+  capture endpoint fires. It is mounted on a dedicated **browse-tier** rate limiter
+  (`affiliateShareResolveLimiter`, ~90/min, `docs/api/RATE_LIMITING.md`), deliberately **not**
+  `authLimiter` — the capture POST's 5-requests/5-minutes budget is survivable for a fire-and-forget
+  write, but the resolver is now a page-load dependency and would turn a shared-network 429 into a
+  visible outage if it shared that budget.
+- **Decision 7's anti-enumeration property is qualified, not preserved unconditionally.** The
+  original text states the capture endpoint "never errors on an unknown code/store... so it cannot
+  be used to enumerate either." That remains true of the capture endpoint itself. The new resolver
+  is a distinct surface with a narrower but real oracle: given a syntactically valid code, its
+  response body's `resolved` field reveals whether that code exists (and points at a public,
+  program-enabled store) — a fact a QR scan already reveals to whoever holds the code, but which an
+  automated scan of the code space could now query directly. This is deliberately narrowed as far
+  as it reasonably goes, not eliminated:
+  - Uniform HTTP 200 on every path (valid-but-unknown, invalid format, program disabled, no
+    discovery-index row) — never a 4xx that would itself leak which case occurred.
+  - The response body carries only `{ resolved, store_slug, short_code }` — no tenant, enrollment,
+    or affiliate-identity field a successful guess could harvest beyond the slug a scan already
+    exposes.
+  - The code space is `AF-` + 6 characters from a 32-symbol alphabet (Crockford-like, no `0/O/1/I`)
+    — 32⁶ ≈ 1.07 × 10⁹ combinations — plus the browse-tier rate limiter above, which bounds how much
+    of that space one IP can probe per minute.
+  - A short code is syntactically distinguished from a store slug by a strict discriminator
+    (`AF-` followed by 6 characters from the same 32-symbol alphabet, applied before any slug
+    handling) so a code can never reach `resolveTenantByStoreSlug`'s unknown-slug miss-repair path
+    — an availability concern, not an enumeration one, but recorded here since it constrained the
+    same design.
+  - A reader of Decision 7 must not come away believing the whole attribution surface is
+    enumeration-proof after this change — the capture endpoint still is; the resolver is
+    enumeration-*resistant*, not enumeration-*proof*.
+- Degrade behavior (new, not in the original Decision 7): on an unresolved code, a rate-limit
+  response, or a network error, the storefront falls through to the ordinary discovery home — no
+  error page, no retry loop, matching the best-effort posture Decision 7 already established for
+  the whole attribution path.
+- Supersedes decision P5 in `docs/proposals/2026-07-22-affiliates-program-study.md`, which is left
+  unedited as a dated study (its own header reads "Status: not implemented";
+  `AGENTS.md`'s leave-alone rule for dated/historical records applies — this Amendments block is
+  where the current, governing truth lives).
+- PR: #452, Phase 212 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)
