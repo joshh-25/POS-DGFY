@@ -7,6 +7,7 @@ import {
   readSavedCustomerDetails,
   splitCustomerName
 } from '../model/storefrontCustomerStorage.js';
+import { clearGuestDeliveryAddress } from '../model/storefrontGuestDeliveryAddressStorage.js';
 import { createBlankGuestCustomerIdentity } from '../../checkout/guestCustomerDetailsState.js';
 import { createCustomerIdentityRenderers } from '../../features/checkout/renderers/customerIdentityRenderers.jsx';
 
@@ -135,6 +136,7 @@ export function useGuestCustomerIdentity({
 
   const clearSavedCustomerDetailsForDevice = useCallback(() => {
     clearSavedCustomerDetails();
+    clearGuestDeliveryAddress();
     setSavedCustomerDetails(null);
     toast.success('Saved details cleared.');
   }, []);

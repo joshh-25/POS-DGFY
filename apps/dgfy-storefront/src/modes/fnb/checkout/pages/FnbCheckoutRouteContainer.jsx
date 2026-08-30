@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
@@ -78,6 +79,7 @@ export function FnbCheckoutRouteContainer({
   checkoutLoading,
   checkoutResult,
   checkoutTab,
+  customerAddress,
   customerEmail,
   customerName,
   customerPhone,
@@ -449,9 +451,14 @@ export function FnbCheckoutRouteContainer({
                               <MapPin size={13} />
                             </span>
                           ) : null}
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
-                            {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
-                          </span>
+                          <input
+                            type="text"
+                            value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                            onChange={(event) => setCustomerAddress(event.target.value)}
+                            placeholder="Pinned delivery address will appear here."
+                            aria-label="Delivery address"
+                            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38, fontFamily: servicesBodyFont }}
+                          />
                         </div>
                         <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: servicesBodyFont }}>
                           {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}

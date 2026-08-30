@@ -13919,6 +13919,53 @@ Depends on Phase 216 and precedes Phase 218. Current phase is 217; next eligible
 - [x] `build:store`, `build:skupervisor`, `node --check` on every changed backend/migration file, `check:architecture`, and `check:adr` all green; no lockfile in the diff.
 - [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding, per this phase's own explicitly-stated scope (§10.3): no live-environment check, and neither Retail's nor Default's schedule state reaches a payload today, so there is no server-side consequence to verify for those two modes.
 
+## Phase 218 - Storefront: Preserve and Persist a Customer's Typed Delivery Address (#1219)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178).
+
+### Objective and scope
+
+Fixes a precedence bug duplicated in five places (`resolved || customer || pin`, and one 4-term
+variant) that silently discarded a customer's typed delivery-address edit in favour of the stale
+reverse-geocoded value, on every checkout submission and every read-only display surface. Adds one
+shared, exported `resolveDeliveryAddress()` (edit-preferring, `isGeneratedPinnedDeliveryAddress`
+now load-bearing rather than dead code) and a companion `hasExplicitDeliveryAddressEdit()`
+predicate; rewires all five precedence sites and the `'saved'` display branch (which would
+otherwise show stale text while the payload carried the edit); makes the delivery-address line an
+editable `<input>` on all three checkout surfaces (Retail, Simple, F&B) rather than read-only on
+two of them; adds signed-in "Update saved address" (`PATCH`) and guest `localStorage` persistence
+of the single active address; caps `address_line`/`label` length in the backend use case (422),
+the one validation gap found. Two files (`StorefrontApp.jsx`, `RetailOrderFulfillmentStep.jsx`)
+genuinely overlap with already-merged Phase 216/217 on disk but not in seam; branched from
+`origin/develop` at `8ff58cf58` (Phase 217's merge commit) per the plan's explicit ancestry check.
+No ADR governs delivery-address precedence (ADR 0029 Decision 4 is satisfied, not crossed); no
+compliance declaration predicted or fired. Last phase of Wave 4.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 217 (`origin/develop @ 8ff58cf58`, verified ancestor). Current phase is 218; next
+eligible phase is 221 — 220 was claimed by #1199 (PR #1242) after this branch was cut, confirmed
+via `git merge-base` against `origin/develop` at PR-open time; 219 is already ledgered out-of-band
+for #1220. Do not renumber either.
+
+### Acceptance and validation evidence
+
+- [x] `resolveDeliveryAddress()`/`hasExplicitDeliveryAddressEdit()` added to `pinnedDeliveryAddress.js`; all five precedence sites (`StorefrontApp.jsx`, `useSignedInCheckoutAddresses.js`, `useDeliveryPinResolution.js` (4-term site, leading term preserved per J3), `useServiceBookingDerivations.js`) and the `'saved'` display-branch guard (J4) rewired; grep for the old `resolvedDeliveryAddress || customerAddress` pattern returns zero hits repo-wide.
+- [x] All three checkout surfaces (`RetailOrderFulfillmentStep.jsx`, `SimpleCheckoutFulfillmentStep.jsx`, `FnbCheckoutRouteContainer.jsx`) render an editable `<input>` in place of the former read-only `<span>`, prop-threaded per-mode; signed-in "Update saved address" handler (`useSignedInCheckoutAddresses.js`) and guest `storefrontGuestDeliveryAddressStorage.js` (mount hydration + write on add/checkout-success + clear alongside saved customer details) implemented.
+- [x] Backend: `dgfyCustomerUseCases.js` create/update both cap `address_line` at 4000 and `label` at 100 (422), matching `storeAddressCreateSchema`'s existing caps.
+- [x] Mandatory revert-proof regression test (`deliveryAddressPrecedence.test.js`): confirmed failing against the pre-fix `resolved || customer || pin` expression, confirmed passing against the real implementation (both transcripts in the PR body).
+- [x] `apps/dgfy-storefront` Tier 2: `npm test` at 880/880 passing across 164 files (Phase 217's baseline was 855/855 across 158) — 25 new tests across 6 new files, no regression.
+- [x] `apps/dgfy-api` Tier 2 (scoped, not full DB-backed suite — no local DB/Redis credentials in this environment): `dgfyCustomerUseCases.test.js` 32/32 (6 new cap tests) and `dgfyCustomerHandlers.transport.test.js` 2/2, both green.
+- [x] `build:store`, `node --check` on the changed backend file, `check:compliance`, `check:architecture`, `check:adr` all green; no lockfile in the diff (`npm install` run in both `apps/dgfy-storefront` and `apps/dgfy-api` to unblock local test execution, confirmed clean via `git diff --exit-code`).
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding — out of this phase's scope, same posture as Phase 217.
+- [ ] F&B RTL render test for the editable input (T5's third case) was not written — `FnbCheckoutRouteContainer.jsx` is a ~970-line, ~110-prop page container, judged too costly to stand up in isolation within this phase's budget; Retail and Simple's equivalent cases are covered. Flagged here rather than silently omitted.
+
 ## Phase 220 - POS In-Store Affiliate Attribution: Re-verify Enrollment at Commit Time (#1199)
 
 ### Initiative and release

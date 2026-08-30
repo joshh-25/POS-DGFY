@@ -25,6 +25,7 @@ export function SimpleCheckoutRoutePage({
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
+  customerAddress = '',
   customerEmail = '',
   customerName = '',
   customerPhone = '',
@@ -83,6 +84,7 @@ export function SimpleCheckoutRoutePage({
   onBackToCatalog,
   onCheckout,
   onCloseExpandedMap,
+  onCustomerAddressChange = () => {},
   onDownloadCheckoutImage,
   onGuestCheckoutOtpCodeChange,
   onImageError,
@@ -207,6 +209,7 @@ export function SimpleCheckoutRoutePage({
             canAddPinnedLocation={canAddPinnedLocation}
             canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
             guestCheckoutAllowed={guestCheckoutAllowed}
+            customerAddress={customerAddress}
             customerPin={customerPin}
             deliveryLocationAction={deliveryLocationAction}
             deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
@@ -230,6 +233,7 @@ export function SimpleCheckoutRoutePage({
             simpleStepOneReady={simpleStepOneReady}
             specialInstructions={fnbSpecialInstructions}
             onAddPinnedLocation={onAddPinnedLocation}
+            onCustomerAddressChange={onCustomerAddressChange}
             onBack={() => onSetSimpleOrderStep(1)}
             onCloseExpandedMap={onCloseExpandedMap}
             onCloseMobileAddressModal={() => setShowSimpleMobileAddressModal(false)}

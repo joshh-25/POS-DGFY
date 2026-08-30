@@ -14,7 +14,7 @@ import {
   getTimePartFromAppointment
 } from '../model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from '../model/serviceBookingSummary.js';
-import { buildPinnedDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { resolveDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { trimAddressCountrySuffix } from '../../../../shared/model/storefrontCatalogModel.js';
 import { getServicesLocalFlowDefinition } from '../model/servicesLocalFlow.js';
 
@@ -130,12 +130,7 @@ export function useServiceBookingDerivations({
   ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
   const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
   const serviceLocationSummaryDraft = useMemo(() => (
-    trimAddressCountrySuffix(
-      resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
-    )
+    trimAddressCountrySuffix(resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }))
   ), [customerAddress, customerPin, resolvedDeliveryAddress]);
   const missingCustomerInformation = useMemo(() => {
     const missing = [];
