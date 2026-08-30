@@ -3,6 +3,10 @@ const RETAIL_TRACKING_STATUS_FLOW = Object.freeze({
     { id: 'placed', label: 'Order confirmed' },
     { id: 'confirmed', label: 'Confirmed by store' },
     { id: 'preparing', label: 'Preparing' },
+    // Phase 211 (#1180). Retail-only progress step, no committed date/time. An order that skips
+    // `packed` entirely (preparing -> out_for_delivery) still resolves its own activeIndex
+    // correctly via the shared findIndex-based timeline builder below.
+    { id: 'packed', label: 'Packed' },
     { id: 'out_for_delivery', label: 'Out for delivery' },
     { id: 'completed', label: 'Delivered' }
   ],
@@ -10,6 +14,7 @@ const RETAIL_TRACKING_STATUS_FLOW = Object.freeze({
     { id: 'placed', label: 'Order confirmed' },
     { id: 'confirmed', label: 'Confirmed by store' },
     { id: 'preparing', label: 'Preparing' },
+    { id: 'packed', label: 'Packed' },
     { id: 'ready_for_pickup', label: 'Ready for pickup' },
     { id: 'completed', label: 'Picked up' }
   ]

@@ -11,6 +11,7 @@ import {
   HelpCircle,
   MapPin,
   MessageSquare,
+  Package,
   PartyPopper,
   ShieldCheck,
   ShoppingBag,
@@ -117,6 +118,7 @@ export function RetailTrackingActiveView({ actions, formatters, isMobileViewport
                                  {activeStatus === 'placed' ? <Clock3 size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
                                  {activeStatus === 'confirmed' ? <Store size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
                                  {activeStatus === 'preparing' ? <ChefHat size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
+                                 {activeStatus === 'packed' ? <Package size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
                                  {activeStatus === 'out_for_delivery' ? <Bike size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
                                  {activeStatus === 'completed' ? <CheckCircle2 size={48} color={dgfyPrimary} strokeWidth={1.5} /> : null}
                                </div>
