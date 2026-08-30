@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import {
-  buildPinnedDeliveryAddress,
-  extractSavedLocationLabel
+  extractSavedLocationLabel,
+  hasExplicitDeliveryAddressEdit,
+  resolveDeliveryAddress
 } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { writeGuestDeliveryAddress } from '../../../../shared/model/storefrontGuestDeliveryAddressStorage.js';
 import {
   buildCheckoutLocationFromAccountAddress,
   FNB_RECOMMENDED_LOCATION,
@@ -51,20 +53,22 @@ export function useSignedInCheckoutAddresses({
     accountSavedDeliveryLocations.find((location) => location.isDefault) || accountSavedDeliveryLocations[0] || null
   ), [accountSavedDeliveryLocations]);
 
-  const activePinnedDeliveryAddress = String(
-    resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin) || ''
-  ).trim();
+  const activePinnedDeliveryAddress = resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin });
+
+  const activeSavedLocation = useMemo(() => (
+    deliverySavedLocations.find((location) => (
+      String(location.id) === String(selectedSavedLocationId)
+    )) || null
+  ), [deliverySavedLocations, selectedSavedLocationId]);
 
   const deliveryLocationDisplayAddress = useMemo(() => {
-    const activeSavedLocation = deliverySavedLocations.find((location) => (
-      String(location.id) === String(selectedSavedLocationId)
-    )) || null;
-
-    if (deliveryLocationAction === 'saved' && activeSavedLocation?.fullAddress) {
+    if (deliveryLocationAction === 'saved'
+        && activeSavedLocation?.fullAddress
+        && !hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation.fullAddress)) {
       return trimAddressCountrySuffix(activeSavedLocation.fullAddress);
     }
     return activePinnedDeliveryAddress ? trimAddressCountrySuffix(activePinnedDeliveryAddress) : '';
-  }, [activePinnedDeliveryAddress, deliveryLocationAction, deliverySavedLocations, selectedSavedLocationId, trimAddressCountrySuffix]);
+  }, [activePinnedDeliveryAddress, activeSavedLocation, customerAddress, deliveryLocationAction, trimAddressCountrySuffix]);
 
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude))
     && Number.isFinite(Number(customerPin?.longitude));
@@ -149,6 +153,11 @@ export function useSignedInCheckoutAddresses({
     setSavedPinnedLocations((previous) => [...previous, newLocation]);
     setSelectedSavedLocationId(newLocation.id);
     setDeliveryLocationAction('saved');
+    writeGuestDeliveryAddress({
+      addressLine: baseLocation.fullAddress,
+      latitude: baseLocation.latitude,
+      longitude: baseLocation.longitude
+    });
     toast.success('Saved location added.');
   }, [accountSavedDeliveryLocations.length, activePinnedDeliveryAddress, authToken, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isSignedIn, landmarkNote, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, setDeliveryLocationAction, setSavedPinnedLocations, setSelectedSavedLocationId, toast]);
 
@@ -166,6 +175,26 @@ export function useSignedInCheckoutAddresses({
       toast.error(normalizeErrorMessage(error, 'Unable to update default address.'));
     }
   }, [applySavedDeliveryLocation, authToken, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, toast]);
+
+  const canUpdateSavedAddress = deliveryLocationAction === 'saved'
+    && Boolean(activeSavedLocation?.addressId)
+    && hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation?.fullAddress);
+
+  const handleUpdateSavedAddress = useCallback(async () => {
+    if (!activeSavedLocation?.addressId) return;
+    if (!hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation.fullAddress)) return;
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(activeSavedLocation.addressId)}`, {
+        method: 'PATCH',
+        authToken,
+        body: { address_line: String(customerAddress || '').trim() }
+      });
+      await refreshDgfyCheckoutAddresses();
+      toast.success('Address updated.');
+    } catch (error) {
+      toast.error(normalizeErrorMessage(error, 'Unable to update address.'));
+    }
+  }, [activeSavedLocation, authToken, customerAddress, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, toast]);
 
   const handleRemoveDeliveryAddress = useCallback(async (location) => {
     if (!location) return;
@@ -211,8 +240,10 @@ export function useSignedInCheckoutAddresses({
   return {
     accountSavedDeliveryLocations,
     activePinnedDeliveryAddress,
+    activeSavedLocation,
     applySavedDeliveryLocation,
     canAddPinnedLocation,
+    canUpdateSavedAddress,
     clearActiveDeliveryLocation,
     defaultAccountDeliveryLocation,
     deliveryLocationDisplayAddress,
@@ -220,6 +251,7 @@ export function useSignedInCheckoutAddresses({
     handleAddPinnedLocation,
     handleRemoveDeliveryAddress,
     handleSetDefaultDeliveryAddress,
+    handleUpdateSavedAddress,
     hasPinnedDeliveryLocation,
     refreshDgfyCheckoutAddresses
   };

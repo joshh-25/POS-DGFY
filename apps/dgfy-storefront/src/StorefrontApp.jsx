@@ -69,6 +69,7 @@ import {
   writeCheckoutAuthResumeDraft,
   writeSavedCustomerDetails
 } from './shared/model/storefrontCustomerStorage.js';
+import { readGuestDeliveryAddress } from './shared/model/storefrontGuestDeliveryAddressStorage.js';
 import {
   buildStockExceededMessage,
   extractStockViolation,
@@ -187,8 +188,8 @@ import { createAddressPinEditorRenderer } from './features/locations/renderers/a
 import {
   buildPinnedDeliveryAddress,
   formatReverseGeocodedAddress,
-  isGeneratedPinnedDeliveryAddress,
   normalizeCoordinatePair,
+  resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
@@ -1418,6 +1419,20 @@ export default function StorefrontApp() {
       setIsUsingDifferentGuestDetails(false);
     }
   }, [isDgfyCustomerSignedIn]);
+  // #1219: hydrate the single remembered guest delivery address on mount --
+  // only for a not-signed-in visitor, and only when nothing is in progress
+  // yet, so this never overwrites a live in-progress checkout.
+  useEffect(() => {
+    if (isDgfyCustomerSignedIn) return;
+    if (String(customerAddress || '').trim() || customerPin) return;
+    const savedGuestAddress = readGuestDeliveryAddress();
+    if (!savedGuestAddress) return;
+    setCustomerAddress(savedGuestAddress.addressLine);
+    if (Number.isFinite(savedGuestAddress.latitude) && Number.isFinite(savedGuestAddress.longitude)) {
+      setCustomerPin({ latitude: savedGuestAddress.latitude, longitude: savedGuestAddress.longitude });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydration, deliberately not re-running on every keystroke
+  }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
     if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked) {
       setGuestDetailsEditMode(false);
@@ -2466,7 +2481,7 @@ export default function StorefrontApp() {
     customerName,
     customerPhone,
     customerPin,
-    deliveryAddress: resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin),
+    deliveryAddress: resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }),
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
@@ -2861,6 +2876,7 @@ export default function StorefrontApp() {
     customerEmail,
     customerName,
     customerPhone,
+    customerPin,
     DGFY_BRAND_NAME,
     downloadDataUrl,
     extractStockViolation,
@@ -3186,6 +3202,7 @@ export default function StorefrontApp() {
     cart,
     cartCount,
     cartImageErrors,
+    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
@@ -3215,6 +3232,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    setCustomerAddress,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
@@ -3270,6 +3288,7 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     checkoutTab,
+    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
