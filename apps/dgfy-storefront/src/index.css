@@ -1632,6 +1632,20 @@
   z-index: 80;
 }
 
+/* #475 — MapLibre applies `touch-action: none` only to its own canvas container.
+   Every overlay chip on a storefront map is an absolutely-positioned sibling of
+   that container, so a pinch starting on a chip falls through to the browser and
+   zooms the page instead of the map. Claim those gestures for the map surface.
+   Two selector depths: overlays that are siblings of the MapLibre root itself
+   (DeliveryPinMap, StoresMap), and overlays one level up, siblings of a wrapper
+   that holds the root (DiscoveryHeroMapStage). */
+.maplibregl-map ~ *,
+.maplibregl-map ~ * *,
+:has(> .maplibregl-map) ~ *,
+:has(> .maplibregl-map) ~ * * {
+  touch-action: none;
+}
+
 @media (max-width: 767px) {
   input,
   select,
