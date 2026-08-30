@@ -19,6 +19,9 @@ const mockListTenantCapabilityAuditLogsUseCase = jest.fn();
 const mockListTenantPosMetadataAuditLogsUseCase = jest.fn();
 const mockGetTenantPosMetadataUseCase = jest.fn();
 const mockUpdateTenantPosMetadataUseCase = jest.fn();
+const mockGetTenantAffiliateSlotsUseCase = jest.fn();
+const mockUpdateTenantAffiliateSlotsUseCase = jest.fn();
+const mockListTenantAffiliateSlotsAuditLogsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockSetupPayPalRecurringUseCase = jest.fn();
 const mockChangePlanUseCase = jest.fn();
@@ -43,6 +46,9 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   listTenantPosMetadataAuditLogsUseCase: mockListTenantPosMetadataAuditLogsUseCase,
   getTenantPosMetadataUseCase: mockGetTenantPosMetadataUseCase,
   updateTenantPosMetadataUseCase: mockUpdateTenantPosMetadataUseCase,
+  getTenantAffiliateSlotsUseCase: mockGetTenantAffiliateSlotsUseCase,
+  updateTenantAffiliateSlotsUseCase: mockUpdateTenantAffiliateSlotsUseCase,
+  listTenantAffiliateSlotsAuditLogsUseCase: mockListTenantAffiliateSlotsAuditLogsUseCase,
   tenantAdminRepository: {
     findTenantById: jest.fn(),
     updateTenant: jest.fn()
