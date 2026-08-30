@@ -188,6 +188,15 @@ const checkoutPosSchema = Joi.object({
     discount_beneficiary: discountBeneficiarySchema.optional(),
     discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
+    // #1239 (Phase 222): declared so `stripUnknown: true` (see validateSchema below) stops
+    // deleting it. Deliberately permissive - validity is not decided here. posUseCases.js:2982-2990
+    // resolves the code and hard-rejects an unknown one with a reason-coded
+    // 422 AFFILIATE_CODE_INVALID; a stricter shape here would produce a second, different error
+    // contract for the same user mistake. No .uppercase() (hashAffiliateShareCode already
+    // trim/uppercases, dgfyAffiliateRepository.js:60) and no .pattern() (the AF-XXXXXX format is a
+    // generation detail, not a request contract). '' / null are accepted because the use case maps
+    // them to "no attribution", never to an error.
+    affiliate_code: Joi.string().trim().max(40).allow('', null).optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
