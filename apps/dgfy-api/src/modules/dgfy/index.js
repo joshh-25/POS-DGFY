@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
+import { dgfyAffiliateRepository } from './repositories/dgfyAffiliateRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
@@ -354,3 +355,4 @@ export const captureAffiliateAttributionUseCase = buildCaptureAffiliateAttributi
 export const resolveAffiliateShareCodeUseCase = buildResolveAffiliateShareCodeUseCase();
 
 export { dgfyAccountRepository };
+export { dgfyAffiliateRepository };
