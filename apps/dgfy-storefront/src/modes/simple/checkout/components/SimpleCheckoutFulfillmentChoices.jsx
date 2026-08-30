@@ -1,6 +1,9 @@
 import { CalendarDays, Clock3, Zap } from 'lucide-react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { SimpleOrderMethodSelector } from './SimpleOrderMethodSelector.jsx';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
+import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_SHADOW_STRONG = 'rgba(23,107,58,0.16)';
@@ -19,10 +22,18 @@ export function SimpleCheckoutFulfillmentChoices({
   onScheduleModeChange,
   onScheduledForChange,
   orderMethod,
-  simpleOrderMethodOptions = []
+  simpleOrderMethodOptions = [],
+  orderTimingPolicy = resolveOrderTimingPolicy()
 }) {
+  // #1217: a single available method is a statement, not a question.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions);
+  const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep });
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
+      {showOrderMethodSelector ? (
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <SimpleOrderMethodSelector
@@ -32,10 +43,18 @@ export function SimpleCheckoutFulfillmentChoices({
           onOrderMethodChange={onOrderMethodChange}
         />
       </div>
+      ) : (
+        <FulfillmentMethodNotice
+          accentColor={SIMPLE_BRAND}
+          message={orderMethodNotice}
+          variant={soleOrderMethod ? 'info' : 'warning'}
+        />
+      )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+        {showTimingStep ? <>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
+        {showTimingChooser ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
           <SelectableOptionCard
             onClick={() => onScheduleModeChange('asap')}
             label="NOW"
@@ -78,8 +97,21 @@ export function SimpleCheckoutFulfillmentChoices({
             iconBoxSize={isMobileViewport ? 34 : 40}
             iconSize={isMobileViewport ? 18 : 20}
           />
-        </div>
-        {fnbScheduleMode === 'asap' ? (
+        </div> : null}
+        {showSchedule && !showImmediate ? <>
+          <FulfillmentMethodNotice accentColor={SIMPLE_BRAND} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              Scheduled date and time
+              <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }} />
+          </label>
+        </> : null}
+        {showImmediate && !showSchedule ? (
+          <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
+          </div>
+        ) : null}
+        {showTimingChooser ? (fnbScheduleMode === 'asap' ? (
           <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
@@ -110,7 +142,7 @@ export function SimpleCheckoutFulfillmentChoices({
               />
             </div>
           </label>
-        )}
+        )) : null}</> : <FulfillmentMethodNotice accentColor={SIMPLE_BRAND} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
       </div>
     </div>
   );

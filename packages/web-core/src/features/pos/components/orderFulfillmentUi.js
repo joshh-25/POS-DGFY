@@ -1,3 +1,8 @@
+// Phase 211 (#1180). `normalizeWorkflowMode` re-exported from @sieitzz/shared-constants/
+// workflowModes via this settings module -- confirmed no import cycle (workflowMode.js does not
+// import anything from features/pos).
+import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
+
 export const ORDER_METHOD_LABELS = Object.freeze({
   dine_in: 'Dine In',
   takeout: 'Takeout',
@@ -21,6 +26,7 @@ export const FULFILLMENT_STATUS_LABELS = Object.freeze({
   placed: 'Placed',
   confirmed: 'Confirmed',
   preparing: 'Preparing',
+  packed: 'Packed',
   ready_for_pickup: 'Ready for pickup',
   out_for_delivery: 'Out for delivery',
   completed: 'Completed',
@@ -28,16 +34,29 @@ export const FULFILLMENT_STATUS_LABELS = Object.freeze({
   rejected: 'Rejected'
 });
 
-export const getNextStatusActions = (order = {}) => {
+export const getNextStatusActions = (order = {}, workflowMode = '') => {
   const current = String(order.fulfillment_status || '').trim();
   const method = String(order.order_method || '').trim();
   switch (current) {
   case 'placed':
     return ['confirmed', 'rejected'];
   case 'confirmed':
-    return ['preparing'];
-  case 'preparing':
-    return method === 'delivery' ? ['out_for_delivery'] : ['ready_for_pickup'];
+    // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
+    // out-of-route and must be able to reject it with a reason. Mirrors
+    // posUseCases.js's ONLINE_FULFILLMENT_TRANSITIONS.confirmed -- the server stays authoritative.
+    return ['preparing', 'rejected'];
+  case 'preparing': {
+    // Phase 211 (#1180). Retail-only, additive: the existing next step is ALWAYS still offered,
+    // `packed` is offered alongside it. Gate mirrors
+    // TerminalOperationsWorkspace.jsx's own `normalizeWorkflowMode(...) === 'retail'` pattern.
+    // `workflowMode` is a second, OPTIONAL parameter (defaulting to '') so the un-updated
+    // TerminalSidebarPanel call site (no render site on develop, still calls this positionally)
+    // keeps compiling and simply never offers the packed action.
+    const handoffStatus = method === 'delivery' ? 'out_for_delivery' : 'ready_for_pickup';
+    return normalizeWorkflowMode(workflowMode) === 'retail' ? ['packed', handoffStatus] : [handoffStatus];
+  }
+  case 'packed':
+    return [method === 'delivery' ? 'out_for_delivery' : 'ready_for_pickup'];
   case 'ready_for_pickup':
     return ['completed'];
   case 'out_for_delivery':
@@ -63,6 +82,7 @@ export const FULFILLMENT_ACTION_LABELS = Object.freeze({
   confirmed: 'Confirm',
   rejected: 'Reject',
   preparing: 'Start Preparing',
+  packed: 'Mark Packed',
   ready_for_pickup: 'Ready for Pickup',
   out_for_delivery: 'Out for Delivery',
   completed: 'Complete'
@@ -136,6 +156,7 @@ export const getIncomingOrderUtilityActions = (order = {}) => {
   case 'confirmed':
     return ['print_order', 'open_order'];
   case 'preparing':
+  case 'packed':
     return method === 'delivery'
       ? ['print_order', 'open_order']
       : ['print_receipt', 'open_order'];

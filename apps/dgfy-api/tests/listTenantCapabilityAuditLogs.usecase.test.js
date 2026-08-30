@@ -1,7 +1,8 @@
 import { jest } from '@jest/globals';
 import {
     buildListTenantCapabilityAuditLogsUseCase,
-    buildListTenantPosMetadataAuditLogsUseCase
+    buildListTenantPosMetadataAuditLogsUseCase,
+    buildListTenantAffiliateSlotsAuditLogsUseCase
 } from '../src/modules/tenants/usecases/listTenantCapabilityAuditLogsUseCase.js';
 
 describe('listTenantCapabilityAuditLogsUseCase', () => {
@@ -79,6 +80,48 @@ describe('listTenantCapabilityAuditLogsUseCase', () => {
             action: 'pos_metadata_update',
             reason: 'Approved BIR receipt update',
             metadata: { pending_action: 'approve' }
+        }));
+    });
+
+    // RF-2 (PR #1228 round-1 review): tenant IDs are UUIDs -- the envelope previously serialized
+    // `tenant_id: Number(id)`, which is `NaN` (-> null over JSON) for every UUID tenant.
+    it('returns the UUID tenant id in the response envelope, not Number(id) (RF-2)', async () => {
+        const UUID_TENANT_ID = '5b1f7f1e-2a3b-4c5d-9e6f-0123456789ab';
+        const repository = {
+            findTenantById: jest.fn().mockResolvedValue({ id: UUID_TENANT_ID }),
+            listTenantAdminAuditLogs: jest.fn().mockResolvedValue([
+                {
+                    get: () => ({
+                        tenant_admin_audit_log_id: 31,
+                        tenant_id: UUID_TENANT_ID,
+                        action: 'affiliate_slots_update',
+                        actor_username: 'admin_jp',
+                        reason: 'commercial upgrade approved',
+                        before_snapshot: { max_affiliate_slots: 1, slots_used: 1 },
+                        after_snapshot: { max_affiliate_slots: 2 },
+                        metadata: { previous_value: 1, new_value: 2 },
+                        created_at: '2026-08-31T00:00:00.000Z'
+                    })
+                }
+            ])
+        };
+        const useCase = buildListTenantAffiliateSlotsAuditLogsUseCase({
+            tenantAdminRepository: repository,
+            logger: { error: jest.fn() }
+        });
+
+        const result = await useCase({ id: UUID_TENANT_ID, limit: 5 });
+
+        expect(result.success).toBe(true);
+        expect(repository.listTenantAdminAuditLogs).toHaveBeenCalledWith(UUID_TENANT_ID, { limit: 5, action: 'affiliate_slots_update' });
+        // Envelope-level tenant_id -- this is the field RF-2 fixed.
+        expect(result.data.payload.data.tenant_id).toBe(UUID_TENANT_ID);
+        expect(Number.isNaN(result.data.payload.data.tenant_id)).toBe(false);
+        // Row-level tenant_id -- was already correct (sourced from the DB row), preserved by the fix.
+        expect(result.data.payload.data.logs[0]).toEqual(expect.objectContaining({
+            id: 31,
+            tenant_id: UUID_TENANT_ID,
+            action: 'affiliate_slots_update'
         }));
     });
 

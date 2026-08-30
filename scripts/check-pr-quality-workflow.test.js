@@ -6,6 +6,7 @@ const {
   checkStagingLegSkipShape,
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
+  checkReporterHasNoShellBinaryDependency,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,
@@ -127,8 +128,13 @@ test('checkStagingLegSkipShape: sanctioned skip-if + unconditional continue-on-e
   assert.deepEqual(checkStagingLegSkipShape(text), []);
 });
 
-test('checkStagingLegSkipShape: an `if:` that does not exclude the staging leg is caught', () => {
-  const text = buildWorkflowWithJobLines(() => ({ ifLine: "if: needs.gate.outputs.is_promotion == 'true'" }));
+// 2026-08-29 (#1124/#1165): SANCTIONED_SKIP_STAGING_IF no longer excludes the staging leg (that
+// relaxation was retired -- see this file's own top-of-file comment) -- a job that still carries
+// the old, retired shape is now itself the deviant case this test exercises.
+test('checkStagingLegSkipShape: an `if:` still carrying the retired staging-leg exclusion is caught', () => {
+  const text = buildWorkflowWithJobLines(() => ({
+    ifLine: "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"
+  }));
   const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
   problems.forEach((problem) => assert.match(problem, /`if:` must be exactly/));
@@ -264,20 +270,36 @@ function buildReporterJob(jobNames, {
   missingNeeds = [],
   missingEnvRefs = [],
   missingCoe = false,
-  mismatchedAddIfPresentVarFor = []
+  mismatchedAddIfPresentVarFor = [],
+  useShellGhForm = false
 } = {}) {
   const needsList = ['gate', ...jobNames.filter((n) => !missingNeeds.includes(n))];
   const envLines = jobNames
     .filter((n) => !missingEnvRefs.includes(n))
     .map((n) => `          ${envVarNameFor(n)}: \${{ needs.${n}.outputs.real_failures }}`);
-  // Matches the real reporter's actual shape: add_if_present "<job>" "$<the var that job's
-  // real_failures was assigned to above>" -- unless the test deliberately asks for a mismatch
-  // (RF-5's own reproduction: a swapped/misspelled variable there).
+  // #1124/#1165: matches the real reporter's actual (post actions/github-script@v7) shape --
+  // addIfPresent('<job>', process.env.<the var that job's real_failures was assigned to above>, ...)
+  // -- unless the test deliberately asks for a mismatch (RF-5's own reproduction: a swapped/
+  // misspelled variable there) or the retired shell form (useShellGhForm, for
+  // checkReporterHasNoShellBinaryDependency's own coverage).
   const addLines = jobNames.map((n) => (
     mismatchedAddIfPresentVarFor.includes(n)
-      ? `          add_if_present "${n}" "$WRONG_VAR_NAME"`
-      : `          add_if_present "${n}" "$${envVarNameFor(n)}"`
+      ? `            addIfPresent('${n}', process.env.WRONG_VAR_NAME, process.env.WRONG_RESULT);`
+      : `            addIfPresent('${n}', process.env.${envVarNameFor(n)}, process.env.${n.toUpperCase().replace(/-/g, '_')}_RESULT);`
   ));
+  const runBlock = useShellGhForm
+    ? [
+      '        run: |',
+      ...jobNames.map((n) => `          add_if_present "${n}" "$${envVarNameFor(n)}"`),
+      '          gh issue comment 1063 --body-file /tmp/advisory-failure-comment.md'
+    ]
+    : [
+      '        uses: actions/github-script@v7',
+      '        with:',
+      '          script: |',
+      ...addLines,
+      '            // no-op tail'
+    ];
   return [
     `  ${REPORTER_JOB_NAME}:`,
     '    needs:',
@@ -289,9 +311,7 @@ function buildReporterJob(jobNames, {
     ...(missingCoe ? [] : ['        continue-on-error: true']),
     '        env:',
     ...envLines,
-    '        run: |',
-    ...addLines,
-    '          echo done'
+    ...runBlock
   ].join('\n');
 }
 
@@ -355,9 +375,33 @@ test('checkAdvisoryFailureReportingShape: a duplicated STEP_OUTCOMES reference t
   assert.match(problems[0], /STEP_OUTCOMES references `steps\.run_lint\.outcome` 2 times/);
 });
 
-test('checkAdvisoryFailureReportingShape: add_if_present using a different job\'s variable is caught, not silently accepted', () => {
+test('checkAdvisoryFailureReportingShape: addIfPresent using a different job\'s variable is caught, not silently accepted', () => {
   const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { mismatchedAddIfPresentVarFor: ['dgfy-api-quality'] })}\n`;
   const problems = checkAdvisoryFailureReportingShape(text);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /does not match the env var needs\.dgfy-api-quality\.outputs\.real_failures is actually assigned to/);
+});
+
+// 2026-08-29 (#1124/#1165): checkReporterHasNoShellBinaryDependency is the regression guard for the
+// bug this epic actually found -- `gh` is not installed on the self-hosted runners, and the old
+// reporter's shell-out to it failed 100% silently for as long as that job existed. Covers the
+// sanctioned actions/github-script form (no problem), the retired shell `gh issue`/`add_if_present`
+// form (caught), and confirms a `gh` mention elsewhere in the file (e.g. a comment citing
+// `gh api .../actions/runners` as evidence, as this very file's header does) is not itself flagged.
+
+test('checkReporterHasNoShellBinaryDependency: the sanctioned actions/github-script reporter reports no problems', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
+  assert.deepEqual(checkReporterHasNoShellBinaryDependency(text), []);
+});
+
+test('checkReporterHasNoShellBinaryDependency: a reporter that shells out to `gh issue` is caught', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { useShellGhForm: true })}\n`;
+  const problems = checkReporterHasNoShellBinaryDependency(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /shells out to a `gh` subcommand/);
+});
+
+test('checkReporterHasNoShellBinaryDependency: a `gh` mention in a comment elsewhere in the file is not flagged', () => {
+  const text = `# see gh api repos/.../actions/runners for evidence\n\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
+  assert.deepEqual(checkReporterHasNoShellBinaryDependency(text), []);
 });

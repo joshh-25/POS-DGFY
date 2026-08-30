@@ -2,11 +2,12 @@ import express from 'express';
 import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
+import * as deliveryPersonnelController from '../modules/deliveryPersonnel/controllers/deliveryPersonnelHandlers.js';
 import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
+import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validateCreatePosParkedSale,
@@ -49,6 +50,7 @@ import {
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
     validateRecordOrderBalancePayment,
+    validatePosBalancePaymentProofParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -67,6 +69,7 @@ import {
     validateCloseTerminalShift,
     validateForceCloseStaleTerminalShift,
     validateUpdateOnlineOrderStatus,
+    validateUpdateOnlineOrderDeliveryAddress,
     validatePosDeviceReceiptPrint,
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
@@ -96,7 +99,11 @@ import {
     validateEmployeeCreditRepayment,
     validateEmployeeCreditCheckoutOptionsQuery,
     validateEmployeeCreditLookupQuery,
-    validateEmployeeCreditReportQuery
+    validateEmployeeCreditReportQuery,
+    validateDeliveryPersonnelRegistryQuery,
+    validateDeliveryPersonnelParam,
+    validateDeliveryPersonnelCreate,
+    validateDeliveryPersonnelUpdate
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -254,6 +261,9 @@ router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.V
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
 router.get('/order-history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateOnlineOrderHistoryQuery, posController.listOnlineOrderHistory);
 router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryPersonnelListQuery, posController.listActiveDeliveryPersonnel);
+router.get('/delivery-personnel/registry', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelRegistryQuery, deliveryPersonnelController.listDeliveryPersonnelRegistry);
+router.post('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelCreate, deliveryPersonnelController.createDeliveryPersonnel);
+router.patch('/delivery-personnel/:deliveryPersonnelId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelParam, validateDeliveryPersonnelUpdate, deliveryPersonnelController.updateDeliveryPersonnel);
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
@@ -262,10 +272,37 @@ router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS
 // of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2
 // [binding], carried forward by ADR 0070: staff-recorded, never a second automatic charge).
 router.post('/orders/:id/record-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateRecordOrderBalancePayment, posController.requireActiveOperatorForMutation, posController.recordOrderBalancePayment);
+// Phase 204 (#965): proof-of-payment image for an already-recorded balance settlement. Same
+// authority tier as record-payment above (TRANSACT_POS + pairing + active-operator) -- attaching
+// evidence to a payment is the same class of action as recording it. Pat's decision on #965: this
+// is financial-evidence PII and must never be served through a public/static path -- see the authed
+// streaming GET immediately below, and PHASE_204_PLAN.md section 4.
+router.post(
+    '/orders/:id/balance-payments/:payment_id/proof',
+    checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS),
+    posController.requirePairedTerminal,
+    validatePosBalancePaymentProofParams,
+    preserveTenantContext(posPaymentProofUpload.single('proof')),
+    posController.requireActiveOperatorForMutation,
+    posController.uploadOrderBalancePaymentProof
+);
+// VIEW_POS, not TRANSACT_POS -- reading evidence is a read-tier action; a manager reviewing a
+// settlement should not need transact rights. No requirePairedTerminal -- pairing is a mutation
+// control on this router, and requiring it here would block back-office review from a
+// non-terminal browser for no security gain (tenant scope + permission already bound the read).
+router.get(
+    '/orders/:id/balance-payments/:payment_id/proof',
+    checkPermission(PERMISSIONS.POS.actions.VIEW_POS),
+    validatePosBalancePaymentProofParams,
+    posController.getOrderBalancePaymentProof
+);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same permission as the
+// status update above -- this is a staff order-management action on the same surface.
+router.patch('/orders/:id/delivery-address', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderDeliveryAddress, posController.updateOnlineOrderDeliveryAddress);
 router.get('/z-reading/close-readiness', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, posController.getDayCloseReadiness);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateCloseDayBody, posController.closeDayZReading);
 router.post('/z-reading/governed-reset', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateGovernedResetBody, posController.incrementGovernedResetCounter);

@@ -10711,3 +10711,3639 @@ done until this phase also completes.
 
 The next repository phase is allocated from the authoritative ledger after Phase 188 completes.
 This initiative (#360) is done at that point.
+
+## Phase 189 - Quality-Gate Trust: Evidence Durability and Reporter Fix (#1124)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — audit and re-verify the test/lint/CI pipeline end to end.
+First implementation pass; the epic's other children (#345, #372, #438, #917, #918) remain
+untouched by this phase.
+
+### Objective and scope
+
+Make `promotion-quality-gate.yml`'s evidence durable, observable, and reported — without
+re-arming the gate to block (`continue-on-error` stays exactly as-is on every leg, deliberately).
+Investigation found the gate's evidence pipeline was broken in three independent ways: its one
+automated failure-reporting job (`report-advisory-failures`) had never worked at all (`gh` is not
+installed on the self-hosted runners, confirmed live, exit 127); a real promotion this session
+(run `33241398956`, PR #1164) reached `main` with zero quality signal because the job envelope
+died mid-run, destroying all downstream evidence; and `run-backend-test-matrix.js`'s early-stop
+default (#986) hid the other 8 test groups behind the first failure. Also root-caused and fixed
+#1071 (a test-harness/coupling defect in tenant provisioning), which surfaced a second, deeper,
+still-open production-path defect filed separately as #1166.
+
+### Status
+
+- `completed` (2026-08-29) — PR #1167 merged into `develop`.
+- Local verification complete: `check:pr-quality-workflow` (27 tests) green, local fast-tier run
+  green (561/561), architecture guardrails and controller boundaries green, `tenantProvisioning
+  .storefrontBootstrap.test.js` fixed and green, real-MySQL reproduction of both #1071 (fixed) and
+  #1166 (filed, not fixed) confirmed live this session.
+- Live `workflow_dispatch` verification completed on the PR branch (4 dispatch runs): confirmed
+  positive — `report-advisory-failures`'s `actions/github-script@v7` reporter correctly resolves
+  on `sieitz-runner` and posts to #1124 using the REST Jobs API's real (non-overridden)
+  conclusion, catching two bugs the plan hadn't anticipated (`needs.<job>.result` silently
+  overridden by job-level `continue-on-error`, and `actions/upload-artifact@v4` rejecting a `..`
+  path segment), both fixed and re-verified live. Confirmed negative — `salvage-api-evidence`
+  correctly detected the dead `dgfy-api-quality` envelope and triggered, but found its evidence
+  directory already empty by salvage time; recovery was not achieved. That gap, and the
+  dead-envelope pattern itself recurring on `vm-sieitzstaging` (3 of 4 verification runs), is now
+  tracked as #1168 rather than silently accepted as this phase's own success.
+- Not yet measured: full-matrix wall time under the flipped `#986` default on a real
+  `sieitz-lg` run.
+
+### Dependencies
+
+- None blocking. #1063's own root cause was already fixed (PR #1067) prior to this phase.
+
+### Acceptance and validation evidence
+
+- [x] `report-advisory-failures` no longer shells out to `gh`; replaced with
+      `actions/github-script@v7`. Local: `check-pr-quality-workflow.js`'s new
+      `checkReporterHasNoShellBinaryDependency` guard passes.
+- [x] Test-matrix evidence survives a job-envelope death via a step-summary write and a new
+      `salvage-api-evidence` job. Live-verified only for the step-summary path; the salvage job's
+      own recovery path did not succeed live (evidence directory already empty by salvage time —
+      see Status and #1168).
+- [x] `run-backend-test-matrix.js` defaults to continue-on-failure (`#986`); artifact carries
+      `coverage_complete`. Local: `--tier fast` run green, payload confirmed.
+- [x] `to-staging/*→staging` soak leg runs quality jobs advisory-only instead of skipping entirely.
+- [x] #1071 root-caused and fixed — `tenantProvisioning.storefrontBootstrap.test.js` green.
+      `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs` +
+      `apps/dgfy-api/src/services/tenantSchemaBootstrap.js` land the one-seam refactor.
+- [x] `workflow_dispatch` verification that the reporter and salvage job work live on
+      `sieitz-runner`/`sieitz-lg` — completed (4 dispatch runs). Reporter: confirmed working.
+      Salvage: confirmed triggering correctly, recovery itself not yet successful — tracked as
+      #1168, not silently folded into this checkbox as a pass.
+- [ ] #1166 (the FK/generated-column production defect the new integration test surfaced) — filed,
+      not in this phase's scope; tracked separately.
+
+### Implementation links
+
+- Issue #1124 (epic), #1165 (this phase's own tracked scope), #1071 (closes on PR #1167 merge,
+  still open until then), #1166 (filed by this phase, not fixed), #1168 (filed by this phase's own
+  live verification — dead job envelope / salvage-recovery gap)
+- PR #1167
+- `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/run-backend-test-matrix.js`, `scripts/summarize-backend-test-matrix.js`
+- `apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs`,
+  `apps/dgfy-api/src/services/tenantSchemaBootstrap.js`
+
+### Completion date
+
+2026-08-29 (PR #1167 merged).
+
+### Next eligible phase
+
+Phase 190, allocated below — the remaining open work under epic #1124 broken out into its own
+tracked phases (#1165's deployed-verification closeout, #1166's fix, #1168's runner diagnostics,
+#918's web-core lint coverage, #1157's artifact triage, #917's small remainder, #1147's gate-to-CI
+mapping). The epic (#1124) itself remains open until every child phase below completes.
+
+## Phase 190 - Tenant Bootstrap: Fix FK/Generated-Column Collision (#1166)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124), continuing Phase 189's own follow-on findings.
+
+### Objective and scope
+
+Fix the real, still-live production defect Phase 189's new integration test surfaced (currently
+`it.skip()`-ed, not shipped red): `provisionTenant`'s post-sync tenant bootstrap fails with MySQL
+errno 150 ("Cannot add foreign key constraint") when migration `20260824000001`'s
+`addGeneratedColumnIfMissing()` tries to add a STORED generated column derived from
+`employee_break_segments.employee_attendance_session_id` — a column that already carries a real
+FK constraint because `Sequelize.sync()` (which `provisionTenant` runs first) materializes the
+`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` association
+(`src/models/index.js:744`) as a real constraint. The ordinary migration-runner path never hits
+this (there, this migration's own `createTable()` branch builds the table from scratch, with no
+pre-existing FK to collide with) — the failure is specific to the provisioning path's
+`sync()`-then-migrate order.
+
+**Root cause, fully established (empirical, live MySQL 8.0.46 experimentation), one layer deeper
+than #1166's own filing suspected.** It is not "a FK exists on the column" per se — RESTRICT/
+RESTRICT FKs coexist fine with a dependent generated column (confirmed: inline-at-`CREATE TABLE`
+and via a later `ALTER TABLE ADD CONSTRAINT` both work). The actual, unconditional MySQL/InnoDB
+restriction: **a foreign key whose `ON UPDATE`/`ON DELETE` action is `CASCADE` (or `SET NULL`) is
+rejected outright if its own column is the base column of a `STORED` generated column elsewhere in
+the table** — confirmed by direct 4-way experiment (RESTRICT/RESTRICT: success; CASCADE/CASCADE,
+RESTRICT/CASCADE, CASCADE/RESTRICT: all fail with the same errno 150). The actual defect:
+`EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, ...)` (and the same pattern on 2 other
+associations in this migration's scope) declares `onUpdate: 'RESTRICT', onDelete: 'RESTRICT'`, and
+this migration's own `createTable()` branch matches that — but `Sequelize.sync()` (the tenant-
+provisioning path) materializes the association's FK as `ON UPDATE CASCADE ON DELETE CASCADE`
+instead, confirmed live via `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`. That `sync()`/association
+mismatch is a second, real, adjacent inconsistency this phase does not fix (see Dependencies) — the
+fix implemented here works regardless of which action `sync()` chooses, since MySQL only accepts
+RESTRICT/NO ACTION on this column shape either way.
+
+Of the 3 candidates named in #1166's own filing, none were exactly right once the real restriction
+was known: candidate 2 (drop and recreate the FK around the `ALTER`) is closest, but only works if
+the *recreated* FK uses RESTRICT/RESTRICT explicitly — reusing whatever action the dropped FK
+happened to have (i.e., `sync()`'s buggy CASCADE/CASCADE) reproduces the identical failure on the
+recreate step itself (confirmed empirically before landing on the actual fix).
+
+### Status
+
+`in_progress` (2026-08-29). Fix implemented, verified locally, and merged into `develop` as
+`d4276b6` (PR #1172, `fix/1166-tenant-fk-generated-column`). Per `AGENTS.md`'s Continuous Phase
+Numbering rule ("a phase may be marked `completed` only after its acceptance gates and required
+validation pass"), this stays `in_progress` until the one remaining acceptance item below (the
+DEV/STAGING occurrence check) is either completed or explicitly deferred through its own stated
+decision — not implied by the merge alone. (Corrected 2026-08-29 twice — an earlier version marked
+`completed` while both the merge and the check were still open; a second correction left the PR
+body saying #1172 was still unmerged after it had in fact merged; both flagged by `pr-reviewer`.)
+
+### Dependencies
+
+None blocking. Independent of Phases 191-196 below — ran in parallel with Phase 193.
+
+Spawns one follow-up, not yet filed as its own issue: `Sequelize.sync()` materializing an
+association's FK with `CASCADE`/`CASCADE` when the association itself declares `RESTRICT`/
+`RESTRICT` is a real inconsistency between the ORM's sync-time DDL and the association's own
+declared intent, independent of the generated-column collision this phase fixes. Not fixed here
+(scope stayed narrow: make the migration produce a correct, working schema regardless of what
+`sync()` does) — worth its own issue via `pm` if `sync()`'s behavior matters elsewhere.
+
+### Acceptance and validation evidence
+
+- [x] Root cause of the errno-150 interaction confirmed as a documented-in-practice MySQL/InnoDB
+      restriction (CASCADE/SET NULL forbidden on a generated column's base column), not a version
+      quirk — confirmed via direct experiment on the same MySQL 8.0.46 this repo runs.
+- [x] Fix implemented (`addGeneratedColumnIfMissing` now drops any existing FK on the depended-on
+      column before the `ALTER ADD COLUMN GENERATED`, and always recreates it as RESTRICT/
+      RESTRICT afterward — applied to all 3 call sites in this migration that read an
+      association-FK'd column, not only the one #1166 reproduced).
+      `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`'s two previously-skipped
+      tests un-skipped and green against real MySQL (`dgfy-local-test-mysql-1`, 8.0.46).
+- [x] Confirmed no regression on the ordinary `sequelize-cli`-shaped path: a standalone repro ran
+      this migration's `up()` (via its own `createTable()` branch) against a fresh scratch
+      database twice (idempotency) plus `down()`, all green.
+- [ ] Empirical check of DEV/STAGING provisioning logs/Sentry for prior real occurrences — not run
+      this session; still open, reported here rather than silently dropped.
+- [x] `node scripts/check-compliance-impact.js --staged` — `No compliance-sensitive changes
+      detected`. `check:architecture-guardrails` / `check:controller-boundaries` — both green.
+
+### Implementation links
+
+- Issue #1166, Refs #1071, #1124
+- `apps/dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`
+- `apps/dgfy-api/src/models/index.js` (the `belongsTo` associations — not modified, root-caused
+  only)
+- `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js`
+
+### Next eligible phase
+
+Phase 191 (independent, not sequenced after this one).
+
+## Phase 191 - Quality-Gate Trust: Deployed Verification Closeout (#1165)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the deployed-environment verification half of Phase 189's work,
+owned by the Verifier/QA role rather than Worker (`.agents/skills/verifier/SKILL.md`).
+
+### Objective and scope
+
+Phase 189 shipped and merged the evidence-durability/reporter fix; #1165 itself stays open until a
+deployed check confirms the merged change is healthy on STAGING, per
+`docs/process/ISSUE-TAXONOMY.md`'s `For QA` lane semantics. This phase is that check — infra-health
+via `verify-deployment.yml`, plus a best-effort functional read of PR #1167's diff.
+
+### Status
+
+`in_progress` (2026-08-29) — issue #1165 moved to `For QA` on the board (2026-08-29, by hand, since
+PR #1167 was merged directly by Pat rather than through `pr-reviewer`'s own merge-time board
+transition). Verifier ran its first live check against STAGING: infra-health **PASS**
+(`verify-deployment.yml` run `33257210011`, `conclusion: success`, no restart-count/crash-loop
+signature) and a best-effort functional read of PR #1167's diff against all 5 of #1165's own DoD
+items — 4 fully verified by diff + the worker's own documented live `workflow_dispatch` evidence,
+the 5th (evidence survives a dying job) honestly reported as partially working (detection works,
+recovery doesn't — the exact gap tracked as #1168/Phase 192). Per Verifier's own SKILL.md "first
+live use" calibration this is **report-only** — the board `Status` has not been flipped to `Done`
+and the issue has not been closed; that write is still Pat's to confirm.
+
+### Dependencies
+
+PR #1167 merged (done). Independent of Phases 190, 192-196.
+
+### Acceptance and validation evidence
+
+- [x] `verify-deployment.yml` dispatched for STAGING, infra-health PASS recorded (run
+      `33257210011`).
+- [x] Best-effort functional read of PR #1167's diff against #1165's own acceptance criteria —
+      PASS with one already-tracked, honestly-reported gap (#1168).
+- [x] Verdict reported. Not yet auto-applied to the board (`Done`/close) — first live run, per
+      Verifier's own SKILL.md calibration; awaiting Pat's confirmation.
+
+### Implementation links
+
+- Issue #1165, Refs #1124
+- PR #1167 (merged)
+- `.github/workflows/verify-deployment.yml` (run `33257210011`)
+
+### Next eligible phase
+
+Phase 192 (independent, not sequenced after this one).
+
+## Phase 192 - Runner Reliability Diagnostics on `vm-sieitzstaging` (#1168)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the runner-infrastructure investigation Phase 189's own live
+verification surfaced (3 of 4 dispatch runs died in the identical shape).
+
+### Objective and scope
+
+**Explicitly not closeable by any role in this repo's current roster** — #1168's own body states
+this: it needs SSH/log access to `vm-sieitzstaging` to find what actually terminates the
+`dgfy-api-quality` job 3 seconds after its test-matrix step completes (OOM killer, Docker daemon
+restart, a scheduled maintenance script, resource exhaustion), which is outside every role's
+current capability (`incident-responder`'s own stated gap #2, "no live-server observability
+capability exists"). This phase's deliverable from this side is a concrete diagnostic runbook for
+Pat to run by hand — not a fix, since the root cause is unknown until that access is used.
+
+### Status
+
+`blocked` (2026-08-29) — this side's own deliverable (the diagnostic runbook) is done, PR #1173
+open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
+past that; no role can advance the actual root-cause investigation unattended.
+
+### Dependencies
+
+None from this repo's side; blocked on infrastructure access outside any agent role.
+
+### Acceptance and validation evidence
+
+- [x] Diagnostic runbook written: `docs/ops/QUALITY_GATE_RUNNER_DIAGNOSTIC_RUNBOOK.md` (PR #1173)
+      — OOM-killer/`dmesg`/`journalctl` checks, Docker daemon restart/container-death checks,
+      cron/systemd-timer sweep checks for the salvage job's evidence directory, a resource-pressure
+      check, and a labeled set of findings to report back on #1168.
+- [ ] Root cause found (Pat's own run, not automatable from here).
+- [ ] Once known: either exempt `_dgfy_gate_evidence/` from whatever is sweeping it, or redesign
+      the salvage path to upload immediately from within `dgfy-api-quality` itself instead of a
+      separate job that can lose the queue-wait race.
+
+### Implementation links
+
+- Issue #1168, Refs #1124, #1165, #1063
+
+### Next eligible phase
+
+Phase 193 (independent, not sequenced after this one; this phase stays `blocked` until Pat runs
+the diagnostic).
+
+## Phase 193 - `packages/web-core` ESLint Coverage (#918)
+
+### Initiative and release
+
+Frontend-split lint-governance line of work (#322), filed as an #1124 sibling concern but not
+itself part of the quality-gate CI audit.
+
+### Objective and scope
+
+`packages/web-core` (691 source files, the shared trunk all three frontend apps consume) has no
+`.eslintrc.json`, no lint script, and no `devDependencies` — and no app's own lint invocation
+reaches it. ADR 0071 Decision 4 is `[binding]`: `packages/web-core` must never get its own
+`node_modules` or test runner, so coverage has to run from an already-installed app's ESLint via
+`--resolve-plugins-relative-to`, the same pattern its test suite already uses. 3 confirmed real
+`react-hooks/rules-of-hooks` violations need fixing regardless of the rest of the scope.
+
+### Status
+
+`in_progress` (2026-08-29) — implemented on branch `feat/918-web-core-eslint-coverage`, PR #1170
+open against `develop` (`Closes #918`), board `Status` set to `For Review`.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-192, 194-196. Ran in parallel with Phase 190.
+
+### Acceptance and validation evidence
+
+- [x] `packages/web-core/.eslintrc.json` added (rules/ADR-0067 deny list identical to the three
+      apps' own configs; `ecmaVersion` bumped to 2022 only in this file to parse a pre-existing
+      top-level `await` in a test file), coverage wired into
+      `promotion-quality-gate.yml`'s `frontend-ims-quality` job via
+      `npx eslint ../../packages/web-core --resolve-plugins-relative-to .`, advisory per the
+      existing #1063 pattern. No `lint` script or `devDependencies` added to
+      `packages/web-core/package.json` — ADR 0071 Decision 4 confirmed unchanged (no
+      `node_modules` created).
+- [x] `frontend-ims-quality` decided as the owning CI job; verified with
+      `check-pr-quality-workflow.js` (27/27 pass).
+- [x] The 3 `rules-of-hooks` violations fixed (`Components/ai/ActionResultCard.jsx`,
+      `Components/jo/JODetailsModal.jsx` — hooks moved above their early-return guards).
+- [x] Triaged: 10 mechanical `react/no-unescaped-entities` + 1 parsing error fixed. 10 remaining
+      diagnostics (6 `react-hooks/set-state-in-effect`, 2 `react-hooks/refs` in a vendor
+      shadcn/radix primitive, 1 "Cannot create components during render", 1 optimization-only
+      notice) explicitly deferred with stated reasons in the PR body and the ADR amendment — not
+      silently dropped. Before/after: 23 errors/133 warnings → 10 errors (all deferred,
+      explained)/133 warnings (pre-existing, unchanged).
+- [x] ADR 0067's 2026-08-22 amendment updated (2026-08-29 amendment superseding the stale
+      "web-core has no config" description).
+- Also verified: `npm run build:skupervisor/pos/store` all pass; all three apps' `npm run lint`:
+  0 errors; `check:adr --strict`, `check:compliance`, `check:architecture` all pass; no
+  `package.json`/lockfile touched.
+
+### Implementation links
+
+- Issue #918, Refs #322, #917
+- PR #1170
+- `packages/web-core/.eslintrc.json` (new), `packages/web-core/Components/ai/ActionResultCard.jsx`,
+  `packages/web-core/Components/jo/JODetailsModal.jsx`
+- `.github/workflows/promotion-quality-gate.yml` (`frontend-ims-quality` job)
+- `docs/architecture/adr/0067-*` (Layer 3 guardrail amendment)
+
+### Next eligible phase
+
+Phase 194 (independent, not sequenced after this one).
+
+## Phase 194 - Promotion Gate Artifact Triage (#1157)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — closing the feedback-loop gap Pat named directly during the #360
+session: the gate's own advisory-failure artifacts have never been pulled and read.
+
+### Objective and scope
+
+Pull artifacts from a recent `promotion-quality-gate.yml` run, read the failure output, and
+classify each failure into one of four buckets (real defect / environment-infra problem / gate bug
+/ known-and-tracked), then post the classified inventory as a comment on #1124. Explicitly not in
+scope: fixing anything found, or changing `continue-on-error` (that's #1063's/#1147's call). Any
+genuinely new defect found gets filed separately via `pm`, not buried in the comment.
+
+### Status
+
+`completed` (2026-08-29). Read-only investigation, no code changes. Findings posted as a comment
+on #1124. Board `Status` left for a human to move to `Done`/close, per `pm`'s own checkpoint
+policy ("closing an issue... ask first") — not done unilaterally by this phase.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-193, 195-196.
+
+### Acceptance and validation evidence
+
+- [x] Artifacts downloaded (`gh run download`) and read from two runs bracketing Phase 189's fix:
+      `33200271336` (pre-fix, both `dgfy-api-quality` and `fnb-playwright-contract` succeeded with
+      full evidence) and `33251641238` (post-fix, one of the 4 `workflow_dispatch` verification
+      runs where `dgfy-api-quality`'s envelope died).
+- [x] Every failure classified: `tenant_storefront_modes` db-tier failure → known-and-tracked,
+      already fixed (#1071/Phase 189-190); the matrix's early-stop hiding 4 remaining groups →
+      known-and-tracked, already fixed (#986/Phase 189); `dgfy-api-quality`'s dead envelope on the
+      post-fix run → known-and-tracked, already filed (#1168). `fnb-playwright-contract`: clean in
+      both runs (`{total:1, expected:1, unexpected:0}`). No real-defect or gate-bug bucket needed
+      for this 2-run sample.
+- [x] Findings posted: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
+- [x] No new, previously-untracked defect found in this sample — explicitly stated as such rather
+      than silently implying full coverage; a wider historical sweep could still turn up something
+      new and was not attempted this pass.
+
+### Implementation links
+
+- Issue #1157, Refs #1124, #1063, #986
+- Triage comment: https://github.com/Sieitzz/dgfy-platform/issues/1124#issuecomment-5462998628
+
+### Next eligible phase
+
+Phase 195 (independent, not sequenced after this one).
+
+## Phase 195 - Frontend Lint: Last `no-unescaped-entities` Remainder (#917)
+
+### Initiative and release
+
+Frontend-split lint-governance line of work (#322). #917's own substantive scope already shipped
+(commit `af9e73c9`, PR #513) — this phase is only its explicitly deferred remainder.
+
+### Objective and scope
+
+Two `react/no-unescaped-entities` errors remain, both on the same line of
+`apps/dgfy-ims/Pages/Settings.jsx` (line 2917). That file is unconditionally
+`major`-classification-sensitive per `check-compliance-impact.js`, so touching it requires a
+written compliance impact declaration. Pat's own prior call (recorded on #917) was not to trigger
+that declaration for a purely cosmetic text-escaping fix — so this phase's scope is deliberately
+narrow: fix these two characters only alongside a real, substantive change to that file that
+already needs a declaration for its own reasons, or via a separately-approved, deliberate
+declaration scoped to this cosmetic fix alone. Not a standalone "just fix the lint error" phase.
+
+### Status
+
+`planned` (2026-08-29) — genuinely low priority; no substantive `Settings.jsx` change is currently
+in flight to amortize this into, and a standalone compliance declaration for 2 cosmetic characters
+has not been requested. Held open rather than closed, so it isn't lost.
+
+### Dependencies
+
+None blocking. Independent of every other phase in this batch. Gated on either (a) a future
+substantive `Settings.jsx` change landing, or (b) Pat explicitly approving a standalone
+declaration — this phase does not decide that on its own.
+
+### Acceptance and validation evidence
+
+- [ ] Either bundled into a substantive `Settings.jsx` change's own compliance declaration, or a
+      standalone declaration is written and approved.
+- [ ] `apps/dgfy-ims`'s `npm run lint` exits 0 with zero remaining errors (currently 0 errors is
+      already true post-#917 fix except this pair — confirm no regression).
+
+### Implementation links
+
+- Issue #917, Refs #322
+- `apps/dgfy-ims/Pages/Settings.jsx:2917`
+
+### Next eligible phase
+
+Phase 196 (independent, not sequenced after this one).
+
+## Phase 196 - Gate-to-CI Parity Mapping (#1147)
+
+### Initiative and release
+
+Quality-gate trust epic (#1124) — the umbrella decision of which of `gate:release:local`'s 19
+gates move into promotion-triggered CI vs. stay local-only, downstream of (not a substitute for)
+#1124's own root-cause work.
+
+### Objective and scope
+
+Enumerate all 19 `gate:release:local` gates and map each to an existing CI job, a CI job to be
+added, or a documented reason it stays local-only (SOPS-decrypted secrets, the promoter's own
+git-branch state). Decide, gate by gate, whether CI replaces local or the two stay complementary —
+not as one blanket policy. Update `.agents/skills/promoter/SKILL.md`'s pre-`main` gate section once
+a gate's CI job is live and trusted. Must not become an unconditional-on-every-PR job — promotion-
+triggered only, per #1018's and #416's existing constraint. Must also resolve runner-capacity
+overlap: heavy jobs are pinned to `sieitz-lg`, which is the same box serving DEV+STAGING.
+
+### Status
+
+`blocked` (2026-08-29) — #1147's own body names #1015 (splitting the backend test suite into fast/
+DB tiers) as a **hard technical prerequisite**: wiring a DB-backed job into CI before the suite is
+fast reproduces #345's ~14min-per-run problem in a new place. #1015 is confirmed still `OPEN` as of
+this phase's filing. This phase cannot start in earnest until #1015 lands.
+
+### Dependencies
+
+**Blocking:** #1015 (must land first). #1018 (the fast-tier CI subset, this phase's own first
+concrete milestone once unblocked). Independent of Phases 190-195 otherwise.
+
+### Acceptance and validation evidence
+
+- [ ] #1015 confirmed landed before this phase's own gate-by-gate mapping work begins.
+- [ ] All 19 gates enumerated and mapped (CI-existing / CI-to-add / documented local-only reason).
+- [ ] #1018 landed as the first concrete milestone.
+- [ ] Remaining gates decided individually (CI-replaces-local vs. complementary), each with a
+      stated reason.
+- [ ] `promoter`'s SKILL.md pre-`main` gate section updated per gate as each moves to CI.
+- [ ] Runner-capacity conflict with DEV/STAGING on `sieitz-lg` resolved or explicitly accepted.
+
+### Implementation links
+
+- Issue #1147, Refs #1124, #1018, #1015, #1016, #1008, #927, #345
+
+### Next eligible phase
+
+The next repository phase is allocated from the authoritative ledger after Phase 196 completes.
+The epic (#1124) remains open until all of Phases 190-196 (and any phase #1147 spawns) complete.
+
+## Phase 197 - Affiliate Cashout Enrollment-Status Gate (#451)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). First of three successive phases (197-199) built via an
+orchestrated agent chain (Claude Opus plan -> Claude Sonnet implement -> Codex GPT-5.6-Luna
+review/merge) following #447's 2026-08-30 policy decisions (D1-D6). Phases 198-199 are queued
+behind this one; the initiative deliberately stops after 199 at a decision gate, since everything
+else in the affiliate backlog needs a product-policy call only Pat can make.
+
+### Objective and scope
+
+Issue #451 named only the cashout *request* seam as unprotected by `enrollment.status`. Verified
+during planning that all five cashout use cases had the same gap; scope was widened to gate the
+three money-moving seams (request, approve, mark-paid) while deliberately leaving cancel/reject
+ungated, since both release or deny a request rather than move money.
+
+### Status
+
+`completed` (2026-08-30). PR #1184 merged into `develop` as commit `445106140cabde1b5fc99b70f422ded162f369f0`.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-196. Phase 198 depends on this phase having merged.
+
+### Acceptance and validation evidence
+
+- [x] `buildRequestAffiliateCashoutUseCase`, `buildApproveAffiliateCashoutUseCase`, and
+      `buildMarkAffiliateCashoutPaidUseCase` all reject with `CONFLICT`/409 when
+      `enrollment.status !== 'active'` — `dgfyAffiliateUseCases.js`.
+- [x] `approveCashout` and `markCashoutPaid` (`dgfyAffiliateRepository.js`) load the enrollment via
+      the same association `listCashoutsForTenant` already used (`required: true`) and return a
+      distinct `enrollment_inactive` reason ahead of the existing `invalid_status` check.
+- [x] `approveCashout` is now wrapped in a transaction + row lock, aligning it with its four
+      sibling cashout methods (previously the only one without one).
+- [x] `cancelCashout`/`rejectCashout` deliberately left ungated; rationale stated in the PR body.
+- [x] New test file `apps/dgfy-api/tests/dgfyAffiliateCashoutUseCases.unit.test.js` (14 tests, no
+      DB, fake-repository injection pattern) — all pass.
+- [x] Compliance/architecture/ADR guardrails passed automatically (this module and
+      `apps/dgfy-migration-runner/migrations/` are outside `check-compliance-impact.js`'s
+      sensitive-path list, so no declaration was required).
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker; verdict APPROVE; merged only after GitHub
+      checks reached green and `mergeStateStatus: CLEAN`, per `AGENTS.md`'s Merge Safety rule.
+- [x] Linked `Refs #451` (not `Closes`) — the issue needs deployed verification, so `pr-reviewer`
+      moved it to `For QA` on merge rather than closing it; confirmed open post-merge.
+- **Correction, flagged by an independent peer-session verification pass:** the PR body's stated
+  reason for choosing `required: true` on the include ("MySQL's FOR UPDATE + outer-join
+  restriction") has the restriction backwards — that limitation is Postgres's; MySQL 8 permits
+  `LEFT JOIN ... FOR UPDATE`. The decision itself is still correct on its own merits: `enrollment_id`
+  is `allowNull: false` on `DgfyAffiliateCashout`, so an orphan cashout can never arise and
+  `required: true` is safe. Noted here so the inverted rationale isn't cited forward into a future
+  ADR or phase entry.
+
+### Implementation links
+
+- Issue #451, Refs #446
+- PR #1184: https://github.com/Sieitzz/dgfy-platform/pull/1184
+- Review: `## Review` comment on PR #1184 (Codex GPT-5.6-Luna, pr-reviewer)
+
+### Next eligible phase
+
+Phase 198 (#1177, `max_affiliate_slots` enforcement) — same initiative, next in the successive
+chain.
+
+## Phase 198 - Affiliate Allocation Slot Cap Enforcement (#1177)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Second of three successive phases (197-199), implementing
+#447's 2026-08-30 policy decisions D1-D6: "1 affiliate per store" is code-enforced, per-tenant
+configurable, default 1.
+
+### Objective and scope
+
+Add `tenant_affiliate_settings.max_affiliate_slots` (default 1) and enforce it at every
+enrollment-creation seam, including the one a use-case-only check would miss: account
+registration (`dgfyAuthUseCases.js` -> `mirrorPendingAffiliateInvitesForAccount` ->
+`materializeInviteEnrollment`), which reaches the repository directly. Read-only on every
+tenant-facing surface per #447 D5 — no self-serve purchase path; raising the cap is an internal
+admin action in v1.
+
+### Status
+
+`completed` (2026-08-30). PR #1187 merged into `develop` as commit
+`0e6b48a6ec9cdfd13505b72a79945d5e03ab81d6`, after three review rounds (below).
+
+### Dependencies
+
+Depends on Phase 197 (#451) having merged first — confirmed before branching. Independent of
+Phases 190-196.
+
+### Acceptance and validation evidence
+
+- [x] `max_affiliate_slots` column added (landlord migration, `tenant_affiliate_settings`),
+      default `1`; `DEFAULT_SETTINGS` in the repository carries the same default so a tenant with
+      no settings row still enforces.
+- [x] Enforced in the **repository layer** — `createEnrollment`, `createInvite`,
+      `materializeInviteEnrollment` — not only in use cases, specifically because the
+      registration-mirror path bypasses use cases entirely. Verified with a dedicated test proving
+      that path is blocked at cap.
+- [x] Consumed slots = active enrollments + pending, non-expired invites (#447 D3); revoking an
+      enrollment frees a slot (D4); an expired/cancelled invite does not consume one.
+- [x] No write path added for `max_affiliate_slots` on any tenant-facing surface (#447 D5, #488)
+      — confirmed the settings-update use case's whitelist excludes it.
+- [x] ADR 0036 amended (dated `## Amendments` block, additive, no existing clause negated) rather
+      than superseded, per ADR 0039.
+- [x] Three review rounds, each substantive:
+      - **Round 1 (BLOCK)** — RF-1 (blocker): the settings-row lock only applied to an *existing*
+        row, so a tenant with none yet had nothing to lock and two concurrent writes could both
+        undercount. Fixed by replacing `findByPk` with a locked `findOrCreate`. RF-2 (related):
+        the explicit invite-accept path called the enforcement function with no transaction at
+        all, so no lock could ever engage there; fixed by opening one internally when the caller
+        supplies none. RF-3: added an explicit landlord-only / no-tenant-schema-sync-dependency
+        statement to the PR body.
+      - **Round 2 (BLOCK)** — RF-6 (blocker): under MySQL/InnoDB's default REPEATABLE READ
+        isolation, a transaction's non-locking reads all use the snapshot established at that
+        transaction's *first* read, regardless of any locking read that happens later. A plain
+        `findOne` (the existing-enrollment check) ran before the settings-row lock in
+        `materializeInviteEnrollment`, so the lock's serialization didn't actually protect the
+        subsequent count query. Fixed by splitting lock-acquisition from count-and-throw and
+        acquiring the lock as that function's first statement, strictly before any plain read.
+        `createEnrollment`/`createInvite` were independently confirmed to already have correct
+        ordering (their check was already their first transactional statement) and were
+        unaffected by the refactor.
+      - **Round 3 (APPROVE)** — merged.
+- [x] Two findings deliberately **not** acted on, correctly scoped by the reviewing round itself:
+      RF-4 (checks were mid-run at review time — resolved on its own once CI finished) and RF-5
+      (the production active-enrollment count/distribution) — see the open item below.
+- [x] `20/20` on the slot-enforcement suite
+      (`dgfyAffiliateRepository.slotEnforcement.unit.test.js`) plus `52/52` combined across the two
+      sibling affiliate suites — `72/72` total, no regressions, by the final round.
+
+### Known residual gaps, accepted rather than solved (state explicitly, not silently)
+
+- **TOCTOU window for a tenant that already had a settings row before this PR** was accepted for
+  v1 in the implementation plan (a per-tenant mutex was judged disproportionate for this phase);
+  the round-1/round-2 fixes above close the gap for the common no-settings-row case and for
+  read-ordering within a single call, but a full formal proof of serializability was not attempted.
+- **`updateEnrollment` status transitions are not slot-checked.** A `suspended -> active` flip
+  could in principle exceed the cap. Enforcement is creation-only by design (#1177); this is a
+  known, accepted gap, not an oversight — file separately via `pm` if it should be closed.
+- **No landlord-admin write endpoint exists for `max_affiliate_slots`.** Raising it is a manual
+  SQL upsert against the production landlord DB in v1 (matches #447 D5 exactly). Flagged as
+  follow-up work, not blocking this phase.
+
+### Open item — required before promotion, not before this PR's merge
+
+Issue #1177 requires the per-tenant active-enrollment count/distribution in **production** to be
+recorded on that issue before this reaches `main`, so no existing over-cap tenant is silently
+degraded. This is explicitly a promotion-time gate per the approved plan's own Step 10 — it needs
+production DB access none of this phase's agents have, and Luna's review correctly left it as an
+open should-fix (RF-5) rather than a merge blocker. **Not yet done** — flag to `promoter` before
+this initiative's work is promoted past `develop`.
+
+### Implementation links
+
+- Issue #1177, Refs #446
+- PR #1187: https://github.com/Sieitzz/dgfy-platform/pull/1187
+- Reviews: three `## Review` comments on PR #1187 (Codex GPT-5.6-Luna, pr-reviewer)
+
+### Next eligible phase
+
+Phase 199 (#450 slice — revocation audit trail columns only) — same initiative, next in the
+successive chain.
+
+## Phase 199 - Affiliate Revocation Audit Trail, mechanical slice (#450)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Third and final phase in the successive chain that began with
+#447's 2026-08-30 policy decisions (Phase 197 → #451, Phase 198 → #1177, both merged).
+
+### Objective and scope
+
+Issue #450 mixes five open policy questions (fate of `pending`/`earned` commission balances on
+revocation, in-flight attributions, whether re-invite stays allowed, whether revocation is
+reversible) with one purely mechanical gap: no audit trail exists at all for who revoked/suspended
+an affiliate, when, or why. This phase takes **only** the mechanical half, so it ships without any
+product-policy decision. The four open policy questions remain open on #450 after this phase.
+
+### Status
+
+`completed` (2026-08-30). PR #1193 merged into `develop` as commit
+`05976f84a598a8f10700c9dfd571eeb262beccc3`.
+
+### Dependencies
+
+Depended on Phases 197 and 198 having merged first — confirmed before branching. This is the last
+phase in the chain; see "Next eligible phase" below for what comes after it.
+
+### Acceptance and validation evidence
+
+- [x] `revoked_at` (DATE), `revoked_by` (INTEGER, value-link only — no FK, matching the existing
+      `invited_by`/`approved_by_user_id` convention since the referenced `users` table lives in
+      the tenant DB, not the landlord DB), and `revocation_reason` (STRING(500), matching
+      `dgfy_affiliate_cashouts.rejection_reason`'s width) added to `dgfy_affiliate_enrollments`
+      via a landlord-only, idempotent migration.
+- [x] Sequelize model updated to declare the three new attributes — verified explicitly, since an
+      omitted model edit would have let the migration land while every write silently no-op'd
+      (Sequelize drops undeclared attribute keys from `row.update()`).
+- [x] Stamping fires only on an actual status **change** into `revoked` or `suspended` — an
+      idempotent re-PATCH of the same status does not re-stamp, preserving the original
+      `revoked_at`; a `suspended → revoked` transition correctly re-stamps as a distinct later act.
+- [x] Reactivation (`suspended`/`revoked` → `active`) does **not** clear the historical stamp —
+      it's an audit trail of the most recent revocation, not a live-status mirror. This is stated
+      explicitly as carrying no policy content: it neither makes revocation reversible nor
+      irreversible; the existing code already permitted reactivation and this phase doesn't touch
+      that.
+- [x] `revocation_reason` is rejected with 422 (not silently dropped) when no stamp actually
+      fires — sent with `status: 'active'`, no status at all, or an idempotent re-PATCH.
+- [x] `updateEnrollment` in the repository needed **no change** — stamping logic lives in the use
+      case, where the acting-user id is in scope; stated explicitly in the PR body so the omission
+      doesn't read as an oversight.
+- [x] 11 new test cases (fake-repository injection, no DB) plus 32 neighbouring regression tests,
+      43/43 passing.
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker — APPROVE, no findings. One process note:
+      the first review pass correctly did all the verification work but mistakenly treated itself
+      as `pr-reviewer`'s "first live use" (report-only per that calibration gate) and withheld
+      both the comment and the merge, despite this exact role/model pair having already
+      reviewed-and-merged PR #1184, #1187, and #1189 earlier in this same session. Corrected by
+      re-dispatching to the same worker with the actual precedent cited; it then posted the
+      `## Review` comment and merged normally. Recorded here as a coordination-prompt gap (this
+      dispatch's task spec omitted the precedent line every earlier review dispatch in this chain
+      had included), not a defect in the reviewed code.
+- [x] Linked `Refs #450` (not `Closes`) — four of #450's five checkboxes remain open.
+
+### Known gap found and filed separately, not fixed here
+
+Planning surfaced a **Phase 198 enforcement gap**, not created by this phase: `PATCH
+/affiliates/:enrollment_id` with `status: 'active'` reactivates a `suspended`/`revoked` enrollment
+through `updateEnrollment`, which has no slot-cap check at all — unlike `createEnrollment`, which
+calls `assertAffiliateSlotAvailable`. A merchant already at `max_affiliate_slots` can
+revoke-then-reactivate to exceed the cap without ever hitting Phase 198's enforcement. This was
+already named as a known, accepted gap in Phase 198's own ledger entry ("file separately via `pm`
+if it should be closed") — filed as **#1191**, parented under #446, Priority High. Not fixed in
+this phase; fixing it would need the same lock-before-any-plain-read discipline Phase 198's review
+established (RF-1/RF-6) applied to the reactivation path, which is a materially different change
+from an audit-trail stamp.
+
+### Open items outstanding, not specific to this phase
+
+- **Board `Status` writes failed** on both this PR's open (`For Review`) and merge (`For QA`)
+  transitions — GitHub's GraphQL API was rate-limited session-wide at the time (confirmed via
+  independent REST calls; the merge itself is real and verified: `05976f84a5...`). Best-effort per
+  `pm`'s own board-operations policy — not a reason to hold back the merge, but issue #450's board
+  card needs a manual `Status` → `For QA` write once the rate limit clears.
+- **Issue #1177's production active-enrollment count** (Phase 198's own promotion-time gate,
+  RF-5) is still outstanding — unrelated to this phase, restated here only so it isn't lost.
+
+### Implementation links
+
+- Issue #450, Refs #446
+- PR #1193: https://github.com/Sieitzz/dgfy-platform/pull/1193
+- Review: `## Review — APPROVE` comment on PR #1193 (Codex GPT-5.6-Luna, pr-reviewer)
+- Follow-up issue: #1191 (reactivation slot-cap bypass)
+
+### Next eligible phase
+
+**None allocated in the 197-199 chain itself.** Everything remaining in the affiliate backlog
+needs a product-policy decision only Pat can make before another phase in that chain is planned:
+
+- #450's own four open policy questions (commission-balance fate, in-flight attributions,
+  re-invite policy, revocation reversibility)
+- #872 — funding source (business-funded vs. DGFY-sponsored vs. reimbursement), three options,
+  none chosen
+- #567 — withholding tax on payouts, largely hangs off #872's answer
+- #449 / #448 — earnings caps and per-category commission rates
+- #452 — share-link path change
+- #1191 — the reactivation slot-cap bypass found during this phase (mechanical, could be scheduled
+  without a policy decision, but was deliberately left for a human scheduling call rather than
+  silently appended to this chain)
+
+Per #446's own sequencing comment (2026-08-30), this order was stated in advance and is unchanged
+by anything found during execution. Separately, Phase 202 below (#1085, Surebiz Wave 1) is
+unrelated to this chain and was allocated its own number directly by #1183.
+
+## Phase 200 - Storefront Map Overlays: Claim Pinch Gestures (#475)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark at filing was 196; #1183 assigns this work
+number 200 directly (Wave 1 table). Serves #558's "select location" checkout step.
+
+### Objective and scope
+
+MapLibre GL JS v5 sets `touch-action: none` only on its own canvas container
+(`.maplibregl-map`). Every storefront map overlay is an absolutely-positioned **sibling** of that
+container with no `touch-action` of its own — `DeliveryPinMap`'s controls wrapper/pin chip/disabled
+scrim, `StoresMap`'s route chip, and `DiscoveryHeroMapStage`'s gradient scrim/stats-CTA bar/mobile
+control stack. A pinch starting on one of those chips falls through to the browser and zooms the
+*page* instead of the *map*, reported during the Aug-14 UI/UX review. Fix is scoped to claiming
+those pinch gestures via CSS, not to any behavioral/JSX change. Issue #475 pre-dates the apps-layout
+migration and cites stale `apps/dgfy-web/apps/store/src/...` paths; this phase targets the real
+paths under `apps/dgfy-storefront/`.
+
+### Status
+
+`completed` (2026-08-30). PR #1188 merged into `develop` as commit
+`e6680a5e69e3936b318fcd5e7205e2473c0c026f`.
+
+### Dependencies
+
+None. Parallel-safe with Phases 201/203 (disjoint files within `apps/dgfy-storefront`) per #1183's
+Wave 1 table.
+
+### Acceptance and validation evidence
+
+- [x] One CSS rule added to `apps/dgfy-storefront/src/index.css` (after the existing
+      `.maplibregl-popup { z-index: 80; }` block) claiming pinch gestures for `.maplibregl-map`
+      siblings, at two selector depths: direct siblings (`DeliveryPinMap`, `StoresMap`) and one
+      level up via a bounded `:has(> .maplibregl-map) ~ *` (`DiscoveryHeroMapStage`, whose overlays
+      are siblings of a wrapper around the MapLibre root, not of the root itself). Deliberately
+      bounded with `>` so it can never reach `body` and disable page scroll site-wide.
+- [x] `cooperativeGestures: true` considered and rejected — it relaxes the canvas to
+      `touch-action: pan-x pan-y`, handing *more* gestures to the browser, the opposite of what's
+      needed.
+- [x] No JSX behavior changed; `DeliveryPinMap.jsx`, `StoresMap.jsx`, and
+      `DiscoveryHeroMapStage.jsx` were touched only to support the CSS selector structure and the
+      added test coverage below, not to change rendering behavior.
+- [x] New Playwright suite `apps/dgfy-storefront/tests/e2e/map-pinch-gesture-touch-bridge.spec.js`
+      (own config `playwright.pinch-gesture.config.js`, `npm run test:e2e:pinch-gesture`) —
+      self-contained: serves `maplibre-gl` straight out of `node_modules` with a minimal style with
+      no external sources, needing neither the storefront dev server nor `dgfy-api`, and drives a
+      real two-finger CDP touch dispatch against the CSS rule.
+      `src/__tests__/discoveryFlow.integration.test.jsx` extended with a real DOM node under test
+      for the same coverage at the integration-test layer.
+- [x] Tier 0 (required): `npm run build:store` — exit 0, Vite built cleanly with no CSS parse error
+      (2428 modules transformed).
+- [x] `npm run check:compliance` — passed, no compliance-sensitive changes detected (CSS-only, no
+      API surface). `npm run check:architecture` — passed.
+- [x] Linked `Refs #475` (not `Closes`) — a touch-gesture fix cannot be proven by a build; per
+      `docs/process/ISSUE-TAXONOMY.md`'s linkage rule it needs deployed, real-device verification,
+      routed to `For QA` on merge rather than auto-closed.
+
+### Known residual gaps, accepted rather than solved
+
+- **Not proven fixed by this phase's automated evidence alone.** A green build and a CDP-simulated
+  touch dispatch do not prove the pinch gesture behaves correctly on a real device. Manual QA steps
+  (pinch starting on each named chip, across the discovery hero map and the simple/FnB/services/
+  retail fulfillment maps) are recorded on PR #1188 for whoever verifies this in `For QA`.
+
+### Implementation links
+
+- Issue #475, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- PR #1188: https://github.com/Sieitzz/dgfy-platform/pull/1188
+
+### Next eligible phase
+
+Phase 201 (#852, same wave, disjoint file) — already planned alongside this phase in #1183's Wave 1
+table.
+
+## Phase 201 - Storefront QRPh Payment Poll: Stop on Navigate-Away (#852)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark at filing was 196; #1183 assigns this work
+number 201 directly (Wave 1 table). Serves the downpayment online-payment path on #558's checklist.
+
+### Objective and scope
+
+The storefront is one hoisted component — "pages" are conditionally-rendered views
+(`routeSubpage`/`checkoutTab`), not routes that mount/unmount — so the QRPh payment-session poll
+effect in `apps/dgfy-storefront/src/StorefrontApp.jsx` never unmounts on catalog ⇄ checkout ⇄ track
+navigation, and none of its three original dependencies (`payment_session_id`, `status`,
+`selectedStore.slug`) change on that navigation either. A customer who opens a QRPh payment and
+browses away without paying (and without reloading) left an unbounded 4s-interval poll hitting
+`GET /api/v1/store/checkout/payment-sessions/:id` for the life of the tab. #851 (already fixed,
+commit `388f34626`) addressed the poll's *rate*; this phase addresses its *lifetime* — a distinct
+defect in the same effect, per #852's own body.
+
+### Status
+
+`completed` (2026-08-30). PR #1192 merged into `develop` as commit
+`20715bf6a7b5ca9d458d8d211b7bd928242be9f7`.
+
+### Dependencies
+
+None on Phase 200/203 (disjoint files within `apps/dgfy-storefront`) per #1183's Wave 1 table.
+Builds on #851's already-merged fix to the same effect (same file, different defect).
+
+### Acceptance and validation evidence
+
+- [x] Effect's early-return guard extended with
+      `if (!isOrderSubpage || checkoutTab !== 'checkout') return undefined;` — reusing the exact
+      expression the #889 out-of-hours checkout guard already uses for "the customer is actually
+      looking at checkout" (`StorefrontApp.jsx:3038-3047`), rather than inventing a second
+      expression that can drift.
+- [x] `checkoutTab` and `isOrderSubpage` added to the effect's dependency array, so React re-runs
+      the effect (firing the existing cleanup: `scheduler.stop()` + `removeEventListener`) on
+      navigation, and the re-run hits the new early return.
+- [x] Navigating back into checkout re-arms the poll on the **same** `payment_session_id` — no new
+      PayMongo session is minted, the same QR remains valid.
+- [x] Judgment call, flagged and accepted: the guard admits both `awaiting_payment` and `paid`
+      status, so this gate also stops polling in the `paid` window if the customer wanders off —
+      no automatic `goStoreTrackPage()` hop / "Payment confirmed" toast at the moment finalization
+      lands while off-screen. Deliberate: finalization is server-side/webhook-driven, the order is
+      placed regardless of whether the browser is watching, the tracking pin is already persisted,
+      and the track view runs its own independent polling. Reintroducing polling in the `paid`
+      window off-screen would reintroduce the exact unbounded background poll this phase removes.
+- [x] Considered and rejected: calling `resetQrphPaymentSession()` on navigate-away (the issue's
+      other suggested option) — it destroys a live/paid session and forces a new PayMongo session +
+      QR on return, and the function is shared across three checkout surfaces; gating is the
+      narrower, non-destructive change.
+- [x] Two hunks, one file (`StorefrontApp.jsx`), no other files touched.
+- [x] Tier 0 (required): `npm run build:store` — PASS, Vite build succeeded, 2428 modules
+      transformed, no errors.
+- [x] Tier 2 (opt-in, run — cheap and targeted, no DB required):
+      `npx vitest run src/__tests__/simpleCheckoutOnlinePayments.contract.test.js
+      src/__tests__/customerTrackingRefresh.test.js` — 26/26 passing.
+- [x] Linked `Closes #852`.
+
+### Known residual gaps, accepted rather than solved
+
+- **Manual reproduction not run in this phase** — no local storefront + `COMMERCE_QRPH_ENABLED`
+  environment available in-session. Recommended acceptance check before/at deploy, once per
+  storefront mode (Simple, Retail, F&B): open a QRPh payment, navigate away without paying and
+  without reloading (poll requests to `payment-sessions` should stop entirely), then navigate back
+  into checkout (same QR shown, polling resumes on the same `payment_session_id`).
+
+### Implementation links
+
+- Issue #852 (Closes)
+- PR #1192: https://github.com/Sieitzz/dgfy-platform/pull/1192
+
+### Next eligible phase
+
+Phase 202 (#1085, same wave) — already planned alongside this phase in #1183's Wave 1 table.
+
+## Phase 203 - Per-Store Cash/COD Payment Toggle (#626)
+
+### Initiative and release
+
+Surebiz Wave 1 (#1183), Phase 203. Ledger high-water at planning was 198; Phases 199-202 are
+sibling worktrees in the same wave.
+
+### Objective and scope
+
+#626's body describes three things — only one is in scope here. Gap 1 (cash is hardcoded
+always-available, no per-store way to disable it) is the whole of this phase. Gap 2 (Retail
+checkout hardcoded placeholder payment options) was **already closed** by Phase 142 (#823) before
+this phase started — no work needed, #626's "current state" section was stale on that point.
+Card-only for Surebiz (card as a live rail) is **out of scope**, gated on #477 (PayMongo card is
+still blocked/deferred for storefront; QRPh is the only constructible online method today).
+
+### Status
+
+`completed` (2026-08-30), Tier 0 passing. PR: see Implementation links below (opened, not yet
+merged at ledger-write time).
+
+### Dependencies
+
+**#477 for the card-only half of #626 — not satisfied, out of scope for this phase.** A Surebiz
+store that turns cash off today is left with QRPh as its only online rail until #477 lands.
+
+### Acceptance and validation evidence
+
+- [x] New setting `storefront_cash_payment_enabled` (boolean, fail-open default `true`),
+      following #622's `storefront_guest_checkout_enabled` precedent exactly: registered in
+      `CUSTOMER_ACCESS_SETTING_KEYS`, normalized via `normalizeCashPaymentEnabled`, resolved into
+      `access_policy.cash_payment_enabled` in `resolveAccessPolicyFromSettings`
+      (`apps/dgfy-api/src/modules/shared/utils/customerAccessPolicy.js`).
+- [x] Advertise: a `cash` key merged into `payment_capabilities` at the `listStoreCatalog` call
+      site (`storeUseCases.js`), after the existing `Promise.all` resolves — deliberately not
+      inside `resolveStorefrontPaymentCapabilities`, which has six early PayMongo-readiness
+      `disabled(...)` returns that must never gate cash.
+- [x] Enforce (fail closed): a new check immediately before the existing
+      `assertGuestCheckoutAllowed` call in the order-placing path rejects
+      `payment_type: 'cash'` with 422 `STORE_CASH_DISABLED` when the store has disabled cash —
+      closes the gap where hiding the UI option alone was not enforcement.
+      `apps/dgfy-storefront/src/shared/model/storefrontCheckoutPaymentOptions.js`'s
+      `isEnabledStorefrontCheckoutPaymentType` cash arm changed from unconditional to
+      `paymentCapabilities?.cash?.enabled !== false` (fail-open, no call-site changes needed).
+- [x] Validator (`settingsValidator.js`, both bulk and single-key blocks) and provisioning
+      (`tenantProvisioningService.js`, seeded `true` for **every** vertical — no vertical-specific
+      default, unlike #622, since the card-only motivation is Surebiz-specific and gated on #477)
+      updated.
+- [x] Operator toggle ("Accept Cash on Delivery/Pickup") added to
+      `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`, mirroring
+      the existing "Allow Guest Checkout" toggle idiom exactly.
+- [x] Compliance impact declaration written and `npm run check:compliance` passing:
+      `docs/compliance/impact-declarations/2026-08-30-storefront-per-store-cash-payment-toggle.md`.
+- [x] `npm run check:architecture` passing (guardrails + controller boundaries).
+- [x] Tier 0: `node --check` on all four changed `apps/dgfy-api` files; `npm run build:store`,
+      `npm run build:pos`, `npm run build:skupervisor` all green (`packages/web-core` is touched
+      and is the shared trunk for all three frontend apps).
+- [x] Tier 1/2 (opportunistic, run this phase): `apps/dgfy-api/tests/customerAccessPolicy.test.js`
+      17/17 (4 new cases), `apps/dgfy-storefront/src/__tests__/retailCheckoutOnlinePayments.contract.test.js`
+      9/9 (2 new cases), 8 related `storeUseCases`/settings-validator test files 119/119 (one
+      pre-existing strict-equality assertion in `storeUsecases.applicationResult.test.js` updated
+      to include the now-always-present `cash` key in `payment_capabilities` — not a regression,
+      an intentional shape change), `posSettingsStrictBinding.contract.test.js` +
+      `customerAccessModeCards.contract.test.js` (web-core, run from `apps/dgfy-ims`) 4/4.
+
+### Known residual gaps, accepted rather than solved (state explicitly, not silently)
+
+- **Half a feature by design.** Turning cash off today leaves QRPh as the only rail (card is
+  #477's). No tenant's toggle is flipped by this phase — this only ships the mechanism.
+- **`hideCash` and `cash.enabled` now both suppress cash**, for different reasons (presentation vs.
+  operator decision) — they compose (either hides it), documented in the model file's own comment.
+- **Draft-restore validation** calls `isEnabledStorefrontCheckoutPaymentType` directly; a customer
+  with a saved cash draft at a store that later disabled cash will now correctly have that draft's
+  payment type rejected. Intended, not separately covered by an automated test this phase.
+
+### Implementation links
+
+- Issue #626 (Refs, not Closes — #626's card-only half stays open, gated on #477), Refs #1183
+- PR #1194: `feature/626-per-store-cash-payment-toggle` -> `develop`
+
+### Next eligible phase
+
+Phase 204 — next available slot in this wave; not otherwise claimed by this plan.
+
+**Superseded, in part, later on 2026-08-30**: the four open policy questions above were resolved by
+Pat the same day, via a Q&A recorded on #450, #872, #567, #449, and #448 (see Phase 206 below for
+the concrete phase this unblocked). #449 was confirmed independent of #488 and stays open for later
+scoping; #448 stays open for later scoping; #452 remains untouched. #1191 was picked up as Phase 207.
+
+## Phase 202 - Settle Balance: Cheque Tender + Cheque-Number Capture (#1085)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark in this worktree was Phase 198; #1183 assigns
+this work number 202 directly (phases 199-201 are allocated to sibling worktrees and are expected
+to land separately). Adds `cheque` as a sixth tender method for POS Settle Balance
+(`POST /pos/orders/:id/record-payment`, Phase 148 / #825) and, in scope for this same phase, for
+split-tender allocation.
+
+### Objective and scope
+
+Cheque did not exist anywhere in the codebase as a payment method before this phase (confirmed by
+grep: zero occurrences of `cheque`/`check_no`/`cheque_number` under `apps/`, `packages/`, `docs/`).
+A cashier taking a cheque had to mis-record it as `bank_transfer` and stuff the cheque number into
+the free-text `payment_reference` field — a false tender classification in the ledger, invisible to
+per-method reconciliation (`pos_merchant_tender_reconciliations`). This phase widens three ENUM
+columns (`pos_order_payments.payment_method`, `pos_transactions.payment_type`,
+`pos_payment_allocations.payment_method`), the two dependent validator method sets
+(`SPLIT_PAYMENT_METHODS`, the record-payment `Joi.valid(...)` list), `BALANCE_SETTLEMENT_METHODS`,
+and the Settle Balance dialog's picker and copy. No new database column: the cheque number is
+carried in the existing optional `payment_reference` field, matching every other tender's pattern
+exactly.
+
+**Governance deliverable, ahead of the code.** ADR 0063 clause 4 `[binding]` enumerated the V1
+five-tender set closed; adding `cheque` directly contradicted it. Per ADR 0039's strictness tiers, a
+`[binding]` clause change takes a new superseding ADR plus tech-lead approval — a dated `##
+Amendments` block (ADR 0063's own prior 2026-08-13 change) is sanctioned only for
+`[default]`/untagged clauses. Three routes were put to Pat (full superseding ADR; a
+**scoped-supersession ADR** narrow to clause 4 only, precedent ADR 0064's scoped supersession of
+ADR 0057 clause 3; or an in-place amendment, not defensible given the `[binding]` tag). **Pat
+approved the scoped-supersession route (B2) via the coordinator on 2026-08-30.** ADR 0077 is that
+approved route — it supersedes ADR 0063 clause 4 only, replacing the five-tender enumeration with a
+six-tender set; every other clause of ADR 0063 is unaffected.
+
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/1085-pos-cheque-tender-method`, cut off fresh `origin/develop`. PR opened, `Refs #1085`
+(deployed verification still needed — never `Closes`).
+
+### Dependencies
+
+None on Phases 199-201 (sibling worktrees, different scope). Depends on Phase 148 (#825, Settle
+Balance itself) and ADR 0063 (POS Split Tender and Manual Walk-in Payment Recording), both already
+merged.
+
+### Acceptance and validation evidence
+
+- [x] ADR 0077 authored (scoped supersession of ADR 0063 clause 4 only), `docs/architecture/adr/`
+      INDEX regenerated via `npm run check:adr -- --write-index`. **`npm run check:adr` passes**
+      with both ADRs live — the actual proof the scoped-supersession route satisfies the
+      `[binding]`-clause gate, not just a claim that it does. Cross-reference added to ADR 0063's
+      own `## References` section.
+- [x] Three ENUM columns widened in one migration
+      (`apps/dgfy-migration-runner/migrations/20260830000003-add-cheque-payment-method.cjs`),
+      fanned out across every active tenant database (`tenants WHERE status = 'active'`), guarded
+      by `tableExists` per table per tenant — copies
+      `20260817000001-expand-storefront-paymongo-payment-methods.cjs`'s structure (the
+      grab_pay/shopeepay precedent) verbatim. `down()` refuses per tenant per table once any
+      `cheque` row exists — loud failure over silent financial-data mutation, same posture as the
+      precedent.
+- [x] Migration reviewed by Pat at Checkpoint A (implement/SKILL.md's migration checkpoint) before
+      being staged — full `up()`/`down()` body shown via the coordinator, reply received before
+      `git add`.
+- [x] Three model ENUM definitions widened to match (`PosOrderPayment.js`, `PosTransaction.js`,
+      `PosPaymentAllocation.js`), landed in the same commit as the migration so Sequelize's
+      in-process validation never diverges from what the database accepts.
+- [x] `SPLIT_PAYMENT_METHODS` and the record-payment `Joi.valid(...)` list both widened
+      (`posValidator.js`); `PAYMENT_TYPES` (the checkout method set) deliberately untouched —
+      cheque is not a walk-in-checkout tender in this phase.
+- [x] `BALANCE_SETTLEMENT_METHODS` widened (`posUseCases.js`); zero other lines in
+      `buildRecordOrderBalancePaymentUseCase` changed — the cash/non-cash discrimination, exact-
+      amount guard, fail-closed confirmation, ledger write, audit log, and response payload were
+      already method-agnostic.
+- [x] `BalanceSettlementDialog.jsx`: `Cheque` option added to the picker; the existing optional
+      reference field becomes method-aware (`Cheque number` label, presented-not-cleared copy); the
+      attestation checkbox gets a cheque-specific variant (received a cheque, not an account
+      transfer; not confirmation of clearance).
+- [x] `apps/dgfy-api/scripts/sync-tenant-schemas.js` kept in sync with the migration (matching what
+      the grab_pay/shopeepay precedent did): the `pos_order_payments` and `pos_payment_allocations`
+      `CREATE TABLE` literals in `REQUIRED_TENANT_SCHEMA_TABLES` widened, and
+      `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS` gained/widened the `ALTER ... MODIFY COLUMN`
+      drift-repair entries for all three columns — a tenant that falls out of sync with the
+      migration still repairs to the correct enum, not silently back to the pre-cheque set. This
+      was not in the original phase plan; added because the precedent migration touched the same
+      file for the same reason (confirmed via `git log -p`).
+- [x] Cheque number kept optional, matching every other tender's `payment_reference` pattern
+      exactly — no `canSubmit` change, no new server guard. Cheque falls on the existing non-cash
+      validator branch by construction.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md`), classification
+      `major`, modeled on `2026-08-23-downpayment-balance-settlement.md`. `npm run check:compliance`
+      confirmed to fail first (missing declaration), then pass once added.
+- [x] Tests: `posOrderBalanceSettlement.usecase.test.js` extended (cheque added to the existing
+      merchant-owned `it.each`, plus a dedicated test pinning that the cheque number reaches both
+      the ledger row and the audit log); `posSplitPayment.schema.contract.test.js` extended
+      (`PosPaymentAllocation.payment_method` enum assertion now includes `cheque`);
+      `terminalBalanceSettlement.behavior.test.jsx` extended (cheque in the picker, the
+      cheque-number label, presented-not-cleared copy, fail-closed submit gate, cheque-specific
+      attestation copy).
+- [x] `npm run build:pos` (real Vite build of the POS app consuming the widened dialog) — succeeded.
+- [x] `node --check` on every changed `apps/dgfy-api` file and the new migration file.
+- [x] `npm run check:architecture` — passed.
+
+### Known residual gaps, accepted rather than solved
+
+- **No split-tender picker UI for cheque.** ADR 0077 Decision 5, explicit and accepted for this
+  phase. Cheque is selectable via the split-tender allocation API once the schema and validator
+  widen, but `packages/web-core`'s split-tender picker component was not updated to offer it. Not a
+  blocker; tracked as a UI follow-up, not silently left undiscoverable.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+- **Attestation remains trust, by design** — inherited unchanged from ADR 0063 clause 5. A cashier
+  can record a cheque that never arrived or later bounces; this phase (and the ADR it extends) makes
+  no stronger claim. No reversal path exists for a mis-recorded cheque settlement either, same
+  inherited gap ADR 0063 clause 10 already names for merchant-owned settlements generally.
+
+### Implementation links
+
+- Issue #1085, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- ADR 0077: `docs/architecture/adr/0077-pos-cheque-tender-method-scoped-supersession.md`
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md`
+- PR #1196: https://github.com/Sieitzz/dgfy-platform/pull/1196
+
+### Next eligible phase
+
+Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard collision on
+`BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
+surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
+
+## Phase 204 - Settle Balance: Proof-of-Payment Image Capture and Authed Serving (#965)
+
+### Initiative and release
+
+Surebiz Wave 2 (epic #1183). Extends Phase 148 (#825, balance settlement) and Phase 202 (#1085,
+cheque tender), which flagged this phase as a hard collision on `BalanceSettlementDialog.jsx`,
+`posUseCases.js`, and the `pos_order_payments` migration surface — Phase 202's ENUM migration
+landed first and cleanly, as required, before this phase began. A prior planning pass
+(`PHASE_204_PLAN.md`) re-verified every #965 file/line reference against the live `origin/develop`
+tree post-Phase-202 and corrected several stale claims inline before implementation started.
+
+### Objective and scope
+
+Lets POS staff attach a proof-of-payment photo (GCash/cheque screenshot, etc.) alongside the
+existing optional reference field on a non-cash Settle Balance, and serves it back only through an
+authenticated, tenant-scoped streaming route — never a public/static `/uploads` path, per Pat's
+resolved decision on #965 (financial-evidence PII; bank/cheque details may be visible, especially
+after Phase 202). Attach-once in this phase: a second attach on an already-proofed payment fails
+closed with `409`. No replace/delete path, no retention/purge job, and no split-tender or
+Collect-Cash proof affordance — all named explicitly as out-of-scope follow-ups, not silently
+dropped.
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/965-balance-payment-proof-image`, cut off fresh `origin/develop`. PR opened, `Refs #965`
+(deployed verification still needed — never `Closes`).
+
+### Dependencies
+
+Phase 148 (#825, Settle Balance itself) and Phase 202 (#1085, cheque tender) — both merged. ADR
+0063 (POS Split Tender and Manual Walk-in Payment Recording), also merged.
+
+### Acceptance and validation evidence
+
+- [x] Migration reviewed by Pat at Checkpoint A (implement/SKILL.md's migration checkpoint) before
+      being staged — full `up()`/`down()` body shown via the coordinator, reply received before
+      `git add`, same discipline Phase 202 used.
+- [x] Six nullable, additive columns added to `pos_order_payments`
+      (`apps/dgfy-migration-runner/migrations/20260831000001-add-pos-order-payment-proof-columns.cjs`):
+      `proof_file_path`, `proof_mime_type`, `proof_file_size_bytes`, `proof_sha256`,
+      `proof_attached_at`, `proof_attached_by` (with a `proof_attached_by` FK to
+      `users(user_id) ON DELETE SET NULL`). Fanned out across every active tenant database, guarded
+      by `information_schema` `tableExists`/`columnExists`/`foreignKeyExists` checks — idempotent
+      on a re-run and a no-op for a tenant missing the table.
+- [x] `apps/dgfy-api/src/models/PosOrderPayment.js` widened with the six attributes in the same
+      commit as the migration.
+- [x] `apps/dgfy-api/scripts/sync-tenant-schemas.js` kept in lockstep, both halves:
+      `REQUIRED_TENANT_SCHEMA_COLUMNS.pos_order_payments` (new key, six `ALTER TABLE` repair
+      entries) and `REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments.sql` (the `CREATE TABLE`
+      string gains the six columns plus the FK/index) — a tenant that misses the migration or is
+      restored from an older snapshot self-repairs at API boot; a brand-new tenant is created
+      correct.
+- [x] New private storage adapter `posPaymentProofStorage.js` — `storage/pos-payment-proofs/`, NOT
+      `uploads/`. Normalizes with `sharp` (EXIF-rotate then discard orientation, no
+      `.withMetadata()`, single capped-dimension WebP variant) rather than reusing
+      `storeOptimizedImageAsset`, which hardcodes public `/uploads/...` URLs.
+- [x] `POST /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `TRANSACT_POS` + paired
+      terminal + active operator (same authority tier as `/record-payment`). New use case
+      `buildAttachOrderBalancePaymentProofUseCase`, deliberately separate from
+      `buildRecordOrderBalancePaymentUseCase` so `hashPayload`'s replay fingerprint stays untouched
+      by construction. Ownership check (`payment_id` must belong to this order and be `kind:
+      'balance'`) and attach-once `409` both enforced inside the transaction.
+- [x] `GET /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `VIEW_POS`, no pairing
+      requirement. Streams (`createReadStream`, bounded memory) with
+      `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`,
+      `Content-Disposition: inline`, and `404` (never `403`) for both the no-proof and cross-order
+      cases — does not leak existence.
+- [x] `BalanceSettlementDialog.jsx`: "Attach proof (optional)" file input beside the existing
+      reference field, non-cash branch only, local preview via `URL.createObjectURL` revoked on
+      clear/unmount. Never added to `canSubmit`.
+- [x] `TerminalPage.jsx`: upload sequenced strictly after `recordOrderBalancePayment` resolves,
+      only if staff chose a file; a proof-upload failure is a warning toast, never a thrown error
+      or rollback. A minimal "View proof" viewer added to the incoming-orders queue card
+      (`has_payment_proof`, batched via a new `getBalancePaymentProofStatuses` repository method
+      mirroring `getReceiptPrintStatuses`'s shape) — fetch-blob-to-object-URL, since the POS app's
+      Bearer-header auth means a plain `<img src>` would 401.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`),
+      classification `major`, modeled on Phase 202's declaration. `npm run check:compliance`
+      confirmed to fail first (missing declaration), then pass once added.
+- [x] ADR 0063 Amendments block added (2026-08-31, clause 7 `[default]` extension; clause 5
+      `[binding]` restated, not amended) — the Amendments-block route confirmed with Pat before
+      landing, per #965's own request, given the new clause 3 touches a `[binding]`-adjacent
+      guarantee. `npm run check:adr --strict` passes with the amendment live.
+- [x] Tests: new `posBalancePaymentProof.usecase.test.js` (happy path; magic-byte rejection with
+      temp-file unlink confirmed; cross-order ownership `404`; attach-once `409`; a rollback case
+      confirming the repository failure removes the orphaned stored file; the authed-read use
+      case's `404`-not-`403` and streaming cases); new
+      `balanceSettlementProof.behavior.test.jsx` (capture affordance renders only on the non-cash
+      branch; audit-aid copy present; choosing/removing a file never gates submit; a passed-in
+      proof error surfaces to the cashier). `posOrderBalanceSettlement.usecase.test.js` left
+      unmodified and still green — proof #965 verify box 1 that `hashPayload`/replay stay
+      untouched.
+- [x] `npm run build:pos` (real Vite build of the POS app rendering the widened dialog) —
+      succeeded.
+- [x] `node --check` on every changed `apps/dgfy-api` `.js`/`.cjs` file (including the new
+      migration) — no real build step exists on that app.
+- [x] `npm run check:architecture` — passed (50 modules / 521 files; 90 controller files, no
+      unauthorized model imports).
+
+### Known residual gaps, accepted rather than solved
+
+- **No retention/purge policy** — images persist for the life of the tenant's volume. Handed to
+  `pm` as a follow-up issue per the plan, not silently omitted.
+- **No replace/delete path for an attached proof** — attach-once by design (ADR 0063 clause 10
+  `[binding]`'s append-only posture); deferred, not solved here.
+- **No split-tender or Collect-Cash proof affordance, and no full evidence-browser UI** — the
+  "View proof" control is scoped to the single smallest place the settled payment is already
+  displayed (the incoming-orders queue card), per the plan.
+- **Local jest run not exercised in this worktree** (`apps/dgfy-api` has no installed
+  `node_modules`) — `node --check` (Tier 0) and `npm run build:pos` were run; the new use-case test
+  file was written and syntax-checked but not executed against a live jest runner here. Flagged
+  explicitly for the reviewer/CI rather than claimed as run.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+- **Attestation remains trust, by design** — inherited unchanged from ADR 0063 clause 5. A photo is
+  evidence the store captured something at the counter; it is not verification that the payment is
+  genuine or will clear.
+
+### Implementation links
+
+- Issue #965, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- ADR 0063 Amendments (2026-08-31):
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`
+- Planning doc: `PHASE_204_PLAN.md`
+
+### Next eligible phase
+
+None claimed by this phase's own scope. #1183 (Surebiz Wave 2) names the retention/purge policy
+(section 3.2 of the plan) as the natural follow-up issue for `pm` to shape and file.
+
+## Phase 205 - Delivery Personnel Registry CRUD (#1080)
+
+### Initiative and release
+
+Surebiz go-live readiness build track (epic #1183), Wave 2. Phase number 205 is assigned by #1183
+directly, as Phases 202/203/206/207 were; the ledger's raw high-water mark elsewhere is 207, but
+numbers are allocated per-worktree by #1183, so this entry is not renumbered to 208. #1183's Phase
+205 row named a *soft* collision on `routes/pos.js`/`posValidator.js`/`posUseCases.js`, blocking on
+Phase 202 (#1085) landing first; re-verified clean on branch: Phase 202 merged into `develop`
+(commit `cc721d20c`, PR #1196) and Phase 204 (#965) had not started, so this phase proceeded ahead
+of Phase 204 as planned in `PHASE_205_PLAN.md`.
+
+### Objective and scope
+
+`delivery_personnel` (migration `20260808000002-create-delivery-personnel-and-assignment.cjs`) has
+existed since before this phase, with every column #1080 asks for, but nothing could create,
+update, or deactivate a row — POS delivery assignment was free-text only even though a read
+endpoint (`GET /pos/delivery-personnel`) and its frontend service wrapper
+(`fetchActiveDeliveryPersonnel`) already existed, unused. This phase adds the missing CRUD surface,
+an admin management panel, and a picker on the existing assignment control — all five checkboxes of
+#1080's stated scope.
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/1080-delivery-personnel-registry-crud`, cut off fresh `origin/develop`. PR opened,
+`Refs #1080` (behavior-changing, needs deployed verification — never `Closes`, per
+`docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+Phase 202 (#1085), merged. None on Phase 204 (#965) — this phase deliberately does not touch
+`posUseCases.js`, so it does not collide with Phase 204's own planned edits to that file.
+
+### Acceptance and validation evidence
+
+- [x] No migration — `delivery_personnel` already had every needed column; the
+      `implement` skill's migration checkpoint does not fire and
+      `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` is not engaged.
+- [x] New self-contained backend module `apps/dgfy-api/src/modules/deliveryPersonnel/` (5 files),
+      mirroring `modules/employees/` file-for-file — `index.js`, `README.md`,
+      `controllers/deliveryPersonnelHandlers.js`, `usecases/deliveryPersonnelUseCases.js`,
+      `repositories/deliveryPersonnelRepository.js`. `posUseCases.js`/`posRepository.js` untouched.
+- [x] Three new routes on the existing `/pos` router, all gated on
+      `PERMISSIONS.POS.actions.MANAGE_EMPLOYEES` (`pos:employees:manage`, reused rather than a new
+      permission string to avoid a lockout/backfill-migration risk on existing tenants):
+      `GET /pos/delivery-personnel/registry`, `POST /pos/delivery-personnel`,
+      `PATCH /pos/delivery-personnel/:deliveryPersonnelId`. The existing cashier-facing
+      `GET /pos/delivery-personnel` (`pos:view`, active-only, location-scoped) is unchanged.
+- [x] Four new Joi schemas in `posValidator.js`, matching the migration's column widths exactly.
+- [x] Soft duplicate guard: case-insensitive same-location active-`display_name` check on create,
+      `409 CONFLICT` — no unique database constraint added (two riders may share a name).
+- [x] No hard delete anywhere in the diff — `PATCH { is_active: false }` is the only deactivation
+      path, matching `delivery_jobs.delivery_personnel_id`'s `ON DELETE RESTRICT`.
+- [x] Create and update each write an `AuditLog` row (`entity_type: 'delivery_personnel'`).
+- [x] Frontend: `deliveryPersonnelService.js` (3 functions), `DeliveryPersonnelManagementPanel.jsx`
+      (modelled on `EmployeeManagementPanel.jsx`), mounted in
+      `TerminalOperationsWorkspace.jsx`'s employees pane behind `canManageDeliveryPersonnel`.
+- [x] Picker: `TerminalPage.jsx`'s `deliveryPersonnelState` changed from a hard-coded literal to
+      real state, fetched lazily (existing `fetchActiveDeliveryPersonnel`) only once the
+      incoming-orders queue renders a manual delivery job. `DeliveryAssignmentControl.jsx` keeps
+      its free-text `<input>` and adds a `<datalist>`; an exact registry match sends
+      `delivery_personnel_id`, otherwise `delivery_personnel_name` — never both (server's
+      `.or(...).oxor(...)` contract). Free-text assignment behavior is unchanged.
+- [x] Two authoritative docs corrected in this same PR: `docs/api/specification.md` (documented the
+      three new endpoints; removed the now-false "registry creation/editing/activation/deactivation
+      are not part of this POS endpoint" note) and `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+      (registry existence, Phase 2 API boundary, Phase 3 picker copy, permissions bullet;
+      `last_reviewed` bumped to 2026-08-30). No ADR change — ADR 0034 already mandates this
+      registry and already permits the id-or-name choice; this phase implements what it requires.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md`),
+      classification `major`, surfaces `pos,terminal`. `npm run check:compliance` confirmed to pass
+      once added.
+- [x] Tests: `deliveryPersonnelRegistry.usecase.test.js` (6 new cases — create + audit row,
+      duplicate active name -> 409, inactive/foreign `location_id` -> 422, missing-id update -> 404,
+      soft-deactivate survives, list includes inactive); `posValidator.deliveryPersonnelRegistry
+      .test.js` (7 new cases). Existing suites re-run unmodified and stayed green (27 cases):
+      `posDeliveryAssignment.usecase.test.js`, `posDeliveryJobStatus.usecase.test.js`,
+      `posDeliveryCompletionGuard.usecase.test.js`, `posDeliveryPersonnel.repository.test.js`,
+      `posValidator.deliveryAssignment.test.js`.
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file.
+- [x] `npm run check:architecture` — passed (new module satisfies `REQUIRED_MODULE_FILES`,
+      `REQUIRED_LAYER_DIRS`, the `Handlers.js` naming rule, and the no-model-import rule).
+- [x] `npm run build:pos` and `npm run build:skupervisor` — both succeeded (`packages/web-core` is
+      the shared trunk for `apps/dgfy-pos`/`apps/dgfy-ims`). `npm run build:store` not required — no
+      `apps/dgfy-storefront` file touched.
+
+### Known residual gaps, accepted rather than solved
+
+- **No deployed-environment verification in this phase** — that is the `verifier` role's job after
+  merge, which is exactly why linkage is `Refs #1080` rather than `Closes`.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+
+### Implementation links
+
+- Issue #1080, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md`
+- Plan: `PHASE_205_PLAN.md`
+
+### Next eligible phase
+
+Phase 204 (#965, proof-of-payment image) — the harder collision named in #1183, on
+`posUseCases.js`/`BalanceSettlementDialog.jsx`/a `pos_order_payments` migration — was left
+deliberately untouched by this phase and can now proceed.
+
+## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). First phase in a second successive chain, unblocked by Pat's
+2026-08-30 Q&A resolving #450's four open policy questions (D1-D4, recorded on #450). Independent
+of Phases 197-199, which had already closed out as a deliberate chain-end.
+
+### Objective and scope
+
+Decision D2 ("in-flight attribution drops silently"): if an affiliate's enrollment is
+revoked/suspended, or the tenant's program disabled, between when storefront checkout resolves
+pricing and when the order actually commits, the order must still succeed but the commission must
+not be accrued to that enrollment, with no error surfaced to the buyer.
+
+### Status
+
+`completed` (2026-08-30). PR #1200 merged into `develop` as commit
+`2eca5990254c014dd464474284b161338cc26142`.
+
+### Dependencies
+
+None on Phases 197-199 (different code path — storefront checkout accrual, not
+cashout/slots/revocation-stamping). Depended only on #450 D2 being decided.
+
+### Acceptance and validation evidence
+
+- [x] `storeUseCases.js`'s post-commit affiliate accrual block now unconditionally re-resolves the
+      enrollment via `resolveActiveAffiliateEnrollmentById` at commit time, replacing the previous
+      `||`-on-pricing-time-cached-object fallback that only fired when the cached object was
+      *missing*, never when it was *stale*.
+- [x] Verified as a plain, non-locking, post-`transaction.commit()` read — no lock, no transaction
+      handle, no snapshot-isolation concern (Phase 198's RF-6 finding does not apply to a read after
+      the relevant transaction has already committed). No lock added.
+- [x] Silent-drop implemented as a narrow `else if (affiliatePricing?.enrollment)` guard (not a bare
+      `else`) specifically to avoid logging the common, high-frequency, non-drop case of an
+      attribution cookie that was already stale at pricing time.
+- [x] Pricing/discount math untouched — only which enrollment object is used to decide
+      whether/whom to accrue commission to.
+- [x] In-store POS path (`posUseCases.js`) investigated and explicitly deferred, on corrected
+      grounds: the planning pass verified a real transaction boundary and ~1,400 lines of DB work
+      exist between POS's resolve and accrual points (the dispatch brief's initial premise that no
+      such boundary existed was factually wrong and was not carried into the code or PR). Deferred
+      instead because POS treats an affiliate code as a hard, operator-facing precondition (a bad
+      code hard-rejects the sale with 422 before it proceeds), making silent-drop-after-the-fact a
+      distinct product decision, not a mechanical port of this fix. Follow-up filed: **#1199**.
+- [x] Compliance impact declaration added and required (`major`/`payments` — `modules/store/**`
+      matches `check-compliance-impact.js`'s sensitive-path rule; corrects the assumption carried
+      from Phases 197-199 that no affiliate-adjacent module needed one — that was true for
+      `modules/dgfy/` and the migration runner, not for `modules/store/`).
+      `preflight_request_ref: NOT-EXECUTED-450-...` is correct and expected on a `develop`-targeting
+      PR per the standing preflight protocol.
+- [x] Extended (not duplicated) `tests/storeCheckoutAffiliatePricing.unit.test.js` — 13/13 passing
+      (4 new), including a call-count assertion on `findEnrollmentById` that actually pins the new
+      twice-per-checkout behavior rather than merely re-testing the old baseline.
+- [x] One transient CI failure (`dgfy-api-build-check`'s "Set up job" step, a runner-infra tarball
+      lookup error unrelated to the diff) — reran clean; not a defect in this change.
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker — `APPROVE`, no findings. Correctly *not*
+      treated as a first-live-use report-only run (explicit precedent cited in the dispatch: PRs
+      #1184/#1187/#1189/#1193 already reviewed-and-merged by this same role/model pair).
+      Merged with a true merge commit, checks green, `mergeStateStatus: CLEAN`.
+- [x] Linked `Refs #450` (not `Closes`) — #450 still carries other, unrelated content.
+
+### Open items outstanding, not specific to this phase
+
+- Follow-up issue **#1199** (POS in-store affiliate attribution silent-drop vs. hard-validated-code
+  semantics) — filed via `pm`, `Refs #450`, not scheduled into this chain.
+- The ledger-numbering gap for Phases 200-205 (see the note above Phase 206's heading) is not this
+  initiative's to resolve — those phases belong to a concurrent Surebiz orchestration run in a
+  sibling session; confirmed via cross-session coordination on 2026-08-30 (200=#475/PR #1188,
+  201=#852/PR #1192, both already merged; 202-203 in flight; 204-205 reserved). This affiliate
+  initiative continues at 206/207 by explicit agreement between the two sessions to avoid a
+  numbering collision, not because 200-205 were skipped or unavailable to this initiative.
+
+### Implementation links
+
+- Issue #450 (decision D2), Refs #446
+- PR #1200: https://github.com/Sieitzz/dgfy-platform/pull/1200
+- Review: `## Review — APPROVE` comment on PR #1200 (Codex GPT-5.6-Luna, pr-reviewer)
+- Follow-up issue: #1199 (POS attribution silent-drop, deferred)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-affiliate-attribution-commit-time-recheck.md`
+
+### Next eligible phase
+
+**Phase 207** — dedicated affiliate reactivate flow, closing #1191's slot-cap bypass gap per #450
+D4 ("distinct reactivate flow, not a reuse of the generic PATCH"). In progress as of this entry.
+
+## Phase 207 - Affiliate Reactivation Endpoint with Slot-Cap Enforcement (#1191)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Continues the 197-199 chain's own explicitly-deferred item:
+Phase 199's ledger entry named this exact gap ("Known gap found and filed separately, not fixed
+here") and filed it as #1191 rather than silently appending it to that chain.
+
+### Objective and scope
+
+Phase 198 (#1177) added `max_affiliate_slots` cap enforcement to `createEnrollment`/`createInvite`,
+but the generic `PATCH /affiliates/:enrollment_id` could still reactivate a `suspended`/`revoked`
+enrollment (`status: 'active'`) through `updateEnrollment`, which has no cap check at all — a
+merchant already at cap could revoke-then-reactivate to exceed it without ever hitting Phase 198's
+enforcement. This phase closes that gap with a dedicated reactivation endpoint, and — because
+planning found the backend-only fix would break a live merchant-facing "Reactivate" button in the
+same deploy — also repoints that button at the new endpoint in the same PR.
+
+### Status
+
+`completed` (2026-08-30). PR #1204 merged into `develop` as commit
+`96dc8bf87327b4b589248925a376f6ce1497bdb2`. Issue #1191 closed. Reviewed by an isolated Codex
+GPT-5.6-Luna worker — `APPROVE`, no findings; verified locally (repository lock-first ordering,
+`revoked_at`/`revoked_by`/`revocation_reason`/`activated_at` all preserved on reactivate, frontend
+button correctly repointed) in addition to the standard checks, and confirmed `mergeStateStatus:
+CLEAN` before merging.
+
+### Dependencies
+
+Depends on Phases 198 (#1177, slot-cap enforcement mechanism reused unchanged) and 199 (#450,
+revocation-audit-stamp columns preserved unchanged) — both merged. Independent of Phase 206 (a
+different code path — storefront checkout accrual, not the admin enrollment-status endpoints).
+
+### Acceptance and validation evidence
+
+- [x] New repository method `reactivateEnrollment` — deliberately not an extension of
+      `updateEnrollment`, so the generic path can never bypass the cap check by construction. Owns
+      its own transaction and calls `assertAffiliateSlotAvailable` as the FIRST statement, per
+      `acquireAffiliateSlotLock`'s #1187 RF-6 ordering contract (mirrors `createEnrollment`'s
+      existing ordering).
+- [x] Writes only `status`. `revoked_at`/`revoked_by`/`revocation_reason` are preserved, not
+      cleared — Phase 199's own shipped acceptance criterion, re-verified rather than re-opened
+      this phase (confirmed: `grep -rn "revoked_at\|revoked_by\|revocation_reason" apps packages`
+      shows zero query filters, serializer projections, or conditionals on these three columns for
+      `dgfy_affiliate_enrollments` outside the model, migration, `buildUpdateAffiliateEnrollmentUseCase`,
+      and Phase 199's own tests). `activated_at` (the original enrollment date, rendered to the
+      affiliate as "Enrolled `<date>`" in the storefront customer dashboard) is never touched.
+- [x] New use case `buildReactivateAffiliateEnrollmentUseCase`: 404 if the enrollment is missing,
+      409 `AFFILIATE_ALREADY_ACTIVE` if already active, 409 `AFFILIATE_NOT_REACTIVATABLE` if not
+      `suspended`/`revoked` (i.e. `pending`), 409 `AFFILIATE_SLOT_CAP_REACHED` thrown unchanged by
+      the repository. `reactivatedBy` is accepted and threaded through but not persisted — no
+      `reactivated_by` column exists; adding one is a landlord migration out of scope for an
+      enforcement-gap fix (follow-up filed, see below).
+- [x] The generic PATCH now rejects `status: 'active'` with 422 `AFFILIATE_REACTIVATION_MOVED` —
+      one enforcement path, no drift risk between two. `suspended`/`revoked` targets are unaffected.
+- [x] **Frontend change shipped in the same PR, deliberately** (not split out): the owner-facing
+      affiliates workspace panel's "Reactivate" button (`AffiliatesWorkspacePanel.jsx`) previously
+      called the PATCH directly with `status: 'active'` — the moment the backend restriction above
+      ships, that button would fail with a toast error for every merchant. Repointed at a new
+      `handleReactivate` handler calling the new endpoint, same busy/toast/reload shape as the
+      existing handler.
+- [x] Compliance impact declaration added and required — `major`/`pos,terminal`, triggered solely
+      by the `packages/web-core/src/features/pos/**` touch (nothing under `apps/dgfy-api` is
+      compliance-sensitive on its own). `preflight_request_ref: NOT-EXECUTED-PHASE-207` is correct
+      and expected on a `develop`-targeting PR per the standing preflight protocol (#884).
+- [x] New test file `dgfyAffiliateReactivationUseCase.unit.test.js` — 11/11 passing, driving the
+      real use case through the real repository against fake models (harness copied from Phase
+      198's slot-enforcement suite). Covers both reactivatable source statuses symmetrically,
+      cap-rejection with the row left unchanged (with and without a seeded settings row),
+      terminal-state guards, tenant scoping, audit-stamp/`activated_at` preservation, the PATCH
+      restriction plus its regression guard for `suspended`/`revoked`, and a concurrency case at
+      the cap boundary mirroring Phase 198's #1187 RF-1 test shape including its honest
+      limitations note (proves the fake's lock-queue serialization, not real MySQL `SELECT ... FOR
+      UPDATE` behaviour).
+- [x] Two pre-existing tests in `dgfyAffiliateEnrollmentUseCases.unit.test.js` (tests 3 and 4)
+      previously asserted that `PATCH {status:'active'}` performs a stamp-preserving reactivation —
+      that behavior moved to the new endpoint this phase, so both were retitled and reassigned to
+      assert the new rejection instead; the stamp-preservation property they used to prove is now
+      covered by the new suite's own test 8, against the real endpoint. Test 8 in the same file was
+      retitled per the plan: the D7 `revocation_reason` guard is now unreachable for
+      `status: 'active'` bodies since the new status check short-circuits first; assertions
+      unchanged, still covered for reason-only bodies by test 9.
+- [x] Full Tier 0 self-verification: `node --check` on all five changed `apps/dgfy-api` files
+      (syntax-only, no build step exists for this app); all three frontend apps built
+      (`build:skupervisor`, `build:pos`, `build:store` — `packages/web-core` is the shared trunk
+      all three consume); 42/42 tests passing across the three affected suites;
+      `npm run check:compliance` PASS.
+- [x] Linked `Closes #1191` — this is a complete fix of the issue as filed, unlike Phases 199/206's
+      `Refs` linkage.
+
+### Known limitation, not fixed here
+
+No `AffiliatesWorkspacePanel.jsx` component test exists (before or after this phase) — the only
+test under `packages/web-core/src/features/pos/__tests__/` touching this area
+(`affiliatePricingPreview.test.js`) is unrelated, and adding one is out of scope for this issue.
+
+### Open items outstanding, not specific to this phase
+
+- **Board `Status` write could not be performed** — GitHub's GraphQL API was rate-limited
+  session-wide at the time of this PR (same class of issue Phase 199's own ledger entry recorded).
+  Best-effort per `pm`'s board-operations policy; #1191's card needs a manual `Status` →
+  `For Review` write once the rate limit clears.
+- Follow-up issues #1202 (status-history: `reactivated_at`/`reactivated_by` or a proper events
+  table) and #1203 (admin UI never surfaces the revocation audit columns the API already returns)
+  filed but not scheduled into this chain.
+
+### Implementation links
+
+- Issue #1191, Refs #450
+- PR #1204: https://github.com/Sieitzz/dgfy-platform/pull/1204
+- Follow-up issues: #1202 (status-history), #1203 (admin UI audit-column surfacing)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-affiliate-reactivation-endpoint.md`
+
+### Next eligible phase
+
+None allocated by this phase. #1191 was the last remaining item explicitly named in Phase 199's own
+"Next eligible phase" list that was mechanical enough to schedule without a further product-policy
+call; #1202/#1203 are new follow-up candidates from this phase's own planning, not yet scheduled.
+Everything else in the affiliate backlog still needs a human scheduling/policy call (see Phase
+199's and Phase 206's own "Next eligible phase" sections for the fuller list, unchanged by this
+phase).
+
+## Phase 208 - Affiliate Lifetime Earnings Cap (#449)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements the "earnings ceiling" half of #449 ("Affiliate
+earnings caps and milestone bonuses") — a merchant-margin protection that stops commission accrual
+once an affiliate's lifetime earnings hit a configured limit. The "milestone bonuses" half of #449's
+title (a merchant-pays-DGFY-to-unlock-an-additional-affiliate-allocation concept, per #449's own
+2026-08-14 correction note) is out of scope here and tracked as a separate child of #446.
+
+### Objective and scope
+
+Add a configurable lifetime affiliate earnings cap, tenant-wide by default with a nullable
+per-enrollment override, enforced at accrual time in `affiliateCommissionAccrual.js`. Explicitly out
+of scope and not built: #1206 (campaign/auto-expiry) and the Phase 2 volume tiers
+(`docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md` A4-A6).
+
+Four judgment calls #449's own decision comment left open were resolved during planning (Pat
+confirmed all four before implementation, recorded on #449):
+
+- **A1 (end-date semantics)** — once a cap's `earnings_cap_active_until` passes, the **cap** stops
+  applying; accrual continues **uncapped** from then on, rather than accrual halting. Textually
+  grounded in #449's and #1206's own framing of the end date as bounding the cap config itself, not
+  a program/enrollment expiry (#1206's separate, explicitly out-of-scope shape). This is the one
+  genuinely arguable call and carries a real product footgun — a merchant who sets an end date and
+  forgets about it gets unlimited commission afterward. Two mitigations ship in this phase, not as
+  optional extras: a read-only `earnings_cap_expired: true` flag on the affiliates list response,
+  and a structured `logger.info` on the first accrual that runs uncapped because the cap expired.
+- **A2 (full skip, not partial fill)** — a sale that would cross the cap accrues nothing, not a
+  clipped partial amount. Grounded in a real invariant (`amount ≡ round(base × rate / 10000)` must
+  hold on every commission row) rather than preference; the accepted consequence is that an
+  affiliate stops slightly *under* their cap, which is the conservative direction for a
+  merchant-margin lever.
+- **A3 (which statuses count)** — `pending` + `earned` + `paid` count toward the running total;
+  `reversed` does not. A `pending` order that later reverses temporarily consumes headroom and then
+  releases it automatically, since the total is derived rather than a counter.
+- **A4 (no per-enrollment exemption)** — there is no sentinel value meaning "this affiliate is
+  exempt from the tenant cap" (NULL on the enrollment means *inherit*, not *exempt*). Accepted
+  limitation; the workaround is an absurdly-high per-enrollment cap. A real exemption would need a
+  third nullable boolean column, filed separately if ever needed.
+
+### Status
+
+`completed` (2026-08-30). PR #1209 opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on Phase 198 (#1177, the derived-count precedent this phase's design explicitly follows —
+`countConsumedSlots`) and the Phase 1 affiliate pricing rule engine (commission_type/rate resolution
+ladder this phase mirrors for cap resolution). Independent of Phase 207 (a different code path —
+enrollment status transitions, not commission accrual).
+
+### Acceptance and validation evidence
+
+- [x] Landlord migration `20260831000001-add-affiliate-earnings-cap.cjs` adds
+      `max_lifetime_earnings_centavos` + `earnings_cap_active_until` to both
+      `tenant_affiliate_settings` (tenant-wide default) and `dgfy_affiliate_enrollments`
+      (per-enrollment override) — `NULL` means uncapped/inherit, so every existing tenant and
+      enrollment resolves identically to today's behavior. No index added — the existing
+      `idx_dgfy_affiliate_commissions_enrollment_status` already bounds the cap's `SUM` query to one
+      affiliate's own rows.
+- [x] The running lifetime total is **derived**, never a counter column — `sumLifetimeCommissionCentavos`
+      sums `dgfy_affiliate_commissions` live, matching every other affiliate money surface in this
+      codebase (`getEarningsSummary`) and Phase 198's own live-count precedent. **Zero added queries
+      for any tenant that hasn't configured a cap** — `resolveEarningsCap` early-returns `null`
+      before any `SUM` is issued (implemented as an early return, not "sum first, compare second").
+- [x] `resolveEarningsCap` resolves the applicable cap as a PAIR (cap + its own end date) — an
+      enrollment-level cap brings its own end date, never the tenant's, so an override can never
+      silently inherit an unrelated tenant expiry date.
+- [x] `evaluateEarningsCap` wired into both `accrueEarnedForInStoreSale` and
+      `accruePendingForOnlineOrder`: a crossing sale is fully skipped (returns `null`, matching every
+      other skip path in the module); attribution is still recorded before the cap check runs — a
+      capped referral still occurred and should still be visible to the merchant, unlike the
+      self-referral guard directly above it, which returns before attribution because no legitimate
+      referral occurred at all.
+- [x] Idempotency preserved: the SUM takes `excludeOrderReference` so a retried accrual for an order
+      that already landed exactly at the cap compares the same numbers as the original call and
+      falls through to the existing `findOrCreate`, returning the existing row rather than `null`.
+- [x] `buildUpdateAffiliateSettingsUseCase` / `buildUpdateAffiliateEnrollmentUseCase` accept both new
+      fields (`undefined` untouched, `null`/`''` clears/inherits, an invalid date rejected 422). §2.3
+      guard: an end date with no cap to attach to — checked against the PATCH-merged state, not the
+      payload alone — is rejected 422 `EARNINGS_CAP_DATE_WITHOUT_CAP`, mirroring Phase 199's D7
+      precedent for the identical failure shape.
+- [x] `buildListAffiliatesUseCase` surfaces a read-only `earnings_cap` object per affiliate
+      (`cap_centavos`, `cap_source`, `active_until`, `expired`, `lifetime_earned_centavos`,
+      `remaining_before_cap`) — mirrors Phase 198's read-only `slots_used`/`slots_max`. Settings
+      fetched once outside the per-enrollment map, not per row. **No frontend change** — no
+      `packages/web-core`/app file touched; a cap editor UI is a separate, unscoped ask.
+- [x] **Compliance-declaration-free by construction** — every changed file is under
+      `apps/dgfy-api/src/modules/dgfy/**`, `apps/dgfy-api/src/models/Landlord/**`, or
+      `apps/dgfy-migration-runner/migrations/**`, none of which match any rule in
+      `COMPLIANCE_SENSITIVE_RULES`. Verified, not assumed: `npm run check:compliance` → "No
+      compliance-sensitive changes detected."
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js`/`.cjs` file (no build
+      step exists for `apps/dgfy-api`); 93/93 tests passing across four suites — the new
+      `affiliateEarningsCap.unit.test.js` (T1-T13 from the plan plus companion cases),
+      `dgfyAffiliateEnrollmentUseCases.unit.test.js` (extended with the enrollment cap-field cases),
+      and — run unchanged to confirm no disturbance — `affiliateCommissionAccrual.unit.test.js`
+      (byte-identical, no edit needed) and `dgfyAffiliatePriceRuleUseCases.unit.test.js`. Also ran
+      `npm run check:architecture` (guardrails + controller boundaries, both OK) as a cheap extra
+      check beyond the plan's own required Tier 0 list.
+- [x] Linked `Closes #449` — #449's title still reads "milestone bonuses," but that half is stale
+      relative to #449's own 2026-08-14 correction note, which reassigns it as a separate,
+      already-filed issue, #488 ("Affiliate allocation entitlement and pricing"), not merely "a
+      child of #446" left to be created later. #449's own three named open questions (cap period,
+      cap vs. tier, at-cap behavior) are all resolved and implemented by this phase, so nothing of
+      #449's actual scope remains open.
+
+### Known limitations, not fixed here
+
+- **A1's footgun** — an expired cap silently turns protection off (accrual becomes uncapped), which
+  is the opposite of what "cap" intuitively suggests. Mitigated (not eliminated) by the
+  `earnings_cap_expired` read-only flag and the structured `logger.info`, per above.
+- **A4** — no per-enrollment "exempt from the tenant cap" sentinel; see above.
+- **Concurrency (§3.5)** — two simultaneous accruals for the same enrollment can both read an
+  under-cap total and both write, overshooting the cap by at most one concurrent sale's commission.
+  No lock was added deliberately: accrual is post-commit, best-effort, transaction-free, and must
+  never block or fail the sale (Phase 198's `SELECT ... FOR UPDATE` approach does not apply to this
+  path). If exactness is ever required, it is a follow-up issue, not a silent addition here.
+- **No frontend cap editor** — the API carries the data (`earnings_cap` on the list response); an
+  owner-facing editor UI is a separate, unscoped ask.
+
+### Implementation links
+
+- Issue #449 (Closes — see above)
+- PR #1209: https://github.com/Sieitzz/dgfy-platform/pull/1209
+- No compliance declaration (see Acceptance and validation evidence)
+- No ADR — this adds a configurable field within the existing affiliate commission model; it neither
+  contradicts nor amends ADR 0036 or ADR 0050, and #449's decisions are recorded on the issue itself.
+
+### Next eligible phase
+
+None allocated by this phase. The "milestone bonuses" half of #449 (merchant-pays-to-unlock-an-
+affiliate-allocation) remains unscheduled as a separate child of #446. #1206 (campaign/auto-expiry
+end-date model) and the Phase 2 volume tiers remain explicitly out of scope and unscheduled. If Pat
+wants A1's semantics reversed (end date halts accrual instead of expiring the cap), that is a small,
+named flip (§4 of the plan) rather than a new design.
+
+## Phase 209 - Per-Category Affiliate Commission Rates (#448)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #448's asked-for shape: per-category affiliate
+commission rates (e.g. "20% food / 30% beverage") instead of one flat scalar rate, using
+`item_folders.folder_id` as the category key (per #448's own 2026-08-30 decision comment) and
+`enrollment override > category rate > tenant default` as the resolution precedence.
+
+### Objective and scope
+
+Add a per-`(tenant, enrollment, folder)` commission rate tier, resolved at accrual time on both
+commission-accrual channels (POS and storefront), gated behind a new
+`tenant_affiliate_settings.category_rates_enabled` flag defaulting `false`. Explicitly out of
+scope, per #448's own "What this issue covers" (never asks for the other two tiers from the
+2026-08-14 comment's "default → category → item → exceptions" framing, which was scoping
+exploration, not a commitment) and this phase's own §0/§11: per-**item** commission rates,
+**exceptions** (a default rate with items/categories excluded), parent-folder rate inheritance
+(A3), and a merchant-facing UI (A5) — all filed as follow-ups for `pm`, not built here.
+
+Two findings corrected the task brief's premise during planning (§1 of the plan, verified against
+fresh reads on `origin/develop @ 1a92c9e71`), and seven judgment calls (A1-A7) resolved ambiguities
+#448 left open:
+
+- **Finding 1 — `resolveCommissionRateBps` is not the single resolution point.** The storefront's
+  production caller (`storeUseCases.js`) always pre-builds `resolvedCommission` and bypasses it
+  entirely at accrual time. Changing only the POS path (`posUseCases.js`) would have shipped a
+  feature that silently no-ops online — both `storeUseCases.js:~1390-1420` (the price-rule/settings
+  resolution) and `~3410-3455` (the accrual block's `PERCENTAGE_OF_BASE` branch) needed the
+  category-rate change, not just the resolver itself (which is left with an unchanged signature).
+- **Finding 2 — `folder_id` was already selected but not threaded onto `preparedLines`.** Both
+  `posRepository.findSellableItemsByIds` and `storeRepository.findSellableItemsByIds` already
+  select `folder_id`; it just wasn't snapshotted onto the line objects the post-commit accrual
+  block reads. One field added per line-push on each channel closed the gap.
+- **A1 (table scope)** — per-`(tenant, enrollment, folder)`, with `enrollment_id = 0` as the
+  tenant-wide template sentinel, byte-for-byte the scoping `dgfy_affiliate_price_rules` already
+  uses. Chosen over a per-`(tenant, category)`-only table because it is strictly the wider option
+  and mirrors an existing, understood convention.
+- **A2 (multi-category carts) — the consequential call.** A cart mixing categories with different
+  rates computes a **weighted per-line split, collapsed into the existing single ledger row** —
+  proportional (largest-remainder) allocation of the unchanged `commissionableBaseCentavos`, with a
+  blended `rate_bps_snapshot`. **Not** true per-line ledger rows, which the plan's own §5.4 names as
+  a materially larger redesign (would need to drop/replace the `UNIQUE (tenant_id,
+  order_reference)` index every idempotency guarantee in this module rests on, rewrite the
+  find-or-create commission writers into set writers, re-derive Phase 208's cap against a multi-row
+  order, and re-derive the cashout/earnings-summary reads) — out of scope for this issue, filed
+  as a follow-up only if per-line **reporting** (not accuracy — this phase already delivers
+  per-category accuracy in the money amount) is ever actually wanted.
+  - **Consequence that must not be assumed away**: on a genuinely mixed-category order, the blended
+    `rate_bps_snapshot` no longer satisfies `amount ≡ round(base × rate / 10000)` exactly — it can
+    be off by a few centavos from the blended round-trip, by construction of the per-line
+    allocation. This does **not** break Phase 208's earnings cap (which compares the computed
+    `amount` directly, never re-derives it from the snapshot), but a future reader must not assume
+    the single-rate invariant still holds exactly on a mixed-category row.
+  - **The senior/PWD (governed discount) trap this design defends against**: on POS's governed
+    branch, `sum(line_subtotal) != commissionableBaseCentavos` because VAT is separately removed
+    there. Using per-line amounts as absolute bases (rather than relative weights via
+    largest-remainder allocation of the unchanged total) would have silently changed the commission
+    total on every senior/PWD sale.
+- **A3 (no parent-folder inheritance)** — a rate configured on a parent folder does not apply to
+  its children; exact `folder_id` match only. Rejected for this phase because the folder tree lives
+  in the tenant DB while accrual runs against the landlord DB with only a `folder_id` integer in
+  hand — inheritance would mean a tenant-DB query plus a recursive walk on the hot, best-effort
+  accrual path. Filed as a follow-up (§11).
+- **A4 (no "all categories" sentinel)** — `folder_id = 0` is rejected by the upsert endpoint
+  (422) rather than treated as a second spelling of "tenant default"; that concept already exists
+  as `default_rate_bps`, and a second spelling would need an undefined tie-break rule against it.
+- **A5 (backend only)** — no `packages/web-core`/app file touched, matching Phase 208's own
+  precedent; nothing existing breaks (the flag defaults `false`, no admin UI has a category-rate
+  affordance to break), and a real UI needs a tenant-DB folder picker the affiliate admin screens
+  don't currently talk to at all — filed as a follow-up (§11).
+- **A6 (shadowing guard)** — the upsert endpoint rejects (422
+  `AFFILIATE_CATEGORY_RATE_SHADOWED_BY_OVERRIDE`) creating an enrollment-scoped category rate on an
+  affiliate who already has `commission_rate_bps` set, since that override always wins outright and
+  the row would be dead config a merchant could easily believe was live. Fail-closed, matching this
+  repo's existing habit (cited in the plan: ADR 0066's `[binding]` fail-closed clause).
+- **A7 (feature flag)** — `tenant_affiliate_settings.category_rates_enabled`, defaulting `false`.
+  With it off, `loadApplicableCategoryRates` returns `[]` before issuing any query, and
+  `computeCategoryAwareCommission`'s step 1 (every line resolves to the same rate) takes the
+  byte-identical pre-Phase-209 formula — the regression guarantee is structural, not merely
+  behavioral: the new code path is not entered, not just equivalent.
+
+### Status
+
+`completed` (2026-09-01). PR #1214 opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on the Phase 1 affiliate pricing rule engine (`dgfy_affiliate_price_rules`'s scoping
+convention this phase mirrors one tier narrower) and Phase 208's `resolveEarningsCap` /
+`evaluateEarningsCap` pure/async split, which this phase's `resolveCategoryRateBps` /
+`loadApplicableCategoryRates` split copies exactly. Independent of Phase 207 (a different code
+path — enrollment status transitions, not commission accrual).
+
+### Acceptance and validation evidence
+
+- [x] Landlord migration `20260901000001-add-affiliate-category-rates.cjs` adds
+      `dgfy_affiliate_category_rates` (`UNIQUE (tenant_id, enrollment_id, folder_id)`,
+      `folder_id` held by value with no cross-database FK) and
+      `tenant_affiliate_settings.category_rates_enabled` (default `false`). Every existing tenant
+      resolves identically to today's behavior.
+- [x] `resolveCategoryRateBps` / `resolveLineCommissionRateBps` (pure) and
+      `loadApplicableCategoryRates` (async, zero queries when the flag is off or an enrollment
+      override shadows it) mirror Phase 208's `resolveEarningsCap`/`evaluateEarningsCap` split.
+      `resolveCommissionRateBps`'s existing signature and all three of its existing call sites are
+      unchanged.
+- [x] `computeCategoryAwareCommission` implements §5.2's two-branch algorithm: uniform-rate carts
+      take the identical unchanged formula; genuinely mixed carts allocate the unchanged
+      commissionable base by largest remainder (`Σ Bᵢ ≡ B` exactly) before applying each line's own
+      resolved rate.
+- [x] Both accrual functions (`accrueEarnedForInStoreSale`, `accruePendingForOnlineOrder`) accept
+      an optional `commissionLines` parameter; every existing caller that omits it is provably
+      unchanged (same argument the existing `resolvedCommission` parameter's own comment makes).
+- [x] Both channels wired: POS (`posUseCases.js`, `folder_id_snapshot` + `commissionLines` at the
+      existing post-commit accrual call, `commissionableBaseCentavos` untouched) and storefront
+      (`storeUseCases.js`, `folder_id_snapshot` + `base_line_subtotal` on `preparedLines`,
+      `categoryRates` + `fallbackRateBps` returned from `resolveAffiliatePricingForCheckout`
+      alongside the existing `commissionRule` whose `rateBps` is now documented as the fallback
+      only, and the accrual block's `PERCENTAGE_OF_BASE` branch calling
+      `computeCategoryAwareCommission` with `fallbackRateBps` rather than re-deriving the
+      enrollment-override tier a second time).
+- [x] Three admin endpoints (`GET/PUT /category-rates`, `DELETE /category-rates/:id`) mirroring
+      `/price-rules` exactly, including the A6 shadowing guard and A4's folder_id-0 rejection.
+      **No frontend change** — no `packages/web-core`/app file touched.
+- [x] **Compliance declaration required and written** —
+      `docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md`,
+      `major`, surfaces `pos,terminal,payments` (this phase touches `posUseCases.js` and
+      `storeUseCases.js`, unlike Phase 208 which stayed clear of both). `npm run check:compliance`
+      → PASS.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js`/`.cjs` file (no build
+      step exists for `apps/dgfy-api`). New `affiliateCategoryRates.unit.test.js` — 16/16 passing
+      (pure resolver precedence, the full ladder incl. the A7 zero-query guarantee, the §5.2
+      allocation algorithm incl. exact mixed-cart arithmetic and the byte-identical uniform-rate
+      collapse, and wiring incl. the Phase 208 cap interaction on a blended amount). Existing
+      `affiliateEarningsCap.unit.test.js` and `affiliateCommissionAccrual.unit.test.js` pass
+      **unmodified** (confirming the §5.2 step-1 collapse is exact, per the plan's own instruction
+      that an edit there would mean the code, not the test, is wrong).
+      `storeCheckoutAffiliatePricing.unit.test.js` (13/13) and the POS regression suites
+      (`posCheckoutFnbContracts.usecase.test.js`, `posUsecases.applicationResult.test.js`, 79/79)
+      also pass unmodified. Two unrelated suites
+      (`dgfyAffiliateRepository.slotEnforcement.unit.test.js`,
+      `dgfyAffiliateReactivationUseCase.unit.test.js`) needed `DgfyAffiliateCategoryRate` added to
+      their exhaustive `models/index.js` mocks to keep loading — fixed, both pass. Also ran
+      `npm run check:architecture` (guardrails + controller boundaries, both OK) and
+      `npm run lint:docs`/`check:adr --strict` (both OK) as extra checks beyond the required Tier 0
+      list.
+- [x] Linked `Closes #448` — #448's own "What this issue covers" only asks for the category tier
+      and the resolution-order decision, both delivered in full; the per-item and exceptions tiers
+      named in an earlier exploratory comment were never part of "what this issue covers" and have
+      no separate tracking issue as of this phase (confirmed via search, not assumed) — filed as
+      follow-ups for `pm` (§11) rather than left implied-open on this issue.
+
+### Known limitations, not fixed here
+
+- **A3** — no parent-folder rate inheritance; a rate on a parent folder does not cover its
+  children. Workaround today is one row per leaf folder. See above for why.
+- **A2's blended snapshot** — `rate_bps_snapshot` on a mixed-category order is no longer an exact
+  round-trip of `amount`; see above.
+- **No frontend category-rate editor** — the API carries the data; an owner-facing editor UI is a
+  separate, unscoped ask (A5).
+- **Per-item rates and exceptions** — the third and fourth tiers from #448's own exploratory
+  four-level framing remain unbuilt; the resolution ladder has room for them (mirrors #449 Phase
+  208's own "next eligible phase" framing of leaving room without building ahead of demand).
+
+### Implementation links
+
+- Issue #448 (Closes — see above)
+- PR #1214: https://github.com/Sieitzz/dgfy-platform/pull/1214
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md`
+- No ADR — this adds a new, additive rate tier within the existing affiliate commission model; it
+  neither contradicts nor amends ADR 0036 or ADR 0050 (same framing Phase 208 used for its own cap
+  addition).
+
+### Next eligible phase
+
+None allocated by this phase. Four follow-ups filed for `pm` rather than built here: a
+merchant-facing category-rate editor UI (A5), parent-folder rate inheritance (A3), per-item
+commission rates, and commission-rate exceptions (the third and fourth tiers from #448's own
+four-level framing). Per-line commission *reporting* (as opposed to accuracy, already delivered)
+remains an optional, low-priority follow-up only if the §5.4 ledger redesign is ever actually
+wanted.
+
+## Phase 210 - Reject-with-Reason and Post-Placement Delivery Address/Pin Edit (#1179)
+
+### Initiative and release
+
+Surebiz Wave 3 (epic #1178). Implements #1179's two adjacent merchant actions surfaced by Pat's
+2026-08-30 Surebiz walkthrough: rejecting an incoming order with a durable, customer-visible
+reason, and a staff-only edit of an order's delivery address/pin after placement.
+
+### Objective and scope
+
+Planning (`PHASE_210_PLAN.md`) found the reject-with-reason UI/validation path already existed end
+to end; the two real gaps were that the reason was written nowhere durable (only surviving as a
+refund note, and never reaching the customer) and that reject was unreachable from `confirmed`
+(only `placed`). A third gap -- no post-placement address/pin edit at all -- had no implementation
+and no attribution mechanism. This phase closes all three: persists `rejection_reason`/
+`rejected_by`/`rejected_at` on `pos_transactions`, widens `confirmed -> rejected`, surfaces the
+reason on the storefront tracking response, and adds a staff-only delivery-address/pin edit
+endpoint with a dedicated append-only audit table (`pos_order_address_changes`).
+
+Two of Pat's confirmed decisions deviate from the plan document's own default/alternative and are
+recorded here rather than left implicit:
+
+1. **The address/pin edit is restricted to pre-dispatch statuses only**
+   (`['placed','confirmed','preparing']`). The plan's own §3.4 default additionally allowed
+   `out_for_delivery` (citing the walkthrough's mid-route-redirect scenario); Pat's call instead
+   rejects `out_for_delivery` with a 409, identically to a terminal state, on both the server
+   (`DELIVERY_ADDRESS_EDITABLE_STATUSES` in `posUseCases.js`) and the client visibility gate
+   (`DeliveryAddressEditControl.jsx`). The plan's §9 open item #1 is resolved by this decision, not
+   left open.
+2. **`pos_order_address_changes` is a dedicated audit table**, confirmed as planned (§3.5) rather
+   than the cheaper column-pair alternative the plan's §9 open item #3 named -- this was not a
+   deviation, just a confirmation.
+
+Explicitly out of scope, named rather than silently dropped (plan §1): re-running the delivery-
+radius check on an address change (#478's job); a customer-facing re-pin surface (staff-only, no
+customer confirmation loop, by Pat's decision); email/SMS notification of the rejection reason
+(storefront tracking page only); address edit for non-`delivery` orders or after a terminal state;
+and `cancelled` reasons (only `rejected` gets a persisted reason this phase).
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on Phase 144/#824's `commerceOrderLifecycleUseCase` refund/forfeiture split (ADR 0069
+clause 8) -- this phase pins that money rule rather than touching it, since a store-side reject now
+reaches `commerceOrderLifecycleUseCase` from two origins (`placed` and the newly-widened
+`confirmed`) instead of one, with a byte-identical call shape either way. Independent of Phase 205
+(#1080, delivery personnel registry) and Phase 208/209 (affiliate commissions) -- no shared files.
+
+### Acceptance and validation evidence
+
+- [x] `ONLINE_FULFILLMENT_TRANSITIONS.confirmed` widened to `['preparing', 'rejected']`
+      (`posUseCases.js`); `ONLINE_FULFILLMENT_STATUSES` unchanged (`rejected` was already a
+      member) -- no ENUM change, no `sync-tenant-schemas.js` ENUM entry needed for the status
+      column.
+- [x] `rejection_reason`/`rejected_by`/`rejected_at` persisted inside the same transaction as the
+      status change, before commit -- durable even if the downstream `commerceOrderLifecycleUseCase`
+      call (post-commit) fails. The existing `currentStatus === 'placed'` guard on
+      `accepted_by`/`accepted_at` is left as-is (a `confirmed -> rejected` must not overwrite who
+      accepted) with a comment recording that as deliberate.
+- [x] Money rule pinned: a `confirmed -> rejected` reject on a non-refundable downpayment session
+      still refunds, never forfeits, asserted for both the `placed` and `confirmed` origin
+      (`commerceOrderLifecycle.usecase.test.js`).
+- [x] Storefront tracking surfaces `rejection_reason` (`serializeOrderBase` +
+      `buildTrackStoreOrderUseCase`'s composed message), gated on `rejected` so it can never leak
+      on a non-rejected order; deliberately excludes `rejected_by`/`rejected_at` (staff identity is
+      not customer-facing).
+- [x] New staff-only `PATCH /api/v1/pos/orders/:id/delivery-address` endpoint
+      (`buildUpdateOnlineOrderDeliveryAddressUseCase`), same `TRANSACT_POS` permission tier as the
+      status-update route, `.and('delivery_latitude','delivery_longitude')` pairing, required
+      `change_reason`, and **pre-dispatch-only** editability (Pat's deviation #1 above) -- 422 for
+      a non-`delivery` order, 409 for any status outside
+      `['placed','confirmed','preparing']` including `out_for_delivery` and every terminal state.
+      No radius recomputation (`outside_radius_flag` left unchanged, #478 cited in code).
+- [x] New `pos_order_address_changes` audit table (confirmed per Pat's deviation #2 above), one
+      append-only row per edit (`previous_*`/`new_*`/`change_reason`/`changed_by`/
+      `changed_by_shift_id`/`changed_at`), FK'd to `pos_transactions ON DELETE CASCADE` and
+      `users(user_id) ON DELETE SET NULL`. `posRepository.buildTransactionInclude()` gains a
+      capped-5, most-recent-first `addressChanges` include so the POS order-details payload
+      carries recent history; the storefront tracking payload does **not** get it (internal-only).
+- [x] Migration `20260901000002-add-order-rejection-reason-and-address-change-audit.cjs` fans out
+      over every active tenant database (mirrors `20260831000001`'s structure exactly), kept in
+      lockstep with `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+      (`REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions`, `REQUIRED_TENANT_SCHEMA_TABLES.
+      pos_order_address_changes`, `REQUIRED_TENANT_SCHEMA_INDEXES.pos_order_address_changes`) so a
+      tenant that misses it, or is restored from an older snapshot, self-repairs at API boot.
+- [x] Both duplicated transition-map copies updated in the same phase: `posUseCases.js`
+      (`ONLINE_FULFILLMENT_TRANSITIONS`) and `packages/web-core/.../orderFulfillmentUi.js`
+      (`getNextStatusActions`'s `confirmed` case) -- the third copy (storefront tracking adapters'
+      `TERMINAL_STATUSES`) needed no change, confirmed already correct.
+- [x] POS reject affordance on `confirmed` needed no new component -- widening
+      `getNextStatusActions` alone surfaces the existing reject button/dialog.
+- [x] New `DeliveryAddressEditControl.jsx`, modelled on `DeliveryAssignmentControl.jsx`'s shape,
+      rendered beneath the existing "Open pin in map" link; visibility mirrors the server's
+      pre-dispatch-only gate; dialog carries a required reason field, paired lat/lng inputs, and an
+      explicit "the customer is not notified and does not confirm this change" note; renders the
+      change history beneath the form.
+- [x] Storefront: three tracking adapters (retail/fnb/simple) + `retailTrackingPayload.js` carry
+      `rejection_reason` through; the route pages and the retail tracking drawer render it under
+      the status headline only when `statusCode === 'rejected'`, framed as the store's own
+      statement. `serviceTrackingAdapter.js` excluded (own status machine, named not silently
+      skipped).
+- [x] **Compliance declaration required and written** --
+      `docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md`,
+      `major`, surfaces `pos,terminal,store,privacy,payments` (the address-change audit table is a new PII
+      retention surface, named explicitly per Pat's request for an explicit privacy paragraph
+      rather than a silent `major`). `npm run check:compliance` confirmed to fail first, then pass.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api`/
+      `apps/dgfy-migration-runner` file (no build step on either app). `npm run build:pos`,
+      `npm run build:store`, `npm run build:skupervisor` -- all three real Vite builds succeeded
+      (`packages/web-core` is the shared trunk all three consume). New
+      `apps/dgfy-api/tests/posOrderRejectionAndAddressEdit.usecase.test.js` (8/8),
+      `commerceOrderLifecycle.usecase.test.js` extended (27/27),
+      `storeUsecases.applicationResult.test.js` extended (76/76),
+      `orderFulfillmentUi.test.js` updated + extended, new
+      `deliveryAddressEdit.behavior.test.jsx` -- all actually executed, not just syntax-checked.
+- [x] **Checkpoint triggers fired and were proceeded through per Pat's standing instruction for
+      this project** (draft + self-verify, then straight to commit/push/PR, since every PR is
+      reviewed by hand): (1) a new file under `apps/dgfy-migration-runner/migrations/`; (2)
+      `check:compliance` requiring a new declaration. Both stated here and in the PR body rather
+      than silently skipped.
+- [x] Linked `Closes #1179` -- this phase completes the issue's stated scope; the explicitly
+      descoped items (#478 radius enforcement, a notification channel) belong to other issues, not
+      left implied-open on this one.
+
+### Known limitations, not fixed here
+
+- **No retention or purge policy for `pos_order_address_changes`.** Previous-address history
+  persists for the life of the tenant's volume; RA 10173 proportionality argues for a bounded
+  window, designed as a follow-up (`pm`), not silently omitted.
+- **No radius re-enforcement on an address edit** -- `outside_radius_flag` is left at whatever it
+  was; #478's job, out of scope here by design.
+- **`out_for_delivery` address edits are unreachable** -- Pat's deviation #1 above; the plan's own
+  counter-argument (a driver already holds the old printed slip) is resolved by disallowing the
+  edit outright rather than relying on the audit trail as the sole mitigation.
+- **`cancelled` still carries no persisted reason** -- only `rejected` does this phase; widening to
+  `cancelled` is additive later on the same column, per the plan's own scoping.
+
+### Implementation links
+
+- Issue #1179 (Closes -- see above)
+- PR: opened against `develop`, link recorded in the PR itself
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md`
+- No new/amended ADR -- ADR 0069 clause 8 is pinned, not changed, by this phase.
+
+### Next eligible phase
+
+None allocated by this phase. Follow-ups named above (retention/purge policy for the address audit
+table, `cancelled`-reason widening) belong to `pm` to shape and file rather than being built here.
+
+## Phase 211 - Retail Orders: Mark an Order Packed, One at a Time (#1180)
+
+### Initiative and release
+
+Surebiz Wave 3 (epic #1178). Implements #1180's short-term, pre-batching fulfillment step surfaced
+by Pat's 2026-08-30 Surebiz walkthrough: a new, additive `packed` state in the online-order
+fulfillment machine, so items physically packed and staged for a delivery run get their own
+attributed, timestamped event instead of only being implied by "someone eventually clicked Out for
+Delivery."
+
+### Objective and scope
+
+`PHASE_211_PLAN.md` resolved the issue's three open Scope decisions: (1) a new `packed` state, not
+a boolean/timestamp -- additive and optional, `preparing` keeps both existing onward edges and
+gains `packed`, `packed` offers the same two edges onward; (2) Retail-only surfacing gated directly
+on `workflowMode === 'retail'` (not a new `workflowModes.js` capability, which would either leak
+into four unrelated modes or need a bespoke, untested list); (3) the server-side gate is
+deliberately UI-only -- `posUseCases.js`'s transition table has no workflow-mode input, and adding
+one would be a much larger change than #1180 asks for. No batching, no route/trip entity (#1081,
+blocked on #1079) -- out of scope, per the plan's hard boundary.
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged.
+
+### Dependencies
+
+Independent of Phase 210 (#1179) other than sharing the same duplicated-fulfillment-machine files
+(`posUseCases.js`, `PosTransaction.js`, both validators, `storeUseCases.js`,
+`orderFulfillmentUi.js`) -- no functional interaction; both phases' additive changes compose
+cleanly (`preparing`'s edge list now carries both phases' independent widenings). Not gated on
+#1079/#1081 (batched/grouped packing) -- deliberately narrower scope, ships independently.
+
+### Acceptance and validation evidence
+
+- [x] `ONLINE_FULFILLMENT_STATUSES` gains `'packed'`; `ONLINE_FULFILLMENT_TRANSITIONS.preparing`
+      widened to `['packed', 'ready_for_pickup', 'out_for_delivery']`, `packed` itself offers
+      `['ready_for_pickup', 'out_for_delivery']` -- purely additive, no existing edge removed
+      (`posUseCases.js`).
+- [x] `packed_at`/`packed_by` persisted inside the same transaction as the status change, before
+      commit, mirroring Phase 210's `rejected` stamping -- **with one correction to the plan's own
+      text**: the plan assumed `validateOnlineOrderTransition`'s `currentStatus === nextStatus`
+      early-return alone would make a repeat `packed -> packed` PATCH a no-op for the stamping
+      block too. Investigated and found **false** -- that early-return only skips the
+      allowed-transition check, not the `updatePayload` block below it. Fixed with an explicit
+      `currentStatus !== targetStatus` guard (matching no equivalent existing guard elsewhere in
+      this function, since no other status is repeat-PATCH-safe by construction the way `packed`
+      needed to be) and pinned by a dedicated test asserting `packed_at` is not restamped on
+      repeat.
+- [x] MySQL ENUM widening -- the single highest-risk item in the plan (§3.1). Migration
+      `20260901000003-add-order-packed-attribution.cjs` issues both the two additive nullable
+      columns **and** a `MODIFY COLUMN` widening `pos_transactions.fulfillment_status` to include
+      `'packed'`, guarded by reading `information_schema.columns.COLUMN_TYPE`, parsing the current
+      ENUM value list, and skipping when `'packed'` is already present. Fans out over every active
+      tenant database, same structure as `20260901000002`.
+- [x] `sync-tenant-schemas.js` kept in lockstep (`REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions`
+      gains `packed_at`/`packed_by`; `TENANT_SCHEMA_CAPABILITY_VERSION` bumped `2026-09-01.1` ->
+      `2026-09-01.2`). **Open item #1 resolved, not guessed**: investigated
+      `inspectRequiredTenantSchemaColumns` directly -- it is column-presence based only
+      (`SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS`), with **no repair path for
+      an ENUM *value* widening**, only for a missing column. Recorded as Residual Risk #3 in the
+      compliance declaration rather than inventing a new repair mechanism, per the plan's explicit
+      instruction.
+- [x] Every duplicated-status-set copy named in the plan's §2 table updated: `posValidator.js`,
+      `storeValidator.js`, `posRepository.js`'s incoming-queue filter, `storeUseCases.js`'s
+      `FULFILLMENT_STATUSES` + `toStatusLabel`, `orderFulfillmentUi.js`'s labels/actions,
+      `retailTrackingAdapter.js`'s two flows, `customerTrackingRefresh.js`,
+      `customerOrderStatus.js`. `serializeOrderBase` gains **no new field** -- `packed_by`/
+      `packed_at` are staff identity/timing, never serialized on the public tracking response,
+      following Phase 210's own precedent for `rejected_by`/`rejected_at`.
+- [x] **Open item #2 resolved**: `DeliveryTrackingView.jsx`'s `getTimelineIndex` has its own fixed
+      5-step array with no dedicated "Packed" label, and the component itself has no render site
+      anywhere in the app (confirmed, no import outside its own file) -- mapped `packed` to the
+      same index as its predecessor `preparing` (smaller diff, no renumbering, and does not
+      mis-render a not-yet-dispatched order as "out for delivery").
+- [x] **Open item #3 resolved**: imported the real `normalizeWorkflowMode` from
+      `features/settings/workflowMode.js` into `orderFulfillmentUi.js` rather than adding a local
+      helper -- confirmed no import cycle (`workflowMode.js` does not depend on `features/pos`).
+      `getNextStatusActions` takes a second, optional `workflowMode` parameter (default `''`) so
+      the un-updated `TerminalSidebarPanel` call site (no render site on `develop`, confirmed)
+      keeps compiling and simply never offers the packed action.
+- [x] F&B/Simple storefront tracking adapters deliberately gain **no** flow entry for `packed`
+      (#1180's own constraint); both normalize a `packed` status to `preparing`'s position
+      immediately before their `findIndex` call, so a direct-API-call order landing in `packed` on
+      a non-Retail tenant does not visually rewind to step 0.
+- [x] **Open item #4 resolved**: no existing test exercised `retailTrackingAdapter.js`'s own
+      `normalize`/timeline logic directly (`retailTrackingPresentation.test.js` only tests route
+      presentation config; confirmed by exhaustive search of every `*retail*` and
+      `*Tracking*` test file). New `apps/dgfy-storefront/src/__tests__/retailTrackingAdapter.test.js`
+      created, mirroring the sibling precedent already set by `simpleTrackingAdapter.test.js`
+      (same directory, same style) -- not a parallel duplicate of an existing suite.
+- [x] **Compliance declaration required and written** --
+      `docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md`, `major`,
+      surfaces `pos,terminal,payments,store`. `payments` is listed only because
+      `check-compliance-impact.js`'s `modules/store/` rule mechanically demands it for any touched
+      file in that folder (verified live: omitting it fails the gate) -- the declaration states
+      explicitly, with citations, that no money-path behavior actually changes (`packed` is in
+      neither `commerceOrderLifecycleUseCase`'s trigger set nor the affiliate-settlement outcome
+      map). `npm run check:compliance` confirmed to fail first, then pass.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api` file and the
+      new migration (no build step on that app). `npm run build:pos`, `npm run build:store`,
+      `npm run build:skupervisor` -- all three real Vite builds succeeded. New
+      `apps/dgfy-api/tests/posOrderPackedStep.usecase.test.js` (6/6, actually executed via Jest),
+      `storeUsecases.applicationResult.test.js` extended (58/58),
+      `orderFulfillmentUi.test.js` extended (12/12 via Vitest), new
+      `retailTrackingAdapter.test.js` (6/6 via Vitest) -- all actually executed, not just
+      syntax-checked. Full `apps/dgfy-storefront` (807/807) and `packages/web-core`-via-`dgfy-ims`
+      (1880/1880) Vitest suites run in full with no regressions; full `apps/dgfy-api` Jest suite
+      run in full, see PR body's Testing Evidence for the pass count.
+- [x] **Checkpoint triggers fired and were proceeded through per Pat's standing instruction for
+      this project** (draft + self-verify, then straight to commit/push/PR, since every PR is
+      reviewed by hand): (1) a new file under `apps/dgfy-migration-runner/migrations/`; (2)
+      `check:compliance` requiring a new declaration. Both stated here and in the PR body rather
+      than silently skipped.
+- [x] Linked `Closes #1180` -- this phase completes the issue's stated scope (packing only, one at
+      a time, no batching, no new delivery entity); #1081 (batch packing) and the longshot
+      (separate packer accounts) remain out of scope, named in the issue's own Non-goals.
+
+### Known limitations, not fixed here
+
+- **The Retail gate is client-side only.** The server accepts `preparing -> packed` for any
+  workflow mode -- named explicitly as Residual Risk #1 in the compliance declaration, the same
+  posture Phase 210 took for `DeliveryAddressEditControl`'s visibility gate.
+- **F&B/Simple storefront timelines have no `packed` step**, falling back to the `preparing`
+  position -- a display fallback, not a designed experience for those modes.
+- **No ENUM-value repair path in `sync-tenant-schemas.js`.** A tenant restored from a
+  pre-Phase-211 snapshot self-repairs the two new columns at API boot but not the widened
+  `fulfillment_status` ENUM itself -- named as Residual Risk #3, a follow-up for `pm` to shape if
+  the class of risk is judged worth a dedicated repair mechanism.
+
+### Implementation links
+
+- Issue #1180 (Closes -- see above)
+- PR: opened against `develop`, link recorded in the PR itself
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md`
+- Migration: `apps/dgfy-migration-runner/migrations/20260901000003-add-order-packed-attribution.cjs`
+- No new/amended ADR -- #1180 states outright that packing-only, one-at-a-time, with no new
+  delivery entity, carries no ADR 0034 governance gate; confirmed no ADR 0034/0069 clause is
+  touched.
+
+### Next eligible phase
+
+**213.** Phase 212 was concurrently claimed by another workstream (#452) while this phase was in
+progress -- no specific initiative allocated by this phase either way; follow-ups named above (an
+ENUM-value repair mechanism if judged worth it) belong to `pm` to shape and file rather than being
+built here.
+
+## Phase 212 - Affiliate Share Link: Short Code in the /s/ Path, Retire ?p= (#452)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #452's asked-for shape: the affiliate share link
+moves from `/s/{store-slug}?p={short_code}` to a compact, path-only `/s/{short_code}` — a "clean
+personal link" (Pat's own framing on #452) instead of one that reads as carrying a tracking
+parameter, and a smaller QR payload. Bundled with an explicit nginx `/s/` routing contract per
+Pat's "fix it in the same pass" call on #452.
+
+### Objective and scope
+
+Add a public, unauthenticated `GET /api/v1/dgfy/affiliate/s/:short_code` resolver that turns a
+short code into a store slug (and nothing else), rewrite `buildAffiliateShareUrl` to emit
+path-only links, and make the storefront read the code from the `/s/` path segment instead of
+`?p=`. `?p=` is retired **entirely** — not kept as a back-compat read shim — per Pat's 2026-08-30
+decision on #452 (E1): the feature was not yet meaningfully distributed, so an indefinite fallback
+was judged not worth the extra surface. This is a **stricter cutover** than the plan
+(`PHASE_212_PLAN.md`) itself proposed as its default answer to E1 (an indefinite shim) — Pat
+picked the narrower option when asked. Lands a dated `## Amendments` block on ADR 0036 qualifying
+Decision 7's anti-enumeration property honestly (E2), since a resolver that turns a valid code into
+a store slug is a real, if narrowed, existence oracle that Decision 7's original text did not
+anticipate.
+
+Two escalations were raised in the plan and decided by Pat on 2026-08-30, both recorded in full in
+the ADR 0036 Amendments block added by this phase:
+
+- **E1 (back-compat window)** — no shim. `readAffiliateShortCode()` reads the `/s/{short_code}`
+  path only; `?p=` is retired from both emission and the storefront's read path in this same
+  phase. A visitor holding a pre-cutover `?p=` link still resolves to the right *store* (the slug
+  is still in that URL's path segment) but is no longer attributed to the affiliate — the
+  storefront falls through to the ordinary discovery-home degrade path for the short-code portion
+  specifically. Flagged, not silently assumed: if printed/live `?p=` codes turn out to be in use
+  after all, that is a follow-up, not a reason to revisit this phase's own scope.
+- **E2 (anti-enumeration qualification)** — shipped as planned. The new resolver returns a uniform
+  HTTP 200 with `{ resolved: false }` on every miss (unknown code, wrong format, program disabled,
+  no discovery-index row), never a 4xx; the response body carries only `{ resolved, store_slug,
+  short_code }`; the code space is `AF-` + 6 characters from a 32-symbol alphabet (~1.07 × 10⁹
+  combinations); and the route is mounted on a dedicated browse-tier limiter
+  (`affiliateShareResolveLimiter`, ~90/min), not `authLimiter`.
+
+Additional judgment calls, all decided in-plan (A1-A7 per the plan's READ FIRST table) and followed
+as-is per this phase's own task brief:
+
+- **A1 (discriminator)** — a strict, short-code-first regex
+  (`/^AF-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/i`, the exact generator alphabet from
+  `dgfyAffiliateRepository.js`), applied in `readRouteSlug()` **before** any slug-pattern
+  handling. This is the phase's highest-severity finding (plan §1.3): without it, a short code
+  landing on `/s/AF-ABC234` would be handed to `resolveTenantByStoreSlug` as the slug
+  `af-abc234`, feeding the unknown-slug miss-repair sweep a stream of distinct misses — the exact
+  amplifier behind the 2026-07-27 stage connection-exhaustion outage. Covered by a named
+  regression-guard unit test (T12).
+- **A2 (new endpoint, not reusing the capture POST)** — `GET /affiliate/s/:short_code` on its own
+  browse-tier limiter. Forced by a code fact: the capture POST sits on `authLimiter` (5
+  requests/5 minutes, IP-keyed, no `skipSuccessfulRequests` exemption for this path), survivable
+  for a fire-and-forget write but not for what is now a page-load dependency.
+- **A3 (resolve-failure degrade)** — silent fallthrough to the ordinary storefront discovery home;
+  no error page, no toast, no retry. Matches the existing best-effort posture of the whole
+  attribution path (ADR 0036 Decision 7).
+- **A4 (no address-bar rewrite)** — `/s/{code}` stays in the address bar once resolved; only
+  in-app navigation emits `/tenant-store/{slug}` via the untouched `storePath()`. Rewriting on
+  load would undo the clean-link feature one frame after delivering it.
+- **A5 (nginx guardrail)** — an explicit `location /s/` block added to all six identified configs
+  (`nginx.conf.template`, `nginx.conf.local-ports.template`, `conf.d.local-test/storefront.conf`,
+  `dev.dgfy.ph.conf`, `stage.dgfy.ph.conf`, `nginx/dgfy.ph.conf`), each with a `Cache-Control:
+  no-store` header. Honest framing per the plan's own correction to Pat's decision-comment premise
+  (§1.2): every storefront-serving block already ends in a catch-all `location /` to the same
+  upstream and the container's own `try_files … /index.html` already serves `/s/` today — so this
+  is a documented contract guardrail, not a functional fix. It is also **inert until the next
+  deploy renders the templates** — not self-verifying in this PR.
+- **A6 (ADR route)** — a dated `## Amendments` block on ADR 0036 (untagged/`[default]` Decision 7
+  per ADR 0039), not a new superseding ADR. `docs/proposals/2026-07-22-affiliates-program-study.md`
+  (P5) is left unedited as a dated, "Status: not implemented" study per `AGENTS.md`'s leave-alone
+  rule.
+- **A7 (phase number)** — 212, as assigned. Reconciled against this ledger's own highest entry
+  (209, Phase 209 immediately above) before writing this entry, per `AGENTS.md`'s Continuous Phase
+  Numbering rule 10 — confirmed unchanged from the plan's own reconciliation note, no escalation
+  needed.
+
+### Status
+
+`completed`. Merged into `develop` as `45eeacf0b52b083fa7e51ed2a50da9c15db6e2c3` (PR #1226, three
+review rounds — round 2 caught a real hash-route regression where `#/s/{code}` leaked a short code
+into slug resolution, fixed before merge). `Refs #452` (not `Closes` — end-to-end short-code
+resolution and the nginx guardrail's actual effect both need deployed verification per the plan's
+§9.4, so the issue stays open through merge for `verifier` per
+`docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+Depends on the Phase 1 affiliate attribution capture path (ADR 0036 Decision 7, the
+`sku_aff_attr` cookie / checkout-chain integration, left entirely untouched by this phase) and the
+`unique_dgfy_affiliate_enrollments_short_code` global-uniqueness index from migration
+`20260723000001-create-affiliates-program.cjs`, which is what makes a tenant-less
+`/s/{short_code}` lookup well-defined. Independent of Phases 207/208/209 — a different code path
+entirely (share-link construction and storefront routing, not commission accrual or enrollment
+status).
+
+### Acceptance and validation evidence
+
+- [x] Backend: `findActiveEnrollmentByShortCode` (global, hash-indexed lookup, no `tenantId`) added
+      alongside — not replacing — the existing tenant-scoped `findActiveEnrollmentByShareCode`.
+      `buildResolveAffiliateShareCodeUseCase` implements the plan's exact miss-shape ladder (empty
+      code → unknown code → `program_enabled: false` → no discovery-index slug → all `ok({
+      resolved: false })`, never a 4xx). Wired through a new handler
+      (`resolveAffiliateShareCode`), `index.js`, and `GET /affiliate/s/:short_code` on a new
+      `affiliateShareResolveLimiter` (~90/min, IP + short-code keyed) — added to
+      `docs/api/RATE_LIMITING.md`'s browse-tier table in the same PR, including its known
+      shared-IP/CGNAT keying gap (#972, inherited, not fixed).
+- [x] `buildAffiliateShareUrl` rewritten to path-only (`/s/{SHORT_CODE}`, uppercased, no
+      slug/query), with both call sites (`buildGetAffiliateQrPayloadUseCase`,
+      `buildListMyAffiliateEnrollmentsUseCase`) updated. `getStorefrontAffiliateSlug`'s call is
+      **kept** at the QR-payload call site — the slug is no longer used to build the URL but is
+      still returned as its own `slug` field. The QR payload's `param: 'p'` field (now
+      meaningless) replaced with `share_kind: 'path'`; verified by grep, not assumption, that no
+      `packages/web-core` consumer reads the old `param` key (`AffiliatesWorkspacePanel.jsx` only
+      reads `payload.url`/`short_code`/`dataUrl`) — so `packages/web-core` needed **no change**,
+      keeping this phase clear of that compliance-sensitive path.
+- [x] Storefront: `readRouteSlug()` gained a strict short-code guard before its existing pattern
+      loops (A1); `readAffiliateShortCode()` is now path-first with **no** `?p=` fallback (E1);
+      `setAffiliateShareRouteSlug` added as a dedicated module-level value, deliberately separate
+      from `setCustomStorefrontRouteContext` (reusing that would corrupt every outbound link on
+      `dgfy.ph`, per the plan's own warning). `useAffiliateAttributionCapture` rewritten to
+      resolve-then-capture (a `resolvedRef` guard alongside the existing `capturedRef`, at most one
+      resolve and one capture per mount); `StorefrontApp.jsx` wires `onShareRouteResolved:
+      setRouteSlug` into the hook. `storePath()`, `readStoreSubpage()`, and the custom-domain probe
+      are all untouched, matching the plan's explicit "do not touch" list.
+- [x] Money path untouched, by construction: `POST /affiliate/attribution/capture`, the
+      `sku_aff_attr` cookie, and `storeHandlers.js`'s checkout-side cookie read are byte-identical
+      to before this phase — the storefront now simply calls capture *after* resolution instead of
+      immediately, passing the same `{ short_code, store_slug }` shape the endpoint already
+      accepted.
+- [x] nginx: `location /s/` (with `Cache-Control: no-store`) added to all six identified configs,
+      before each file's existing `location /`, upstream `set` line copied verbatim per file (some
+      proxy to `dgfy-storefront:8083`, the two host configs to `localhost:8083`/`localhost:9083`,
+      the legacy `nginx/dgfy.ph.conf` to `127.0.0.1:5175`). `infrastructure/docker/dgfy-storefront/nginx.conf`
+      (the container's own SPA-fallback config) deliberately **not touched** — a `/s/` block there
+      would duplicate its existing `try_files … /index.html` catch-all.
+- [x] ADR 0036: a dated `## Amendments` block (2026-08-30) added, qualifying Decision 7's
+      anti-enumeration property honestly (E2) rather than leaving it read as unconditional, and
+      recording the `?p=` retirement (E1) and the new resolver's shape/limiter/degrade behavior.
+      Supersedes P5 in the dated affiliate-program study, left otherwise unedited. `npm run
+      lint:docs` (chains `check:adr --strict`) → PASS (84 ADRs validated).
+- [x] **Compliance declaration NOT required, confirmed by tool, not assumed** — `npm run
+      check:compliance` → "No compliance-sensitive changes detected." No path this phase touches
+      (`apps/dgfy-api/src/modules/dgfy/**`, `routes/dgfy.js`, `middleware/rateLimiter.js`,
+      `apps/dgfy-storefront/**`, `infrastructure/**`, `nginx/**`, `docs/**`) matches any
+      `COMPLIANCE_SENSITIVE_RULES` entry — the one condition that would have flipped this
+      (a `packages/web-core/src/features/pos/**` change) did not occur.
+- [x] **No database migration, no schema change** — the existing
+      `unique_dgfy_affiliate_enrollments_short_code` index is sufficient; the tenant-schema-sync
+      residual-risk tracker is not engaged by this phase.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js` file under
+      `apps/dgfy-api` (no build step exists for that app); `npm run build:store` for
+      `apps/dgfy-storefront` — a real Vite build, succeeded (2,428 modules transformed, no
+      unresolved import/JSX error). No `package.json` was touched by this phase's own diff; both
+      apps' `node_modules` were installed fresh to actually run these checks in this environment,
+      and `git diff --exit-code` on both `package-lock.json` files confirmed clean (no drift) both
+      times. Local nginx syntax check
+      (`docker run --rm -v .../conf.d.local-test:/etc/nginx/conf.d:ro nginx:alpine nginx -t`) →
+      "syntax is ok" / "test is successful". `npm run check:architecture` (guardrails + controller
+      boundaries) → both OK.
+- [x] New tests: `affiliateShareCodeResolve.unit.test.js` (11/11 passing — T1-T7 covering the
+      resolve use case's every branch including the exact response-key-set assertion (T7), T8-T10
+      covering `buildAffiliateShareUrl`'s path-only emission and uppercasing, plus an
+      empty-code-returns-null case) and
+      `apps/dgfy-storefront/src/app/routing/storefrontAffiliateShareRouting.test.js` (8/8 passing —
+      T11-T13 and T15-T18 from the plan's own numbering, plus one test recording the **E1-driven
+      deviation** from the plan's own T14: a `/s/{slug}?p={code}` old link now resolves the slug
+      but **not** the short code, since `?p=` was fully retired rather than kept as a shim).
+      **Existing suites pass unmodified**, per the plan's own "an edit there means the code is
+      wrong, not the test" rule:
+      `apps/dgfy-storefront/src/__tests__/storefrontCustomDomainRouting.test.js` (3/3),
+      `apps/dgfy-storefront/src/app/routing/storefrontNavigation.test.js` (10/10),
+      `apps/dgfy-storefront/src/__tests__/fnbStorefront.contract.test.js` (22/22),
+      `affiliateCommissionAccrual.unit.test.js`, `affiliateEarningsCap.unit.test.js`,
+      `affiliateCategoryRates.unit.test.js`, `dgfyAffiliateEnrollmentUseCases.unit.test.js`, and
+      `rateLimiterExemptionCoverage.contract.test.js` (95/95 combined).
+- [x] Linked `Refs #452` — see Status above for why `Refs`, not `Closes`.
+
+### Known limitations, not fixed here
+
+- **The nginx `/s/` rule is inert until the next deploy renders the templates** — this PR does not
+  and cannot verify it in production; that is `verifier`'s job post-deploy against a live
+  environment (plan §9.4).
+- **No live QR scan verification** — nobody scans a printed code in CI; end-to-end scan
+  verification against a real short code is also `verifier`'s job.
+- **The known shared-IP/CGNAT rate-limiter keying gap (#972)** is inherited by
+  `affiliateShareResolveLimiter`, not fixed by this phase.
+- **No production telemetry exists on how many `?p=` links were actually in circulation** — the E1
+  decision to retire the fallback rather than keep it was a judgment call made without that
+  number, not a measured one; stated honestly rather than implying it was measured.
+- **A vanity/user-chosen affiliate handle** (`/s/juan` instead of `/s/AF-ABC234`) was considered
+  and explicitly rejected as out of scope for this phase — it needs a
+  uniqueness/reservation/moderation design this phase has no mandate for.
+
+### Implementation links
+
+- Issue #452 (Refs — see Status above)
+- PR #1226: https://github.com/Sieitzz/dgfy-platform/pull/1226
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-30 entry)
+- `docs/api/RATE_LIMITING.md` — `affiliateShareResolveLimiter` row added to the storefront/
+  customer-facing browse-limiters table
+- Cross-referenced #793 (the broader storefront/POS URL-verbosity epic) in the PR body, per Pat's
+  explicit flag on #452 — not merged into it, a related but separate initiative.
+
+### Next eligible phase
+
+None allocated by this phase. Out-of-scope items named rather than silently dropped (plan §11,
+hand to `pm` if ever wanted): a general short-link/redirect service, a server-side 302 for
+`/s/{code}`, retiring the `?p=` shim on a future date (moot — E1 retired it outright instead),
+fixing #972's shared-IP keying gap, telemetry on `?p=` vs. path arrivals, and a vanity affiliate
+handle.
+
+## Phase 216 - Storefront: Single Fulfillment Method Hides the Chooser (#1217)
+
+### Initiative and release
+
+Surebiz go-live storefront polish (#558 verification surface), epic #1178. Phase 216 is the head
+of Wave 4; Phases 217 and 218 edit the same files and depend on this phase landing first.
+
+### Objective and scope
+
+When a store's resolved fulfillment location supports exactly one order method, the storefront
+checkout stops asking "How would you like to receive your order?" — the chooser and its heading
+are hidden and replaced with a static statement of the method instead. This is a **deliberate
+reversal of a presentation choice**, not a defect fix: `6e57f23b0` (2026-08-28) shipped the
+disabled-but-visible `Pickup (Unavailable)` treatment and #1117 ratified it in writing. **#1217
+supersedes #1117 on the visibility point only** — #1117's underlying capability-resolution fix is
+unchanged, and the `(Unavailable)` treatment survives, unmodified, for any mode with three or more
+candidates (none exist today; Retail, Simple, and F&B all resolve exactly two candidates —
+delivery/pickup — so "exactly one available" is precisely the case that used to render
+`(Unavailable)`, and that path becomes unreachable in these three modes as a direct consequence).
+Presentational only — no selection path, payload, validation, or server-side enforcement changes.
+
+**Decision recorded (plan §3): the two duplicate fail-open resolvers are consolidated in this
+PR**, not deferred. `storefrontFulfillmentOptions.js`'s `resolveStorefrontFulfillmentOptions` now
+delegates to `buildStorefrontOrderMethodOptions` (from `storefrontOrderMethodOptions.js`) instead
+of independently re-implementing the same `!== false` fail-open filter. Behaviour-identical for
+its one non-test caller (F&B's default `fulfillmentOptions` prop value): `delivery`/`pickup` map
+to the same `supports_delivery`/`supports_pickup` keys the old inline implementation read, no
+call-site churn (exported name and signature unchanged). Taken now, not deferred, because the
+sibling delivery-timing-policy work adds a third config axis on this same seam next — consolidating
+while it's already open is cheaper than doing it there. `getUnavailableFulfillmentMessage` stays
+byte-identical (three existing tests assert its exact string; its path is still live for a future
+3+-candidate mode).
+
+A new model module owns the whole decision so the five render sites (four mode components plus the
+raw `<select>` in `StorefrontCheckoutSummaryContainer.jsx`) cannot drift independently:
+`resolveFulfillmentSelectorPresentation(options)` in the new
+`shared/model/storefrontFulfillmentPresentation.js`, returning
+`{ showSelector, availableOptions, soleOption, notice }` across four explicit cases — 2+ available
+(chooser unchanged, `(Unavailable)` intact for any unsupported candidate), exactly 1 available
+(chooser hidden, static statement), 0 available (chooser hidden, defensive `role="alert"` notice —
+unreachable today for a `transaction`-mode store per `assertFulfillmentMethodAvailable`, kept as a
+guard rather than assumed impossible), and an empty candidate array (chooser left **on**,
+deliberately, since `SimpleCheckoutFulfillmentChoices`/`SimpleOrderMethodSelector` both default
+`options` to `[]` and a still-loading checkout must not flash the zero-method notice).
+
+### Status
+
+`in_progress`. PR opened against `develop`, `Refs #1217` (not `Closes` — this is a visual change
+Pat raised from a live walkthrough; the issue stays open through merge so `verifier` confirms it on
+STAGING per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+None upstream. **Phases 217 and 218 depend on this phase** — both edit the same files this phase
+touches and must land after it, per the plan's own header. Current phase 216; next eligible phase
+217.
+
+### Acceptance and validation evidence
+
+- [x] All four mode components (`RetailOrderFulfillmentStep.jsx`,
+      `SimpleCheckoutFulfillmentChoices.jsx` + `SimpleCheckoutFulfillmentStep.jsx`'s `3.` heading,
+      `FnbCheckoutFulfillmentChoices.jsx` + `FnbCheckoutRouteContainer.jsx`'s `3.` heading,
+      `DefaultOrderFulfillmentStep.jsx`) and the raw `<select>` in
+      `StorefrontCheckoutSummaryContainer.jsx` wired to `resolveFulfillmentSelectorPresentation`.
+      Inner section numbering (`1./2./3.`) shifts down by one wherever the chooser is hidden; the
+      outer "Step 2: Fulfillment" wizard label is untouched, and no new prop was threaded for the
+      `3.`-heading renumbering — both parents already had the options array in scope.
+      `DefaultOrderFulfillmentStep.jsx` is unwired placeholder code today (its options carry no
+      `available` flag) so it always resolves `showSelector: true` — behaviour is unchanged there
+      by construction, stated explicitly rather than claimed as a user-visible fix.
+      `StorefrontCheckoutSummaryContainer.jsx`'s `<select>` also gained `disabled` +
+      `(Unavailable)` marking on its own unsupported `<option>`s in the 2+-available branch — a
+      small, in-scope fix to a latent inconsistency (those options rendered freely selectable
+      before), only reachable in a future 3+-candidate mode.
+- [x] New shared component `shared/components/checkout/FulfillmentMethodNotice.jsx` — one notice
+      box, `accentColor` the only per-mode variation, `variant="warning"` (amber, `role="alert"`)
+      for the zero-available case, `data-testid="fulfillment-method-notice"`, named + default
+      export.
+- [x] §3 consolidation: `resolveStorefrontFulfillmentOptions` rewritten to delegate to
+      `buildStorefrontOrderMethodOptions(PRODUCT_FULFILLMENT_CANDIDATE_OPTIONS, location)`;
+      `PRODUCT_FULFILLMENT_CANDIDATE_OPTIONS` exported.
+- [x] `(Unavailable)` support in `SelectableOptionCard.jsx` and `getUnavailableFulfillmentMessage`
+      is untouched — kept live for a future 3+-candidate mode, per #1217's explicit scope.
+      `SimpleOrderMethodSelector.jsx` and its test are untouched.
+- [x] #1117 comment posted noting its "Pickup remains visible as unavailable" expected-behaviour
+      line is superseded by #1217 on the visibility point only (issue body left unedited, per the
+      taxonomy's no-rewriting-another-author's-issue rule).
+- [x] Compliance: `npm run check:compliance` → "No compliance-sensitive changes detected." (no
+      `packages/web-core/src/features/pos/**` path, no API contract, no regulated surface — a
+      presentation-only change in `apps/dgfy-storefront`, confirmed by tool, not self-certified).
+      `npm run check:architecture` → both `ArchitectureGuardrails` and `ControllerBoundary` OK.
+- [x] No ADR — searched, none governs this presentation choice (#1117 is an issue, not an ADR);
+      nothing to amend under ADR 0039.
+- [x] No database migration, no schema change, no lockfile change (`package.json` untouched;
+      `apps/dgfy-storefront/package-lock.json` confirmed clean via `git diff --exit-code`).
+- [x] Tier 0: `npm run build:store` → real Vite build, `✓ built in 8.53s`, no unresolved
+      import/JSX error.
+- [x] Tier 2 (elevated to required by this phase's own test rewrites): `npm test` in
+      `apps/dgfy-storefront` → **830/830 passing, 155/155 files** — including the new
+      `storefrontFulfillmentPresentation.test.js` (7 cases: 2+/1-delivery/1-pickup/zero/empty-array
+      guard/unknown-method fallback/non-array input), the rewritten
+      `RetailOrderFulfillmentStep.test.jsx` and `FnbCheckoutFulfillmentChoices.test.jsx` (each now
+      asserting the hide-and-renumber behaviour for a single-available pair plus the unchanged
+      chooser-and-`(Unavailable)` behaviour for a two-available pair — the pre-#1217 versions of
+      both asserted the now-unreachable `X (Unavailable)` render for that exact input and were not
+      a flake to work around), and the new sibling
+      `SimpleCheckoutFulfillmentChoices.test.jsx` at the parent-component level.
+      `SimpleOrderMethodSelector.test.jsx` was left unmodified, correctly — it exercises the leaf
+      selector directly with both options and still legitimately covers the `(Unavailable)` /
+      `aria-disabled="true"` path that stays live for a 3+-candidate mode.
+- [x] Regression sweep before opening the PR: `grep -rn "How would you like to receive your
+      order" apps/dgfy-storefront/src` shows no orphaned/stale assertion of the old always-shown
+      question; `grep -rn "(Unavailable)" apps/dgfy-storefront/src --include='*.test.jsx'` shows no
+      surviving test asserting the old disabled-visible render for a one-available/one-unavailable
+      input (`discoveryFlow.integration.test.jsx`'s unrelated `MapUnavailable` hit, left alone).
+## Phase 213 - Landlord-Admin Write Endpoint for `max_affiliate_slots` (#1190)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #1190: the only write path Phase 198 (#1177, PR
+#1187) left unbuilt for `tenant_affiliate_settings.max_affiliate_slots` was a hand-written `UPDATE`
+against the production landlord DB — no actor, no reason, no record. This phase replaces that with
+an authenticated, validated, audited platform-admin endpoint, per #447 D5's "manual, out-of-band,
+negotiated between DGFY and the Business" cap-raise model.
+
+### Objective and scope
+
+`PHASE_213_PLAN.md` raised two escalations, both decided by Pat on #1190 (2026-08-31) and recorded
+in full in the ADR 0036 Amendments block added by this phase:
+
+- **E1 (who may raise/lower the cap)** — delegable to any `admin.tenants` holder, not
+  Platform-Master-Admin-only. Mounted at `/api/v1/admin/tenants/:id/affiliate-slots`, which
+  `resolvePlatformAdminRoutePolicy` (`middleware/auth.js`) grants automatically via its existing
+  `admin.tenants` path-regex row — matching how `capabilities` and `pos-metadata` are scoped
+  (delegable), unlike `admin/templates` (platform-wide curation, kept master-only). The URL choice
+  *is* the authorization choice for this middleware, so this decision drove the route's mount
+  point, not a separate permission check.
+- **E2 (lowering the cap below current consumption)** — allowed. Every existing enrollment and
+  pending invite is grandfathered: lowering the cap never suspends, revokes, or otherwise mutates
+  any of them, and binds only future slot-consuming writes. The observed `slots_used` at write time
+  is recorded on the audit row (`before_snapshot.slots_used`, `metadata.over_cap_after_write`) and
+  in the endpoint's own response (`over_cap`), so an over-cap tenant is visible in the record, not
+  hidden.
+
+Every other judgment call (A1–A11 in the plan's READ FIRST table) was decided in-plan and followed
+as-is: reuse `tenant_admin_audit_logs` with one new `action` enum value (A1, no new table); the use
+case lives in `modules/tenants` mirroring `updateTenantPosMetadataUseCase.js` (A2); `reason`
+required, 3–500 chars (A3); `max_affiliate_slots` bounded `1..100` — `min(1)` because `0` already
+means `program_enabled: false`, `max(100)` a defensive typo bound, not a product limit (A4); the
+write is wrapped in a transaction reusing `acquireAffiliateSlotLock` — the #1187 RF-1/RF-6 lock,
+taken as the very first statement (A5); a no-op (same-value) write still audits (A6); `GET` returns
+only `max_affiliate_slots` + `slots_used` (+ `program_enabled`/`over_cap`), no consumption
+breakdown (A7); backend only this phase, no `TenantManager.jsx` panel (A8); compliance
+classification `regulatory` — a declaration was required and drafted, not negotiated down (A9); a
+dated ADR 0036 `## Amendments` block both retro-documents Phase 198's cap and records this phase's
+write path (A10); phase number 213 confirmed against the ledger's own highest entry (212, no 211
+entry yet — 211 is being planned in a sibling worktree) before writing this entry, per `AGENTS.md`'s
+Continuous Phase Numbering rule 10 (A11).
+
+### Status
+
+`completed`. Merged into `develop` as `addbc65c68c764027b3605a470268553e1fcd0f9` (PR #1228, two
+review rounds — round 1 caught a real transaction-propagation gap in the audit before-snapshot and
+a UUID-vs-integer bug in the audit-log listing envelope, both fixed before merge). `Refs #1190` (not
+`Closes` — a new landlord-admin write path needs deployed verification before the issue is done,
+per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule; the issue stays open through merge for
+`verifier`).
+
+### Dependencies
+
+Phase 198 (#1177, PR #1187) — the `max_affiliate_slots` column and its slot-cap enforcement
+(`assertAffiliateSlotAvailable`/`countConsumedSlots`/`acquireAffiliateSlotLock`), all reused
+unchanged. Phase 207 (#1191) — affiliate reactivation, the other slot-consuming path this phase
+does not touch. Independent of Phases 208/209/212 — a different surface entirely (a landlord-admin
+settings write, not commission/earnings math or the share-link path).
+
+### Acceptance and validation evidence
+
+- [x] Repository: `dgfyAffiliateRepository.upsertSettings` gains an optional `{ transaction }`
+      argument, threaded into `findOrCreate`/`update`/`reload`; every existing caller (two
+      positional arguments) is unaffected. `dgfyAffiliateRepository` exported from
+      `modules/dgfy/index.js` (new import + `export`), the established cross-module DI seam
+      already used by `dgfyAccountRepository`.
+- [x] Use cases (new, `modules/tenants/usecases/updateTenantAffiliateSlotsUseCase.js`):
+      `buildUpdateTenantAffiliateSlotsUseCase` validates `reason` and bounds, 404s an unknown
+      tenant, then inside one transaction — `acquireAffiliateSlotLock` first, `getSettings` +
+      `countConsumedSlots` next, `upsertSettings`, then `createTenantAdminAuditLog` — all committing
+      or failing together (deliberately unlike `updateTenantPosMetadataUseCase`'s audit-outside-
+      transaction shape, since a cap write landing without its audit row is exactly the state
+      #1190 exists to eliminate). `buildGetTenantAffiliateSlotsUseCase` returns
+      `{ max_affiliate_slots, slots_used, program_enabled, over_cap }` read-only.
+      `buildListTenantAffiliateSlotsAuditLogsUseCase` added as a third thin wrapper alongside the
+      existing capability/pos-metadata ones in `listTenantCapabilityAuditLogsUseCase.js` — zero new
+      logic, zero repository change. All three wired into `modules/tenants/index.js`'s DI block.
+- [x] Validator: `tenantAffiliateSlotsPatchSchema` (`max_affiliate_slots` integer `1..100`
+      required, `reason` string `3..500` required, `unknown(false)`) exported as
+      `validateTenantAffiliateSlotsPatch`; the existing `validateTenantCapabilityAuditLogQuery` is
+      reused unchanged for the audit-log query, matching the pos-metadata routes' own pattern.
+- [x] Handlers/routes: three handlers added to `adminTenantHandlers.js`
+      (`getTenantAffiliateSlots`, `listTenantAffiliateSlotsAuditLogs`, `updateTenantAffiliateSlots`)
+      mirroring the pos-metadata trio's actor/metadata/telemetry shape; propagated through **all
+      three** places in the `adminTenantController.js` barrel (import list, second import list,
+      `export default`) and into `routes/adminTenants.js`'s import list plus three new routes
+      inserted immediately after the pos-metadata block, matching this file's existing ordering
+      convention. No `checkPermission`, no new middleware, no new permission key — authorization
+      arrives entirely via E1's mount-path decision.
+- [x] Migration: `20260831000001-extend-tenant-admin-audit-actions-affiliate-slots.cjs` adds
+      `'affiliate_slots_update'` to the `tenant_admin_audit_logs.action` ENUM, copying all six
+      existing values verbatim from `20260625000001-add-platform-admin-assisted-provisioning.cjs`;
+      `down()` re-maps any `affiliate_slots_update` row to `capability_update` before shrinking the
+      ENUM, matching the existing precedent's own (lossy-by-construction) `down()` behavior. Model
+      (`TenantAdminAuditLog.js`) updated in lockstep. Landlord table only — no tenant-schema
+      interaction, no deploy-order dependency on
+      `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (stated explicitly, pre-empting the
+      RF-3-class review comment Phase 198's PR received for the same omission).
+- [x] **Compliance declaration required and written** —
+      `docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md`,
+      `regulatory`, surfaces `settings,compliance`, per `check-compliance-impact.js`'s three
+      `adminTenants`/`adminTenantController`/`adminTenantHandlers` rules — all three unavoidably
+      touched. A routing-around option (a fresh, unclassified path) was named and explicitly
+      rejected in both the plan and the declaration. `npm run check:compliance` confirmed to fail
+      first (three sensitive files, no declaration), then pass once the declaration was added.
+- [x] ADR 0036: a dated `## Amendments` block (2026-08-31) added, retro-documenting Phase 198's
+      per-tenant cap (never previously recorded in this ADR — `grep -n "slot\|cap\|max_affiliate"`
+      on the pre-amendment file returned only unrelated hits) and recording this phase's write path
+      plus both of Pat's E1/E2 decisions verbatim. `last_reviewed` refreshed to 2026-08-31 in the
+      same commit (not deferred to a follow-up, unlike Phase 212's own first pass).
+      `npm run check:adr --strict` → PASS (84 ADRs validated, run after the amendment).
+- [x] `docs/api/specification.md` — the three new endpoints documented alongside the existing
+      `pos-metadata` entries, including the grandfathering/`over_cap` behavior.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api` and
+      `apps/dgfy-migration-runner` file (no build step exists for `dgfy-api`). Frontend builds not
+      applicable — this phase is backend-only (A8), no `packages/web-core` or frontend app file
+      changed. `apps/dgfy-api`'s own `node_modules` were installed fresh to run these checks in
+      this environment; `git diff --exit-code -- package-lock.json` confirmed clean (no
+      `package.json` was touched by this phase's diff). `npm run check:architecture` (guardrails +
+      controller boundaries) → both OK.
+- [x] New tests: `tenantAffiliateSlotsAdminUseCase.unit.test.js` (12/12 — raise-and-audit, missing/
+      short-reason 422 with no writes, unknown-tenant 404 with no writes, `before_snapshot.slots_used`
+      accuracy, no-op-write-still-audits (A6), lock-before-read ordering with shared-transaction
+      propagation to the write and the audit insert (A5), the E2 below-consumption case asserting
+      `over_cap: true` and no enrollment/invite mutation, the §1.3 regression pin on
+      `buildUpdateAffiliateSettingsUseCase` never writing `max_affiliate_slots`, and the GET path)
+      and `tenantAffiliateSlotsValidator.test.js` (10/10 — bounds/required-field cases for both
+      fields plus an unknown-key rejection). Extended:
+      `platformAdminRouteClassification.test.js` (two new rows asserting
+      `{ permissions: ['admin.tenants'] }` for the new paths — the checked-in expression of the E1
+      decision), `tenantAdminAuditLogActions.contract.test.js` (asserts the new enum value in the
+      model and the new migration file). Two pre-existing transport-contract suites that mock the
+      full controller/use-case module surface needed their mock objects extended with the three new
+      names so the router's static imports would resolve under the mock —
+      `adminTenantHandlers.transport.test.js` and `adminTenantCapabilities.transport.test.js`
+      (both passed after the extension). Regression check, unmodified and passing:
+      `adminTenantCapabilityValidator.test.js`, `dgfyAffiliateRepository.slotEnforcement.unit.test.js`
+      (Phase 198's own suite — confirms this phase does not perturb slot-cap enforcement),
+      `dgfyAffiliateReactivationUseCase.unit.test.js`.
+- [x] **What this phase cannot verify itself, stated rather than skipped**: the migration is not
+      executed against a live MySQL instance (no reachable DB with working credentials in this
+      sandbox, the same limitation Phase 198's and Phase 207's PRs recorded); no live end-to-end
+      authorization check confirms an `admin.tenants` delegate actually reaches the endpoint on a
+      running server (asserted only against the resolver function via
+      `platformAdminRouteClassification.test.js`); the production over-cap census (#447's own
+      precondition, deferred by Phase 198) remains a manual pre-deploy step, not discharged here.
+- [x] Linked `Refs #1190` — see Status above for why `Refs`, not `Closes`.
+- [x] **`pr-reviewer` round-1 review (PR #1228, verdict COMMENT, no blockers) addressed** — RF-1:
+      `updateTenantAffiliateSlotsUseCase`'s before-snapshot read (`getSettings`) now passes the
+      write's own transaction, so it is guaranteed to read the row `acquireAffiliateSlotLock` just
+      locked rather than a separate implicit connection; `dgfyAffiliateRepository.getSettings`
+      gains the matching optional `{ transaction }` parameter, and the A5 test now asserts this
+      propagation directly. RF-2: the shared `buildListTenantAdminAuditLogsUseCase` builder (used
+      by the capability, pos-metadata, *and* this phase's new affiliate-slots listing) returned
+      `tenant_id: Number(id)` in its response envelope — `NaN`, serializing as `null`, for every
+      UUID tenant; fixed to return the validated `tenant.id` from `findTenantById` instead, with a
+      new UUID regression test (`listTenantCapabilityAuditLogs.usecase.test.js`) covering the new
+      wrapper. Fixing the shared builder also corrects this for the two pre-existing
+      capability/pos-metadata audit-log endpoints, not just the new one. Two pre-existing suites
+      (`adminForceNonCompliant.handler.test.js`, `adminForceNonCompliant.transport.test.js`) that
+      also mock the full `modules/tenants/index.js`/`adminTenantController.js` module surface were
+      found broken by a full local test-suite run during this fixup — missed by the original PR's
+      targeted regression set — and extended with the same three mock entries as the two transport
+      suites caught the first time.
+
+### Known limitations, not fixed here
+
+- **No live authorization check** — whether an `admin.tenants` delegate actually reaches the
+  endpoint on a running server is asserted against the resolver function, not by an end-to-end
+  request; that is `verifier`'s job post-deploy.
+- **The migration is not executed** in this sandbox (no reachable MySQL with working credentials).
+- **The production over-cap census** (#447's own precondition) remains a manual, un-automated
+  pre-deploy step, inherited from Phase 198 and not discharged by this phase.
+- **No billing/purchase flow, no generic entitlements primitive, no lapse/dunning downgrade** —
+  all three remain #488/#491's open scope, named explicitly rather than silently absent (plan §11).
+- **No TenantManager.jsx UI panel** (A8) — until one ships, raising or lowering a cap means an
+  authenticated API call, not a form; §7.3 of the plan specifies the exact slice if ever wanted.
+- **The pre-existing `tenant_id: Number(id)` bug** in `listTenantCapabilityAuditLogsUseCase.js`'s
+  serializer (`Number('<uuid>')` is `NaN`) was inherited by the new audit-log wrapper via the
+  shared private builder, not fixed — out of scope per the plan (§3.5, §11), flagged for `pm`.
+
+### Implementation links
+
+- Issue #1190 (Refs — see Status above)
+- PR: opened against `develop`, link recorded in the PR itself
+- #447 (D1–D6, the decision comment this phase implements D5 of), #488 (the eventual
+  entitlements/billing consumer, still exploratory), #446 (epic)
+- PR #1187 (Phase 198 — the column and its enforcement this phase writes to)
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-31 entry)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md`
+- Migration: `apps/dgfy-migration-runner/migrations/20260831000001-extend-tenant-admin-audit-actions-affiliate-slots.cjs`
+
+### Next eligible phase
+
+None allocated by this phase. Out-of-scope items named rather than silently dropped (plan §11,
+hand to `pm` if ever wanted): a billing/purchase flow for buying additional slots, a generic
+tenant × resource × limit entitlements primitive, lapse/dunning downgrade behavior, a
+TenantManager UI panel, a GET consumption breakdown (active enrollments vs. pending invites), the
+`tenant_id: Number(id)` serializer bug, the production over-cap census, and a bulk/multi-tenant
+write.
+
+## Phase 214 - Affiliate Enrollment Status History (#1202)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #1202: `dgfy_affiliate_enrollments.status` had
+exactly three columns recording history (`revoked_at`/`revoked_by`/`revocation_reason`, Phase 199,
+#450), and they are last-write-wins — a second suspend/reactivate cycle silently erases the first.
+This phase replaces "last write wins" with a real per-enrollment timeline: a new landlord table,
+`dgfy_affiliate_enrollment_status_events`, recording every transition (enrollment, suspension,
+revocation, reactivation) as an append-only row with a renderable actor name, per
+`PHASE_214_PLAN.md` (this branch's root), option (b) of its two-option analysis.
+
+### Objective and scope
+
+`PHASE_214_PLAN.md`'s READ FIRST table named eleven judgment calls (J1-J11); all were decided
+in-plan and followed as-is except J2, which is Pat's to make and does not gate this phase:
+
+- **J1 (option a vs b)** - option (b), a dedicated events table. Option (a)
+  (`reactivated_at`/`reactivated_by` columns) does not close #1202 - it is still last-write-wins,
+  one cycle deep - and cannot give a future actor a renderable *name* (F4: `revoked_by` is an
+  unresolvable tenant-DB integer with no FK; a UI can only ever say "by user #7" from it).
+- **J2 (affiliate-facing visibility of this history) - Pat's, not answered here.** **This phase
+  ships no affiliate-facing surface either way and defaults to merchant-only visibility** - not the
+  storefront customer dashboard, not `listEnrollmentsForAccount`. Recorded as an open item in the
+  ADR 0036 amendment for whoever eventually builds an affiliate-facing read path; it does not block
+  this phase's merchant-facing/backend deliverable.
+- **J3 (backfill)** - partial, unambiguous-only: one `enrolled` row per existing enrollment from
+  `created_at`; one demotion row only where `revoked_at IS NOT NULL AND status IN
+  ('suspended','revoked')` (the demotion target is knowable there, `from_status` assumed `active`
+  and flagged in `metadata`); rows where `revoked_at` is set but status is now `active`/`pending`
+  are skipped outright - the target is unknowable and fabricating it would be worse than a gap.
+- **J4 (`reactivate` accepts an optional `reason`)** - implemented, per PR #1232 review RF-3: the
+  original PR body claimed J4 was "followed as-is" while this ledger entry (this exact bullet, in
+  its pre-fix wording) said it was deferred - a real contradiction between the two documents,
+  caught in round-1 review rather than silently left. Resolved by implementing it rather than
+  correcting the claim downward: `POST .../reactivate` now accepts an optional `reason` (≤500
+  chars, additive - an omitted body is unaffected), threaded through the controller → use case →
+  `reactivateEnrollment` → the reactivated event's `reason` field. `reactivatedBy` (Phase 207's
+  previously-unpersisted parameter) remains persisted onto the same events row.
+- **J5 (retire the three Phase 199 columns)** - no. They stay exactly as they are, documented as a
+  denormalized cache of the most recent demotion event, not the authority. Phase 207's compliance
+  declaration lists their preservation as a verified precondition; retiring them is a breaking
+  `GET /affiliates` change for no caller's benefit.
+- **J6 (fix `revoked_at`'s suspend/revoke conflation)** - no, not in this phase. The events table
+  records `from_status`/`to_status` exactly, so the conflation stops mattering for anything reading
+  the new table; changing the three columns' meaning is a separate, breaking change nobody asked
+  for.
+- **J7 (read shape)** - a dedicated `GET /affiliates/affiliates/:enrollment_id/status-events`,
+  mirroring Phase 213's own `GET /:id/affiliate-slots/audit-logs` sibling, rather than inlining an
+  unbounded history array into `GET /affiliates`.
+- **J8 (phase numbering)** - 214 confirmed free against the ledger's highest entry (213, plus the
+  out-of-band 219 for #1220) before writing this entry, per `AGENTS.md` rule 10. **Correction to the
+  plan's own assumption, discovered while writing this entry: Phase 215 already exists in this
+  ledger, already `in_progress`, and its own text states it is "intentionally independent of Phase
+  214/#1202" and "does not add, call, wait for, or imply a status-events endpoint/table."** The
+  plan's J8 assumed 215 was reserved for a frontend consumer of *this* phase's new endpoint; that
+  is not what Phase 215 turned out to be. See "Next eligible phase" below - this is stated here
+  rather than silently reconciled, per `AGENTS.md`'s numbering-conflict rule ("stop and reconcile
+  ... before implementation"), since this phase's implementation was already complete when the
+  conflict was found and reconciling it changes only what gets said about the *next* phase, not
+  anything this phase built.
+- **J9 (retention/pruning)** - named, not solved. Neither existing landlord audit table has a
+  retention policy either; inventing one here would be an unasked-for divergence. Handed to `pm`.
+- **J10 (transactional vs best-effort event write)** - transactional, same reasoning Phase 213
+  recorded verbatim for its own audit row ("a cap write that lands without its audit row is exactly
+  the state #1190 exists to eliminate"). Residual risk stated, not hidden: the auto-enroll-on-
+  register write site runs inside the account-creation transaction, so an event-insert failure
+  there would abort a registration that would otherwise have succeeded - accepted, since skipping
+  the event write on that one path would leave a permanent hole in the history for every
+  invite-accepted affiliate.
+- **J11 (pre-existing defect found while planning)** - `DgfyAffiliateCategoryRate` (Phase 209,
+  #448) is missing from `NON_TENANT_MODEL_EXPORTS`
+  (`apps/dgfy-api/src/utils/tenantModelFactory.js`) - confirmed live in this branch. Not fixed here
+  (different issue, out of scope); this phase's own new model was added to that set from the start
+  so it does not repeat the omission. Handed to `pm` as a follow-up, alongside two adjacent UI gaps
+  found in passing (F2: no Reactivate button on a `revoked` row; F3: no revocation-reason input
+  anywhere in the merchant UI).
+
+### Status
+
+`completed`. Merged into `develop` as `8851ebb8a36a8609c2eef9b4bce6dd09b2799f9c` (PR #1232, two
+review rounds — round 1 caught two real blockers: self-serve enrollments misattributed as merchant
+actions in the new audit trail, and a non-locking status-transition read allowing concurrent-write
+races; both fixed before merge). `Refs #1202` (not `Closes` - a new landlord table plus four
+instrumented write sites needs deployed verification before the issue is done, per
+`docs/process/ISSUE-TAXONOMY.md`'s linkage rule; the issue stays open through merge for `verifier`).
+This entry tracks only the mechanical data-model/backend half of #1202 - the affiliate-visibility
+question (J2) stays open, for whoever builds an affiliate-facing read path next. Two follow-up
+issues filed post-merge: #1233 (DgfyAffiliateCategoryRate missing from NON_TENANT_MODEL_EXPORTS)
+and #1234 (Affiliates admin UI has no Reactivate button and no revocation-reason input).
+
+### Dependencies
+
+Phase 199 (#450) - the three revocation-audit columns this phase keeps as a cache, unchanged. Phase
+207 (#1191) - the reactivation endpoint, one of the four write sites instrumented here, and the
+source of the previously-unpersisted `reactivatedBy` parameter this phase finally persists. Phase
+213 (#1190) - the sibling audit-table precedent (`tenant_admin_audit_logs`) this phase deliberately
+did *not* reuse (F8.3: wrong actor class, no enrollment key, `reason` `NOT NULL`, platform-admin-
+read surface) and the dedicated-audit-endpoint shape (`GET .../audit-logs`) this phase's own
+`GET .../status-events` mirrors instead. Independent of Phase 215 (#1203) - see J8 above.
+
+### Acceptance and validation evidence
+
+- [x] Migration: `20260901000004-add-affiliate-enrollment-status-events.cjs` - new landlord table
+      `dgfy_affiliate_enrollment_status_events` (by-value `tenant_id`/`enrollment_id`, no FK; no
+      unique index - repeated identical transitions are legitimate history, not duplicates), three
+      indexes (`(enrollment_id, created_at)`, `(tenant_id, created_at)`, `(event_type)`), and the
+      J3 partial/guarded backfill, idempotent via `describeTable`/`showIndex` guards mirroring
+      `20260901000001-add-affiliate-category-rates.cjs`. `down()` drops the table.
+- [x] Model: `DgfyAffiliateEnrollmentStatusEvent.js` (`timestamps: true, updatedAt: false`,
+      mirroring `CompanyRegistrationEvent.js`'s append-only posture), registered in
+      `models/index.js` (import, instantiation, both export blocks), **deliberately no
+      `Tenant.hasMany`/`belongsTo` association** - `tenant_id` is by-value, and adding one would
+      emit an FK Sequelize cannot satisfy against an isolated tenant schema (the exact class of
+      risk F10/J11 flags). Added to `NON_TENANT_MODEL_EXPORTS`
+      (`apps/dgfy-api/src/utils/tenantModelFactory.js`) from the start.
+- [x] Repository (`dgfyAffiliateRepository.js`): one write helper,
+      `recordEnrollmentStatusEvent` (always takes the caller's transaction, never opens its own),
+      and one read method, `listStatusEventsForEnrollment` (limit clamped 1..100, default 25,
+      tenant+enrollment scoped). Four write sites wired: `createEnrollment` (site 1, after the
+      slot-cap check, `enrolled`/`tenant_user`/`admin_api`); `materializeInviteEnrollment` (sites
+      2a/2b, inside its existing `if (!existing)` guard so an idempotent re-accept never double-
+      writes, threading a new `autoEnroll` option to distinguish the explicit-accept caller
+      (`dgfy_account`/`invite_accept`) from the auto-enroll-on-register hook
+      (`system`/`auto_enroll`) rather than sniffing the caller); `updateEnrollment` (site 3 - the
+      only structural change: this method previously had no transaction at all and now does, so
+      the `from_status` read shares the same snapshot as the write, mirroring the RF-1-class fix
+      PR #1228 applied to Phase 213 - event emitted only when `updates.status` actually differs
+      from the prior status, mirroring the use case's own `stamped` condition exactly, deliberately
+      with no slot lock since this path only ever demotes); `reactivateEnrollment` (site 4, after
+      the status write, before reload, symmetric for both `suspended`- and `revoked`-sourced
+      reactivations).
+- [x] Use case: `buildListAffiliateEnrollmentStatusEventsUseCase` - resolves the enrollment for the
+      caller's tenant first (404 if absent, the tenant-isolation boundary - never queries events by
+      `enrollment_id` alone), serializes through an explicit field list (never a raw `toPlain`, so
+      `metadata` internals are a deliberate choice). `buildProvisionAffiliateUseCase`,
+      `buildUpdateAffiliateEnrollmentUseCase`, and `buildReactivateAffiliateEnrollmentUseCase` all
+      gained `actorUsername`/`revokedByUsername`/`reactivatedByUsername` parameters, threaded from
+      the controller's `req.user.username` (the same `String(req.user?.username ||
+      req.user?.email || '').trim().slice(0, 120)` shape `middleware/auth.js:481` already uses) -
+      this is the single most valuable field the new table carries (F4): a UI can render "by Ana"
+      instead of an unresolvable "by user #7". `reactivatedBy` (Phase 207's own previously-
+      unpersisted parameter, `void reactivatedBy;`) is now actually persisted, onto the events row
+      rather than a new column.
+- [x] Route/controller: `GET /api/v1/affiliates/affiliates/:enrollment_id/status-events`,
+      gated on `VIEW_AFFILIATES` (read permission, matching `GET /affiliates` and the existing
+      `/qr` sibling - not `MANAGE_AFFILIATES`), added immediately after the `/qr` route in
+      `affiliateAdmin.js`; `listAffiliateEnrollmentStatusEvents` handler added to
+      `dgfyAffiliateHandlers.js`; use case wired into `modules/dgfy/index.js`'s DI block.
+- [x] ADR 0036: a dated `## Amendments` block (2026-09-01) added under ADR 0039's
+      `[default]`/untagged tier (no `[binding]` clause governs enrollment status history) -
+      records the new table, its authority relative to the three Phase 199 columns and the
+      disagreement invariant, the four write sites, the read endpoint and its `VIEW_AFFILIATES`
+      gate, J2 as an explicit open item with its stated merchant-only default, and J3's backfill
+      rule. `last_reviewed` refreshed to 2026-09-01 in the same commit.
+- [x] **Compliance: no impact declaration required** (F7) - `check-compliance-impact.js`'s
+      sensitive-path table has no entry for `apps/dgfy-api/src/modules/dgfy/**`,
+      `apps/dgfy-api/src/routes/affiliateAdmin.js`, or `apps/dgfy-migration-runner/migrations/**`;
+      confirmed no `packages/web-core/**` file is touched (DO-NOT-list item 4). Stated affirmatively
+      in the PR body rather than left for a reviewer to re-derive.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api` and
+      `apps/dgfy-migration-runner` file (no build step exists for `dgfy-api`). Frontend builds not
+      applicable - no `packages/web-core` or frontend app file changed (DO-NOT list item 4). No
+      `package.json` touched, so no lockfile step.
+- [x] New tests: `dgfyAffiliateStatusEvents.unit.test.js` (17/17 after the round-1 fixup below -
+      one `enrolled` event per provision/self-serve/invite-accept/auto-enroll write site with the
+      correct `actor_type`/`source`, no second event on an idempotent re-accept, one
+      `suspended`/`revoked` event on a real PATCH transition *and* the revocation stamp both
+      landing together, no event on an idempotent re-PATCH or a non-status PATCH, `reactivated`
+      events symmetric for both `suspended`- and `revoked`-sourced reactivations preserving the
+      Phase 199 stamp and `activated_at`, an optional reactivation reason threaded through (J4), a
+      four-transition sequence proving the §3.1 scenario - four events survive while the
+      enrollment's own columns reflect only the last demotion, the read endpoint's newest-first
+      ordering/limit clamp and its cross-tenant 404, a failing event insert propagating as a
+      rejection of the whole `updateEnrollment` call, and two concurrency regression tests for
+      RF-2 (below)). Extended (new `DgfyAffiliateEnrollmentStatusEvent` fake model registered,
+      since the repository now imports and writes it on every status-changing call):
+      `dgfyAffiliateReactivationUseCase.unit.test.js` (11/11, unchanged assertions) and
+      `dgfyAffiliateRepository.slotEnforcement.unit.test.js` (regression, unchanged assertions) -
+      both would otherwise throw on the now-real `DgfyAffiliateEnrollmentStatusEvent.create(...)`
+      call inside `createEnrollment`/`materializeInviteEnrollment`.
+      `dgfyAffiliateEnrollmentUseCases.unit.test.js` needed no change - its fake repository's
+      `updateEnrollment(tenantId, enrollmentId, updates)` simply ignores the new fourth
+      `{ actorUserId, actorUsername }` argument. All four suites run via a fresh `npm install` in
+      `apps/dgfy-api` (no `node_modules` present in this worktree beforehand) -
+      `apps/dgfy-api`'s own `node_modules` is untracked/gitignored, so this needed no
+      `package-lock.json` change and none was made: 67/67 passing.
+- [x] Linked `Refs #1202` - see Status above for why `Refs`, not `Closes`.
+- [x] **`pr-reviewer` round-1 review (PR #1232, verdict BLOCK, RF-1/RF-2 blockers) addressed** —
+      **RF-1**: `createEnrollment` (site 1) is shared by `buildProvisionAffiliateUseCase` (a
+      merchant/tenant-user action) and `buildEnrollSelfServeAffiliateUseCase` (the DGFY account
+      enrolling ITSELF), but hard-coded `actorType: 'tenant_user'`/`source: 'admin_api'` for both -
+      a self-serve enrollment was misrecorded in the audit trail as a merchant action. Fixed by
+      deriving the event's actor/source from the enrollment's own `source` field (already distinct
+      per caller - `'self_serve'` vs `'admin_provisioned'`): a self-serve enrollment now records
+      `actor_type: 'dgfy_account'`, `actor_dgfy_account_id`, `source: 'self_serve'`. Added a
+      dedicated `'self_serve'` value to both the migration's and the model's `source` ENUM (the
+      table's own `CREATE TABLE` migration, not yet deployed anywhere, was edited in place rather
+      than bolting on a second `ALTER TABLE` migration for a table this same PR introduces). New
+      regression test (`dgfyAffiliateStatusEvents.unit.test.js` test 1b).
+      **RF-2**: `updateEnrollment`'s and `reactivateEnrollment`'s pre-write `findOne` was a plain
+      (non-locking) read - under MySQL/InnoDB REPEATABLE READ, two concurrent transitions on the
+      SAME enrollment could each derive `from_status` from a stale snapshot and each write their
+      own status event, even though the second transition was actually a no-op by the time its
+      `UPDATE` ran. Fixed by adding `lock: transaction.LOCK.UPDATE` to both `findOne` calls (a
+      SECOND, enrollment-row-scoped lock - distinct from and not in conflict with
+      `acquireAffiliateSlotLock`'s own #1187 RF-6 "first read of the transaction" contract, which
+      governs only the tenant-settings-row lock's ordering) and, for `reactivateEnrollment`
+      specifically, revalidating the locked read before writing - if the row is already `active`
+      by the time the lock is acquired (a concurrent reactivate already committed), the call now
+      returns the current row as-is instead of re-writing status and firing a second, incorrect
+      `active -> active` `reactivated` event. Two new regression tests (`dgfyAffiliateStatusEvents
+      .unit.test.js` tests 14/15) reuse the same in-memory lock-queue mechanism the existing
+      `#1187 RF-1` concurrency test already relies on to force genuine interleaving; both were
+      confirmed to actually FAIL against the pre-fix code before being confirmed passing against
+      the fix (not merely written to pass).
+      **RF-3 (should-fix)**: the PR body claimed J4 was "followed as-is," but the optional
+      reactivation reason was not implemented, contradicting this very ledger entry's own
+      (pre-fix) "deferred" wording - a real cross-document inconsistency, not just an
+      under-implementation. Resolved by implementing J4 (see the updated J4 bullet above) rather
+      than downgrading the claim.
+      **RF-4 (should-fix)**: the ADR 0036 amendment said "PR: TBD" and described #1203/Phase 215 as
+      this endpoint's consumer; corrected to "PR: #1232" and to state plainly that #1203 merged
+      independently (PR #1231) and does not use this endpoint.
+      **RF-5 (should-fix)**: the PR body did not state this migration's tenant-schema-sync
+      deploy-order posture; added an explicit statement (landlord-only, no tenant-schema
+      dependency - see the PR body's Testing Evidence section).
+      **RF-6 (should-fix)**: branch was several commits behind `origin/develop` at review time;
+      merged fresh `origin/develop` (no conflicts in this phase's own files) before pushing the
+      fixup.
+
+### Known limitations, not fixed here
+
+- **J2 (affiliate-facing visibility) is explicitly unresolved** - this phase's own deliverable
+  defaults to merchant-only and ships no affiliate-facing surface either way; whoever builds one
+  next must answer it first, not assume merchant-only was an oversight.
+- **The migration is not executed against a live MySQL instance** - no reachable DB with working
+  credentials in this environment, the same limitation Phases 198/207/213 recorded.
+- **F10 (`DgfyAffiliateCategoryRate` missing from `NON_TENANT_MODEL_EXPORTS`) is not fixed** -
+  confirmed live, calibrated as an unreproduced hygiene/latent-risk finding, handed to `pm` as its
+  own issue rather than folded into this PR.
+- **F2/F3 (no Reactivate button on a `revoked` row; no revocation-reason input in the merchant UI)**
+  are named, not fixed - frontend gaps for whoever builds the next merchant-facing UI slice.
+- **J9 (retention/pruning of status events) is named, not solved** - cross-cutting with the two
+  existing landlord audit tables, neither of which has one either.
+- **The Phase 215/#1203 relationship stated in the plan's own J8 turned out to be wrong** (see
+  Objective and scope, J8 above; corrected in the ADR 0036 amendment per PR #1232 review RF-4) -
+  Phase 215 shipped independently as PR #1231, consuming only the pre-existing Phase 199 columns,
+  and does not consume this phase's new endpoint. This phase's `GET .../status-events` endpoint
+  currently has no frontend consumer.
+
+### Implementation links
+
+- Issue #1202 (Refs - see Status above)
+- PR: #1232, against `develop`
+- #450 (Phase 199, the three columns this phase caches from), #1191 (Phase 207, reactivation - one
+  of the four write sites), #1190/Phase 213 (the sibling audit-table precedent and dedicated-
+  endpoint shape this phase follows), #446 (epic)
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-09-01 entry,
+  corrected under PR #1232 review RF-4)
+- Migration:
+  `apps/dgfy-migration-runner/migrations/20260901000004-add-affiliate-enrollment-status-events.cjs`
+- `PHASE_214_PLAN.md` (this branch's root) - the full plan this entry implements
+
+### Next eligible phase
+
+**Not 215** - Phase 215 (#1203) already exists in this ledger as a separate, independent,
+`in_progress` entry that does not consume this phase's work (see J8 above). Phases 216/218 are
+still open (216 previously named as "separately allocated" by the Phase 215 entry, no entry written
+yet; 217/218 open; 219 already claimed for #1220). The natural next consumer of this phase's new
+`GET .../status-events` endpoint - a real per-affiliate timeline UI with names, plus the F2/F3 UI
+gaps - is unscheduled; hand to `pm` to shape as its own phase/issue rather than assuming it folds
+into 215 or 216 silently.
+
+## Phase 215 - Affiliates Admin: Surface Revocation Audit Fields (#1203)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Phase 215 is reserved for #1203. The ledger also contains
+out-of-order reservations and entries above this number (including Phase 219); those do not
+renumber this phase or establish a dependency on it.
+
+### Objective and scope
+
+Surface the three latest revocation-audit fields already present in the authenticated
+`GET /affiliates/affiliates` response inside `AffiliatesWorkspacePanel`: `revoked_at`, the opaque
+tenant-user value-link `revoked_by`, and `revocation_reason`. The UI renders a latest-audit block
+only when a stamp exists, retains the current enrollment status separately, uses explicit fallbacks
+for missing actor/reason data, and tolerates an invalid timestamp without crashing.
+
+This phase is intentionally independent of Phase 214/#1202. It does not add, call, wait for, or
+imply a status-events endpoint/table, reactivation actor, or event timeline. It also does not
+invent an unsafe cross-database actor lookup: `revoked_by` remains the raw tenant-user ID because
+the enrollment lives in the landlord database while the referenced users live in tenant databases.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Phase 199 (#450) supplied the latest-stamp fields and made `revoked_by` a value-link rather than a
+foreign key. Phase 207 (#1191) established that reactivation preserves that latest stamp, which is
+why the block can render for an active enrollment without claiming it is currently revoked.
+Neither is a runtime blocker: this phase consumes the existing list payload only. Independent of
+Phase 214/#1202.
+
+### Acceptance and validation evidence
+
+- [ ] `AffiliatesWorkspacePanel.jsx` renders the existing latest stamp without an API, model,
+      migration, permission, status-transition, or actor-lookup change.
+- [ ] A focused jsdom test covers stamped, active/reactivated, absent/null, invalid-date, and
+      existing-empty-list states.
+- [ ] `npm run build:skupervisor` and `npm run build:pos` pass because both consume the shared
+      panel; `npm run check:architecture`, `npm run check:compliance`, and `npm run lint:docs` pass.
+- [ ] The required `major` `pos,terminal` impact declaration validates. Its
+      `NOT-EXECUTED-PHASE-215` preflight reference is expected for a `develop` PR and must be
+      replaced by the promotion-time STAGING preflight result before normal promotion to `main`.
+- [ ] Rendered desktop and mobile evidence is captured when a local authenticated fixture is
+      available; otherwise the limitation is stated rather than implied away.
+
+### ADR and documentation action
+
+ADR 0036 is cited but not amended: its landlord/tenant data-ownership rule is consumed unchanged,
+and this is a read-only rendering change with no architecture impact. Compliance declaration:
+`docs/compliance/impact-declarations/2026-08-31-affiliate-revocation-audit-ui.md`.
+
+### Next eligible phase
+
+Phase 216 is separately allocated. Phase 214/#1202 remains a separate product/data-model follow-up
+and is not a prerequisite or extension of this UI slice.
+
+## Phase 219 - Storefront: Versioned Non-Refundable Downpayment Terms, Drafted and Linked (#1220)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178); downpayment epic #815. Planned by Claude
+(`PHASE_219_PLAN.md`, planning-only dispatch, 2026-08-31); implemented and opened for PR by a
+separate Sonnet session the same day.
+
+### Objective and scope
+
+Customers fund non-refundable downpayments in production under terms they have never been shown.
+This phase ships an interim, versioned, explicitly-unreviewed draft of those terms and surfaces it
+as an optional link at the downpayment step of all three storefront checkout modes (Simple, F&B,
+Retail), via the one shared `DownpaymentPaymentCallout.jsx` all three already render — closing the
+gap recorded as Compliance Precondition 9 of the 2026-08-22 downpayment refund/forfeiture
+declaration. Storefront + docs only: new `downpaymentTermsDocument.js` (single source of the text,
+`terms_version: downpayment-nonrefundable-v1`), a generated `docs/legal/downpayment-nonrefundable-terms-v1.md`,
+a new `DownpaymentTermsModal.jsx` overlay, a link added to `DownpaymentPaymentCallout.jsx` on the
+existing `refundable === false` gate, and a comment-only edit to
+`storefrontDownpaymentPresentation.js`. No backend, no migration, no schema change.
+
+One deliberate deviation from the plan's own embedded prototype (plan §6), made by the implementing
+session per Pat's explicit instruction: the prototype rendered the pending-legal-review notice as a
+visible banner inside the customer-facing modal. Pat's decision overrides #1220's own instruction on
+this point — the draft/pending-review status is recorded **internally only** (module header comment,
+`docs/legal/` front matter, PR body, this ledger entry) and **not** shown to the customer. Both new
+test files were updated accordingly, including a regression assertion that the customer-facing
+dialog and plain text do not contain review-status language while the internal reviewable markdown
+doc still does.
+
+Explicitly out of scope, named rather than silently dropped: recording acceptance/consent (#1086,
+whose version+hash record this phase's `terms_version` makes implementable); lawyer-reviewed wording
+(#280, which this phase does not close — the terms are an AI-drafted, unreviewed first pass and Pat
+reads them himself before any CEO/lawyer review); any gating of the pay action (no checkbox, no "I
+agree", the pay action is never disabled — pinned by tests).
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged. The drafted terms text
+itself still needs Pat's own read before anyone treats it as final — that is separate from and does
+not block this PR's own merge readiness.
+
+### Dependencies
+
+None blocking. Independent of the 213–218 chain. Supplies the versioned text #1086 requires;
+precedes #280's replacement wording, which ships as a new version identifier, never an in-place
+edit of `downpayment-nonrefundable-v1`.
+
+### Acceptance and validation evidence
+
+- [x] The terms link appears at the downpayment step in all three checkout modes (via the one
+      shared `DownpaymentPaymentCallout.jsx`), only when `display.refundable === false`, never when
+      `true` or `null` — pinned by `downpaymentTermsDisclosure.test.jsx`.
+- [x] Opening the terms shows the full text with the version identifier and effective date; the
+      pending-legal-review status is recorded internally only, not as a customer-facing banner
+      (Pat's override, above) — pinned by both new test files.
+- [x] The checkout step stays mounted while the terms overlay is open, and closing returns to it
+      with no state lost — pinned by test.
+- [x] No checkbox, no "I agree", and the pay action is never disabled on an unread state — pinned
+      by test; confirmed by inspection that `termsOpen` state never reaches any submit/pay control.
+- [x] `docs/legal/downpayment-nonrefundable-terms-v1.md` exists, carries `status: draft` and
+      `legal_review_status: pending (#280)`, and matches the rendering module byte-for-byte —
+      pinned by test.
+- [x] 9 new tests (`downpaymentTermsDocument.test.js`, `downpaymentTermsDisclosure.test.jsx`), all
+      passing; 34 existing downpayment tests (`storefrontDownpaymentPresentation.test.js`,
+      `downpaymentTrackingSummary.test.jsx`, `useCheckoutTotalsAndGating.downpayment.test.js`)
+      unchanged and passing — both re-run and confirmed by the implementing session, not only
+      trusted from the plan.
+- [x] `npm run build:store` (real Vite build) re-run and confirmed green by the implementing
+      session; `npx eslint` on every new/changed file (0 errors); `check:compliance` (PASS — no
+      compliance-sensitive changes detected, declaration filed voluntarily),
+      `check:architecture` (OK), `lint:docs` (OK — 29 governed docs, 84 ADRs).
+- [ ] No live mobile-device pass — layout verified only in jsdom and the Vite build, stated in the
+      PR rather than implied as covered.
+
+### Implementation links
+
+- Issue #1220 (Refs — the terms need Pat's own read and deployed verification before closing),
+  parent epic #1178
+- Related: #1086 (acceptance capture, downstream consumer of `terms_version`), #280 (T&C lawyer
+  review, not closed by this phase), #824/Phase 144 (the existing neutral disclosure note, now the
+  summary line), #815 (downpayment epic)
+- ADR 0069 clause 1b `[binding]` / clause 8, carried by ADR 0070
+- `docs/compliance/impact-declarations/2026-08-31-downpayment-nonrefundable-terms-disclosure.md`
+- `docs/legal/downpayment-nonrefundable-terms-v1.md`
+- `PHASE_219_PLAN.md` (planning artifact; not committed to the repo — superseded by this ledger
+  entry and the PR itself as the durable record)
+
+### Next eligible phase
+
+220.
+
+## Phase 217 - Storefront: Per-Store Delivery Timing Policy (#1218)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178).
+
+### Objective and scope
+
+Adds per-location scheduling and immediate-fulfillment controls plus merchant lead-time values. Investigation confirmed the storefront primary path is live (`GET /api/v1/store/locations`); `StorefrontDiscoveryIndex` is a stale fallback, so a narrowly-scoped post-commit sync trigger is included. #627's post-order delivery estimate/email work is excluded. No ADR governs pre-order timing presentation or per-location scheduling policy (checked `docs/architecture/adr/INDEX.md` for `fulfillment`/`storefront`/`checkout`/`delivery`; ADR 0034 and ADR 0057 are adjacent but do not govern this); no ADR amendment and no new ADR is required, matching the precedent set by `supports_delivery`/`supports_pickup` shipping without one.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 216 and precedes Phase 218. Current phase is 217; next eligible phase is 218.
+
+### Acceptance and validation evidence
+
+- [x] Additive tenant migration (fanned out over every active tenant database, idempotent, symmetric `down()`) and tenant-schema repair registry add all four timing columns; `TENANT_SCHEMA_CAPABILITY_VERSION` bumped in the same commit.
+- [x] API model, validators, merged-state lead-time validation (both write use cases, 422), live location serialization (both read allowlists), checkout scheduled-order 409 guard, and discovery fallback snapshot sync (best-effort, post-commit, injected) are implemented and unit-tested.
+- [x] Storefront timing-policy model, all four fulfillment components (three render cases), section-renumbering, and the `fnbScheduleMode` auto-snap are implemented; default policy remains fail-open and byte-identical to pre-phase behaviour.
+- [x] IMS Settings exposes both switches plus the conditional lead-time inputs, client-side mirrors of both server rules, and a live buyer-facing string preview.
+- [x] Compliance declaration records the required major classification and develop preflight placeholder; `check:compliance` observed failing before the declaration was added, passing after.
+- [x] `apps/dgfy-api` Tier 2: new `tenantLocationDeliveryTimingPolicy.usecases.test.js` (11/11, all 8 plan cases) and 3 new `storeUsecases.applicationResult.test.js` cases (409 guard + asymmetry) pass; the two pre-existing tenant-location use-case test files pass unchanged, confirming the new builder dependencies are backward-compatible.
+- [x] `apps/dgfy-storefront` Tier 2: `npm test` at 855/855 passing across 158 files (Phase 216's baseline was 830/830 across 155); the NOW-copy regression grep confirms no unconditional survivor.
+- [x] `build:store`, `build:skupervisor`, `node --check` on every changed backend/migration file, `check:architecture`, and `check:adr` all green; no lockfile in the diff.
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding, per this phase's own explicitly-stated scope (§10.3): no live-environment check, and neither Retail's nor Default's schedule state reaches a payload today, so there is no server-side consequence to verify for those two modes.
+
+## Phase 218 - Storefront: Preserve and Persist a Customer's Typed Delivery Address (#1219)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178).
+
+### Objective and scope
+
+Fixes a precedence bug duplicated in five places (`resolved || customer || pin`, and one 4-term
+variant) that silently discarded a customer's typed delivery-address edit in favour of the stale
+reverse-geocoded value, on every checkout submission and every read-only display surface. Adds one
+shared, exported `resolveDeliveryAddress()` (edit-preferring, `isGeneratedPinnedDeliveryAddress`
+now load-bearing rather than dead code) and a companion `hasExplicitDeliveryAddressEdit()`
+predicate; rewires all five precedence sites and the `'saved'` display branch (which would
+otherwise show stale text while the payload carried the edit); makes the delivery-address line an
+editable `<input>` on all three checkout surfaces (Retail, Simple, F&B) rather than read-only on
+two of them; adds signed-in "Update saved address" (`PATCH`) and guest `localStorage` persistence
+of the single active address; caps `address_line`/`label` length in the backend use case (422),
+the one validation gap found. Two files (`StorefrontApp.jsx`, `RetailOrderFulfillmentStep.jsx`)
+genuinely overlap with already-merged Phase 216/217 on disk but not in seam; branched from
+`origin/develop` at `8ff58cf58` (Phase 217's merge commit) per the plan's explicit ancestry check.
+No ADR governs delivery-address precedence (ADR 0029 Decision 4 is satisfied, not crossed); no
+compliance declaration predicted or fired. Last phase of Wave 4.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 217 (`origin/develop @ 8ff58cf58`, verified ancestor). Current phase is 218; next
+eligible phase is 221 — 220 was claimed by #1199 (PR #1242) after this branch was cut, confirmed
+via `git merge-base` against `origin/develop` at PR-open time; 219 is already ledgered out-of-band
+for #1220. Do not renumber either.
+
+### Acceptance and validation evidence
+
+- [x] `resolveDeliveryAddress()`/`hasExplicitDeliveryAddressEdit()` added to `pinnedDeliveryAddress.js`; all five precedence sites (`StorefrontApp.jsx`, `useSignedInCheckoutAddresses.js`, `useDeliveryPinResolution.js` (4-term site, leading term preserved per J3), `useServiceBookingDerivations.js`) and the `'saved'` display-branch guard (J4) rewired; grep for the old `resolvedDeliveryAddress || customerAddress` pattern returns zero hits repo-wide.
+- [x] All three checkout surfaces (`RetailOrderFulfillmentStep.jsx`, `SimpleCheckoutFulfillmentStep.jsx`, `FnbCheckoutRouteContainer.jsx`) render an editable `<input>` in place of the former read-only `<span>`, prop-threaded per-mode; signed-in "Update saved address" handler (`useSignedInCheckoutAddresses.js`) and guest `storefrontGuestDeliveryAddressStorage.js` (mount hydration + write on add/checkout-success + clear alongside saved customer details) implemented.
+- [x] Backend: `dgfyCustomerUseCases.js` create/update both cap `address_line` at 4000 and `label` at 100 (422), matching `storeAddressCreateSchema`'s existing caps.
+- [x] Mandatory revert-proof regression test (`deliveryAddressPrecedence.test.js`): confirmed failing against the pre-fix `resolved || customer || pin` expression, confirmed passing against the real implementation (both transcripts in the PR body).
+- [x] `apps/dgfy-storefront` Tier 2: `npm test` at 880/880 passing across 164 files (Phase 217's baseline was 855/855 across 158) — 25 new tests across 6 new files, no regression.
+- [x] `apps/dgfy-api` Tier 2 (scoped, not full DB-backed suite — no local DB/Redis credentials in this environment): `dgfyCustomerUseCases.test.js` 32/32 (6 new cap tests) and `dgfyCustomerHandlers.transport.test.js` 2/2, both green.
+- [x] `build:store`, `node --check` on the changed backend file, `check:compliance`, `check:architecture`, `check:adr` all green; no lockfile in the diff (`npm install` run in both `apps/dgfy-storefront` and `apps/dgfy-api` to unblock local test execution, confirmed clean via `git diff --exit-code`).
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding — out of this phase's scope, same posture as Phase 217.
+- [ ] F&B RTL render test for the editable input (T5's third case) was not written — `FnbCheckoutRouteContainer.jsx` is a ~970-line, ~110-prop page container, judged too costly to stand up in isolation within this phase's budget; Retail and Simple's equivalent cases are covered. Flagged here rather than silently omitted.
+
+## Phase 220 - POS In-Store Affiliate Attribution: Re-verify Enrollment at Commit Time (#1199)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #1199, the follow-up Phase 206 filed when it deferred
+POS: Pat's 2026-08-31 decision on #1199 is the same D2-shaped call as #450 D2 — re-verify the
+affiliate enrollment at commit time; on a revocation inside that window the sale completes normally
+and no commission accrues. This phase extends Phase 206's storefront-only fix to the in-store POS
+checkout path, per `PHASE_220_PLAN.md` (this branch's root).
+
+### Objective and scope
+
+`PHASE_220_PLAN.md`'s READ FIRST table named ten judgment calls (J1-J10); all were engineering
+calls decided in-plan and followed as-is, except J5/J6 which are Pat's and don't gate this phase:
+
+- **J1 (re-verify by enrollment id or by affiliate code)** - by id,
+  `resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId })`. Pins the same enrollment the
+  cashier's code resolved to at entry; re-resolving by code could in principle land on a different
+  enrollment if a code were ever reassigned (no rotation endpoint exists today, so this is
+  defensive rather than live). Mirrors Phase 206 exactly.
+- **J2 (reusable helper or a new one)** - reusable, already. `resolveActiveAffiliateEnrollmentById`
+  (`affiliateCommissionAccrual.js:418-431`) is exported from the same module `posUseCases.js`
+  already imports three symbols from. No new helper, wrapper, or shared abstraction added.
+- **J3 (drop-log guard shape)** - a bare `else`, not Phase 206's `else if (affiliatePricing
+  ?.enrollment)`. That extra condition exists on storefront solely to avoid logging the common case
+  of an attribution cookie already stale at pricing time. POS has no such case - an unresolvable
+  code hard-rejects with `422 AFFILIATE_CODE_INVALID` before any write, so on POS a null re-check at
+  commit time is always the in-flight drop.
+- **J4 (placement)** - inside the existing `if (affiliateEnrollment) { try { ... } }` block,
+  immediately after `transaction.commit()` (`posUseCases.js:4399`) and before
+  `accrueEarnedForInStoreSale`, inside the existing `try` so the existing `catch` still guarantees
+  nothing here can fail a sale that already succeeded.
+- **J5 (cashier-facing surface for a drop) - Pat's, already answered.** No. The `ok({...})`
+  payload, receipt contract, and transaction row are untouched; a `logger.warn` is the entire
+  operator-visible footprint (i.e. none, at the counter).
+- **J6 (fix the stripped `affiliate_code` field here) - Pat's to sequence, not built here.** No -
+  handed to `pm` as a separate issue (**#1239**, filed critical). `checkoutPosSchema`
+  (`posValidator.js:143`) declares no `affiliate_code` key and carries no `.unknown(true)`, and
+  `validateSchema` runs `stripUnknown: true` - so on the primary `POST /pos/checkouts` route the
+  cashier-typed code never reaches the use case and no in-store commission has ever accrued through
+  it. **Consequence stated plainly: until #1239 ships, this phase's fix only bites on the
+  split-payment and mobile-sync entry points, not the primary route.** Shipping this phase first is
+  still correct - it puts the right semantics in place before the primary route is switched on,
+  rather than after.
+- **J7 (ADR 0036 amendment)** - yes, one dated `## Amendments` block, covering both channels: this
+  is also the first ADR 0036 record of Phase 206's own storefront-side re-verify, which shipped
+  without one. ADR 0039 route: `[default]`/untagged (ADR 0036's only `[binding]` clause, Decision 2
+  rate-snapshotting, is untouched).
+- **J8 (phase numbering)** - confirmed 220 against the ledger's highest entry (219, #1220) before
+  writing this entry, per `AGENTS.md` rule 10; 217/218 remain claimed by in-flight, not-yet-ledgered
+  Surebiz work in a sibling worktree and are not reused.
+- **J9 (test approach)** - a new file, `apps/dgfy-api/tests/posCheckoutAffiliateAttribution.unit.test.js`,
+  mirroring Phase 206's mock-the-repository method on top of the proven zero-DB
+  `posCheckoutFnbContracts.usecase.test.js` harness for `buildCheckoutPosUseCase`. Not folded into
+  either of those two existing files (one tests unrelated F&B contracts; the other tests the util,
+  not POS wiring).
+- **J10 (separate handling for split-payment / mobile-sync entry points)** - no. All three entry
+  points (`POST /pos/checkouts`, split-payment completion, mobile offline sync) run through the same
+  `buildCheckoutPosUseCase` body and hit the same accrual block, so one edit covers all three. A
+  pre-existing rollback hazard on the split-payment path (F8 below) is named, not silently
+  inherited.
+
+### Status
+
+`in_progress` (PR open, not yet merged). Will move to `completed` once PR #1242 merges into
+`develop` and its gates pass. `Refs #1199` (not `Closes` - a behavior change on a live checkout path
+needs deployed verification before the issue is done, per `docs/process/ISSUE-TAXONOMY.md`'s
+linkage rule; the issue stays open through merge for `verifier`).
+
+### Dependencies
+
+Phase 206 (`#450` D2) - the storefront twin this phase extends the identical semantics to; this
+phase reuses Phase 206's exported helper (`resolveActiveAffiliateEnrollmentById`) unchanged. Phase
+208 (#449, the lifetime earnings cap) and Phase 209 (#448, per-category commission rates) - both
+already-shipped best-effort-accrual conventions this phase's drop branch follows, neither touched by
+this phase. Independent of Phases 217/218 (in-flight, unrelated, sibling-worktree Surebiz work).
+
+### Acceptance and validation evidence
+
+- [x] `posUseCases.js`'s post-commit affiliate accrual block (`:4401` onward) now re-resolves the
+      enrollment via `resolveActiveAffiliateEnrollmentById` at commit time (by id, pinned to the
+      entry-time-resolved `enrollment_id`) instead of accruing directly against the entry-time
+      `affiliateEnrollment` object. One new named import, alphabetically ordered into the existing
+      block.
+- [x] Verified as a plain, non-locking, post-`transaction.commit()` read on the default connection -
+      no lock, no `FOR UPDATE`, no transaction handle (Phase 198's RF-6 locking finding does not
+      apply - there is no lock here at all).
+- [x] Silent-drop implemented as a bare `else` (J3) - deliberately not Phase 206's `else if` guard,
+      since POS's entry-time 422 gate makes the "already stale before this window" case
+      unreachable, unlike storefront.
+- [x] The entry-time `422 AFFILIATE_CODE_INVALID` gate (`posUseCases.js:2977-2990`) is unchanged -
+      an invalid code still hard-rejects the whole checkout before any write.
+- [x] No pricing, discount, VAT, or receipt math changed - affiliate enrollment on POS affects
+      nothing but the commission (appears at exactly four lines in the file both before and after
+      this change).
+- [x] New test file `posCheckoutAffiliateAttribution.unit.test.js` - 7/7 passing (T1: still active
+      at commit, with a call-count assertion on both `findActiveEnrollmentByShareCode` and
+      `findEnrollmentById` that fails against pre-Phase-220 code; T2: revoked between entry and
+      commit; T3: suspended between entry and commit, pinning the `status === 'active'` gate rather
+      than a careless `!== 'revoked'`; T4: program disabled between entry and commit; T5: regression
+      baseline, no `affiliate_code` on the payload; T6: regression baseline, invalid code at entry
+      still hard-rejects 422 and `findEnrollmentById` is never called; T7: a drop leaves the sale's
+      totals identical to the accrued case). Confirmed to genuinely pin the new behavior: 4 of the 7
+      cases (T1-T4) were run against the pre-fix code with the fix reverted and failed, then
+      re-confirmed passing with the fix restored - not merely written to pass.
+- [x] Adjacent regression suites re-run clean alongside the new file:
+      `posCheckoutFnbContracts.usecase.test.js`, `affiliateCommissionAccrual.unit.test.js`,
+      `storeCheckoutAffiliatePricing.unit.test.js` - 80/80 passing across all four files combined.
+- [x] Compliance impact declaration added and required (`major`/`pos,terminal` -
+      `modules/pos/**` matches `check-compliance-impact.js`'s sensitive-path rule; deliberately
+      **not** Phase 206's `payments` surface, which would fail the classifier's surface-coverage
+      check for a `modules/pos/` change). States affirmatively: no pricing/VAT/receipt math changes;
+      the re-check enforces the same gate as entry, only later; accrual stays best-effort inside the
+      existing `try/catch`; idempotency unchanged; the split-payment path's pre-existing
+      pre-outer-commit accrual hazard (F8); and that #1239 limits this fix's live reach until it
+      ships. `preflight_request_ref: NOT-EXECUTED-1199-...` is correct and expected on a
+      `develop`-targeting PR per the standing preflight protocol.
+- [x] ADR 0036 `## Amendments` block added (2026-08-31), covering both Phase 206 (storefront,
+      retroactively - it shipped with no ADR record) and this phase (in-store) under one entry: the
+      shared re-verify rule and mechanism, each channel's own drop-guard shape and why they differ
+      (J3), and both known limitations (the #1239 stripped-field gap and the pre-existing
+      split-payment rollback hazard).
+- [x] `node --check apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` - syntax-only check
+      (this app has no build step); passed. No `package.json` touched, so no lockfile step.
+- [x] Linked `Refs #1199` - see Status above for why `Refs`, not `Closes`.
+
+### Findings surfaced while verifying the plan, not fixed here (handed to `pm`)
+
+- **F5 - `affiliate_code` is stripped by `checkoutPosSchema` on the primary POS route** (highest
+  value): `POST /pos/checkouts`'s validator declares no `affiliate_code` key and has no
+  `.unknown(true)`, so `stripUnknown: true` silently drops it before the use case ever sees it - the
+  cashier can type a valid code, see no error, and no attribution or commission is ever created.
+  This is a pre-existing defect independent of #1199's own subject; also means #1199's original
+  framing ("the cashier is explicitly told the code is valid") never held on this route either,
+  since the 422 gate can never fire there. Filed as **#1239** (critical - money-affecting feature
+  restoration, its own validation shape, its own tests). Suggested sequencing: Phase 221,
+  immediately after this one.
+- **F7 - the mobile POS offline-sync path carries a worse failure than #1199's own subject**: if the
+  affiliate was revoked between the cashier's offline code entry (T0) and sync-time validation (T1),
+  the entry-time 422 gate rejects the *entire synced sale* - `syncMobilePosCheckouts` marks the
+  entry `rejected` and the transaction is never created. A completed, tendered, receipted offline
+  sale is lost, not merely uncommissioned. Filed as **#1240**.
+- **F8 - split-payment completion can accrue a commission for a sale that then rolls back**:
+  `buildCompletePosPaymentSessionUseCase` passes its own transaction into `checkoutPosUseCase`, so
+  `ownsTransaction === false` and the accrual block runs pre-outer-commit; the caller can still throw
+  `POS_PAYMENT_SESSION_TOTAL_CHANGED` and roll back afterwards, and the affiliate commission/
+  attribution rows (landlord DB, a different connection) survive that rollback. Pre-existing,
+  unrelated to #1199, found while verifying it; this phase's re-verify can only ever *reduce* the
+  number of rows written on that path, never worsen it. Filed as **#1241**.
+- Neither channel's `logger.warn` drop (storefront's or this phase's) has an operator- or
+  merchant-facing surface - named as a gap, not proposed as work.
+
+### Implementation links
+
+- Issue #1199 (Refs - see Status above)
+- PR: #1242, against `develop`
+- #450 (Phase 199/206, the D2 precedent this phase mirrors), #449/Phase 208 (the earnings-cap
+  best-effort-drop convention this phase's own drop branch follows), #448/Phase 209 (per-category
+  rates, untouched), #446 (epic)
+- Follow-up issues filed: #1239 (critical - stripped `affiliate_code` on the primary POS route),
+  #1240 (offline-sync hard-reject on revocation), #1241 (split-payment pre-outer-commit accrual
+  rollback hazard)
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-31 entry)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md`
+- `PHASE_220_PLAN.md` (this branch's root) - the full plan this entry implements
+
+### Next eligible phase
+
+**221** - the strongest candidate is #1239 (F5, the stripped `affiliate_code`): without it, this
+phase's semantics are correct but reachable on only two of three POS entry points. 217/218 remain
+claimed by in-flight, non-affiliate work in a sibling worktree and are not reused (J8).
+
+## Phase 221 - Docker Compose File Split + Full `.env` Retirement, Phase A (#1236)
+
+### Initiative and release
+
+DevOps Initiative 1, secrets management (#360/#267); direct follow-up to #1155 (deploy-root
+cleanup, 2026-08-31 same day). Planned and implemented by the same Claude Code session.
+
+### Objective and scope
+
+Two related asks surfaced while cleaning up `/opt/dgfy-platform` for #1155: whether `.env` is still
+load-bearing now that SOPS+age (#360, ADR 0060) is live, and a request to split the single
+`docker-compose.yml` into per-concern files for readability.
+
+Audited the live server's actual `docker-compose.yml` directly (a first pass had wrongly concluded
+`.env` was still needed for ~76 vars — corrected mid-session after reading the full file, not just
+grepping `${VAR}` names). Findings: bucket A (23 secrets) is done via `secrets/*.env`; bucket B for
+`dgfy-api` (~50 non-secret vars) was **already** baked as literals directly into the live compose
+file on 2026-08-28, alongside the SOPS cutover — this had gone unrecorded as "done" anywhere. The
+one real remaining gap: `nginx`'s 11 domain vars, still `${VAR}`-interpolated from `.env`,
+explicitly deferred to #401 in the cutover fragment's own comments. The `.env` cleanup delta the
+fragment itself specified (strip now-redundant vars once baked elsewhere) was also never executed —
+live `.env` still held all ~100 original names, including inert plaintext copies of every bucket-A
+secret.
+
+**Phase A (this phase, repo-only, no production impact):**
+
+- Split `infrastructure/docker/docker-compose.yml` (the generic, multi-environment template used
+  by DEV/QA/staging) into 5 files via Compose's top-level `include:` directive: the entry file
+  (`name:`, `networks:`, `mysql`, `redis`, `include:`) plus `docker-compose.migration.yml` /
+  `docker-compose.api.yml` / `docker-compose.frontend.yml` / `docker-compose.proxy.yml`. Checked
+  for shared variables first, per Pat's ask: the only shared non-secret value is the 3-line DB
+  topology block (`DB_HOST`/`DB_PORT`/`DB_DIALECT`), duplicated identically in
+  `dgfy-migration-runner` and `dgfy-api` — small enough to duplicate inline rather than invent a
+  shared-vars file for it; the only shared secret family (`DB_NAME`/`DB_USER`/`DB_PASSWORD`) is
+  already isolated in `secrets/shared.env`.
+- Confirmed against current Docker Compose documentation (Context7, `/docker/compose`) and by
+  direct `docker compose config`/`config --images`/`config --services` validation that the split is
+  transparent to every existing caller — `publish-platform.yml`, `deploy-sops.sh`,
+  `verify-deployment.yml` all just `cd $DOCKER_DIR && docker compose ...`, none pass `-f` flags —
+  and that host/shell-exported env always wins over `.env` regardless of file count, so
+  `deploy-sops.sh`'s secrets mechanism is unaffected. `publish-platform.yml`'s staleness-guard grep
+  (`sieitzz/dgfy-api` + `sieitzz/dgfy-migration-runner` substrings in `docker compose config
+  --images`) verified to still pass unmodified.
+- Added EDIT 4 to `infrastructure/docker/env/prod.sops-cutover-fragment.yml`: nginx's 11 domain
+  vars as literals (closing #401's compose half), superseding that file's 2026-08-28 "`.env` should
+  hold at most `IMAGE_TAG`" language — the corrected end state is that `.env` has zero remaining
+  consumers on PROD once EDIT 4 is live, since bucket C already resolves from `${VAR:-default}`
+  fallbacks and CI shell-exports, never from `.env`.
+- Added a scope-boundary note to `infrastructure/docker/env/prod.env-var-classification.md`
+  (explicitly `dgfy-api`/`dgfy-migration-runner`-scoped by its own code-derived method; nginx's
+  vars were never in scope there and now point to EDIT 4 instead).
+- Dated `## Amendments` block on ADR 0060 recording the corrected end state and the file split —
+  `default`/untagged-tier, no `binding` clause affected.
+
+**Phase B — completed 2026-08-31, separately from this phase's own repo diff:** applying EDIT 4 +
+the file split to the live PROD server and retiring `.env` there (moved into
+`_archive/2026-08-31/env-retired-DO-NOT-USE/`, per #1155's move-never-delete convention — not
+`rm`'d). Applied directly via `ssh` to `/opt/dgfy-platform`'s own local git repo (#1155), commit
+`9568c57` (parent `1c4d62d`) — not through this GitHub repo's CI or PR flow, so it carries no diff
+here. Full evidence posted as a comment on #1236, not relied on this phase's own PR merge as the
+completion record (GitHub has no visibility into an SSH-applied server change).
+
+### Status
+
+`completed` for Phase A (pending PR #1238 merge); Phase B `completed` 2026-08-31, evidence on
+#1236. See #1236 for the tracking issue and PR.
+
+### Dependencies
+
+#401 (nginx compose drift — this phase's EDIT 4 closes its compose half, applied by Phase B);
+#360/ADR 0060 (the SOPS+age cutover this extends); #1155 (the deploy-root cleanup that surfaced this
+gap, and whose on-server git repo Phase B committed to).
+
+### Acceptance and validation evidence
+
+- `docker compose config --services` before/after the split: identical 9-service set (`mysql redis
+  dgfy-migration-runner dgfy-api dgfy-ims dgfy-pos dgfy-storefront nginx certbot`).
+- `docker compose config --images`: all 9 images resolve with full `ghcr.io/sieitzz/*` paths (with
+  no local override file present); `docker-compose.override.yml`'s existing local-dev image
+  rewrites still auto-merge correctly on top of the `include:`-resolved base.
+- Phase B's gates, all run and passed on the live server (full record on #1236): `docker compose
+  config` resolved byte-identical before/after the split + nginx literal-ization (proving the
+  literals exactly match what `.env` was providing); all 8 live domains smoke-tested through
+  `nginx` post-change with correct routing, including `bar.space.com.ph` (the exact domain the
+  prior `CORS_ORIGIN` incident broke); `nginx` itself never restarted (uptime unbroken across the
+  whole change). One process mistake during application (a bare `docker compose up -d` instead of
+  `./deploy-sops.sh`, causing dgfy-api to read `.env`'s stale `ADMIN_ACCOUNTS_JSON` and go
+  unhealthy for ~2 minutes) was self-corrected live via `deploy-sops-nopull.sh` — recorded on
+  #1236 and in the server's own commit message, not silently omitted.
+
+### Next eligible phase
+
+222.
+
+## Phase 222 - POS Primary Checkout Route: Restore `affiliate_code` Through the Validator (#1239)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Fixes #1239, the defect Phase 220's own verification pass
+surfaced: `POST /pos/checkouts` — the primary POS checkout route — silently stripped
+`affiliate_code` at the validator layer, so in-store affiliate attribution never fired through it,
+even though the split-payment-completion and mobile-offline-sync paths already carried the field
+correctly. Per `PHASE_221_PLAN.md` (this branch's root; retained under its original filename —
+the plan was written and numbered before a concurrent peer session's `infra/1236` work claimed
+Phase 221 in the ledger first).
+
+### Objective and scope
+
+**Phase renumbered 221 → 222 at implementation time**, a real discrepancy from the plan, not a
+silent deviation: the plan (`PHASE_221_PLAN.md` J8) was written against `origin/develop @
+f688f941f` and asserted 221 was the next free phase number. A fresh `git fetch` at implementation
+time found `origin/develop` had moved to `15370d71f`, and the concurrently-merged `infra/1236`
+work (PR #1238) had already ledgered itself as **Phase 221** (`docker compose` file split + `.env`
+retirement) — confirmed by its own "Next eligible phase: 222" note. Per `AGENTS.md`'s Continuous
+Phase Numbering rules ("preserve historical phase numbers... never renumber completed phases") and
+this repo's standing practice of keeping every phase entry on a collision rather than dropping one
+(the same principle Phase 218's own entry already applied when Phase 220 was claimed out from under
+it), this work is filed as **Phase 222**, the next number actually free. All in-repo references to
+"Phase 221" in this PR's own code comments, test titles, the ADR 0036 amendment, and the API spec
+note were written as Phase 222 throughout — only this plan document's filename retains the original
+number, as a record of when it was written rather than a claim on that phase.
+
+The plan's own substance is otherwise followed exactly, with all eleven judgment calls (J1-J11)
+decided in-plan and followed as-is:
+
+- **J1 (the Joi shape)** — `Joi.string().trim().max(40).allow('', null).optional()`. No
+  `.uppercase()`, no `.pattern()`, no `.min()` — each omission argued in the plan's §4.2 and pinned
+  by T3 (case preserved) and the DO NOT list.
+- **J2 (no existing schema to mirror)** — confirmed; this is the repo's first explicit
+  `affiliate_code` Joi shape. The mobile-sync and split-payment paths both work via `.unknown(true)`
+  passthrough, not an explicit declaration.
+- **J3 (malformed code: 422 at validator or fall through)** — falls through to the use case's
+  existing `422 AFFILIATE_CODE_INVALID` gate (`posUseCases.js:2985-2990`, untouched). The validator
+  only bounds and passes the field.
+- **J4 (`.unknown(true)` instead)** — rejected; would silently re-admit every field
+  `checkoutPosSchema` exists to reject on the app's highest-blast-radius money route. One key
+  declared instead.
+- **J5 (compliance impact declaration)** — **not filed**, per the plan's empirical verification
+  that `scripts/check-compliance-impact.js`'s `validators/` rule matches only
+  `complianceValidator.js`. Re-verified independently during this phase's own Tier 0 self-verify
+  (`npm run check:compliance` passes clean with no declaration in the diff) rather than trusted on
+  the plan's word alone.
+- **J6 (ADR 0036 amendment)** — filed, one new dated `## Amendments` block, retiring by reference
+  (not editing in place) the 2026-08-31 block's "Known limitation... POS's primary checkout route
+  cannot reach this fix today" bullet.
+- **J7 (test level)** — two levels, validator-primary: `tests/posValidator.affiliateCode.test.js`
+  (new, T1-T5, zero mocks, mirrors `posValidator.discountPolicy.test.js`) plus one appended
+  composition test in `tests/posCheckoutAffiliateAttribution.unit.test.js` that runs the real
+  validator's output through the real use case — closing the exact blind spot the file's existing
+  seven use-case-direct tests have (they hand-build `payload`, bypassing the validator, and all
+  seven pass on unmodified `develop` while the bug is live).
+- **J8 (phase numbering)** — see above; 222, not 221.
+- **J9 (`docs/api/specification.md`)** — one paragraph added under `POST /pos/checkouts`'s payment
+  handoff policy section, documenting the field, its no-price-effect scope, and the
+  `AFFILIATE_CODE_INVALID` 422.
+- **J10 (frontend changes)** — none. Zero files under `packages/web-core/` or `apps/dgfy-*/`
+  touched; the POS UI already sends the field correctly.
+- **J11 (product input needed)** — no; this restores already-intended, already-documented behavior.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 220 (#1199, PR #1242, merged) for the commit-time re-verify semantics this phase
+makes reachable on the primary route, and on Phase 221 (#1236, PR #1238, merged) only in the sense
+of the phase-number collision described above — no functional dependency exists between the two.
+Two sibling defects found alongside #1239 (#1240 — offline-sync hard-reject on a revoked affiliate;
+#1241 — split-payment rollback hazard) are explicitly out of scope, both filed and left open, both
+touching `posUseCases.js`/`mobilePosUseCases.js`, files this phase must not touch (compliance
+declaration avoidance, per J5).
+
+### Acceptance and validation evidence
+
+- [x] One-line production change: `apps/dgfy-api/src/validators/posValidator.js` declares
+  `affiliate_code: Joi.string().trim().max(40).allow('', null).optional()` on `checkoutPosSchema`.
+  No other line in that file changed.
+- [x] `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — confirmed untouched (required to
+  keep this PR outside `check-compliance-impact.js`'s `pos,terminal` rule, per J5/F6).
+- [x] Mandatory revert-proof regression test: `tests/posValidator.affiliateCode.test.js` T1
+  confirmed failing against unmodified `origin/develop` (`req.validatedData.affiliate_code ===
+  undefined`) before the fix, confirmed passing after (transcripts in the PR body). The appended
+  composition test in `posCheckoutAffiliateAttribution.unit.test.js` was independently confirmed
+  failing against the unmodified validator too (temporarily reverted the one-line fix via a
+  scoped `git stash`, re-ran, restored) — closing F8's blind spot for real, not just by argument.
+- [x] `apps/dgfy-api` Tier 2 (zero-DB, both new/changed files): `node --experimental-vm-modules
+  node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath
+  tests/posValidator.affiliateCode.test.js tests/posCheckoutAffiliateAttribution.unit.test.js` —
+  13/13 passing (5 new in the validator file, 7 pre-existing + 1 new composition test, unchanged
+  and unrestructured, in the attribution file).
+- [x] `node --check` on the changed validator file; `check:compliance`, `check:architecture`,
+  `lint:docs` all green; no `package.json` touched, no lockfile step needed.
+- [x] `docs/api/specification.md` and ADR 0036's new dated `## Amendments` block both updated per
+  J9/J6.
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING, a cashier
+  typing a real code and a commission row appearing) remains outstanding — per the plan's §8
+  linkage rule, this issue stays open through merge (`Refs #1239`, not `Closes`).
+- [ ] §9's one real risk — a previously-impossible `422 AFFILIATE_CODE_INVALID` becoming reachable
+  on the primary checkout route — is unverified against a live POS UI's error-message handling
+  (`grep` finds zero references to that reason code in any frontend app); flagged for QA, not
+  fixed here, per the plan's own scoping.
+
+### Next eligible phase
+
+223. #1240 (offline-sync hard-reject) and #1241 (split-payment rollback hazard) are the strongest
+candidates, per the plan's own §11.

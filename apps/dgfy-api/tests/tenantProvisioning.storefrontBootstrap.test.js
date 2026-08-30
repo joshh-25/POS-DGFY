@@ -8,6 +8,7 @@ const mockTenantLocationFindOne = jest.fn();
 const mockTenantLocationCreate = jest.fn();
 const mockSyncStorefrontDiscoveryWithReliability = jest.fn();
 const mockAddEmailTenantMapping = jest.fn();
+const mockApplyPostSyncTenantSchema = jest.fn();
 
 jest.unstable_mockModule('../src/utils/tenantModelFactory.js', () => ({
     getTenantModels: jest.fn().mockImplementation(() => ({
@@ -27,6 +28,19 @@ jest.unstable_mockModule('../src/services/landlordService.js', () => ({
     addEmailTenantMapping: mockAddEmailTenantMapping
 }));
 
+// #1071/#1124: previously unmocked, this test reached all the way into
+// tenantSchemaBootstrap.js's real Phase 157 migration imports (via
+// apps/dgfy-migration-runner's manifest) -- under `Sequelize.prototype.query` mocked to always
+// resolve `[[]]`, `showAllTables()` came back empty, so the strict "table must already exist"
+// migration always threw. This test's own point is the seed/discovery-bootstrap side effects, not
+// tenant-bootstrap schema mechanics (which have their own coverage --
+// tenantSchemaBootstrap.integration.test.js, and tenantBootstrapManifest's own load-time
+// resolve+require check). Mocking this one seam instead of the migration internals underneath it is
+// exactly what routing provisionTenant through a single seam (tenantSchemaBootstrap.js) was for.
+jest.unstable_mockModule('../src/services/tenantSchemaBootstrap.js', () => ({
+    applyPostSyncTenantSchema: mockApplyPostSyncTenantSchema
+}));
+
 describe('tenantProvisioning storefront public visibility defaults', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -38,6 +52,7 @@ describe('tenantProvisioning storefront public visibility defaults', () => {
             reconciled: false
         });
         mockAddEmailTenantMapping.mockResolvedValue(true);
+        mockApplyPostSyncTenantSchema.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
@@ -97,5 +112,11 @@ describe('tenantProvisioning storefront public visibility defaults', () => {
             tenantId: 'tenant-bootstrap-test-id',
             source: 'tenant_provisioning_bootstrap'
         }));
+        expect(mockApplyPostSyncTenantSchema).toHaveBeenCalledTimes(1);
+        expect(mockApplyPostSyncTenantSchema).toHaveBeenCalledWith(
+            expect.any(Sequelize),
+            Sequelize,
+            expect.objectContaining({ dbName: 'sku_tenant_bootstrap_abc123' })
+        );
     });
 });

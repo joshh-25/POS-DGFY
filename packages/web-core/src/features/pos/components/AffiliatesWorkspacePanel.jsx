@@ -31,6 +31,7 @@ import {
     markAffiliateCashoutPaid,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
+    reactivateAffiliateEnrollment,
     updateAffiliateSettings,
     fetchAffiliatePriceRules,
     upsertAffiliatePriceRule,
@@ -70,6 +71,12 @@ const percentStringToBps = (value) => {
 };
 const centavosToPesoString = (centavos) => String(Number(centavos || 0) / 100);
 const pesoStringToCentavos = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
+const formatAuditDateTime = (value) => {
+    if (!value) return 'Unknown time';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Unknown time';
+    return parsed.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+};
 
 const affiliateDisplayName = (affiliate) => {
     const account = affiliate?.dgfyAccount || {};
@@ -412,6 +419,21 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
             await loadData();
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to update affiliate status');
+        } finally {
+            setRowBusyId(null);
+        }
+    };
+
+    // #1191 (Phase 207) - reactivation has its own endpoint; handleStatusChange below now only
+    // ever demotes ('suspended'/'revoked'), which the backend PATCH still accepts.
+    const handleReactivate = async (enrollment) => {
+        setRowBusyId(enrollment.enrollment_id);
+        try {
+            await reactivateAffiliateEnrollment(enrollment.enrollment_id);
+            toast.success('Affiliate reactivated');
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to reactivate affiliate');
         } finally {
             setRowBusyId(null);
         }
@@ -793,6 +815,20 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                             </div>
                                         </div>
 
+                                        {affiliate.revoked_at != null && (
+                                            <section aria-label="Latest status-audit" className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] sm:text-xs">
+                                                <p className="font-semibold text-[#0F172A]">Latest status-audit</p>
+                                                <dl className="mt-1 grid gap-x-3 gap-y-1 sm:grid-cols-[auto_minmax(0,1fr)]">
+                                                    <dt className="text-slate-500">Recorded at</dt>
+                                                    <dd className="break-words font-medium text-[#0F172A]">{formatAuditDateTime(affiliate.revoked_at)}</dd>
+                                                    <dt className="text-slate-500">Tenant user ID</dt>
+                                                    <dd className="break-words font-medium text-[#0F172A]">{affiliate.revoked_by ?? 'Actor not recorded'}</dd>
+                                                    <dt className="text-slate-500">Reason</dt>
+                                                    <dd className="break-words font-medium text-[#0F172A]">{affiliate.revocation_reason || 'Not recorded'}</dd>
+                                                </dl>
+                                            </section>
+                                        )}
+
                                         {canManage && (
                                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                                 <div className="flex items-center gap-1.5">
@@ -819,7 +855,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                                         <Ban className="mr-1 h-3.5 w-3.5" /> Suspend
                                                     </Button>
                                                 ) : affiliate.status === 'suspended' ? (
-                                                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => handleStatusChange(affiliate, 'active')}>
+                                                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => handleReactivate(affiliate)}>
                                                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Reactivate
                                                     </Button>
                                                 ) : null}

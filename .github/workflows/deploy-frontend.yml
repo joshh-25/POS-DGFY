@@ -90,6 +90,7 @@ jobs:
         env:
           APP: ${{ inputs.app }}
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_ASSET_BASE_URL: ${{ vars.VITE_ASSET_BASE_URL }}
           VITE_STORE_BASE_PATH: ${{ vars.VITE_STORE_BASE_PATH }}
           VITE_TENANT_STORE_BASE_PATH: ${{ vars.VITE_TENANT_STORE_BASE_PATH }}
           VITE_ROOT_TENANT_SLUGS: ${{ vars.VITE_ROOT_TENANT_SLUGS }}
@@ -131,6 +132,7 @@ jobs:
           set -euo pipefail
 
           COMMON="VITE_API_URL=${VITE_API_URL}
+          VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL}
           VITE_BUILD_STAMP=${VITE_BUILD_STAMP}
           VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL}
           VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL}

@@ -40,6 +40,12 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 }
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    tenant_locations: Object.freeze({
+        scheduling_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `scheduling_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may pick a scheduled fulfillment date/time'" }),
+        immediate_fulfillment_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `immediate_fulfillment_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may choose immediate (NOW) fulfillment'" }),
+        fulfillment_lead_time_min_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_min_days` INT NULL COMMENT 'Merchant-set minimum fulfillment lead time in days'" }),
+        fulfillment_lead_time_max_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_max_days` INT NULL COMMENT 'Merchant-set maximum fulfillment lead time in days'" })
+    }),
     storefront_catalog_overrides: Object.freeze({
         image_fingerprint: Object.freeze({
             sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `image_fingerprint` VARCHAR(64) NULL COMMENT 'SHA-256 fingerprint of the source catalog image asset'"
@@ -230,6 +236,33 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `operator_session_id` INTEGER NULL AFTER `shift_id`, ADD CONSTRAINT `pos_transactions_fk_operator_session` FOREIGN KEY (`operator_session_id`) REFERENCES `pos_terminal_operator_sessions` (`pos_terminal_operator_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        // Phase 210 (#1179): three nullable, additive columns so a store-initiated reject's stated
+        // reason survives durably. Kept in lockstep with migration 20260901000002. Separate from
+        // accepted_by/accepted_at -- a confirmed -> rejected reject can happen after an accept.
+        rejection_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejection_reason` VARCHAR(255) NULL AFTER `accepted_at`"
+        }),
+        rejected_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        }),
+        rejected_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_at` DATETIME NULL"
+        }),
+        // Phase 211 (#1180): two nullable, additive columns attributing the Retail "packed" step.
+        // Kept in lockstep with migration 20260901000003. NOTE (investigated, not guessed): this
+        // REQUIRED_TENANT_SCHEMA_COLUMNS mechanism is column-presence based only -- it has no
+        // repair path for an ENUM *value* widening (as opposed to a missing column). A tenant
+        // restored from a pre-Phase-211 snapshot self-repairs these two columns via this table,
+        // but NOT the widened `fulfillment_status` ENUM itself (the migration's own MODIFY COLUMN,
+        // 20260901000003) -- recorded as a Residual Risk in
+        // docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md rather than
+        // silently assumed covered.
+        packed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_at` DATETIME NULL AFTER `rejected_at`"
+        }),
+        packed_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -398,6 +431,32 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         is_publicly_listed: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
+        })
+    }),
+    // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on
+    // a merchant-owned 'balance' settlement. Kept in lockstep with migration 20260831000001 and
+    // with REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments below -- see that migration's own
+    // header comment for why this table needs the fan-out/repair pair at all (it is a tenant
+    // table, not a landlord one). Never NOT NULL / never a DEFAULT -- every column here is
+    // optional by design (attach-once, ADR 0063 Amendments 2026-08-31).
+    pos_order_payments: Object.freeze({
+        proof_file_path: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_path` VARCHAR(255) NULL"
+        }),
+        proof_mime_type: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_mime_type` VARCHAR(60) NULL"
+        }),
+        proof_file_size_bytes: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_size_bytes` INT NULL"
+        }),
+        proof_sha256: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_sha256` CHAR(64) NULL"
+        }),
+        proof_attached_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_at` DATETIME NULL"
+        }),
+        proof_attached_by: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_by` INT NULL, ADD CONSTRAINT `fk_pos_order_payments_proof_attached_by` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         })
     })
 });
@@ -710,7 +769,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL,\n"
             + "  `payment_handoff_mode` enum('external','internal') DEFAULT NULL,\n"
             + "  `applied_amount` decimal(14,4) NOT NULL,\n"
             + "  `cash_tendered` decimal(14,4) DEFAULT NULL,\n"
@@ -1476,7 +1535,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `kind` enum('downpayment','balance','refund','forfeiture') NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
             + "  `amount` decimal(14,4) NOT NULL,\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL,\n"
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
             + "  `payment_provider` varchar(40) DEFAULT NULL,\n"
@@ -1484,6 +1543,14 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `related_pos_order_payment_id` int DEFAULT NULL,\n"
             + "  `recorded_by` int DEFAULT NULL,\n"
             + "  `confirmed_at` datetime DEFAULT NULL,\n"
+            // Phase 204 (#965): optional proof-of-payment image columns. Kept in lockstep with
+            // migration 20260831000001-add-pos-order-payment-proof-columns.cjs.
+            + "  `proof_file_path` varchar(255) DEFAULT NULL,\n"
+            + "  `proof_mime_type` varchar(60) DEFAULT NULL,\n"
+            + "  `proof_file_size_bytes` int DEFAULT NULL,\n"
+            + "  `proof_sha256` char(64) DEFAULT NULL,\n"
+            + "  `proof_attached_at` datetime DEFAULT NULL,\n"
+            + "  `proof_attached_by` int DEFAULT NULL,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`pos_order_payment_id`),\n"
@@ -1494,9 +1561,38 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_order_payments_created_at` (`created_at`),\n"
             + "  KEY `related_pos_order_payment_id` (`related_pos_order_payment_id`),\n"
             + "  KEY `recorded_by` (`recorded_by`),\n"
+            + "  KEY `proof_attached_by` (`proof_attached_by`),\n"
             + "  CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
             + "  CONSTRAINT `pos_order_payments_ibfk_2` FOREIGN KEY (`related_pos_order_payment_id`) REFERENCES `pos_order_payments` (`pos_order_payment_id`) ON DELETE SET NULL,\n"
-            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_4` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 210 (#1179): append-only audit trail for a staff delivery-address/pin edit on an
+    // online order, after placement. Kept in lockstep with migration 20260901000002-add-order-
+    // rejection-reason-and-address-change-audit.cjs. Structurally modelled on pos_order_payments
+    // above -- one row per event, FK back to the transaction.
+    pos_order_address_changes: Object.freeze({
+        sql: "CREATE TABLE `pos_order_address_changes` (\n"
+            + "  `address_change_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `previous_address` text,\n"
+            + "  `previous_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `previous_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `new_address` text NOT NULL,\n"
+            + "  `new_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `new_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `change_reason` varchar(255) NOT NULL,\n"
+            + "  `changed_by` int DEFAULT NULL,\n"
+            + "  `changed_by_shift_id` int DEFAULT NULL,\n"
+            + "  `changed_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`address_change_id`),\n"
+            + "  KEY `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`),\n"
+            + "  KEY `changed_by` (`changed_by`),\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_pos_transaction_id` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_changed_by` FOREIGN KEY (`changed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // Online inventory reservations are tenant-local and must be repaired for tenants that
@@ -1698,6 +1794,15 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_transactions: Object.freeze({
         idx_pos_transactions_operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
+        })
+    }),
+    // Phase 210 (#1179). Repair path for a tenant whose pos_order_address_changes table exists
+    // (created via the CREATE TABLE repair above, which already includes this KEY) but somehow
+    // predates the index -- e.g. a partial migration run. Kept in lockstep with migration
+    // 20260901000002.
+    pos_order_address_changes: Object.freeze({
+        idx_pos_order_address_changes_transaction_changed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_address_changes` ADD INDEX `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`)"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -2034,9 +2139,11 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085), migration 20260830000003.
         payment_type: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay') NOT NULL DEFAULT 'cash'"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL DEFAULT 'cash'"
         }),
         // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).
         // Backstop for tenants outside the migration's own fan-out (20260821000003).
@@ -2051,6 +2158,23 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         service_fee_method_snapshot: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NULL"
+        })
+    }),
+    // Phase 202 (#1085), ADR 0077: every active tenant already has these two tables (created by
+    // earlier migrations), so a tenant that predates the cheque widening needs the same
+    // ALTER...MODIFY drift-repair path as pos_transactions.payment_type above, not just the
+    // CREATE TABLE definition in REQUIRED_TENANT_SCHEMA_TABLES (which only helps a tenant missing
+    // the table entirely).
+    pos_order_payments: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_order_payments` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL"
+        })
+    }),
+    pos_payment_allocations: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']),
+            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({
@@ -2076,7 +2200,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-22.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.3';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

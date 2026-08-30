@@ -52,6 +52,31 @@ export default (sequelize) => {
         commission_type: {
             type: DataTypes.ENUM('NONE', 'PERCENTAGE_OF_BASE', 'RESELLER_MARGIN'),
             allowNull: true
+        },
+        // #450 Phase 199 - revocation audit trail; see the migration for the full rationale.
+        revoked_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        revoked_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        revocation_reason: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
+        // #449 (Phase 208): per-enrollment cap override. NULL = inherit the tenant default,
+        // same convention as commission_rate_bps.
+        max_lifetime_earnings_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        // #449 (Phase 208): end date belonging to this enrollment's own cap; ignored unless
+        // max_lifetime_earnings_centavos is set on this row.
+        earnings_cap_active_until: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     }, {
         sequelize,

@@ -103,6 +103,9 @@ export const fnbTrackingAdapter = Object.freeze({
       reference,
       statusCode,
       statusLabel,
+      // Phase 210 (#1179). Merchant-attributed copy on a rejected order -- never DGFY's own
+      // statement.
+      rejectionReason: String(payload?.rejection_reason || order?.rejection_reason || '').trim() || null,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
       updatedAt: String(order?.updated_at || payload?.updated_at || '').trim() || null,
@@ -165,7 +168,12 @@ export const fnbTrackingAdapter = Object.freeze({
       ).trim() || null,
       items: itemRows,
       timeline: getTrackingFlowForOrderMethod(orderMethod).map((step, index, allSteps) => {
-        const activeIndex = Math.max(0, allSteps.findIndex((item) => item.id === statusCode));
+        // Phase 211 (#1180). `packed` is a Retail-only step and deliberately absent from this
+        // mode's flow. If it ever appears here (direct API call -- the server gate is
+        // mode-agnostic, see posUseCases.js's ONLINE_FULFILLMENT_TRANSITIONS), render it at the
+        // `preparing` position rather than silently rewinding the timeline to step 0.
+        const timelineStatusCode = statusCode === 'packed' ? 'preparing' : statusCode;
+        const activeIndex = Math.max(0, allSteps.findIndex((item) => item.id === timelineStatusCode));
         const isCompleted = index < activeIndex;
         const isActive = index === activeIndex || (statusCode === 'completed' && index === allSteps.length - 1);
         return {

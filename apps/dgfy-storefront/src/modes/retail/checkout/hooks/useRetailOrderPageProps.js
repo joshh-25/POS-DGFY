@@ -3,6 +3,7 @@ import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
@@ -26,6 +27,7 @@ export function useRetailOrderPageProps({
   cart,
   cartCount,
   cartImageErrors,
+  customerAddress,
   customerEmail,
   customerName,
   customerPhone,
@@ -70,6 +72,7 @@ export function useRetailOrderPageProps({
   servicesBodyFont,
   servicesDisplayFont,
   setCartImageErrors,
+  setCustomerAddress,
   setCustomerPin,
   setDeliveryLocationAction,
   setOrderMethod,
@@ -100,9 +103,10 @@ export function useRetailOrderPageProps({
   paymentElection,
   onPaymentElectionChange
 }) {
+  const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
   const orderMethodOptions = buildStorefrontOrderMethodOptions(
     RETAIL_ORDER_METHOD_OPTIONS,
-    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+    fulfillmentLocation
   );
 
   return {
@@ -112,6 +116,7 @@ export function useRetailOrderPageProps({
     cart,
     cartCount,
     cartImageErrors,
+    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
@@ -135,9 +140,11 @@ export function useRetailOrderPageProps({
     isGuestCheckoutOtpCooldownActive,
     isMobileViewport,
     money,
+    onCustomerAddressChange: setCustomerAddress,
     onSelectAddress: applySavedDeliveryLocation,
     orderMethod,
     orderMethodOptions,
+    orderTimingPolicy: resolveOrderTimingPolicy(fulfillmentLocation),
     promoDiscountSummaryRow,
   voucherDiscountSummaryRow,
     pinLocationError,

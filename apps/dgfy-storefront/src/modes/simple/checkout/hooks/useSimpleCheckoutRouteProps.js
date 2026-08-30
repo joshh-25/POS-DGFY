@@ -1,3 +1,6 @@
+import { resolveLocationFulfillmentSupport } from '../../../../shared/model/storefrontOrderMethodOptions.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+
 export function useSimpleCheckoutRouteProps({
   applySavedDeliveryLocation,
   canAddPinnedLocation = false,
@@ -101,6 +104,9 @@ export function useSimpleCheckoutRouteProps({
   totalsForDisplay,
   withAssetOrigin
 }) {
+  const orderTimingPolicy = resolveOrderTimingPolicy(
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
   return {
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
@@ -153,6 +159,7 @@ export function useSimpleCheckoutRouteProps({
     selectedLocationId,
     selectedSavedLocationId,
     selectedStore,
+    orderTimingPolicy,
     servicesBodyFont,
     servicesDisplayFont,
     setDeliveryLocationAction,

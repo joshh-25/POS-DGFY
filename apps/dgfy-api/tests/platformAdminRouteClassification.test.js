@@ -13,6 +13,11 @@ describe('Platform Admin protected-route classification', () => {
     ['/api/v1/admin/tenants/id-1/owner/', ['admin.tenants', 'admin.dgfy_accounts']],
     ['/api/v1/admin/tenants/admin-provision-with-account', ['admin.tenants', 'admin.dgfy_accounts']],
     ['/api/v1/admin/tenants/admin-provision-with-account/', ['admin.tenants', 'admin.dgfy_accounts']],
+    // #1190 (Phase 213), E1 (Pat, 2026-08-31): raising/lowering a tenant's affiliate-slot cap is
+    // delegable to any admin.tenants holder, matching capabilities/pos-metadata -- not master-only
+    // like admin/templates.
+    ['/api/v1/admin/tenants/id-1/affiliate-slots', ['admin.tenants']],
+    ['/api/v1/admin/tenants/id-1/affiliate-slots/audit-logs', ['admin.tenants']],
     ['/api/v1/dgfy/admin/accounts', ['admin.dgfy_accounts']],
     ['/api/v1/commerce-payments/admin/payment-sessions', ['admin.payments']],
     ['/api/v1/admin/invoices/eligible-applications', ['admin.invoices']]

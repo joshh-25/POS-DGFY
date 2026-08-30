@@ -57,9 +57,13 @@ module.exports = [
   'tests/supertest_security.test.js',
   'tests/tenantCredentialSurface.security.test.js',
   'tests/tenantModelFactory.contract.test.js',
-  'tests/tenantProvisioning.storefrontBootstrap.test.js',
   'tests/tenantProvisioning.test.js',
   'tests/tenantProvisioningAdminUserId.test.js',
+  // #1071/#1124: the real end-to-end coverage for the post-sync tenant-bootstrap seam (the
+  // 000001->000002 migration ordering claim tenantProvisioning.storefrontBootstrap.test.js used to
+  // accidentally exercise, unintentionally, before it was routed through a mocked seam -- see that
+  // file's own comment) against a real MySQL connection.
+  'tests/tenantSchemaBootstrap.integration.test.js',
   // Added alongside #1022's tenantHandler mock-drift fix -- this file's own SyntaxError (a stale
   // mock missing two exports added by 84109da50/#916) was masking that it unconditionally imports
   // the real `src/models/index.js` (unmocked) and performs real `User.create()` writes. Once the

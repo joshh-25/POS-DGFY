@@ -54,6 +54,10 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAffiliateCashout',
     'DgfyAffiliateInvite',
     'DgfyAffiliatePriceRule',
+    // #1202 (Phase 214) - landlord-only, by-value enrollment_id/tenant_id, no FK (see
+    // DgfyAffiliateEnrollmentStatusEvent.js). Added here from the start so this new model does not
+    // repeat the DgfyAffiliateCategoryRate omission flagged below/in #448's own hygiene finding.
+    'DgfyAffiliateEnrollmentStatusEvent',
     'TenantAffiliateSettings',
     'TenantComplianceArtifact',
     'TenantCompliancePeripheral',

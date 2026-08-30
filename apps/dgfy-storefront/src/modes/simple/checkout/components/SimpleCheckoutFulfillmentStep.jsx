@@ -1,10 +1,13 @@
 import { ChevronLeft, ChevronRight, Info, Maximize, MapPin, Navigation } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
 import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -14,6 +17,7 @@ export function SimpleCheckoutFulfillmentStep({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
   guestCheckoutAllowed = true,
+  customerAddress = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -28,6 +32,7 @@ export function SimpleCheckoutFulfillmentStep({
   renderGuestCheckoutEntry,
   scheduledFor = '',
   selectedLocation = null,
+  orderTimingPolicy,
   selectedSavedLocationId = '',
   servicesBodyFont,
   servicesDisplayFont,
@@ -41,6 +46,7 @@ export function SimpleCheckoutFulfillmentStep({
   onCloseExpandedMap,
   onCloseMobileAddressModal,
   onContinue,
+  onCustomerAddressChange = () => {},
   onOpenExpandedMap,
   onOpenMobileAddressList,
   onOrderMethodChange,
@@ -70,6 +76,11 @@ export function SimpleCheckoutFulfillmentStep({
     event.preventDefault();
     event.stopPropagation();
   };
+  const resolvedOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
+  const sectionNumbers = buildCheckoutSectionNumbers({
+    showOrderMethodSelector: resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector,
+    showTimingStep: resolvedOrderTimingPolicy.showTimingStep
+  });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -86,12 +97,13 @@ export function SimpleCheckoutFulfillmentStep({
         onScheduledForChange={onScheduledForChange}
         orderMethod={orderMethod}
         simpleOrderMethodOptions={simpleOrderMethodOptions}
+        orderTimingPolicy={orderTimingPolicy || resolveOrderTimingPolicy()}
       />
 
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>
@@ -158,9 +170,14 @@ export function SimpleCheckoutFulfillmentStep({
                       <MapPin size={13} />
                     </span>
                   ) : null}
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
-                    {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
-                  </span>
+                  <input
+                    type="text"
+                    value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                    onChange={(event) => onCustomerAddressChange(event.target.value)}
+                    placeholder="Pinned delivery address will appear here."
+                    aria-label="Delivery address"
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38 }}
+                  />
                 </div>
                 <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none' }}>
                   {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}

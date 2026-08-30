@@ -2,6 +2,7 @@ export const ACTIVE_CUSTOMER_ORDER_STATUSES = new Set([
   'placed',
   'confirmed',
   'preparing',
+  'packed',
   'ready_for_pickup',
   'out_for_delivery',
   'in_progress',

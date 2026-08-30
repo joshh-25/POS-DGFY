@@ -11,6 +11,7 @@ import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/chec
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
@@ -59,6 +60,7 @@ export function RetailOrderPage({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
+  customerAddress = '',
   customerEmail = '',
   customerName = '',
   customerPhone = '',
@@ -84,6 +86,7 @@ export function RetailOrderPage({
   money,
   onBackToCatalog,
   onCheckout,
+  onCustomerAddressChange = () => {},
   onImageError,
   onSelectAddress,
   onConfirmQrphTestPayment,
@@ -91,6 +94,7 @@ export function RetailOrderPage({
   onPaymentTypeChange,
   orderMethod = 'delivery',
   orderMethodOptions = null,
+  orderTimingPolicy = resolveOrderTimingPolicy(),
   paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
@@ -276,6 +280,8 @@ export function RetailOrderPage({
             <RetailOrderFulfillmentStep
               canAddPinnedLocation={canAddPinnedLocation}
               orderMethodOptions={orderMethodOptions}
+              orderTimingPolicy={orderTimingPolicy}
+              customerAddress={customerAddress}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
@@ -288,6 +294,7 @@ export function RetailOrderPage({
               onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
               onContinue={() => setStep(3)}
+              onCustomerAddressChange={onCustomerAddressChange}
               onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
               onOrderMethodChange={setOrderMethod}

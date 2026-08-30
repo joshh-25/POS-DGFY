@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Loader2, ScanLine, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -61,6 +61,16 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
     return undefined;
   }, [cameraAvailable, open]);
 
+  const stopCamera = useCallback(() => {
+    controlsRef.current?.stop?.();
+    controlsRef.current = null;
+    const stream = videoRef.current?.srcObject;
+    if (stream && typeof stream.getTracks === 'function') {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
+
   useEffect(() => {
     if (!open || !cameraRequested) return undefined;
 
@@ -68,16 +78,6 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
     detectedRef.current = false;
     setScanError('');
     setStarting(true);
-
-    const stopCamera = () => {
-      controlsRef.current?.stop?.();
-      controlsRef.current = null;
-      const stream = videoRef.current?.srcObject;
-      if (stream && typeof stream.getTracks === 'function') {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
-    };
 
     const startCamera = async () => {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -126,6 +126,10 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
 
             detectedRef.current = true;
             activeControls.stop();
+            controlsRef.current = null;
+            stopCamera();
+            setStarting(false);
+            setCameraRequested(false);
             onDetectedRef.current(code);
           }
         );
@@ -149,8 +153,9 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
     return () => {
       cancelled = true;
       stopCamera();
+      setStarting(false);
     };
-  }, [cameraRequested, open]);
+  }, [cameraRequested, open, stopCamera]);
 
   if (!open || typeof document === 'undefined') return null;
 
