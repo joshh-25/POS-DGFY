@@ -13010,7 +13010,9 @@ as-is per this phase's own task brief:
 
 ### Status
 
-`in_progress`. PR opened against `develop`, `Refs #452` (not `Closes` — end-to-end short-code
+`completed`. Merged into `develop` as `45eeacf0b52b083fa7e51ed2a50da9c15db6e2c3` (PR #1226, three
+review rounds — round 2 caught a real hash-route regression where `#/s/{code}` leaked a short code
+into slug resolution, fixed before merge). `Refs #452` (not `Closes` — end-to-end short-code
 resolution and the nginx guardrail's actual effect both need deployed verification per the plan's
 §9.4, so the issue stays open through merge for `verifier` per
 `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
@@ -13303,9 +13305,12 @@ Continuous Phase Numbering rule 10 (A11).
 
 ### Status
 
-`in_progress`. PR opened against `develop`, `Refs #1190` (not `Closes` — a new landlord-admin write
-path needs deployed verification before the issue is done, per `docs/process/ISSUE-TAXONOMY.md`'s
-linkage rule; the issue stays open through merge for `verifier`).
+`completed`. Merged into `develop` as `addbc65c68c764027b3605a470268553e1fcd0f9` (PR #1228, two
+review rounds — round 1 caught a real transaction-propagation gap in the audit before-snapshot and
+a UUID-vs-integer bug in the audit-log listing envelope, both fixed before merge). `Refs #1190` (not
+`Closes` — a new landlord-admin write path needs deployed verification before the issue is done,
+per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule; the issue stays open through merge for
+`verifier`).
 
 ### Dependencies
 
@@ -13539,11 +13544,16 @@ in-plan and followed as-is except J2, which is Pat's to make and does not gate t
 
 ### Status
 
-`in_progress`. PR opened against `develop`, `Refs #1202` (not `Closes` - a new landlord table plus
-four instrumented write sites needs deployed verification before the issue is done, per
+`completed`. Merged into `develop` as `8851ebb8a36a8609c2eef9b4bce6dd09b2799f9c` (PR #1232, two
+review rounds — round 1 caught two real blockers: self-serve enrollments misattributed as merchant
+actions in the new audit trail, and a non-locking status-transition read allowing concurrent-write
+races; both fixed before merge). `Refs #1202` (not `Closes` - a new landlord table plus four
+instrumented write sites needs deployed verification before the issue is done, per
 `docs/process/ISSUE-TAXONOMY.md`'s linkage rule; the issue stays open through merge for `verifier`).
 This entry tracks only the mechanical data-model/backend half of #1202 - the affiliate-visibility
-question (J2) stays open, for whoever builds an affiliate-facing read path next.
+question (J2) stays open, for whoever builds an affiliate-facing read path next. Two follow-up
+issues filed post-merge: #1233 (DgfyAffiliateCategoryRate missing from NON_TENANT_MODEL_EXPORTS)
+and #1234 (Affiliates admin UI has no Reactivate button and no revocation-reason input).
 
 ### Dependencies
 
