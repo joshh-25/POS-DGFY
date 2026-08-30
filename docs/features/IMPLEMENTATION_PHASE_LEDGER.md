@@ -13343,6 +13343,64 @@ tenant × resource × limit entitlements primitive, lapse/dunning downgrade beha
 TenantManager UI panel, a GET consumption breakdown (active enrollments vs. pending invites), the
 `tenant_id: Number(id)` serializer bug, the production over-cap census, and a bulk/multi-tenant
 write.
+## Phase 215 - Affiliates Admin: Surface Revocation Audit Fields (#1203)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Phase 215 is reserved for #1203. The ledger also contains
+out-of-order reservations and entries above this number (including Phase 219); those do not
+renumber this phase or establish a dependency on it.
+
+### Objective and scope
+
+Surface the three latest revocation-audit fields already present in the authenticated
+`GET /affiliates/affiliates` response inside `AffiliatesWorkspacePanel`: `revoked_at`, the opaque
+tenant-user value-link `revoked_by`, and `revocation_reason`. The UI renders a latest-audit block
+only when a stamp exists, retains the current enrollment status separately, uses explicit fallbacks
+for missing actor/reason data, and tolerates an invalid timestamp without crashing.
+
+This phase is intentionally independent of Phase 214/#1202. It does not add, call, wait for, or
+imply a status-events endpoint/table, reactivation actor, or event timeline. It also does not
+invent an unsafe cross-database actor lookup: `revoked_by` remains the raw tenant-user ID because
+the enrollment lives in the landlord database while the referenced users live in tenant databases.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Phase 199 (#450) supplied the latest-stamp fields and made `revoked_by` a value-link rather than a
+foreign key. Phase 207 (#1191) established that reactivation preserves that latest stamp, which is
+why the block can render for an active enrollment without claiming it is currently revoked.
+Neither is a runtime blocker: this phase consumes the existing list payload only. Independent of
+Phase 214/#1202.
+
+### Acceptance and validation evidence
+
+- [ ] `AffiliatesWorkspacePanel.jsx` renders the existing latest stamp without an API, model,
+      migration, permission, status-transition, or actor-lookup change.
+- [ ] A focused jsdom test covers stamped, active/reactivated, absent/null, invalid-date, and
+      existing-empty-list states.
+- [ ] `npm run build:skupervisor` and `npm run build:pos` pass because both consume the shared
+      panel; `npm run check:architecture`, `npm run check:compliance`, and `npm run lint:docs` pass.
+- [ ] The required `major` `pos,terminal` impact declaration validates. Its
+      `NOT-EXECUTED-PHASE-215` preflight reference is expected for a `develop` PR and must be
+      replaced by the promotion-time STAGING preflight result before normal promotion to `main`.
+- [ ] Rendered desktop and mobile evidence is captured when a local authenticated fixture is
+      available; otherwise the limitation is stated rather than implied away.
+
+### ADR and documentation action
+
+ADR 0036 is cited but not amended: its landlord/tenant data-ownership rule is consumed unchanged,
+and this is a read-only rendering change with no architecture impact. Compliance declaration:
+`docs/compliance/impact-declarations/2026-08-31-affiliate-revocation-audit-ui.md`.
+
+### Next eligible phase
+
+Phase 216 is separately allocated. Phase 214/#1202 remains a separate product/data-model follow-up
+and is not a prerequisite or extension of this UI slice.
+
 ## Phase 219 - Storefront: Versioned Non-Refundable Downpayment Terms, Drafted and Linked (#1220)
 
 ### Initiative and release
