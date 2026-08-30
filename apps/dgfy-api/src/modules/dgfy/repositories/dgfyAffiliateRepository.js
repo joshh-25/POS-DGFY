@@ -135,32 +135,70 @@ export const dgfyAffiliateRepository = {
         return activeEnrollments + pendingInvites;
     },
 
-    // Throws a distinct 409 (reason_code AFFILIATE_SLOT_CAP_REACHED - never the existing "already
-    // enrolled" CONFLICT) when the tenant is already at or over its cap. Call this immediately
-    // before any write that would consume a new slot, inside that same write's transaction.
+    // Acquires (creating if necessary) and locks the tenant's settings row - the "serialize
+    // concurrent slot-consuming transactions" half of slot-cap enforcement, split out from the
+    // "count and maybe throw" half below (#1187 RF-6).
     //
-    // excludeInviteId: passed straight through to countConsumedSlots - see its own comment. Pass
-    // the invite's own ID when this check is guarding the materialization of that same invite, so
-    // it isn't double-counted against itself.
-    //
-    // Concurrency note: when a transaction is supplied, this also locks the tenant's settings row so
-    // two concurrent slot-consuming writes for the same tenant serialize on this check rather than
-    // both reading a stale count. A tenant with no settings row yet previously had nothing to lock -
-    // two concurrent transactions could both find no row, both count zero, and both commit past the
+    // Concurrency note: when a transaction is supplied, this locks the tenant's settings row so two
+    // concurrent slot-consuming writes for the same tenant serialize on this call rather than both
+    // reading a stale count. A tenant with no settings row yet previously had nothing to lock - two
+    // concurrent transactions could both find no row, both count zero, and both commit past the
     // default cap of 1 (#1187 RF-1). findOrCreate with the same transaction+lock closes that gap: the
     // first caller creates the default-valued row and holds its lock for the rest of the transaction;
     // the second caller blocks on that same insert/lock until the first commits or rolls back, so it
     // always sees the up-to-date count. From then on every tenant that has ever had a slot checked has
     // a lockable row.
-    async assertAffiliateSlotAvailable(tenantId, { transaction = null, excludeInviteId = null } = {}) {
-        if (transaction) {
-            await TenantAffiliateSettings.findOrCreate({
-                where: { tenant_id: tenantId },
-                defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS },
-                transaction,
-                lock: transaction.LOCK.UPDATE
-            });
-        }
+    //
+    // #1187 RF-6: this MUST be the very first statement of its transaction - before ANY other read,
+    // plain or locking - or it doesn't do its job. Under MySQL/InnoDB's default REPEATABLE READ (no
+    // isolation override in src/config/database.js), a transaction's plain/consistent reads all use
+    // the snapshot established by that transaction's FIRST such read, regardless of when a later
+    // locking read acquires its row lock. A locking read itself (SELECT ... FOR UPDATE, which is what
+    // findOrCreate's `lock` option compiles to) does NOT establish that snapshot - it reads the latest
+    // committed data and locks it, but does not fix the point-in-time view later plain reads will use.
+    // So: if a plain read (e.g. an `existing`-row findOne) runs before this lock is acquired, that
+    // plain read silently becomes the transaction's snapshot anchor, and it's anchored BEFORE this
+    // transaction waited on the lock - meaning every later plain read (including countConsumedSlots'
+    // plain COUNT queries) can still see the pre-contention world even after the lock is held and even
+    // after a concurrent transaction has committed a competing slot-consuming write. Call this before
+    // any other read in the transaction, full stop - never call it "after we already know we might
+    // need it".
+    async acquireAffiliateSlotLock(tenantId, { transaction = null } = {}) {
+        if (!transaction) return;
+        await TenantAffiliateSettings.findOrCreate({
+            where: { tenant_id: tenantId },
+            defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+    },
+
+    // The "count and maybe throw" half of slot-cap enforcement (#1187 RF-6) - split out from lock
+    // acquisition (acquireAffiliateSlotLock, above) so a caller that needs to interleave another read
+    // (e.g. materializeInviteEnrollment's `existing`-enrollment lookup) between "lock acquired" and
+    // "count consumed slots" can do so safely, as long as the lock was acquired first. Does NOT
+    // acquire the lock itself - the caller is responsible for calling acquireAffiliateSlotLock (or
+    // assertAffiliateSlotAvailable below, which does both) as the first statement of the transaction.
+    //
+    // Why plain (non-locking) COUNT queries here are still correct once the lock is acquired first:
+    // per the isolation-level note above, a REPEATABLE READ transaction's plain reads all share one
+    // snapshot, anchored at the FIRST plain read in the transaction. If the settings-row lock
+    // (a locking read/write) is acquired before any plain read runs, then by the time this method's
+    // plain COUNT queries run - even if an `existing`-row lookup ran in between - the transaction's
+    // snapshot anchor is still no earlier than "after this transaction was granted the lock", which is
+    // no earlier than "after every transaction that held the lock before it has committed or rolled
+    // back". That's exactly the ordering guarantee needed: every previously-committed slot-consuming
+    // write for this tenant is visible to this count. Making countConsumedSlots itself a locking read
+    // (e.g. a locking findAll + JS count instead of Model.count()) would add real cost (row locks held
+    // across enrollment/invite tables for the rest of the transaction, for every slot check) for no
+    // additional correctness once "lock acquired before any plain read" is actually honored - the
+    // settings-row lock is what serializes transaction order; the count only needs to run after that
+    // ordering is already established, not to enforce it itself.
+    //
+    // excludeInviteId: passed straight through to countConsumedSlots - see its own comment. Pass
+    // the invite's own ID when this check is guarding the materialization of that same invite, so
+    // it isn't double-counted against itself.
+    async assertSlotCountWithinCap(tenantId, { transaction = null, excludeInviteId = null } = {}) {
         const [maxSlots, consumedSlots] = await Promise.all([
             this.getMaxAffiliateSlots(tenantId, { transaction }),
             this.countConsumedSlots(tenantId, { transaction, excludeInviteId })
@@ -179,6 +217,20 @@ export const dgfyAffiliateRepository = {
                 }
             );
         }
+    },
+
+    // Throws a distinct 409 (reason_code AFFILIATE_SLOT_CAP_REACHED - never the existing "already
+    // enrolled" CONFLICT) when the tenant is already at or over its cap. Call this immediately
+    // before any write that would consume a new slot, inside that same write's transaction, AND
+    // ensure no other read has already run in that transaction first (see acquireAffiliateSlotLock's
+    // comment) - if some other read must legitimately run in between the lock and the count (as
+    // materializeInviteEnrollment's `existing`-enrollment lookup does), call
+    // acquireAffiliateSlotLock and assertSlotCountWithinCap separately instead of this combined
+    // helper. This method is just their composition, for the common case where nothing needs to run
+    // in between.
+    async assertAffiliateSlotAvailable(tenantId, { transaction = null, excludeInviteId = null } = {}) {
+        await this.acquireAffiliateSlotLock(tenantId, { transaction });
+        await this.assertSlotCountWithinCap(tenantId, { transaction, excludeInviteId });
     },
 
     async upsertSettings(tenantId, payload = {}) {
@@ -404,6 +456,17 @@ export const dgfyAffiliateRepository = {
                 this.materializeInviteEnrollment(invite, account, { transaction: ownTransaction })
             ));
         }
+        // #1187 RF-6: the settings-row lock MUST be acquired before ANY other read in this
+        // transaction - including the plain `existing`-enrollment lookup below - or it fails to do
+        // its job. See acquireAffiliateSlotLock's own comment for the full REPEATABLE READ
+        // reasoning: a plain read that runs before this lock silently becomes the transaction's
+        // snapshot anchor, anchored before this transaction waited on the lock, so later plain
+        // reads (the `existing` lookup, and countConsumedSlots' COUNT queries) could still observe
+        // a pre-contention world even after the lock is held. Acquiring it here, first, means the
+        // very first read of any kind in this transaction happens only once any prior
+        // slot-consuming transaction for this tenant has committed or rolled back.
+        await this.acquireAffiliateSlotLock(invite.tenant_id, { transaction });
+
         const existing = await DgfyAffiliateEnrollment.findOne({
             where: { dgfy_account_id: account.id, tenant_id: invite.tenant_id },
             transaction
@@ -419,12 +482,16 @@ export const dgfyAffiliateRepository = {
             // The idempotent "already accepted" branch above never reaches here (existing is set),
             // so re-accepting an already-materialized invite never re-consumes.
             //
+            // The settings lock was already acquired above (before `existing` was read), so this
+            // only needs the count-and-throw half - see assertSlotCountWithinCap's comment for why
+            // that's safe even though its COUNT queries are plain, non-locking reads.
+            //
             // excludeInviteId: this invite is being converted, not added - it's already counted
             // as one of the tenant's consumed slots (it's `pending`, non-expired) right up until
             // the update below flips it to `accepted`. Without excluding it here, a tenant at cap
             // with zero active enrollments and only this one pending invite would incorrectly be
             // rejected from accepting its own invite.
-            await this.assertAffiliateSlotAvailable(invite.tenant_id, { transaction, excludeInviteId: invite.invite_id });
+            await this.assertSlotCountWithinCap(invite.tenant_id, { transaction, excludeInviteId: invite.invite_id });
 
             // generateUniqueShareCode reads without the transaction, but the unique short_code/
             // share_code_hash indexes are the real guarantee against collisions.

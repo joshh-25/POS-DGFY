@@ -503,6 +503,57 @@ describe('materializeInviteEnrollment — the registration-mirror path (proof th
         transactionSpy.mockRestore();
     });
 
+    test('acquires the settings-row lock BEFORE the `existing`-enrollment lookup, not after (#1187 RF-6)', async () => {
+        // #1187 RF-6: materializeInviteEnrollment used to do a plain `existing`-enrollment findOne
+        // and only acquire the settings-row lock afterward, inside `if (!existing)`. Under MySQL's
+        // default REPEATABLE READ, a transaction's plain reads all share the snapshot established
+        // by that transaction's FIRST plain read - so a plain read running before the lock is
+        // acquired silently anchors the snapshot too early, and the later plain COUNT queries in
+        // countConsumedSlots can still observe a pre-contention world even once the lock is held.
+        // The fix: acquireAffiliateSlotLock (the settings-row findOrCreate+lock) must be the very
+        // first statement of the transaction, before the `existing` lookup.
+        //
+        // What this test proves: call ORDER. It spies on the settings-row `findOrCreate` and the
+        // enrollment `findOne` and asserts findOrCreate is invoked first.
+        //
+        // What this test does NOT prove: the actual MVCC/REPEATABLE-READ snapshot behavior this
+        // ordering exists to protect against. This suite's fake models (see the file header and
+        // makeFakeModel's own comment) hold one mutable, shared row array with no per-transaction
+        // snapshot semantics at all - every read, plain or locking, always sees the live, current
+        // state of `rows`, regardless of when in the transaction it runs. So a fake-model version of
+        // this test with the pre-fix call order would still pass every assertion about final state
+        // (consumed counts, rejections) - the fake is structurally incapable of reproducing the
+        // stale-snapshot bug RF-6 describes. Proving the actual race requires a DB-backed
+        // integration test against real MySQL under REPEATABLE READ, which this repository-level
+        // unit suite deliberately doesn't run (no database is used here, per the file header).
+        // Asserting call order is the closest this harness can get to guarding the fix's shape.
+        const invite = { invite_id: 1, tenant_id: TENANT_ID, email: 'order-check@example.com', commission_rate_bps: null };
+        mockDgfyAffiliateInvite._seed([{ ...invite, status: 'pending', token_hash: 'order-check-hash', expires_at: inOneHour() }]);
+        const account = { id: 'account-order-check', email: 'order-check@example.com' };
+
+        const callOrder = [];
+        const originalFindOrCreate = mockTenantAffiliateSettings.findOrCreate.bind(mockTenantAffiliateSettings);
+        const originalFindOne = mockDgfyAffiliateEnrollment.findOne.bind(mockDgfyAffiliateEnrollment);
+        const lockSpy = jest.spyOn(mockTenantAffiliateSettings, 'findOrCreate').mockImplementation(async (...args) => {
+            callOrder.push('settings-lock');
+            return originalFindOrCreate(...args);
+        });
+        const existingLookupSpy = jest.spyOn(mockDgfyAffiliateEnrollment, 'findOne').mockImplementation(async (...args) => {
+            callOrder.push('existing-lookup');
+            return originalFindOne(...args);
+        });
+
+        const { enrollment, created } = await dgfyAffiliateRepository.materializeInviteEnrollment(invite, account);
+
+        expect(created).toBe(true);
+        expect(enrollment.dgfy_account_id).toBe('account-order-check');
+        expect(callOrder[0]).toBe('settings-lock');
+        expect(callOrder.indexOf('settings-lock')).toBeLessThan(callOrder.indexOf('existing-lookup'));
+
+        lockSpy.mockRestore();
+        existingLookupSpy.mockRestore();
+    });
+
     test('the idempotent re-accept branch (invite already accepted) does not re-consume a slot', async () => {
         // The account is already enrolled - materializeInviteEnrollment's `existing` branch fires
         // and never reaches the slot check, even though the tenant is otherwise at cap.
