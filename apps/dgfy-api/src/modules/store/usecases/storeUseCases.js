@@ -347,7 +347,11 @@ const serializeLocationSummary = (location) => {
         current_wait_time_minutes: location.current_wait_time_minutes,
         supports_delivery: location.supports_delivery,
         supports_pickup: location.supports_pickup,
-        supports_dine_in: location.supports_dine_in
+        supports_dine_in: location.supports_dine_in,
+        scheduling_enabled: location.scheduling_enabled,
+        immediate_fulfillment_enabled: location.immediate_fulfillment_enabled,
+        fulfillment_lead_time_min_days: location.fulfillment_lead_time_min_days ?? null,
+        fulfillment_lead_time_max_days: location.fulfillment_lead_time_max_days ?? null
     };
 };
 
@@ -544,7 +548,7 @@ const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
     return null;
 };
 
-const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) => {
+const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod, scheduledFor = null }) => {
     if (!location) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -574,6 +578,13 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) =
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             `Selected location does not support ${orderMethod} orders`,
+            { statusCode: 409 }
+        );
+    }
+    if (scheduledFor && location?.scheduling_enabled === false) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Selected location does not accept scheduled orders',
             { statusCode: 409 }
         );
     }
@@ -1596,7 +1607,8 @@ const resolveCheckoutContext = async ({
     });
     assertCheckoutLocationOperationalReadiness({
         location,
-        orderMethod
+        orderMethod,
+        scheduledFor
     });
     assertCheckoutTimeWithinStorefrontHours({
         scheduledFor,

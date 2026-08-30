@@ -11,6 +11,11 @@ const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const toNullableDayCount = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+};
 
 const parseExpectedUpdateTimestamp = (payload = {}) => {
     const raw = payload.last_known_updated_at ?? payload.expected_updated_at ?? null;
@@ -34,7 +39,11 @@ const normalizePayload = (payload = {}) => ({
     allow_out_of_stock_sales: payload.allow_out_of_stock_sales === true,
     supports_delivery: payload.supports_delivery !== false,
     supports_pickup: payload.supports_pickup !== false,
-    supports_dine_in: payload.supports_dine_in !== false
+    supports_dine_in: payload.supports_dine_in !== false,
+    scheduling_enabled: payload.scheduling_enabled !== false,
+    immediate_fulfillment_enabled: payload.immediate_fulfillment_enabled !== false,
+    fulfillment_lead_time_min_days: toNullableDayCount(payload.fulfillment_lead_time_min_days),
+    fulfillment_lead_time_max_days: toNullableDayCount(payload.fulfillment_lead_time_max_days)
 });
 
 const assertPrimaryStateValid = (payload) => {
@@ -44,6 +53,19 @@ const assertPrimaryStateValid = (payload) => {
             'Primary storefront location must be active',
             { statusCode: 422 }
         );
+    }
+};
+const assertFulfillmentLeadTimeValid = (payload) => {
+    const min = payload.fulfillment_lead_time_min_days;
+    const max = payload.fulfillment_lead_time_max_days;
+    if (payload.immediate_fulfillment_enabled === false && (min === null || max === null)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED,
+            'A fulfillment lead time (minimum and maximum days) is required when immediate fulfillment is disabled for this location.',
+            { statusCode: 422 });
+    }
+    if (min !== null && max !== null && max < min) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED,
+            'Fulfillment lead time maximum days must be greater than or equal to minimum days.', { statusCode: 422 });
     }
 };
 
@@ -57,6 +79,21 @@ const currentTenantAccessContext = () => {
         tenantToken: store.tenantToken,
         tenantName: store.tenantName
     };
+};
+
+// The storefront reads tenant locations live first; discovery is a fallback. A mirror failure
+// must therefore not roll back a committed merchant location write (#1218).
+const syncDiscoveryIndexBestEffort = async ({ syncStorefrontDiscoveryIndexForTenant, logger }) => {
+    if (typeof syncStorefrontDiscoveryIndexForTenant !== 'function') return;
+    const { tenantId } = currentTenantAccessContext();
+    if (!tenantId) return;
+    try {
+        await syncStorefrontDiscoveryIndexForTenant({ tenantId });
+    } catch (error) {
+        logger?.warn?.('[TenantLocations] Storefront discovery index sync failed', {
+            tenantId, error: error?.message || 'unknown_error'
+        });
+    }
 };
 
 // #1093 (per-store delivery/pickup toggle). A location with neither delivery nor
@@ -164,7 +201,7 @@ export const buildListTenantLocationsUseCase = ({ tenantLocationRepository }) =>
     };
 };
 
-export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository }) => {
+export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant = null, logger = null }) => {
     return async ({ payload }) => {
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
             return fail(new DomainError(
@@ -177,6 +214,7 @@ export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository }) =
         try {
             const normalized = normalizePayload(payload);
             assertPrimaryStateValid(normalized);
+            assertFulfillmentLeadTimeValid(normalized);
             await assertFulfillmentMethodAvailable({
                 tenantLocationRepository,
                 previous: null,
@@ -215,6 +253,7 @@ export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository }) =
 
                 await transaction.commit();
                 const refreshed = await tenantLocationRepository.findById(created.location_id);
+                await syncDiscoveryIndexBestEffort({ syncStorefrontDiscoveryIndexForTenant, logger });
                 return ok(refreshed || created);
             } catch (error) {
                 if (!transaction.finished) {
@@ -228,7 +267,7 @@ export const buildCreateTenantLocationUseCase = ({ tenantLocationRepository }) =
     };
 };
 
-export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository }) => {
+export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant = null, logger = null }) => {
     return async ({ locationId, payload }) => {
         const normalizedId = parsePositiveInt(locationId);
         if (!normalizedId) {
@@ -282,6 +321,7 @@ export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository }) =
 
                 const merged = normalizePayload({ ...existing, ...payload });
                 assertPrimaryStateValid(merged);
+                assertFulfillmentLeadTimeValid(merged);
                 await assertFulfillmentMethodAvailable({
                     tenantLocationRepository,
                     previous: existing,
@@ -322,6 +362,7 @@ export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository }) =
 
                 await transaction.commit();
                 const refreshed = await tenantLocationRepository.findById(normalizedId);
+                await syncDiscoveryIndexBestEffort({ syncStorefrontDiscoveryIndexForTenant, logger });
                 return ok(refreshed || updated);
             } catch (error) {
                 if (!transaction.finished) {
@@ -335,7 +376,7 @@ export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository }) =
     };
 };
 
-export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository }) => {
+export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant = null, logger = null }) => {
     return async ({ locationId }) => {
         const normalizedId = parsePositiveInt(locationId);
         if (!normalizedId) {
@@ -372,6 +413,7 @@ export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository 
 
                 await transaction.commit();
                 const refreshed = await tenantLocationRepository.findById(normalizedId);
+                await syncDiscoveryIndexBestEffort({ syncStorefrontDiscoveryIndexForTenant, logger });
                 return ok(refreshed || deactivated);
             } catch (error) {
                 if (!transaction.finished) {
@@ -385,7 +427,7 @@ export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository 
     };
 };
 
-export const buildDeleteTenantLocationUseCase = ({ tenantLocationRepository }) => {
+export const buildDeleteTenantLocationUseCase = ({ tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant = null, logger = null }) => {
     return async ({ locationId }) => {
         const normalizedId = parsePositiveInt(locationId);
         if (!normalizedId) {
@@ -448,6 +490,7 @@ export const buildDeleteTenantLocationUseCase = ({ tenantLocationRepository }) =
                 }
 
                 await transaction.commit();
+                await syncDiscoveryIndexBestEffort({ syncStorefrontDiscoveryIndexForTenant, logger });
                 return ok({
                     location_id: normalizedId,
                     deleted: true,

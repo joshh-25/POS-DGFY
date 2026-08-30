@@ -33,7 +33,11 @@ const tenantLocationBaseSchema = Joi.object({
     allow_out_of_stock_sales: Joi.boolean().default(false),
     supports_delivery: Joi.boolean().default(true),
     supports_pickup: Joi.boolean().default(true),
-    supports_dine_in: Joi.boolean().default(true)
+    supports_dine_in: Joi.boolean().default(true),
+    scheduling_enabled: Joi.boolean().default(true),
+    immediate_fulfillment_enabled: Joi.boolean().default(true),
+    fulfillment_lead_time_min_days: Joi.number().integer().min(0).max(365).allow(null),
+    fulfillment_lead_time_max_days: Joi.number().integer().min(0).max(365).allow(null)
 });
 
 const createTenantLocationSchema = tenantLocationBaseSchema;
