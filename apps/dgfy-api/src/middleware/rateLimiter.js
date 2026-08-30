@@ -38,6 +38,12 @@ const storeVoucherLookupWindowMs = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER
 const storeVoucherLookupMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+// #452 (Phase 212): /s/{short_code} resolution is now a boot dependency of the store page, not a
+// fire-and-forget capture -- it must NOT share authLimiter's 5/5min budget (see
+// docs/api/RATE_LIMITING.md). Sized like its browse-tier neighbours above (90/min prod). Inherits
+// the same known shared-IP/CGNAT keying gap tracked in #972 -- not fixed here.
+const affiliateShareResolveWindowMs = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_WINDOW_MS) || 60 * 1000; // 1 minute
+const affiliateShareResolveMaxRequests = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontFollowMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
@@ -924,6 +930,41 @@ export const storefrontDiscoveryLimiter = rateLimit({
       'ip_query'
     );
     logRateLimitEvent(req, 'storefront_discovery', response.retryAfterSeconds, 'ip_query');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// #452 (Phase 212): browse-tier limiter for GET /affiliate/s/:short_code. Keyed on ip + short_code
+// so one code being scanned repeatedly (an event, a shared wifi) doesn't exhaust budget for other
+// codes on the same IP. Deliberately NOT authLimiter -- see the mount comment in routes/dgfy.js.
+export const affiliateShareResolveLimiter = rateLimit({
+  windowMs: affiliateShareResolveWindowMs,
+  max: affiliateShareResolveMaxRequests,
+  message: createRateLimitError('Too many share link requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('affiliate_share_resolve'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const shortCode = String(req.params?.short_code || '').trim().toUpperCase() || 'unknown-code';
+    return `affiliate_share_resolve:${ip}:${shortCode}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many share link requests. Please wait before trying again.',
+      'affiliate_share_resolve',
+      'ip_short_code'
+    );
+    logRateLimitEvent(req, 'affiliate_share_resolve', response.retryAfterSeconds, 'ip_short_code');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

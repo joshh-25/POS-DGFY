@@ -81,6 +81,7 @@ import {
     buildReactivateAffiliateEnrollmentUseCase,
     buildRejectAffiliateCashoutUseCase,
     buildRequestAffiliateCashoutUseCase,
+    buildResolveAffiliateShareCodeUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
     buildUpdateAffiliateSettingsUseCase,
     buildListAffiliatePriceRulesUseCase,
@@ -350,5 +351,6 @@ export const markAffiliateCashoutPaidUseCase = buildMarkAffiliateCashoutPaidUseC
 export const rejectAffiliateCashoutUseCase = buildRejectAffiliateCashoutUseCase();
 
 export const captureAffiliateAttributionUseCase = buildCaptureAffiliateAttributionUseCase();
+export const resolveAffiliateShareCodeUseCase = buildResolveAffiliateShareCodeUseCase();
 
 export { dgfyAccountRepository };
