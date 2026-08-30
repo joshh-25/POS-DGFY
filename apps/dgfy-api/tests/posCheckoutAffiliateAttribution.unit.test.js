@@ -16,6 +16,9 @@
 
 import { jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
+// Safe to import statically alongside the jest.unstable_mockModule calls below: posValidator.js
+// has no mocked dependency (only `joi` and orderMethods.js), so it is unaffected by them.
+import { validatePosCheckout } from '../src/validators/posValidator.js';
 
 const TENANT_ID = 'tenant-pos-affiliate-attribution';
 const ENROLLMENT_ID = 701;
@@ -437,5 +440,52 @@ describe('POS checkout — #1199 (Phase 220): enrollment re-verified at commit t
         expect(activeHeader.subtotal_amount).toBe(droppedHeader.subtotal_amount);
         expect(activeHeader.total_amount).toBe(droppedHeader.total_amount);
         expect(droppedResult.data).toBeDefined();
+    });
+});
+
+// #1239 (Phase 222): the composition test neither this file's use-case-direct tests (they hand-build
+// `payload` and bypass the validator entirely - F8) nor posValidator.affiliateCode.test.js (it never
+// calls the use case) can provide on its own. Runs the real validator, then feeds its real output -
+// not a hand-built object - into the real use case exactly as posHandlers.js:863 does. Fails against
+// unmodified develop: the field is stripped, so zero lookups happen and no commission accrues.
+const mockValidatorRes = () => {
+    const res = {};
+    res.status = jest.fn(() => res);
+    res.json = jest.fn(() => res);
+    return res;
+};
+
+describe('POS checkout — #1239 (Phase 222): affiliate_code reaches the use case via the real validator', () => {
+    test('validator -> use case, end to end: a valid code accrues a commission through the real middleware', async () => {
+        const req = { body: basePayload({ affiliate_code: 'AF-9K2XQ7' }) };
+        const res = mockValidatorRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.affiliate_code).toBe('AF-9K2XQ7');
+
+        const posRepository = buildFakePosRepository();
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            // The real validator output, not a hand-built payload - this is the assertion that
+            // closes F8's blind spot.
+            payload: req.validatedData
+        }));
+
+        expect(result.success).toBe(true);
+        expect(mockAffiliateRepo.findActiveEnrollmentByShareCode).toHaveBeenCalledTimes(1);
+        expect(mockAffiliateRepo.findEnrollmentById).toHaveBeenCalledTimes(1);
+        expect(mockAffiliateRepo.createEarnedCommissionIfMissing).toHaveBeenCalledTimes(1);
+        expect(mockAffiliateRepo.createEarnedCommissionIfMissing.mock.calls[0][0].enrollmentId)
+            .toBe(ENROLLMENT_ID);
     });
 });
