@@ -12,6 +12,7 @@ import {
     listAffiliates,
     markAffiliateCashoutPaid,
     provisionAffiliate,
+    reactivateAffiliateEnrollment,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings,
@@ -69,6 +70,15 @@ router.patch(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
     updateAffiliateEnrollment
+);
+// #1191 (Phase 207) - the only path that may perform a `suspended|revoked -> active` transition.
+// The PATCH above explicitly rejects `status: 'active'`; this endpoint is where the
+// max_affiliate_slots cap check (#1177, Phase 198) actually runs.
+router.post(
+    '/affiliates/:enrollment_id/reactivate',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
+    reactivateAffiliateEnrollment
 );
 router.get(
     '/affiliates/:enrollment_id/qr',

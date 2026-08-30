@@ -78,6 +78,7 @@ import {
     buildManageAffiliatePayoutMethodsUseCases,
     buildMarkAffiliateCashoutPaidUseCase,
     buildProvisionAffiliateUseCase,
+    buildReactivateAffiliateEnrollmentUseCase,
     buildRejectAffiliateCashoutUseCase,
     buildRequestAffiliateCashoutUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
@@ -318,6 +319,7 @@ export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
     hashInviteToken: hashInvitationToken
 });
 export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
+export const reactivateAffiliateEnrollmentUseCase = buildReactivateAffiliateEnrollmentUseCase();
 export const listAffiliatePriceRulesUseCase = buildListAffiliatePriceRulesUseCase();
 export const upsertAffiliatePriceRuleUseCase = buildUpsertAffiliatePriceRuleUseCase();
 export const deactivateAffiliatePriceRuleUseCase = buildDeactivateAffiliatePriceRuleUseCase();
