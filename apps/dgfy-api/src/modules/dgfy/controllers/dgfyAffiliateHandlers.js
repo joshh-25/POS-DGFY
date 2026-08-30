@@ -13,6 +13,7 @@ import {
     getAffiliateSettingsUseCase,
     inviteAffiliateUseCase,
     listAffiliateCashoutsUseCase,
+    listAffiliateEnrollmentStatusEventsUseCase,
     listAffiliateInvitesUseCase,
     listAffiliatesUseCase,
     listAffiliatePayoutMethodsUseCase,
@@ -90,7 +91,14 @@ export const listAffiliates = async (req, res, next) => {
 
 export const provisionAffiliate = async (req, res, next) => {
     try {
-        return send(res, await provisionAffiliateUseCase({ tenantId: req.user?.tenant_id, body: req.body }), {
+        return send(res, await provisionAffiliateUseCase({
+            tenantId: req.user?.tenant_id,
+            body: req.body,
+            actorUserId: req.user?.user_id ?? null,
+            // #1202 (Phase 214, F4) - denormalized at write time so the status-events history can
+            // render "by Ana" instead of an unresolvable "by user #7". Same shape auth.js:481 uses.
+            actorUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null
+        }), {
             status: 201,
             message: 'Affiliate provisioned successfully'
         });
@@ -142,7 +150,9 @@ export const updateAffiliateEnrollment = async (req, res, next) => {
             tenantId: req.user?.tenant_id,
             enrollmentId: req.params.enrollment_id,
             body: req.body,
-            revokedBy: req.user?.user_id ?? null
+            revokedBy: req.user?.user_id ?? null,
+            // #1202 (Phase 214, F4) - same denormalization as provisionAffiliate above.
+            revokedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null
         }), {
             message: 'Affiliate enrollment updated successfully'
         });
@@ -156,10 +166,28 @@ export const reactivateAffiliateEnrollment = async (req, res, next) => {
         return send(res, await reactivateAffiliateEnrollmentUseCase({
             tenantId: req.user?.tenant_id,
             enrollmentId: req.params.enrollment_id,
-            reactivatedBy: req.user?.user_id ?? null
+            reactivatedBy: req.user?.user_id ?? null,
+            reactivatedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null,
+            // #1202 (Phase 214) J4, implemented per PR #1232 review RF-3 - optional, additive: an
+            // omitted body or missing `reason` key is unaffected, no existing caller breaks.
+            reason: req.body?.reason
         }), {
             message: 'Affiliate enrollment reactivated successfully'
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// #1202 (Phase 214, J7) - GET /affiliates/:enrollment_id/status-events. Read permission
+// (VIEW_AFFILIATES), matching GET /affiliates and /qr, not MANAGE_AFFILIATES.
+export const listAffiliateEnrollmentStatusEvents = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliateEnrollmentStatusEventsUseCase({
+            tenantId: req.user?.tenant_id,
+            enrollmentId: req.params.enrollment_id,
+            limit: req.query?.limit
+        }));
     } catch (error) {
         next(error);
     }

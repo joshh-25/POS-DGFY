@@ -128,6 +128,10 @@ const makeFakeModel = (idField) => {
 const mockTenantAffiliateSettings = makeFakeModel('tenant_id');
 const mockDgfyAffiliateEnrollment = makeFakeModel('enrollment_id');
 const mockDgfyAffiliateInvite = makeFakeModel('invite_id');
+// #1202 (Phase 214) - createEnrollment/materializeInviteEnrollment now each write one of these;
+// must exist as a real fake or the repository's `DgfyAffiliateEnrollmentStatusEvent.create(...)`
+// call throws on every test in this file, not just the ones that assert on it.
+const mockDgfyAffiliateEnrollmentStatusEvent = makeFakeModel('status_event_id');
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
     default: {
@@ -140,6 +144,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
         DgfyAffiliateInvite: mockDgfyAffiliateInvite,
         DgfyAffiliatePriceRule: {},
         DgfyAffiliateCategoryRate: {},
+        DgfyAffiliateEnrollmentStatusEvent: mockDgfyAffiliateEnrollmentStatusEvent,
         StorefrontDiscoveryIndex: {},
         Tenant: {},
         TenantAffiliateSettings: mockTenantAffiliateSettings
@@ -153,6 +158,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
     DgfyAffiliateInvite: mockDgfyAffiliateInvite,
     DgfyAffiliatePriceRule: {},
     DgfyAffiliateCategoryRate: {},
+    DgfyAffiliateEnrollmentStatusEvent: mockDgfyAffiliateEnrollmentStatusEvent,
     StorefrontDiscoveryIndex: {},
     Tenant: {},
     TenantAffiliateSettings: mockTenantAffiliateSettings
@@ -200,6 +206,7 @@ beforeEach(() => {
     mockTenantAffiliateSettings._seed([]);
     mockDgfyAffiliateEnrollment._seed([]);
     mockDgfyAffiliateInvite._seed([]);
+    mockDgfyAffiliateEnrollmentStatusEvent._seed([]);
 });
 
 const expectSlotCapRejection = async (promise) => {

@@ -195,6 +195,7 @@ import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import DgfyAffiliateCategoryRateFactory from './Landlord/DgfyAffiliateCategoryRate.js';
+import DgfyAffiliateEnrollmentStatusEventFactory from './Landlord/DgfyAffiliateEnrollmentStatusEvent.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
@@ -271,6 +272,7 @@ const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const DgfyAffiliateCategoryRate = DgfyAffiliateCategoryRateFactory(sequelize);
+const DgfyAffiliateEnrollmentStatusEvent = DgfyAffiliateEnrollmentStatusEventFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
@@ -451,6 +453,11 @@ DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant'
 // Resolution queries filter directly on tenant_id/enrollment_id/folder_id instead of an include.
 Tenant.hasMany(DgfyAffiliateCategoryRate, { foreignKey: 'tenant_id', as: 'affiliateCategoryRates' });
 DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #1202 (Phase 214) - deliberately NO Tenant.hasMany/belongsTo association for
+// DgfyAffiliateEnrollmentStatusEvent. tenant_id and enrollment_id are both held by value (ADR 0036
+// Decision 1, no cross-database FK) so a future enrollment hard-delete cannot cascade away audit
+// evidence; reads filter directly on tenant_id/enrollment_id instead of an include.
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -1266,6 +1273,7 @@ const db = {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings
   ,TenantDownpaymentSettings
   ,PlatformAdminUser
@@ -1481,6 +1489,7 @@ export {
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
   DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings,
   TenantDownpaymentSettings,
   PlatformAdminUser,

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-24
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-01
 review_by: 2027-01-24
 applies_to: affiliates_program, backend, pos_frontend, storefront
 topic: affiliates_program_commission_and_cashout
@@ -270,3 +270,77 @@ build log). It touches money handling already governed by two prior ADRs:
   limit entitlements primitive, and any system-driven downgrade on payment
   lapse — all three remain #488/#491's open scope, not this ADR's.
 - PR: #1190, Phase 213 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)
+
+### 2026-09-01 — Enrollment status history: a new events table, authoritative over the Phase 199 columns (#1202, Phase 214)
+
+- Clause amended: none — this is new material the ADR omitted, not a correction of an existing
+  clause. No `[binding]` clause governs enrollment status history (the ADR's only `[binding]`
+  clause, Decision 2, governs rate snapshotting). Filed per ADR 0039's `[default]`/untagged tier,
+  same route the 2026-08-31 amendment above took.
+- Change: a new landlord table, `dgfy_affiliate_enrollment_status_events`, records every
+  `dgfy_affiliate_enrollments.status` transition — enrollment, suspension, revocation, and
+  reactivation alike — as an append-only row: `from_status`/`to_status`, a derived `event_type`,
+  an `actor_type` (`tenant_user` | `dgfy_account` | `system`) with a denormalized `actor_username`
+  (resolved once, at write time, from `req.user.username` — the same pattern
+  `dgfy_account_admin_audit_logs`/`tenant_admin_audit_logs` already use), an optional `reason`, and
+  a `source` distinguishing a captured event from a backfilled one. `tenant_id`/`enrollment_id` are
+  held by value, no FK — the same landlord by-value convention Decision 1 already establishes for
+  this module, so a future enrollment hard-delete cannot cascade away audit evidence.
+- **Authority relative to the three Phase 199 columns
+  (`revoked_at`/`revoked_by`/`revocation_reason`): those columns are UNCHANGED — same names, same
+  semantics, kept as a documented denormalized cache of the most recent DEMOTION event, not
+  retired.** Phase 207's compliance declaration lists their preservation as a verified
+  precondition, and `GET /affiliates` already returns them with no serializer change needed.
+  **The one invariant this creates:** the three columns and the events table can disagree about
+  *which kind* of demotion happened (`revoked_at` conflates `suspended`/`revoked`, since it stamps
+  on either transition into either status) — the events table records `from_status`/`to_status`
+  exactly and does not have this conflation. **On any disagreement, the events table is
+  authoritative.**
+- **Four instrumented write sites**, all in `dgfyAffiliateRepository.js`, three already
+  transactional (`createEnrollment`, `materializeInviteEnrollment`'s two callers,
+  `reactivateEnrollment`); the fourth (`updateEnrollment`, the generic PATCH) previously had no
+  transaction at all and now does, specifically so the status read that determines `from_status`
+  shares the same snapshot as the write it feeds. The event write is transactional with the status
+  change everywhere, not best-effort — a status change that lands without its audit row is exactly
+  the class of gap `tenant_admin_audit_logs`' own #1190 reasoning (quoted in the amendment above)
+  exists to close, and ADR 0036 Decision 4's best-effort posture governs accrual bookkeeping on the
+  sale path, not admin status changes; it is not borrowed here. Residual risk, stated rather than
+  hidden: the auto-enroll-on-register write site runs inside the account-creation transaction, so
+  an event-insert failure there would abort a registration that would otherwise have succeeded —
+  accepted, since the alternative (skip the event write on that one path) leaves a permanent hole
+  in the history for every invite-accepted affiliate.
+- **Read endpoint:** `GET /api/v1/affiliates/affiliates/:enrollment_id/status-events`, gated on
+  `VIEW_AFFILIATES` (read permission, matching `GET /affiliates` and the existing `/qr` sibling —
+  not `MANAGE_AFFILIATES`), a dedicated endpoint rather than inlining an unbounded array into
+  `GET /affiliates`, mirroring the #1190/Phase 213 `GET /:id/affiliate-slots/audit-logs` precedent
+  cited in the amendment above. Tenant-isolated by resolving the enrollment for the caller's tenant
+  first (404 if absent) before querying events — never queried by `enrollment_id` alone.
+- **Open decision, stated rather than silently deferred (J2): affiliate-facing visibility.** This
+  phase ships **no** affiliate-facing surface for this data — not the storefront customer
+  dashboard, not `listEnrollmentsForAccount` — and **defaults to merchant-only visibility**. The
+  events carry a merchant's free-text `reason`, and whether to surface any of this to the affiliate
+  themselves is a relationship/tone product decision, not an engineering one; it does not block
+  this phase and is not answered here. Whoever eventually builds an affiliate-facing read path must
+  answer it first, not assume merchant-only was merely an oversight.
+- **Partial backfill (J3):** an `enrolled` row is synthesized per existing enrollment from its
+  `created_at`. A demotion row is synthesized only where `revoked_at IS NOT NULL` **and** the
+  enrollment's current status is `suspended`/`revoked` (the demotion target is knowable there,
+  `from_status` assumed `active` and flagged as such in `metadata`). Rows where `revoked_at` is set
+  but the current status is `active`/`pending` are skipped outright — the demotion target is
+  genuinely unknowable from the three legacy columns alone (they conflate `suspended`/`revoked` and
+  never recorded a reactivation timestamp), and fabricating either field would be worse than a gap.
+  Backfilled rows carry `source: 'backfill'`, never conflated with a captured event.
+- Explicitly out of scope, named rather than silently absent: status events for invites, cashouts,
+  or commissions (each already has its own state machine/columns); changing what `revoked_at` means
+  (its suspend/revoke conflation stops mattering for anything reading the new table, but is not
+  itself corrected); retention/pruning of status events (neither existing landlord audit table has
+  one either).
+- **Correction (PR #1232 review RF-4):** this amendment originally described #1203/Phase 215 as the
+  pure-frontend consumer of this phase's new read endpoint. **That is wrong — #1203/Phase 215
+  already merged independently, as PR #1231, before this correction was written, and does not call
+  or depend on `GET .../status-events` at all** (it only renders the pre-existing
+  `revoked_at`/`revoked_by`/`revocation_reason` columns already on `GET /affiliates`, per its own
+  `IMPLEMENTATION_PHASE_LEDGER.md` entry). This phase's new endpoint currently has **no** frontend
+  consumer; the eventual UI for a real per-affiliate timeline with names is unscheduled follow-up
+  work, not something #1203/Phase 215 covers.
+- PR: #1232, Phase 214 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)

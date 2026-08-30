@@ -72,6 +72,7 @@ import {
     buildGetAffiliateSettingsUseCase,
     buildInviteAffiliateUseCase,
     buildListAffiliateCashoutsUseCase,
+    buildListAffiliateEnrollmentStatusEventsUseCase,
     buildListAffiliateInvitesUseCase,
     buildListAffiliatesUseCase,
     buildListMyAffiliateCashoutsUseCase,
@@ -325,6 +326,7 @@ export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
 });
 export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
 export const reactivateAffiliateEnrollmentUseCase = buildReactivateAffiliateEnrollmentUseCase();
+export const listAffiliateEnrollmentStatusEventsUseCase = buildListAffiliateEnrollmentStatusEventsUseCase();
 export const listAffiliatePriceRulesUseCase = buildListAffiliatePriceRulesUseCase();
 export const upsertAffiliatePriceRuleUseCase = buildUpsertAffiliatePriceRuleUseCase();
 export const deactivateAffiliatePriceRuleUseCase = buildDeactivateAffiliatePriceRuleUseCase();
