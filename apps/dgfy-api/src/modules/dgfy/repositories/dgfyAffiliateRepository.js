@@ -9,6 +9,7 @@ import {
     DgfyAffiliateCashout,
     DgfyAffiliateInvite,
     DgfyAffiliatePriceRule,
+    DgfyAffiliateCategoryRate,
     StorefrontDiscoveryIndex,
     Tenant,
     TenantAffiliateSettings
@@ -23,6 +24,12 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 // Sentinel meaning "applies to all" for enrollment_id/item_id - see
 // backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
 const PRICE_RULE_SCOPE_ALL = 0;
+
+// #448 (Phase 209) - a SEPARATE named constant from PRICE_RULE_SCOPE_ALL, even though both are
+// currently 0, so the two tables' sentinels can diverge later without a silent coupling. Means
+// "the tenant-wide template row" for dgfy_affiliate_category_rates.enrollment_id - see
+// 20260901000001-add-affiliate-category-rates.cjs.
+const CATEGORY_RATE_SCOPE_ALL = 0;
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -76,7 +83,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     // #449 (Phase 208): a tenant with no settings row resolves identically to one with a
     // fresh row - uncapped, same as max_affiliate_slots' own comment above calls out.
     max_lifetime_earnings_centavos: null,
-    earnings_cap_active_until: null
+    earnings_cap_active_until: null,
+    // #448 (Phase 209) - mirrors the model-level default in TenantAffiliateSettings.js so a
+    // tenant with no settings row resolves identically to one with a fresh row: category rates
+    // are off, zero added queries.
+    category_rates_enabled: false
 });
 
 // The reason_code an over-cap rejection carries in DomainError.details - distinct from the
@@ -1116,6 +1127,69 @@ export const dgfyAffiliateRepository = {
     async deactivatePriceRule(tenantId, priceRuleId) {
         const row = await DgfyAffiliatePriceRule.findOne({
             where: { tenant_id: tenantId, price_rule_id: priceRuleId }
+        });
+        if (!row) return null;
+        await row.update({ active: false });
+        return toPlain(await row.reload());
+    },
+
+    // --- Affiliate category rates (#448, Phase 209) - the category tier of the commission rate
+    // ladder. Scoped (tenant_id, enrollment_id, folder_id); folder_id is a tenant-DB
+    // item_folders.folder_id held by value, no cross-database FK - same convention as
+    // dgfy_affiliate_price_rules.item_id above. Each function below mirrors its price-rule twin
+    // one-for-one. ---
+
+    async listCategoryRatesForTenant(tenantId) {
+        const rows = await DgfyAffiliateCategoryRate.findAll({
+            where: { tenant_id: tenantId },
+            order: [['enrollment_id', 'ASC'], ['folder_id', 'ASC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    // Returns ALL rows matching either the enrollment's own scope or the tenant-wide template
+    // scope, across every folder - precedence between the two is applied by the pure resolver
+    // (resolveCategoryRateBps in affiliateCommissionAccrual.js), not here. One indexed query per
+    // accrual, only ever issued when the caller has already confirmed category_rates_enabled and
+    // that no enrollment override shadows it (see loadApplicableCategoryRates).
+    async listActiveCategoryRatesForEnrollment(tenantId, enrollmentId) {
+        const rows = await DgfyAffiliateCategoryRate.findAll({
+            where: {
+                tenant_id: tenantId,
+                active: true,
+                enrollment_id: { [Op.in]: [Number(enrollmentId), CATEGORY_RATE_SCOPE_ALL] }
+            }
+        });
+        return rows.map(toPlain);
+    },
+
+    // Creates or updates the single category rate at a given (tenant_id, enrollment_id, folder_id)
+    // scope. findOrCreate on the unique scope index is the real concurrency guard; the update
+    // afterward covers the "already exists, change its rate" case.
+    async upsertCategoryRate({
+        tenantId,
+        enrollmentId = CATEGORY_RATE_SCOPE_ALL,
+        folderId,
+        rateBps,
+        active = true
+    }) {
+        const [row] = await DgfyAffiliateCategoryRate.findOrCreate({
+            where: { tenant_id: tenantId, enrollment_id: enrollmentId, folder_id: folderId },
+            defaults: {
+                tenant_id: tenantId,
+                enrollment_id: enrollmentId,
+                folder_id: folderId,
+                rate_bps: rateBps,
+                active
+            }
+        });
+        await row.update({ rate_bps: rateBps, active });
+        return toPlain(await row.reload());
+    },
+
+    async deactivateCategoryRate(tenantId, categoryRateId) {
+        const row = await DgfyAffiliateCategoryRate.findOne({
+            where: { tenant_id: tenantId, category_rate_id: categoryRateId }
         });
         if (!row) return null;
         await row.update({ active: false });
