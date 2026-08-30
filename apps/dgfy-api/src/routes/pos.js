@@ -69,6 +69,7 @@ import {
     validateCloseTerminalShift,
     validateForceCloseStaleTerminalShift,
     validateUpdateOnlineOrderStatus,
+    validateUpdateOnlineOrderDeliveryAddress,
     validatePosDeviceReceiptPrint,
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
@@ -299,6 +300,9 @@ router.get(
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same permission as the
+// status update above -- this is a staff order-management action on the same surface.
+router.patch('/orders/:id/delivery-address', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderDeliveryAddress, posController.updateOnlineOrderDeliveryAddress);
 router.get('/z-reading/close-readiness', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, posController.getDayCloseReadiness);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateCloseDayBody, posController.closeDayZReading);
 router.post('/z-reading/governed-reset', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateGovernedResetBody, posController.incrementGovernedResetCounter);

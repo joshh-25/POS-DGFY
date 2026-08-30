@@ -58,6 +58,7 @@ import {
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
+    updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
@@ -1994,6 +1995,29 @@ export const updateOnlineOrderStatus = async (req, res, next) => {
     }
 };
 
+export const updateOnlineOrderDeliveryAddress = async (req, res, next) => {
+    try {
+        const result = await updateOnlineOrderDeliveryAddressUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery address updated successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const collectCashPickupOrder = async (req, res, next) => {
     try {
         const result = await collectCashPickupOrderUseCase({
@@ -2735,6 +2759,7 @@ export default {
     listActiveDeliveryPersonnel,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,
+    updateOnlineOrderDeliveryAddress,
     getDeviceStatus,
     printReceipt,
     printShiftSummary,

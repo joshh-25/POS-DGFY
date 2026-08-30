@@ -934,6 +934,25 @@ const buildTransactionInclude = () => ([
             'opened_at',
             'closed_at'
         ]
+    },
+    {
+        // Phase 210 (#1179). Most-recent-first, capped -- an order card only needs recent history,
+        // not the full audit trail. `separate: true` is required for `limit` to apply per-parent
+        // rather than globally across the whole result set.
+        model: dbStore.get('PosOrderAddressChange'),
+        as: 'addressChanges',
+        required: false,
+        separate: true,
+        limit: 5,
+        order: [['changed_at', 'DESC']],
+        include: [
+            {
+                model: dbStore.get('User'),
+                as: 'changedByUser',
+                required: false,
+                attributes: ['user_id', 'username', 'email']
+            }
+        ]
     }
 ]);
 
@@ -5684,6 +5703,38 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    // Phase 210 (#1179). One append-only row per staff delivery-address/pin edit -- see
+    // PosOrderAddressChange.js for why this is a dedicated table rather than a column pair.
+    async createAddressChange({
+        posTransactionId,
+        previousAddress = null,
+        previousLatitude = null,
+        previousLongitude = null,
+        newAddress,
+        newLatitude = null,
+        newLongitude = null,
+        changeReason,
+        changedBy = null,
+        changedByShiftId = null,
+        changedAt
+    }, options = {}) {
+        const PosOrderAddressChange = dbStore.get('PosOrderAddressChange');
+        const row = await PosOrderAddressChange.create({
+            pos_transaction_id: posTransactionId,
+            previous_address: previousAddress,
+            previous_latitude: previousLatitude,
+            previous_longitude: previousLongitude,
+            new_address: newAddress,
+            new_latitude: newLatitude,
+            new_longitude: newLongitude,
+            change_reason: changeReason,
+            changed_by: changedBy,
+            changed_by_shift_id: changedByShiftId,
+            changed_at: changedAt
+        }, { transaction: options.transaction });
         return toPlain(row);
     },
 
