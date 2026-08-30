@@ -1381,7 +1381,11 @@ export const storeRepository = {
                 'is_primary_storefront',
                 'supports_delivery',
                 'supports_pickup',
-                'supports_dine_in'
+                'supports_dine_in',
+                'scheduling_enabled',
+                'immediate_fulfillment_enabled',
+                'fulfillment_lead_time_min_days',
+                'fulfillment_lead_time_max_days'
             ],
             order: [
                 ['is_primary_storefront', 'DESC'],

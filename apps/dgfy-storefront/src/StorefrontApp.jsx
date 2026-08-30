@@ -91,6 +91,7 @@ import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from './shared/model/storefrontOrderMethodOptions.js';
+import { resolveOrderTimingPolicy, resolveTimingStepScheduleMode } from './shared/model/storefrontOrderTimingPolicy.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
@@ -2055,6 +2056,15 @@ export default function StorefrontApp() {
     setOrderMethod(enabledMethods[0].value);
   }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod]);
   useEffect(() => {
+    if (!isStorePage || !(isFnbMode || isSimpleMode || isRetailMode)) return;
+    const policy = resolveOrderTimingPolicy(
+      resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+    );
+    const nextMode = resolveTimingStepScheduleMode(policy, fnbScheduleMode);
+    if (nextMode !== fnbScheduleMode) setFnbScheduleMode(nextMode);
+    if (nextMode !== 'schedule' && fnbScheduledFor) setFnbScheduledFor('');
+  }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, fnbScheduleMode, fnbScheduledFor]);
+  useEffect(() => {
     setServicePage(1);
   }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
   useEffect(() => {
@@ -3243,6 +3253,9 @@ export default function StorefrontApp() {
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
+  const orderTimingPolicy = resolveOrderTimingPolicy(
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
     activeFnbOrderStepMeta,
     applySavedDeliveryLocation,
@@ -3270,6 +3283,7 @@ export default function StorefrontApp() {
     fnbCheckoutContentPadding,
     fnbCustomerStepComplete,
     fnbFulfillmentStepComplete,
+    orderTimingPolicy,
     fulfillmentOptions: simpleOrderMethodOptions,
     fnbMobileSummaryItemCountLabel,
     fnbOrderBrand,

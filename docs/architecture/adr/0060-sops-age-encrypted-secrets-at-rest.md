@@ -330,7 +330,8 @@ compose half. With EDIT 4 applied, **`.env` has zero remaining consumers on PROD
 `IMAGE_TAG`" — since bucket C (`IMAGE_TAG`, every `SENTRY_*` var) already resolves from a
 `${VAR:-default}` fallback in the compose file itself and is already shell-exported per-deploy by
 `publish-platform.yml` or left at its default, never read from `.env`. The corrected instruction is
-to delete `.env` outright once EDIT 4 is live and verified, not trim it.
+to retire `.env` from the active deployment directory once EDIT 4 is live and verified — moved into
+a dated `_archive/` path (#1155's move-never-delete convention, not `rm`'d), not trimmed in place.
 
 **Compose file split (#1236):** alongside EDIT 4, both `infrastructure/docker/docker-compose.yml`
 (the generic, multi-environment template used by DEV/QA/staging) and PROD's own hand-maintained

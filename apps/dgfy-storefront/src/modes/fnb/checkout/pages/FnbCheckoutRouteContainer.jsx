@@ -48,7 +48,8 @@ import {
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
-import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the inline F&B order/checkout
@@ -90,6 +91,7 @@ export function FnbCheckoutRouteContainer({
   fnbCheckoutContentPadding,
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
+  orderTimingPolicy,
   fulfillmentOptions,
   fnbMobileSummaryItemCountLabel,
   fnbOrderBrand,
@@ -193,6 +195,11 @@ export function FnbCheckoutRouteContainer({
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
   // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
   const fnbBillingEmailRequired = requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail });
+  const resolvedFnbOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
+  const fnbSectionNumbers = buildCheckoutSectionNumbers({
+    showOrderMethodSelector: resolveFulfillmentSelectorPresentation(fulfillmentOptions).showSelector,
+    showTimingStep: resolvedFnbOrderTimingPolicy.showTimingStep
+  });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -259,11 +266,12 @@ export function FnbCheckoutRouteContainer({
                 setFnbScheduledFor(nextValue);
               }}
               orderMethod={orderMethod}
+              orderTimingPolicy={orderTimingPolicy}
               scheduleHoursLabel={formatStorefrontHoursLabel(selectedStore?.storefront_hours, selectedStore?.storefront_hours_status?.display || '')}
             />                      {isDeliveryOrder && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{resolveFulfillmentSelectorPresentation(fulfillmentOptions).showSelector ? '3' : '2'}. Where should we deliver your order?</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.address}. Where should we deliver your order?</div>
                   <div style={{ fontSize: isFnbOrderResponsiveFlow ? 13 : 12, fontWeight: isFnbOrderResponsiveFlow ? 400 : 600, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', lineHeight: 1.5, fontFamily: servicesBodyFont }}>
                     {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
                   </div>

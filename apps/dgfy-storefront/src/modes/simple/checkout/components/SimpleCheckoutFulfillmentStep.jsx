@@ -5,7 +5,8 @@ import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentCho
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
 import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
-import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -29,6 +30,7 @@ export function SimpleCheckoutFulfillmentStep({
   renderGuestCheckoutEntry,
   scheduledFor = '',
   selectedLocation = null,
+  orderTimingPolicy,
   selectedSavedLocationId = '',
   servicesBodyFont,
   servicesDisplayFont,
@@ -71,6 +73,11 @@ export function SimpleCheckoutFulfillmentStep({
     event.preventDefault();
     event.stopPropagation();
   };
+  const resolvedOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
+  const sectionNumbers = buildCheckoutSectionNumbers({
+    showOrderMethodSelector: resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector,
+    showTimingStep: resolvedOrderTimingPolicy.showTimingStep
+  });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -87,12 +94,13 @@ export function SimpleCheckoutFulfillmentStep({
         onScheduledForChange={onScheduledForChange}
         orderMethod={orderMethod}
         simpleOrderMethodOptions={simpleOrderMethodOptions}
+        orderTimingPolicy={orderTimingPolicy || resolveOrderTimingPolicy()}
       />
 
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector ? '3' : '2'}. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>

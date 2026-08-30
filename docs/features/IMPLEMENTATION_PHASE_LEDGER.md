@@ -13887,7 +13887,37 @@ edit of `downpayment-nonrefundable-v1`.
 
 ### Next eligible phase
 
-221.
+220.
+
+## Phase 217 - Storefront: Per-Store Delivery Timing Policy (#1218)
+
+### Initiative and release
+
+Surebiz go-live hardening (#1178).
+
+### Objective and scope
+
+Adds per-location scheduling and immediate-fulfillment controls plus merchant lead-time values. Investigation confirmed the storefront primary path is live (`GET /api/v1/store/locations`); `StorefrontDiscoveryIndex` is a stale fallback, so a narrowly-scoped post-commit sync trigger is included. #627's post-order delivery estimate/email work is excluded. No ADR governs pre-order timing presentation or per-location scheduling policy (checked `docs/architecture/adr/INDEX.md` for `fulfillment`/`storefront`/`checkout`/`delivery`; ADR 0034 and ADR 0057 are adjacent but do not govern this); no ADR amendment and no new ADR is required, matching the precedent set by `supports_delivery`/`supports_pickup` shipping without one.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 216 and precedes Phase 218. Current phase is 217; next eligible phase is 218.
+
+### Acceptance and validation evidence
+
+- [x] Additive tenant migration (fanned out over every active tenant database, idempotent, symmetric `down()`) and tenant-schema repair registry add all four timing columns; `TENANT_SCHEMA_CAPABILITY_VERSION` bumped in the same commit.
+- [x] API model, validators, merged-state lead-time validation (both write use cases, 422), live location serialization (both read allowlists), checkout scheduled-order 409 guard, and discovery fallback snapshot sync (best-effort, post-commit, injected) are implemented and unit-tested.
+- [x] Storefront timing-policy model, all four fulfillment components (three render cases), section-renumbering, and the `fnbScheduleMode` auto-snap are implemented; default policy remains fail-open and byte-identical to pre-phase behaviour.
+- [x] IMS Settings exposes both switches plus the conditional lead-time inputs, client-side mirrors of both server rules, and a live buyer-facing string preview.
+- [x] Compliance declaration records the required major classification and develop preflight placeholder; `check:compliance` observed failing before the declaration was added, passing after.
+- [x] `apps/dgfy-api` Tier 2: new `tenantLocationDeliveryTimingPolicy.usecases.test.js` (11/11, all 8 plan cases) and 3 new `storeUsecases.applicationResult.test.js` cases (409 guard + asymmetry) pass; the two pre-existing tenant-location use-case test files pass unchanged, confirming the new builder dependencies are backward-compatible.
+- [x] `apps/dgfy-storefront` Tier 2: `npm test` at 855/855 passing across 158 files (Phase 216's baseline was 830/830 across 155); the NOW-copy regression grep confirms no unconditional survivor.
+- [x] `build:store`, `build:skupervisor`, `node --check` on every changed backend/migration file, `check:architecture`, and `check:adr` all green; no lockfile in the diff.
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding, per this phase's own explicitly-stated scope (§10.3): no live-environment check, and neither Retail's nor Default's schedule state reaches a payload today, so there is no server-side consequence to verify for those two modes.
 
 ## Phase 220 - Docker Compose File Split + Full `.env` Retirement, Phase A (#1236)
 

@@ -555,6 +555,10 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
             supports_delivery: plainLocation.supports_delivery !== false,
             supports_pickup: plainLocation.supports_pickup !== false,
             supports_dine_in: plainLocation.supports_dine_in !== false,
+            scheduling_enabled: plainLocation.scheduling_enabled !== false,
+            immediate_fulfillment_enabled: plainLocation.immediate_fulfillment_enabled !== false,
+            fulfillment_lead_time_min_days: plainLocation.fulfillment_lead_time_min_days ?? null,
+            fulfillment_lead_time_max_days: plainLocation.fulfillment_lead_time_max_days ?? null,
             allow_out_of_stock_sales: plainLocation.allow_out_of_stock_sales === true
         };
     }).filter((entry) => Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude));

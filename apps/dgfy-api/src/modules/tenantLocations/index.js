@@ -1,4 +1,6 @@
 import { tenantLocationRepository } from './repositories/tenantLocationRepository.js';
+import logger from '../../config/logger.js';
+import { syncStorefrontDiscoveryIndexForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import {
     buildListTenantLocationsUseCase,
     buildCreateTenantLocationUseCase,
@@ -8,10 +10,11 @@ import {
 } from './usecases/tenantLocationUseCases.js';
 
 export const listTenantLocationsUseCase = buildListTenantLocationsUseCase({ tenantLocationRepository });
-export const createTenantLocationUseCase = buildCreateTenantLocationUseCase({ tenantLocationRepository });
-export const updateTenantLocationUseCase = buildUpdateTenantLocationUseCase({ tenantLocationRepository });
-export const deactivateTenantLocationUseCase = buildDeactivateTenantLocationUseCase({ tenantLocationRepository });
-export const deleteTenantLocationUseCase = buildDeleteTenantLocationUseCase({ tenantLocationRepository });
+const writeDependencies = { tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant, logger };
+export const createTenantLocationUseCase = buildCreateTenantLocationUseCase(writeDependencies);
+export const updateTenantLocationUseCase = buildUpdateTenantLocationUseCase(writeDependencies);
+export const deactivateTenantLocationUseCase = buildDeactivateTenantLocationUseCase(writeDependencies);
+export const deleteTenantLocationUseCase = buildDeleteTenantLocationUseCase(writeDependencies);
 
 export * from './contracts/tenantLocationRepository.contract.js';
 export * from './repositories/tenantLocationRepository.js';
