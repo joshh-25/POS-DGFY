@@ -13,6 +13,9 @@ const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
 const MAX_ATTRIBUTION_WINDOW_DAYS = 365;
 const ENROLLMENT_STATUS_VALUES = new Set(['active', 'suspended', 'revoked']);
+// #450 (Phase 199) - statuses that record a revocation-audit stamp when actually transitioned
+// into (see buildUpdateAffiliateEnrollmentUseCase, D2).
+const REVOCATION_STAMP_STATUSES = new Set(['revoked', 'suspended']);
 const PAYOUT_METHOD_TYPES = new Set(['bank', 'gcash', 'maya']);
 const COMMISSION_TYPE_VALUES = new Set(AFFILIATE_COMMISSION_RULE_TYPES);
 const SETTLEMENT_POLICY_VALUES = new Set(AFFILIATE_SETTLEMENT_POLICIES);
@@ -437,7 +440,7 @@ export const buildAcceptAffiliateInviteUseCase = ({ repository = dgfyAffiliateRe
 );
 
 export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, enrollmentId, body = {} }) => {
+    async ({ tenantId, enrollmentId, body = {}, revokedBy = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
             const updates = {};
@@ -462,8 +465,35 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                     updates.commission_type = commissionType;
                 }
             }
+            // #450 (Phase 199) - parsed into a local, not into `updates` directly, so a
+            // reason-only body still hits the emptiness guard below (D8).
+            const revocationReason = body.revocation_reason ? String(body.revocation_reason).trim().slice(0, 500) : null;
+
             if (Object.keys(updates).length === 0) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'No updatable fields were provided.', { statusCode: 422 });
+            }
+
+            // #450 (Phase 199, D1/D2) - only fires when the PATCH is actually moving `status`
+            // into 'revoked'/'suspended' from a different prior status; an idempotent re-PATCH
+            // of the same status does not re-stamp (preserves the original revoked_at).
+            let stamped = false;
+            if (updates.status !== undefined && REVOCATION_STAMP_STATUSES.has(updates.status)) {
+                const previous = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!previous) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+                if (previous.status !== updates.status) {
+                    updates.revoked_at = new Date();
+                    updates.revoked_by = revokedBy ?? null;
+                    updates.revocation_reason = revocationReason; // D6 - always all three together
+                    stamped = true;
+                }
+            }
+
+            // #450 (Phase 199, D7) - reject rather than silently drop a reason that can't attach
+            // to a stamp (status: 'active', no status at all, or an idempotent re-PATCH).
+            if (body.revocation_reason !== undefined && !stamped) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, "revocation_reason is only accepted on a transition into 'revoked' or 'suspended'.", { statusCode: 422 });
             }
 
             const enrollment = await repository.updateEnrollment(tenant, enrollmentId, updates);

@@ -11369,6 +11369,117 @@ this initiative's work is promoted past `develop`.
 Phase 199 (#450 slice — revocation audit trail columns only) — same initiative, next in the
 successive chain.
 
+## Phase 199 - Affiliate Revocation Audit Trail, mechanical slice (#450)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Third and final phase in the successive chain that began with
+#447's 2026-08-30 policy decisions (Phase 197 → #451, Phase 198 → #1177, both merged).
+
+### Objective and scope
+
+Issue #450 mixes five open policy questions (fate of `pending`/`earned` commission balances on
+revocation, in-flight attributions, whether re-invite stays allowed, whether revocation is
+reversible) with one purely mechanical gap: no audit trail exists at all for who revoked/suspended
+an affiliate, when, or why. This phase takes **only** the mechanical half, so it ships without any
+product-policy decision. The four open policy questions remain open on #450 after this phase.
+
+### Status
+
+`completed` (2026-08-30). PR #1193 merged into `develop` as commit
+`05976f84a598a8f10700c9dfd571eeb262beccc3`.
+
+### Dependencies
+
+Depended on Phases 197 and 198 having merged first — confirmed before branching. This is the last
+phase in the chain; see "Next eligible phase" below for what comes after it.
+
+### Acceptance and validation evidence
+
+- [x] `revoked_at` (DATE), `revoked_by` (INTEGER, value-link only — no FK, matching the existing
+      `invited_by`/`approved_by_user_id` convention since the referenced `users` table lives in
+      the tenant DB, not the landlord DB), and `revocation_reason` (STRING(500), matching
+      `dgfy_affiliate_cashouts.rejection_reason`'s width) added to `dgfy_affiliate_enrollments`
+      via a landlord-only, idempotent migration.
+- [x] Sequelize model updated to declare the three new attributes — verified explicitly, since an
+      omitted model edit would have let the migration land while every write silently no-op'd
+      (Sequelize drops undeclared attribute keys from `row.update()`).
+- [x] Stamping fires only on an actual status **change** into `revoked` or `suspended` — an
+      idempotent re-PATCH of the same status does not re-stamp, preserving the original
+      `revoked_at`; a `suspended → revoked` transition correctly re-stamps as a distinct later act.
+- [x] Reactivation (`suspended`/`revoked` → `active`) does **not** clear the historical stamp —
+      it's an audit trail of the most recent revocation, not a live-status mirror. This is stated
+      explicitly as carrying no policy content: it neither makes revocation reversible nor
+      irreversible; the existing code already permitted reactivation and this phase doesn't touch
+      that.
+- [x] `revocation_reason` is rejected with 422 (not silently dropped) when no stamp actually
+      fires — sent with `status: 'active'`, no status at all, or an idempotent re-PATCH.
+- [x] `updateEnrollment` in the repository needed **no change** — stamping logic lives in the use
+      case, where the acting-user id is in scope; stated explicitly in the PR body so the omission
+      doesn't read as an oversight.
+- [x] 11 new test cases (fake-repository injection, no DB) plus 32 neighbouring regression tests,
+      43/43 passing.
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker — APPROVE, no findings. One process note:
+      the first review pass correctly did all the verification work but mistakenly treated itself
+      as `pr-reviewer`'s "first live use" (report-only per that calibration gate) and withheld
+      both the comment and the merge, despite this exact role/model pair having already
+      reviewed-and-merged PR #1184, #1187, and #1189 earlier in this same session. Corrected by
+      re-dispatching to the same worker with the actual precedent cited; it then posted the
+      `## Review` comment and merged normally. Recorded here as a coordination-prompt gap (this
+      dispatch's task spec omitted the precedent line every earlier review dispatch in this chain
+      had included), not a defect in the reviewed code.
+- [x] Linked `Refs #450` (not `Closes`) — four of #450's five checkboxes remain open.
+
+### Known gap found and filed separately, not fixed here
+
+Planning surfaced a **Phase 198 enforcement gap**, not created by this phase: `PATCH
+/affiliates/:enrollment_id` with `status: 'active'` reactivates a `suspended`/`revoked` enrollment
+through `updateEnrollment`, which has no slot-cap check at all — unlike `createEnrollment`, which
+calls `assertAffiliateSlotAvailable`. A merchant already at `max_affiliate_slots` can
+revoke-then-reactivate to exceed the cap without ever hitting Phase 198's enforcement. This was
+already named as a known, accepted gap in Phase 198's own ledger entry ("file separately via `pm`
+if it should be closed") — filed as **#1191**, parented under #446, Priority High. Not fixed in
+this phase; fixing it would need the same lock-before-any-plain-read discipline Phase 198's review
+established (RF-1/RF-6) applied to the reactivation path, which is a materially different change
+from an audit-trail stamp.
+
+### Open items outstanding, not specific to this phase
+
+- **Board `Status` writes failed** on both this PR's open (`For Review`) and merge (`For QA`)
+  transitions — GitHub's GraphQL API was rate-limited session-wide at the time (confirmed via
+  independent REST calls; the merge itself is real and verified: `05976f84a5...`). Best-effort per
+  `pm`'s own board-operations policy — not a reason to hold back the merge, but issue #450's board
+  card needs a manual `Status` → `For QA` write once the rate limit clears.
+- **Issue #1177's production active-enrollment count** (Phase 198's own promotion-time gate,
+  RF-5) is still outstanding — unrelated to this phase, restated here only so it isn't lost.
+
+### Implementation links
+
+- Issue #450, Refs #446
+- PR #1193: https://github.com/Sieitzz/dgfy-platform/pull/1193
+- Review: `## Review — APPROVE` comment on PR #1193 (Codex GPT-5.6-Luna, pr-reviewer)
+- Follow-up issue: #1191 (reactivation slot-cap bypass)
+
+### Next eligible phase
+
+**None allocated. This is the deliberate end of the 197-199 chain.** Everything remaining in the
+affiliate backlog needs a product-policy decision only Pat can make before another phase is
+planned:
+
+- #450's own four open policy questions (commission-balance fate, in-flight attributions,
+  re-invite policy, revocation reversibility)
+- #872 — funding source (business-funded vs. DGFY-sponsored vs. reimbursement), three options,
+  none chosen
+- #567 — withholding tax on payouts, largely hangs off #872's answer
+- #449 / #448 — earnings caps and per-category commission rates
+- #452 — share-link path change
+- #1191 — the reactivation slot-cap bypass found during this phase (mechanical, could be scheduled
+  without a policy decision, but was deliberately left for a human scheduling call rather than
+  silently appended to this chain)
+
+Per #446's own sequencing comment (2026-08-30), this order was stated in advance and is unchanged
+by anything found during execution.
+
 ## Phase 203 - Per-Store Cash/COD Payment Toggle (#626)
 
 ### Initiative and release
@@ -11452,3 +11563,4 @@ store that turns cash off today is left with QRPh as its only online rail until 
 ### Next eligible phase
 
 Phase 204 — next available slot in this wave; not otherwise claimed by this plan.
+

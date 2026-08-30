@@ -52,6 +52,19 @@ export default (sequelize) => {
         commission_type: {
             type: DataTypes.ENUM('NONE', 'PERCENTAGE_OF_BASE', 'RESELLER_MARGIN'),
             allowNull: true
+        },
+        // #450 Phase 199 - revocation audit trail; see the migration for the full rationale.
+        revoked_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        revoked_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        revocation_reason: {
+            type: DataTypes.STRING(500),
+            allowNull: true
         }
     }, {
         sequelize,
