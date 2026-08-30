@@ -31,10 +31,18 @@ const matchesWhere = (row, where = {}) => Object.entries(where).every(([key, exp
 
 // A minimal in-memory stand-in for a Sequelize model, covering only what
 // dgfyAffiliateRepository.js's slot-accounting/enrollment/invite methods actually call:
-// count, create, findByPk, findOne, and `.sequelize.transaction`.
+// count, create, findByPk, findOne, findOrCreate, and `.sequelize.transaction`.
+//
+// findOrCreate's `lock`+`transaction` combination is given real (if simplistic) mutex semantics,
+// not just a pass-through: a second caller requesting the same row's lock genuinely queues behind
+// the first until the first's enclosing `sequelize.transaction` callback settles. This is what
+// lets the concurrency regression test below actually exercise the #1187 RF-1 serialization fix
+// rather than just calling the code path once each with no real interleaving.
 const makeFakeModel = (idField) => {
     let rows = [];
     let nextId = 1;
+    // pk -> tail of the queue of pending lock holders for that row.
+    const lockTails = new Map();
 
     // Wraps a live row reference (not a copy) so `.update()`/`.reload()` mutate the same object
     // `_rows()`/subsequent finds see - matching real Sequelize instance semantics closely enough
@@ -76,11 +84,43 @@ const makeFakeModel = (idField) => {
         async findAll({ where = {} } = {}) {
             return rows.filter((row) => matchesWhere(row, where)).map(toRow);
         },
+        async findOrCreate({ where = {}, defaults = {}, transaction = null, lock = null } = {}) {
+            const pk = where[idField] ?? defaults[idField];
+            if (lock && transaction) {
+                // Queue behind whoever currently holds this row's lock, and register this
+                // transaction to release it once its own callback settles (see `transaction:`
+                // below). A transaction with no other locked row simply waits on an
+                // already-resolved tail, so this is a no-op in every existing test.
+                const previousTail = lockTails.get(pk) || Promise.resolve();
+                let release;
+                const held = new Promise((resolve) => { release = resolve; });
+                lockTails.set(pk, previousTail.then(() => held));
+                transaction._pendingLockReleases = transaction._pendingLockReleases || [];
+                transaction._pendingLockReleases.push(release);
+                await previousTail;
+            }
+            const existingRow = rows.find((row) => matchesWhere(row, where));
+            if (existingRow) return [toRow(existingRow), false];
+            const row = { [idField]: Number.isInteger(defaults[idField]) ? defaults[idField] : nextId++, ...where, ...defaults };
+            rows.push(row);
+            return [toRow(row), true];
+        },
         sequelize: {
             // Real Sequelize commits/rolls back around the callback's throw/return; the fakes
             // never partially-write before their own throw (the slot check always runs before any
-            // create), so a plain pass-through is sufficient here.
-            transaction: async (cb) => cb({ LOCK: { UPDATE: 'UPDATE' } })
+            // create), so a plain pass-through is sufficient for every existing test. The
+            // `finally` releases any row locks this transaction acquired via `findOrCreate` above,
+            // once this callback (commit or rollback) has fully settled - matching how a real
+            // row-level lock is held until the transaction ends, not until the individual
+            // statement returns.
+            transaction: async (cb) => {
+                const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+                try {
+                    return await cb(transaction);
+                } finally {
+                    (transaction._pendingLockReleases || []).forEach((release) => release());
+                }
+            }
         }
     };
 };
@@ -279,6 +319,48 @@ describe('createEnrollment — slot cap enforcement', () => {
     });
 });
 
+describe('createEnrollment — concurrency (#1187 RF-1)', () => {
+    test('two concurrent createEnrollment calls for a tenant with NO settings row: only one succeeds at cap 1', async () => {
+        // No TenantAffiliateSettings row seeded at all - this is exactly the case RF-1 flagged:
+        // assertAffiliateSlotAvailable used to have nothing to lock here, so two concurrent
+        // transactions could both read zero consumed slots and both commit past the default cap
+        // of 1. The fix locks a `findOrCreate`d settings row instead, so the second caller here
+        // must genuinely queue behind the first (see makeFakeModel's findOrCreate/transaction
+        // above) rather than racing it.
+        //
+        // What this proves: given the fake model's lock-queue semantics (a second `findOrCreate`
+        // lock request on the same pk awaits the first transaction's full settlement), the fix
+        // correctly serializes the two calls and only one enrollment is created. What it does NOT
+        // prove: real MySQL `SELECT ... FOR UPDATE` row-lock behavior, real transaction isolation
+        // levels, or timing under true OS-level thread/connection concurrency - that requires a
+        // DB-backed integration test, which this repository-level unit suite deliberately doesn't
+        // run (no database is used here, per the file header).
+        const attempt = (suffix) => dgfyAffiliateRepository.createEnrollment({
+            dgfyAccountId: `account-${suffix}`,
+            tenantId: TENANT_ID,
+            shortCode: `AF-RACE${suffix}`,
+            shareCodeHash: `hash-race${suffix}`
+        });
+
+        const results = await Promise.allSettled([attempt('A'), attempt('B')]);
+
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        const rejected = results.filter((r) => r.status === 'rejected');
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expect(rejected[0].reason).toMatchObject({
+            code: 'CONFLICT',
+            statusCode: 409,
+            details: expect.objectContaining({ reason_code: 'AFFILIATE_SLOT_CAP_REACHED' })
+        });
+        // Exactly one enrollment landed, and the settings row was created exactly once (the
+        // second findOrCreate call found the first's row rather than racing to create its own).
+        expect(mockDgfyAffiliateEnrollment._rows()).toHaveLength(1);
+        expect(mockTenantAffiliateSettings._rows()).toHaveLength(1);
+        expect(mockTenantAffiliateSettings._rows()[0].tenant_id).toBe(TENANT_ID);
+    });
+});
+
 describe('createInvite — slot cap enforcement', () => {
     test('blocks minting a new invite once the tenant is at cap', async () => {
         mockDgfyAffiliateEnrollment._seed([activeEnrollment()]);
@@ -400,6 +482,25 @@ describe('materializeInviteEnrollment — the registration-mirror path (proof th
         await expect(dgfyAffiliateRepository.mirrorPendingAffiliateInvitesForAccount(account)).rejects.toBe(unrelatedError);
 
         spy.mockRestore();
+    });
+
+    test('opens its own transaction when the caller supplies none (#1187 RF-2 - the explicit accept path)', async () => {
+        // buildAcceptAffiliateInviteUseCase calls materializeInviteEnrollment bare (no
+        // transaction) - RF-2 flagged that the cap re-check, enrollment insert, and invite-status
+        // update therefore never shared a transaction on that path, so the row lock in
+        // assertAffiliateSlotAvailable could never actually engage. Confirm the repository now
+        // opens one internally rather than relying on the caller to remember to.
+        const invite = { invite_id: 1, tenant_id: TENANT_ID, email: 'explicit@example.com', commission_rate_bps: null };
+        mockDgfyAffiliateInvite._seed([{ ...invite, status: 'pending', token_hash: 'explicit-hash', expires_at: inOneHour() }]);
+        const account = { id: 'account-explicit', email: 'explicit@example.com' };
+        const transactionSpy = jest.spyOn(mockDgfyAffiliateEnrollment.sequelize, 'transaction');
+
+        const { enrollment, created } = await dgfyAffiliateRepository.materializeInviteEnrollment(invite, account);
+
+        expect(created).toBe(true);
+        expect(enrollment.dgfy_account_id).toBe('account-explicit');
+        expect(transactionSpy).toHaveBeenCalledTimes(1);
+        transactionSpy.mockRestore();
     });
 
     test('the idempotent re-accept branch (invite already accepted) does not re-consume a slot', async () => {

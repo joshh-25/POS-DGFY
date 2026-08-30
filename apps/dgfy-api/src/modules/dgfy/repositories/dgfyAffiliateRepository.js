@@ -143,14 +143,23 @@ export const dgfyAffiliateRepository = {
     // the invite's own ID when this check is guarding the materialization of that same invite, so
     // it isn't double-counted against itself.
     //
-    // Concurrency note: when a transaction is supplied, this also takes a row lock on the tenant's
-    // settings row (if one exists) so two concurrent slot-consuming writes for the same tenant
-    // serialize on this check rather than both reading a stale count. A tenant with no settings row
-    // yet has nothing to lock; the count-based check still applies there, just without that extra
-    // guard for that rarer, never-configured-settings case.
+    // Concurrency note: when a transaction is supplied, this also locks the tenant's settings row so
+    // two concurrent slot-consuming writes for the same tenant serialize on this check rather than
+    // both reading a stale count. A tenant with no settings row yet previously had nothing to lock -
+    // two concurrent transactions could both find no row, both count zero, and both commit past the
+    // default cap of 1 (#1187 RF-1). findOrCreate with the same transaction+lock closes that gap: the
+    // first caller creates the default-valued row and holds its lock for the rest of the transaction;
+    // the second caller blocks on that same insert/lock until the first commits or rolls back, so it
+    // always sees the up-to-date count. From then on every tenant that has ever had a slot checked has
+    // a lockable row.
     async assertAffiliateSlotAvailable(tenantId, { transaction = null, excludeInviteId = null } = {}) {
         if (transaction) {
-            await TenantAffiliateSettings.findByPk(tenantId, { transaction, lock: transaction.LOCK.UPDATE });
+            await TenantAffiliateSettings.findOrCreate({
+                where: { tenant_id: tenantId },
+                defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
         }
         const [maxSlots, consumedSlots] = await Promise.all([
             this.getMaxAffiliateSlots(tenantId, { transaction }),
@@ -384,8 +393,17 @@ export const dgfyAffiliateRepository = {
     // `accepted`. Idempotent: if the account is already enrolled for this tenant (unique
     // (dgfy_account_id, tenant_id) index), it reuses that enrollment instead of creating a second.
     // Accepts an optional transaction so the on-register auto-enroll hook can run atomically inside
-    // the account-creation transaction.
+    // the account-creation transaction. When no transaction is supplied (the explicit accept use
+    // case, buildAcceptAffiliateInviteUseCase, calls this bare today), one is opened internally here
+    // so the cap re-check, enrollment insert, and invite-status update still commit as one unit and
+    // the row lock in assertAffiliateSlotAvailable actually engages (#1187 RF-2) - without this, that
+    // path's slot check could never serialize against a concurrent acceptance for the same tenant.
     async materializeInviteEnrollment(invite, account, { transaction = null } = {}) {
+        if (!transaction) {
+            return DgfyAffiliateEnrollment.sequelize.transaction((ownTransaction) => (
+                this.materializeInviteEnrollment(invite, account, { transaction: ownTransaction })
+            ));
+        }
         const existing = await DgfyAffiliateEnrollment.findOne({
             where: { dgfy_account_id: account.id, tenant_id: invite.tenant_id },
             transaction
