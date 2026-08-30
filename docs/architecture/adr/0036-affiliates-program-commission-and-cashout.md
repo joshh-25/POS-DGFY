@@ -415,5 +415,5 @@ build log). It touches money handling already governed by two prior ADRs:
   merely uncommissioned — a different, and arguably worse, defect at a different point in the flow;
   filed separately. Neither channel's drop has an operator- or merchant-facing surface yet — named
   as a gap, not proposed as work.
-- PR: #1200 (storefront, Phase 206), #TBD (POS, Phase 220) — see
+- PR: #1200 (storefront, Phase 206), #1242 (POS, Phase 220) — see
   `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`

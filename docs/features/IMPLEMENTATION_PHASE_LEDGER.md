@@ -13953,7 +13953,7 @@ calls decided in-plan and followed as-is, except J5/J6 which are Pat's and don't
 
 ### Status
 
-`in_progress` (PR open, not yet merged). Will move to `completed` once PR #<PR_NUMBER> merges into
+`in_progress` (PR open, not yet merged). Will move to `completed` once PR #1242 merges into
 `develop` and its gates pass. `Refs #1199` (not `Closes` - a behavior change on a live checkout path
 needs deployed verification before the issue is done, per `docs/process/ISSUE-TAXONOMY.md`'s
 linkage rule; the issue stays open through merge for `verifier`).
@@ -14044,7 +14044,7 @@ this phase. Independent of Phases 217/218 (in-flight, unrelated, sibling-worktre
 ### Implementation links
 
 - Issue #1199 (Refs - see Status above)
-- PR: #<PR_NUMBER>, against `develop`
+- PR: #1242, against `develop`
 - #450 (Phase 199/206, the D2 precedent this phase mirrors), #449/Phase 208 (the earnings-cap
   best-effort-drop convention this phase's own drop branch follows), #448/Phase 209 (per-category
   rates, untouched), #446 (epic)
