@@ -2141,6 +2141,19 @@ export const buildListStoreCatalogUseCase = ({
                     tenantId: tenantId || currentTenantAccessContext().tenantId
                 })
             ]);
+            // #626 (Phase 203): cash availability is orthogonal to PayMongo readiness -- a tenant
+            // with no PayMongo account at all must still be able to take cash, so this is merged
+            // at the call site rather than inside resolveStorefrontPaymentCapabilities (which has
+            // six early `disabled(...)` returns for PayMongo-specific failure modes that must never
+            // gate cash).
+            const paymentCapabilitiesWithCash = {
+                ...paymentCapabilities,
+                cash: {
+                    enabled: accessPolicy.cash_payment_enabled !== false,
+                    environment: null,
+                    reason_code: accessPolicy.cash_payment_enabled === false ? 'STORE_CASH_DISABLED' : null
+                }
+            };
             // Live (15s-cached) workflow mode + composed-capability overlay, so a
             // retail/fnb tenant with `services` enabled via ops_enabled_capabilities
             // can be recognized by the storefront even though its scalar
@@ -2159,7 +2172,7 @@ export const buildListStoreCatalogUseCase = ({
                     access_policy: accessPolicy,
                     workflow_mode: workflowMode,
                     enabled_capabilities: enabledCapabilities,
-                    payment_capabilities: paymentCapabilities,
+                    payment_capabilities: paymentCapabilitiesWithCash,
                     payment_mode: paymentMode
                 });
             }
@@ -2209,7 +2222,7 @@ export const buildListStoreCatalogUseCase = ({
                 access_policy: accessPolicy,
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
-                payment_capabilities: paymentCapabilities,
+                payment_capabilities: paymentCapabilitiesWithCash,
                 payment_mode: paymentMode
             });
         } catch (error) {
@@ -3047,6 +3060,19 @@ export const buildStoreCheckoutUseCase = ({
                     DomainErrorCode.VALIDATION_FAILED,
                     'This store requires a downpayment. Pay the downpayment online to place this order -- the remaining balance is due on delivery.',
                     { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
+                );
+            }
+
+            // #626 (Phase 203): hiding the cash option in the UI alone is not enforcement -- a
+            // hand-crafted POST with payment_type: 'cash' must also be rejected server-side. Same
+            // placement and same `!== false` fail-open comparison as assertGuestCheckoutAllowed
+            // below. Reached by both the direct handler and the webhook finalizer, same as that
+            // guard (see the Phase 141 comment above).
+            if (normalized.payment_type === 'cash' && resolved.accessPolicy?.cash_payment_enabled === false) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This store does not accept cash on delivery/pickup. Please choose an online payment method.',
+                    { statusCode: 422, details: { reason_code: 'STORE_CASH_DISABLED' } }
                 );
             }
 
