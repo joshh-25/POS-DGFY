@@ -12978,9 +12978,7 @@ status).
 ### Implementation links
 
 - Issue #452 (Refs — see Status above)
-- PR: opened against `develop` in this same change; see the PR body for the live link (not yet
-  known at ledger-write time, per this phase's own execute-step convention of writing the ledger
-  entry in the same PR it describes).
+- PR #1226: https://github.com/Sieitzz/dgfy-platform/pull/1226
 - ADR 0036 Amendments block:
   `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-30 entry)
 - `docs/api/RATE_LIMITING.md` — `affiliateShareResolveLimiter` row added to the storefront/
