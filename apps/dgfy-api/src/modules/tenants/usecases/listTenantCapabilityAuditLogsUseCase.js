@@ -69,3 +69,9 @@ export const buildListTenantPosMetadataAuditLogsUseCase = (deps) => buildListTen
     action: 'pos_metadata_update',
     logName: 'POS metadata'
 });
+
+export const buildListTenantAffiliateSlotsAuditLogsUseCase = (deps) => buildListTenantAdminAuditLogsUseCase({
+    ...deps,
+    action: 'affiliate_slots_update',
+    logName: 'affiliate slots'
+});
