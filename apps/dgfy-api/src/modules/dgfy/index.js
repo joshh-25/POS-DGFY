@@ -85,7 +85,10 @@ import {
     buildUpdateAffiliateSettingsUseCase,
     buildListAffiliatePriceRulesUseCase,
     buildUpsertAffiliatePriceRuleUseCase,
-    buildDeactivateAffiliatePriceRuleUseCase
+    buildDeactivateAffiliatePriceRuleUseCase,
+    buildListAffiliateCategoryRatesUseCase,
+    buildUpsertAffiliateCategoryRateUseCase,
+    buildDeactivateAffiliateCategoryRateUseCase
 } from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import {
@@ -323,6 +326,9 @@ export const reactivateAffiliateEnrollmentUseCase = buildReactivateAffiliateEnro
 export const listAffiliatePriceRulesUseCase = buildListAffiliatePriceRulesUseCase();
 export const upsertAffiliatePriceRuleUseCase = buildUpsertAffiliatePriceRuleUseCase();
 export const deactivateAffiliatePriceRuleUseCase = buildDeactivateAffiliatePriceRuleUseCase();
+export const listAffiliateCategoryRatesUseCase = buildListAffiliateCategoryRatesUseCase();
+export const upsertAffiliateCategoryRateUseCase = buildUpsertAffiliateCategoryRateUseCase();
+export const deactivateAffiliateCategoryRateUseCase = buildDeactivateAffiliateCategoryRateUseCase();
 export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
 export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
 export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();

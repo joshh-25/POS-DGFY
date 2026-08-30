@@ -29,7 +29,10 @@ import {
     updateAffiliateSettingsUseCase,
     listAffiliatePriceRulesUseCase,
     upsertAffiliatePriceRuleUseCase,
-    deactivateAffiliatePriceRuleUseCase
+    deactivateAffiliatePriceRuleUseCase,
+    listAffiliateCategoryRatesUseCase,
+    upsertAffiliateCategoryRateUseCase,
+    deactivateAffiliateCategoryRateUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { setAffiliateAttributionCookie } from '../../../utils/browserSessionCookies.js';
@@ -187,6 +190,36 @@ export const deactivateAffiliatePriceRule = async (req, res, next) => {
             tenantId: req.user?.tenant_id,
             priceRuleId: req.params.price_rule_id
         }), { message: 'Affiliate price rule deactivated' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// #448 (Phase 209) - affiliate category rates, the category tier of the commission rate ladder.
+export const listAffiliateCategoryRates = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliateCategoryRatesUseCase({ tenantId: req.user?.tenant_id }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertAffiliateCategoryRate = async (req, res, next) => {
+    try {
+        return send(res, await upsertAffiliateCategoryRateUseCase({ tenantId: req.user?.tenant_id, body: req.body }), {
+            message: 'Affiliate category rate saved successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deactivateAffiliateCategoryRate = async (req, res, next) => {
+    try {
+        return send(res, await deactivateAffiliateCategoryRateUseCase({
+            tenantId: req.user?.tenant_id,
+            categoryRateId: req.params.category_rate_id
+        }), { message: 'Affiliate category rate deactivated' });
     } catch (error) {
         next(error);
     }
