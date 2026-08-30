@@ -91,6 +91,56 @@ describe('orderFulfillmentUi queue action mapping', () => {
     })).toEqual(['preparing', 'rejected']);
   });
 
+  it('offers packed alongside the existing handoff only for retail workflow mode (Phase 211, #1180)', () => {
+    // The existing next step is ALWAYS still offered -- packed is additive, not a replacement.
+    expect(getNextStatusActions({
+      fulfillment_status: 'preparing',
+      order_method: 'delivery'
+    }, 'retail')).toEqual(['packed', 'out_for_delivery']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'preparing',
+      order_method: 'pickup'
+    }, 'retail')).toEqual(['packed', 'ready_for_pickup']);
+
+    // Backward-compat pin: workflowMode omitted entirely (the un-updated TerminalSidebarPanel call
+    // site) must keep behaving exactly as before this phase -- no packed action offered.
+    expect(getNextStatusActions({
+      fulfillment_status: 'preparing',
+      order_method: 'delivery'
+    })).toEqual(['out_for_delivery']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'preparing',
+      order_method: 'delivery'
+    }, 'fnb')).toEqual(['out_for_delivery']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'preparing',
+      order_method: 'delivery'
+    }, '')).toEqual(['out_for_delivery']);
+  });
+
+  it('offers the single onward edge from packed, matching order method (Phase 211, #1180)', () => {
+    expect(getNextStatusActions({
+      fulfillment_status: 'packed',
+      order_method: 'delivery'
+    })).toEqual(['out_for_delivery']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'packed',
+      order_method: 'pickup'
+    })).toEqual(['ready_for_pickup']);
+  });
+
+  it('shares packed\'s utility actions and label with preparing (Phase 211, #1180)', () => {
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'packed',
+      order_method: 'delivery'
+    })).toEqual(['print_order', 'open_order']);
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'packed',
+      order_method: 'pickup'
+    })).toEqual(['print_receipt', 'open_order']);
+    expect(getFulfillmentActionLabel('packed', { order_method: 'delivery' })).toBe('Mark Packed');
+  });
+
   it('keeps delivery completion behind delivery-job tracking', () => {
     expect(getNextStatusActions({
       fulfillment_status: 'out_for_delivery',

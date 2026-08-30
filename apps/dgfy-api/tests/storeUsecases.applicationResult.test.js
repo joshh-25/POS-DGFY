@@ -2001,6 +2001,38 @@ describe('store use-cases application result contract', () => {
         expect(result.data.rejection_reason).toBeNull();
     });
 
+    // Phase 211 (#1180): the Retail-only "packed" fulfillment step's public-facing surface.
+    it('trackStoreOrder labels a packed order "Packed" and never serializes packed_by/packed_at', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const useCase = buildTrackStoreOrderUseCase({
+            storeRepository: {
+                getOrderByTrackingPin: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 91,
+                    tracking_pin: 'SK-A1B3',
+                    order_source: 'online_store',
+                    order_method: 'delivery',
+                    payment_type: 'cash',
+                    fulfillment_status: 'packed',
+                    packed_by: 12,
+                    packed_at: new Date('2026-09-01T10:00:00Z'),
+                    subtotal_amount: 100,
+                    delivery_fee: 20,
+                    total_amount: 120,
+                    lines: []
+                })
+            }
+        });
+
+        const result = await useCase({ trackingPin: 'SK-A1B3', tenantId });
+        expect(result.success).toBe(true);
+        expect(result.data.status).toBe('packed');
+        expect(result.data.order.status_label).toBe('Packed');
+        // Staff identity/timing is tenant-internal only -- never on the public tracking response,
+        // following the same precedent as rejected_by/rejected_at (Phase 210).
+        expect(result.data.order.packed_by).toBeUndefined();
+        expect(result.data.order.packed_at).toBeUndefined();
+    });
+
     it('cancelStoreOrder rejects guest cancellation without cancel proof', async () => {
         const transaction = {
             finished: false,

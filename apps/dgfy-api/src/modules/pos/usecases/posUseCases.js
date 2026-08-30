@@ -87,6 +87,7 @@ const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
     'preparing',
+    'packed',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -100,7 +101,11 @@ const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     // refunds (commerceOrderLifecycleUseCase.js:109-113, Phase 144/#824) -- widening this edge
     // does not widen forfeiture.
     confirmed: ['preparing', 'rejected'],
-    preparing: ['ready_for_pickup', 'out_for_delivery'],
+    preparing: ['packed', 'ready_for_pickup', 'out_for_delivery'],
+    // Phase 211 (#1180). ADDITIVE and optional: `preparing` keeps both original onward edges, and
+    // `packed` offers exactly the same two. F&B gains no mandatory step; an order that never
+    // enters `packed` behaves identically to before this phase.
+    packed: ['ready_for_pickup', 'out_for_delivery'],
     ready_for_pickup: ['completed'],
     out_for_delivery: ['completed'],
     completed: [],
@@ -10277,6 +10282,19 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
                 updatePayload.rejected_by = actingUserId;
                 updatePayload.rejected_at = mutationTimestamp;
+            }
+
+            // Phase 211 (#1180). Retail-only in the UI, additive in the state machine.
+            // PHASE_211_PLAN.md's own text assumed validateOnlineOrderTransition's
+            // currentStatus === nextStatus early-return would make a repeat packed -> packed PATCH
+            // a no-op here too -- investigated and found FALSE: that early-return only skips the
+            // allowed-transition check, it does not stop this block from running, so an
+            // unconditional `targetStatus === 'packed'` guard (matching the shape used for
+            // `rejected` above) WOULD restamp packed_at/packed_by on every repeat call. Guarded
+            // explicitly on `currentStatus !== targetStatus` instead -- confirmed by test.
+            if (currentStatus !== targetStatus && targetStatus === 'packed') {
+                updatePayload.packed_by = actingUserId;
+                updatePayload.packed_at = mutationTimestamp;
             }
 
             await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {

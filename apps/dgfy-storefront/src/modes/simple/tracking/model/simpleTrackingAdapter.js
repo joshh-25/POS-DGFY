@@ -95,7 +95,12 @@ export const simpleTrackingAdapter = Object.freeze({
     const orderMethod = String(payload?.order_method || order?.order_method || 'delivery').trim().toLowerCase();
     const items = normalizeItems(resolveLines(payload, order, payloadDisplay, orderDisplay));
     const flow = getSimpleTrackingFlowForOrderMethod(orderMethod);
-    const activeStepIndex = Math.max(0, flow.findIndex((step) => step.id === statusCode));
+    // Phase 211 (#1180). `packed` is a Retail-only step and deliberately absent from this mode's
+    // flow. If it ever appears here (direct API call -- the server gate is mode-agnostic, see
+    // posUseCases.js's ONLINE_FULFILLMENT_TRANSITIONS), render it at the `preparing` position
+    // rather than silently rewinding the timeline to step 0.
+    const timelineStatusCode = statusCode === 'packed' ? 'preparing' : statusCode;
+    const activeStepIndex = Math.max(0, flow.findIndex((step) => step.id === timelineStatusCode));
 
     return {
       mode: 'simple',

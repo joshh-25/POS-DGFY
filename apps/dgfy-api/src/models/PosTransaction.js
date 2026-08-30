@@ -62,6 +62,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
             'placed',
             'confirmed',
             'preparing',
+            'packed',
             'ready_for_pickup',
             'out_for_delivery',
             'completed',
@@ -157,6 +158,17 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     rejected_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    // Phase 211 (#1180). Retail-only "packed" fulfillment step: two nullable, additive columns
+    // attributing the event. No Sequelize association (mirrors rejected_by/rejected_at, which
+    // also has none).
+    packed_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    packed_at: {
         type: DataTypes.DATE,
         allowNull: true
     },

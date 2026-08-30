@@ -12781,6 +12781,154 @@ reaches `commerceOrderLifecycleUseCase` from two origins (`placed` and the newly
 None allocated by this phase. Follow-ups named above (retention/purge policy for the address audit
 table, `cancelled`-reason widening) belong to `pm` to shape and file rather than being built here.
 
+## Phase 211 - Retail Orders: Mark an Order Packed, One at a Time (#1180)
+
+### Initiative and release
+
+Surebiz Wave 3 (epic #1178). Implements #1180's short-term, pre-batching fulfillment step surfaced
+by Pat's 2026-08-30 Surebiz walkthrough: a new, additive `packed` state in the online-order
+fulfillment machine, so items physically packed and staged for a delivery run get their own
+attributed, timestamped event instead of only being implied by "someone eventually clicked Out for
+Delivery."
+
+### Objective and scope
+
+`PHASE_211_PLAN.md` resolved the issue's three open Scope decisions: (1) a new `packed` state, not
+a boolean/timestamp -- additive and optional, `preparing` keeps both existing onward edges and
+gains `packed`, `packed` offers the same two edges onward; (2) Retail-only surfacing gated directly
+on `workflowMode === 'retail'` (not a new `workflowModes.js` capability, which would either leak
+into four unrelated modes or need a bespoke, untested list); (3) the server-side gate is
+deliberately UI-only -- `posUseCases.js`'s transition table has no workflow-mode input, and adding
+one would be a much larger change than #1180 asks for. No batching, no route/trip entity (#1081,
+blocked on #1079) -- out of scope, per the plan's hard boundary.
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged.
+
+### Dependencies
+
+Independent of Phase 210 (#1179) other than sharing the same duplicated-fulfillment-machine files
+(`posUseCases.js`, `PosTransaction.js`, both validators, `storeUseCases.js`,
+`orderFulfillmentUi.js`) -- no functional interaction; both phases' additive changes compose
+cleanly (`preparing`'s edge list now carries both phases' independent widenings). Not gated on
+#1079/#1081 (batched/grouped packing) -- deliberately narrower scope, ships independently.
+
+### Acceptance and validation evidence
+
+- [x] `ONLINE_FULFILLMENT_STATUSES` gains `'packed'`; `ONLINE_FULFILLMENT_TRANSITIONS.preparing`
+      widened to `['packed', 'ready_for_pickup', 'out_for_delivery']`, `packed` itself offers
+      `['ready_for_pickup', 'out_for_delivery']` -- purely additive, no existing edge removed
+      (`posUseCases.js`).
+- [x] `packed_at`/`packed_by` persisted inside the same transaction as the status change, before
+      commit, mirroring Phase 210's `rejected` stamping -- **with one correction to the plan's own
+      text**: the plan assumed `validateOnlineOrderTransition`'s `currentStatus === nextStatus`
+      early-return alone would make a repeat `packed -> packed` PATCH a no-op for the stamping
+      block too. Investigated and found **false** -- that early-return only skips the
+      allowed-transition check, not the `updatePayload` block below it. Fixed with an explicit
+      `currentStatus !== targetStatus` guard (matching no equivalent existing guard elsewhere in
+      this function, since no other status is repeat-PATCH-safe by construction the way `packed`
+      needed to be) and pinned by a dedicated test asserting `packed_at` is not restamped on
+      repeat.
+- [x] MySQL ENUM widening -- the single highest-risk item in the plan (§3.1). Migration
+      `20260901000003-add-order-packed-attribution.cjs` issues both the two additive nullable
+      columns **and** a `MODIFY COLUMN` widening `pos_transactions.fulfillment_status` to include
+      `'packed'`, guarded by reading `information_schema.columns.COLUMN_TYPE`, parsing the current
+      ENUM value list, and skipping when `'packed'` is already present. Fans out over every active
+      tenant database, same structure as `20260901000002`.
+- [x] `sync-tenant-schemas.js` kept in lockstep (`REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions`
+      gains `packed_at`/`packed_by`; `TENANT_SCHEMA_CAPABILITY_VERSION` bumped `2026-09-01.1` ->
+      `2026-09-01.2`). **Open item #1 resolved, not guessed**: investigated
+      `inspectRequiredTenantSchemaColumns` directly -- it is column-presence based only
+      (`SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS`), with **no repair path for
+      an ENUM *value* widening**, only for a missing column. Recorded as Residual Risk #3 in the
+      compliance declaration rather than inventing a new repair mechanism, per the plan's explicit
+      instruction.
+- [x] Every duplicated-status-set copy named in the plan's §2 table updated: `posValidator.js`,
+      `storeValidator.js`, `posRepository.js`'s incoming-queue filter, `storeUseCases.js`'s
+      `FULFILLMENT_STATUSES` + `toStatusLabel`, `orderFulfillmentUi.js`'s labels/actions,
+      `retailTrackingAdapter.js`'s two flows, `customerTrackingRefresh.js`,
+      `customerOrderStatus.js`. `serializeOrderBase` gains **no new field** -- `packed_by`/
+      `packed_at` are staff identity/timing, never serialized on the public tracking response,
+      following Phase 210's own precedent for `rejected_by`/`rejected_at`.
+- [x] **Open item #2 resolved**: `DeliveryTrackingView.jsx`'s `getTimelineIndex` has its own fixed
+      5-step array with no dedicated "Packed" label, and the component itself has no render site
+      anywhere in the app (confirmed, no import outside its own file) -- mapped `packed` to the
+      same index as its predecessor `preparing` (smaller diff, no renumbering, and does not
+      mis-render a not-yet-dispatched order as "out for delivery").
+- [x] **Open item #3 resolved**: imported the real `normalizeWorkflowMode` from
+      `features/settings/workflowMode.js` into `orderFulfillmentUi.js` rather than adding a local
+      helper -- confirmed no import cycle (`workflowMode.js` does not depend on `features/pos`).
+      `getNextStatusActions` takes a second, optional `workflowMode` parameter (default `''`) so
+      the un-updated `TerminalSidebarPanel` call site (no render site on `develop`, confirmed)
+      keeps compiling and simply never offers the packed action.
+- [x] F&B/Simple storefront tracking adapters deliberately gain **no** flow entry for `packed`
+      (#1180's own constraint); both normalize a `packed` status to `preparing`'s position
+      immediately before their `findIndex` call, so a direct-API-call order landing in `packed` on
+      a non-Retail tenant does not visually rewind to step 0.
+- [x] **Open item #4 resolved**: no existing test exercised `retailTrackingAdapter.js`'s own
+      `normalize`/timeline logic directly (`retailTrackingPresentation.test.js` only tests route
+      presentation config; confirmed by exhaustive search of every `*retail*` and
+      `*Tracking*` test file). New `apps/dgfy-storefront/src/__tests__/retailTrackingAdapter.test.js`
+      created, mirroring the sibling precedent already set by `simpleTrackingAdapter.test.js`
+      (same directory, same style) -- not a parallel duplicate of an existing suite.
+- [x] **Compliance declaration required and written** --
+      `docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md`, `major`,
+      surfaces `pos,terminal,payments,store`. `payments` is listed only because
+      `check-compliance-impact.js`'s `modules/store/` rule mechanically demands it for any touched
+      file in that folder (verified live: omitting it fails the gate) -- the declaration states
+      explicitly, with citations, that no money-path behavior actually changes (`packed` is in
+      neither `commerceOrderLifecycleUseCase`'s trigger set nor the affiliate-settlement outcome
+      map). `npm run check:compliance` confirmed to fail first, then pass.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api` file and the
+      new migration (no build step on that app). `npm run build:pos`, `npm run build:store`,
+      `npm run build:skupervisor` -- all three real Vite builds succeeded. New
+      `apps/dgfy-api/tests/posOrderPackedStep.usecase.test.js` (6/6, actually executed via Jest),
+      `storeUsecases.applicationResult.test.js` extended (58/58),
+      `orderFulfillmentUi.test.js` extended (12/12 via Vitest), new
+      `retailTrackingAdapter.test.js` (6/6 via Vitest) -- all actually executed, not just
+      syntax-checked. Full `apps/dgfy-storefront` (807/807) and `packages/web-core`-via-`dgfy-ims`
+      (1880/1880) Vitest suites run in full with no regressions; full `apps/dgfy-api` Jest suite
+      run in full, see PR body's Testing Evidence for the pass count.
+- [x] **Checkpoint triggers fired and were proceeded through per Pat's standing instruction for
+      this project** (draft + self-verify, then straight to commit/push/PR, since every PR is
+      reviewed by hand): (1) a new file under `apps/dgfy-migration-runner/migrations/`; (2)
+      `check:compliance` requiring a new declaration. Both stated here and in the PR body rather
+      than silently skipped.
+- [x] Linked `Closes #1180` -- this phase completes the issue's stated scope (packing only, one at
+      a time, no batching, no new delivery entity); #1081 (batch packing) and the longshot
+      (separate packer accounts) remain out of scope, named in the issue's own Non-goals.
+
+### Known limitations, not fixed here
+
+- **The Retail gate is client-side only.** The server accepts `preparing -> packed` for any
+  workflow mode -- named explicitly as Residual Risk #1 in the compliance declaration, the same
+  posture Phase 210 took for `DeliveryAddressEditControl`'s visibility gate.
+- **F&B/Simple storefront timelines have no `packed` step**, falling back to the `preparing`
+  position -- a display fallback, not a designed experience for those modes.
+- **No ENUM-value repair path in `sync-tenant-schemas.js`.** A tenant restored from a
+  pre-Phase-211 snapshot self-repairs the two new columns at API boot but not the widened
+  `fulfillment_status` ENUM itself -- named as Residual Risk #3, a follow-up for `pm` to shape if
+  the class of risk is judged worth a dedicated repair mechanism.
+
+### Implementation links
+
+- Issue #1180 (Closes -- see above)
+- PR: opened against `develop`, link recorded in the PR itself
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md`
+- Migration: `apps/dgfy-migration-runner/migrations/20260901000003-add-order-packed-attribution.cjs`
+- No new/amended ADR -- #1180 states outright that packing-only, one-at-a-time, with no new
+  delivery entity, carries no ADR 0034 governance gate; confirmed no ADR 0034/0069 clause is
+  touched.
+
+### Next eligible phase
+
+**213.** Phase 212 was concurrently claimed by another workstream (#452) while this phase was in
+progress -- no specific initiative allocated by this phase either way; follow-ups named above (an
+ENUM-value repair mechanism if judged worth it) belong to `pm` to shape and file rather than being
+built here.
+
 ## Phase 212 - Affiliate Share Link: Short Code in the /s/ Path, Retire ?p= (#452)
 
 ### Initiative and release

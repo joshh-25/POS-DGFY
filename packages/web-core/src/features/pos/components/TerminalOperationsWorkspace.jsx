@@ -9113,6 +9113,7 @@ export default function TerminalOperationsWorkspace({
           isOnline={isOnline}
           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
           sectionId={sectionIds.incomingOrders}
+          workflowMode={workflowMode}
         />
       );
     case 'location_scope':

@@ -15,7 +15,7 @@ const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer',
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
-const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
+const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
 
