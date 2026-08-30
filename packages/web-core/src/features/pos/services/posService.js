@@ -787,6 +787,14 @@ export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) =>
     return response.data?.data;
 };
 
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit.
+export const updateOnlineOrderDeliveryAddress = async (posTransactionId, payload = {}) => {
+    const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-address`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const collectCashPickupOrder = async (posTransactionId, payload = {}) => {
     const response = await api.post(`/pos/orders/${posTransactionId}/collect-cash`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
@@ -979,6 +987,7 @@ export default {
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,
+    updateOnlineOrderDeliveryAddress,
     fetchFiscalTerminalRegistrations,
     saveFiscalTerminalRegistration,
     fetchESalesReports,

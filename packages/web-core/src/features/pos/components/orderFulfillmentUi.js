@@ -35,7 +35,10 @@ export const getNextStatusActions = (order = {}) => {
   case 'placed':
     return ['confirmed', 'rejected'];
   case 'confirmed':
-    return ['preparing'];
+    // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
+    // out-of-route and must be able to reject it with a reason. Mirrors
+    // posUseCases.js's ONLINE_FULFILLMENT_TRANSITIONS.confirmed -- the server stays authoritative.
+    return ['preparing', 'rejected'];
   case 'preparing':
     return method === 'delivery' ? ['out_for_delivery'] : ['ready_for_pickup'];
   case 'ready_for_pickup':
