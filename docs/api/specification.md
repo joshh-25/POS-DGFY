@@ -4345,6 +4345,13 @@ clause 14 (2026-08-22 amendment).
    - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
    - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
    - `GET /admin/tenants/:id/pos-metadata/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = pos_metadata_update`.
+6a. Platform-admin affiliate-slot-cap operations (#1190, Phase 213). Delegable to any `admin.tenants`
+   holder, same authorization plane as capabilities/pos-metadata above — not a self-serve
+   merchant-facing surface (the tenant-facing `PUT /affiliates/settings` cannot write
+   `max_affiliate_slots`):
+   - `GET /admin/tenants/:id/affiliate-slots` returns `{ tenant_id, tenant_name, max_affiliate_slots, slots_used, program_enabled, over_cap }`.
+   - `PATCH /admin/tenants/:id/affiliate-slots` accepts `max_affiliate_slots` (integer, `1..100`) and a required `reason` of 3–500 characters. Lowering the cap below current consumption is allowed — existing enrollments and pending invites are grandfathered and never suspended, revoked, or otherwise mutated by this write; the response's `over_cap` flag reports whether the new value lands below `slots_used`.
+   - `GET /admin/tenants/:id/affiliate-slots/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = affiliate_slots_update`.
 7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
