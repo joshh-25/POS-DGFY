@@ -40,7 +40,38 @@ const tenantLocationBaseSchema = Joi.object({
     fulfillment_lead_time_max_days: Joi.number().integer().min(0).max(365).allow(null)
 });
 
-const createTenantLocationSchema = tenantLocationBaseSchema;
+// #1218 (pr-reviewer RF-1): a *create* payload is always the complete object -- there is no
+// persisted row it could be merged against -- so the cross-field lead-time rule can be enforced
+// safely at this layer, giving the same 422 the use-case layer would eventually throw, but before
+// the controller. Applied to the create schema ONLY. It is deliberately NOT applied to the update
+// schema below: `validateSchema` runs against the request body alone (`stripUnknown: true`, no
+// access to the persisted row), so a `PUT` sending only `{ immediate_fulfillment_enabled: false }`
+// against a row that already has a valid lead time would be wrongly rejected here, and the
+// authoritative merged-state check stays `tenantLocationUseCases.js`'s `assertFulfillmentLeadTimeValid`
+// (see that file's own comment). This mirrors `updateTenantLocationSchema.min(1)` immediately below,
+// which already accepts a `{ is_active: true }`-only PUT for the same reason.
+const withFulfillmentLeadTimeCrossFieldRule = (schema) => schema.custom((value, helpers) => {
+    const immediateFulfillmentEnabled = value.immediate_fulfillment_enabled !== false;
+    const min = value.fulfillment_lead_time_min_days ?? null;
+    const max = value.fulfillment_lead_time_max_days ?? null;
+
+    if (!immediateFulfillmentEnabled && (min === null || max === null)) {
+        return helpers.error('fulfillmentLeadTime.required');
+    }
+
+    if (min !== null && max !== null && max < min) {
+        return helpers.error('fulfillmentLeadTime.invalidRange');
+    }
+
+    return value;
+}, 'fulfillment lead time cross-field rule').messages({
+    'fulfillmentLeadTime.required':
+        'A fulfillment lead time (minimum and maximum days) is required when immediate fulfillment is disabled for this location.',
+    'fulfillmentLeadTime.invalidRange':
+        'Fulfillment lead time maximum days must be greater than or equal to minimum days.'
+});
+
+const createTenantLocationSchema = withFulfillmentLeadTimeCrossFieldRule(tenantLocationBaseSchema);
 
 const updateTenantLocationSchema = tenantLocationBaseSchema
     .fork(['name', 'address_line', 'latitude', 'longitude'], (schema) => schema.optional())
