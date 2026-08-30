@@ -142,6 +142,11 @@ export const buildDownpaymentTotalsRows = ({ display, money, orderMethod }) => {
 // Phase 144 shipped the refund/forfeiture MECHANISM without touching this string, on purpose. The
 // seam is unchanged: when #280 lands, replace ONLY this string and keep the `refundable === false`
 // gate and every call site that renders this note exactly as-is.
+//
+// Phase 219 (#1220): this line is now the SUMMARY, not the whole disclosure -- the same
+// `refundable === false` gate also renders a link to the full versioned draft terms
+// (downpaymentTermsDocument.js / docs/legal/downpayment-nonrefundable-terms-v1.md). #280 is still
+// open: those terms are an unreviewed draft, and replacing this string is still its job.
 const NON_REFUNDABLE_DOWNPAYMENT_NOTE = 'The downpayment reserves your order. Refund terms are provided by the store.';
 
 /** A neutral disclosure line, only when the downpayment is explicitly non-refundable. */
