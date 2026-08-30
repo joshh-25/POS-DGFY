@@ -60,6 +60,7 @@ export function RetailOrderPage({
   cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
+  customerAddress = '',
   customerEmail = '',
   customerName = '',
   customerPhone = '',
@@ -85,6 +86,7 @@ export function RetailOrderPage({
   money,
   onBackToCatalog,
   onCheckout,
+  onCustomerAddressChange = () => {},
   onImageError,
   onSelectAddress,
   onConfirmQrphTestPayment,
@@ -279,6 +281,7 @@ export function RetailOrderPage({
               canAddPinnedLocation={canAddPinnedLocation}
               orderMethodOptions={orderMethodOptions}
               orderTimingPolicy={orderTimingPolicy}
+              customerAddress={customerAddress}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}
               deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
@@ -291,6 +294,7 @@ export function RetailOrderPage({
               onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
               onContinue={() => setStep(3)}
+              onCustomerAddressChange={onCustomerAddressChange}
               onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
               onOrderMethodChange={setOrderMethod}

@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
@@ -44,6 +45,7 @@ export const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
  */
 export function RetailOrderFulfillmentStep({
   canAddPinnedLocation = false,
+  customerAddress = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -55,6 +57,7 @@ export function RetailOrderFulfillmentStep({
   onCloseExpandedMap,
   onCloseMobileAddressModal,
   onContinue,
+  onCustomerAddressChange = () => {},
   onOpenExpandedMap,
   onOpenMobileAddressList,
   onOrderMethodChange,
@@ -368,9 +371,14 @@ export function RetailOrderFulfillmentStep({
                       <MapPin size={13} />
                     </span>
                   ) : null}
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
-                    {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
-                  </span>
+                  <input
+                    type="text"
+                    value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                    onChange={(event) => onCustomerAddressChange(event.target.value)}
+                    placeholder="Pinned delivery address will appear here."
+                    aria-label="Delivery address"
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38 }}
+                  />
                 </div>
                 <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none' }}>
                   {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
