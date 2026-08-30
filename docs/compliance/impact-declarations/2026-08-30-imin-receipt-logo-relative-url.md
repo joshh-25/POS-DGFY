@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: N/A
 policy_version: 2026.08.30
-verification_evidence: targeted iMin receipt/logo Vitest suite (48 tests),dgfy-pos production build,dgfy-ims (skupervisor) production build,npm run check:architecture,npm run check:compliance
+verification_evidence: targeted iMin receipt/logo Vitest suite (49 tests),dgfy-pos production build,dgfy-ims (skupervisor) production build,npm run check:architecture,npm run check:compliance
 rollback_note: Revert the absolutizeLogoSource helper, its wiring into resolveReceiptLogoSource, the three replaced/added tests, the Dockerfile ARG/ENV lines, the deploy-frontend.yml build-arg threading, and this declaration together. No payment, tax, discount, transaction, audit, API, or migration behavior changes; the LAN/USB bridge print path is unaffected (it has no bundled fallback logo).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -46,7 +46,13 @@ API contracts, or database schema.
   determined (e.g. a `file://`-equivalent opaque origin) must still resolve to `''`
   and fall back to the bundled DGFY drawable, exactly as before this change.
 - An already-absolute icon URL (e.g. from a configured CDN/asset origin) must pass
-  through byte-identical, with no round-trip escaping or trailing-slash changes.
+  through byte-identical, with no round-trip escaping, trailing-slash, host-casing,
+  or default-port changes. (`resolveReceiptLogoSource` now skips `resolveAssetUrl`
+  entirely for anything already `http(s):`/`data:`, rather than relying on
+  `absolutizeLogoSource` to leave it untouched — `resolveAssetUrl` itself
+  round-trips its input through `new URL(...).toString()`, which would otherwise
+  silently canonicalize it, e.g. lowercase an uppercase host or drop an explicit
+  `:443`. Fixed per pr-reviewer finding RF-1 on this PR.)
 - Receipt preview (browser) and physical print (native) must resolve the same
   `businessSettings` icon field to the same absolute asset when one is configured.
 - No payment, tax, discount, inventory, transaction, audit, API, or migration
@@ -54,11 +60,14 @@ API contracts, or database schema.
 
 ## Verification Evidence
 
-- Targeted Vitest suite passed: 5 test files, 48 tests —
-  `iminHardwareBridge.orderTicket.test.js`, `iminHardwareBridge.printFailure.test.js`,
+- Targeted Vitest suite passed: 5 test files, 49 tests (48 original + 1 RF-1
+  regression case) — `iminHardwareBridge.orderTicket.test.js`,
+  `iminHardwareBridge.printFailure.test.js`,
   `receiptContractConformance.contract.test.js`, `iminNativeDriver.test.js`,
   `assetUrl.test.js` (run via `apps/dgfy-ims`'s Vitest config, which executes
-  `packages/web-core`'s test suite).
+  `packages/web-core`'s test suite). The new case asserts an already-absolute URL
+  with an uppercase host and an explicit default port (`:443`) forwards to native
+  byte-identical, not normalized.
 - Production builds passed for `apps/dgfy-pos` and `apps/dgfy-ims` (skupervisor) —
   both consume `packages/web-core` as their shared trunk.
 - `npm run check:architecture` passed.

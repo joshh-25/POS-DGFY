@@ -290,7 +290,15 @@ const resolveReceiptLogoSource = (businessSettings = {}) => {
         || ''
     ).trim();
     if (!raw) return '';
-    const resolved = absolutizeLogoSource(resolveAssetUrl(raw));
+    // An already-absolute source must reach native byte-identical. resolveAssetUrl
+    // round-trips its input through `new URL(...).toString()`, which can silently
+    // canonicalize a valid absolute URL (lowercase the host, drop an explicit
+    // default port) before absolutizeLogoSource ever sees it -- so skip it entirely
+    // here rather than relying on absolutizeLogoSource's own no-op-on-non-root-
+    // relative-input behaviour to undo a normalization that already happened.
+    const resolved = isNativeFetchableLogoSource(raw)
+        ? raw
+        : absolutizeLogoSource(resolveAssetUrl(raw));
     return isNativeFetchableLogoSource(resolved) ? resolved : '';
 };
 

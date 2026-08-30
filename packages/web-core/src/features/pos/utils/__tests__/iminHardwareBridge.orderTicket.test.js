@@ -189,6 +189,36 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         );
     });
 
+    it('preserves an already-absolute company icon URL byte-identical, uppercase host and explicit default port included (RF-1)', () => {
+        // resolveAssetUrl round-trips its input through `new URL(...).toString()`,
+        // which silently canonicalizes a valid absolute URL -- lowercasing the host
+        // and dropping an explicit default port -- if it's allowed to run on an
+        // already-absolute source. resolveReceiptLogoSource must skip resolveAssetUrl
+        // entirely for anything already http(s):/data:, so a URL that would be
+        // changed by that round-trip still reaches native untouched.
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            location: { origin: 'https://pos.dgfy.ph' },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt: vi.fn(() => ({ success: true }))
+            }
+        };
+
+        const alreadyAbsoluteUrl = 'https://CDN.DGFY.PH:443/uploads/storefront-assets/t1/business-icon.png';
+
+        printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {
+                storefront_profile_image_url: alreadyAbsoluteUrl
+            },
+            openDrawerAfterPrint: false
+        });
+
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe(alreadyAbsoluteUrl);
+    });
+
     it('falls back to the plain two-arg printReceipt on a bridge without printReceiptWithLogo', () => {
         const printReceipt = vi.fn(() => ({ success: true }));
         globalThis.window = {
