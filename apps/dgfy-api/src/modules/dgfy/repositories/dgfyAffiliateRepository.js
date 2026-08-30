@@ -715,12 +715,20 @@ export const dgfyAffiliateRepository = {
 
     // requested -> approved (owner accepts the request, hasn't paid yet).
     async approveCashout(cashoutId, { tenantId, approvedByUserId = null }) {
-        const cashout = await DgfyAffiliateCashout.findOne({ where: { cashout_id: cashoutId, tenant_id: tenantId } });
-        if (!cashout) return { cashout: null, reason: 'not_found' };
-        if (cashout.status !== 'requested') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const cashout = await DgfyAffiliateCashout.findOne({
+                where: { cashout_id: cashoutId, tenant_id: tenantId },
+                include: [{ model: DgfyAffiliateEnrollment, as: 'enrollment', required: true }],
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!cashout) return { cashout: null, reason: 'not_found' };
+            if (cashout.status !== 'requested') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+            if (cashout.enrollment?.status !== 'active') return { cashout: toPlain(cashout), reason: 'enrollment_inactive' };
 
-        await cashout.update({ status: 'approved', approved_at: new Date(), approved_by_user_id: approvedByUserId });
-        return { cashout: toPlain(await cashout.reload()), reason: null };
+            await cashout.update({ status: 'approved', approved_at: new Date(), approved_by_user_id: approvedByUserId }, { transaction });
+            return { cashout: toPlain(await cashout.reload({ transaction })), reason: null };
+        });
     },
 
     // approved -> paid (owner has paid externally); bulk-flips the reserved rows earned -> paid.
@@ -728,11 +736,13 @@ export const dgfyAffiliateRepository = {
         return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
             const cashout = await DgfyAffiliateCashout.findOne({
                 where: { cashout_id: cashoutId, tenant_id: tenantId },
+                include: [{ model: DgfyAffiliateEnrollment, as: 'enrollment', required: true }],
                 transaction,
                 lock: transaction.LOCK.UPDATE
             });
             if (!cashout) return { cashout: null, reason: 'not_found' };
             if (cashout.status !== 'approved') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+            if (cashout.enrollment?.status !== 'active') return { cashout: toPlain(cashout), reason: 'enrollment_inactive' };
 
             await DgfyAffiliateCommission.update(
                 { status: 'paid', paid_at: new Date() },

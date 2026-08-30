@@ -753,6 +753,9 @@ export const buildRequestAffiliateCashoutUseCase = ({ repository = dgfyAffiliate
             if (!enrollment) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'You are not enrolled as an affiliate for this store.', { statusCode: 404 });
             }
+            if (enrollment.status !== 'active') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Your affiliate enrollment is not active, so you cannot request a cashout.', { statusCode: 409 });
+            }
 
             const payoutMethods = await repository.listPayoutMethods(dgfyAccount.id);
             const requestedMethodId = body.payout_method_id !== undefined ? parsePositiveInt(body.payout_method_id) : null;
@@ -838,6 +841,7 @@ export const buildApproveAffiliateCashoutUseCase = ({ repository = dgfyAffiliate
             const { cashout, reason } = await repository.approveCashout(cashoutId, { tenantId: tenant, approvedByUserId });
             if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
             if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only a requested cashout can be approved.', { statusCode: 409 });
+            if (reason === 'enrollment_inactive') throw new DomainError(DomainErrorCode.CONFLICT, 'This affiliate\'s enrollment is not active, so their cashout cannot be approved.', { statusCode: 409 });
             return ok({ cashout });
         } catch (error) {
             return fail(mapError(error, 'Failed to approve cashout request'));
@@ -856,6 +860,7 @@ export const buildMarkAffiliateCashoutPaidUseCase = ({ repository = dgfyAffiliat
             const { cashout, reason } = await repository.markCashoutPaid(cashoutId, { tenantId: tenant, externalPaymentRef });
             if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
             if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only an approved cashout can be marked as paid.', { statusCode: 409 });
+            if (reason === 'enrollment_inactive') throw new DomainError(DomainErrorCode.CONFLICT, 'This affiliate\'s enrollment is not active, so their cashout cannot be marked as paid.', { statusCode: 409 });
             return ok({ cashout });
         } catch (error) {
             return fail(mapError(error, 'Failed to mark cashout as paid'));
