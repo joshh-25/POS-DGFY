@@ -11593,7 +11593,12 @@ same deploy — also repoints that button at the new endpoint in the same PR.
 
 ### Status
 
-`in_progress` (2026-08-30). PR #1204 opened against `develop`, not yet merged.
+`completed` (2026-08-30). PR #1204 merged into `develop` as commit
+`96dc8bf87327b4b589248925a376f6ce1497bdb2`. Issue #1191 closed. Reviewed by an isolated Codex
+GPT-5.6-Luna worker — `APPROVE`, no findings; verified locally (repository lock-first ordering,
+`revoked_at`/`revoked_by`/`revocation_reason`/`activated_at` all preserved on reactivate, frontend
+button correctly repointed) in addition to the standard checks, and confirmed `mergeStateStatus:
+CLEAN` before merging.
 
 ### Dependencies
 
