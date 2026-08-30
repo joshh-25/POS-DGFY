@@ -135,7 +135,11 @@ export function RetailTrackingRoutePage({
           || Number.isFinite(trackingResult.deliveryFee) && trackingResult.deliveryFee > 0
           || Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0
         ),
-      statusGuidance: statusGuidanceByCode[activeStatus] || "We're preparing your latest status update.",
+      // Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order --
+      // never DGFY's own statement.
+      statusGuidance: activeStatus === 'rejected' && String(trackingResult.rejectionReason || trackingResult.rejection_reason || '').trim()
+        ? `The store could not accept this order: ${String(trackingResult.rejectionReason || trackingResult.rejection_reason).trim()}`
+        : (statusGuidanceByCode[activeStatus] || "We're preparing your latest status update."),
       storeAddress: String(selectedStoreLocationForMap?.address_line || selectedStore?.address_line || selectedStore?.locationLabel || '').trim(),
       storeDisplayName: selectedStore?.tenant_name || 'Storefront',
       storeLogoUrl: withAssetOrigin(selectedStore?.storefront_profile_image_url),
