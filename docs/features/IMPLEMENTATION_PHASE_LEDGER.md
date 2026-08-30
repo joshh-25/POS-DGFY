@@ -13944,8 +13944,9 @@ secret.
   `default`/untagged-tier, no `binding` clause affected.
 
 **Phase B (named here, NOT executed as part of this phase):** applying EDIT 4 + the file split to
-the live PROD server and actually deleting `.env` there. Restarts `nginx`/`dgfy-api` in production —
-the same class of change that already caused a real CORS outage in this repo's history (ADR 0060's
+the live PROD server and retiring `.env` there (moved into `_archive/`, per #1155's
+move-never-delete convention — not `rm`'d). Restarts `nginx`/`dgfy-api` in production — the same
+class of change that already caused a real CORS outage in this repo's history (ADR 0060's
 2026-08-29 amendment) — and needs its own explicit go-ahead and low-disruption sequencing, not a
 blind repeat. Tracked as this phase's own separate acceptance gate, below.
 

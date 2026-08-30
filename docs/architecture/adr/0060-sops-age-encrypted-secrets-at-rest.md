@@ -347,7 +347,8 @@ amendment, not a reversal of any Decision above.
 
 **Scope, stated explicitly:** this amendment records the *design* — the repo-side split and the
 fragment-doc update (Phase A of #1236, a `develop`-targeted PR with no production impact). Applying
-EDIT 4 and the file split to the live server, then actually deleting `.env` there (Phase B), is a
+EDIT 4 and the file split to the live server, then retiring `.env` there (Phase B, moved into
+`_archive/` per #1155's move-never-delete convention, not `rm`'d), is a
 separate, explicitly-gated follow-up: it restarts `nginx`/`dgfy-api` in production, which is exactly
 the class of change the 2026-08-29 amendment above (`CORS_ORIGIN` incident) already shows can break
 production silently if rushed. Phase B is not authorized by this amendment landing; it needs its

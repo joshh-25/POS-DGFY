@@ -405,8 +405,11 @@
 # and is already shell-exported per-deploy by publish-platform.yml
 # (SENTRY_RELEASE) or left at its default (everything else) -- neither
 # needs a value to exist in .env at all. Once EDIT 4 is live, .env has ZERO
-# remaining consumers on PROD. The corrected end state: **delete .env
-# outright**, not trim it down.
+# remaining consumers on PROD. The corrected end state: **retire .env from
+# the working tree**, not trim it -- but move it, don't delete it (Pat's
+# call, #1236): #1155 already established the move-never-delete convention
+# for this exact directory (its own _archive/ and rollback/ folders), and
+# nothing about retiring .env's *function* requires destroying the file.
 #
 # The delta itself, run once EDIT 1-4 are all live and verified (this was
 # never fully executed after the 2026-08-28 cutover -- .env still held all
@@ -415,9 +418,10 @@
 #
 #   cd /opt/dgfy-platform
 #   docker compose config >/dev/null   # confirm nothing still resolves from .env
-#   rm .env                            # not a .bak copy -- #1155 already made this a
-#                                       # git repo, so `git log` is the history now
-#   git add -A && git commit -m "chore(ops): retire .env, closes #1236 Phase B"
+#   mkdir -p _archive/2026-MM-DD/env-retired-DO-NOT-USE   # date this is actually run
+#   mv .env _archive/2026-MM-DD/env-retired-DO-NOT-USE/.env
+#   chmod 600 _archive/2026-MM-DD/env-retired-DO-NOT-USE/.env
+#   git add -A && git commit -m "chore(ops): retire .env (moved, not deleted), closes #1236 Phase B"
 #
 # --- Data/file move (run BEFORE `docker compose up`, while dgfy-api and
 #     dgfy-migration-runner are the only services being touched -- do NOT
