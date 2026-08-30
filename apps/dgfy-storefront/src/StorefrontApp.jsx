@@ -2673,6 +2673,16 @@ export default function StorefrontApp() {
     if (!paymentSessionId || !selectedStore?.slug || !['awaiting_payment', 'paid'].includes(paymentStatus)) {
       return undefined;
     }
+    // #852: this component is hoisted -- storefront "pages" are conditionally-rendered views, not
+    // routes that unmount, so nothing about navigating catalog <-> checkout <-> track changes any
+    // of this effect's session-shaped dependencies. Without this gate the scheduler below outlives
+    // the screen that owns it and polls dgfy-api for the life of the tab; a full page reload was
+    // the only thing observed to stop it. Same `isOrderSubpage`/`checkoutTab === 'checkout'`
+    // expression the #889 out-of-hours checkout guard uses (see :3038) -- one definition of "the
+    // customer is actually looking at checkout", not two that can drift.
+    if (!isOrderSubpage || checkoutTab !== 'checkout') {
+      return undefined;
+    }
 
     const scheduler = createCompletionTrackingScheduler({
       poll: () => {
@@ -2696,7 +2706,13 @@ export default function StorefrontApp() {
       scheduler.stop();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [qrphPaymentSession?.payment_session_id, qrphPaymentSession?.status, selectedStore?.slug]);
+  }, [
+    checkoutTab,
+    isOrderSubpage,
+    qrphPaymentSession?.payment_session_id,
+    qrphPaymentSession?.status,
+    selectedStore?.slug
+  ]);
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
