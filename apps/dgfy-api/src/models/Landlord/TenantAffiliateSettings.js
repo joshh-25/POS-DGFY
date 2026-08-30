@@ -65,6 +65,20 @@ export default (sequelize) => {
             type: DataTypes.ENUM('discounted_subtotal', 'base_price_subtotal'),
             allowNull: false,
             defaultValue: 'discounted_subtotal'
+        },
+        // #449 (Phase 208): tenant-wide default lifetime affiliate earnings cap in centavos.
+        // NULL = uncapped (today's behavior for every existing tenant). Enforced at accrual
+        // time only - see affiliateCommissionAccrual.js.
+        max_lifetime_earnings_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        // #449 (Phase 208): the tenant cap applies only while this is NULL or in the future.
+        // Once passed the CAP stops applying (accrual continues, uncapped) - it is not a
+        // program expiry (#1206).
+        earnings_cap_active_until: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     }, {
         sequelize,
