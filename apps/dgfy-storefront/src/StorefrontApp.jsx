@@ -411,7 +411,14 @@ export default function StorefrontApp() {
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
 
-  useAffiliateAttributionCapture({ routeSlug });
+  useAffiliateAttributionCapture({
+    routeSlug,
+    // #452 (Phase 212): fires once GET /affiliate/s/:short_code resolves a /s/{short_code} path
+    // to a store slug, so this component's own routeSlug state (and everything downstream of it
+    // -- isStorePage, the catalog/checkout/tracking chain) behaves exactly as it does for an
+    // ordinary /tenant-store/{slug} visit.
+    onShareRouteResolved: setRouteSlug
+  });
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
