@@ -53,6 +53,8 @@ import {
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
     recordOrderBalancePaymentUseCase,
+    attachOrderBalancePaymentProofUseCase,
+    getOrderBalancePaymentProofUseCase,
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
@@ -2069,6 +2071,71 @@ export const recordOrderBalancePayment = async (req, res, next) => {
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 204 (#965): attaches a proof-of-payment image to an already-recorded balance settlement.
+// Deliberately a separate handler/route from recordOrderBalancePayment above -- see posUseCases.js.
+export const uploadOrderBalancePaymentProof = async (req, res, next) => {
+    try {
+        const result = await attachOrderBalancePaymentProofUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            paymentId: req.validatedParams?.payment_id || req.params.payment_id,
+            file: req.file,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Proof of payment attached to this balance settlement.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 204 (#965): the authed streaming GET -- never a public/static path (Pat's decision on
+// #965). `Cache-Control: private, no-store` keeps this out of shared/proxy caches; streaming
+// (rather than buffering, as downloadPlatformInvoiceArtifact does) keeps memory bounded under
+// concurrent POS review.
+export const getOrderBalancePaymentProof = async (req, res, next) => {
+    try {
+        const result = await getOrderBalancePaymentProofUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            paymentId: req.validatedParams?.payment_id || req.params.payment_id
+        });
+        if (!result.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        const { mime_type: mimeType, size_bytes: sizeBytes, stream } = result.data;
+        res.set({
+            'Content-Type': mimeType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'private, no-store',
+            ...(Number.isFinite(sizeBytes) ? { 'Content-Length': String(sizeBytes) } : {})
+        });
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Proof of payment could not be read.' });
+            } else {
+                res.destroy();
+            }
+        });
+        return stream.pipe(res);
     } catch (error) {
         next(error);
     }

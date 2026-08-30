@@ -5743,6 +5743,65 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    // Phase 204 (#965): looks up one ledger row by its own primary key, for the proof-attach and
+    // proof-serve routes' ownership check (caller-supplied payment_id must actually belong to the
+    // order in the URL). Mirrors getCashDrawerEventById's findByPk-plus-lock shape above.
+    async findOrderPaymentEntryById(posOrderPaymentId, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedId = toPositiveInt(posOrderPaymentId);
+        if (!normalizedId) return null;
+
+        const row = await PosOrderPayment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async updateOrderPaymentEntryProof(posOrderPaymentId, payload = {}, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedId = toPositiveInt(posOrderPaymentId);
+        if (!normalizedId) return null;
+
+        const row = await PosOrderPayment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    // Phase 204 (#965): batch lookup for the incoming-orders queue card's "View proof" affordance
+    // -- mirrors getReceiptPrintStatuses' shape (one query per list render, not N+1 per order).
+    // Never returns `proof_file_path` itself; only the derived boolean and the ledger row id a
+    // caller needs to hit the authed GET route.
+    async getBalancePaymentProofStatuses(posTransactionIds = []) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedIds = Array.from(new Set((Array.isArray(posTransactionIds) ? posTransactionIds : [])
+            .map(toPositiveInt)
+            .filter(Boolean)));
+        if (!PosOrderPayment || normalizedIds.length === 0) return {};
+
+        const rows = await PosOrderPayment.findAll({
+            where: {
+                pos_transaction_id: { [Op.in]: normalizedIds },
+                kind: 'balance'
+            },
+            attributes: ['pos_transaction_id', 'pos_order_payment_id', 'proof_file_path']
+        });
+        const statuses = {};
+        rows.forEach((row) => {
+            const id = toPositiveInt(row.pos_transaction_id);
+            if (!id) return;
+            statuses[id] = {
+                pos_order_payment_id: row.pos_order_payment_id,
+                has_payment_proof: row.proof_file_path != null
+            };
+        });
+        return statuses;
+    },
+
     async updateDeliveryJobByOrderId(orderId, payload = {}, options = {}) {
         const DeliveryJob = dbStore.get('DeliveryJob');
         const row = await DeliveryJob.findOne({
