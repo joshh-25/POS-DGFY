@@ -88,7 +88,11 @@ export const loadApplicableCategoryRates = async ({
 // always sum EXACTLY to the whole regardless of rounding. Ties in the fractional remainder break
 // by ascending index, for a deterministic result. Returns an array of centavos, same length/order
 // as `weights`.
-const allocateLargestRemainder = (totalCentavos, weights) => {
+// Exported (only) as a test seam - #448 RF-2 (PR #1214 review) - so a caller can independently
+// assert Σ allocatedBases === totalCentavos on an uneven base without duct-taping a recomputation
+// of the allocation logic itself into the test. Not called directly by any other module; every
+// production caller goes through computeCategoryAwareCommission below.
+export const allocateLargestRemainder = (totalCentavos, weights) => {
     const totalWeight = weights.reduce((sum, w) => sum + Math.max(0, Number(w) || 0), 0);
     if (totalWeight <= 0 || totalCentavos <= 0) {
         return weights.map(() => 0);

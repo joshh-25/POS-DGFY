@@ -14,7 +14,8 @@ import {
     resolveLineCommissionRateBps,
     loadApplicableCategoryRates,
     computeCategoryAwareCommission,
-    accrueEarnedForInStoreSale
+    accrueEarnedForInStoreSale,
+    allocateLargestRemainder
 } from '../src/modules/dgfy/utils/affiliateCommissionAccrual.js';
 
 const TENANT_ID = 'tenant-1';
@@ -246,25 +247,39 @@ describe('computeCategoryAwareCommission — §5.2, the multi-category decision 
         expect(result.rateBpsSnapshot).toBe(r);
     });
 
-    test('10. allocation totals exactly: sum(Bi) === B on a base that does not divide evenly', () => {
+    test('10. allocation totals exactly: sum(Bi) === B on a base that does not divide evenly, with the expected remainder ordering', () => {
+        // B = 10001, weights 3333/3333/3334 (total 10000). raw = weight*B/totalWeight:
+        // 3333.3333 / 3333.3333 / 3334.3334. Floored: 3333/3333/3334, summing to 10000 - one
+        // centavo of remainder left to distribute. Fractional remainders: .3333/.3333/.3334, so
+        // index 2 has the single largest fraction and gets the +1 (the tie-break-by-ascending-index
+        // rule never triggers here since index 2's fraction is strictly larger, not tied).
+        const B = 10001;
+        const weights = [3333, 3333, 3334];
+
+        const allocatedBases = allocateLargestRemainder(B, weights);
+
+        // The property under test: the allocation sums back to the original base exactly, on a
+        // base that does NOT divide evenly across the weights.
+        expect(allocatedBases.reduce((sum, v) => sum + v, 0)).toBe(B);
+        // The expected remainder distribution, not just its sum - pins the tie/ordering behavior.
+        expect(allocatedBases).toEqual([3333, 3333, 3335]);
+
+        // Same property, exercised through the public entry point rather than the allocator
+        // directly, so a future refactor that stops calling allocateLargestRemainder internally
+        // would still be caught here.
         const rows = [
             categoryRateRow({ category_rate_id: 1, enrollment_id: 0, folder_id: 10, rate_bps: 2000 }),
             categoryRateRow({ category_rate_id: 2, enrollment_id: 0, folder_id: 20, rate_bps: 1000 }),
             categoryRateRow({ category_rate_id: 3, enrollment_id: 0, folder_id: 30, rate_bps: 500 })
         ];
-        const B = 10001;
         const lines = [
-            { folderId: 10, weightCentavos: 3333 },
-            { folderId: 20, weightCentavos: 3333 },
-            { folderId: 30, weightCentavos: 3334 }
+            { folderId: 10, weightCentavos: weights[0] },
+            { folderId: 20, weightCentavos: weights[1] },
+            { folderId: 30, weightCentavos: weights[2] }
         ];
-        // Recompute the allocation independently (largest remainder) to assert Σ Bi === B.
-        const totalWeight = lines.reduce((sum, l) => sum + l.weightCentavos, 0);
-        const raw = lines.map((l) => (l.weightCentavos * B) / totalWeight);
-        const floored = raw.map(Math.floor);
-        const flooredSum = floored.reduce((sum, v) => sum + v, 0);
-        expect(B - flooredSum).toBeGreaterThanOrEqual(0);
-
+        const expectedAmountCentavos = allocatedBases.reduce((sum, lineBase, index) => (
+            sum + Math.round(lineBase * [2000, 1000, 500][index] / 10000)
+        ), 0);
         const result = computeCategoryAwareCommission({
             enrollment: enrollment({ commission_rate_bps: null }),
             settings: { default_rate_bps: 500 },
@@ -272,9 +287,7 @@ describe('computeCategoryAwareCommission — §5.2, the multi-category decision 
             lines,
             commissionableBaseCentavos: B
         });
-        // Independently reconstruct the allocated bases to check they sum to B exactly - the
-        // property under test, not the money amount itself (already covered by case 8).
-        expect(result.amountCentavos).toBeGreaterThanOrEqual(0);
+        expect(result.amountCentavos).toBe(expectedAmountCentavos);
         expect(Number.isInteger(result.amountCentavos)).toBe(true);
     });
 
