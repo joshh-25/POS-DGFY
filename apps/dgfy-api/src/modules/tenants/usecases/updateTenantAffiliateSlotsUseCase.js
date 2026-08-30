@@ -53,7 +53,10 @@ export const buildUpdateTenantAffiliateSlotsUseCase = ({
                 // write (createEnrollment/createInvite's own assertAffiliateSlotAvailable call).
                 await dgfyAffiliateRepository.acquireAffiliateSlotLock(id, { transaction: t });
 
-                const before = await dgfyAffiliateRepository.getSettings(id);
+                // RF-1 (PR #1228 round-1 review): must read on the same transaction/connection as
+                // the lock and the write, not a separate implicit connection -- otherwise
+                // before_snapshot.max_affiliate_slots is not guaranteed to reflect the locked row.
+                const before = await dgfyAffiliateRepository.getSettings(id, { transaction: t });
                 const slotsUsed = await dgfyAffiliateRepository.countConsumedSlots(id, { transaction: t });
                 const previousValue = Number.isInteger(before?.max_affiliate_slots)
                     ? before.max_affiliate_slots

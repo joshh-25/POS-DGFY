@@ -102,8 +102,8 @@ const ENROLLMENT_ACCOUNT_INCLUDE = {
 };
 
 export const dgfyAffiliateRepository = {
-    async getSettings(tenantId) {
-        const row = await TenantAffiliateSettings.findByPk(tenantId);
+    async getSettings(tenantId, { transaction = null } = {}) {
+        const row = await TenantAffiliateSettings.findByPk(tenantId, { transaction });
         if (row) return toPlain(row);
         return { tenant_id: tenantId, ...DEFAULT_SETTINGS };
     },
