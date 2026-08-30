@@ -811,6 +811,33 @@ export const recordOrderBalancePayment = async (posTransactionId, payload = {}) 
     return response.data?.data;
 };
 
+// Phase 204 (#965): attaches a proof-of-payment image to an already-recorded balance settlement.
+// A separate call from recordOrderBalancePayment above, always sequenced strictly after it
+// resolves (TerminalPage.jsx handleSettleBalance) -- never folded into the same request.
+export const uploadOrderBalancePaymentProof = async (posTransactionId, paymentId, file, { terminal_id: terminalId } = {}) => {
+    const form = new FormData();
+    form.append('proof', file);
+    // Do NOT hand-set Content-Type: multipart/form-data -- omitting it is what lets the browser
+    // attach its own boundary.
+    const response = await api.post(
+        `/pos/orders/${posTransactionId}/balance-payments/${paymentId}/proof`,
+        form,
+        { headers: getRegisteredTerminalHeaders(terminalId) }
+    );
+    return response.data?.data;
+};
+
+// The POS app authenticates with a Bearer header, not a cookie (services/api.js sets
+// config.headers.Authorization) -- a plain <img src="..."> would never carry it and would 401.
+// Callers MUST fetch -> blob -> object URL, and MUST revokeObjectURL when done with it.
+export const fetchOrderBalancePaymentProof = async (posTransactionId, paymentId) => {
+    const response = await api.get(
+        `/pos/orders/${posTransactionId}/balance-payments/${paymentId}/proof`,
+        { responseType: 'blob' }
+    );
+    return URL.createObjectURL(response.data);
+};
+
 export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
     return response.data?.data;
@@ -947,6 +974,8 @@ export default {
     collectCashPickupOrder,
     collectCashDeliveryOrder,
     recordOrderBalancePayment,
+    uploadOrderBalancePaymentProof,
+    fetchOrderBalancePaymentProof,
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,

@@ -11702,6 +11702,140 @@ Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard c
 `BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
 surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
 
+## Phase 204 - Settle Balance: Proof-of-Payment Image Capture and Authed Serving (#965)
+
+### Initiative and release
+
+Surebiz Wave 2 (epic #1183). Extends Phase 148 (#825, balance settlement) and Phase 202 (#1085,
+cheque tender), which flagged this phase as a hard collision on `BalanceSettlementDialog.jsx`,
+`posUseCases.js`, and the `pos_order_payments` migration surface — Phase 202's ENUM migration
+landed first and cleanly, as required, before this phase began. A prior planning pass
+(`PHASE_204_PLAN.md`) re-verified every #965 file/line reference against the live `origin/develop`
+tree post-Phase-202 and corrected several stale claims inline before implementation started.
+
+### Objective and scope
+
+Lets POS staff attach a proof-of-payment photo (GCash/cheque screenshot, etc.) alongside the
+existing optional reference field on a non-cash Settle Balance, and serves it back only through an
+authenticated, tenant-scoped streaming route — never a public/static `/uploads` path, per Pat's
+resolved decision on #965 (financial-evidence PII; bank/cheque details may be visible, especially
+after Phase 202). Attach-once in this phase: a second attach on an already-proofed payment fails
+closed with `409`. No replace/delete path, no retention/purge job, and no split-tender or
+Collect-Cash proof affordance — all named explicitly as out-of-scope follow-ups, not silently
+dropped.
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/965-balance-payment-proof-image`, cut off fresh `origin/develop`. PR opened, `Refs #965`
+(deployed verification still needed — never `Closes`).
+
+### Dependencies
+
+Phase 148 (#825, Settle Balance itself) and Phase 202 (#1085, cheque tender) — both merged. ADR
+0063 (POS Split Tender and Manual Walk-in Payment Recording), also merged.
+
+### Acceptance and validation evidence
+
+- [x] Migration reviewed by Pat at Checkpoint A (implement/SKILL.md's migration checkpoint) before
+      being staged — full `up()`/`down()` body shown via the coordinator, reply received before
+      `git add`, same discipline Phase 202 used.
+- [x] Six nullable, additive columns added to `pos_order_payments`
+      (`apps/dgfy-migration-runner/migrations/20260831000001-add-pos-order-payment-proof-columns.cjs`):
+      `proof_file_path`, `proof_mime_type`, `proof_file_size_bytes`, `proof_sha256`,
+      `proof_attached_at`, `proof_attached_by` (with a `proof_attached_by` FK to
+      `users(user_id) ON DELETE SET NULL`). Fanned out across every active tenant database, guarded
+      by `information_schema` `tableExists`/`columnExists`/`foreignKeyExists` checks — idempotent
+      on a re-run and a no-op for a tenant missing the table.
+- [x] `apps/dgfy-api/src/models/PosOrderPayment.js` widened with the six attributes in the same
+      commit as the migration.
+- [x] `apps/dgfy-api/scripts/sync-tenant-schemas.js` kept in lockstep, both halves:
+      `REQUIRED_TENANT_SCHEMA_COLUMNS.pos_order_payments` (new key, six `ALTER TABLE` repair
+      entries) and `REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments.sql` (the `CREATE TABLE`
+      string gains the six columns plus the FK/index) — a tenant that misses the migration or is
+      restored from an older snapshot self-repairs at API boot; a brand-new tenant is created
+      correct.
+- [x] New private storage adapter `posPaymentProofStorage.js` — `storage/pos-payment-proofs/`, NOT
+      `uploads/`. Normalizes with `sharp` (EXIF-rotate then discard orientation, no
+      `.withMetadata()`, single capped-dimension WebP variant) rather than reusing
+      `storeOptimizedImageAsset`, which hardcodes public `/uploads/...` URLs.
+- [x] `POST /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `TRANSACT_POS` + paired
+      terminal + active operator (same authority tier as `/record-payment`). New use case
+      `buildAttachOrderBalancePaymentProofUseCase`, deliberately separate from
+      `buildRecordOrderBalancePaymentUseCase` so `hashPayload`'s replay fingerprint stays untouched
+      by construction. Ownership check (`payment_id` must belong to this order and be `kind:
+      'balance'`) and attach-once `409` both enforced inside the transaction.
+- [x] `GET /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `VIEW_POS`, no pairing
+      requirement. Streams (`createReadStream`, bounded memory) with
+      `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`,
+      `Content-Disposition: inline`, and `404` (never `403`) for both the no-proof and cross-order
+      cases — does not leak existence.
+- [x] `BalanceSettlementDialog.jsx`: "Attach proof (optional)" file input beside the existing
+      reference field, non-cash branch only, local preview via `URL.createObjectURL` revoked on
+      clear/unmount. Never added to `canSubmit`.
+- [x] `TerminalPage.jsx`: upload sequenced strictly after `recordOrderBalancePayment` resolves,
+      only if staff chose a file; a proof-upload failure is a warning toast, never a thrown error
+      or rollback. A minimal "View proof" viewer added to the incoming-orders queue card
+      (`has_payment_proof`, batched via a new `getBalancePaymentProofStatuses` repository method
+      mirroring `getReceiptPrintStatuses`'s shape) — fetch-blob-to-object-URL, since the POS app's
+      Bearer-header auth means a plain `<img src>` would 401.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`),
+      classification `major`, modeled on Phase 202's declaration. `npm run check:compliance`
+      confirmed to fail first (missing declaration), then pass once added.
+- [x] ADR 0063 Amendments block added (2026-08-31, clause 7 `[default]` extension; clause 5
+      `[binding]` restated, not amended) — the Amendments-block route confirmed with Pat before
+      landing, per #965's own request, given the new clause 3 touches a `[binding]`-adjacent
+      guarantee. `npm run check:adr --strict` passes with the amendment live.
+- [x] Tests: new `posBalancePaymentProof.usecase.test.js` (happy path; magic-byte rejection with
+      temp-file unlink confirmed; cross-order ownership `404`; attach-once `409`; a rollback case
+      confirming the repository failure removes the orphaned stored file; the authed-read use
+      case's `404`-not-`403` and streaming cases); new
+      `balanceSettlementProof.behavior.test.jsx` (capture affordance renders only on the non-cash
+      branch; audit-aid copy present; choosing/removing a file never gates submit; a passed-in
+      proof error surfaces to the cashier). `posOrderBalanceSettlement.usecase.test.js` left
+      unmodified and still green — proof #965 verify box 1 that `hashPayload`/replay stay
+      untouched.
+- [x] `npm run build:pos` (real Vite build of the POS app rendering the widened dialog) —
+      succeeded.
+- [x] `node --check` on every changed `apps/dgfy-api` `.js`/`.cjs` file (including the new
+      migration) — no real build step exists on that app.
+- [x] `npm run check:architecture` — passed (50 modules / 521 files; 90 controller files, no
+      unauthorized model imports).
+
+### Known residual gaps, accepted rather than solved
+
+- **No retention/purge policy** — images persist for the life of the tenant's volume. Handed to
+  `pm` as a follow-up issue per the plan, not silently omitted.
+- **No replace/delete path for an attached proof** — attach-once by design (ADR 0063 clause 10
+  `[binding]`'s append-only posture); deferred, not solved here.
+- **No split-tender or Collect-Cash proof affordance, and no full evidence-browser UI** — the
+  "View proof" control is scoped to the single smallest place the settled payment is already
+  displayed (the incoming-orders queue card), per the plan.
+- **Local jest run not exercised in this worktree** (`apps/dgfy-api` has no installed
+  `node_modules`) — `node --check` (Tier 0) and `npm run build:pos` were run; the new use-case test
+  file was written and syntax-checked but not executed against a live jest runner here. Flagged
+  explicitly for the reviewer/CI rather than claimed as run.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+- **Attestation remains trust, by design** — inherited unchanged from ADR 0063 clause 5. A photo is
+  evidence the store captured something at the counter; it is not verification that the payment is
+  genuine or will clear.
+
+### Implementation links
+
+- Issue #965, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- ADR 0063 Amendments (2026-08-31):
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`
+- Planning doc: `PHASE_204_PLAN.md`
+
+### Next eligible phase
+
+None claimed by this phase's own scope. #1183 (Surebiz Wave 2) names the retention/purge policy
+(section 3.2 of the plan) as the natural follow-up issue for `pm` to shape and file.
+
 ## Phase 205 - Delivery Personnel Registry CRUD (#1080)
 
 ### Initiative and release
@@ -11723,7 +11857,6 @@ endpoint (`GET /pos/delivery-personnel`) and its frontend service wrapper
 (`fetchActiveDeliveryPersonnel`) already existed, unused. This phase adds the missing CRUD surface,
 an admin management panel, and a picker on the existing assignment control — all five checkboxes of
 #1080's stated scope.
-
 ### Status
 
 `completed` (implementation), `awaiting PR review/merge`. Branch
@@ -12021,3 +12154,141 @@ call; #1202/#1203 are new follow-up candidates from this phase's own planning, n
 Everything else in the affiliate backlog still needs a human scheduling/policy call (see Phase
 199's and Phase 206's own "Next eligible phase" sections for the fuller list, unchanged by this
 phase).
+
+## Phase 208 - Affiliate Lifetime Earnings Cap (#449)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements the "earnings ceiling" half of #449 ("Affiliate
+earnings caps and milestone bonuses") — a merchant-margin protection that stops commission accrual
+once an affiliate's lifetime earnings hit a configured limit. The "milestone bonuses" half of #449's
+title (a merchant-pays-DGFY-to-unlock-an-additional-affiliate-allocation concept, per #449's own
+2026-08-14 correction note) is out of scope here and tracked as a separate child of #446.
+
+### Objective and scope
+
+Add a configurable lifetime affiliate earnings cap, tenant-wide by default with a nullable
+per-enrollment override, enforced at accrual time in `affiliateCommissionAccrual.js`. Explicitly out
+of scope and not built: #1206 (campaign/auto-expiry) and the Phase 2 volume tiers
+(`docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md` A4-A6).
+
+Four judgment calls #449's own decision comment left open were resolved during planning (Pat
+confirmed all four before implementation, recorded on #449):
+
+- **A1 (end-date semantics)** — once a cap's `earnings_cap_active_until` passes, the **cap** stops
+  applying; accrual continues **uncapped** from then on, rather than accrual halting. Textually
+  grounded in #449's and #1206's own framing of the end date as bounding the cap config itself, not
+  a program/enrollment expiry (#1206's separate, explicitly out-of-scope shape). This is the one
+  genuinely arguable call and carries a real product footgun — a merchant who sets an end date and
+  forgets about it gets unlimited commission afterward. Two mitigations ship in this phase, not as
+  optional extras: a read-only `earnings_cap_expired: true` flag on the affiliates list response,
+  and a structured `logger.info` on the first accrual that runs uncapped because the cap expired.
+- **A2 (full skip, not partial fill)** — a sale that would cross the cap accrues nothing, not a
+  clipped partial amount. Grounded in a real invariant (`amount ≡ round(base × rate / 10000)` must
+  hold on every commission row) rather than preference; the accepted consequence is that an
+  affiliate stops slightly *under* their cap, which is the conservative direction for a
+  merchant-margin lever.
+- **A3 (which statuses count)** — `pending` + `earned` + `paid` count toward the running total;
+  `reversed` does not. A `pending` order that later reverses temporarily consumes headroom and then
+  releases it automatically, since the total is derived rather than a counter.
+- **A4 (no per-enrollment exemption)** — there is no sentinel value meaning "this affiliate is
+  exempt from the tenant cap" (NULL on the enrollment means *inherit*, not *exempt*). Accepted
+  limitation; the workaround is an absurdly-high per-enrollment cap. A real exemption would need a
+  third nullable boolean column, filed separately if ever needed.
+
+### Status
+
+`completed` (2026-08-30). PR #1209 opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on Phase 198 (#1177, the derived-count precedent this phase's design explicitly follows —
+`countConsumedSlots`) and the Phase 1 affiliate pricing rule engine (commission_type/rate resolution
+ladder this phase mirrors for cap resolution). Independent of Phase 207 (a different code path —
+enrollment status transitions, not commission accrual).
+
+### Acceptance and validation evidence
+
+- [x] Landlord migration `20260831000001-add-affiliate-earnings-cap.cjs` adds
+      `max_lifetime_earnings_centavos` + `earnings_cap_active_until` to both
+      `tenant_affiliate_settings` (tenant-wide default) and `dgfy_affiliate_enrollments`
+      (per-enrollment override) — `NULL` means uncapped/inherit, so every existing tenant and
+      enrollment resolves identically to today's behavior. No index added — the existing
+      `idx_dgfy_affiliate_commissions_enrollment_status` already bounds the cap's `SUM` query to one
+      affiliate's own rows.
+- [x] The running lifetime total is **derived**, never a counter column — `sumLifetimeCommissionCentavos`
+      sums `dgfy_affiliate_commissions` live, matching every other affiliate money surface in this
+      codebase (`getEarningsSummary`) and Phase 198's own live-count precedent. **Zero added queries
+      for any tenant that hasn't configured a cap** — `resolveEarningsCap` early-returns `null`
+      before any `SUM` is issued (implemented as an early return, not "sum first, compare second").
+- [x] `resolveEarningsCap` resolves the applicable cap as a PAIR (cap + its own end date) — an
+      enrollment-level cap brings its own end date, never the tenant's, so an override can never
+      silently inherit an unrelated tenant expiry date.
+- [x] `evaluateEarningsCap` wired into both `accrueEarnedForInStoreSale` and
+      `accruePendingForOnlineOrder`: a crossing sale is fully skipped (returns `null`, matching every
+      other skip path in the module); attribution is still recorded before the cap check runs — a
+      capped referral still occurred and should still be visible to the merchant, unlike the
+      self-referral guard directly above it, which returns before attribution because no legitimate
+      referral occurred at all.
+- [x] Idempotency preserved: the SUM takes `excludeOrderReference` so a retried accrual for an order
+      that already landed exactly at the cap compares the same numbers as the original call and
+      falls through to the existing `findOrCreate`, returning the existing row rather than `null`.
+- [x] `buildUpdateAffiliateSettingsUseCase` / `buildUpdateAffiliateEnrollmentUseCase` accept both new
+      fields (`undefined` untouched, `null`/`''` clears/inherits, an invalid date rejected 422). §2.3
+      guard: an end date with no cap to attach to — checked against the PATCH-merged state, not the
+      payload alone — is rejected 422 `EARNINGS_CAP_DATE_WITHOUT_CAP`, mirroring Phase 199's D7
+      precedent for the identical failure shape.
+- [x] `buildListAffiliatesUseCase` surfaces a read-only `earnings_cap` object per affiliate
+      (`cap_centavos`, `cap_source`, `active_until`, `expired`, `lifetime_earned_centavos`,
+      `remaining_before_cap`) — mirrors Phase 198's read-only `slots_used`/`slots_max`. Settings
+      fetched once outside the per-enrollment map, not per row. **No frontend change** — no
+      `packages/web-core`/app file touched; a cap editor UI is a separate, unscoped ask.
+- [x] **Compliance-declaration-free by construction** — every changed file is under
+      `apps/dgfy-api/src/modules/dgfy/**`, `apps/dgfy-api/src/models/Landlord/**`, or
+      `apps/dgfy-migration-runner/migrations/**`, none of which match any rule in
+      `COMPLIANCE_SENSITIVE_RULES`. Verified, not assumed: `npm run check:compliance` → "No
+      compliance-sensitive changes detected."
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js`/`.cjs` file (no build
+      step exists for `apps/dgfy-api`); 93/93 tests passing across four suites — the new
+      `affiliateEarningsCap.unit.test.js` (T1-T13 from the plan plus companion cases),
+      `dgfyAffiliateEnrollmentUseCases.unit.test.js` (extended with the enrollment cap-field cases),
+      and — run unchanged to confirm no disturbance — `affiliateCommissionAccrual.unit.test.js`
+      (byte-identical, no edit needed) and `dgfyAffiliatePriceRuleUseCases.unit.test.js`. Also ran
+      `npm run check:architecture` (guardrails + controller boundaries, both OK) as a cheap extra
+      check beyond the plan's own required Tier 0 list.
+- [x] Linked `Closes #449` — #449's title still reads "milestone bonuses," but that half is stale
+      relative to #449's own 2026-08-14 correction note, which reassigns it as a separate,
+      already-filed issue, #488 ("Affiliate allocation entitlement and pricing"), not merely "a
+      child of #446" left to be created later. #449's own three named open questions (cap period,
+      cap vs. tier, at-cap behavior) are all resolved and implemented by this phase, so nothing of
+      #449's actual scope remains open.
+
+### Known limitations, not fixed here
+
+- **A1's footgun** — an expired cap silently turns protection off (accrual becomes uncapped), which
+  is the opposite of what "cap" intuitively suggests. Mitigated (not eliminated) by the
+  `earnings_cap_expired` read-only flag and the structured `logger.info`, per above.
+- **A4** — no per-enrollment "exempt from the tenant cap" sentinel; see above.
+- **Concurrency (§3.5)** — two simultaneous accruals for the same enrollment can both read an
+  under-cap total and both write, overshooting the cap by at most one concurrent sale's commission.
+  No lock was added deliberately: accrual is post-commit, best-effort, transaction-free, and must
+  never block or fail the sale (Phase 198's `SELECT ... FOR UPDATE` approach does not apply to this
+  path). If exactness is ever required, it is a follow-up issue, not a silent addition here.
+- **No frontend cap editor** — the API carries the data (`earnings_cap` on the list response); an
+  owner-facing editor UI is a separate, unscoped ask.
+
+### Implementation links
+
+- Issue #449 (Closes — see above)
+- PR #1209: https://github.com/Sieitzz/dgfy-platform/pull/1209
+- No compliance declaration (see Acceptance and validation evidence)
+- No ADR — this adds a configurable field within the existing affiliate commission model; it neither
+  contradicts nor amends ADR 0036 or ADR 0050, and #449's decisions are recorded on the issue itself.
+
+### Next eligible phase
+
+None allocated by this phase. The "milestone bonuses" half of #449 (merchant-pays-to-unlock-an-
+affiliate-allocation) remains unscheduled as a separate child of #446. #1206 (campaign/auto-expiry
+end-date model) and the Phase 2 volume tiers remain explicitly out of scope and unscheduled. If Pat
+wants A1's semantics reversed (end date halts accrual instead of expiring the cap), that is a small,
+named flip (§4 of the plan) rather than a new design.

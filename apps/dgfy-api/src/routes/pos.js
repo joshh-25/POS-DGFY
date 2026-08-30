@@ -7,7 +7,7 @@ import { authenticate, checkAnyPermission, checkPermission, requirePremium, requ
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
+import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validateCreatePosParkedSale,
@@ -50,6 +50,7 @@ import {
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
     validateRecordOrderBalancePayment,
+    validatePosBalancePaymentProofParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -270,6 +271,30 @@ router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS
 // of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2
 // [binding], carried forward by ADR 0070: staff-recorded, never a second automatic charge).
 router.post('/orders/:id/record-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateRecordOrderBalancePayment, posController.requireActiveOperatorForMutation, posController.recordOrderBalancePayment);
+// Phase 204 (#965): proof-of-payment image for an already-recorded balance settlement. Same
+// authority tier as record-payment above (TRANSACT_POS + pairing + active-operator) -- attaching
+// evidence to a payment is the same class of action as recording it. Pat's decision on #965: this
+// is financial-evidence PII and must never be served through a public/static path -- see the authed
+// streaming GET immediately below, and PHASE_204_PLAN.md section 4.
+router.post(
+    '/orders/:id/balance-payments/:payment_id/proof',
+    checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS),
+    posController.requirePairedTerminal,
+    validatePosBalancePaymentProofParams,
+    preserveTenantContext(posPaymentProofUpload.single('proof')),
+    posController.requireActiveOperatorForMutation,
+    posController.uploadOrderBalancePaymentProof
+);
+// VIEW_POS, not TRANSACT_POS -- reading evidence is a read-tier action; a manager reviewing a
+// settlement should not need transact rights. No requirePairedTerminal -- pairing is a mutation
+// control on this router, and requiring it here would block back-office review from a
+// non-terminal browser for no security gain (tenant scope + permission already bound the read).
+router.get(
+    '/orders/:id/balance-payments/:payment_id/proof',
+    checkPermission(PERMISSIONS.POS.actions.VIEW_POS),
+    validatePosBalancePaymentProofParams,
+    posController.getOrderBalancePaymentProof
+);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);

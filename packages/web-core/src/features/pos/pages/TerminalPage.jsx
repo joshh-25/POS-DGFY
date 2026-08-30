@@ -27,6 +27,8 @@ import {
   collectCashPickupOrder,
   collectCashDeliveryOrder,
   recordOrderBalancePayment,
+  uploadOrderBalancePaymentProof,
+  fetchOrderBalancePaymentProof,
   assignDeliveryPersonnel,
   fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
@@ -726,6 +728,12 @@ export default function TerminalPage() {
   const [balanceSettlementReference, setBalanceSettlementReference] = useState('');
   const [balanceSettlementConfirmed, setBalanceSettlementConfirmed] = useState(false);
   const [balanceSettlementSaving, setBalanceSettlementSaving] = useState(false);
+  // Phase 204 (#965): proof-of-payment capture state, reset alongside the rest of the dialog's
+  // state in handleOpenBalanceSettlement below so a previous order's file/error never carries
+  // over into a new settlement.
+  const [balanceProofFile, setBalanceProofFile] = useState(null);
+  const [balanceProofUploading, setBalanceProofUploading] = useState(false);
+  const [balanceProofError, setBalanceProofError] = useState('');
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
@@ -5612,6 +5620,9 @@ export default function TerminalPage() {
     setBalanceSettlementCashInput(order?.balance_due == null ? '' : String(order.balance_due));
     setBalanceSettlementReference('');
     setBalanceSettlementConfirmed(false);
+    setBalanceProofFile(null);
+    setBalanceProofUploading(false);
+    setBalanceProofError('');
   };
 
   const handleSettleBalance = async () => {
@@ -5641,7 +5652,7 @@ export default function TerminalPage() {
     setBalanceSettlementSaving(true);
     try {
       const reference = String(balanceSettlementReference || '').trim();
-      await recordOrderBalancePayment(orderId, {
+      const settlement = await recordOrderBalancePayment(orderId, {
         terminal_id: terminalId,
         payment_method: balanceSettlementMethod,
         ...(isCashSettlement
@@ -5650,6 +5661,23 @@ export default function TerminalPage() {
         ...(reference ? { payment_reference: reference } : {}),
         idempotency_key: createIdempotencyKey('pos-order-balance')
       });
+      // Phase 204 (#965): sequenced strictly AFTER the settlement resolves, and only if staff
+      // chose to attach a file. The balance is already settled and correct without it -- a
+      // proof-upload failure is a warning toast, never a thrown error and never a rollback, so it
+      // cannot threaten the settlement's own idempotent replay (posUseCases.js hashPayload).
+      const settledPaymentId = settlement?.settlement?.pos_order_payment_id;
+      if (balanceProofFile && settledPaymentId) {
+        setBalanceProofUploading(true);
+        try {
+          await uploadOrderBalancePaymentProof(orderId, settledPaymentId, balanceProofFile, { terminal_id: terminalId });
+        } catch (proofError) {
+          const message = proofError?.response?.data?.message || 'Balance recorded, but the proof photo could not be uploaded.';
+          setBalanceProofError(message);
+          toast.message(message);
+        } finally {
+          setBalanceProofUploading(false);
+        }
+      }
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });
       } catch (printError) {
@@ -5663,6 +5691,34 @@ export default function TerminalPage() {
     } finally {
       setBalanceSettlementSaving(false);
     }
+  };
+
+  // Phase 204 (#965): the "View proof" affordance -- the smallest place the settled payment is
+  // already displayed (the incoming-orders queue card), not a full evidence-browser UI. The POS
+  // app authenticates with a Bearer header, not a cookie, so a plain <img src> would 401; this
+  // fetches the blob and hands the viewer an object URL, revoked on close.
+  const [balanceProofViewerUrl, setBalanceProofViewerUrl] = useState(null);
+  const [balanceProofViewerLoading, setBalanceProofViewerLoading] = useState(false);
+  const handleViewBalancePaymentProof = async (order) => {
+    const orderId = Number.parseInt(order?.pos_transaction_id, 10);
+    const paymentId = Number.parseInt(order?.balance_payment_id, 10);
+    if (!Number.isInteger(orderId) || !Number.isInteger(paymentId)) {
+      toast.error('No proof of payment is available for this order.');
+      return;
+    }
+    setBalanceProofViewerLoading(true);
+    try {
+      const url = await fetchOrderBalancePaymentProof(orderId, paymentId);
+      setBalanceProofViewerUrl(url);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to load the proof of payment for this order.');
+    } finally {
+      setBalanceProofViewerLoading(false);
+    }
+  };
+  const handleCloseBalancePaymentProofViewer = () => {
+    if (balanceProofViewerUrl) URL.revokeObjectURL(balanceProofViewerUrl);
+    setBalanceProofViewerUrl(null);
   };
 
   const handleOpenIncomingOrderReceipt = async (posTransactionId, {
@@ -6284,7 +6340,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -6299,6 +6355,11 @@ function PosRestorationLoadingScreen() {
               balanceSettlementOrder,
               balanceSettlementReference,
               balanceSettlementSaving,
+              balanceProofFile,
+              balanceProofUploading,
+              balanceProofError,
+              balanceProofViewerUrl,
+              balanceProofViewerLoading,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -6374,6 +6435,8 @@ function PosRestorationLoadingScreen() {
               setBalanceSettlementMethod,
               setBalanceSettlementOrder,
               setBalanceSettlementReference,
+              setBalanceProofFile,
+              handleCloseBalancePaymentProofViewer,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -6547,6 +6610,7 @@ function PosRestorationLoadingScreen() {
           onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+          handleViewBalancePaymentProof={handleViewBalancePaymentProof}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}

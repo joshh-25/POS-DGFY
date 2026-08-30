@@ -399,6 +399,32 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         is_publicly_listed: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
         })
+    }),
+    // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on
+    // a merchant-owned 'balance' settlement. Kept in lockstep with migration 20260831000001 and
+    // with REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments below -- see that migration's own
+    // header comment for why this table needs the fan-out/repair pair at all (it is a tenant
+    // table, not a landlord one). Never NOT NULL / never a DEFAULT -- every column here is
+    // optional by design (attach-once, ADR 0063 Amendments 2026-08-31).
+    pos_order_payments: Object.freeze({
+        proof_file_path: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_path` VARCHAR(255) NULL"
+        }),
+        proof_mime_type: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_mime_type` VARCHAR(60) NULL"
+        }),
+        proof_file_size_bytes: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_size_bytes` INT NULL"
+        }),
+        proof_sha256: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_sha256` CHAR(64) NULL"
+        }),
+        proof_attached_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_at` DATETIME NULL"
+        }),
+        proof_attached_by: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_by` INT NULL, ADD CONSTRAINT `fk_pos_order_payments_proof_attached_by` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        })
     })
 });
 
@@ -1484,6 +1510,14 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `related_pos_order_payment_id` int DEFAULT NULL,\n"
             + "  `recorded_by` int DEFAULT NULL,\n"
             + "  `confirmed_at` datetime DEFAULT NULL,\n"
+            // Phase 204 (#965): optional proof-of-payment image columns. Kept in lockstep with
+            // migration 20260831000001-add-pos-order-payment-proof-columns.cjs.
+            + "  `proof_file_path` varchar(255) DEFAULT NULL,\n"
+            + "  `proof_mime_type` varchar(60) DEFAULT NULL,\n"
+            + "  `proof_file_size_bytes` int DEFAULT NULL,\n"
+            + "  `proof_sha256` char(64) DEFAULT NULL,\n"
+            + "  `proof_attached_at` datetime DEFAULT NULL,\n"
+            + "  `proof_attached_by` int DEFAULT NULL,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`pos_order_payment_id`),\n"
@@ -1494,9 +1528,11 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_order_payments_created_at` (`created_at`),\n"
             + "  KEY `related_pos_order_payment_id` (`related_pos_order_payment_id`),\n"
             + "  KEY `recorded_by` (`recorded_by`),\n"
+            + "  KEY `proof_attached_by` (`proof_attached_by`),\n"
             + "  CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
             + "  CONSTRAINT `pos_order_payments_ibfk_2` FOREIGN KEY (`related_pos_order_payment_id`) REFERENCES `pos_order_payments` (`pos_order_payment_id`) ON DELETE SET NULL,\n"
-            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_4` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // Online inventory reservations are tenant-local and must be repaired for tenants that
