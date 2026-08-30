@@ -11447,7 +11447,7 @@ store that turns cash off today is left with QRPh as its only online rail until 
 ### Implementation links
 
 - Issue #626 (Refs, not Closes — #626's card-only half stays open, gated on #477), Refs #1183
-- PR: opened against `develop`, base branch `feature/626-per-store-cash-payment-toggle`
+- PR #1194: `feature/626-per-store-cash-payment-toggle` -> `develop`
 
 ### Next eligible phase
 
