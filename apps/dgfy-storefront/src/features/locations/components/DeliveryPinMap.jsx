@@ -109,9 +109,17 @@ export function DeliveryPinMap({
       scheduleMapResize('load');
     });
     mapRef.current = map;
-    setCanvasContainerEl(map.getCanvasContainer?.() || null);
+    // react-hooks/set-state-in-effect: publish the canvas container through an
+    // async callback rather than synchronously during the effect body, matching
+    // the setMapUnavailable pattern above -- the container already exists
+    // synchronously here, so a setTimeout(0) hands the portal target back on the
+    // next tick without waiting on MapLibre's own 'load' event.
+    const publishCanvasContainerTimer = window.setTimeout(() => {
+      setCanvasContainerEl(map.getCanvasContainer?.() || null);
+    }, 0);
     const cleanupInitialResize = scheduleMapResize('init');
     return () => {
+      window.clearTimeout(publishCanvasContainerTimer);
       cleanupInitialResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
