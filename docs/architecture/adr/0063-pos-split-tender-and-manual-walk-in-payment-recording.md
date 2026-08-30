@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-13
-last_reviewed: 2026-08-13
+last_reviewed: 2026-08-31
 review_by: 2027-02-13
 applies_to: architecture_decision
 topic: pos_split_tender_collection
@@ -120,11 +120,29 @@ tenant-local manager review record:
    receipt, inventory movement, fiscal document, settlement row, or provider
    state. It is operational review evidence only. `[binding]`
 
+### 2026-08-31: Proof-of-payment image on a balance settlement (#965, Phase 204)
+
+Clause 7 above is `[default]`; per ADR 0039's tier rules, the cheapest correct route for extending
+it is this dated Amendments block in the same PR, not a new superseding ADR. Confirmed with Pat
+before landing (#965 explicitly asked for that confirmation given clause 3 below touches a
+`[binding]`-adjacent guarantee even though its own text is new).
+
+1. A proof-of-payment image may be attached to a recorded merchant-owned settlement. It **extends**
+   the clause-7 audit aid; it does **not** become independent verification. `[default]`
+2. Clause 5 `[binding]` is **unweakened**: an attached image is cashier-captured operational
+   evidence and must never be presented, in UI copy or in any serialized field, as DGFY having
+   verified the payment against a provider. `[binding]` — restated, not amended.
+3. Proof imagery is served only through an authenticated, tenant-scoped route; no public or static
+   path may serve it. `[binding]`
+4. Attach-once in this phase; replacement/deletion is not authorized and is deferred. `[default]`
+
 ## References
 
 - ADR 0077 (POS Cheque Tender Method) — scoped-supersedes clause 4 only, replacing the V1
   five-tender enumeration with a six-tender set adding `cheque`. Clauses 1, 2, 3, and 5 through 14
   are unaffected.
+- `docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md` — Phase 204
+  (#965), the proof-of-payment image amendment above.
 - `docs/START_HERE.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`

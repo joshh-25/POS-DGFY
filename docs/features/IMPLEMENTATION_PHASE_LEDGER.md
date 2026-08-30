@@ -11702,6 +11702,141 @@ Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard c
 `BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
 surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
 
+## Phase 204 - Settle Balance: Proof-of-Payment Image Capture and Authed Serving (#965)
+
+### Initiative and release
+
+Surebiz Wave 2 (epic #1183). Extends Phase 148 (#825, balance settlement) and Phase 202 (#1085,
+cheque tender), which flagged this phase as a hard collision on `BalanceSettlementDialog.jsx`,
+`posUseCases.js`, and the `pos_order_payments` migration surface — Phase 202's ENUM migration
+landed first and cleanly, as required, before this phase began. A prior planning pass
+(`PHASE_204_PLAN.md`) re-verified every #965 file/line reference against the live `origin/develop`
+tree post-Phase-202 and corrected several stale claims inline before implementation started.
+
+### Objective and scope
+
+Lets POS staff attach a proof-of-payment photo (GCash/cheque screenshot, etc.) alongside the
+existing optional reference field on a non-cash Settle Balance, and serves it back only through an
+authenticated, tenant-scoped streaming route — never a public/static `/uploads` path, per Pat's
+resolved decision on #965 (financial-evidence PII; bank/cheque details may be visible, especially
+after Phase 202). Attach-once in this phase: a second attach on an already-proofed payment fails
+closed with `409`. No replace/delete path, no retention/purge job, and no split-tender or
+Collect-Cash proof affordance — all named explicitly as out-of-scope follow-ups, not silently
+dropped.
+
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/965-balance-payment-proof-image`, cut off fresh `origin/develop`. PR opened, `Refs #965`
+(deployed verification still needed — never `Closes`).
+
+### Dependencies
+
+Phase 148 (#825, Settle Balance itself) and Phase 202 (#1085, cheque tender) — both merged. ADR
+0063 (POS Split Tender and Manual Walk-in Payment Recording), also merged.
+
+### Acceptance and validation evidence
+
+- [x] Migration reviewed by Pat at Checkpoint A (implement/SKILL.md's migration checkpoint) before
+      being staged — full `up()`/`down()` body shown via the coordinator, reply received before
+      `git add`, same discipline Phase 202 used.
+- [x] Six nullable, additive columns added to `pos_order_payments`
+      (`apps/dgfy-migration-runner/migrations/20260831000001-add-pos-order-payment-proof-columns.cjs`):
+      `proof_file_path`, `proof_mime_type`, `proof_file_size_bytes`, `proof_sha256`,
+      `proof_attached_at`, `proof_attached_by` (with a `proof_attached_by` FK to
+      `users(user_id) ON DELETE SET NULL`). Fanned out across every active tenant database, guarded
+      by `information_schema` `tableExists`/`columnExists`/`foreignKeyExists` checks — idempotent
+      on a re-run and a no-op for a tenant missing the table.
+- [x] `apps/dgfy-api/src/models/PosOrderPayment.js` widened with the six attributes in the same
+      commit as the migration.
+- [x] `apps/dgfy-api/scripts/sync-tenant-schemas.js` kept in lockstep, both halves:
+      `REQUIRED_TENANT_SCHEMA_COLUMNS.pos_order_payments` (new key, six `ALTER TABLE` repair
+      entries) and `REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments.sql` (the `CREATE TABLE`
+      string gains the six columns plus the FK/index) — a tenant that misses the migration or is
+      restored from an older snapshot self-repairs at API boot; a brand-new tenant is created
+      correct.
+- [x] New private storage adapter `posPaymentProofStorage.js` — `storage/pos-payment-proofs/`, NOT
+      `uploads/`. Normalizes with `sharp` (EXIF-rotate then discard orientation, no
+      `.withMetadata()`, single capped-dimension WebP variant) rather than reusing
+      `storeOptimizedImageAsset`, which hardcodes public `/uploads/...` URLs.
+- [x] `POST /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `TRANSACT_POS` + paired
+      terminal + active operator (same authority tier as `/record-payment`). New use case
+      `buildAttachOrderBalancePaymentProofUseCase`, deliberately separate from
+      `buildRecordOrderBalancePaymentUseCase` so `hashPayload`'s replay fingerprint stays untouched
+      by construction. Ownership check (`payment_id` must belong to this order and be `kind:
+      'balance'`) and attach-once `409` both enforced inside the transaction.
+- [x] `GET /api/v1/pos/orders/:id/balance-payments/:payment_id/proof` — `VIEW_POS`, no pairing
+      requirement. Streams (`createReadStream`, bounded memory) with
+      `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`,
+      `Content-Disposition: inline`, and `404` (never `403`) for both the no-proof and cross-order
+      cases — does not leak existence.
+- [x] `BalanceSettlementDialog.jsx`: "Attach proof (optional)" file input beside the existing
+      reference field, non-cash branch only, local preview via `URL.createObjectURL` revoked on
+      clear/unmount. Never added to `canSubmit`.
+- [x] `TerminalPage.jsx`: upload sequenced strictly after `recordOrderBalancePayment` resolves,
+      only if staff chose a file; a proof-upload failure is a warning toast, never a thrown error
+      or rollback. A minimal "View proof" viewer added to the incoming-orders queue card
+      (`has_payment_proof`, batched via a new `getBalancePaymentProofStatuses` repository method
+      mirroring `getReceiptPrintStatuses`'s shape) — fetch-blob-to-object-URL, since the POS app's
+      Bearer-header auth means a plain `<img src>` would 401.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`),
+      classification `major`, modeled on Phase 202's declaration. `npm run check:compliance`
+      confirmed to fail first (missing declaration), then pass once added.
+- [x] ADR 0063 Amendments block added (2026-08-31, clause 7 `[default]` extension; clause 5
+      `[binding]` restated, not amended) — the Amendments-block route confirmed with Pat before
+      landing, per #965's own request, given the new clause 3 touches a `[binding]`-adjacent
+      guarantee. `npm run check:adr --strict` passes with the amendment live.
+- [x] Tests: new `posBalancePaymentProof.usecase.test.js` (happy path; magic-byte rejection with
+      temp-file unlink confirmed; cross-order ownership `404`; attach-once `409`; a rollback case
+      confirming the repository failure removes the orphaned stored file; the authed-read use
+      case's `404`-not-`403` and streaming cases); new
+      `balanceSettlementProof.behavior.test.jsx` (capture affordance renders only on the non-cash
+      branch; audit-aid copy present; choosing/removing a file never gates submit; a passed-in
+      proof error surfaces to the cashier). `posOrderBalanceSettlement.usecase.test.js` left
+      unmodified and still green — proof #965 verify box 1 that `hashPayload`/replay stay
+      untouched.
+- [x] `npm run build:pos` (real Vite build of the POS app rendering the widened dialog) —
+      succeeded.
+- [x] `node --check` on every changed `apps/dgfy-api` `.js`/`.cjs` file (including the new
+      migration) — no real build step exists on that app.
+- [x] `npm run check:architecture` — passed (50 modules / 521 files; 90 controller files, no
+      unauthorized model imports).
+
+### Known residual gaps, accepted rather than solved
+
+- **No retention/purge policy** — images persist for the life of the tenant's volume. Handed to
+  `pm` as a follow-up issue per the plan, not silently omitted.
+- **No replace/delete path for an attached proof** — attach-once by design (ADR 0063 clause 10
+  `[binding]`'s append-only posture); deferred, not solved here.
+- **No split-tender or Collect-Cash proof affordance, and no full evidence-browser UI** — the
+  "View proof" control is scoped to the single smallest place the settled payment is already
+  displayed (the incoming-orders queue card), per the plan.
+- **Local jest run not exercised in this worktree** (`apps/dgfy-api` has no installed
+  `node_modules`) — `node --check` (Tier 0) and `npm run build:pos` were run; the new use-case test
+  file was written and syntax-checked but not executed against a live jest runner here. Flagged
+  explicitly for the reviewer/CI rather than claimed as run.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+- **Attestation remains trust, by design** — inherited unchanged from ADR 0063 clause 5. A photo is
+  evidence the store captured something at the counter; it is not verification that the payment is
+  genuine or will clear.
+
+### Implementation links
+
+- Issue #965, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- ADR 0063 Amendments (2026-08-31):
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md`
+- Planning doc: `PHASE_204_PLAN.md`
+
+### Next eligible phase
+
+None claimed by this phase's own scope. #1183 (Surebiz Wave 2) names the retention/purge policy
+(section 3.2 of the plan) as the natural follow-up issue for `pm` to shape and file.
+
 ## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
 
 ### Initiative and release

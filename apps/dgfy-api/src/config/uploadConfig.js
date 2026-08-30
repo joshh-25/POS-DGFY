@@ -174,6 +174,16 @@ export const menuImportBatchUpload = multer({
     }
 });
 
+// Phase 204 (#965): proof-of-payment image on a balance settlement. 15MB headroom for an
+// unedited phone-camera JPEG of a GCash/cheque screen -- generous relative to the other
+// single-image uploads above because this file is normalized (single WebP variant) rather than
+// compressed into a quality ladder; see posPaymentProofStorage.js.
+export const PAYMENT_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+export const posPaymentProofUpload = buildStrictImageUpload({
+    maxBytes: PAYMENT_PROOF_SOURCE_MAX_BYTES,
+    maxFiles: 1
+});
+
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: STOREFRONT_ASSET_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });

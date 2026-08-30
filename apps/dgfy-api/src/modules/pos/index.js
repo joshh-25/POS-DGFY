@@ -8,6 +8,7 @@ export {
     serializePosTransactionOperatorAttribution
 } from './serializers/posCashierAttendanceSerializers.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
+import { posPaymentProofStorage } from './repositories/posPaymentProofStorage.js';
 import {
     inventoryStockCommandService,
     inventoryReservationService,
@@ -77,6 +78,8 @@ import {
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
     buildRecordOrderBalancePaymentUseCase,
+    buildAttachOrderBalancePaymentProofUseCase,
+    buildGetOrderBalancePaymentProofUseCase,
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
@@ -282,6 +285,14 @@ export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCas
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
 export const recordOrderBalancePaymentUseCase = buildRecordOrderBalancePaymentUseCase({ posRepository });
+export const attachOrderBalancePaymentProofUseCase = buildAttachOrderBalancePaymentProofUseCase({
+    posRepository,
+    proofStorage: posPaymentProofStorage
+});
+export const getOrderBalancePaymentProofUseCase = buildGetOrderBalancePaymentProofUseCase({
+    posRepository,
+    proofStorage: posPaymentProofStorage
+});
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({

@@ -479,6 +479,13 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+// Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
+// GET has no body at all.
+const balancePaymentProofParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    payment_id: Joi.number().integer().positive().required()
+});
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -1194,6 +1201,7 @@ export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPers
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
+export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');

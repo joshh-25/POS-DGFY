@@ -88,6 +88,8 @@ Thumbs.db
 backend/storage/temp-ai-exports/
 apps/dgfy-api/storage/temp-ai-exports/
 backend/storage/platform-invoices/
+# Phase 204 (#965): financial-evidence PII (proof-of-payment images) -- never git history.
+apps/dgfy-api/storage/pos-payment-proofs/
 
 # Local compatibility-backend runtime media. Uploaded tenant/customer files
 # are environment data and must never become release source.

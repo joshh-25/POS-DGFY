@@ -131,6 +131,10 @@ const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
 const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+// Phase 204 (#965): mirrors uploadConfig.js's PAYMENT_PROOF_SOURCE_MAX_BYTES -- kept as a local
+// constant here rather than an import, matching this file's own convention for the catalog-image
+// limit above.
+const BALANCE_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
@@ -8492,15 +8496,24 @@ export const buildListIncomingOnlineOrdersUseCase = ({
             const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
                 ? await posRepository.getReceiptPrintStatuses(orders.map((order) => order?.pos_transaction_id))
                 : {};
+            // Phase 204 (#965): "View proof" affordance data for the queue card. Batched the same
+            // way as printStatuses above -- one query for the whole page, not N+1 per order.
+            const proofStatuses = typeof posRepository?.getBalancePaymentProofStatuses === 'function'
+                ? await posRepository.getBalancePaymentProofStatuses(orders.map((order) => order?.pos_transaction_id))
+                : {};
             return ok({
                 orders: orders.map((order) => {
                     const serialized = toSerializable(order);
                     const status = printStatuses?.[serialized?.pos_transaction_id];
+                    const proofStatus = proofStatuses?.[serialized?.pos_transaction_id];
                     return {
                         ...serialized,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
-                        receipt_print_failure_reason: status?.reason_code || null
+                        receipt_print_failure_reason: status?.reason_code || null,
+                        // Never proof_file_path itself -- a storage key is not a URL (section 5.4).
+                        has_payment_proof: proofStatus?.has_payment_proof === true,
+                        balance_payment_id: proofStatus?.pos_order_payment_id || null
                     };
                 })
             });
@@ -9162,6 +9175,193 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
         } catch (error) {
             if (transaction && !transaction.finished) await transaction.rollback();
             return fail(mapPosUseCaseError(error, 'Failed to record the balance payment for this order'));
+        }
+    };
+};
+
+// Phase 204 (#965): attaches a proof-of-payment image to an already-recorded 'balance' ledger
+// row. Deliberately a SEPARATE route/use case from buildRecordOrderBalancePaymentUseCase above,
+// not a fold-in -- so hashPayload's replay fingerprint (POS_OPERATION_KEYS.ORDER_BALANCE_
+// SETTLEMENT) stays untouched by construction, and so a binary payload never has to travel
+// through JSON body validation. Attach-once: a second attempt on a payment that already has a
+// proof fails closed with 409 rather than silently replacing evidence (ADR 0063 clause 10
+// [binding]'s append-only posture, restated by the Amendments block this phase adds).
+export const buildAttachOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId, file, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        const cashierId = parsePositiveInt(user?.user_id);
+
+        const cleanupTempFile = async () => {
+            if (file?.path) {
+                try {
+                    await fs.unlink(file.path);
+                } catch {
+                    // ignore cleanup errors for temp uploads
+                }
+            }
+        };
+
+        if (!orderId || !normalizedPaymentId || !cashierId) {
+            await cleanupTempFile();
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order, payment, and authenticated user are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!file) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A proof image file is required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        let storedProof = null;
+        try {
+            const fileValidation = await validateImageUploadFile({
+                file,
+                maxBytes: BALANCE_PROOF_SOURCE_MAX_BYTES
+            });
+            if (!fileValidation.ok) {
+                logger.warn('[PosUseCases] Rejected balance-payment proof upload due to file validation failure', {
+                    event_type: 'security_signal',
+                    signal_code: 'balance_payment_proof_upload_rejected',
+                    reason: fileValidation.reason,
+                    reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null
+                });
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only a valid image file may be attached as proof of payment.',
+                    { statusCode: 422, details: { reason_code: 'BALANCE_PROOF_IMAGE_REJECTED', reason: fileValidation.reason } }
+                );
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+
+            // The ownership check: a payment_id from another order (or of any kind other than
+            // 'balance') simply does not resolve here -- stops a caller attaching evidence to
+            // another order's ledger row.
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId, { transaction, lock: true });
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+            ) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Balance payment not found for this order.', { statusCode: 404 });
+            }
+
+            if (paymentEntry.proof_file_path) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'A proof image has already been attached to this payment.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_PROOF_ALREADY_ATTACHED' } }
+                );
+            }
+
+            storedProof = await proofStorage.store({ orderId, tempPath: file.path });
+
+            const attachedAt = new Date();
+            const updated = await posRepository.updateOrderPaymentEntryProof(normalizedPaymentId, {
+                proof_file_path: storedProof.storage_key,
+                proof_mime_type: storedProof.mime_type,
+                proof_file_size_bytes: storedProof.size_bytes,
+                proof_sha256: storedProof.sha256,
+                proof_attached_at: attachedAt,
+                proof_attached_by: cashierId
+            }, { transaction });
+
+            // Never log the file bytes or a URL -- only the integrity fingerprint and size.
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'order_balance_payment_proof_attached',
+                    pos_order_payment_id: normalizedPaymentId,
+                    mime_type: storedProof.mime_type,
+                    size_bytes: storedProof.size_bytes,
+                    sha256: storedProof.sha256,
+                    attached_at: attachedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            await transaction.commit();
+            transaction = null;
+
+            return ok({
+                pos_order_payment_id: normalizedPaymentId,
+                has_payment_proof: true,
+                proof_mime_type: updated.proof_mime_type,
+                proof_file_size_bytes: updated.proof_file_size_bytes,
+                proof_attached_at: updated.proof_attached_at
+            });
+        } catch (error) {
+            // A rolled-back transaction must never orphan a PII file on disk.
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (storedProof) {
+                try {
+                    await proofStorage.remove(storedProof.storage_key);
+                } catch {
+                    // ignore cleanup errors for orphaned proof files
+                }
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to attach proof of payment for this balance settlement'));
+        } finally {
+            await cleanupTempFile();
+        }
+    };
+};
+
+// Phase 204 (#965): the authed-serving half. Tenant scoping is structural (dbStore, resolved by
+// tenantHandler before this ever runs) rather than a filter here -- see PHASE_204_PLAN.md
+// section 4. Returns 404, never 403, whether the row doesn't exist, belongs to another order, or
+// simply carries no proof -- the route must not leak which case it is.
+export const buildGetOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        if (!orderId || !normalizedPaymentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and payment id are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId);
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+                || !paymentEntry.proof_file_path
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'No proof of payment is available for this balance settlement.',
+                    { statusCode: 404 }
+                );
+            }
+
+            return ok({
+                mime_type: paymentEntry.proof_mime_type,
+                size_bytes: paymentEntry.proof_file_size_bytes,
+                stream: proofStorage.createReadStream(paymentEntry.proof_file_path)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read the proof of payment for this balance settlement'));
         }
     };
 };
