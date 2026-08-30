@@ -11480,6 +11480,158 @@ Per #446's own sequencing comment (2026-08-30), this order was stated in advance
 by anything found during execution. Separately, Phase 202 below (#1085, Surebiz Wave 1) is
 unrelated to this chain and was allocated its own number directly by #1183.
 
+## Phase 200 - Storefront Map Overlays: Claim Pinch Gestures (#475)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark at filing was 196; #1183 assigns this work
+number 200 directly (Wave 1 table). Serves #558's "select location" checkout step.
+
+### Objective and scope
+
+MapLibre GL JS v5 sets `touch-action: none` only on its own canvas container
+(`.maplibregl-map`). Every storefront map overlay is an absolutely-positioned **sibling** of that
+container with no `touch-action` of its own — `DeliveryPinMap`'s controls wrapper/pin chip/disabled
+scrim, `StoresMap`'s route chip, and `DiscoveryHeroMapStage`'s gradient scrim/stats-CTA bar/mobile
+control stack. A pinch starting on one of those chips falls through to the browser and zooms the
+*page* instead of the *map*, reported during the Aug-14 UI/UX review. Fix is scoped to claiming
+those pinch gestures via CSS, not to any behavioral/JSX change. Issue #475 pre-dates the apps-layout
+migration and cites stale `apps/dgfy-web/apps/store/src/...` paths; this phase targets the real
+paths under `apps/dgfy-storefront/`.
+
+### Status
+
+`completed` (2026-08-30). PR #1188 merged into `develop` as commit
+`e6680a5e69e3936b318fcd5e7205e2473c0c026f`.
+
+### Dependencies
+
+None. Parallel-safe with Phases 201/203 (disjoint files within `apps/dgfy-storefront`) per #1183's
+Wave 1 table.
+
+### Acceptance and validation evidence
+
+- [x] One CSS rule added to `apps/dgfy-storefront/src/index.css` (after the existing
+      `.maplibregl-popup { z-index: 80; }` block) claiming pinch gestures for `.maplibregl-map`
+      siblings, at two selector depths: direct siblings (`DeliveryPinMap`, `StoresMap`) and one
+      level up via a bounded `:has(> .maplibregl-map) ~ *` (`DiscoveryHeroMapStage`, whose overlays
+      are siblings of a wrapper around the MapLibre root, not of the root itself). Deliberately
+      bounded with `>` so it can never reach `body` and disable page scroll site-wide.
+- [x] `cooperativeGestures: true` considered and rejected — it relaxes the canvas to
+      `touch-action: pan-x pan-y`, handing *more* gestures to the browser, the opposite of what's
+      needed.
+- [x] No JSX behavior changed; `DeliveryPinMap.jsx`, `StoresMap.jsx`, and
+      `DiscoveryHeroMapStage.jsx` were touched only to support the CSS selector structure and the
+      added test coverage below, not to change rendering behavior.
+- [x] New Playwright suite `apps/dgfy-storefront/tests/e2e/map-pinch-gesture-touch-bridge.spec.js`
+      (own config `playwright.pinch-gesture.config.js`, `npm run test:e2e:pinch-gesture`) —
+      self-contained: serves `maplibre-gl` straight out of `node_modules` with a minimal style with
+      no external sources, needing neither the storefront dev server nor `dgfy-api`, and drives a
+      real two-finger CDP touch dispatch against the CSS rule.
+      `src/__tests__/discoveryFlow.integration.test.jsx` extended with a real DOM node under test
+      for the same coverage at the integration-test layer.
+- [x] Tier 0 (required): `npm run build:store` — exit 0, Vite built cleanly with no CSS parse error
+      (2428 modules transformed).
+- [x] `npm run check:compliance` — passed, no compliance-sensitive changes detected (CSS-only, no
+      API surface). `npm run check:architecture` — passed.
+- [x] Linked `Refs #475` (not `Closes`) — a touch-gesture fix cannot be proven by a build; per
+      `docs/process/ISSUE-TAXONOMY.md`'s linkage rule it needs deployed, real-device verification,
+      routed to `For QA` on merge rather than auto-closed.
+
+### Known residual gaps, accepted rather than solved
+
+- **Not proven fixed by this phase's automated evidence alone.** A green build and a CDP-simulated
+  touch dispatch do not prove the pinch gesture behaves correctly on a real device. Manual QA steps
+  (pinch starting on each named chip, across the discovery hero map and the simple/FnB/services/
+  retail fulfillment maps) are recorded on PR #1188 for whoever verifies this in `For QA`.
+
+### Implementation links
+
+- Issue #475, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- PR #1188: https://github.com/Sieitzz/dgfy-platform/pull/1188
+
+### Next eligible phase
+
+Phase 201 (#852, same wave, disjoint file) — already planned alongside this phase in #1183's Wave 1
+table.
+
+## Phase 201 - Storefront QRPh Payment Poll: Stop on Navigate-Away (#852)
+
+### Initiative and release
+
+Surebiz Wave 1 (epic #1183). Ledger high-water mark at filing was 196; #1183 assigns this work
+number 201 directly (Wave 1 table). Serves the downpayment online-payment path on #558's checklist.
+
+### Objective and scope
+
+The storefront is one hoisted component — "pages" are conditionally-rendered views
+(`routeSubpage`/`checkoutTab`), not routes that mount/unmount — so the QRPh payment-session poll
+effect in `apps/dgfy-storefront/src/StorefrontApp.jsx` never unmounts on catalog ⇄ checkout ⇄ track
+navigation, and none of its three original dependencies (`payment_session_id`, `status`,
+`selectedStore.slug`) change on that navigation either. A customer who opens a QRPh payment and
+browses away without paying (and without reloading) left an unbounded 4s-interval poll hitting
+`GET /api/v1/store/checkout/payment-sessions/:id` for the life of the tab. #851 (already fixed,
+commit `388f34626`) addressed the poll's *rate*; this phase addresses its *lifetime* — a distinct
+defect in the same effect, per #852's own body.
+
+### Status
+
+`completed` (2026-08-30). PR #1192 merged into `develop` as commit
+`20715bf6a7b5ca9d458d8d211b7bd928242be9f7`.
+
+### Dependencies
+
+None on Phase 200/203 (disjoint files within `apps/dgfy-storefront`) per #1183's Wave 1 table.
+Builds on #851's already-merged fix to the same effect (same file, different defect).
+
+### Acceptance and validation evidence
+
+- [x] Effect's early-return guard extended with
+      `if (!isOrderSubpage || checkoutTab !== 'checkout') return undefined;` — reusing the exact
+      expression the #889 out-of-hours checkout guard already uses for "the customer is actually
+      looking at checkout" (`StorefrontApp.jsx:3038-3047`), rather than inventing a second
+      expression that can drift.
+- [x] `checkoutTab` and `isOrderSubpage` added to the effect's dependency array, so React re-runs
+      the effect (firing the existing cleanup: `scheduler.stop()` + `removeEventListener`) on
+      navigation, and the re-run hits the new early return.
+- [x] Navigating back into checkout re-arms the poll on the **same** `payment_session_id` — no new
+      PayMongo session is minted, the same QR remains valid.
+- [x] Judgment call, flagged and accepted: the guard admits both `awaiting_payment` and `paid`
+      status, so this gate also stops polling in the `paid` window if the customer wanders off —
+      no automatic `goStoreTrackPage()` hop / "Payment confirmed" toast at the moment finalization
+      lands while off-screen. Deliberate: finalization is server-side/webhook-driven, the order is
+      placed regardless of whether the browser is watching, the tracking pin is already persisted,
+      and the track view runs its own independent polling. Reintroducing polling in the `paid`
+      window off-screen would reintroduce the exact unbounded background poll this phase removes.
+- [x] Considered and rejected: calling `resetQrphPaymentSession()` on navigate-away (the issue's
+      other suggested option) — it destroys a live/paid session and forces a new PayMongo session +
+      QR on return, and the function is shared across three checkout surfaces; gating is the
+      narrower, non-destructive change.
+- [x] Two hunks, one file (`StorefrontApp.jsx`), no other files touched.
+- [x] Tier 0 (required): `npm run build:store` — PASS, Vite build succeeded, 2428 modules
+      transformed, no errors.
+- [x] Tier 2 (opt-in, run — cheap and targeted, no DB required):
+      `npx vitest run src/__tests__/simpleCheckoutOnlinePayments.contract.test.js
+      src/__tests__/customerTrackingRefresh.test.js` — 26/26 passing.
+- [x] Linked `Closes #852`.
+
+### Known residual gaps, accepted rather than solved
+
+- **Manual reproduction not run in this phase** — no local storefront + `COMMERCE_QRPH_ENABLED`
+  environment available in-session. Recommended acceptance check before/at deploy, once per
+  storefront mode (Simple, Retail, F&B): open a QRPh payment, navigate away without paying and
+  without reloading (poll requests to `payment-sessions` should stop entirely), then navigate back
+  into checkout (same QR shown, polling resumes on the same `payment_session_id`).
+
+### Implementation links
+
+- Issue #852 (Closes)
+- PR #1192: https://github.com/Sieitzz/dgfy-platform/pull/1192
+
+### Next eligible phase
+
+Phase 202 (#1085, same wave) — already planned alongside this phase in #1183's Wave 1 table.
+
 ## Phase 203 - Per-Store Cash/COD Payment Toggle (#626)
 
 ### Initiative and release
