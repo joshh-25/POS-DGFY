@@ -344,3 +344,76 @@ build log). It touches money handling already governed by two prior ADRs:
   consumer; the eventual UI for a real per-affiliate timeline with names is unscheduled follow-up
   work, not something #1203/Phase 215 covers.
 - PR: #1232, Phase 214 (`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`)
+
+### 2026-08-31 — Enrollment re-verified at commit time, on both channels (#1199, #450 D2, Phase 206 + Phase 220)
+
+- Clause amended: none — this is new material the ADR omitted, not a correction of an existing
+  clause. No `[binding]` clause governs this (the ADR's only `[binding]` clause, Decision 2,
+  governs rate snapshotting, untouched here). Decision 4 ("in-store earns immediately, online is
+  pending until settled") is the clause this amendment operates under and is untagged, i.e.
+  `[default]`. Filed per ADR 0039's `[default]`/untagged tier, same route the 2026-09-01 amendment
+  above took.
+- **Retroactive documentation, in part.** Phase 206 (`#450` decision D2, PR #1200) shipped this
+  behavior on the storefront checkout path first, without an ADR 0036 amendment — this is the first
+  record of it. Phase 220 (`#1199`) extends the identical semantics to the in-store POS checkout
+  path; this single amendment covers both, filed together rather than backfilling Phase 206's own
+  entry separately.
+- **The rule, stated once for both channels:** the affiliate enrollment used to decide whether — and
+  to whom — a commission accrues is re-resolved against the database, by enrollment id, at
+  commit time (immediately post-`transaction.commit()`), rather than trusting whatever enrollment
+  object was resolved earlier in the request (pricing time on storefront, entry/validation time on
+  POS). If the enrollment is no longer `active` — revoked, suspended, or the tenant's affiliate
+  program disabled — in the window between the earlier resolve and commit, the commission accrual
+  is silently skipped and a `logger.warn` is emitted (`[StorefrontCheckout] Affiliate attribution
+  dropped: enrollment inactive at commit` / `[PosUseCases] Affiliate attribution dropped: enrollment
+  inactive at commit`). **The order/sale itself always stands, unchanged, on both channels** — no
+  buyer- or cashier-facing surface reflects the drop; it is discoverable only in server logs. This
+  is the same non-blocking, "silent drop, buyer unaffected" convention Phase 208's lifetime earnings
+  cap already established for the same accrual path.
+- **Mechanism:** both channels call the same helper,
+  `resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId, repository })`
+  (`apps/dgfy-api/src/modules/dgfy/utils/affiliateCommissionAccrual.js`) — a plain, non-locking read
+  on the default connection (the order/sale's own transaction has already committed by the time this
+  runs, so it necessarily sees current committed state; no lock, no `FOR UPDATE`, no transaction
+  handle). No new helper or shared abstraction was introduced for either phase — this export already
+  existed and both channels reuse it as-is.
+- **Storefront-specific detail:** the re-check does not touch pricing. `resolved.affiliatePricing`
+  (the price rule, rate, and `commission_base_mode`) remains the source of the commission *math*;
+  only the enrollment used to decide *whether, and to whom* commission accrues is re-resolved. The
+  drop branch there is guarded (`else if (affiliatePricing?.enrollment)`) to avoid re-logging an
+  enrollment that was already stale at pricing time, not newly dropped in this window.
+- **POS-specific detail — a real, deliberate divergence from storefront:** on POS, the affiliate
+  enrollment affects nothing but the commission (no price, discount, VAT, or receipt field is ever
+  touched by it), and an unresolvable affiliate code already hard-rejects the whole checkout with a
+  `422 AFFILIATE_CODE_INVALID` gate before any write. Because that entry-time gate already excludes
+  the "already stale when the cashier typed it" case, POS's drop branch is a bare `else` (not
+  storefront's `else if`) — every null at commit-time re-check on POS is, by construction, an
+  in-flight transition, always worth logging. The entry-time 422 gate itself is unchanged by this
+  amendment — two checks at two times is the design, not redundancy.
+- **Idempotency, unaffected on both channels.** Accrual is already guarded by the commission
+  ledger's unique `(tenant_id, order_reference)` index; re-resolving the enrollment a second time
+  adds no new race or double-accrual surface.
+- **Known limitation, named rather than silently absent — POS's primary checkout route cannot
+  reach this fix today.** `checkoutPosSchema` (`apps/dgfy-api/src/validators/posValidator.js`)
+  strips `affiliate_code` on `POST /pos/checkouts` (no declared key, no `.unknown(true)`,
+  `stripUnknown: true`), so on that route the field never reaches the use case and no in-store
+  commission has ever accrued through it. This amendment's POS-side semantics are live only on the
+  split-payment-completion and mobile-offline-sync paths, which do carry a live `affiliate_code`
+  through. Restoring the primary route's field is a separate, money-affecting feature restoration,
+  filed as its own follow-up (`Refs #1199, #446`), deliberately not bundled into Phase 220.
+- **Known limitation, named rather than silently absent — a pre-existing POS split-payment
+  rollback hazard.** When `checkoutPosUseCase` is invoked from `buildCompletePosPaymentSessionUseCase`
+  with a caller-provided transaction (`ownsTransaction === false`), the `:4399` commit is a no-op and
+  the affiliate accrual block runs while the outer transaction is still open; that caller can still
+  throw and roll back afterwards, and the affiliate commission/attribution rows (landlord DB, a
+  different connection) do not roll back with it. Pre-existing, unrelated to #1199/#450, found while
+  verifying this amendment's POS half. This re-verify can only ever *reduce* the number of rows
+  written relative to today's behavior on that path, never increase the risk. Filed separately for
+  `pm` to shape.
+- Explicitly out of scope, named rather than silently absent: an offline POS sale synced after the
+  affiliate was revoked (`syncMobilePosCheckouts`) is rejected outright at its own entry gate, not
+  merely uncommissioned — a different, and arguably worse, defect at a different point in the flow;
+  filed separately. Neither channel's drop has an operator- or merchant-facing surface yet — named
+  as a gap, not proposed as work.
+- PR: #1200 (storefront, Phase 206), #1242 (POS, Phase 220) — see
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`

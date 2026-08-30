@@ -13950,7 +13950,9 @@ compliance declaration predicted or fired. Last phase of Wave 4.
 ### Dependencies
 
 Depends on Phase 217 (`origin/develop @ 8ff58cf58`, verified ancestor). Current phase is 218; next
-eligible phase is 220 (219 is already ledgered out-of-band for #1220 — do not renumber it).
+eligible phase is 221 — 220 was claimed by #1199 (PR #1242) after this branch was cut, confirmed
+via `git merge-base` against `origin/develop` at PR-open time; 219 is already ledgered out-of-band
+for #1220. Do not renumber either.
 
 ### Acceptance and validation evidence
 
@@ -13963,3 +13965,177 @@ eligible phase is 220 (219 is already ledgered out-of-band for #1220 — do not 
 - [x] `build:store`, `node --check` on the changed backend file, `check:compliance`, `check:architecture`, `check:adr` all green; no lockfile in the diff (`npm install` run in both `apps/dgfy-storefront` and `apps/dgfy-api` to unblock local test execution, confirmed clean via `git diff --exit-code`).
 - [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING) remains outstanding — out of this phase's scope, same posture as Phase 217.
 - [ ] F&B RTL render test for the editable input (T5's third case) was not written — `FnbCheckoutRouteContainer.jsx` is a ~970-line, ~110-prop page container, judged too costly to stand up in isolation within this phase's budget; Retail and Simple's equivalent cases are covered. Flagged here rather than silently omitted.
+
+## Phase 220 - POS In-Store Affiliate Attribution: Re-verify Enrollment at Commit Time (#1199)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements #1199, the follow-up Phase 206 filed when it deferred
+POS: Pat's 2026-08-31 decision on #1199 is the same D2-shaped call as #450 D2 — re-verify the
+affiliate enrollment at commit time; on a revocation inside that window the sale completes normally
+and no commission accrues. This phase extends Phase 206's storefront-only fix to the in-store POS
+checkout path, per `PHASE_220_PLAN.md` (this branch's root).
+
+### Objective and scope
+
+`PHASE_220_PLAN.md`'s READ FIRST table named ten judgment calls (J1-J10); all were engineering
+calls decided in-plan and followed as-is, except J5/J6 which are Pat's and don't gate this phase:
+
+- **J1 (re-verify by enrollment id or by affiliate code)** - by id,
+  `resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId })`. Pins the same enrollment the
+  cashier's code resolved to at entry; re-resolving by code could in principle land on a different
+  enrollment if a code were ever reassigned (no rotation endpoint exists today, so this is
+  defensive rather than live). Mirrors Phase 206 exactly.
+- **J2 (reusable helper or a new one)** - reusable, already. `resolveActiveAffiliateEnrollmentById`
+  (`affiliateCommissionAccrual.js:418-431`) is exported from the same module `posUseCases.js`
+  already imports three symbols from. No new helper, wrapper, or shared abstraction added.
+- **J3 (drop-log guard shape)** - a bare `else`, not Phase 206's `else if (affiliatePricing
+  ?.enrollment)`. That extra condition exists on storefront solely to avoid logging the common case
+  of an attribution cookie already stale at pricing time. POS has no such case - an unresolvable
+  code hard-rejects with `422 AFFILIATE_CODE_INVALID` before any write, so on POS a null re-check at
+  commit time is always the in-flight drop.
+- **J4 (placement)** - inside the existing `if (affiliateEnrollment) { try { ... } }` block,
+  immediately after `transaction.commit()` (`posUseCases.js:4399`) and before
+  `accrueEarnedForInStoreSale`, inside the existing `try` so the existing `catch` still guarantees
+  nothing here can fail a sale that already succeeded.
+- **J5 (cashier-facing surface for a drop) - Pat's, already answered.** No. The `ok({...})`
+  payload, receipt contract, and transaction row are untouched; a `logger.warn` is the entire
+  operator-visible footprint (i.e. none, at the counter).
+- **J6 (fix the stripped `affiliate_code` field here) - Pat's to sequence, not built here.** No -
+  handed to `pm` as a separate issue (**#1239**, filed critical). `checkoutPosSchema`
+  (`posValidator.js:143`) declares no `affiliate_code` key and carries no `.unknown(true)`, and
+  `validateSchema` runs `stripUnknown: true` - so on the primary `POST /pos/checkouts` route the
+  cashier-typed code never reaches the use case and no in-store commission has ever accrued through
+  it. **Consequence stated plainly: until #1239 ships, this phase's fix only bites on the
+  split-payment and mobile-sync entry points, not the primary route.** Shipping this phase first is
+  still correct - it puts the right semantics in place before the primary route is switched on,
+  rather than after.
+- **J7 (ADR 0036 amendment)** - yes, one dated `## Amendments` block, covering both channels: this
+  is also the first ADR 0036 record of Phase 206's own storefront-side re-verify, which shipped
+  without one. ADR 0039 route: `[default]`/untagged (ADR 0036's only `[binding]` clause, Decision 2
+  rate-snapshotting, is untouched).
+- **J8 (phase numbering)** - confirmed 220 against the ledger's highest entry (219, #1220) before
+  writing this entry, per `AGENTS.md` rule 10; 217/218 remain claimed by in-flight, not-yet-ledgered
+  Surebiz work in a sibling worktree and are not reused.
+- **J9 (test approach)** - a new file, `apps/dgfy-api/tests/posCheckoutAffiliateAttribution.unit.test.js`,
+  mirroring Phase 206's mock-the-repository method on top of the proven zero-DB
+  `posCheckoutFnbContracts.usecase.test.js` harness for `buildCheckoutPosUseCase`. Not folded into
+  either of those two existing files (one tests unrelated F&B contracts; the other tests the util,
+  not POS wiring).
+- **J10 (separate handling for split-payment / mobile-sync entry points)** - no. All three entry
+  points (`POST /pos/checkouts`, split-payment completion, mobile offline sync) run through the same
+  `buildCheckoutPosUseCase` body and hit the same accrual block, so one edit covers all three. A
+  pre-existing rollback hazard on the split-payment path (F8 below) is named, not silently
+  inherited.
+
+### Status
+
+`in_progress` (PR open, not yet merged). Will move to `completed` once PR #1242 merges into
+`develop` and its gates pass. `Refs #1199` (not `Closes` - a behavior change on a live checkout path
+needs deployed verification before the issue is done, per `docs/process/ISSUE-TAXONOMY.md`'s
+linkage rule; the issue stays open through merge for `verifier`).
+
+### Dependencies
+
+Phase 206 (`#450` D2) - the storefront twin this phase extends the identical semantics to; this
+phase reuses Phase 206's exported helper (`resolveActiveAffiliateEnrollmentById`) unchanged. Phase
+208 (#449, the lifetime earnings cap) and Phase 209 (#448, per-category commission rates) - both
+already-shipped best-effort-accrual conventions this phase's drop branch follows, neither touched by
+this phase. Independent of Phases 217/218 (in-flight, unrelated, sibling-worktree Surebiz work).
+
+### Acceptance and validation evidence
+
+- [x] `posUseCases.js`'s post-commit affiliate accrual block (`:4401` onward) now re-resolves the
+      enrollment via `resolveActiveAffiliateEnrollmentById` at commit time (by id, pinned to the
+      entry-time-resolved `enrollment_id`) instead of accruing directly against the entry-time
+      `affiliateEnrollment` object. One new named import, alphabetically ordered into the existing
+      block.
+- [x] Verified as a plain, non-locking, post-`transaction.commit()` read on the default connection -
+      no lock, no `FOR UPDATE`, no transaction handle (Phase 198's RF-6 locking finding does not
+      apply - there is no lock here at all).
+- [x] Silent-drop implemented as a bare `else` (J3) - deliberately not Phase 206's `else if` guard,
+      since POS's entry-time 422 gate makes the "already stale before this window" case
+      unreachable, unlike storefront.
+- [x] The entry-time `422 AFFILIATE_CODE_INVALID` gate (`posUseCases.js:2977-2990`) is unchanged -
+      an invalid code still hard-rejects the whole checkout before any write.
+- [x] No pricing, discount, VAT, or receipt math changed - affiliate enrollment on POS affects
+      nothing but the commission (appears at exactly four lines in the file both before and after
+      this change).
+- [x] New test file `posCheckoutAffiliateAttribution.unit.test.js` - 7/7 passing (T1: still active
+      at commit, with a call-count assertion on both `findActiveEnrollmentByShareCode` and
+      `findEnrollmentById` that fails against pre-Phase-220 code; T2: revoked between entry and
+      commit; T3: suspended between entry and commit, pinning the `status === 'active'` gate rather
+      than a careless `!== 'revoked'`; T4: program disabled between entry and commit; T5: regression
+      baseline, no `affiliate_code` on the payload; T6: regression baseline, invalid code at entry
+      still hard-rejects 422 and `findEnrollmentById` is never called; T7: a drop leaves the sale's
+      totals identical to the accrued case). Confirmed to genuinely pin the new behavior: 4 of the 7
+      cases (T1-T4) were run against the pre-fix code with the fix reverted and failed, then
+      re-confirmed passing with the fix restored - not merely written to pass.
+- [x] Adjacent regression suites re-run clean alongside the new file:
+      `posCheckoutFnbContracts.usecase.test.js`, `affiliateCommissionAccrual.unit.test.js`,
+      `storeCheckoutAffiliatePricing.unit.test.js` - 80/80 passing across all four files combined.
+- [x] Compliance impact declaration added and required (`major`/`pos,terminal` -
+      `modules/pos/**` matches `check-compliance-impact.js`'s sensitive-path rule; deliberately
+      **not** Phase 206's `payments` surface, which would fail the classifier's surface-coverage
+      check for a `modules/pos/` change). States affirmatively: no pricing/VAT/receipt math changes;
+      the re-check enforces the same gate as entry, only later; accrual stays best-effort inside the
+      existing `try/catch`; idempotency unchanged; the split-payment path's pre-existing
+      pre-outer-commit accrual hazard (F8); and that #1239 limits this fix's live reach until it
+      ships. `preflight_request_ref: NOT-EXECUTED-1199-...` is correct and expected on a
+      `develop`-targeting PR per the standing preflight protocol.
+- [x] ADR 0036 `## Amendments` block added (2026-08-31), covering both Phase 206 (storefront,
+      retroactively - it shipped with no ADR record) and this phase (in-store) under one entry: the
+      shared re-verify rule and mechanism, each channel's own drop-guard shape and why they differ
+      (J3), and both known limitations (the #1239 stripped-field gap and the pre-existing
+      split-payment rollback hazard).
+- [x] `node --check apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` - syntax-only check
+      (this app has no build step); passed. No `package.json` touched, so no lockfile step.
+- [x] Linked `Refs #1199` - see Status above for why `Refs`, not `Closes`.
+
+### Findings surfaced while verifying the plan, not fixed here (handed to `pm`)
+
+- **F5 - `affiliate_code` is stripped by `checkoutPosSchema` on the primary POS route** (highest
+  value): `POST /pos/checkouts`'s validator declares no `affiliate_code` key and has no
+  `.unknown(true)`, so `stripUnknown: true` silently drops it before the use case ever sees it - the
+  cashier can type a valid code, see no error, and no attribution or commission is ever created.
+  This is a pre-existing defect independent of #1199's own subject; also means #1199's original
+  framing ("the cashier is explicitly told the code is valid") never held on this route either,
+  since the 422 gate can never fire there. Filed as **#1239** (critical - money-affecting feature
+  restoration, its own validation shape, its own tests). Suggested sequencing: Phase 221,
+  immediately after this one.
+- **F7 - the mobile POS offline-sync path carries a worse failure than #1199's own subject**: if the
+  affiliate was revoked between the cashier's offline code entry (T0) and sync-time validation (T1),
+  the entry-time 422 gate rejects the *entire synced sale* - `syncMobilePosCheckouts` marks the
+  entry `rejected` and the transaction is never created. A completed, tendered, receipted offline
+  sale is lost, not merely uncommissioned. Filed as **#1240**.
+- **F8 - split-payment completion can accrue a commission for a sale that then rolls back**:
+  `buildCompletePosPaymentSessionUseCase` passes its own transaction into `checkoutPosUseCase`, so
+  `ownsTransaction === false` and the accrual block runs pre-outer-commit; the caller can still throw
+  `POS_PAYMENT_SESSION_TOTAL_CHANGED` and roll back afterwards, and the affiliate commission/
+  attribution rows (landlord DB, a different connection) survive that rollback. Pre-existing,
+  unrelated to #1199, found while verifying it; this phase's re-verify can only ever *reduce* the
+  number of rows written on that path, never worsen it. Filed as **#1241**.
+- Neither channel's `logger.warn` drop (storefront's or this phase's) has an operator- or
+  merchant-facing surface - named as a gap, not proposed as work.
+
+### Implementation links
+
+- Issue #1199 (Refs - see Status above)
+- PR: #1242, against `develop`
+- #450 (Phase 199/206, the D2 precedent this phase mirrors), #449/Phase 208 (the earnings-cap
+  best-effort-drop convention this phase's own drop branch follows), #448/Phase 209 (per-category
+  rates, untouched), #446 (epic)
+- Follow-up issues filed: #1239 (critical - stripped `affiliate_code` on the primary POS route),
+  #1240 (offline-sync hard-reject on revocation), #1241 (split-payment pre-outer-commit accrual
+  rollback hazard)
+- ADR 0036 Amendments block:
+  `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md` (2026-08-31 entry)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md`
+- `PHASE_220_PLAN.md` (this branch's root) - the full plan this entry implements
+
+### Next eligible phase
+
+**221** - the strongest candidate is #1239 (F5, the stripped `affiliate_code`): without it, this
+phase's semantics are correct but reachable on only two of three POS entry points. 217/218 remain
+claimed by in-flight, non-affiliate work in a sibling worktree and are not reused (J8).
