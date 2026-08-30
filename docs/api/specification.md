@@ -3076,7 +3076,70 @@ List active delivery personnel available to the authenticated POS location.
 **Response Notes**
 1. Returns active personnel assigned to the requested location plus global personnel with no location assignment.
 2. Inactive personnel and personnel outside the authorized location are excluded.
-3. Registry creation, editing, activation, and deactivation are not part of this POS endpoint.
+3. Registry creation, editing, activation, and deactivation are handled by the three admin
+   endpoints below, not by this read-only cashier endpoint.
+
+### GET /pos/delivery-personnel/registry
+List all delivery personnel registry rows for administrator/settings management, including
+inactive rows by default.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `include_inactive` | boolean | Defaults to `true`; set `false` to return active rows only |
+
+**Response Notes**
+1. Unlike `GET /pos/delivery-personnel` above, this endpoint is not location-scoped and is not
+   filtered to active-only by default -- it is the admin/settings registry view, not the
+   cashier-facing assignment lookup.
+
+### POST /pos/delivery-personnel
+Create a delivery personnel registry row.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "display_name": "Juan Dela Cruz",
+  "phone": "09170000000",
+  "location_id": 12,
+  "notes": "Prefers morning shift",
+  "is_active": true
+}
+```
+
+**Response Notes**
+1. `display_name` is required (2-255 chars); every other field is optional.
+2. `location_id`, when provided, must reference an active tenant location or the request fails
+   with `422 VALIDATION_FAILED`.
+3. A case-insensitive duplicate `display_name` among active rows in the same location scope fails
+   with `409 CONFLICT` -- this is a soft guard, not a unique database constraint, since two riders
+   may legitimately share a name.
+4. Writes an `AuditLog` row (`entity_type: 'delivery_personnel'`, `action: 'CREATE'`).
+
+### PATCH /pos/delivery-personnel/:deliveryPersonnelId
+Update a delivery personnel registry row, or deactivate it.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+Any subset of `display_name`, `phone`, `location_id`, `notes`, `is_active` (at least one field
+required).
+
+**Response Notes**
+1. `is_active: false` **is** the deactivation operation -- there is no separate delete or
+   deactivate route, and no hard delete exists anywhere in this surface.
+   `delivery_jobs.delivery_personnel_id` is `ON DELETE RESTRICT`; an in-flight or historic
+   assignment keeps displaying the deactivated rider's name and is never orphaned.
+2. A deactivated rider can no longer be newly assigned (`GET /pos/delivery-personnel` and the
+   assignment picker only offer active rows), but existing assignments are untouched.
+3. Writes an `AuditLog` row (`entity_type: 'delivery_personnel'`, `action: 'UPDATE'`).
 
 ### PATCH /pos/orders/:id/delivery-job/assignment
 Assign or reassign a registered delivery person or an unregistered third-party courier name before pickup begins.

@@ -151,6 +151,7 @@ import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
+import DeliveryPersonnelManagementPanel from './DeliveryPersonnelManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
@@ -5292,7 +5293,8 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {}
+  onStorefrontSetupSaved = async () => {},
+  onDeliveryPersonnelChanged = () => {}
   // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
   // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
   // here.
@@ -5308,6 +5310,10 @@ function SettingsWorkspace({
   const canManageEmployeeCredit = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
   const canManageEmployees = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
+  // Reuses pos:employees:manage (Phase 205, #1080) -- declared under its own name so a
+  // future permission split for the delivery personnel registry is a one-line change.
+  const canManageDeliveryPersonnel = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
   // Phase 143 (#848): separate view/manage gate for the Payments tab -- downpayment:view
   // sees it, downpayment:settings can save it, mirroring the same two-tier split
@@ -7922,6 +7928,12 @@ function SettingsWorkspace({
           onEmployeesChanged={() => setEmployeeDirectoryRevision((revision) => revision + 1)}
         />
       ) : null}
+      {canManageDeliveryPersonnel ? (
+        <DeliveryPersonnelManagementPanel
+          disabled={locked || loading}
+          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
+        />
+      ) : null}
       {canManageEmployeeCredit ? (
         <EmployeeCreditManagementPanel
           disabled={locked || loading}
@@ -9044,6 +9056,7 @@ export default function TerminalOperationsWorkspace({
   handleDeliveryJobStatusChange = () => {},
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
+  onDeliveryPersonnelChanged = () => {},
   handleOpenCashCollection = () => {},
   // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
   // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it
@@ -9127,6 +9140,7 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
         />
       );
     case 'shift_controls':

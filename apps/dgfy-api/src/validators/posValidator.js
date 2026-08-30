@@ -1065,6 +1065,30 @@ const employeeUpdateSchema = Joi.object({
     is_active: Joi.boolean().optional()
 }).min(1);
 
+const deliveryPersonnelRegistryQuerySchema = Joi.object({
+    include_inactive: Joi.boolean().truthy('true').falsy('false').default(true)
+});
+
+const deliveryPersonnelParamSchema = Joi.object({
+    deliveryPersonnelId: Joi.number().integer().positive().required()
+});
+
+const deliveryPersonnelCreateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).required(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().default(true)
+});
+
+const deliveryPersonnelUpdateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).optional(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().optional()
+}).min(1);
+
 const employeeCreditAccountUpdateSchema = Joi.object({
     is_eligible: Joi.boolean().optional(),
     credit_limit: Joi.number().min(0).precision(4).allow(null).optional(),
@@ -1226,6 +1250,10 @@ export const validateEmployeeParam = validateSchema(employeeParamSchema, 'params
 export const validateEmployeeListQuery = validateSchema(employeeListQuerySchema, 'query', 'validatedQuery');
 export const validateEmployeeCreate = validateSchema(employeeCreateSchema, 'body', 'validatedData');
 export const validateEmployeeUpdate = validateSchema(employeeUpdateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelRegistryQuery = validateSchema(deliveryPersonnelRegistryQuerySchema, 'query', 'validatedQuery');
+export const validateDeliveryPersonnelParam = validateSchema(deliveryPersonnelParamSchema, 'params', 'validatedParams');
+export const validateDeliveryPersonnelCreate = validateSchema(deliveryPersonnelCreateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelUpdate = validateSchema(deliveryPersonnelUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditAccountUpdate = validateSchema(employeeCreditAccountUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditRepayment = validateSchema(employeeCreditRepaymentSchema, 'body', 'validatedData');
 export const validateEmployeeCreditOutstandingAdjustment = validateSchema(employeeCreditOutstandingAdjustmentSchema, 'body', 'validatedData');

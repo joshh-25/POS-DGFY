@@ -1,5 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -29,6 +30,7 @@ import {
   uploadOrderBalancePaymentProof,
   fetchOrderBalancePaymentProof,
   assignDeliveryPersonnel,
+  fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus
 } from '../services/posService';
@@ -645,12 +647,67 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
-  const deliveryPersonnelState = {
+  // Phase 205 (#1080): lazily fetched -- and only once the incoming-orders queue actually
+  // renders a manual delivery job -- rather than on every terminal mount, since this is a
+  // Premium-gated request on a pane most operators never open.
+  const [deliveryPersonnelState, setDeliveryPersonnelState] = useState({
     loading: false,
+    loaded: false,
     personnel: [],
     accessState: 'not_required',
     errorMessage: ''
-  };
+  });
+
+  const deliveryPersonnelFetchStartedRef = useRef(false);
+  const ensureDeliveryPersonnelLoaded = useCallback(async () => {
+    if (deliveryPersonnelFetchStartedRef.current) return;
+    deliveryPersonnelFetchStartedRef.current = true;
+    setDeliveryPersonnelState((current) => ({ ...current, loading: true, accessState: 'loading' }));
+    try {
+      const payload = await fetchActiveDeliveryPersonnel();
+      setDeliveryPersonnelState({
+        loading: false,
+        loaded: true,
+        personnel: Array.isArray(payload?.delivery_personnel) ? payload.delivery_personnel : [],
+        accessState: 'allowed',
+        errorMessage: ''
+      });
+    } catch (error) {
+      const isForbidden = error?.response?.status === 403;
+      setDeliveryPersonnelState({
+        loading: false,
+        loaded: true,
+        personnel: [],
+        // A 403 degrades to free-text rather than surfacing as an error -- the picker is an
+        // optional enhancement, never a requirement (ADR 0034's 2026-08-12 amendment).
+        accessState: isForbidden ? 'forbidden' : 'error',
+        errorMessage: isForbidden ? '' : (error?.response?.data?.message || 'Failed to load delivery personnel.')
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 205 (#1080) RF-3: DeliveryPersonnelManagementPanel already re-fetches and reports the
+  // full registry after every create/update/activation-toggle via onDeliveryPersonnelChanged --
+  // forward that straight into the picker's own state so an admin edit is reflected without a
+  // reload, instead of leaving the one-shot ensureDeliveryPersonnelLoaded() fetch stale.
+  const handleDeliveryPersonnelChanged = useCallback((personnelRows) => {
+    deliveryPersonnelFetchStartedRef.current = true;
+    setDeliveryPersonnelState({
+      loading: false,
+      loaded: true,
+      personnel: Array.isArray(personnelRows) ? personnelRows : [],
+      accessState: 'allowed',
+      errorMessage: ''
+    });
+  }, []);
+
+  useEffect(() => {
+    const orders = incomingOrdersState.orders;
+    if (!Array.isArray(orders) || orders.length === 0) return;
+    const hasManualDeliveryJob = orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}));
+    if (hasManualDeliveryJob) ensureDeliveryPersonnelLoaded();
+  }, [incomingOrdersState.orders, ensureDeliveryPersonnelLoaded]);
   const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
     loading: false,
     orders: [],
@@ -5457,15 +5514,17 @@ export default function TerminalPage() {
     }
   };
 
-  const handleAssignDeliveryPersonnel = async (posTransactionId, deliveryPersonnelName) => {
+  const handleAssignDeliveryPersonnel = async (posTransactionId, { id: deliveryPersonnelId, name: deliveryPersonnelName } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before assigning delivery personnel.');
       return false;
     }
 
     const normalizedId = Number.parseInt(posTransactionId, 10);
+    const normalizedPersonnelId = Number.parseInt(deliveryPersonnelId, 10);
+    const hasPersonnelId = Number.isInteger(normalizedPersonnelId) && normalizedPersonnelId > 0;
     const normalizedName = String(deliveryPersonnelName || '').trim();
-    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || !normalizedName) {
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || (!hasPersonnelId && !normalizedName)) {
       toast.error('Enter a delivery personnel name before assigning the order.');
       return false;
     }
@@ -5473,8 +5532,12 @@ export default function TerminalPage() {
     const actionKey = `delivery-assignment:${normalizedId}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
     try {
+      // Exactly one of these two is sent -- the server schema is `.or(...).oxor(...)` and
+      // 422s if both are present (Phase 205, #1080).
       await assignDeliveryPersonnel(normalizedId, {
-        delivery_personnel_name: normalizedName,
+        ...(hasPersonnelId
+          ? { delivery_personnel_id: normalizedPersonnelId }
+          : { delivery_personnel_name: normalizedName }),
         idempotency_key: createIdempotencyKey('pos-delivery-assignment')
       });
       toast.success('Delivery personnel assigned.');
@@ -6544,6 +6607,7 @@ function PosRestorationLoadingScreen() {
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
+          onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleViewBalancePaymentProof={handleViewBalancePaymentProof}
