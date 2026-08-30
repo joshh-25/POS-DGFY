@@ -120,6 +120,7 @@ const FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
     'preparing',
+    'packed',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -248,6 +249,7 @@ const toStatusLabel = (status) => {
     case 'placed': return 'Order placed';
     case 'confirmed': return 'Confirmed by store';
     case 'preparing': return 'Preparing';
+    case 'packed': return 'Packed';
     case 'ready_for_pickup': return 'Ready for pickup';
     case 'out_for_delivery': return 'Out for delivery';
     case 'completed': return 'Completed';

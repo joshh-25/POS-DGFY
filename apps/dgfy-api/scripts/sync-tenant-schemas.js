@@ -242,6 +242,21 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         rejected_at: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_at` DATETIME NULL"
+        }),
+        // Phase 211 (#1180): two nullable, additive columns attributing the Retail "packed" step.
+        // Kept in lockstep with migration 20260901000003. NOTE (investigated, not guessed): this
+        // REQUIRED_TENANT_SCHEMA_COLUMNS mechanism is column-presence based only -- it has no
+        // repair path for an ENUM *value* widening (as opposed to a missing column). A tenant
+        // restored from a pre-Phase-211 snapshot self-repairs these two columns via this table,
+        // but NOT the widened `fulfillment_status` ENUM itself (the migration's own MODIFY COLUMN,
+        // 20260901000003) -- recorded as a Residual Risk in
+        // docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md rather than
+        // silently assumed covered.
+        packed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_at` DATETIME NULL AFTER `rejected_at`"
+        }),
+        packed_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -2179,7 +2194,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
