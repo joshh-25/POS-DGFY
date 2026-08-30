@@ -95,7 +95,11 @@ const ONLINE_FULFILLMENT_STATUSES = [
 ];
 const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     placed: ['confirmed', 'rejected'],
-    confirmed: ['preparing'],
+    // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
+    // out-of-route and must be able to reject it with a reason. A store-initiated reject ALWAYS
+    // refunds (commerceOrderLifecycleUseCase.js:109-113, Phase 144/#824) -- widening this edge
+    // does not widen forfeiture.
+    confirmed: ['preparing', 'rejected'],
     preparing: ['ready_for_pickup', 'out_for_delivery'],
     ready_for_pickup: ['completed'],
     out_for_delivery: ['completed'],
@@ -103,6 +107,12 @@ const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     cancelled: [],
     rejected: []
 });
+// Phase 210 (#1179). Pat's confirmed decision: a staff delivery-address/pin edit is restricted to
+// pre-dispatch statuses only. `out_for_delivery` is deliberately EXCLUDED -- once a delivery job has
+// been dispatched the driver already holds the original address, so a silent server-side edit could
+// diverge from what is physically in the driver's hand. Rejected the same way as a terminal state,
+// with the same 409.
+const DELIVERY_ADDRESS_EDITABLE_STATUSES = Object.freeze(['placed', 'confirmed', 'preparing']);
 const DELIVERY_JOB_STATUS_VALUES = Object.freeze([
     'pending_dispatch',
     'assigned',
@@ -155,7 +165,8 @@ const POS_OPERATION_KEYS = Object.freeze({
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
-    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement'
+    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
+    ORDER_DELIVERY_ADDRESS_UPDATE: 'terminal.order_delivery_address_update'
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
@@ -10254,9 +10265,18 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             if (!parsePositiveInt(existing.cashier_id)) {
                 updatePayload.cashier_id = actingUserId;
             }
+            // Phase 210 (#1179). Only the placed -> confirmed|rejected edge stamps accepted_by/at --
+            // a later confirmed -> rejected must NOT overwrite that pair, since it genuinely was
+            // accepted first. Leave this guard as-is; do not "fix" it to also fire on the reject edge.
             if (currentStatus === 'placed' && (targetStatus === 'confirmed' || targetStatus === 'rejected')) {
                 updatePayload.accepted_by = actingUserId;
                 updatePayload.accepted_at = mutationTimestamp;
+            }
+
+            if (targetStatus === 'rejected') {
+                updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
+                updatePayload.rejected_by = actingUserId;
+                updatePayload.rejected_at = mutationTimestamp;
             }
 
             await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {
@@ -10384,6 +10404,233 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to update online order status'));
+        }
+    };
+};
+
+// Phase 210 (#1179). Staff-only post-placement delivery-address/pin edit. Pat's confirmed decision:
+// pre-dispatch only (DELIVERY_ADDRESS_EDITABLE_STATUSES) -- an order already out_for_delivery, or in
+// any terminal state, is rejected with a 409. No radius recomputation here: outside_radius_flag is
+// left at whatever it was set to at checkout -- re-enforcing the delivery radius on an address
+// change is #478's job, not this phase's; touching it here would silently change acceptance
+// behaviour for every existing order path.
+export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
+    posRepository,
+    activityRecorder = recordDgfyOrderActivity
+}) => {
+    return async ({ posTransactionId, payload, user }) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const newAddress = String(payload?.delivery_address || '').trim();
+        if (!newAddress) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_address is required',
+                { statusCode: 422 }
+            ));
+        }
+        const hasLatitude = payload?.delivery_latitude !== undefined && payload?.delivery_latitude !== null;
+        const hasLongitude = payload?.delivery_longitude !== undefined && payload?.delivery_longitude !== null;
+        if (hasLatitude !== hasLongitude) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_latitude and delivery_longitude must be provided together',
+                { statusCode: 422 }
+            ));
+        }
+        const newLatitude = hasLatitude ? Number(payload.delivery_latitude) : null;
+        const newLongitude = hasLongitude ? Number(payload.delivery_longitude) : null;
+        const changeReason = String(payload?.change_reason || '').trim();
+        if (!changeReason) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'change_reason is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            pos_transaction_id: normalizedTransactionId,
+            delivery_address: newAddress,
+            delivery_latitude: newLatitude,
+            delivery_longitude: newLongitude,
+            change_reason: changeReason
+        });
+
+        const actingUserId = parsePositiveInt(user?.user_id);
+        if (!actingUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const existing = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
+                transaction,
+                lock: true
+            });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${normalizedTransactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+            if (existing.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only online store orders can be updated through this endpoint',
+                    { statusCode: 409 }
+                );
+            }
+            if (existing.order_method !== 'delivery') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only delivery orders have a delivery address to edit',
+                    { statusCode: 422, details: { reason_code: 'ORDER_ADDRESS_EDIT_NOT_DELIVERY' } }
+                );
+            }
+            const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
+            if (!currentStatus || !DELIVERY_ADDRESS_EDITABLE_STATUSES.includes(currentStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order can no longer have its delivery address edited',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'ORDER_ADDRESS_EDIT_TERMINAL_STATE',
+                            current_status: currentStatus,
+                            editable_statuses: DELIVERY_ADDRESS_EDITABLE_STATUSES
+                        }
+                    }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: existing.location_id || null,
+                transaction,
+                lock: true
+            });
+            const mutationTimestamp = new Date();
+
+            await posRepository.createAddressChange({
+                posTransactionId: normalizedTransactionId,
+                previousAddress: existing.delivery_address || null,
+                previousLatitude: existing.delivery_latitude ?? null,
+                previousLongitude: existing.delivery_longitude ?? null,
+                newAddress,
+                newLatitude,
+                newLongitude,
+                changeReason,
+                changedBy: actingUserId,
+                changedByShiftId: parsePositiveInt(activeShift?.pos_terminal_shift_id) || null,
+                changedAt: mutationTimestamp
+            }, { transaction });
+
+            const updated = await posRepository.updateOrderById(normalizedTransactionId, {
+                delivery_address: newAddress,
+                delivery_latitude: newLatitude,
+                delivery_longitude: newLongitude
+                // outside_radius_flag is deliberately NOT recomputed here -- see #478.
+            }, { transaction, lock: true });
+
+            await transaction.commit();
+
+            const currentTenantId = dbStore.getStore()?.tenantId || null;
+            await activityRecorder({
+                tenantId: currentTenantId,
+                order: updated,
+                storeCustomer: updated?.storeCustomer || updated?.store_customer || null
+            }).catch((activityError) => {
+                logger.warn('Failed to sync DGFY order activity after POS delivery-address update', {
+                    pos_transaction_id: normalizedTransactionId,
+                    tracking_pin: updated?.tracking_pin || null,
+                    error: activityError?.message || activityError
+                });
+            });
+
+            const replayPayload = {
+                order: toSerializable(updated),
+                address_change: {
+                    previous_address: existing.delivery_address || null,
+                    previous_latitude: existing.delivery_latitude ?? null,
+                    previous_longitude: existing.delivery_longitude ?? null,
+                    new_address: newAddress,
+                    new_latitude: newLatitude,
+                    new_longitude: newLongitude,
+                    change_reason: changeReason,
+                    changed_by: actingUserId,
+                    changed_at: mutationTimestamp.toISOString()
+                },
+                idempotency: {
+                    key: idempotencyKey || null,
+                    request_fingerprint: replayRequestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: actingUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: actingUserId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update online order delivery address'));
         }
     };
 };

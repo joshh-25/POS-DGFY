@@ -93,14 +93,19 @@ export function SimpleTrackingRoutePage({
       || selectedStore?.locationLabel
       || ''
     ).trim();
-    const guidance = {
-      placed: 'We received your product order and it is being confirmed by the store.',
-      confirmed: 'The store confirmed your order and is preparing it.',
-      preparing: 'Your products are being prepared for dispatch or pickup.',
-      out_for_delivery: 'Your order is on the way to you.',
-      ready_for_pickup: 'Your order is ready for pickup. Please show your order PIN at the store.',
-      completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.'
-    }[status] || 'We are preparing your latest order status update.';
+    // Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order --
+    // never DGFY's own statement.
+    const rejectionReason = String(trackingResult.rejectionReason || trackingResult.rejection_reason || '').trim();
+    const guidance = status === 'rejected' && rejectionReason
+      ? `The store could not accept this order: ${rejectionReason}`
+      : ({
+        placed: 'We received your product order and it is being confirmed by the store.',
+        confirmed: 'The store confirmed your order and is preparing it.',
+        preparing: 'Your products are being prepared for dispatch or pickup.',
+        out_for_delivery: 'Your order is on the way to you.',
+        ready_for_pickup: 'Your order is ready for pickup. Please show your order PIN at the store.',
+        completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.'
+      }[status] || 'We are preparing your latest order status update.');
 
     return {
       activeStepIndex,

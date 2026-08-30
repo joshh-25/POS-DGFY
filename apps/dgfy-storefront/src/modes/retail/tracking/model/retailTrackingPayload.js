@@ -69,6 +69,8 @@ export function toRetailTrackingViewState(trackingPayload) {
     tracking_pin: String(source.reference || root?.tracking_pin || raw?.tracking_pin || order?.tracking_pin || '').trim(),
     status: String(source.statusCode || root?.status || raw?.status || order?.status || '').trim(),
     status_label: String(source.statusLabel || root?.status_label || raw?.status_label || order?.status_label || order?.status || '').trim(),
+    // Phase 210 (#1179). Passthrough so the payload-shaped path carries the reason too.
+    rejection_reason: String(source.rejectionReason || root?.rejection_reason || raw?.rejection_reason || order?.rejection_reason || '').trim() || null,
     order_method: String(source.orderMethod || root?.order_method || raw?.order_method || order?.order_method || 'delivery').trim(),
     createdAt: String(source.createdAt || order?.created_at || root?.created_at || raw?.created_at || '').trim(),
     updatedAt: String(source.updatedAt || order?.updated_at || root?.updated_at || raw?.updated_at || '').trim(),

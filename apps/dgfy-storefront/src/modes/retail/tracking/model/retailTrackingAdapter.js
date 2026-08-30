@@ -103,6 +103,9 @@ export const RetailTrackingAdapter = Object.freeze({
       reference,
       statusCode,
       statusLabel,
+      // Phase 210 (#1179). Merchant-attributed copy on a rejected order -- never DGFY's own
+      // statement.
+      rejectionReason: String(payload?.rejection_reason || order?.rejection_reason || '').trim() || null,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
       updatedAt: String(order?.updated_at || payload?.updated_at || '').trim() || null,

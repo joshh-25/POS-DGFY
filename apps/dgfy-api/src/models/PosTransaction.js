@@ -146,6 +146,20 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    // Phase 210 (#1179). Separate from accepted_by/accepted_at because a reject can now happen
+    // after an accept (confirmed -> rejected) -- the two events have different actors and times.
+    rejection_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    rejected_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    rejected_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     payment_type: {
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
         // (#1085). Split-tender allocations copy their method onto this column

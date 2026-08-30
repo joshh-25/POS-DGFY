@@ -23,6 +23,15 @@ export function resolveRetailTrackingDrawerStatus(rawStatus) {
   return { bg: '#f8fafc', border: '#cbd5e1', color: '#475569', dot: '#94a3b8', label: rawStatus || 'In Progress' };
 }
 
+// Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order -- never
+// DGFY's own statement.
+export function deriveRetailTrackingDrawerRejectionNotice(entry = {}) {
+  const status = String(entry.status || entry.status_label || '').trim().toLowerCase();
+  if (status !== 'rejected') return null;
+  const reason = String(entry.rejection_reason || entry.rejectionReason || '').trim();
+  return reason ? `The store could not accept this order: ${reason}` : null;
+}
+
 export function deriveRetailTrackingDrawerItems(entry = {}) {
   const detailedItems = Array.isArray(entry.items)
     ? entry.items.filter((item) => String(item?.name || '').trim())

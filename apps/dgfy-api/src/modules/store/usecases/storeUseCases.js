@@ -385,6 +385,9 @@ const serializeOrderBase = (order) => ({
     fulfillment_status: order?.fulfillment_status,
     status_label: toStatusLabel(order?.fulfillment_status),
     status: order?.fulfillment_status,
+    // Phase 210 (#1179). Deliberately NOT rejected_by/rejected_at here -- staff identity is not
+    // customer-facing PII to publish on a public, PIN-addressable tracking page.
+    rejection_reason: order?.rejection_reason ?? null,
     subtotal_amount: order?.subtotal_amount,
     discount_amount: order?.discount_amount,
     discount_label_snapshot: order?.discount_label_snapshot,
@@ -4343,6 +4346,9 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
 
             const rejected = order.fulfillment_status === 'rejected';
             const cancelled = order.fulfillment_status === 'cancelled';
+            // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
+            // order (defensive: the column is only ever written on reject anyway).
+            const rejectionReason = String(order?.rejection_reason || '').trim();
             const reviewInvites = order.fulfillment_status === 'completed'
                 ? await issueReviewInvitesForOrder({
                     tenantId,
@@ -4358,10 +4364,13 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                 status_label: toStatusLabel(order.fulfillment_status),
                 is_trackable: !rejected && !cancelled,
                 message: rejected
-                    ? 'This order was not accepted by the store.'
+                    ? (rejectionReason
+                        ? `This order was not accepted by the store: ${rejectionReason}`
+                        : 'This order was not accepted by the store.')
                     : cancelled
                         ? 'This order was cancelled.'
                         : 'Tracking information loaded successfully.',
+                rejection_reason: rejected ? (rejectionReason || null) : null,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites
             });

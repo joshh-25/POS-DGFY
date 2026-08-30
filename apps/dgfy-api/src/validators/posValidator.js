@@ -767,6 +767,19 @@ const updateOnlineOrderStatusSchema = Joi.object({
     })
 });
 
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. `.and(...)` because a
+// pin is a pair or it is nothing -- a half-updated pin is worse than none. `change_reason` is
+// required: this is a staff mutation of customer-supplied data on a money-bearing order with no
+// customer confirmation loop, so an unexplained change is not acceptable. `precision(8)` matches
+// DECIMAL(10,8)/DECIMAL(11,8) on the model.
+const updateOnlineOrderDeliveryAddressSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    delivery_address: Joi.string().trim().min(3).max(500).required(),
+    delivery_latitude: Joi.number().min(-90).max(90).precision(8).allow(null).optional(),
+    delivery_longitude: Joi.number().min(-180).max(180).precision(8).allow(null).optional(),
+    change_reason: Joi.string().trim().min(3).max(255).required()
+}).and('delivery_latitude', 'delivery_longitude');
+
 const updateDeliveryJobStatusSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     status: Joi.string().valid('assigned', 'picked_up', 'delivered').required()
@@ -1220,6 +1233,7 @@ export const validateSplitAllocationReversal = validateSchema(splitAllocationRev
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validateUpdateOnlineOrderDeliveryAddress = validateSchema(updateOnlineOrderDeliveryAddressSchema, 'body', 'validatedData');
 export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');

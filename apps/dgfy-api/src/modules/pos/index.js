@@ -83,6 +83,7 @@ import {
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
+    buildUpdateOnlineOrderDeliveryAddressUseCase,
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
@@ -300,6 +301,9 @@ export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCas
     inventoryCommandService: inventoryStockCommandService,
     inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
+});
+export const updateOnlineOrderDeliveryAddressUseCase = buildUpdateOnlineOrderDeliveryAddressUseCase({
+    posRepository
 });
 export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
     posRepository,

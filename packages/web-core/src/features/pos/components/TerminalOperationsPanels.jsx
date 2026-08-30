@@ -17,6 +17,7 @@ import {
   getNextStatusActions
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
+import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
 
 const parseDeliveryCoords = (order = {}) => {
   if (
@@ -374,6 +375,7 @@ function IncomingQueueWorkspace({
   handleIncomingOrderStatusChange,
   handleDeliveryJobStatusChange,
   handleAssignDeliveryPersonnel,
+  handleUpdateOnlineOrderDeliveryAddress,
   deliveryPersonnelState,
   handleOpenCashCollection,
   handleOpenBalanceSettlement,
@@ -905,6 +907,18 @@ function IncomingQueueWorkspace({
                       </a>
                     </div>
                   )}
+
+                  <DeliveryAddressEditControl
+                    orderId={order.pos_transaction_id}
+                    order={order}
+                    addressChanges={order.addressChanges}
+                    actionLoading={actionLoading}
+                    canTransactPos={canTransactPos}
+                    locked={locked}
+                    isOnline={isOnline}
+                    hasActiveShift={hasActiveShift}
+                    onSave={handleUpdateOnlineOrderDeliveryAddress}
+                  />
                 </div>
 
                 <div>

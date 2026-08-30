@@ -32,7 +32,8 @@ import {
   assignDeliveryPersonnel,
   fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
-  updateOnlineOrderStatus
+  updateOnlineOrderStatus,
+  updateOnlineOrderDeliveryAddress
 } from '../services/posService';
 import {
   login as loginWithCredentials,
@@ -5559,6 +5560,47 @@ export default function TerminalPage() {
     }
   };
 
+  // Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same shape as
+  // handleAssignDeliveryPersonnel above: online guard -> id parse -> idempotency key -> call ->
+  // refresh -> toast, with the same retryable-error branch.
+  const handleUpdateOnlineOrderDeliveryAddress = async (posTransactionId, payload = {}) => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before editing a delivery address.');
+      return false;
+    }
+
+    const normalizedId = Number.parseInt(posTransactionId, 10);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+      toast.error('Invalid order reference.');
+      return false;
+    }
+
+    const actionKey = `delivery-address-edit:${normalizedId}`;
+    setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    try {
+      await updateOnlineOrderDeliveryAddress(normalizedId, {
+        ...payload,
+        idempotency_key: createIdempotencyKey('pos-order-address')
+      });
+      toast.success('Delivery address updated.');
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      if (isRetryableTerminalOperationError(error)) {
+        toast.error('The delivery address was not saved because the server connection was lost. Reconnect and try again.');
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to update the delivery address.');
+      }
+      return false;
+    } finally {
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[normalizedId];
+        return next;
+      });
+    }
+  };
+
   const handleOpenCashCollection = (order) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before collecting payment for an online order.');
@@ -6606,6 +6648,7 @@ function PosRestorationLoadingScreen() {
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+          handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
           deliveryPersonnelState={deliveryPersonnelState}
           onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
           handleOpenCashCollection={handleOpenCashCollection}
