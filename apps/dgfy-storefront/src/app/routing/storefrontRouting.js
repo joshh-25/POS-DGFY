@@ -97,6 +97,14 @@ export const readRouteSlug = () => {
     const match = path.match(pattern);
     if (match?.[1]) return normalizeRouteSlug(decodeURIComponent(match[1]));
   }
+  // #452 (Phase 212), RF-5 fix: the same guard as above, for the #/s/{X} hash-routing form --
+  // window.location.pathname is often "/" when hash routing is in play, so the pathname-only
+  // guard above never fires for a hash-form short code and it would otherwise fall straight
+  // through into the generic TENANT_STORE_HASH_PATTERNS loop below and get returned as a slug.
+  const hashShortCodeMatch = (window.location.hash || '').match(/^#\/s\/([^/]+)/i);
+  if (hashShortCodeMatch?.[1] && AFFILIATE_SHORT_CODE_PATTERN.test(hashShortCodeMatch[1])) {
+    return affiliateShareRouteSlug;
+  }
   for (const pattern of TENANT_STORE_HASH_PATTERNS) {
     const match = (window.location.hash || '').match(pattern);
     if (match?.[1]) return normalizeRouteSlug(decodeURIComponent(match[1]));

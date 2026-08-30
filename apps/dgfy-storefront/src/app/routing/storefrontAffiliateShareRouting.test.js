@@ -73,4 +73,34 @@ describe('affiliate short-code path routing (#452, Phase 212)', () => {
     expect(readRouteSlug()).toBe('af-abc0234');
     expect(readAffiliateShortCode()).toBe('');
   });
+
+  // RF-5 (round-2 review, PR #1226): the pathname-only guard in readRouteSlug() never fired for
+  // a hash-routed short code (pathname stays "/" while the SPA route lives in window.location.hash),
+  // so #/s/AF-ABC234 fell straight through into the generic TENANT_STORE_HASH_PATTERNS loop and
+  // came back as the slug "af-abc234" -- exactly the amplifier §1.3/T12 exists to prevent, just
+  // reachable via the hash form instead of the path form.
+  describe('hash-routed short code (#/s/{short_code}) -- RF-5 regression', () => {
+    it('initial unresolved state: readAffiliateShortCode() reads it, readRouteSlug() is null (never "af-abc234")', () => {
+      window.history.replaceState({}, '', '/#/s/AF-ABC234');
+      expect(readAffiliateShortCode()).toBe('AF-ABC234');
+      expect(readRouteSlug()).toBeNull();
+    });
+
+    it('after setAffiliateShareRouteSlug("mystore"), readRouteSlug() on the same hash returns "mystore"', () => {
+      window.history.replaceState({}, '', '/#/s/AF-ABC234');
+      setAffiliateShareRouteSlug('mystore');
+      expect(readRouteSlug()).toBe('mystore');
+    });
+
+    it('subpage parity: #/s/AF-ABC234/order -> readStoreSubpage() is "order", unaffected by the RF-5 fix', () => {
+      window.history.replaceState({}, '', '/#/s/AF-ABC234/order');
+      expect(readStoreSubpage()).toBe('order');
+    });
+
+    it('a non-conforming hash short code still falls through to slug resolution, matching the path-form T18 behavior', () => {
+      window.history.replaceState({}, '', '/#/s/af-toolong');
+      expect(readRouteSlug()).toBe('af-toolong');
+      expect(readAffiliateShortCode()).toBe('');
+    });
+  });
 });
