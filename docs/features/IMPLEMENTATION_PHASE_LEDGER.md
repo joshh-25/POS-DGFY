@@ -13141,3 +13141,119 @@ hand to `pm` if ever wanted): a general short-link/redirect service, a server-si
 `/s/{code}`, retiring the `?p=` shim on a future date (moot — E1 retired it outright instead),
 fixing #972's shared-IP keying gap, telemetry on `?p=` vs. path arrivals, and a vanity affiliate
 handle.
+
+## Phase 216 - Storefront: Single Fulfillment Method Hides the Chooser (#1217)
+
+### Initiative and release
+
+Surebiz go-live storefront polish (#558 verification surface), epic #1178. Phase 216 is the head
+of Wave 4; Phases 217 and 218 edit the same files and depend on this phase landing first.
+
+### Objective and scope
+
+When a store's resolved fulfillment location supports exactly one order method, the storefront
+checkout stops asking "How would you like to receive your order?" — the chooser and its heading
+are hidden and replaced with a static statement of the method instead. This is a **deliberate
+reversal of a presentation choice**, not a defect fix: `6e57f23b0` (2026-08-28) shipped the
+disabled-but-visible `Pickup (Unavailable)` treatment and #1117 ratified it in writing. **#1217
+supersedes #1117 on the visibility point only** — #1117's underlying capability-resolution fix is
+unchanged, and the `(Unavailable)` treatment survives, unmodified, for any mode with three or more
+candidates (none exist today; Retail, Simple, and F&B all resolve exactly two candidates —
+delivery/pickup — so "exactly one available" is precisely the case that used to render
+`(Unavailable)`, and that path becomes unreachable in these three modes as a direct consequence).
+Presentational only — no selection path, payload, validation, or server-side enforcement changes.
+
+**Decision recorded (plan §3): the two duplicate fail-open resolvers are consolidated in this
+PR**, not deferred. `storefrontFulfillmentOptions.js`'s `resolveStorefrontFulfillmentOptions` now
+delegates to `buildStorefrontOrderMethodOptions` (from `storefrontOrderMethodOptions.js`) instead
+of independently re-implementing the same `!== false` fail-open filter. Behaviour-identical for
+its one non-test caller (F&B's default `fulfillmentOptions` prop value): `delivery`/`pickup` map
+to the same `supports_delivery`/`supports_pickup` keys the old inline implementation read, no
+call-site churn (exported name and signature unchanged). Taken now, not deferred, because the
+sibling delivery-timing-policy work adds a third config axis on this same seam next — consolidating
+while it's already open is cheaper than doing it there. `getUnavailableFulfillmentMessage` stays
+byte-identical (three existing tests assert its exact string; its path is still live for a future
+3+-candidate mode).
+
+A new model module owns the whole decision so the five render sites (four mode components plus the
+raw `<select>` in `StorefrontCheckoutSummaryContainer.jsx`) cannot drift independently:
+`resolveFulfillmentSelectorPresentation(options)` in the new
+`shared/model/storefrontFulfillmentPresentation.js`, returning
+`{ showSelector, availableOptions, soleOption, notice }` across four explicit cases — 2+ available
+(chooser unchanged, `(Unavailable)` intact for any unsupported candidate), exactly 1 available
+(chooser hidden, static statement), 0 available (chooser hidden, defensive `role="alert"` notice —
+unreachable today for a `transaction`-mode store per `assertFulfillmentMethodAvailable`, kept as a
+guard rather than assumed impossible), and an empty candidate array (chooser left **on**,
+deliberately, since `SimpleCheckoutFulfillmentChoices`/`SimpleOrderMethodSelector` both default
+`options` to `[]` and a still-loading checkout must not flash the zero-method notice).
+
+### Status
+
+`in_progress`. PR opened against `develop`, `Refs #1217` (not `Closes` — this is a visual change
+Pat raised from a live walkthrough; the issue stays open through merge so `verifier` confirms it on
+STAGING per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+None upstream. **Phases 217 and 218 depend on this phase** — both edit the same files this phase
+touches and must land after it, per the plan's own header. Current phase 216; next eligible phase
+217.
+
+### Acceptance and validation evidence
+
+- [x] All four mode components (`RetailOrderFulfillmentStep.jsx`,
+      `SimpleCheckoutFulfillmentChoices.jsx` + `SimpleCheckoutFulfillmentStep.jsx`'s `3.` heading,
+      `FnbCheckoutFulfillmentChoices.jsx` + `FnbCheckoutRouteContainer.jsx`'s `3.` heading,
+      `DefaultOrderFulfillmentStep.jsx`) and the raw `<select>` in
+      `StorefrontCheckoutSummaryContainer.jsx` wired to `resolveFulfillmentSelectorPresentation`.
+      Inner section numbering (`1./2./3.`) shifts down by one wherever the chooser is hidden; the
+      outer "Step 2: Fulfillment" wizard label is untouched, and no new prop was threaded for the
+      `3.`-heading renumbering — both parents already had the options array in scope.
+      `DefaultOrderFulfillmentStep.jsx` is unwired placeholder code today (its options carry no
+      `available` flag) so it always resolves `showSelector: true` — behaviour is unchanged there
+      by construction, stated explicitly rather than claimed as a user-visible fix.
+      `StorefrontCheckoutSummaryContainer.jsx`'s `<select>` also gained `disabled` +
+      `(Unavailable)` marking on its own unsupported `<option>`s in the 2+-available branch — a
+      small, in-scope fix to a latent inconsistency (those options rendered freely selectable
+      before), only reachable in a future 3+-candidate mode.
+- [x] New shared component `shared/components/checkout/FulfillmentMethodNotice.jsx` — one notice
+      box, `accentColor` the only per-mode variation, `variant="warning"` (amber, `role="alert"`)
+      for the zero-available case, `data-testid="fulfillment-method-notice"`, named + default
+      export.
+- [x] §3 consolidation: `resolveStorefrontFulfillmentOptions` rewritten to delegate to
+      `buildStorefrontOrderMethodOptions(PRODUCT_FULFILLMENT_CANDIDATE_OPTIONS, location)`;
+      `PRODUCT_FULFILLMENT_CANDIDATE_OPTIONS` exported.
+- [x] `(Unavailable)` support in `SelectableOptionCard.jsx` and `getUnavailableFulfillmentMessage`
+      is untouched — kept live for a future 3+-candidate mode, per #1217's explicit scope.
+      `SimpleOrderMethodSelector.jsx` and its test are untouched.
+- [x] #1117 comment posted noting its "Pickup remains visible as unavailable" expected-behaviour
+      line is superseded by #1217 on the visibility point only (issue body left unedited, per the
+      taxonomy's no-rewriting-another-author's-issue rule).
+- [x] Compliance: `npm run check:compliance` → "No compliance-sensitive changes detected." (no
+      `packages/web-core/src/features/pos/**` path, no API contract, no regulated surface — a
+      presentation-only change in `apps/dgfy-storefront`, confirmed by tool, not self-certified).
+      `npm run check:architecture` → both `ArchitectureGuardrails` and `ControllerBoundary` OK.
+- [x] No ADR — searched, none governs this presentation choice (#1117 is an issue, not an ADR);
+      nothing to amend under ADR 0039.
+- [x] No database migration, no schema change, no lockfile change (`package.json` untouched;
+      `apps/dgfy-storefront/package-lock.json` confirmed clean via `git diff --exit-code`).
+- [x] Tier 0: `npm run build:store` → real Vite build, `✓ built in 8.53s`, no unresolved
+      import/JSX error.
+- [x] Tier 2 (elevated to required by this phase's own test rewrites): `npm test` in
+      `apps/dgfy-storefront` → **830/830 passing, 155/155 files** — including the new
+      `storefrontFulfillmentPresentation.test.js` (7 cases: 2+/1-delivery/1-pickup/zero/empty-array
+      guard/unknown-method fallback/non-array input), the rewritten
+      `RetailOrderFulfillmentStep.test.jsx` and `FnbCheckoutFulfillmentChoices.test.jsx` (each now
+      asserting the hide-and-renumber behaviour for a single-available pair plus the unchanged
+      chooser-and-`(Unavailable)` behaviour for a two-available pair — the pre-#1217 versions of
+      both asserted the now-unreachable `X (Unavailable)` render for that exact input and were not
+      a flake to work around), and the new sibling
+      `SimpleCheckoutFulfillmentChoices.test.jsx` at the parent-component level.
+      `SimpleOrderMethodSelector.test.jsx` was left unmodified, correctly — it exercises the leaf
+      selector directly with both options and still legitimately covers the `(Unavailable)` /
+      `aria-disabled="true"` path that stays live for a 3+-candidate mode.
+- [x] Regression sweep before opening the PR: `grep -rn "How would you like to receive your
+      order" apps/dgfy-storefront/src` shows no orphaned/stale assertion of the old always-shown
+      question; `grep -rn "(Unavailable)" apps/dgfy-storefront/src --include='*.test.jsx'` shows no
+      surviving test asserting the old disabled-visible render for a one-available/one-unavailable
+      input (`discoveryFlow.integration.test.jsx`'s unrelated `MapUnavailable` hit, left alone).
