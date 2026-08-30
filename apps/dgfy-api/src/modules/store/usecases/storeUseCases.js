@@ -3324,16 +3324,27 @@ export const buildStoreCheckoutUseCase = ({
             // succeeded, mirroring recordDgfyOrderActivity's convention above.
             if (payload?.attribution_enrollment_id) {
                 try {
-                    // Reuse whatever resolveCheckoutContext already resolved (same enrollment/rule
-                    // that priced this exact order) rather than re-querying - falls back to a fresh
-                    // lookup only if that resolution is unexpectedly missing, so a transient gap
-                    // there still degrades to pre-Phase-1 behavior instead of skipping accrual.
+                    // #450 decision D2 (Phase 206): re-verify the enrollment against the database
+                    // at commit time rather than trusting resolveCheckoutContext's pricing-time
+                    // object. `resolved.affiliatePricing.enrollment` is a snapshot taken before the
+                    // order was written, and a checkout can span real work in between (F&B kitchen
+                    // order creation, inventory movements, payment settlement) - if the affiliate
+                    // was revoked/suspended, or the tenant's program disabled, inside that window,
+                    // the cached object is stale. The previous `||` fallback only fired when that
+                    // object was *missing*, never when it was *stale*, which is exactly the case
+                    // D2 names. This is a plain, non-locking read on the default connection: the
+                    // order's own transaction has already committed above, so it necessarily sees
+                    // current committed state - no lock and no transaction handle are needed or
+                    // wanted here (accrual is already idempotent on (tenant_id, order_reference)).
+                    //
+                    // affiliatePricing is still the source of the commission *math* (rule, rate,
+                    // commission_base_mode) - deliberately unchanged. Only the enrollment used to
+                    // decide whether, and to whom, commission accrues is re-resolved.
                     const affiliatePricing = resolved.affiliatePricing;
-                    const affiliateEnrollment = affiliatePricing?.enrollment
-                        || await resolveActiveAffiliateEnrollmentById({
-                            tenantId: normalizedTenantId,
-                            enrollmentId: payload.attribution_enrollment_id
-                        });
+                    const affiliateEnrollment = await resolveActiveAffiliateEnrollmentById({
+                        tenantId: normalizedTenantId,
+                        enrollmentId: payload.attribution_enrollment_id
+                    });
                     if (affiliateEnrollment) {
                         // baseSubtotalAmount is the catalog-price subtotal, pre-affiliate-rule;
                         // subtotalAmount is what the buyer actually paid. The two are identical
@@ -3399,6 +3410,17 @@ export const buildStoreCheckoutUseCase = ({
                             },
                             buyerDgfyAccountId: normalizedStoreCustomer?.dgfy_account_id || null,
                             storeSlug: String(payload.store_slug || '').trim().toLowerCase() || null
+                        });
+                    } else if (affiliatePricing?.enrollment) {
+                        // In-flight attribution drop (#450 D2): this order *was* priced under an
+                        // active enrollment, and that enrollment is no longer active at commit
+                        // time. The order stands and the buyer sees nothing - only the commission
+                        // is withheld. Logged (never thrown) so the drop is attributable later;
+                        // this is the same non-blocking convention as the catch block below.
+                        logger.warn('[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit', {
+                            tenant_id: normalizedTenantId,
+                            order_id: orderId,
+                            enrollment_id: payload.attribution_enrollment_id
                         });
                     }
                 } catch (accrualError) {
