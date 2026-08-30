@@ -70,7 +70,23 @@ const makeFakeModel = (idField) => {
             const row = rows.find((r) => r[idField] === pk);
             return row ? toRow(row) : null;
         },
-        async findOne({ where = {} } = {}) {
+        // `lock`+`transaction` on findOne gets the same real (if simplistic) mutex semantics as
+        // findOrCreate below - a second caller requesting the same row's lock genuinely queues
+        // behind the first until the first's enclosing `sequelize.transaction` callback settles.
+        // This is what lets the RF-2 concurrency regression test actually exercise the fix
+        // (`SELECT ... FOR UPDATE` on updateEnrollment/reactivateEnrollment's own findOne) rather
+        // than just calling the code path once each with no real interleaving.
+        async findOne({ where = {}, transaction = null, lock = null } = {}) {
+            if (lock && transaction) {
+                const pk = where[idField];
+                const previousTail = lockTails.get(pk) || Promise.resolve();
+                let release;
+                const held = new Promise((resolve) => { release = resolve; });
+                lockTails.set(pk, previousTail.then(() => held));
+                transaction._pendingLockReleases = transaction._pendingLockReleases || [];
+                transaction._pendingLockReleases.push(release);
+                await previousTail;
+            }
             const row = rows.find((r) => matchesWhere(r, where));
             return row ? toRow(row) : null;
         },
@@ -231,6 +247,34 @@ describe('createEnrollment — writes one `enrolled` event (site 1)', () => {
             source: 'admin_api'
         });
     });
+
+    // PR #1232 review RF-1: createEnrollment is shared by TWO callers - the merchant-provisioned
+    // path above (buildProvisionAffiliateUseCase) and buildEnrollSelfServeAffiliateUseCase, where
+    // the DGFY account enrolls ITSELF. The pre-fix code hard-coded actor_type: 'tenant_user' /
+    // source: 'admin_api' for both, misrecording a self-serve enrollment as a merchant action.
+    test('1b (RF-1): self-serve enrollment (source: self_serve) is recorded as a dgfy_account action, not a merchant one', async () => {
+        const enrollment = await dgfyAffiliateRepository.createEnrollment({
+            dgfyAccountId: 'account-self-serve',
+            tenantId: TENANT_ID,
+            shortCode: 'AF-SS1',
+            shareCodeHash: 'hash-ss1',
+            source: 'self_serve'
+            // No actorUserId/actorUsername - buildEnrollSelfServeAffiliateUseCase never passes
+            // them, since no tenant staff acted.
+        });
+
+        const events = mockDgfyAffiliateEnrollmentStatusEvent._rows();
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+            enrollment_id: enrollment.enrollment_id,
+            event_type: 'enrolled',
+            actor_type: 'dgfy_account',
+            actor_dgfy_account_id: 'account-self-serve',
+            actor_user_id: null,
+            actor_username: null,
+            source: 'self_serve'
+        });
+    });
 });
 
 describe('materializeInviteEnrollment — invite-accept and auto-enroll (sites 2a/2b)', () => {
@@ -374,6 +418,34 @@ describe('reactivateEnrollment — site 4', () => {
         });
     });
 
+    // #1202 (Phase 214) J4, implemented per PR #1232 review RF-3: POST .../reactivate now accepts
+    // an optional `reason`, threaded onto the reactivated event - the capacity to record WHY an
+    // affiliate was reactivated, same as revocation_reason already does for demotions.
+    test('8c (J4/RF-3): reactivate accepts an optional reason, threaded onto the reactivated event', async () => {
+        mockDgfyAffiliateEnrollment._seed([activeEnrollment({ enrollment_id: 83, status: 'suspended' })]);
+
+        const result = await reactivateUseCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 83,
+            reason: 'appeal approved after review'
+        });
+
+        expect(result.success).toBe(true);
+        const events = mockDgfyAffiliateEnrollmentStatusEvent._rows();
+        expect(events).toHaveLength(1);
+        expect(events[0].reason).toBe('appeal approved after review');
+    });
+
+    test('8d (J4/RF-3): an omitted reactivation reason stays null - additive, no existing caller breaks', async () => {
+        mockDgfyAffiliateEnrollment._seed([activeEnrollment({ enrollment_id: 84, status: 'suspended' })]);
+
+        const result = await reactivateUseCase({ tenantId: TENANT_ID, enrollmentId: 84 });
+
+        expect(result.success).toBe(true);
+        const events = mockDgfyAffiliateEnrollmentStatusEvent._rows();
+        expect(events[0].reason).toBeNull();
+    });
+
     test('9: reactivation still preserves revoked_at/revoked_by/revocation_reason and does not touch activated_at', async () => {
         const revokedAt = new Date('2026-08-01T00:00:00.000Z');
         const activatedAt = new Date('2026-01-01T00:00:00.000Z');
@@ -484,5 +556,60 @@ describe('J10 — a failing event insert aborts the enclosing transaction', () =
         await expect(
             dgfyAffiliateRepository.updateEnrollment(TENANT_ID, 13, { status: 'suspended' })
         ).rejects.toThrow('simulated insert failure');
+    });
+});
+
+describe('RF-2 — locking the enrollment row before deriving the transition', () => {
+    // The fake model's plain (unlocked) findOne always reads the shared, live `rows` array - it
+    // does not itself replicate MySQL REPEATABLE READ's stale-snapshot behavior. What DOES
+    // transfer faithfully from the fake to the real fix: `lock: transaction.LOCK.UPDATE` makes a
+    // second concurrent call's findOne genuinely QUEUE behind the first (via the same lockTails
+    // mechanism findOrCreate already used for the slot-cap tests), so the second call's
+    // `fromStatus` is read only after the first call's whole transaction - including its status
+    // write AND its event write - has fully settled. That is exactly the ordering the real
+    // `SELECT ... FOR UPDATE` fix guarantees against a stale snapshot read. Without the fix (a
+    // plain findOne, no lock), both concurrent calls' findOne would resolve before either awaited
+    // its own row.update, so both would derive `fromStatus` from the ORIGINAL pre-race status and
+    // both would (incorrectly) decide a transition occurred.
+    test('14: two concurrent PATCH-to-suspended calls on the same enrollment - only the first genuinely transitions and writes an event', async () => {
+        mockDgfyAffiliateEnrollment._seed([activeEnrollment({ enrollment_id: 14 })]);
+
+        const results = await Promise.allSettled([
+            updateUseCase({ tenantId: TENANT_ID, enrollmentId: 14, body: { status: 'suspended' }, revokedBy: 1, revokedByUsername: 'Ana' }),
+            updateUseCase({ tenantId: TENANT_ID, enrollmentId: 14, body: { status: 'suspended' }, revokedBy: 2, revokedByUsername: 'Marco' })
+        ]);
+
+        expect(results.every((r) => r.status === 'fulfilled' && r.value.success)).toBe(true);
+
+        // The row actually transitioned exactly once - the second (serialized-behind-the-first)
+        // call re-reads the ALREADY-suspended row, so `updates.status !== fromStatus` is false for
+        // it and it writes no second event (the same idempotent-re-PATCH guard test #6 already
+        // covers, now proven under a genuine race rather than a single sequential call).
+        const events = mockDgfyAffiliateEnrollmentStatusEvent._rows();
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ from_status: 'active', to_status: 'suspended' });
+        const row = mockDgfyAffiliateEnrollment._rows().find((r) => r.enrollment_id === 14);
+        expect(row.status).toBe('suspended');
+    });
+
+    test('15: two concurrent reactivate calls on the same suspended enrollment - only one reactivated event is written, no duplicate/incorrect event', async () => {
+        mockDgfyAffiliateEnrollment._seed([activeEnrollment({ enrollment_id: 15, status: 'suspended' })]);
+        mockTenantAffiliateSettings._seed([{ tenant_id: TENANT_ID, max_affiliate_slots: 5 }]);
+
+        const results = await Promise.allSettled([
+            reactivateUseCase({ tenantId: TENANT_ID, enrollmentId: 15, reactivatedBy: 1, reactivatedByUsername: 'Ana' }),
+            reactivateUseCase({ tenantId: TENANT_ID, enrollmentId: 15, reactivatedBy: 2, reactivatedByUsername: 'Marco' })
+        ]);
+
+        expect(results.every((r) => r.status === 'fulfilled' && r.value.success)).toBe(true);
+
+        // Exactly one genuine 'suspended -> active' event - the second, serialized-behind-the-
+        // first call sees the row already active (the RF-2 revalidation guard) and returns it
+        // as-is rather than writing a second, incorrect 'active -> active' reactivated event.
+        const events = mockDgfyAffiliateEnrollmentStatusEvent._rows();
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ from_status: 'suspended', to_status: 'active', event_type: 'reactivated' });
+        const row = mockDgfyAffiliateEnrollment._rows().find((r) => r.enrollment_id === 15);
+        expect(row.status).toBe('active');
     });
 });
