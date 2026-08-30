@@ -12037,7 +12037,7 @@ enrollment status transitions, not commission accrual).
 
 ### Implementation links
 
-- Issue #449 (Refs, not Closes — see above)
+- Issue #449 (Closes — see above)
 - PR #1209: https://github.com/Sieitzz/dgfy-platform/pull/1209
 - No compliance declaration (see Acceptance and validation evidence)
 - No ADR — this adds a configurable field within the existing affiliate commission model; it neither
