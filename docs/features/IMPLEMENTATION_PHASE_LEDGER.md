@@ -11267,3 +11267,103 @@ None blocking. Independent of Phases 190-196. Phase 198 depends on this phase ha
 
 Phase 198 (#1177, `max_affiliate_slots` enforcement) — same initiative, next in the successive
 chain.
+
+## Phase 198 - Affiliate Allocation Slot Cap Enforcement (#1177)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Second of three successive phases (197-199), implementing
+#447's 2026-08-30 policy decisions D1-D6: "1 affiliate per store" is code-enforced, per-tenant
+configurable, default 1.
+
+### Objective and scope
+
+Add `tenant_affiliate_settings.max_affiliate_slots` (default 1) and enforce it at every
+enrollment-creation seam, including the one a use-case-only check would miss: account
+registration (`dgfyAuthUseCases.js` -> `mirrorPendingAffiliateInvitesForAccount` ->
+`materializeInviteEnrollment`), which reaches the repository directly. Read-only on every
+tenant-facing surface per #447 D5 — no self-serve purchase path; raising the cap is an internal
+admin action in v1.
+
+### Status
+
+`completed` (2026-08-30). PR #1187 merged into `develop` as commit
+`0e6b48a6ec9cdfd13505b72a79945d5e03ab81d6`, after three review rounds (below).
+
+### Dependencies
+
+Depends on Phase 197 (#451) having merged first — confirmed before branching. Independent of
+Phases 190-196.
+
+### Acceptance and validation evidence
+
+- [x] `max_affiliate_slots` column added (landlord migration, `tenant_affiliate_settings`),
+      default `1`; `DEFAULT_SETTINGS` in the repository carries the same default so a tenant with
+      no settings row still enforces.
+- [x] Enforced in the **repository layer** — `createEnrollment`, `createInvite`,
+      `materializeInviteEnrollment` — not only in use cases, specifically because the
+      registration-mirror path bypasses use cases entirely. Verified with a dedicated test proving
+      that path is blocked at cap.
+- [x] Consumed slots = active enrollments + pending, non-expired invites (#447 D3); revoking an
+      enrollment frees a slot (D4); an expired/cancelled invite does not consume one.
+- [x] No write path added for `max_affiliate_slots` on any tenant-facing surface (#447 D5, #488)
+      — confirmed the settings-update use case's whitelist excludes it.
+- [x] ADR 0036 amended (dated `## Amendments` block, additive, no existing clause negated) rather
+      than superseded, per ADR 0039.
+- [x] Three review rounds, each substantive:
+      - **Round 1 (BLOCK)** — RF-1 (blocker): the settings-row lock only applied to an *existing*
+        row, so a tenant with none yet had nothing to lock and two concurrent writes could both
+        undercount. Fixed by replacing `findByPk` with a locked `findOrCreate`. RF-2 (related):
+        the explicit invite-accept path called the enforcement function with no transaction at
+        all, so no lock could ever engage there; fixed by opening one internally when the caller
+        supplies none. RF-3: added an explicit landlord-only / no-tenant-schema-sync-dependency
+        statement to the PR body.
+      - **Round 2 (BLOCK)** — RF-6 (blocker): under MySQL/InnoDB's default REPEATABLE READ
+        isolation, a transaction's non-locking reads all use the snapshot established at that
+        transaction's *first* read, regardless of any locking read that happens later. A plain
+        `findOne` (the existing-enrollment check) ran before the settings-row lock in
+        `materializeInviteEnrollment`, so the lock's serialization didn't actually protect the
+        subsequent count query. Fixed by splitting lock-acquisition from count-and-throw and
+        acquiring the lock as that function's first statement, strictly before any plain read.
+        `createEnrollment`/`createInvite` were independently confirmed to already have correct
+        ordering (their check was already their first transactional statement) and were
+        unaffected by the refactor.
+      - **Round 3 (APPROVE)** — merged.
+- [x] Two findings deliberately **not** acted on, correctly scoped by the reviewing round itself:
+      RF-4 (checks were mid-run at review time — resolved on its own once CI finished) and RF-5
+      (the production active-enrollment count/distribution) — see the open item below.
+- [x] 52/52 tests passing across the slot-enforcement suite and the two sibling affiliate suites
+      by the final round.
+
+### Known residual gaps, accepted rather than solved (state explicitly, not silently)
+
+- **TOCTOU window for a tenant that already had a settings row before this PR** was accepted for
+  v1 in the implementation plan (a per-tenant mutex was judged disproportionate for this phase);
+  the round-1/round-2 fixes above close the gap for the common no-settings-row case and for
+  read-ordering within a single call, but a full formal proof of serializability was not attempted.
+- **`updateEnrollment` status transitions are not slot-checked.** A `suspended -> active` flip
+  could in principle exceed the cap. Enforcement is creation-only by design (#1177); this is a
+  known, accepted gap, not an oversight — file separately via `pm` if it should be closed.
+- **No landlord-admin write endpoint exists for `max_affiliate_slots`.** Raising it is a manual
+  SQL upsert against the production landlord DB in v1 (matches #447 D5 exactly). Flagged as
+  follow-up work, not blocking this phase.
+
+### Open item — required before promotion, not before this PR's merge
+
+Issue #1177 requires the per-tenant active-enrollment count/distribution in **production** to be
+recorded on that issue before this reaches `main`, so no existing over-cap tenant is silently
+degraded. This is explicitly a promotion-time gate per the approved plan's own Step 10 — it needs
+production DB access none of this phase's agents have, and Luna's review correctly left it as an
+open should-fix (RF-5) rather than a merge blocker. **Not yet done** — flag to `promoter` before
+this initiative's work is promoted past `develop`.
+
+### Implementation links
+
+- Issue #1177, Refs #446
+- PR #1187: https://github.com/Sieitzz/dgfy-platform/pull/1187
+- Reviews: three `## Review` comments on PR #1187 (Codex GPT-5.6-Luna, pr-reviewer)
+
+### Next eligible phase
+
+Phase 199 (#450 slice — revocation audit trail columns only) — same initiative, next in the
+successive chain.
