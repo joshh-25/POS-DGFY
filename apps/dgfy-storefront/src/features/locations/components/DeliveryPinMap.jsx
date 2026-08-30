@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import maplibregl from 'maplibre-gl';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
@@ -32,6 +33,17 @@ export function DeliveryPinMap({
   const pinInstructionTimerRef = useRef(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const [showPinInstruction, setShowPinInstruction] = useState(false);
+  // #475 RF-1: MapLibre's TouchZoomRotateHandler binds its touch listeners to
+  // map.getCanvasContainer() and, per its own handler_manager.ts, only accepts a
+  // touch whose *original* event.target is a DOM descendant of that container
+  // (`this._el.contains(target)`). A CSS touch-action rule on a sibling overlay
+  // only suppresses the browser's default page-zoom gesture -- it cannot make a
+  // touch that started on a sibling retarget into the map, because DOM touch
+  // events keep the element they started on for the gesture's whole lifetime and
+  // never bubble sideways to a sibling. Portaling overlayControls into the real
+  // canvas container makes it an actual descendant, so a pinch that starts on a
+  // chip is treated by MapLibre exactly like a pinch that starts on the canvas.
+  const [canvasContainerEl, setCanvasContainerEl] = useState(null);
   const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
 
   const scheduleMapResize = useCallback((reason = 'layout') => {
@@ -97,8 +109,17 @@ export function DeliveryPinMap({
       scheduleMapResize('load');
     });
     mapRef.current = map;
+    // react-hooks/set-state-in-effect: publish the canvas container through an
+    // async callback rather than synchronously during the effect body, matching
+    // the setMapUnavailable pattern above -- the container already exists
+    // synchronously here, so a setTimeout(0) hands the portal target back on the
+    // next tick without waiting on MapLibre's own 'load' event.
+    const publishCanvasContainerTimer = window.setTimeout(() => {
+      setCanvasContainerEl(map.getCanvasContainer?.() || null);
+    }, 0);
     const cleanupInitialResize = scheduleMapResize('init');
     return () => {
+      window.clearTimeout(publishCanvasContainerTimer);
       cleanupInitialResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
@@ -107,6 +128,7 @@ export function DeliveryPinMap({
       window.clearTimeout(pinInstructionTimerRef.current);
       map.remove();
       mapRef.current = null;
+      setCanvasContainerEl(null);
     };
   }, [scheduleMapResize, showAttributionControl]);
 
@@ -268,18 +290,23 @@ export function DeliveryPinMap({
           minHeight: 0
         }}
       />
-      {overlayControls && (
+      {overlayControls && canvasContainerEl && createPortal(
         <div
           data-delivery-map-controls="true"
           style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: 'none',
+            // Belt-and-suspenders: the containment fix above is what actually lets a
+            // pinch reach the map (see the canvasContainerEl comment); this still
+            // stops the browser's own default touch handling on the chip itself.
+            touchAction: 'none',
             zIndex: 10
           }}
         >
           {overlayControls}
-        </div>
+        </div>,
+        canvasContainerEl
       )}
       {pinInstruction && showPinInstruction && (
         <div role="status" data-testid="delivery-map-pin-instruction" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 11, borderRadius: 999, padding: '6px 10px', background: 'rgba(15,23,42,0.86)', color: '#fff', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
