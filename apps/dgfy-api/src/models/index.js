@@ -38,6 +38,7 @@ import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
 import PosOrderPayment from './PosOrderPayment.js';
+import PosOrderAddressChange from './PosOrderAddressChange.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -629,6 +630,12 @@ PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as
 PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
 PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
 User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
+
+PosTransaction.hasMany(PosOrderAddressChange, { foreignKey: 'pos_transaction_id', as: 'addressChanges' });
+PosOrderAddressChange.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderAddressChange.belongsTo(User, { foreignKey: 'changed_by', as: 'changedByUser' });
+PosOrderAddressChange.belongsTo(PosTerminalShift, { foreignKey: 'changed_by_shift_id', as: 'changedByShift' });
+User.hasMany(PosOrderAddressChange, { foreignKey: 'changed_by', as: 'addressChanges' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -1103,6 +1110,7 @@ const db = {
   PosPaymentAllocation,
   PosTransactionAdjustment,
   PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1319,6 +1327,7 @@ export {
   PosPaymentAllocation,
   PosTransactionAdjustment,
   PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,

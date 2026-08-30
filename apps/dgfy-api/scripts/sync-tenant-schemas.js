@@ -230,6 +230,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `operator_session_id` INTEGER NULL AFTER `shift_id`, ADD CONSTRAINT `pos_transactions_fk_operator_session` FOREIGN KEY (`operator_session_id`) REFERENCES `pos_terminal_operator_sessions` (`pos_terminal_operator_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        // Phase 210 (#1179): three nullable, additive columns so a store-initiated reject's stated
+        // reason survives durably. Kept in lockstep with migration 20260901000002. Separate from
+        // accepted_by/accepted_at -- a confirmed -> rejected reject can happen after an accept.
+        rejection_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejection_reason` VARCHAR(255) NULL AFTER `accepted_at`"
+        }),
+        rejected_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        }),
+        rejected_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_at` DATETIME NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -1535,6 +1547,33 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_order_payments_ibfk_4` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
+    // Phase 210 (#1179): append-only audit trail for a staff delivery-address/pin edit on an
+    // online order, after placement. Kept in lockstep with migration 20260901000002-add-order-
+    // rejection-reason-and-address-change-audit.cjs. Structurally modelled on pos_order_payments
+    // above -- one row per event, FK back to the transaction.
+    pos_order_address_changes: Object.freeze({
+        sql: "CREATE TABLE `pos_order_address_changes` (\n"
+            + "  `address_change_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `previous_address` text,\n"
+            + "  `previous_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `previous_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `new_address` text NOT NULL,\n"
+            + "  `new_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `new_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `change_reason` varchar(255) NOT NULL,\n"
+            + "  `changed_by` int DEFAULT NULL,\n"
+            + "  `changed_by_shift_id` int DEFAULT NULL,\n"
+            + "  `changed_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`address_change_id`),\n"
+            + "  KEY `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`),\n"
+            + "  KEY `changed_by` (`changed_by`),\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_pos_transaction_id` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_changed_by` FOREIGN KEY (`changed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
     // Online inventory reservations are tenant-local and must be repaired for tenants that
     // predate the reservation migration. Keep this DDL aligned with
     // 20260822000001-create-inventory-reservations.cjs; the runner uses the same additive shape.
@@ -1734,6 +1773,15 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_transactions: Object.freeze({
         idx_pos_transactions_operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
+        })
+    }),
+    // Phase 210 (#1179). Repair path for a tenant whose pos_order_address_changes table exists
+    // (created via the CREATE TABLE repair above, which already includes this KEY) but somehow
+    // predates the index -- e.g. a partial migration run. Kept in lockstep with migration
+    // 20260901000002.
+    pos_order_address_changes: Object.freeze({
+        idx_pos_order_address_changes_transaction_changed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_address_changes` ADD INDEX `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`)"
         })
     }),
     employee_attendance_sessions: Object.freeze({
