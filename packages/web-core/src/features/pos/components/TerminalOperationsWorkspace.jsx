@@ -272,6 +272,7 @@ const SETTINGS_FIELD_LABELS = {
   storefront_follow_enabled: 'Show Follow Button',
   storefront_share_enabled: 'Show Share Button',
   storefront_guest_checkout_enabled: 'Allow Guest Checkout',
+  storefront_cash_payment_enabled: 'Accept Cash on Delivery/Pickup',
   'storefront_locations.primary_location': 'Primary Storefront Location'
 };
 
@@ -5413,7 +5414,8 @@ function SettingsWorkspace({
     storefrontReviewSummaryStar5: '',
     storefrontFollowEnabled: false,
     storefrontShareEnabled: false,
-    storefrontGuestCheckoutEnabled: true
+    storefrontGuestCheckoutEnabled: true,
+    storefrontCashPaymentEnabled: true
   });
   const [storefrontAssets, setStorefrontAssets] = useState({ cover: '', profile: '' });
   const [assetUploadingType, setAssetUploadingType] = useState('');
@@ -5878,7 +5880,9 @@ function SettingsWorkspace({
         storefrontShareEnabled: settingsPayload?.storefront_share_enabled?.value === true,
         // #622: fail-open default -- an unset row (every tenant provisioned before this shipped)
         // must hydrate to checked/on, matching the backend's own DEFAULT_GUEST_CHECKOUT_ENABLED.
-        storefrontGuestCheckoutEnabled: settingsPayload?.storefront_guest_checkout_enabled?.value !== false
+        storefrontGuestCheckoutEnabled: settingsPayload?.storefront_guest_checkout_enabled?.value !== false,
+        // #626 (Phase 203): same fail-open shape, matching DEFAULT_CASH_PAYMENT_ENABLED.
+        storefrontCashPaymentEnabled: settingsPayload?.storefront_cash_payment_enabled?.value !== false
       });
       setStorefrontAssets({
         cover: String(settingsPayload?.storefront_cover_image_url?.value || ''),
@@ -6341,7 +6345,8 @@ function SettingsWorkspace({
         // apps/dgfy-ims/Pages/Settings.jsx.
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
         storefront_share_enabled: storefrontForm.storefrontShareEnabled === true,
-        storefront_guest_checkout_enabled: storefrontForm.storefrontGuestCheckoutEnabled !== false
+        storefront_guest_checkout_enabled: storefrontForm.storefrontGuestCheckoutEnabled !== false,
+        storefront_cash_payment_enabled: storefrontForm.storefrontCashPaymentEnabled !== false
       });
       await hydrateSettingsWorkspace({ silent: true });
       await onStorefrontSetupSaved?.();
@@ -8218,6 +8223,10 @@ function SettingsWorkspace({
           <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
             <span className="text-[12px] font-black text-[#0F172A]">Allow Guest Checkout</span>
             <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontGuestCheckoutEnabled !== false} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontGuestCheckoutEnabled: event.target.checked }))} />
+          </label>
+          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <span className="text-[12px] font-black text-[#0F172A]">Accept Cash on Delivery/Pickup</span>
+            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontCashPaymentEnabled !== false} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontCashPaymentEnabled: event.target.checked }))} />
           </label>
         </div>
 
