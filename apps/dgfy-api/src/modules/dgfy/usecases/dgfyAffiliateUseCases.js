@@ -8,6 +8,9 @@ import {
     AFFILIATE_SETTLEMENT_POLICIES,
     validateAffiliatePriceRule
 } from '../../shared/utils/affiliatePricingPolicy.js';
+// #449 (Phase 208) - resolveEarningsCap is the same pair-resolution ladder the accrual util uses,
+// reused here so the read surface (buildListAffiliatesUseCase) reports exactly what accrual sees.
+import { resolveEarningsCap } from '../utils/affiliateCommissionAccrual.js';
 
 const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
@@ -76,6 +79,40 @@ const parseOptionalPositiveInt = (value, { field, min = 0, max = Number.MAX_SAFE
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${field} must be an integer between ${min} and ${max}.`, { statusCode: 422 });
     }
     return parsed;
+};
+
+// #449 (Phase 208) - shared parsing for the two cap fields, used by both the tenant-settings and
+// per-enrollment update use cases. `undefined` leaves the field untouched (PATCH semantics);
+// `null`/`''` clears it. parseOptionalPositiveInt has no `null` branch of its own, so the explicit
+// clear must be handled before delegating to it.
+const parseCapCentavosField = (value, field) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return parseOptionalPositiveInt(value, { field, min: 0 });
+};
+
+const parseCapActiveUntilField = (value, field = 'earnings_cap_active_until') => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${field} must be a valid ISO 8601 date-time.`, { statusCode: 422 });
+    }
+    return parsed;
+};
+
+// #449 (Phase 208), §2.3 - an end date with nothing to attach to is a no-op that looks like it
+// worked. `resultingCap`/`resultingActiveUntil` are the MERGED (current row + this update's
+// changes) values, never the update payload alone - a PATCH that only touches the date must still
+// be checked against whatever cap is already on the row.
+const assertCapDateHasCap = (resultingCap, resultingActiveUntil) => {
+    if (resultingActiveUntil !== null && resultingActiveUntil !== undefined && (resultingCap === null || resultingCap === undefined)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'earnings_cap_active_until cannot be set without max_lifetime_earnings_centavos.',
+            { statusCode: 422, details: { reason_code: 'EARNINGS_CAP_DATE_WITHOUT_CAP' } }
+        );
+    }
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -175,6 +212,14 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
             }
             if (body.auto_approve_enrollment !== undefined) updates.auto_approve_enrollment = body.auto_approve_enrollment === true;
 
+            // #449 (Phase 208) - tenant-wide default lifetime earnings cap.
+            if (body.max_lifetime_earnings_centavos !== undefined) {
+                updates.max_lifetime_earnings_centavos = parseCapCentavosField(body.max_lifetime_earnings_centavos, 'max_lifetime_earnings_centavos');
+            }
+            if (body.earnings_cap_active_until !== undefined) {
+                updates.earnings_cap_active_until = parseCapActiveUntilField(body.earnings_cap_active_until);
+            }
+
             // Phase 1 affiliate pricing rule engine (see
             // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
             if (body.commission_type !== undefined) {
@@ -203,6 +248,19 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
                 updates.commission_base_mode = commissionBaseMode;
             }
 
+            // #449 (Phase 208), §2.3 - only fetch/check when this PATCH actually touches either
+            // cap field; every other settings PATCH pays no extra read.
+            if (updates.max_lifetime_earnings_centavos !== undefined || updates.earnings_cap_active_until !== undefined) {
+                const current = await repository.getSettings(tenant);
+                const resultingCap = updates.max_lifetime_earnings_centavos !== undefined
+                    ? updates.max_lifetime_earnings_centavos
+                    : (current?.max_lifetime_earnings_centavos ?? null);
+                const resultingActiveUntil = updates.earnings_cap_active_until !== undefined
+                    ? updates.earnings_cap_active_until
+                    : (current?.earnings_cap_active_until ?? null);
+                assertCapDateHasCap(resultingCap, resultingActiveUntil);
+            }
+
             const settings = await repository.upsertSettings(tenant, updates);
             return ok({ settings });
         } catch (error) {
@@ -215,15 +273,37 @@ export const buildListAffiliatesUseCase = ({ repository = dgfyAffiliateRepositor
     async ({ tenantId }) => {
         try {
             const tenant = ensureTenantId(tenantId);
-            const [enrollments, slotsMax, slotsUsed] = await Promise.all([
+            const [enrollments, slotsMax, slotsUsed, settings] = await Promise.all([
                 repository.listEnrollmentsForTenant(tenant),
                 repository.getMaxAffiliateSlots(tenant),
-                repository.countConsumedSlots(tenant)
+                repository.countConsumedSlots(tenant),
+                // #449 (Phase 208) - fetched once here, not per row, and passed into
+                // resolveEarningsCap per enrollment below.
+                repository.getSettings(tenant)
             ]);
-            const withEarnings = await Promise.all(enrollments.map(async (enrollment) => ({
-                ...enrollment,
-                earnings: await repository.getEarningsSummary(enrollment.dgfy_account_id, tenant)
-            })));
+            const withEarnings = await Promise.all(enrollments.map(async (enrollment) => {
+                // #449 (Phase 208), §6 - read-only cap surface, mirroring Phase 198's
+                // slots_used/slots_max: raising the cap is never a field this response writes.
+                const cap = resolveEarningsCap(enrollment, settings);
+                const lifetimeEarnedCentavos = cap
+                    ? await repository.sumLifetimeCommissionCentavos(tenant, enrollment.enrollment_id)
+                    : null;
+                const earningsCap = {
+                    cap_centavos: cap ? cap.capCentavos : null,
+                    cap_source: cap ? cap.source : null,
+                    active_until: cap ? cap.activeUntil : null,
+                    expired: cap ? cap.expired : false,
+                    lifetime_earned_centavos: lifetimeEarnedCentavos,
+                    remaining_before_cap: (cap && !cap.expired)
+                        ? Math.max(0, cap.capCentavos - lifetimeEarnedCentavos)
+                        : null
+                };
+                return {
+                    ...enrollment,
+                    earnings: await repository.getEarningsSummary(enrollment.dgfy_account_id, tenant),
+                    earnings_cap: earningsCap
+                };
+            }));
             // Read-only (#1177, #447 D5) - raising the cap is a manual/out-of-band admin action,
             // never a field this response accepts a write for.
             return ok({ affiliates: withEarnings, slots_used: slotsUsed, slots_max: slotsMax });
@@ -481,6 +561,14 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                     updates.commission_type = commissionType;
                 }
             }
+            // #449 (Phase 208) - per-enrollment cap override. NULL means "inherit the tenant
+            // default", not "clear" - there is no separate clear semantic here (§2.4).
+            if (body.max_lifetime_earnings_centavos !== undefined) {
+                updates.max_lifetime_earnings_centavos = parseCapCentavosField(body.max_lifetime_earnings_centavos, 'max_lifetime_earnings_centavos');
+            }
+            if (body.earnings_cap_active_until !== undefined) {
+                updates.earnings_cap_active_until = parseCapActiveUntilField(body.earnings_cap_active_until);
+            }
             // #450 (Phase 199) - parsed into a local, not into `updates` directly, so a
             // reason-only body still hits the emptiness guard below (D8).
             const revocationReason = body.revocation_reason ? String(body.revocation_reason).trim().slice(0, 500) : null;
@@ -489,15 +577,33 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'No updatable fields were provided.', { statusCode: 422 });
             }
 
+            // #449 (Phase 208), §2.3 - fetched once, reused by both the revocation-stamp branch
+            // below and the cap-date guard, rather than issuing a second read for the same row.
+            let previous = null;
+            const needsPreviousForCapCheck = updates.max_lifetime_earnings_centavos !== undefined
+                || updates.earnings_cap_active_until !== undefined;
+            if ((updates.status !== undefined && REVOCATION_STAMP_STATUSES.has(updates.status)) || needsPreviousForCapCheck) {
+                previous = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!previous) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+            }
+
+            if (needsPreviousForCapCheck) {
+                const resultingCap = updates.max_lifetime_earnings_centavos !== undefined
+                    ? updates.max_lifetime_earnings_centavos
+                    : (previous.max_lifetime_earnings_centavos ?? null);
+                const resultingActiveUntil = updates.earnings_cap_active_until !== undefined
+                    ? updates.earnings_cap_active_until
+                    : (previous.earnings_cap_active_until ?? null);
+                assertCapDateHasCap(resultingCap, resultingActiveUntil);
+            }
+
             // #450 (Phase 199, D1/D2) - only fires when the PATCH is actually moving `status`
             // into 'revoked'/'suspended' from a different prior status; an idempotent re-PATCH
             // of the same status does not re-stamp (preserves the original revoked_at).
             let stamped = false;
             if (updates.status !== undefined && REVOCATION_STAMP_STATUSES.has(updates.status)) {
-                const previous = await repository.findEnrollmentById(tenant, enrollmentId);
-                if (!previous) {
-                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
-                }
                 if (previous.status !== updates.status) {
                     updates.revoked_at = new Date();
                     updates.revoked_by = revokedBy ?? null;
