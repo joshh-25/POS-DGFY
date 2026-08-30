@@ -72,8 +72,7 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
     setSelectingTenantId(tenantId);
     setActionError('');
     try {
-      const selectedCompany = selectedCompanyOverride
-        || companies.find((company) => String(company.tenant_id) === String(tenantId));
+      const selectedCompany = selectedCompanyOverride;
       if (isLaundryCompany(selectedCompany)) {
         const launch = await launchDgfyLaundryOperations({ companyId: tenantId });
         const targetUrl = String(launch?.url || DGLAUNDRY_OPERATIONS_ORIGIN).trim();
@@ -99,7 +98,7 @@ export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}
       setSelectingTenantId(null);
       setStatus('ready');
     }
-  }, [companies, navigate, targetSurface]);
+  }, [navigate, targetSurface]);
 
   useEffect(() => {
     let cancelled = false;
