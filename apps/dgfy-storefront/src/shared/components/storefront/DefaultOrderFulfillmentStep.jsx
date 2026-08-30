@@ -3,6 +3,8 @@ import { DeliveryPinMap } from '../../../features/locations/components/DeliveryP
 import { SelectableOptionCard } from '../checkout/SelectableOptionCard.jsx';
 import { SavedAddressCard } from '../checkout/SavedAddressCard.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../model/storefrontConstants.js';
+import { resolveFulfillmentSelectorPresentation } from '../../model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../checkout/FulfillmentMethodNotice.jsx';
 
 const DEFAULT_ACCENT = '#1a4e8d';
 const DEFAULT_ACCENT_DARK = '#1a4586';
@@ -47,12 +49,19 @@ export function DefaultOrderFulfillmentStep({
   onScheduledForChange,
   onSelectAddress,
   orderMethod = 'delivery',
+  orderMethodOptions = null,
   scheduleMode = 'asap',
   scheduledFor = '',
   selectedAddressId = ''
 }) {
   const isDeliveryOrder = orderMethod === 'delivery';
   const choiceGridColumns = isMobileViewport ? '1fr' : '1fr 1fr';
+  const resolvedOrderMethodOptions = orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS;
+  // #1217: same rule as the live modes. This page's options are placeholders with no
+  // availability flags, so today this always resolves to "show the selector" -- the branch
+  // exists so the page cannot drift from the rule once it is wired to a real location.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -60,10 +69,11 @@ export function DefaultOrderFulfillmentStep({
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then confirm the delivery location.</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 20, alignItems: 'start' }}>
+        {showOrderMethodSelector ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
-            {RETAIL_ORDER_METHOD_OPTIONS.map((option) => (
+            {resolvedOrderMethodOptions.map((option) => (
               <SelectableOptionCard
                 key={`default-order-method-${option.value}`}
                 onClick={() => onOrderMethodChange(option.value)}
@@ -90,9 +100,16 @@ export function DefaultOrderFulfillmentStep({
             ))}
           </div>
         </div>
+        ) : (
+          <FulfillmentMethodNotice
+            accentColor={DEFAULT_ACCENT}
+            message={orderMethodNotice}
+            variant={soleOrderMethod ? 'info' : 'warning'}
+          />
+        )}
 
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '2' : '1'}. When would you like your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('asap')}
@@ -177,7 +194,7 @@ export function DefaultOrderFulfillmentStep({
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '3' : '2'}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Saved locations</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>

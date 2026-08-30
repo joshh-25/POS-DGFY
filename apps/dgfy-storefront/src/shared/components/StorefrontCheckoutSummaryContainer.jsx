@@ -4,6 +4,7 @@ import { DGFY_ACRONYM, ORDER_METHOD_OPTIONS } from '../model/storefrontConstants
 import { StorefrontResponsiveImage } from './storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../model/storefrontDownpaymentPresentation.js';
+import { resolveFulfillmentSelectorPresentation } from '../model/storefrontFulfillmentPresentation.js';
 import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
@@ -85,6 +86,11 @@ export function StorefrontCheckoutSummaryContainer({
   // Phase 142 (#823): quote-sourced only -- this container renders before a payment session
   // exists (it's the pre-checkout totals box, not a pending-payment or confirmation surface).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
+  const orderMethodSelectOptions = buildStorefrontOrderMethodOptions(
+    ORDER_METHOD_OPTIONS.filter((o) => o.value === 'delivery' || o.value === 'pickup'),
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
+  const orderMethodSelectPresentation = resolveFulfillmentSelectorPresentation(orderMethodSelectOptions);
   const downpaymentRows = buildDownpaymentTotalsRows({ display: downpaymentDisplay, money, orderMethod });
   return (
     <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
@@ -115,6 +121,13 @@ export function StorefrontCheckoutSummaryContainer({
               </label>
             )}
             {!hasServiceCart && (
+              /* #1093: narrowed to the ecommerce fulfillment axis (delivery/pickup) and to what
+                 the resolved fulfillment location actually supports -- this raw <select>
+                 previously offered all four ORDER_METHOD_OPTIONS unconditionally, including
+                 dine_in/takeout, which never belong on a storefront checkout.
+                 #1217: and when only one of the two survives that narrowing there is nothing to
+                 choose, so the <select> is replaced by a read-only statement of the method. */
+              orderMethodSelectPresentation.showSelector ? (
               <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
                 Order Method
                 <select
@@ -125,16 +138,21 @@ export function StorefrontCheckoutSummaryContainer({
                   }}
                   style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                 >
-                  {/* #1093: narrowed to the ecommerce fulfillment axis (delivery/pickup) and to
-                      what the resolved fulfillment location actually supports -- this raw
-                      <select> previously offered all four ORDER_METHOD_OPTIONS unconditionally,
-                      including dine_in/takeout, which never belong on a storefront checkout. */}
-                  {buildStorefrontOrderMethodOptions(
-                    ORDER_METHOD_OPTIONS.filter((o) => o.value === 'delivery' || o.value === 'pickup'),
-                    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
-                  ).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {orderMethodSelectOptions.map((o) => (
+                    <option key={o.value} value={o.value} disabled={o.available === false}>
+                      {o.label}{o.available === false ? ' (Unavailable)' : ''}
+                    </option>
+                  ))}
                 </select>
               </label>
+              ) : (
+                <div style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                  Order Method
+                  <div data-testid="checkout-summary-order-method-notice" style={{ marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#f8fafc', fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                    {orderMethodSelectPresentation.soleOption?.label || 'Not available'}
+                  </div>
+                </div>
+              )
             )}
             <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
               Customer Name

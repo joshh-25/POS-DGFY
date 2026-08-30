@@ -1,26 +1,26 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { RetailOrderFulfillmentStep } from './RetailOrderFulfillmentStep.jsx';
+import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
 
-// #1217: a single available fulfillment method hides the chooser entirely (no more
-// "Delivery (Unavailable)" card) and replaces it with a static notice; the inner sections
-// renumber down by one. This rewrites the pre-#1217 test that asserted the disabled-but-visible
-// treatment for a one-available/one-unavailable pair -- that pair now resolves to exactly one
-// available method, so the chooser no longer renders for it at all.
-describe('RetailOrderFulfillmentStep', () => {
+// #1217: new sibling test file, at the parent-component level, mirroring the Retail/F&B
+// rewrites. SimpleOrderMethodSelector.test.jsx itself is left unchanged -- it renders the leaf
+// selector directly with both options and still legitimately asserts the "(Unavailable)"
+// treatment, which stays valid for a 3+-candidate mode.
+describe('SimpleCheckoutFulfillmentChoices', () => {
   it('hides the chooser and states the sole method when only one is available', () => {
     const onOrderMethodChange = vi.fn();
-    render(<RetailOrderFulfillmentStep
+    render(<SimpleCheckoutFulfillmentChoices
       orderMethod="pickup"
-      orderMethodOptions={[
-        { value: 'delivery', label: 'Delivery', available: false },
-        { value: 'pickup', label: 'Pickup', available: true }
-      ]}
       onOrderMethodChange={onOrderMethodChange}
       onScheduleModeChange={vi.fn()}
       onScheduledForChange={vi.fn()}
-      onSpecialInstructionsChange={vi.fn()}
+      scheduleMode="asap"
+      scheduledFor=""
+      simpleOrderMethodOptions={[
+        { value: 'delivery', label: 'Delivery', available: false },
+        { value: 'pickup', label: 'Pickup', available: true }
+      ]}
     />);
 
     expect(screen.queryByRole('button', { name: /Delivery/ })).toBeNull();
@@ -31,16 +31,17 @@ describe('RetailOrderFulfillmentStep', () => {
 
   it('keeps the chooser and (Unavailable) treatment when two or more methods are available', () => {
     const onOrderMethodChange = vi.fn();
-    render(<RetailOrderFulfillmentStep
+    render(<SimpleCheckoutFulfillmentChoices
       orderMethod="pickup"
-      orderMethodOptions={[
-        { value: 'delivery', label: 'Delivery', available: true },
-        { value: 'pickup', label: 'Pickup', available: true }
-      ]}
       onOrderMethodChange={onOrderMethodChange}
       onScheduleModeChange={vi.fn()}
       onScheduledForChange={vi.fn()}
-      onSpecialInstructionsChange={vi.fn()}
+      scheduleMode="asap"
+      scheduledFor=""
+      simpleOrderMethodOptions={[
+        { value: 'delivery', label: 'Delivery', available: true },
+        { value: 'pickup', label: 'Pickup', available: true }
+      ]}
     />);
 
     expect(screen.getByText('1. How would you like to receive your order?')).toBeTruthy();

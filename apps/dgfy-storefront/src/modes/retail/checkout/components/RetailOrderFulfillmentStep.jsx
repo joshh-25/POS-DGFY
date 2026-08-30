@@ -7,6 +7,8 @@ import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
 import { RetailOrderSavedAddressesModal } from './RetailOrderSavedAddressesModal.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import { getUnavailableFulfillmentMessage } from '../../../../shared/model/storefrontFulfillmentOptions.js';
+import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -77,6 +79,11 @@ export function RetailOrderFulfillmentStep({
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
   const isDeliveryOrder = orderMethod === 'delivery';
+  const resolvedOrderMethodOptions = orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS;
+  // #1217: nothing to choose when the location supports exactly one method -- the chooser and
+  // its question are replaced by a statement, and the sections below renumber accordingly.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
 
   return (
@@ -85,10 +92,11 @@ export function RetailOrderFulfillmentStep({
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then add optional notes.</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
+        {showOrderMethodSelector ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-            {(orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS).map((option) => {
+            {resolvedOrderMethodOptions.map((option) => {
               const isAvailable = option.available !== false;
               return (
               <SelectableOptionCard
@@ -126,9 +134,16 @@ export function RetailOrderFulfillmentStep({
           </div>
           {unavailableMessage ? <div role="alert" style={{ color: '#9f1239', fontSize: 13, fontWeight: 600 }}>{unavailableMessage}</div> : null}
         </div>
+        ) : (
+          <FulfillmentMethodNotice
+            accentColor={RETAIL_ACCENT}
+            message={orderMethodNotice}
+            variant={soleOrderMethod ? 'info' : 'warning'}
+          />
+        )}
 
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '2' : '1'}. When would you like your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('asap')}
@@ -211,7 +226,7 @@ export function RetailOrderFulfillmentStep({
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{showOrderMethodSelector ? '3' : '2'}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>

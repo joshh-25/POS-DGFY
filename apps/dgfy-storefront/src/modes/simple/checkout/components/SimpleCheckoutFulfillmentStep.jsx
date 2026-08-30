@@ -5,6 +5,7 @@ import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentCho
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
 import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
+import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -91,7 +92,7 @@ export function SimpleCheckoutFulfillmentStep({
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector ? '3' : '2'}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>

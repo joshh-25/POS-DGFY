@@ -48,6 +48,7 @@ import {
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
+import { resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the inline F&B order/checkout
@@ -262,7 +263,7 @@ export function FnbCheckoutRouteContainer({
             />                      {isDeliveryOrder && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{resolveFulfillmentSelectorPresentation(fulfillmentOptions).showSelector ? '3' : '2'}. Where should we deliver your order?</div>
                   <div style={{ fontSize: isFnbOrderResponsiveFlow ? 13 : 12, fontWeight: isFnbOrderResponsiveFlow ? 400 : 600, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', lineHeight: 1.5, fontFamily: servicesBodyFont }}>
                     {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
                   </div>
