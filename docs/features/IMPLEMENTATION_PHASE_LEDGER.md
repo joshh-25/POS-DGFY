@@ -14147,23 +14147,24 @@ secret.
 - Dated `## Amendments` block on ADR 0060 recording the corrected end state and the file split —
   `default`/untagged-tier, no `binding` clause affected.
 
-**Phase B (named here, NOT executed as part of this phase):** applying EDIT 4 + the file split to
-the live PROD server and retiring `.env` there (moved into `_archive/`, per #1155's
-move-never-delete convention — not `rm`'d). Restarts `nginx`/`dgfy-api` in production — the same
-class of change that already caused a real CORS outage in this repo's history (ADR 0060's
-2026-08-29 amendment) — and needs its own explicit go-ahead and low-disruption sequencing, not a
-blind repeat. Tracked as this phase's own separate acceptance gate, below.
+**Phase B — completed 2026-08-31, separately from this phase's own repo diff:** applying EDIT 4 +
+the file split to the live PROD server and retiring `.env` there (moved into
+`_archive/2026-08-31/env-retired-DO-NOT-USE/`, per #1155's move-never-delete convention — not
+`rm`'d). Applied directly via `ssh` to `/opt/dgfy-platform`'s own local git repo (#1155), commit
+`9568c57` (parent `1c4d62d`) — not through this GitHub repo's CI or PR flow, so it carries no diff
+here. Full evidence posted as a comment on #1236, not relied on this phase's own PR merge as the
+completion record (GitHub has no visibility into an SSH-applied server change).
 
 ### Status
 
-`planned` for Phase A pending PR review/merge; Phase B `deferred` (explicitly gated, no server
-touched by this phase). See #1236 for the tracking issue and PR.
+`completed` for Phase A (pending PR #1238 merge); Phase B `completed` 2026-08-31, evidence on
+#1236. See #1236 for the tracking issue and PR.
 
 ### Dependencies
 
-#401 (nginx compose drift — this phase's EDIT 4 closes its compose half once Phase B applies it);
+#401 (nginx compose drift — this phase's EDIT 4 closes its compose half, applied by Phase B);
 #360/ADR 0060 (the SOPS+age cutover this extends); #1155 (the deploy-root cleanup that surfaced this
-gap).
+gap, and whose on-server git repo Phase B committed to).
 
 ### Acceptance and validation evidence
 
@@ -14172,9 +14173,15 @@ gap).
 - `docker compose config --images`: all 9 images resolve with full `ghcr.io/sieitzz/*` paths (with
   no local override file present); `docker-compose.override.yml`'s existing local-dev image
   rewrites still auto-merge correctly on top of the `include:`-resolved base.
-- Phase B's own gates (live-server application, `.env` deletion, CORS smoke test against every
-  domain in the current `CORS_ORIGIN` list) are **not yet run** — explicitly not part of Phase A's
-  completion.
+- Phase B's gates, all run and passed on the live server (full record on #1236): `docker compose
+  config` resolved byte-identical before/after the split + nginx literal-ization (proving the
+  literals exactly match what `.env` was providing); all 8 live domains smoke-tested through
+  `nginx` post-change with correct routing, including `bar.space.com.ph` (the exact domain the
+  prior `CORS_ORIGIN` incident broke); `nginx` itself never restarted (uptime unbroken across the
+  whole change). One process mistake during application (a bare `docker compose up -d` instead of
+  `./deploy-sops.sh`, causing dgfy-api to read `.env`'s stale `ADMIN_ACCOUNTS_JSON` and go
+  unhealthy for ~2 minutes) was self-corrected live via `deploy-sops-nopull.sh` — recorded on
+  #1236 and in the server's own commit message, not silently omitted.
 
 ### Next eligible phase
 
