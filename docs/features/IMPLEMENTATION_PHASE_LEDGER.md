@@ -11912,3 +11912,138 @@ call; #1202/#1203 are new follow-up candidates from this phase's own planning, n
 Everything else in the affiliate backlog still needs a human scheduling/policy call (see Phase
 199's and Phase 206's own "Next eligible phase" sections for the fuller list, unchanged by this
 phase).
+
+## Phase 208 - Affiliate Lifetime Earnings Cap (#449)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Implements the "earnings ceiling" half of #449 ("Affiliate
+earnings caps and milestone bonuses") — a merchant-margin protection that stops commission accrual
+once an affiliate's lifetime earnings hit a configured limit. The "milestone bonuses" half of #449's
+title (a merchant-pays-DGFY-to-unlock-an-additional-affiliate-allocation concept, per #449's own
+2026-08-14 correction note) is out of scope here and tracked as a separate child of #446.
+
+### Objective and scope
+
+Add a configurable lifetime affiliate earnings cap, tenant-wide by default with a nullable
+per-enrollment override, enforced at accrual time in `affiliateCommissionAccrual.js`. Explicitly out
+of scope and not built: #1206 (campaign/auto-expiry) and the Phase 2 volume tiers
+(`docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md` A4-A6).
+
+Four judgment calls #449's own decision comment left open were resolved during planning (Pat
+confirmed all four before implementation, recorded on #449):
+
+- **A1 (end-date semantics)** — once a cap's `earnings_cap_active_until` passes, the **cap** stops
+  applying; accrual continues **uncapped** from then on, rather than accrual halting. Textually
+  grounded in #449's and #1206's own framing of the end date as bounding the cap config itself, not
+  a program/enrollment expiry (#1206's separate, explicitly out-of-scope shape). This is the one
+  genuinely arguable call and carries a real product footgun — a merchant who sets an end date and
+  forgets about it gets unlimited commission afterward. Two mitigations ship in this phase, not as
+  optional extras: a read-only `earnings_cap_expired: true` flag on the affiliates list response,
+  and a structured `logger.info` on the first accrual that runs uncapped because the cap expired.
+- **A2 (full skip, not partial fill)** — a sale that would cross the cap accrues nothing, not a
+  clipped partial amount. Grounded in a real invariant (`amount ≡ round(base × rate / 10000)` must
+  hold on every commission row) rather than preference; the accepted consequence is that an
+  affiliate stops slightly *under* their cap, which is the conservative direction for a
+  merchant-margin lever.
+- **A3 (which statuses count)** — `pending` + `earned` + `paid` count toward the running total;
+  `reversed` does not. A `pending` order that later reverses temporarily consumes headroom and then
+  releases it automatically, since the total is derived rather than a counter.
+- **A4 (no per-enrollment exemption)** — there is no sentinel value meaning "this affiliate is
+  exempt from the tenant cap" (NULL on the enrollment means *inherit*, not *exempt*). Accepted
+  limitation; the workaround is an absurdly-high per-enrollment cap. A real exemption would need a
+  third nullable boolean column, filed separately if ever needed.
+
+### Status
+
+`completed` (2026-08-30). PR #1209 opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on Phase 198 (#1177, the derived-count precedent this phase's design explicitly follows —
+`countConsumedSlots`) and the Phase 1 affiliate pricing rule engine (commission_type/rate resolution
+ladder this phase mirrors for cap resolution). Independent of Phase 207 (a different code path —
+enrollment status transitions, not commission accrual).
+
+### Acceptance and validation evidence
+
+- [x] Landlord migration `20260831000001-add-affiliate-earnings-cap.cjs` adds
+      `max_lifetime_earnings_centavos` + `earnings_cap_active_until` to both
+      `tenant_affiliate_settings` (tenant-wide default) and `dgfy_affiliate_enrollments`
+      (per-enrollment override) — `NULL` means uncapped/inherit, so every existing tenant and
+      enrollment resolves identically to today's behavior. No index added — the existing
+      `idx_dgfy_affiliate_commissions_enrollment_status` already bounds the cap's `SUM` query to one
+      affiliate's own rows.
+- [x] The running lifetime total is **derived**, never a counter column — `sumLifetimeCommissionCentavos`
+      sums `dgfy_affiliate_commissions` live, matching every other affiliate money surface in this
+      codebase (`getEarningsSummary`) and Phase 198's own live-count precedent. **Zero added queries
+      for any tenant that hasn't configured a cap** — `resolveEarningsCap` early-returns `null`
+      before any `SUM` is issued (implemented as an early return, not "sum first, compare second").
+- [x] `resolveEarningsCap` resolves the applicable cap as a PAIR (cap + its own end date) — an
+      enrollment-level cap brings its own end date, never the tenant's, so an override can never
+      silently inherit an unrelated tenant expiry date.
+- [x] `evaluateEarningsCap` wired into both `accrueEarnedForInStoreSale` and
+      `accruePendingForOnlineOrder`: a crossing sale is fully skipped (returns `null`, matching every
+      other skip path in the module); attribution is still recorded before the cap check runs — a
+      capped referral still occurred and should still be visible to the merchant, unlike the
+      self-referral guard directly above it, which returns before attribution because no legitimate
+      referral occurred at all.
+- [x] Idempotency preserved: the SUM takes `excludeOrderReference` so a retried accrual for an order
+      that already landed exactly at the cap compares the same numbers as the original call and
+      falls through to the existing `findOrCreate`, returning the existing row rather than `null`.
+- [x] `buildUpdateAffiliateSettingsUseCase` / `buildUpdateAffiliateEnrollmentUseCase` accept both new
+      fields (`undefined` untouched, `null`/`''` clears/inherits, an invalid date rejected 422). §2.3
+      guard: an end date with no cap to attach to — checked against the PATCH-merged state, not the
+      payload alone — is rejected 422 `EARNINGS_CAP_DATE_WITHOUT_CAP`, mirroring Phase 199's D7
+      precedent for the identical failure shape.
+- [x] `buildListAffiliatesUseCase` surfaces a read-only `earnings_cap` object per affiliate
+      (`cap_centavos`, `cap_source`, `active_until`, `expired`, `lifetime_earned_centavos`,
+      `remaining_before_cap`) — mirrors Phase 198's read-only `slots_used`/`slots_max`. Settings
+      fetched once outside the per-enrollment map, not per row. **No frontend change** — no
+      `packages/web-core`/app file touched; a cap editor UI is a separate, unscoped ask.
+- [x] **Compliance-declaration-free by construction** — every changed file is under
+      `apps/dgfy-api/src/modules/dgfy/**`, `apps/dgfy-api/src/models/Landlord/**`, or
+      `apps/dgfy-migration-runner/migrations/**`, none of which match any rule in
+      `COMPLIANCE_SENSITIVE_RULES`. Verified, not assumed: `npm run check:compliance` → "No
+      compliance-sensitive changes detected."
+- [x] Full Tier 0 self-verification: `node --check` on every changed `.js`/`.cjs` file (no build
+      step exists for `apps/dgfy-api`); 93/93 tests passing across four suites — the new
+      `affiliateEarningsCap.unit.test.js` (T1-T13 from the plan plus companion cases),
+      `dgfyAffiliateEnrollmentUseCases.unit.test.js` (extended with the enrollment cap-field cases),
+      and — run unchanged to confirm no disturbance — `affiliateCommissionAccrual.unit.test.js`
+      (byte-identical, no edit needed) and `dgfyAffiliatePriceRuleUseCases.unit.test.js`. Also ran
+      `npm run check:architecture` (guardrails + controller boundaries, both OK) as a cheap extra
+      check beyond the plan's own required Tier 0 list.
+- [x] Linked `Refs #449`, not `Closes` — #449's title also covers "milestone bonuses," which this
+      phase does not build (and #449's own correction note reassigns that half elsewhere as a
+      separate child of #446), so the issue is not fully resolved by this PR.
+
+### Known limitations, not fixed here
+
+- **A1's footgun** — an expired cap silently turns protection off (accrual becomes uncapped), which
+  is the opposite of what "cap" intuitively suggests. Mitigated (not eliminated) by the
+  `earnings_cap_expired` read-only flag and the structured `logger.info`, per above.
+- **A4** — no per-enrollment "exempt from the tenant cap" sentinel; see above.
+- **Concurrency (§3.5)** — two simultaneous accruals for the same enrollment can both read an
+  under-cap total and both write, overshooting the cap by at most one concurrent sale's commission.
+  No lock was added deliberately: accrual is post-commit, best-effort, transaction-free, and must
+  never block or fail the sale (Phase 198's `SELECT ... FOR UPDATE` approach does not apply to this
+  path). If exactness is ever required, it is a follow-up issue, not a silent addition here.
+- **No frontend cap editor** — the API carries the data (`earnings_cap` on the list response); an
+  owner-facing editor UI is a separate, unscoped ask.
+
+### Implementation links
+
+- Issue #449 (Refs, not Closes — see above)
+- PR #1209: https://github.com/Sieitzz/dgfy-platform/pull/1209
+- No compliance declaration (see Acceptance and validation evidence)
+- No ADR — this adds a configurable field within the existing affiliate commission model; it neither
+  contradicts nor amends ADR 0036 or ADR 0050, and #449's decisions are recorded on the issue itself.
+
+### Next eligible phase
+
+None allocated by this phase. The "milestone bonuses" half of #449 (merchant-pays-to-unlock-an-
+affiliate-allocation) remains unscheduled as a separate child of #446. #1206 (campaign/auto-expiry
+end-date model) and the Phase 2 volume tiers remain explicitly out of scope and unscheduled. If Pat
+wants A1's semantics reversed (end date halts accrual instead of expiring the cap), that is a small,
+named flip (§4 of the plan) rather than a new design.
