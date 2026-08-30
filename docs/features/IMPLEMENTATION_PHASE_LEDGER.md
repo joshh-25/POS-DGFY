@@ -13887,4 +13887,90 @@ edit of `downpayment-nonrefundable-v1`.
 
 ### Next eligible phase
 
-220.
+221.
+
+## Phase 220 - Docker Compose File Split + Full `.env` Retirement, Phase A (#1236)
+
+### Initiative and release
+
+DevOps Initiative 1, secrets management (#360/#267); direct follow-up to #1155 (deploy-root
+cleanup, 2026-08-31 same day). Planned and implemented by the same Claude Code session.
+
+### Objective and scope
+
+Two related asks surfaced while cleaning up `/opt/dgfy-platform` for #1155: whether `.env` is still
+load-bearing now that SOPS+age (#360, ADR 0060) is live, and a request to split the single
+`docker-compose.yml` into per-concern files for readability.
+
+Audited the live server's actual `docker-compose.yml` directly (a first pass had wrongly concluded
+`.env` was still needed for ~76 vars — corrected mid-session after reading the full file, not just
+grepping `${VAR}` names). Findings: bucket A (23 secrets) is done via `secrets/*.env`; bucket B for
+`dgfy-api` (~50 non-secret vars) was **already** baked as literals directly into the live compose
+file on 2026-08-28, alongside the SOPS cutover — this had gone unrecorded as "done" anywhere. The
+one real remaining gap: `nginx`'s 11 domain vars, still `${VAR}`-interpolated from `.env`,
+explicitly deferred to #401 in the cutover fragment's own comments. The `.env` cleanup delta the
+fragment itself specified (strip now-redundant vars once baked elsewhere) was also never executed —
+live `.env` still held all ~100 original names, including inert plaintext copies of every bucket-A
+secret.
+
+**Phase A (this phase, repo-only, no production impact):**
+
+- Split `infrastructure/docker/docker-compose.yml` (the generic, multi-environment template used
+  by DEV/QA/staging) into 5 files via Compose's top-level `include:` directive: the entry file
+  (`name:`, `networks:`, `mysql`, `redis`, `include:`) plus `docker-compose.migration.yml` /
+  `docker-compose.api.yml` / `docker-compose.frontend.yml` / `docker-compose.proxy.yml`. Checked
+  for shared variables first, per Pat's ask: the only shared non-secret value is the 3-line DB
+  topology block (`DB_HOST`/`DB_PORT`/`DB_DIALECT`), duplicated identically in
+  `dgfy-migration-runner` and `dgfy-api` — small enough to duplicate inline rather than invent a
+  shared-vars file for it; the only shared secret family (`DB_NAME`/`DB_USER`/`DB_PASSWORD`) is
+  already isolated in `secrets/shared.env`.
+- Confirmed against current Docker Compose documentation (Context7, `/docker/compose`) and by
+  direct `docker compose config`/`config --images`/`config --services` validation that the split is
+  transparent to every existing caller — `publish-platform.yml`, `deploy-sops.sh`,
+  `verify-deployment.yml` all just `cd $DOCKER_DIR && docker compose ...`, none pass `-f` flags —
+  and that host/shell-exported env always wins over `.env` regardless of file count, so
+  `deploy-sops.sh`'s secrets mechanism is unaffected. `publish-platform.yml`'s staleness-guard grep
+  (`sieitzz/dgfy-api` + `sieitzz/dgfy-migration-runner` substrings in `docker compose config
+  --images`) verified to still pass unmodified.
+- Added EDIT 4 to `infrastructure/docker/env/prod.sops-cutover-fragment.yml`: nginx's 11 domain
+  vars as literals (closing #401's compose half), superseding that file's 2026-08-28 "`.env` should
+  hold at most `IMAGE_TAG`" language — the corrected end state is that `.env` has zero remaining
+  consumers on PROD once EDIT 4 is live, since bucket C already resolves from `${VAR:-default}`
+  fallbacks and CI shell-exports, never from `.env`.
+- Added a scope-boundary note to `infrastructure/docker/env/prod.env-var-classification.md`
+  (explicitly `dgfy-api`/`dgfy-migration-runner`-scoped by its own code-derived method; nginx's
+  vars were never in scope there and now point to EDIT 4 instead).
+- Dated `## Amendments` block on ADR 0060 recording the corrected end state and the file split —
+  `default`/untagged-tier, no `binding` clause affected.
+
+**Phase B (named here, NOT executed as part of this phase):** applying EDIT 4 + the file split to
+the live PROD server and actually deleting `.env` there. Restarts `nginx`/`dgfy-api` in production —
+the same class of change that already caused a real CORS outage in this repo's history (ADR 0060's
+2026-08-29 amendment) — and needs its own explicit go-ahead and low-disruption sequencing, not a
+blind repeat. Tracked as this phase's own separate acceptance gate, below.
+
+### Status
+
+`planned` for Phase A pending PR review/merge; Phase B `deferred` (explicitly gated, no server
+touched by this phase). See #1236 for the tracking issue and PR.
+
+### Dependencies
+
+#401 (nginx compose drift — this phase's EDIT 4 closes its compose half once Phase B applies it);
+#360/ADR 0060 (the SOPS+age cutover this extends); #1155 (the deploy-root cleanup that surfaced this
+gap).
+
+### Acceptance and validation evidence
+
+- `docker compose config --services` before/after the split: identical 9-service set (`mysql redis
+  dgfy-migration-runner dgfy-api dgfy-ims dgfy-pos dgfy-storefront nginx certbot`).
+- `docker compose config --images`: all 9 images resolve with full `ghcr.io/sieitzz/*` paths (with
+  no local override file present); `docker-compose.override.yml`'s existing local-dev image
+  rewrites still auto-merge correctly on top of the `include:`-resolved base.
+- Phase B's own gates (live-server application, `.env` deletion, CORS smoke test against every
+  domain in the current `CORS_ORIGIN` list) are **not yet run** — explicitly not part of Phase A's
+  completion.
+
+### Next eligible phase
+
+221.
