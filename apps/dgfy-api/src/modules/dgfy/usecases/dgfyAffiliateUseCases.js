@@ -16,6 +16,10 @@ const ENROLLMENT_STATUS_VALUES = new Set(['active', 'suspended', 'revoked']);
 // #450 (Phase 199) - statuses that record a revocation-audit stamp when actually transitioned
 // into (see buildUpdateAffiliateEnrollmentUseCase, D2).
 const REVOCATION_STAMP_STATUSES = new Set(['revoked', 'suspended']);
+// #1191 (Phase 207) - the only statuses a reactivation may transition OUT of. 'pending' is a real
+// reachable enum value on DgfyAffiliateEnrollment (the model's own default) but has never been
+// activated, so promoting it is an activation, not a reactivation - out of scope for this endpoint.
+const REACTIVATABLE_STATUSES = new Set(['suspended', 'revoked']);
 const PAYOUT_METHOD_TYPES = new Set(['bank', 'gcash', 'maya']);
 const COMMISSION_TYPE_VALUES = new Set(AFFILIATE_COMMISSION_RULE_TYPES);
 const SETTLEMENT_POLICY_VALUES = new Set(AFFILIATE_SETTLEMENT_POLICIES);
@@ -452,6 +456,18 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                 if (!ENROLLMENT_STATUS_VALUES.has(status)) {
                     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `status must be one of: ${[...ENROLLMENT_STATUS_VALUES].join(', ')}.`, { statusCode: 422 });
                 }
+                // #1191 (Phase 207) - the generic PATCH loses the `suspended|revoked -> active`
+                // transition entirely (Pat's call, 2026-08-30). Reactivation is the only status
+                // change that CONSUMES a slot, and #1177/Phase 198's cap enforcement needs a
+                // lock-first transaction this bare-update path does not have. One enforcement
+                // path, no drift risk between two.
+                if (status === 'active') {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        "status: 'active' is no longer accepted here. Use POST /api/v1/affiliates/affiliates/:enrollment_id/reactivate to reactivate a suspended or revoked affiliate.",
+                        { statusCode: 422, details: { reason_code: 'AFFILIATE_REACTIVATION_MOVED', endpoint: 'POST /api/v1/affiliates/affiliates/:enrollment_id/reactivate' } }
+                    );
+                }
                 updates.status = status;
             }
             if (body.commission_type !== undefined) {
@@ -503,6 +519,65 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
             return ok({ enrollment });
         } catch (error) {
             return fail(mapError(error, 'Failed to update affiliate enrollment'));
+        }
+    }
+);
+
+// #1191 (Phase 207) - the ONLY path that may perform a `suspended|revoked -> active` transition.
+// The generic PATCH (buildUpdateAffiliateEnrollmentUseCase above) explicitly rejects
+// `status: 'active'` so there is exactly one enforcement path and no drift risk between two.
+//
+// Why this needs its own endpoint at all: reactivation is the only enrollment status change that
+// CONSUMES a slot (countConsumedSlots counts `active` enrollments only), so it is the only one that
+// needs the #1177/Phase 198 cap check. Demotions to `suspended`/`revoked` only ever FREE a slot and
+// stay on the generic PATCH, unchanged.
+export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, enrollmentId, reactivatedBy = null }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+
+            const existing = await repository.findEnrollmentById(tenant, enrollmentId);
+            if (!existing) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            if (existing.status === 'active') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This affiliate is already active.',
+                    { statusCode: 409, details: { reason_code: 'AFFILIATE_ALREADY_ACTIVE', status: existing.status } }
+                );
+            }
+            if (!REACTIVATABLE_STATUSES.has(existing.status)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Only a suspended or revoked affiliate can be reactivated (this one is ${existing.status}).`,
+                    { statusCode: 409, details: { reason_code: 'AFFILIATE_NOT_REACTIVATABLE', status: existing.status } }
+                );
+            }
+
+            // #450 Phase 199, restated here so it doesn't read as an oversight: reactivation does
+            // NOT clear revoked_at/revoked_by/revocation_reason. They are an audit trail of the most
+            // recent revocation, not a live-status mirror - `status` is the sole authority on
+            // whether this affiliate is currently active. It also does NOT touch `activated_at`,
+            // which is the ORIGINAL enrollment date and is rendered to the affiliate as
+            // "Enrolled <date>" (dgfy-storefront customer-dashboard AffiliateSection.jsx).
+            //
+            // `reactivatedBy` is accepted and threaded through from the controller but not
+            // persisted: no `reactivated_by` column exists, and adding one is a landlord migration
+            // outside this phase's scope (#1191 is an enforcement-gap fix). Keeping the parameter
+            // means the route/controller/use-case shape does not change when a follow-up adds the
+            // column. See the PR body's "Deliberate omissions" note.
+            void reactivatedBy;
+
+            const enrollment = await repository.reactivateEnrollment(tenant, enrollmentId);
+            if (!enrollment) {
+                // Deleted between the read above and the transactional re-read inside the
+                // repository - vanishingly rare, but do not return a null enrollment as success.
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            return ok({ enrollment });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to reactivate affiliate enrollment'));
         }
     }
 );
@@ -975,6 +1050,7 @@ export default {
     buildListAffiliatesUseCase,
     buildProvisionAffiliateUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
+    buildReactivateAffiliateEnrollmentUseCase,
     buildGetAffiliateQrPayloadUseCase,
     buildListMyAffiliateEnrollmentsUseCase,
     buildEnrollSelfServeAffiliateUseCase,
