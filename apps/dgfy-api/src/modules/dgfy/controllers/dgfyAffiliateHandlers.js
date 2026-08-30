@@ -136,7 +136,8 @@ export const updateAffiliateEnrollment = async (req, res, next) => {
         return send(res, await updateAffiliateEnrollmentUseCase({
             tenantId: req.user?.tenant_id,
             enrollmentId: req.params.enrollment_id,
-            body: req.body
+            body: req.body,
+            revokedBy: req.user?.user_id ?? null
         }), {
             message: 'Affiliate enrollment updated successfully'
         });
