@@ -140,6 +140,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
         DgfyAffiliateCashout: {},
         DgfyAffiliateInvite: mockDgfyAffiliateInvite,
         DgfyAffiliatePriceRule: {},
+        DgfyAffiliateCategoryRate: {},
         StorefrontDiscoveryIndex: {},
         Tenant: {},
         TenantAffiliateSettings: mockTenantAffiliateSettings
@@ -152,6 +153,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
     DgfyAffiliateCashout: {},
     DgfyAffiliateInvite: mockDgfyAffiliateInvite,
     DgfyAffiliatePriceRule: {},
+    DgfyAffiliateCategoryRate: {},
     StorefrontDiscoveryIndex: {},
     Tenant: {},
     TenantAffiliateSettings: mockTenantAffiliateSettings
