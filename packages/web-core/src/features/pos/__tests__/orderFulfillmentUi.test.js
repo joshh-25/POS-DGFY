@@ -80,6 +80,17 @@ describe('orderFulfillmentUi queue action mapping', () => {
     })).toBe(false);
   });
 
+  it('offers reject alongside start-preparing from confirmed (Phase 210, #1179)', () => {
+    expect(getNextStatusActions({
+      fulfillment_status: 'confirmed',
+      order_method: 'pickup'
+    })).toEqual(['preparing', 'rejected']);
+    expect(getNextStatusActions({
+      fulfillment_status: 'confirmed',
+      order_method: 'delivery'
+    })).toEqual(['preparing', 'rejected']);
+  });
+
   it('keeps delivery completion behind delivery-job tracking', () => {
     expect(getNextStatusActions({
       fulfillment_status: 'out_for_delivery',

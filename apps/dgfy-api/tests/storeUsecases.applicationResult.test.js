@@ -1946,6 +1946,61 @@ describe('store use-cases application result contract', () => {
         expect(result.data.order.delivery_address).toBeUndefined();
     });
 
+    // Phase 210 (#1179): the store-initiated rejection reason surfaces on the tracking response.
+    it('trackStoreOrder surfaces the rejection_reason and composed message for a rejected order', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const useCase = buildTrackStoreOrderUseCase({
+            storeRepository: {
+                getOrderByTrackingPin: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 90,
+                    tracking_pin: 'SK-A1B2',
+                    order_source: 'online_store',
+                    order_method: 'delivery',
+                    payment_type: 'cash',
+                    fulfillment_status: 'rejected',
+                    rejection_reason: 'Outside our delivery route',
+                    subtotal_amount: 100,
+                    delivery_fee: 20,
+                    total_amount: 120,
+                    lines: []
+                })
+            }
+        });
+
+        const result = await useCase({ trackingPin: 'SK-A1B2', tenantId });
+        expect(result.success).toBe(true);
+        expect(result.data.rejection_reason).toBe('Outside our delivery route');
+        expect(result.data.message).toBe('This order was not accepted by the store: Outside our delivery route');
+        expect(result.data.order.rejection_reason).toBe('Outside our delivery route');
+    });
+
+    it('trackStoreOrder returns a null rejection_reason for every non-rejected status', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const useCase = buildTrackStoreOrderUseCase({
+            storeRepository: {
+                getOrderByTrackingPin: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 90,
+                    tracking_pin: 'SK-A1B2',
+                    order_source: 'online_store',
+                    order_method: 'delivery',
+                    payment_type: 'cash',
+                    fulfillment_status: 'preparing',
+                    // Defensive: even if a stray value were ever present on a non-rejected order,
+                    // it must never leak through.
+                    rejection_reason: 'should never leak',
+                    subtotal_amount: 100,
+                    delivery_fee: 20,
+                    total_amount: 120,
+                    lines: []
+                })
+            }
+        });
+
+        const result = await useCase({ trackingPin: 'SK-A1B2', tenantId });
+        expect(result.success).toBe(true);
+        expect(result.data.rejection_reason).toBeNull();
+    });
+
     it('cancelStoreOrder rejects guest cancellation without cancel proof', async () => {
         const transaction = {
             finished: false,
