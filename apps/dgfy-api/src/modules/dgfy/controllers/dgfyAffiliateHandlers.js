@@ -23,6 +23,7 @@ import {
     reactivateAffiliateEnrollmentUseCase,
     rejectAffiliateCashoutUseCase,
     requestAffiliateCashoutUseCase,
+    resolveAffiliateShareCodeUseCase,
     setDefaultAffiliatePayoutMethodUseCase,
     updateAffiliateEnrollmentUseCase,
     updateAffiliatePayoutMethodUseCase,
@@ -408,6 +409,22 @@ export const captureAffiliateAttribution = async (req, res, next) => {
             setAffiliateAttributionCookie(req, res, result.data.tenant_id, result.data.enrollment_id);
         }
         return send(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Public, unauthenticated (#452, Phase 212): resolves /s/{short_code} to the store the affiliate is
+// sharing, so the storefront can boot the right store from a path-only share link. Always responds
+// success (resolved: true/false) - never a 4xx for an unknown/inactive code, so the endpoint can't
+// be used to enumerate either (see ADR 0036's Amendments block for the honest qualification of that
+// property). Deliberately returns only a store slug and the code - no tenant_id, enrollment_id, or
+// affiliate identity.
+export const resolveAffiliateShareCode = async (req, res, next) => {
+    try {
+        return send(res, await resolveAffiliateShareCodeUseCase({
+            shortCode: req.params.short_code
+        }));
     } catch (error) {
         next(error);
     }

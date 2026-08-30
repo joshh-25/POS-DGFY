@@ -624,6 +624,21 @@ export const dgfyAffiliateRepository = {
         return toPlain(row);
     },
 
+    // #452 (Phase 212) - global lookup for the /s/{short_code} resolver. No tenantId: short_code
+    // is enforced globally unique by unique_dgfy_affiliate_enrollments_short_code (see
+    // DgfyAffiliateEnrollment.js / 20260723000001-create-affiliates-program.cjs), so the hash
+    // index alone is the scope. Do NOT change findActiveEnrollmentByShareCode above - it stays the
+    // tenant-scoped path the capture use case and POS both rely on.
+    async findActiveEnrollmentByShortCode(shortCode) {
+        const row = await DgfyAffiliateEnrollment.findOne({
+            where: {
+                share_code_hash: hashAffiliateShareCode(shortCode),
+                status: 'active'
+            }
+        });
+        return toPlain(row);
+    },
+
     async recordAttribution({
         tenantId,
         enrollmentId,

@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter, dgfyAccountSearchLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, affiliateShareResolveLimiter, dgfyAccountSearchLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
 import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -84,6 +84,7 @@ import {
     listMyAffiliateCashouts,
     listMyAffiliateEnrollments,
     requestAffiliateCashout,
+    resolveAffiliateShareCode,
     setDefaultAffiliatePayoutMethod,
     updateAffiliatePayoutMethod
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
@@ -171,10 +172,17 @@ router.delete('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAcc
 router.post('/affiliate/cashouts', authenticateDgfyAccount, requestAffiliateCashout);
 router.get('/affiliate/cashouts', authenticateDgfyAccount, listMyAffiliateCashouts);
 router.patch('/affiliate/cashouts/:cashout_id/cancel', authenticateDgfyAccount, cancelAffiliateCashout);
-// Public, unauthenticated: a storefront page calls this on load with the ?p= short code. Dormant
-// until frontend/apps/store is wired to it (out of scope for this phase) - readies the endpoint so
-// that later phase is frontend-only.
+// Public, unauthenticated: the storefront calls this on load once it knows the store (either the
+// slug was already in the path, or GET /affiliate/s/:short_code below resolved it). Mounted on
+// authLimiter deliberately -- capture is fire-and-forget and a 429 here costs at most one
+// attribution, never the page render (see the resolve endpoint below for why THAT can't share
+// this budget).
 router.post('/affiliate/attribution/capture', authLimiter, captureAffiliateAttribution);
+
+// Public, unauthenticated (#452, Phase 212): resolves /s/{short_code} to the store the affiliate
+// is sharing, so the storefront can boot the right store from a path-only share link. Browse-tier
+// limiter, NOT authLimiter -- this is a page-load dependency, see docs/api/RATE_LIMITING.md.
+router.get('/affiliate/s/:short_code', affiliateShareResolveLimiter, resolveAffiliateShareCode);
 
 // Affiliate invite claim flow. Preview is public (the storefront accept/register page reads it to
 // show the inviting business + lock the email); accept requires a logged-in DGFY account.

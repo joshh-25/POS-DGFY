@@ -176,12 +176,19 @@ const validatePayoutMethodPayload = (body = {}, { requireAllFields = false } = {
     return updates;
 };
 
-const buildAffiliateShareUrl = ({ slug, shortCode }) => {
+// Exported (not just internal) so affiliateShareCodeResolve.unit.test.js can pin the emitted
+// /s/{short_code} shape directly, the same way this module already exports hashAffiliateShareCode
+// for its own unit coverage.
+export const buildAffiliateShareUrl = ({ shortCode }) => {
     const origin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || '').trim().replace(/\/+$/, '');
-    if (!slug) return { path: null, url: null };
-    // "/s/" is the short storefront-alias route (see storefrontRouting.js on the store
-    // app) that resolves either the canonical or affiliate slug to a store.
-    const path = `/s/${encodeURIComponent(String(slug).trim().toLowerCase())}?p=${encodeURIComponent(shortCode)}`;
+    const code = String(shortCode || '').trim().toUpperCase();
+    if (!code) return { path: null, url: null };
+    // #452 (Phase 212): the short code IS the path segment now -- "/s/{short_code}" resolves to
+    // the affiliate+store pair server-side via GET /affiliate/s/:short_code. The store slug is no
+    // longer carried in the share URL (it was never load-bearing for resolution), and "?p=" is
+    // retired entirely, both from emission and from the storefront's read path (#452 E1 decision,
+    // 2026-08-30: no back-compat shim -- ?p= links are not meaningfully in circulation yet).
+    const path = `/s/${encodeURIComponent(code)}`;
     return { path, url: origin ? `${origin}${path}` : null };
 };
 
@@ -899,10 +906,14 @@ export const buildGetAffiliateQrPayloadUseCase = ({ repository = dgfyAffiliateRe
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
             }
             const slug = await repository.getStorefrontAffiliateSlug(tenant);
-            const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
+            const { path, url } = buildAffiliateShareUrl({ shortCode: enrollment.short_code });
             return ok({
                 short_code: enrollment.short_code,
-                param: 'p',
+                // #452 (Phase 212): "param: 'p'" is retired -- the short code is now the path
+                // segment itself, not a query param. Replaced with share_kind so a consumer can
+                // still tell what shape the link is without re-parsing the URL. Verified by grep
+                // (AffiliatesWorkspacePanel.jsx) that no current consumer reads the old "param" key.
+                share_kind: 'path',
                 slug,
                 path,
                 url
@@ -924,7 +935,7 @@ export const buildListMyAffiliateEnrollmentsUseCase = ({ repository = dgfyAffili
             // "share this to earn" QR/link without a second round trip per enrollment.
             const enrichedEnrollments = await Promise.all(enrollments.map(async (enrollment) => {
                 const slug = await repository.getStorefrontAffiliateSlug(enrollment.tenant_id);
-                const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
+                const { path, url } = buildAffiliateShareUrl({ shortCode: enrollment.short_code });
                 return { ...enrollment, store_slug: slug, share_path: path, share_url: url };
             }));
             return ok({ enrollments: enrichedEnrollments });
@@ -1248,6 +1259,44 @@ export const buildCaptureAffiliateAttributionUseCase = ({ repository = dgfyAffil
     }
 );
 
+// Public, unauthenticated resolver for /s/{short_code} share links (#452, Phase 212). Given a
+// short code with no tenant/slug context (the whole point of the new URL shape -- the store slug
+// is no longer carried in the link), returns the store slug the storefront should boot, and
+// nothing else. Every miss returns the SAME shape (resolved: false), never a 4xx -- this endpoint
+// is a page-load dependency for an anonymous visitor and must not be usable to distinguish "code
+// doesn't exist" from "code exists but store/program is unavailable" via status code alone (ADR
+// 0036 Decision 7's anti-enumeration posture, qualified per the ADR amendment landed alongside
+// this use case -- see the dated Amendments block).
+export const buildResolveAffiliateShareCodeUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ shortCode }) => {
+        try {
+            const code = String(shortCode || '').trim();
+            if (!code) {
+                return ok({ resolved: false });
+            }
+
+            const enrollment = await repository.findActiveEnrollmentByShortCode(code);
+            if (!enrollment) {
+                return ok({ resolved: false });
+            }
+
+            const settings = await repository.getSettings(enrollment.tenant_id);
+            if (!settings?.program_enabled) {
+                return ok({ resolved: false });
+            }
+
+            const slug = await repository.getStorefrontAffiliateSlug(enrollment.tenant_id);
+            if (!slug) {
+                return ok({ resolved: false });
+            }
+
+            return ok({ resolved: true, store_slug: slug, short_code: enrollment.short_code });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to resolve affiliate share code'));
+        }
+    }
+);
+
 export default {
     buildGetAffiliateSettingsUseCase,
     buildUpdateAffiliateSettingsUseCase,
@@ -1267,5 +1316,6 @@ export default {
     buildApproveAffiliateCashoutUseCase,
     buildMarkAffiliateCashoutPaidUseCase,
     buildRejectAffiliateCashoutUseCase,
-    buildCaptureAffiliateAttributionUseCase
+    buildCaptureAffiliateAttributionUseCase,
+    buildResolveAffiliateShareCodeUseCase
 };
