@@ -5293,7 +5293,8 @@ function SettingsWorkspace({
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {}
+  onStorefrontSetupSaved = async () => {},
+  onDeliveryPersonnelChanged = () => {}
   // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
   // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
   // here.
@@ -9139,6 +9140,7 @@ export default function TerminalOperationsWorkspace({
           onStorefrontSetupSaved={onStorefrontSetupSaved}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
         />
       );
     case 'shift_controls':

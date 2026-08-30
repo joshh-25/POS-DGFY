@@ -172,6 +172,36 @@ Landed as two batched commits per `docs/ai/PR.md` (backend + RF-1 test fix, then
 frontend prop wiring listed above) -- both amend this same declaration, not two separate
 declarations, since they're one reviewed change set on one PR.
 
+### 2026-08-30: PR #1208 second review round (RF-3, follow-up)
+
+Corrects the prior amendment's RF-3 entry: the wiring described there
+(`TerminalPage.jsx` -> `TerminalPageLayout.jsx` -> `TerminalOperationsWorkspace.jsx`) reaches the
+*outer* `TerminalOperationsWorkspace` component only. That file also defines a second, unrelated
+function -- `SettingsWorkspace`, the component that actually backs every `settings_*`/
+`terminal_setup`/`location_scope` view mode -- which renders `DeliveryPersonnelManagementPanel` via
+its own `renderEmployeesPane` helper and references `onDeliveryPersonnelChanged` there too (line
+~7933), but never had that identifier in its own destructured parameter list. That's a plain
+`ReferenceError` at render time -- not a build-time failure -- for any admin with delivery-personnel
+management permission who actually opens the Employees settings tab; the previous round's `npm run
+build:pos`/`build:skupervisor` evidence could not have caught it, since neither runs the component.
+
+Fixed by adding `onDeliveryPersonnelChanged = () => {}` to `SettingsWorkspace`'s own destructured
+params and threading the real callback through the single remaining hop -- the outer
+`TerminalOperationsWorkspace`'s `<SettingsWorkspace .../>` invocation -- so the prop that was
+already correctly plumbed everywhere else now also reaches this component's own instance instead of
+throwing.
+
+New regression coverage: `deliveryPersonnelSettingsPane.behavior.test.jsx` renders the real
+`TerminalOperationsWorkspace` tree end to end (not a mocked stand-in), switches to the Employees
+tab, and asserts `DeliveryPersonnelManagementPanel` mounts and calls
+`onDeliveryPersonnelChanged` with the loaded registry rather than throwing. Confirmed this test
+fails with the pre-fix code (`ReferenceError: onDeliveryPersonnelChanged is not defined`, reproduced
+via a temporary local revert) and passes with the fix restored.
+
+Verification: `deliveryPersonnelSettingsPane.behavior.test.jsx` (2 cases, all green),
+`deliveryAssignmentControl.contract.test.js` (2 cases, all green, unaffected), `npm run build:pos`,
+`npm run build:skupervisor`.
+
 ## Preflight Reconciliation
 
 Not yet run. `preflight_request_ref: NOT-EXECUTED-1080-POS-DELIVERY-PERSONNEL-REGISTRY-CRUD` is
