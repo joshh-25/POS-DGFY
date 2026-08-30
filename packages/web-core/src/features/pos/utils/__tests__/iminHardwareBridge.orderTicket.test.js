@@ -113,12 +113,16 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         expect(printReceiptWithLogo.mock.calls[0][2]).toBe('');
     });
 
-    it('does not forward a logo path native cannot resolve on its own', () => {
-        // No asset origin is configured in this test environment, so a root-relative
-        // upload path stays root-relative -- native can only fetch an absolute
-        // http(s) URL or decode a data: URI (see isNativeFetchableLogoSource).
+    it('absolutizes a root-relative company icon against the page origin for native (issue #321)', () => {
+        // The tenant icon is stored backend-relative (/uploads/storefront-assets/...) and
+        // the POS build ships no asset origin, so resolveAssetUrl leaves it root-relative.
+        // The browser preview resolves that against the document; native cannot, and used
+        // to receive '' -- which ReceiptLogoProvider.kt reads as "print the bundled DGFY
+        // drawable". Forward the absolute form instead: the POS origin proxies /uploads to
+        // dgfy-api, so native can fetch it.
         const printReceiptWithLogo = vi.fn(() => ({ success: true }));
         globalThis.window = {
+            location: { origin: 'https://pos.dgfy.ph' },
             iMinBridge: {
                 isIminWrapper: () => true,
                 printReceiptWithLogo,
@@ -134,7 +138,55 @@ describe('iMin order-ticket and receipt identity formatting', () => {
             openDrawerAfterPrint: false
         });
 
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe(
+            'https://pos.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
+        );
+    });
+
+    it('still drops a page-scoped blob: logo source native cannot resolve', () => {
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            location: { origin: 'https://pos.dgfy.ph' },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt: vi.fn(() => ({ success: true }))
+            }
+        };
+
+        printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {
+                storefront_profile_image_url: 'blob:https://pos.dgfy.ph/9f0c-preview'
+            },
+            openDrawerAfterPrint: false
+        });
+
         expect(printReceiptWithLogo.mock.calls[0][2]).toBe('');
+    });
+
+    it('passes an already-absolute company icon URL through unchanged', () => {
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            location: { origin: 'https://pos.dgfy.ph' },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt: vi.fn(() => ({ success: true }))
+            }
+        };
+
+        printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {
+                storefront_profile_image_url: 'https://cdn.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
+            },
+            openDrawerAfterPrint: false
+        });
+
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe(
+            'https://cdn.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
+        );
     });
 
     it('falls back to the plain two-arg printReceipt on a bridge without printReceiptWithLogo', () => {
