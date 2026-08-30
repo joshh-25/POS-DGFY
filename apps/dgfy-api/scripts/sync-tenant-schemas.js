@@ -40,6 +40,12 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 }
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    tenant_locations: Object.freeze({
+        scheduling_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `scheduling_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may pick a scheduled fulfillment date/time'" }),
+        immediate_fulfillment_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `immediate_fulfillment_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may choose immediate (NOW) fulfillment'" }),
+        fulfillment_lead_time_min_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_min_days` INT NULL COMMENT 'Merchant-set minimum fulfillment lead time in days'" }),
+        fulfillment_lead_time_max_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_max_days` INT NULL COMMENT 'Merchant-set maximum fulfillment lead time in days'" })
+    }),
     storefront_catalog_overrides: Object.freeze({
         image_fingerprint: Object.freeze({
             sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `image_fingerprint` VARCHAR(64) NULL COMMENT 'SHA-256 fingerprint of the source catalog image asset'"
@@ -2194,7 +2200,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.3';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
