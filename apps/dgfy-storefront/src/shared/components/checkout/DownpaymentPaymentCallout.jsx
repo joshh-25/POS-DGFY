@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Info } from 'lucide-react';
 import {
   buildDownpaymentRefundableNote,
   resolveDownpaymentBalanceLabel
 } from '../../model/storefrontDownpaymentPresentation.js';
+import { DownpaymentTermsModal } from './DownpaymentTermsModal.jsx';
 
 /**
  * Phase 142 (#823): the amount callout shown under PaymentMethodSelectorBlock's dropdown at a
@@ -11,6 +13,11 @@ import {
  * blocked on #280; only this seam ships here). Shared across Simple/F&B/Retail's payment steps so
  * the copy and shape stay identical everywhere it renders. Renders nothing when the display is
  * inactive -- callers can pass this unconditionally.
+ *
+ * Phase 219 (#1220): the same `refundable === false` gate now also renders a link to the full
+ * versioned terms (DownpaymentTermsModal). Deliberately not a gate -- no checkbox, no "I agree",
+ * and the pay action is never disabled on an unread state; capturing acceptance is #1086's job.
+ * A modal rather than a route so opening it cannot lose in-progress checkout state.
  */
 export function DownpaymentPaymentCallout({
   accentColor = '#1a4e8d',
@@ -19,6 +26,8 @@ export function DownpaymentPaymentCallout({
   money,
   orderMethod
 }) {
+  const [termsOpen, setTermsOpen] = useState(false);
+
   if (!display?.active) return null;
   const refundableNote = buildDownpaymentRefundableNote(display.refundable);
   const balanceLabel = resolveDownpaymentBalanceLabel(orderMethod).toLowerCase();
@@ -37,7 +46,19 @@ export function DownpaymentPaymentCallout({
         </div>
       </div>
       {refundableNote ? (
-        <div style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5, fontFamily: bodyFont }}>{refundableNote}</div>
+        <div style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5, fontFamily: bodyFont }}>
+          {refundableNote}{' '}
+          <button
+            type="button"
+            onClick={() => setTermsOpen(true)}
+            style={{ background: 'transparent', border: 'none', padding: 0, margin: 0, font: 'inherit', color: accentColor, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', minHeight: 24 }}
+          >
+            Read the downpayment terms
+          </button>
+        </div>
+      ) : null}
+      {refundableNote ? (
+        <DownpaymentTermsModal open={termsOpen} onClose={() => setTermsOpen(false)} bodyFont={bodyFont} />
       ) : null}
     </div>
   );
