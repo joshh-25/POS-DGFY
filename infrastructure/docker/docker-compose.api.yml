@@ -1,0 +1,71 @@
+# apps/dgfy-api is the backend, refactored into apps/ (see docs/ai/CLAUDE.md)
+# -- the single source of truth (backend/ removed). The migration domain
+# runs separately in docker-compose.migration.yml, so dgfy-api no longer
+# runs db:migrate itself.
+#
+# Pulled into the main project via docker-compose.yml's `include:` --
+# always run `docker compose` from that file's directory, not this one
+# directly.
+#
+# This file is the GENERIC, multi-environment template (DEV/QA/staging
+# still read config from .env via env_file below -- they haven't had a
+# secrets split). PROD's own hand-maintained file on the server does NOT
+# use this file verbatim: since the 2026-08-28 SOPS cutover (#360) it bakes
+# every bucket-B (non-secret) var here as a literal and reads bucket-A
+# (secret) vars from secrets/*.env via deploy-sops.sh's shell export
+# instead of env_file. See infrastructure/docker/env/prod.sops-cutover
+# -fragment.yml for PROD's actual layout and #1236 for the split-file
+# mirror of it.
+services:
+  dgfy-api:
+    image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+      REDIS_URL: redis://redis:6379
+      PORT: 5100
+      # Must match mysql's --max_connections in docker-compose.yml. The
+      # backend compares its own pool budget against this at boot and
+      # warns on a mismatch instead of failing later under load.
+      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
+      SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
+      SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+      SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
+      SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
+    volumes:
+      - ./data/dgfy-api/uploads:/app/uploads
+      - ./data/dgfy-api/storage:/app/storage
+      - ./data/dgfy-api/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # #1014: measured live against PROD's actual d8ff7d5c boot (2026-08-25). Two sequential,
+      # full-tenant-sweep costs dominate startup, not one: the entrypoint's `sync-tenant-schemas.js
+      # --mode repair-apply` (~1.6s/tenant, gated on TENANT_SCHEMA_MUTATION_APPROVED -- confirmed
+      # still `true` on PROD) plus server.js's own blocking pre-listen() tenant preflight
+      # (`auditTenantSchemaReadiness`, mode=report, ~0.38s/tenant -- this one is UNCONDITIONAL in
+      # production regardless of the mutation flag, see tenantSchemaPreflightRequired). Combined
+      # ~1.98s/tenant + ~7s fixed Node/landlord-audit overhead measured against 49 active tenants
+      # (~104s observed, listen() at T+104.3s). The prior 30s start_period declared the container
+      # unhealthy at ~T+90s, 14s before the port even opened -- a false alarm, not a real failure.
+      # 300s covers the measured formula out to ~145 tenants (~3x current count) with margin, so
+      # this doesn't need revisiting on every routine tenant signup -- only once growth approaches
+      # that range. Once past start_period, failing checks still count toward `retries` as normal;
+      # this only widens the startup grace window, not steady-state failure detection.
+      start_period: 300s

@@ -1,0 +1,45 @@
+# PROD frontend, split into three independent images (ADR 0071 / PR #513 /
+# issue #915) -- replaces the single combined `frontend:` service. Same
+# apps, same PROD GitHub Environment VITE_* values baked in at build time.
+# Shares the same backend (docker-compose.api.yml) below.
+#
+# None of the three take any runtime environment variables -- confirmed
+# against the live server and this repo's own compose config, both before
+# and after #1236's split. Config is entirely build-time (VITE_*), which is
+# why this file has no `environment:` blocks at all.
+#
+# Pulled into the main project via docker-compose.yml's `include:` --
+# always run `docker compose` from that file's directory, not this one
+# directly.
+services:
+  dgfy-ims:
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    # No host port: reachable only via dgfy_internal, through the nginx
+    # service (docker-compose.proxy.yml).
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-pos:
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
