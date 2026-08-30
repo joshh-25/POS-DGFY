@@ -129,6 +129,10 @@ const makeFakeModel = (idField) => {
 const mockTenantAffiliateSettings = makeFakeModel('tenant_id');
 const mockDgfyAffiliateEnrollment = makeFakeModel('enrollment_id');
 const mockDgfyAffiliateInvite = makeFakeModel('invite_id');
+// #1202 (Phase 214) - the repository now writes one of these per status transition; every
+// existing test in this file exercises a write site, so this fake must exist and be seeded even
+// though most tests below don't assert on it directly.
+const mockDgfyAffiliateEnrollmentStatusEvent = makeFakeModel('status_event_id');
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
     default: {
@@ -141,6 +145,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
         DgfyAffiliateInvite: mockDgfyAffiliateInvite,
         DgfyAffiliatePriceRule: {},
         DgfyAffiliateCategoryRate: {},
+        DgfyAffiliateEnrollmentStatusEvent: mockDgfyAffiliateEnrollmentStatusEvent,
         StorefrontDiscoveryIndex: {},
         Tenant: {},
         TenantAffiliateSettings: mockTenantAffiliateSettings
@@ -154,6 +159,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
     DgfyAffiliateInvite: mockDgfyAffiliateInvite,
     DgfyAffiliatePriceRule: {},
     DgfyAffiliateCategoryRate: {},
+    DgfyAffiliateEnrollmentStatusEvent: mockDgfyAffiliateEnrollmentStatusEvent,
     StorefrontDiscoveryIndex: {},
     Tenant: {},
     TenantAffiliateSettings: mockTenantAffiliateSettings
@@ -199,6 +205,7 @@ beforeEach(() => {
     mockTenantAffiliateSettings._seed([]);
     mockDgfyAffiliateEnrollment._seed([]);
     mockDgfyAffiliateInvite._seed([]);
+    mockDgfyAffiliateEnrollmentStatusEvent._seed([]);
 });
 
 const expectSlotCapRejection = (result) => {
