@@ -20,8 +20,14 @@
 //       in the same transaction as the status change it records, so a retried request that writes
 //       a second event is a retry that also performed a second status change (i.e. genuinely two
 //       events). Do not "fix" this with a unique index later.
-//   (c) `source` distinguishes a captured event ('admin_api' | 'invite_accept' | 'auto_enroll')
-//       from a backfilled one ('backfill') - never conflate them.
+//   (c) `source` distinguishes a captured event ('admin_api' | 'self_serve' | 'invite_accept' |
+//       'auto_enroll') from a backfilled one ('backfill') - never conflate them. `self_serve` is
+//       its own value, not folded into 'admin_api': self-serve enrollment
+//       (buildEnrollSelfServeAffiliateUseCase) is a DGFY-account action, not a merchant/tenant-user
+//       one, and recording it as 'admin_api' would misattribute it in the audit trail (PR #1232
+//       review RF-1 - the pre-fix version of this migration/model hard-coded 'admin_api' for every
+//       createEnrollment() caller, silently misrecording a self-serve enrollment as a merchant
+//       action).
 //
 // Backfill (this migration, guarded on the table being empty at first run):
 //   1. One 'enrolled' row per existing enrollment, from_status = NULL, to_status = 'active',
@@ -54,7 +60,7 @@ const addIndexIfMissing = async (queryInterface, tableName, fields, options) => 
 const STATUS_ENUM_VALUES = ['pending', 'active', 'suspended', 'revoked'];
 const EVENT_TYPE_ENUM_VALUES = ['enrolled', 'suspended', 'revoked', 'reactivated'];
 const ACTOR_TYPE_ENUM_VALUES = ['tenant_user', 'dgfy_account', 'system'];
-const SOURCE_ENUM_VALUES = ['admin_api', 'invite_accept', 'auto_enroll', 'backfill'];
+const SOURCE_ENUM_VALUES = ['admin_api', 'self_serve', 'invite_accept', 'auto_enroll', 'backfill'];
 
 module.exports = {
     async up(queryInterface, Sequelize) {

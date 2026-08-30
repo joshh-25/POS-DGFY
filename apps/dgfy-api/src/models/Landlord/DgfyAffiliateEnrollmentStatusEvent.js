@@ -64,7 +64,7 @@ export default (sequelize) => {
             allowNull: true
         },
         source: {
-            type: DataTypes.ENUM('admin_api', 'invite_accept', 'auto_enroll', 'backfill'),
+            type: DataTypes.ENUM('admin_api', 'self_serve', 'invite_accept', 'auto_enroll', 'backfill'),
             allowNull: false
         },
         metadata: {
