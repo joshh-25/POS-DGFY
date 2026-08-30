@@ -12627,3 +12627,156 @@ commission rates, and commission-rate exceptions (the third and fourth tiers fro
 four-level framing). Per-line commission *reporting* (as opposed to accuracy, already delivered)
 remains an optional, low-priority follow-up only if the §5.4 ledger redesign is ever actually
 wanted.
+
+## Phase 210 - Reject-with-Reason and Post-Placement Delivery Address/Pin Edit (#1179)
+
+### Initiative and release
+
+Surebiz Wave 3 (epic #1178). Implements #1179's two adjacent merchant actions surfaced by Pat's
+2026-08-30 Surebiz walkthrough: rejecting an incoming order with a durable, customer-visible
+reason, and a staff-only edit of an order's delivery address/pin after placement.
+
+### Objective and scope
+
+Planning (`PHASE_210_PLAN.md`) found the reject-with-reason UI/validation path already existed end
+to end; the two real gaps were that the reason was written nowhere durable (only surviving as a
+refund note, and never reaching the customer) and that reject was unreachable from `confirmed`
+(only `placed`). A third gap -- no post-placement address/pin edit at all -- had no implementation
+and no attribution mechanism. This phase closes all three: persists `rejection_reason`/
+`rejected_by`/`rejected_at` on `pos_transactions`, widens `confirmed -> rejected`, surfaces the
+reason on the storefront tracking response, and adds a staff-only delivery-address/pin edit
+endpoint with a dedicated append-only audit table (`pos_order_address_changes`).
+
+Two of Pat's confirmed decisions deviate from the plan document's own default/alternative and are
+recorded here rather than left implicit:
+
+1. **The address/pin edit is restricted to pre-dispatch statuses only**
+   (`['placed','confirmed','preparing']`). The plan's own §3.4 default additionally allowed
+   `out_for_delivery` (citing the walkthrough's mid-route-redirect scenario); Pat's call instead
+   rejects `out_for_delivery` with a 409, identically to a terminal state, on both the server
+   (`DELIVERY_ADDRESS_EDITABLE_STATUSES` in `posUseCases.js`) and the client visibility gate
+   (`DeliveryAddressEditControl.jsx`). The plan's §9 open item #1 is resolved by this decision, not
+   left open.
+2. **`pos_order_address_changes` is a dedicated audit table**, confirmed as planned (§3.5) rather
+   than the cheaper column-pair alternative the plan's §9 open item #3 named -- this was not a
+   deviation, just a confirmation.
+
+Explicitly out of scope, named rather than silently dropped (plan §1): re-running the delivery-
+radius check on an address change (#478's job); a customer-facing re-pin surface (staff-only, no
+customer confirmation loop, by Pat's decision); email/SMS notification of the rejection reason
+(storefront tracking page only); address edit for non-`delivery` orders or after a terminal state;
+and `cancelled` reasons (only `rejected` gets a persisted reason this phase).
+
+### Status
+
+`completed` (2026-09-01). PR opened against `develop`, not yet merged.
+
+### Dependencies
+
+Depends on Phase 144/#824's `commerceOrderLifecycleUseCase` refund/forfeiture split (ADR 0069
+clause 8) -- this phase pins that money rule rather than touching it, since a store-side reject now
+reaches `commerceOrderLifecycleUseCase` from two origins (`placed` and the newly-widened
+`confirmed`) instead of one, with a byte-identical call shape either way. Independent of Phase 205
+(#1080, delivery personnel registry) and Phase 208/209 (affiliate commissions) -- no shared files.
+
+### Acceptance and validation evidence
+
+- [x] `ONLINE_FULFILLMENT_TRANSITIONS.confirmed` widened to `['preparing', 'rejected']`
+      (`posUseCases.js`); `ONLINE_FULFILLMENT_STATUSES` unchanged (`rejected` was already a
+      member) -- no ENUM change, no `sync-tenant-schemas.js` ENUM entry needed for the status
+      column.
+- [x] `rejection_reason`/`rejected_by`/`rejected_at` persisted inside the same transaction as the
+      status change, before commit -- durable even if the downstream `commerceOrderLifecycleUseCase`
+      call (post-commit) fails. The existing `currentStatus === 'placed'` guard on
+      `accepted_by`/`accepted_at` is left as-is (a `confirmed -> rejected` must not overwrite who
+      accepted) with a comment recording that as deliberate.
+- [x] Money rule pinned: a `confirmed -> rejected` reject on a non-refundable downpayment session
+      still refunds, never forfeits, asserted for both the `placed` and `confirmed` origin
+      (`commerceOrderLifecycle.usecase.test.js`).
+- [x] Storefront tracking surfaces `rejection_reason` (`serializeOrderBase` +
+      `buildTrackStoreOrderUseCase`'s composed message), gated on `rejected` so it can never leak
+      on a non-rejected order; deliberately excludes `rejected_by`/`rejected_at` (staff identity is
+      not customer-facing).
+- [x] New staff-only `PATCH /api/v1/pos/orders/:id/delivery-address` endpoint
+      (`buildUpdateOnlineOrderDeliveryAddressUseCase`), same `TRANSACT_POS` permission tier as the
+      status-update route, `.and('delivery_latitude','delivery_longitude')` pairing, required
+      `change_reason`, and **pre-dispatch-only** editability (Pat's deviation #1 above) -- 422 for
+      a non-`delivery` order, 409 for any status outside
+      `['placed','confirmed','preparing']` including `out_for_delivery` and every terminal state.
+      No radius recomputation (`outside_radius_flag` left unchanged, #478 cited in code).
+- [x] New `pos_order_address_changes` audit table (confirmed per Pat's deviation #2 above), one
+      append-only row per edit (`previous_*`/`new_*`/`change_reason`/`changed_by`/
+      `changed_by_shift_id`/`changed_at`), FK'd to `pos_transactions ON DELETE CASCADE` and
+      `users(user_id) ON DELETE SET NULL`. `posRepository.buildTransactionInclude()` gains a
+      capped-5, most-recent-first `addressChanges` include so the POS order-details payload
+      carries recent history; the storefront tracking payload does **not** get it (internal-only).
+- [x] Migration `20260901000002-add-order-rejection-reason-and-address-change-audit.cjs` fans out
+      over every active tenant database (mirrors `20260831000001`'s structure exactly), kept in
+      lockstep with `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+      (`REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions`, `REQUIRED_TENANT_SCHEMA_TABLES.
+      pos_order_address_changes`, `REQUIRED_TENANT_SCHEMA_INDEXES.pos_order_address_changes`) so a
+      tenant that misses it, or is restored from an older snapshot, self-repairs at API boot.
+- [x] Both duplicated transition-map copies updated in the same phase: `posUseCases.js`
+      (`ONLINE_FULFILLMENT_TRANSITIONS`) and `packages/web-core/.../orderFulfillmentUi.js`
+      (`getNextStatusActions`'s `confirmed` case) -- the third copy (storefront tracking adapters'
+      `TERMINAL_STATUSES`) needed no change, confirmed already correct.
+- [x] POS reject affordance on `confirmed` needed no new component -- widening
+      `getNextStatusActions` alone surfaces the existing reject button/dialog.
+- [x] New `DeliveryAddressEditControl.jsx`, modelled on `DeliveryAssignmentControl.jsx`'s shape,
+      rendered beneath the existing "Open pin in map" link; visibility mirrors the server's
+      pre-dispatch-only gate; dialog carries a required reason field, paired lat/lng inputs, and an
+      explicit "the customer is not notified and does not confirm this change" note; renders the
+      change history beneath the form.
+- [x] Storefront: three tracking adapters (retail/fnb/simple) + `retailTrackingPayload.js` carry
+      `rejection_reason` through; the route pages and the retail tracking drawer render it under
+      the status headline only when `statusCode === 'rejected'`, framed as the store's own
+      statement. `serviceTrackingAdapter.js` excluded (own status machine, named not silently
+      skipped).
+- [x] **Compliance declaration required and written** --
+      `docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md`,
+      `major`, surfaces `pos,terminal,store,privacy,payments` (the address-change audit table is a new PII
+      retention surface, named explicitly per Pat's request for an explicit privacy paragraph
+      rather than a silent `major`). `npm run check:compliance` confirmed to fail first, then pass.
+- [x] Full Tier 0 self-verification: `node --check` on every changed `apps/dgfy-api`/
+      `apps/dgfy-migration-runner` file (no build step on either app). `npm run build:pos`,
+      `npm run build:store`, `npm run build:skupervisor` -- all three real Vite builds succeeded
+      (`packages/web-core` is the shared trunk all three consume). New
+      `apps/dgfy-api/tests/posOrderRejectionAndAddressEdit.usecase.test.js` (8/8),
+      `commerceOrderLifecycle.usecase.test.js` extended (27/27),
+      `storeUsecases.applicationResult.test.js` extended (76/76),
+      `orderFulfillmentUi.test.js` updated + extended, new
+      `deliveryAddressEdit.behavior.test.jsx` -- all actually executed, not just syntax-checked.
+- [x] **Checkpoint triggers fired and were proceeded through per Pat's standing instruction for
+      this project** (draft + self-verify, then straight to commit/push/PR, since every PR is
+      reviewed by hand): (1) a new file under `apps/dgfy-migration-runner/migrations/`; (2)
+      `check:compliance` requiring a new declaration. Both stated here and in the PR body rather
+      than silently skipped.
+- [x] Linked `Closes #1179` -- this phase completes the issue's stated scope; the explicitly
+      descoped items (#478 radius enforcement, a notification channel) belong to other issues, not
+      left implied-open on this one.
+
+### Known limitations, not fixed here
+
+- **No retention or purge policy for `pos_order_address_changes`.** Previous-address history
+  persists for the life of the tenant's volume; RA 10173 proportionality argues for a bounded
+  window, designed as a follow-up (`pm`), not silently omitted.
+- **No radius re-enforcement on an address edit** -- `outside_radius_flag` is left at whatever it
+  was; #478's job, out of scope here by design.
+- **`out_for_delivery` address edits are unreachable** -- Pat's deviation #1 above; the plan's own
+  counter-argument (a driver already holds the old printed slip) is resolved by disallowing the
+  edit outright rather than relying on the audit trail as the sole mitigation.
+- **`cancelled` still carries no persisted reason** -- only `rejected` does this phase; widening to
+  `cancelled` is additive later on the same column, per the plan's own scoping.
+
+### Implementation links
+
+- Issue #1179 (Closes -- see above)
+- PR: opened against `develop`, link recorded in the PR itself
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md`
+- No new/amended ADR -- ADR 0069 clause 8 is pinned, not changed, by this phase.
+
+### Next eligible phase
+
+None allocated by this phase. Follow-ups named above (retention/purge policy for the address audit
+table, `cancelled`-reason widening) belong to `pm` to shape and file rather than being built here.
