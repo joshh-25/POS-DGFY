@@ -11203,3 +11203,67 @@ concrete milestone once unblocked). Independent of Phases 190-195 otherwise.
 
 The next repository phase is allocated from the authoritative ledger after Phase 196 completes.
 The epic (#1124) remains open until all of Phases 190-196 (and any phase #1147 spawns) complete.
+
+## Phase 197 - Affiliate Cashout Enrollment-Status Gate (#451)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). First of three successive phases (197-199) built via an
+orchestrated agent chain (Claude Opus plan -> Claude Sonnet implement -> Codex GPT-5.6-Luna
+review/merge) following #447's 2026-08-30 policy decisions (D1-D6). Phases 198-199 are queued
+behind this one; the initiative deliberately stops after 199 at a decision gate, since everything
+else in the affiliate backlog needs a product-policy call only Pat can make.
+
+### Objective and scope
+
+Issue #451 named only the cashout *request* seam as unprotected by `enrollment.status`. Verified
+during planning that all five cashout use cases had the same gap; scope was widened to gate the
+three money-moving seams (request, approve, mark-paid) while deliberately leaving cancel/reject
+ungated, since both release or deny a request rather than move money.
+
+### Status
+
+`completed` (2026-08-30). PR #1184 merged into `develop` as commit `445106140cabde1b5fc99b70f422ded162f369f0`.
+
+### Dependencies
+
+None blocking. Independent of Phases 190-196. Phase 198 depends on this phase having merged.
+
+### Acceptance and validation evidence
+
+- [x] `buildRequestAffiliateCashoutUseCase`, `buildApproveAffiliateCashoutUseCase`, and
+      `buildMarkAffiliateCashoutPaidUseCase` all reject with `CONFLICT`/409 when
+      `enrollment.status !== 'active'` — `dgfyAffiliateUseCases.js`.
+- [x] `approveCashout` and `markCashoutPaid` (`dgfyAffiliateRepository.js`) load the enrollment via
+      the same association `listCashoutsForTenant` already used (`required: true`) and return a
+      distinct `enrollment_inactive` reason ahead of the existing `invalid_status` check.
+- [x] `approveCashout` is now wrapped in a transaction + row lock, aligning it with its four
+      sibling cashout methods (previously the only one without one).
+- [x] `cancelCashout`/`rejectCashout` deliberately left ungated; rationale stated in the PR body.
+- [x] New test file `apps/dgfy-api/tests/dgfyAffiliateCashoutUseCases.unit.test.js` (14 tests, no
+      DB, fake-repository injection pattern) — all pass.
+- [x] Compliance/architecture/ADR guardrails passed automatically (this module and
+      `apps/dgfy-migration-runner/migrations/` are outside `check-compliance-impact.js`'s
+      sensitive-path list, so no declaration was required).
+- [x] Reviewed by an isolated Codex GPT-5.6-Luna worker; verdict APPROVE; merged only after GitHub
+      checks reached green and `mergeStateStatus: CLEAN`, per `AGENTS.md`'s Merge Safety rule.
+- [x] Linked `Refs #451` (not `Closes`) — the issue needs deployed verification, so `pr-reviewer`
+      moved it to `For QA` on merge rather than closing it; confirmed open post-merge.
+- **Correction, flagged by an independent peer-session verification pass:** the PR body's stated
+  reason for choosing `required: true` on the include ("MySQL's FOR UPDATE + outer-join
+  restriction") has the restriction backwards — that limitation is Postgres's; MySQL 8 permits
+  `LEFT JOIN ... FOR UPDATE`. The decision itself is still correct on its own merits: `enrollment_id`
+  is `allowNull: false` on `DgfyAffiliateCashout`, so an orphan cashout can never arise and
+  `required: true` is safe. Noted here so the inverted rationale isn't cited forward into a future
+  ADR or phase entry.
+
+### Implementation links
+
+- Issue #451, Refs #446
+- PR #1184: https://github.com/Sieitzz/dgfy-platform/pull/1184
+- Review: `## Review` comment on PR #1184 (Codex GPT-5.6-Luna, pr-reviewer)
+
+### Next eligible phase
+
+Phase 198 (#1177, `max_affiliate_slots` enforcement) — same initiative, next in the successive
+chain.
