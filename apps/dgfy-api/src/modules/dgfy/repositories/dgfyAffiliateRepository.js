@@ -110,14 +110,25 @@ export const dgfyAffiliateRepository = {
     // Consumed slots = active enrollments + pending, non-expired invites (#447 D3 - counting
     // enrollments alone lets a merchant mint invites under the cap and blow past it when they all
     // accept). Revoked/suspended enrollments and expired/cancelled invites do not consume (#447 D4).
-    async countConsumedSlots(tenantId, { transaction = null } = {}) {
+    //
+    // excludeInviteId: a pending->active conversion (accepting/materializing invite N) is
+    // slot-NEUTRAL - it converts an existing consumer into a different kind of consumer, it never
+    // adds one. Without excluding the invite being materialized from its own "am I still under
+    // cap" check, a tenant at cap 1 with zero active enrollments and exactly the one pending
+    // invite being accepted would see itself counted as consuming its own not-yet-freed slot and
+    // incorrectly reject its own acceptance.
+    async countConsumedSlots(tenantId, { transaction = null, excludeInviteId = null } = {}) {
+        const pendingInviteWhere = { tenant_id: tenantId, status: 'pending', expires_at: { [Op.gt]: new Date() } };
+        if (excludeInviteId !== null && excludeInviteId !== undefined) {
+            pendingInviteWhere.invite_id = { [Op.ne]: excludeInviteId };
+        }
         const [activeEnrollments, pendingInvites] = await Promise.all([
             DgfyAffiliateEnrollment.count({
                 where: { tenant_id: tenantId, status: 'active' },
                 transaction
             }),
             DgfyAffiliateInvite.count({
-                where: { tenant_id: tenantId, status: 'pending', expires_at: { [Op.gt]: new Date() } },
+                where: pendingInviteWhere,
                 transaction
             })
         ]);
@@ -128,18 +139,22 @@ export const dgfyAffiliateRepository = {
     // enrolled" CONFLICT) when the tenant is already at or over its cap. Call this immediately
     // before any write that would consume a new slot, inside that same write's transaction.
     //
+    // excludeInviteId: passed straight through to countConsumedSlots - see its own comment. Pass
+    // the invite's own ID when this check is guarding the materialization of that same invite, so
+    // it isn't double-counted against itself.
+    //
     // Concurrency note: when a transaction is supplied, this also takes a row lock on the tenant's
     // settings row (if one exists) so two concurrent slot-consuming writes for the same tenant
     // serialize on this check rather than both reading a stale count. A tenant with no settings row
     // yet has nothing to lock; the count-based check still applies there, just without that extra
     // guard for that rarer, never-configured-settings case.
-    async assertAffiliateSlotAvailable(tenantId, { transaction = null } = {}) {
+    async assertAffiliateSlotAvailable(tenantId, { transaction = null, excludeInviteId = null } = {}) {
         if (transaction) {
             await TenantAffiliateSettings.findByPk(tenantId, { transaction, lock: transaction.LOCK.UPDATE });
         }
         const [maxSlots, consumedSlots] = await Promise.all([
             this.getMaxAffiliateSlots(tenantId, { transaction }),
-            this.countConsumedSlots(tenantId, { transaction })
+            this.countConsumedSlots(tenantId, { transaction, excludeInviteId })
         ]);
         if (consumedSlots >= maxSlots) {
             throw new DomainError(
@@ -385,7 +400,13 @@ export const dgfyAffiliateRepository = {
             // register path always supplies one) so the check and the create commit atomically.
             // The idempotent "already accepted" branch above never reaches here (existing is set),
             // so re-accepting an already-materialized invite never re-consumes.
-            await this.assertAffiliateSlotAvailable(invite.tenant_id, { transaction });
+            //
+            // excludeInviteId: this invite is being converted, not added - it's already counted
+            // as one of the tenant's consumed slots (it's `pending`, non-expired) right up until
+            // the update below flips it to `accepted`. Without excluding it here, a tenant at cap
+            // with zero active enrollments and only this one pending invite would incorrectly be
+            // rejected from accepting its own invite.
+            await this.assertAffiliateSlotAvailable(invite.tenant_id, { transaction, excludeInviteId: invite.invite_id });
 
             // generateUniqueShareCode reads without the transaction, but the unique short_code/
             // share_code_hash indexes are the real guarantee against collisions.
@@ -419,6 +440,14 @@ export const dgfyAffiliateRepository = {
     // Auto-enroll hook: called right after a brand-new DGFY account is created (register), matching
     // any pending, unexpired invites addressed to that account's email and materializing each into
     // an enrollment. This is the "once the account exists, they're automatically affiliated" path.
+    //
+    // Runs inside dgfyAuthUseCases.js's account-creation transaction (#1177) - a brand-new user
+    // must always be able to create their DGFY account, even when some unrelated merchant who
+    // invited them happens to be at their affiliate cap right now. So a slot-cap rejection here is
+    // caught and turned into a skip (the invite is simply left pending - it expires on its own TTL,
+    // or the merchant can free a slot and the invitee can accept it manually later) rather than
+    // aborting registration. Any other error still propagates - only the specific, expected
+    // AFFILIATE_SLOT_CAP_REACHED rejection is swallowed.
     async mirrorPendingAffiliateInvitesForAccount(account, { transaction = null } = {}) {
         if (!account?.id || !account?.email) return [];
         const invites = await DgfyAffiliateInvite.findAll({
@@ -432,9 +461,20 @@ export const dgfyAffiliateRepository = {
 
         const results = [];
         for (const invite of invites) {
-            // eslint-disable-next-line no-await-in-loop
-            const result = await this.materializeInviteEnrollment(toPlain(invite), account, { transaction });
-            results.push(result);
+            const plainInvite = toPlain(invite);
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                const result = await this.materializeInviteEnrollment(plainInvite, account, { transaction });
+                results.push(result);
+            } catch (error) {
+                if (error?.details?.reason_code !== AFFILIATE_SLOT_CAP_REASON_CODE) throw error;
+                results.push({
+                    enrollment: null,
+                    created: false,
+                    skipped: 'slot_limit_reached',
+                    invite_id: plainInvite.invite_id
+                });
+            }
         }
         return results;
     },

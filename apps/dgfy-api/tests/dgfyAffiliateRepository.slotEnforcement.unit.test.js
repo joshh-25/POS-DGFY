@@ -21,6 +21,7 @@ const matchesWhere = (row, where = {}) => Object.entries(where).every(([key, exp
             return symbols.every((sym) => {
                 if (sym === Op.gt) return new Date(row[key]).getTime() > new Date(expected[sym]).getTime();
                 if (sym === Op.in) return expected[sym].includes(row[key]);
+                if (sym === Op.ne) return row[key] !== expected[sym];
                 throw new Error(`Unsupported Op symbol in test fake: ${String(sym)}`);
             });
         }
@@ -329,7 +330,33 @@ describe('materializeInviteEnrollment — the registration-mirror path (proof th
         expect(mockDgfyAffiliateEnrollment._rows()).toHaveLength(1); // only the pre-seeded one
     });
 
-    test('mirrorPendingAffiliateInvitesForAccount (the auto-enroll-on-register hook) propagates the same rejection', async () => {
+    test('accepting/materializing a pending invite that is the tenant\'s ONLY consumed slot succeeds (pending -> active is slot-neutral)', async () => {
+        // Zero active enrollments; the one pending invite being materialized is itself the
+        // tenant's only consumed slot. Converting it to an enrollment must not be counted as
+        // consuming a *second* slot against itself - this is the #1177 F1 regression: without
+        // excludeInviteId, countConsumedSlots would see this same invite as "1 pending invite"
+        // and reject the acceptance of the very invite that's supposedly the blocker.
+        const invite = {
+            invite_id: 1,
+            tenant_id: TENANT_ID,
+            email: 'onlyconsumer@example.com',
+            commission_rate_bps: null
+        };
+        mockDgfyAffiliateInvite._seed([{ ...invite, status: 'pending', token_hash: 'only-hash', expires_at: inOneHour() }]);
+        const account = { id: 'account-onlyconsumer', email: 'onlyconsumer@example.com' };
+
+        const { enrollment, created } = await dgfyAffiliateRepository.materializeInviteEnrollment(invite, account);
+        expect(created).toBe(true);
+        expect(enrollment.dgfy_account_id).toBe('account-onlyconsumer');
+        expect(mockDgfyAffiliateEnrollment._rows()).toHaveLength(1);
+    });
+
+    test('mirrorPendingAffiliateInvitesForAccount (the auto-enroll-on-register hook) does NOT throw when the inviting merchant is at cap - skips the invite and lets registration succeed', async () => {
+        // #1177 F2: this runs inside dgfyAuthUseCases.js's account-creation transaction. If it
+        // threw here, a brand-new user could never create their DGFY account purely because some
+        // unrelated merchant who invited them happens to be at their own affiliate cap right now -
+        // a far worse outcome than simply leaving that one invite unmaterialized. The rejection
+        // must be caught and turned into a per-invite skip, never propagated.
         mockDgfyAffiliateEnrollment._seed([activeEnrollment()]);
         mockDgfyAffiliateInvite._seed([{
             invite_id: 1,
@@ -342,8 +369,37 @@ describe('materializeInviteEnrollment — the registration-mirror path (proof th
         }]);
         const account = { id: 'account-registrant', email: 'registrant@example.com' };
 
-        await expectSlotCapRejection(dgfyAffiliateRepository.mirrorPendingAffiliateInvitesForAccount(account));
+        const results = await dgfyAffiliateRepository.mirrorPendingAffiliateInvitesForAccount(account);
+
+        expect(results).toEqual([
+            expect.objectContaining({ enrollment: null, created: false, skipped: 'slot_limit_reached', invite_id: 1 })
+        ]);
+        // No new enrollment was created for the skipped invite - only the pre-seeded blocker.
         expect(mockDgfyAffiliateEnrollment._rows()).toHaveLength(1);
+        // The invite is left exactly as it was - still pending, not silently accepted/consumed.
+        const inviteRow = mockDgfyAffiliateInvite._rows().find((row) => row.invite_id === 1);
+        expect(inviteRow.status).toBe('pending');
+    });
+
+    test('mirrorPendingAffiliateInvitesForAccount still propagates a non-slot-cap error from materializeInviteEnrollment', async () => {
+        // Only the specific AFFILIATE_SLOT_CAP_REACHED rejection is swallowed - anything else
+        // (a genuine failure) must still surface, not be silently absorbed as a "skip".
+        mockDgfyAffiliateInvite._seed([{
+            invite_id: 1,
+            tenant_id: TENANT_ID,
+            email: 'registrant@example.com',
+            status: 'pending',
+            token_hash: 'registrant-hash',
+            expires_at: inOneHour(),
+            commission_rate_bps: null
+        }]);
+        const account = { id: 'account-registrant', email: 'registrant@example.com' };
+        const unrelatedError = new Error('boom - unrelated infrastructure failure');
+        const spy = jest.spyOn(dgfyAffiliateRepository, 'materializeInviteEnrollment').mockRejectedValueOnce(unrelatedError);
+
+        await expect(dgfyAffiliateRepository.mirrorPendingAffiliateInvitesForAccount(account)).rejects.toBe(unrelatedError);
+
+        spy.mockRestore();
     });
 
     test('the idempotent re-accept branch (invite already accepted) does not re-consume a slot', async () => {
