@@ -11702,6 +11702,115 @@ Phase 204 (#965, proof-of-payment image) is already flagged in #1183 as a hard c
 `BalanceSettlementDialog.jsx`, `posUseCases.js`, and the same `pos_order_payments` migration
 surface — this phase's ENUM migration should land first and cleanly before Phase 204 begins.
 
+## Phase 205 - Delivery Personnel Registry CRUD (#1080)
+
+### Initiative and release
+
+Surebiz go-live readiness build track (epic #1183), Wave 2. Phase number 205 is assigned by #1183
+directly, as Phases 202/203/206/207 were; the ledger's raw high-water mark elsewhere is 207, but
+numbers are allocated per-worktree by #1183, so this entry is not renumbered to 208. #1183's Phase
+205 row named a *soft* collision on `routes/pos.js`/`posValidator.js`/`posUseCases.js`, blocking on
+Phase 202 (#1085) landing first; re-verified clean on branch: Phase 202 merged into `develop`
+(commit `cc721d20c`, PR #1196) and Phase 204 (#965) had not started, so this phase proceeded ahead
+of Phase 204 as planned in `PHASE_205_PLAN.md`.
+
+### Objective and scope
+
+`delivery_personnel` (migration `20260808000002-create-delivery-personnel-and-assignment.cjs`) has
+existed since before this phase, with every column #1080 asks for, but nothing could create,
+update, or deactivate a row — POS delivery assignment was free-text only even though a read
+endpoint (`GET /pos/delivery-personnel`) and its frontend service wrapper
+(`fetchActiveDeliveryPersonnel`) already existed, unused. This phase adds the missing CRUD surface,
+an admin management panel, and a picker on the existing assignment control — all five checkboxes of
+#1080's stated scope.
+
+### Status
+
+`completed` (implementation), `awaiting PR review/merge`. Branch
+`feature/1080-delivery-personnel-registry-crud`, cut off fresh `origin/develop`. PR opened,
+`Refs #1080` (behavior-changing, needs deployed verification — never `Closes`, per
+`docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+
+### Dependencies
+
+Phase 202 (#1085), merged. None on Phase 204 (#965) — this phase deliberately does not touch
+`posUseCases.js`, so it does not collide with Phase 204's own planned edits to that file.
+
+### Acceptance and validation evidence
+
+- [x] No migration — `delivery_personnel` already had every needed column; the
+      `implement` skill's migration checkpoint does not fire and
+      `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` is not engaged.
+- [x] New self-contained backend module `apps/dgfy-api/src/modules/deliveryPersonnel/` (5 files),
+      mirroring `modules/employees/` file-for-file — `index.js`, `README.md`,
+      `controllers/deliveryPersonnelHandlers.js`, `usecases/deliveryPersonnelUseCases.js`,
+      `repositories/deliveryPersonnelRepository.js`. `posUseCases.js`/`posRepository.js` untouched.
+- [x] Three new routes on the existing `/pos` router, all gated on
+      `PERMISSIONS.POS.actions.MANAGE_EMPLOYEES` (`pos:employees:manage`, reused rather than a new
+      permission string to avoid a lockout/backfill-migration risk on existing tenants):
+      `GET /pos/delivery-personnel/registry`, `POST /pos/delivery-personnel`,
+      `PATCH /pos/delivery-personnel/:deliveryPersonnelId`. The existing cashier-facing
+      `GET /pos/delivery-personnel` (`pos:view`, active-only, location-scoped) is unchanged.
+- [x] Four new Joi schemas in `posValidator.js`, matching the migration's column widths exactly.
+- [x] Soft duplicate guard: case-insensitive same-location active-`display_name` check on create,
+      `409 CONFLICT` — no unique database constraint added (two riders may share a name).
+- [x] No hard delete anywhere in the diff — `PATCH { is_active: false }` is the only deactivation
+      path, matching `delivery_jobs.delivery_personnel_id`'s `ON DELETE RESTRICT`.
+- [x] Create and update each write an `AuditLog` row (`entity_type: 'delivery_personnel'`).
+- [x] Frontend: `deliveryPersonnelService.js` (3 functions), `DeliveryPersonnelManagementPanel.jsx`
+      (modelled on `EmployeeManagementPanel.jsx`), mounted in
+      `TerminalOperationsWorkspace.jsx`'s employees pane behind `canManageDeliveryPersonnel`.
+- [x] Picker: `TerminalPage.jsx`'s `deliveryPersonnelState` changed from a hard-coded literal to
+      real state, fetched lazily (existing `fetchActiveDeliveryPersonnel`) only once the
+      incoming-orders queue renders a manual delivery job. `DeliveryAssignmentControl.jsx` keeps
+      its free-text `<input>` and adds a `<datalist>`; an exact registry match sends
+      `delivery_personnel_id`, otherwise `delivery_personnel_name` — never both (server's
+      `.or(...).oxor(...)` contract). Free-text assignment behavior is unchanged.
+- [x] Two authoritative docs corrected in this same PR: `docs/api/specification.md` (documented the
+      three new endpoints; removed the now-false "registry creation/editing/activation/deactivation
+      are not part of this POS endpoint" note) and `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+      (registry existence, Phase 2 API boundary, Phase 3 picker copy, permissions bullet;
+      `last_reviewed` bumped to 2026-08-30). No ADR change — ADR 0034 already mandates this
+      registry and already permits the id-or-name choice; this phase implements what it requires.
+- [x] Compliance impact declaration written
+      (`docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md`),
+      classification `major`, surfaces `pos,terminal`. `npm run check:compliance` confirmed to pass
+      once added.
+- [x] Tests: `deliveryPersonnelRegistry.usecase.test.js` (6 new cases — create + audit row,
+      duplicate active name -> 409, inactive/foreign `location_id` -> 422, missing-id update -> 404,
+      soft-deactivate survives, list includes inactive); `posValidator.deliveryPersonnelRegistry
+      .test.js` (7 new cases). Existing suites re-run unmodified and stayed green (27 cases):
+      `posDeliveryAssignment.usecase.test.js`, `posDeliveryJobStatus.usecase.test.js`,
+      `posDeliveryCompletionGuard.usecase.test.js`, `posDeliveryPersonnel.repository.test.js`,
+      `posValidator.deliveryAssignment.test.js`.
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file.
+- [x] `npm run check:architecture` — passed (new module satisfies `REQUIRED_MODULE_FILES`,
+      `REQUIRED_LAYER_DIRS`, the `Handlers.js` naming rule, and the no-model-import rule).
+- [x] `npm run build:pos` and `npm run build:skupervisor` — both succeeded (`packages/web-core` is
+      the shared trunk for `apps/dgfy-pos`/`apps/dgfy-ims`). `npm run build:store` not required — no
+      `apps/dgfy-storefront` file touched.
+
+### Known residual gaps, accepted rather than solved
+
+- **No deployed-environment verification in this phase** — that is the `verifier` role's job after
+  merge, which is exactly why linkage is `Refs #1080` rather than `Closes`.
+- **Preflight not yet executed against a live environment** — expected on a `develop`-targeting PR
+  per `docs/compliance/request-time-preflight-protocol.md` and AGENTS.md/pr-reviewer item 3 (#884);
+  the live sweep runs once per batch at the `develop -> staging` promotion.
+
+### Implementation links
+
+- Issue #1080, tracked under #1183 (never `Closes` — deployed verification needed, per plan)
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md`
+- Plan: `PHASE_205_PLAN.md`
+
+### Next eligible phase
+
+Phase 204 (#965, proof-of-payment image) — the harder collision named in #1183, on
+`posUseCases.js`/`BalanceSettlementDialog.jsx`/a `pos_order_payments` migration — was left
+deliberately untouched by this phase and can now proceed.
+
 ## Phase 206 - Storefront Checkout: Re-verify Affiliate Enrollment at Commit Time (#450 D2)
 
 ### Initiative and release
