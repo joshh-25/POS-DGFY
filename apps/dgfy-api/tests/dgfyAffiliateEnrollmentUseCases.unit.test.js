@@ -205,3 +205,93 @@ describe('buildUpdateAffiliateEnrollmentUseCase — revocation audit trail (#450
         expect(result.data.enrollment.revocation_reason).toHaveLength(500);
     });
 });
+
+// #449 (Phase 208) - per-enrollment lifetime earnings cap override fields.
+describe('buildUpdateAffiliateEnrollmentUseCase — earnings cap fields (#449 Phase 208)', () => {
+    test('12: accepts a positive integer cap and a valid ISO date', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 12, status: 'active', max_lifetime_earnings_centavos: null, earnings_cap_active_until: null }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 12,
+            body: { max_lifetime_earnings_centavos: 200000, earnings_cap_active_until: '2026-12-31T00:00:00.000Z' }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.enrollment.max_lifetime_earnings_centavos).toBe(200000);
+        expect(result.data.enrollment.earnings_cap_active_until).toBeInstanceOf(Date);
+    });
+
+    test('13: null on max_lifetime_earnings_centavos means inherit the tenant default', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 13, status: 'active', max_lifetime_earnings_centavos: 500000, earnings_cap_active_until: null }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 13,
+            body: { max_lifetime_earnings_centavos: null }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.enrollment.max_lifetime_earnings_centavos).toBeNull();
+    });
+
+    test('14: an invalid earnings_cap_active_until is rejected with 422', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 14, status: 'active', max_lifetime_earnings_centavos: 200000, earnings_cap_active_until: null }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 14,
+            body: { earnings_cap_active_until: 'not-a-date' }
+        });
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+    });
+
+    test('15: §2.3 guard - setting a date with no cap on the row (and no update to the cap) is rejected 422 EARNINGS_CAP_DATE_WITHOUT_CAP', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 15, status: 'active', max_lifetime_earnings_centavos: null, earnings_cap_active_until: null }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 15,
+            body: { earnings_cap_active_until: '2026-12-31T00:00:00.000Z' }
+        });
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toMatchObject({ reason_code: 'EARNINGS_CAP_DATE_WITHOUT_CAP' });
+    });
+
+    test('16: §2.3 guard - explicitly clearing the cap while a date remains from a prior PATCH (both in the same PATCH) is accepted only when the date is cleared too', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 16, status: 'active', max_lifetime_earnings_centavos: 200000, earnings_cap_active_until: new Date('2026-12-31T00:00:00.000Z') }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        // Clearing the cap but leaving the existing date untouched on the row would resolve to
+        // "date with no cap" - rejected.
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 16,
+            body: { max_lifetime_earnings_centavos: null }
+        });
+        expect(result.success).toBe(false);
+        expect(result.error.details).toMatchObject({ reason_code: 'EARNINGS_CAP_DATE_WITHOUT_CAP' });
+    });
+
+    test('17: a cap set together with its date in the same PATCH is accepted (merged-state check, not payload-only)', async () => {
+        const repository = makeFakeRepository({
+            enrollments: [{ tenant_id: TENANT_ID, enrollment_id: 17, status: 'active', max_lifetime_earnings_centavos: null, earnings_cap_active_until: null }]
+        });
+        const useCase = buildUpdateAffiliateEnrollmentUseCase({ repository });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            enrollmentId: 17,
+            body: { max_lifetime_earnings_centavos: 100000, earnings_cap_active_until: '2026-12-31T00:00:00.000Z' }
+        });
+        expect(result.success).toBe(true);
+    });
+});
