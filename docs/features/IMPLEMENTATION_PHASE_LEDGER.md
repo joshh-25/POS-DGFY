@@ -14233,3 +14233,117 @@ gap, and whose on-server git repo Phase B committed to).
 ### Next eligible phase
 
 222.
+
+## Phase 222 - POS Primary Checkout Route: Restore `affiliate_code` Through the Validator (#1239)
+
+### Initiative and release
+
+Affiliate program v2 (epic #446). Fixes #1239, the defect Phase 220's own verification pass
+surfaced: `POST /pos/checkouts` — the primary POS checkout route — silently stripped
+`affiliate_code` at the validator layer, so in-store affiliate attribution never fired through it,
+even though the split-payment-completion and mobile-offline-sync paths already carried the field
+correctly. Per `PHASE_221_PLAN.md` (this branch's root; retained under its original filename —
+the plan was written and numbered before a concurrent peer session's `infra/1236` work claimed
+Phase 221 in the ledger first).
+
+### Objective and scope
+
+**Phase renumbered 221 → 222 at implementation time**, a real discrepancy from the plan, not a
+silent deviation: the plan (`PHASE_221_PLAN.md` J8) was written against `origin/develop @
+f688f941f` and asserted 221 was the next free phase number. A fresh `git fetch` at implementation
+time found `origin/develop` had moved to `15370d71f`, and the concurrently-merged `infra/1236`
+work (PR #1238) had already ledgered itself as **Phase 221** (`docker compose` file split + `.env`
+retirement) — confirmed by its own "Next eligible phase: 222" note. Per `AGENTS.md`'s Continuous
+Phase Numbering rules ("preserve historical phase numbers... never renumber completed phases") and
+this repo's standing practice of keeping every phase entry on a collision rather than dropping one
+(the same principle Phase 218's own entry already applied when Phase 220 was claimed out from under
+it), this work is filed as **Phase 222**, the next number actually free. All in-repo references to
+"Phase 221" in this PR's own code comments, test titles, the ADR 0036 amendment, and the API spec
+note were written as Phase 222 throughout — only this plan document's filename retains the original
+number, as a record of when it was written rather than a claim on that phase.
+
+The plan's own substance is otherwise followed exactly, with all eleven judgment calls (J1-J11)
+decided in-plan and followed as-is:
+
+- **J1 (the Joi shape)** — `Joi.string().trim().max(40).allow('', null).optional()`. No
+  `.uppercase()`, no `.pattern()`, no `.min()` — each omission argued in the plan's §4.2 and pinned
+  by T3 (case preserved) and the DO NOT list.
+- **J2 (no existing schema to mirror)** — confirmed; this is the repo's first explicit
+  `affiliate_code` Joi shape. The mobile-sync and split-payment paths both work via `.unknown(true)`
+  passthrough, not an explicit declaration.
+- **J3 (malformed code: 422 at validator or fall through)** — falls through to the use case's
+  existing `422 AFFILIATE_CODE_INVALID` gate (`posUseCases.js:2985-2990`, untouched). The validator
+  only bounds and passes the field.
+- **J4 (`.unknown(true)` instead)** — rejected; would silently re-admit every field
+  `checkoutPosSchema` exists to reject on the app's highest-blast-radius money route. One key
+  declared instead.
+- **J5 (compliance impact declaration)** — **not filed**, per the plan's empirical verification
+  that `scripts/check-compliance-impact.js`'s `validators/` rule matches only
+  `complianceValidator.js`. Re-verified independently during this phase's own Tier 0 self-verify
+  (`npm run check:compliance` passes clean with no declaration in the diff) rather than trusted on
+  the plan's word alone.
+- **J6 (ADR 0036 amendment)** — filed, one new dated `## Amendments` block, retiring by reference
+  (not editing in place) the 2026-08-31 block's "Known limitation... POS's primary checkout route
+  cannot reach this fix today" bullet.
+- **J7 (test level)** — two levels, validator-primary: `tests/posValidator.affiliateCode.test.js`
+  (new, T1-T5, zero mocks, mirrors `posValidator.discountPolicy.test.js`) plus one appended
+  composition test in `tests/posCheckoutAffiliateAttribution.unit.test.js` that runs the real
+  validator's output through the real use case — closing the exact blind spot the file's existing
+  seven use-case-direct tests have (they hand-build `payload`, bypassing the validator, and all
+  seven pass on unmodified `develop` while the bug is live).
+- **J8 (phase numbering)** — see above; 222, not 221.
+- **J9 (`docs/api/specification.md`)** — one paragraph added under `POST /pos/checkouts`'s payment
+  handoff policy section, documenting the field, its no-price-effect scope, and the
+  `AFFILIATE_CODE_INVALID` 422.
+- **J10 (frontend changes)** — none. Zero files under `packages/web-core/` or `apps/dgfy-*/`
+  touched; the POS UI already sends the field correctly.
+- **J11 (product input needed)** — no; this restores already-intended, already-documented behavior.
+
+### Status
+
+`in_progress`.
+
+### Dependencies
+
+Depends on Phase 220 (#1199, PR #1242, merged) for the commit-time re-verify semantics this phase
+makes reachable on the primary route, and on Phase 221 (#1236, PR #1238, merged) only in the sense
+of the phase-number collision described above — no functional dependency exists between the two.
+Two sibling defects found alongside #1239 (#1240 — offline-sync hard-reject on a revoked affiliate;
+#1241 — split-payment rollback hazard) are explicitly out of scope, both filed and left open, both
+touching `posUseCases.js`/`mobilePosUseCases.js`, files this phase must not touch (compliance
+declaration avoidance, per J5).
+
+### Acceptance and validation evidence
+
+- [x] One-line production change: `apps/dgfy-api/src/validators/posValidator.js` declares
+  `affiliate_code: Joi.string().trim().max(40).allow('', null).optional()` on `checkoutPosSchema`.
+  No other line in that file changed.
+- [x] `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — confirmed untouched (required to
+  keep this PR outside `check-compliance-impact.js`'s `pos,terminal` rule, per J5/F6).
+- [x] Mandatory revert-proof regression test: `tests/posValidator.affiliateCode.test.js` T1
+  confirmed failing against unmodified `origin/develop` (`req.validatedData.affiliate_code ===
+  undefined`) before the fix, confirmed passing after (transcripts in the PR body). The appended
+  composition test in `posCheckoutAffiliateAttribution.unit.test.js` was independently confirmed
+  failing against the unmodified validator too (temporarily reverted the one-line fix via a
+  scoped `git stash`, re-ran, restored) — closing F8's blind spot for real, not just by argument.
+- [x] `apps/dgfy-api` Tier 2 (zero-DB, both new/changed files): `node --experimental-vm-modules
+  node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath
+  tests/posValidator.affiliateCode.test.js tests/posCheckoutAffiliateAttribution.unit.test.js` —
+  13/13 passing (5 new in the validator file, 7 pre-existing + 1 new composition test, unchanged
+  and unrestructured, in the attribution file).
+- [x] `node --check` on the changed validator file; `check:compliance`, `check:architecture`,
+  `lint:docs` all green; no `package.json` touched, no lockfile step needed.
+- [x] `docs/api/specification.md` and ADR 0036's new dated `## Amendments` block both updated per
+  J9/J6.
+- [ ] Deployed-environment verification (Verifier role, post-deploy against STAGING, a cashier
+  typing a real code and a commission row appearing) remains outstanding — per the plan's §8
+  linkage rule, this issue stays open through merge (`Refs #1239`, not `Closes`).
+- [ ] §9's one real risk — a previously-impossible `422 AFFILIATE_CODE_INVALID` becoming reachable
+  on the primary checkout route — is unverified against a live POS UI's error-message handling
+  (`grep` finds zero references to that reason code in any frontend app); flagged for QA, not
+  fixed here, per the plan's own scoping.
+
+### Next eligible phase
+
+223. #1240 (offline-sync hard-reject) and #1241 (split-payment rollback hazard) are the strongest
+candidates, per the plan's own §11.
