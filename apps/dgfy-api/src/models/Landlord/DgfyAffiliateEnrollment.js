@@ -65,6 +65,18 @@ export default (sequelize) => {
         revocation_reason: {
             type: DataTypes.STRING(500),
             allowNull: true
+        },
+        // #449 (Phase 208): per-enrollment cap override. NULL = inherit the tenant default,
+        // same convention as commission_rate_bps.
+        max_lifetime_earnings_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        // #449 (Phase 208): end date belonging to this enrollment's own cap; ignored unless
+        // max_lifetime_earnings_centavos is set on this row.
+        earnings_cap_active_until: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     }, {
         sequelize,

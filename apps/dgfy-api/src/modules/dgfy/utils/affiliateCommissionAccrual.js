@@ -18,6 +18,70 @@ export const resolveCommissionRateBps = (enrollment, settings) => (
         : (Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS)
 );
 
+// #449 (Phase 208). Resolves the applicable cap config as a PAIR - an enrollment-level cap brings
+// its own end date, never the tenant's - mirroring resolveCommissionRateBps's override ladder above.
+// Returns null when no cap applies, which is the case for every tenant that hasn't opted in.
+export const resolveEarningsCap = (enrollment, settings, now = new Date()) => {
+    const pair = Number.isInteger(enrollment?.max_lifetime_earnings_centavos)
+        ? {
+            capCentavos: enrollment.max_lifetime_earnings_centavos,
+            activeUntil: enrollment.earnings_cap_active_until ?? null,
+            source: 'enrollment'
+        }
+        : {
+            capCentavos: Number.isInteger(settings?.max_lifetime_earnings_centavos)
+                ? settings.max_lifetime_earnings_centavos
+                : null,
+            activeUntil: settings?.earnings_cap_active_until ?? null,
+            source: 'tenant'
+        };
+
+    if (pair.capCentavos === null) return null;              // no cap configured -> no query, no cap
+    // #449/A1: the end date bounds the CAP's applicability, not accrual (a program/enrollment
+    // expiry is #1206 and explicitly out of scope). An expired cap config simply stops applying,
+    // and the affiliate accrues uncapped from then on.
+    if (pair.activeUntil && new Date(pair.activeUntil) <= now) {
+        return { ...pair, expired: true };
+    }
+    return { ...pair, expired: false };
+};
+
+// Returns { skip, capCentavos, lifetimeEarnedCentavos }. Issues the ledger SUM only when a live cap
+// actually applies - a tenant with no cap configured pays zero additional queries.
+export const evaluateEarningsCap = async ({
+    tenantId,
+    enrollment,
+    settings,
+    amountCentavos,
+    excludeOrderReference = null,
+    repository = dgfyAffiliateRepository,
+    now = new Date()
+}) => {
+    const cap = resolveEarningsCap(enrollment, settings, now);
+    if (!cap) return { skip: false, capCentavos: null, lifetimeEarnedCentavos: null };
+    if (cap.expired) {
+        // A1 mitigation: make "the cap silently turned itself off" observable rather than invisible.
+        logger.info('[AffiliateCommissionAccrual] Earnings cap expired; accruing uncapped', {
+            tenantId,
+            enrollmentId: enrollment?.enrollment_id,
+            cap_source: cap.source,
+            cap_active_until: cap.activeUntil
+        });
+        return { skip: false, capCentavos: cap.capCentavos, lifetimeEarnedCentavos: null, expired: true };
+    }
+
+    const lifetimeEarnedCentavos = await repository.sumLifetimeCommissionCentavos(
+        tenantId,
+        enrollment.enrollment_id,
+        { excludeOrderReference }
+    );
+
+    // Full skip, never partial fill - see the plan's section 3.2. `>=` on the already-reached case
+    // and `>` on the crossing case collapse into one comparison of the post-accrual total.
+    const skip = (lifetimeEarnedCentavos + Math.max(0, amountCentavos)) > cap.capCentavos;
+    return { skip, capCentavos: cap.capCentavos, lifetimeEarnedCentavos };
+};
+
 // Pre-commit lookup: validates a cashier/customer-entered affiliate code against the tenant's
 // program state before the sale is written, so an invalid code can be rejected with clear feedback
 // instead of silently losing the commission (unlike the post-commit, best-effort accrual below).
@@ -89,6 +153,18 @@ export const accrueEarnedForInStoreSale = async ({
         ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
         : roundBpsAmount(baseCentavos, rateBps);
 
+    // #449 (Phase 208) - lifetime earnings cap. Silent stop: the sale already committed and stands
+    // unchanged; only the affiliate's cut is withheld, logged rather than thrown. Same "silent drop,
+    // buyer unaffected" convention as the #450 D2 in-flight attribution drop in storeUseCases.js.
+    const capDecision = await evaluateEarningsCap({
+        tenantId,
+        enrollment,
+        settings,
+        amountCentavos,
+        excludeOrderReference: orderReference,
+        repository
+    });
+
     await repository.recordAttribution({
         tenantId,
         enrollmentId: enrollment.enrollment_id,
@@ -96,6 +172,25 @@ export const accrueEarnedForInStoreSale = async ({
         posTransactionId,
         storeSlug
     });
+
+    // Rationale for checking cap AFTER attribution, not before: DgfyAffiliateAttribution carries no
+    // money at all - it is the referral-tracking record. Keeping it means a merchant can still see
+    // that a capped affiliate is driving sales, which is precisely the signal that would prompt them
+    // to raise the cap; dropping it would make a capped affiliate look inactive. This deliberately
+    // differs from the self-referral guard above, which returns before attribution - that case is
+    // "no legitimate referral occurred at all," so there is nothing to attribute. A capped referral
+    // did occur.
+    if (capDecision.skip) {
+        logger.warn('[AffiliateCommissionAccrual] Skipped commission: lifetime earnings cap reached', {
+            tenantId,
+            enrollmentId: enrollment.enrollment_id,
+            orderReference,
+            cap_centavos: capDecision.capCentavos,
+            lifetime_earned_centavos: capDecision.lifetimeEarnedCentavos,
+            withheld_centavos: amountCentavos
+        });
+        return null;
+    }
 
     const { commission } = await repository.createEarnedCommissionIfMissing({
         enrollmentId: enrollment.enrollment_id,
@@ -187,6 +282,17 @@ export const accruePendingForOnlineOrder = async ({
         ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
         : roundBpsAmount(baseCentavos, rateBps);
 
+    // #449 (Phase 208) - lifetime earnings cap. See accrueEarnedForInStoreSale's identical block for
+    // the full "silent stop, attribution still recorded" rationale.
+    const capDecision = await evaluateEarningsCap({
+        tenantId,
+        enrollment,
+        settings,
+        amountCentavos,
+        excludeOrderReference: orderReference,
+        repository
+    });
+
     await repository.recordAttribution({
         tenantId,
         enrollmentId: enrollment.enrollment_id,
@@ -194,6 +300,18 @@ export const accruePendingForOnlineOrder = async ({
         dgfyAccountId: buyerDgfyAccountId,
         storeSlug
     });
+
+    if (capDecision.skip) {
+        logger.warn('[AffiliateCommissionAccrual] Skipped commission: lifetime earnings cap reached', {
+            tenantId,
+            enrollmentId: enrollment.enrollment_id,
+            orderReference,
+            cap_centavos: capDecision.capCentavos,
+            lifetime_earned_centavos: capDecision.lifetimeEarnedCentavos,
+            withheld_centavos: amountCentavos
+        });
+        return null;
+    }
 
     const { commission } = await repository.createPendingCommissionIfMissing({
         enrollmentId: enrollment.enrollment_id,
@@ -238,6 +356,8 @@ export default {
     resolveActiveAffiliateEnrollment,
     resolveActiveAffiliateEnrollmentById,
     resolveCommissionRateBps,
+    resolveEarningsCap,
+    evaluateEarningsCap,
     accrueEarnedForInStoreSale,
     accruePendingForOnlineOrder,
     settleAffiliateCommissionForOrder,

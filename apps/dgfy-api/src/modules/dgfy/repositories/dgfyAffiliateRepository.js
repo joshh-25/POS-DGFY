@@ -72,7 +72,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     // identically to one with a freshly-created row.
     commission_type: 'PERCENTAGE_OF_BASE',
     settlement_policy: null,
-    commission_base_mode: 'discounted_subtotal'
+    commission_base_mode: 'discounted_subtotal',
+    // #449 (Phase 208): a tenant with no settings row resolves identically to one with a
+    // fresh row - uncapped, same as max_affiliate_slots' own comment above calls out.
+    max_lifetime_earnings_centavos: null,
+    earnings_cap_active_until: null
 });
 
 // The reason_code an over-cap rejection carries in DomainError.details - distinct from the
@@ -776,6 +780,28 @@ export const dgfyAffiliateRepository = {
             paid_centavos: paidCentavos,
             reversed_centavos: reversedCentavos
         };
+    },
+
+    // #449 (Phase 208) - the lifetime earnings total the cap is compared against. DERIVED from the
+    // commission ledger, never a counter column: every other affiliate money surface here already
+    // derives (getEarningsSummary above), and Phase 198's slot cap likewise counts live rather than
+    // caching (countConsumedSlots). Uses idx_dgfy_affiliate_commissions_enrollment_status.
+    //
+    // excludeOrderReference: same reason as countConsumedSlots' excludeInviteId (#447 D3) - an
+    // accrual retry for an order that already wrote its row must not count that row against itself,
+    // or the retry would take a different branch than the original call and break the
+    // (tenant_id, order_reference) idempotency contract.
+    async sumLifetimeCommissionCentavos(tenantId, enrollmentId, { excludeOrderReference = null } = {}) {
+        const where = {
+            tenant_id: tenantId,
+            enrollment_id: enrollmentId,
+            status: { [Op.in]: ['pending', 'earned', 'paid'] }
+        };
+        if (excludeOrderReference !== null && excludeOrderReference !== undefined) {
+            where.order_reference = { [Op.ne]: String(excludeOrderReference) };
+        }
+        const total = await DgfyAffiliateCommission.sum('amount_centavos', { where });
+        return Number(total) || 0;
     },
 
     // --- Payout methods (account-level, not tenant-scoped - one set of methods per DGFY account,
