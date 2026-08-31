@@ -14458,3 +14458,102 @@ replaced) and #980/ADR 0074 (the `develop → main` default promotion path this 
 ### Next eligible phase
 
 224.
+
+## Phase 224 - Delivery Runs: ADR 0034 Amendment + Run Schema (#1273/#1269/#1081)
+
+### Initiative and release
+
+Delivery Runs build track, no parent epic beyond #1273 (Phase 224) tracking #1081 (schema) and
+#1269 (ADR gate). Decision rationale: #1079's decision comment.
+
+### Objective and scope
+
+Lay the schema and ADR foundation for grouping many `delivery_jobs` rows into one manually-run
+delivery run with an accountable person and optional crew, ahead of the Phase 225 use case that
+will actually wire assignment/dispatch through it.
+
+**Scope:**
+- New migration `20260901000005-create-delivery-runs.cjs`: `delivery_runs`
+  (`label`, `scheduled_date`, `status` enum `draft/scheduled/dispatched/completed/cancelled`,
+  `location_id`, `notes`, `created_by`, `updated_by`) and `delivery_run_personnel`
+  (`delivery_run_id`, `delivery_personnel_id` or free-text `delivery_personnel_name`,
+  `is_accountable`, `created_by`, `updated_by`, plus a STORED generated `accountable_run_id`
+  column + unique index enforcing at most one accountable row per run). Adds a nullable
+  `delivery_jobs.delivery_run_id` FK + `idx_delivery_jobs_run_status` index.
+  `delivery_jobs.pos_transaction_id` stays UNIQUE, untouched.
+- New models `DeliveryRun.js`, `DeliveryRunPersonnel.js` (the latter deliberately does not declare
+  `accountable_run_id`, matching the `PosTerminalShift.active_terminal_id` precedent); edits to
+  `DeliveryJob.js` and `models/index.js` for the new associations. Both new models are
+  tenant-scoped, not added to `NON_TENANT_MODEL_EXPORTS`.
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`: `REQUIRED_TENANT_SCHEMA_TABLES` entries for both
+  new tables, a `REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_jobs.delivery_run_id` entry, a
+  `REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs.idx_delivery_jobs_run_status` entry, and
+  `TENANT_SCHEMA_CAPABILITY_VERSION` bumped `2026-09-01.3` → `2026-09-01.4`.
+  `runtimeSchemaAuditService.js` deliberately left unextended, matching the two most recent
+  new-table phases (`inventory_reservations`, `pos_order_payments`) — an unconditional preflight
+  entry for a table not yet migrated on every tenant would reproduce the #860/#639 crash-loop
+  class.
+- ADR 0034 dated `## Amendments` block (2026-08-31) answering all seven of #1269's checkboxes, plus
+  `last_reviewed` bump and a fix to the ADR's own Validation block's four stale `npm --prefix
+  backend` commands (no `backend/` directory exists — apps layout migration, #365).
+
+**Real-MySQL correction found during implementation, not in the original plan:** the plan's
+`delivery_run_personnel.delivery_run_id` FK was specified `ON DELETE CASCADE`. That column is also
+the base column of the `accountable_run_id` STORED generated column, and #1166's own investigation
+(`20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`) established live against
+MySQL 8.0.46 that InnoDB unconditionally rejects a CASCADE or SET NULL FK action on a column that
+is also a generated column's base column, regardless of when the FK is added. Changed to
+`ON DELETE RESTRICT` in the migration, the tenant-schema registry, and the model association
+(declared explicitly there too, to avoid `provisionTenant()`'s `sequelize.sync()` path
+materializing an undeclared association FK as CASCADE/CASCADE, the same sync()-vs-migration
+mismatch #1166 documents). Net effect: a run with member personnel rows must have those rows
+deleted or reparented before the run itself can be deleted — an application-layer step Phase 225's
+use case owns.
+
+**Out of scope, unchanged:** courier API integration, live tracking, rider-facing logins, provider
+dispatch, route optimization, fleet tracking, and the actual run→job assignment write-through
+use case (Phase 225).
+
+### Status
+
+`in_progress` — code, migration, registry, and ADR/ledger docs are complete and self-verified
+without local MySQL/tenant DBs in this worktree (unavailable in this environment); the DB-backed
+verification steps (migrate up/down idempotency, `SHOW CREATE TABLE` diff, the accountable
+unique-constraint negative test, `check:tenant-schema`) are the outstanding acceptance evidence,
+not yet run against a real database from this session.
+
+### Dependencies
+
+None blocking. Builds on ADR 0034's 2026-08-07/2026-08-08/2026-08-12 amendments (POS manual
+delivery lifecycle, the assignment contract, and third-party courier names) and on the delivery
+schema #1081 tracks. Phase 225 (the assignment/dispatch use case) depends on this phase.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file.
+- [x] `npm run check:adr` / `npm run lint:docs` — ADR front matter and tier hygiene, ledger format.
+- [x] `npm run check:architecture` — guardrails + controller boundaries.
+- [x] `npm --prefix apps/dgfy-api run check:tenant-schema-coverage` — confirms every new
+  table/column/index has a registry entry.
+- [x] `npm run check:compliance` — no declaration required; confirmed empirically, no rule in
+  `COMPLIANCE_SENSITIVE_RULES` matches `apps/dgfy-api/src/models/`, `apps/dgfy-api/scripts/`,
+  `apps/dgfy-migration-runner/migrations/`, or `docs/`.
+- [ ] Migration up/down against local MySQL, `SHOW CREATE TABLE` diffed against the registry
+  strings, the accountable unique-constraint negative test, and
+  `npm --prefix apps/dgfy-api run check:tenant-schema` — **not run**: no local MySQL/tenant DB
+  reachable in this worktree. Named as outstanding rather than omitted.
+
+### Links
+
+- Tracking issues: #1273 (Phase 224), #1269 (ADR gate, closed by this PR), #1081 (schema, continues
+  into Phase 225).
+- `apps/dgfy-migration-runner/migrations/20260901000005-create-delivery-runs.cjs`,
+  `apps/dgfy-api/src/models/DeliveryRun.js`, `apps/dgfy-api/src/models/DeliveryRunPersonnel.js`,
+  `apps/dgfy-api/src/models/DeliveryJob.js`, `apps/dgfy-api/src/models/index.js`,
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md`, dated `## Amendments` block,
+  2026-08-31.
+
+### Next eligible phase
+
+225.
