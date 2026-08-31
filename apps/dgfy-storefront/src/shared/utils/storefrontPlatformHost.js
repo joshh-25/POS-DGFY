@@ -11,7 +11,6 @@ const STATIC_RESERVED_HOSTS = new Set([
   'localhost',
   'dgfy.ph',
   'www.dgfy.ph',
-  'beta.dgfy.ph',
   'api.dgfy.ph',
   'store.dgfy.ph'
 ]);
