@@ -6,6 +6,7 @@ import {
     validateDeliveryRunMemberParam,
     validateDeliveryRunPersonnelSet,
     validateDeliveryRunMembersAdd,
+    validateDeliveryRunDispatch,
     validateDeliveryRunListQuery
 } from '../src/validators/posValidator.js';
 
@@ -147,6 +148,28 @@ describe('Delivery run validators (Phase 225)', () => {
             }
         };
         const { res, next } = runValidator(validateDeliveryRunMembersAdd, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts a dispatch payload with just an idempotency_key', () => {
+        const req = { body: { idempotency_key: 'dispatch-validator-1' } };
+        const { res, next } = runValidator(validateDeliveryRunDispatch, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ idempotency_key: 'dispatch-validator-1' });
+    });
+
+    it('rejects a dispatch payload with no idempotency_key', () => {
+        const req = { body: {} };
+        const { res, next } = runValidator(validateDeliveryRunDispatch, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('rejects a dispatch payload with a too-short idempotency_key', () => {
+        const req = { body: { idempotency_key: 'short' } };
+        const { res, next } = runValidator(validateDeliveryRunDispatch, req);
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(422);
     });

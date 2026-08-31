@@ -41,6 +41,14 @@ const buildPosRepository = (state) => ({
         Object.assign(order, payload);
         return { ...order };
     },
+    // Phase 228 (#1273/#1271): dispatch advances the job to `assigned` via this method (mirrors
+    // posRepository.js's real updateDeliveryJobByOrderId -- lookup by pos_transaction_id).
+    async updateDeliveryJobByOrderId(orderId, payload) {
+        const job = state.deliveryJobsByOrder.get(Number(orderId));
+        if (!job) return null;
+        Object.assign(job, payload);
+        return { ...job };
+    },
     async findActiveDeliveryPersonnelById(id) {
         const personnel = state.personnelRegistry.get(Number(id));
         return personnel ? { ...personnel } : null;
@@ -236,7 +244,17 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
         fulfillmentStatus = 'preparing',
         provider = 'manual',
         jobStatus = 'pending_dispatch',
-        runId = null
+        runId = null,
+        // Phase 228 (#1273/#1271): dispatch-only fields -- a run member with a completed personnel
+        // assignment (the normal post-Phase-225/227 state) passes these so isDeliveryAssignmentComplete
+        // holds; leave unset (the pre-Phase-228 default) to exercise DELIVERY_ASSIGNMENT_REQUIRED.
+        deliveryPersonnelId = null,
+        deliveryPersonnelName = null,
+        assignedBy = null,
+        assignedShiftId = null,
+        assignedAt = null,
+        orderMethod = 'delivery',
+        orderSource = 'online_store'
     }) => {
         const job = {
             delivery_job_id: deliveryJobId,
@@ -245,16 +263,16 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
             provider,
             status: jobStatus,
             delivery_run_id: runId,
-            delivery_personnel_id: null,
-            delivery_personnel_name: null,
-            assigned_by: null,
-            assigned_shift_id: null,
-            assigned_at: null
+            delivery_personnel_id: deliveryPersonnelId,
+            delivery_personnel_name: deliveryPersonnelName,
+            assigned_by: assignedBy,
+            assigned_shift_id: assignedShiftId,
+            assigned_at: assignedAt
         };
         const order = {
             pos_transaction_id: orderId,
-            order_source: 'online_store',
-            order_method: 'delivery',
+            order_source: orderSource,
+            order_method: orderMethod,
             fulfillment_status: fulfillmentStatus,
             location_id: locationId,
             invoice_number: `INV-${orderId}`,

@@ -9,6 +9,7 @@ const mockUpdateDeliveryRunUseCase = jest.fn();
 const mockSetDeliveryRunPersonnelUseCase = jest.fn();
 const mockAddDeliveryRunMembersUseCase = jest.fn();
 const mockRemoveDeliveryRunMemberUseCase = jest.fn();
+const mockDispatchDeliveryRunUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     createDeliveryRunUseCase: mockCreateDeliveryRunUseCase,
@@ -17,7 +18,8 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     updateDeliveryRunUseCase: mockUpdateDeliveryRunUseCase,
     setDeliveryRunPersonnelUseCase: mockSetDeliveryRunPersonnelUseCase,
     addDeliveryRunMembersUseCase: mockAddDeliveryRunMembersUseCase,
-    removeDeliveryRunMemberUseCase: mockRemoveDeliveryRunMemberUseCase
+    removeDeliveryRunMemberUseCase: mockRemoveDeliveryRunMemberUseCase,
+    dispatchDeliveryRunUseCase: mockDispatchDeliveryRunUseCase
 }));
 
 let createDeliveryRun;
@@ -27,6 +29,7 @@ let updateDeliveryRun;
 let setDeliveryRunPersonnel;
 let addDeliveryRunMembers;
 let removeDeliveryRunMember;
+let dispatchDeliveryRun;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/deliveryRunHandlers.js');
@@ -37,6 +40,7 @@ beforeAll(async () => {
     setDeliveryRunPersonnel = mod.setDeliveryRunPersonnel;
     addDeliveryRunMembers = mod.addDeliveryRunMembers;
     removeDeliveryRunMember = mod.removeDeliveryRunMember;
+    dispatchDeliveryRun = mod.dispatchDeliveryRun;
 });
 
 const createReq = (overrides = {}) => ({
@@ -185,6 +189,40 @@ describe('deliveryRunHandlers transport contracts', () => {
         }));
         expect(res.status).toHaveBeenCalledWith(200);
     });
+
+    it('dispatchDeliveryRun returns the dispatched/skipped/failed contract', async () => {
+        mockDispatchDeliveryRunUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                run: {},
+                dispatched: [{ pos_transaction_id: 501 }],
+                skipped: [],
+                failed: [],
+                run_status: { previous: 'draft', current: 'dispatched', advanced: true }
+            }
+        });
+        const req = createReq({
+            validatedParams: { deliveryRunId: 1 },
+            validatedData: { idempotency_key: 'dispatch-transport-1' }
+        });
+        const res = createRes();
+
+        await dispatchDeliveryRun(req, res, jest.fn());
+
+        expect(mockDispatchDeliveryRunUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            deliveryRunId: 1,
+            payload: { idempotency_key: 'dispatch-transport-1' },
+            auditContext: { ipAddress: '127.0.0.1', userAgent: 'test-agent' }
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: true,
+            data: expect.objectContaining({
+                dispatched: [{ pos_transaction_id: 501 }],
+                run_status: { previous: 'draft', current: 'dispatched', advanced: true }
+            })
+        }));
+    });
 });
 
 describe('delivery run route registration (Phase 225)', () => {
@@ -193,7 +231,7 @@ describe('delivery run route registration (Phase 225)', () => {
         'utf8'
     );
 
-    it('exposes the 7 delivery run endpoints with pos:transact/pos:view permissions', () => {
+    it('exposes the 8 delivery run endpoints with pos:transact/pos:view permissions', () => {
         expect(routeSource).toContain("router.post('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunCreate, deliveryRunController.createDeliveryRun);");
         expect(routeSource).toContain("router.get('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunListQuery, deliveryRunController.listDeliveryRuns);");
         expect(routeSource).toContain("router.get('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunIdParam, deliveryRunController.getDeliveryRun);");
@@ -201,5 +239,6 @@ describe('delivery run route registration (Phase 225)', () => {
         expect(routeSource).toContain("router.put('/delivery-runs/:deliveryRunId/personnel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunPersonnelSet, deliveryRunController.setDeliveryRunPersonnel);");
         expect(routeSource).toContain("router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunMembersAdd, deliveryRunController.addDeliveryRunMembers);");
         expect(routeSource).toContain("router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);");
+        expect(routeSource).toContain("router.post('/delivery-runs/:deliveryRunId/dispatch', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);");
     });
 });
