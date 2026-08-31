@@ -14557,3 +14557,118 @@ schema #1081 tracks. Phase 225 (the assignment/dispatch use case) depends on thi
 ### Next eligible phase
 
 225.
+
+## Phase 225 - Delivery Run API + Accountable Write-Through (#1273/#1081)
+
+### Initiative and release
+
+Delivery Runs build track, continuing #1273 (track) and #1081 (schema/API scope). Builds on
+Phase 224's schema. Decision rationale: #1079's decision comment plus this phase's own resolution
+of the "assignment requires `out_for_delivery`" gap (see below).
+
+### Objective and scope
+
+Wire the actual run → job assignment write-through: CRUD for `delivery_runs`, whole-roster
+personnel management, bulk member add, and single-member removal, with the accountable person's
+assignment fields written through to each member `delivery_jobs` row at add-time — without
+advancing job status pre-dispatch (that stays Phase 228's job) and without touching the existing
+per-order assignment endpoint's behavior.
+
+**The one real design decision:** `buildAssignDeliveryPersonnelUseCase` (and
+`buildUpdateDeliveryJobStatusUseCase`) hard-require the order to be `out_for_delivery` before
+writing an assignment — but a run is populated *before* dispatch. Naive reuse would 409 every time.
+Resolved by extracting the write half of the per-order use case
+(`applyDeliveryPersonnelAssignment`, in `posUseCases.js`) into a shared, exported helper taking an
+`advanceJobStatus` flag: `true` reproduces the existing endpoint byte-for-byte; `false` is the run
+write-through, which populates the assignment fields while leaving `delivery_jobs.status` at
+`pending_dispatch`. No new ADR amendment was required — Phase 224's 2026-08-31 amendment already
+authorized writing the assignment fields through from the run, and ADR 0034's 2026-08-07 amendment
+(job status only advances while `out_for_delivery`) stays literally intact because status is never
+touched pre-dispatch.
+
+**Scope:**
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — extracts
+  `applyDeliveryPersonnelAssignment` (exported), refactors `buildAssignDeliveryPersonnelUseCase` to
+  call it with `advanceJobStatus: true`; adds `DELIVERY_RUN_MEMBERSHIP`/`DELIVERY_RUN_PERSONNEL` to
+  `POS_OPERATION_KEYS`; exports several previously module-private helpers so the sibling use-case
+  file can reuse them without duplicating logic.
+- New `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js` — module-local data
+  access for `delivery_runs`/`delivery_run_personnel` plus `delivery_jobs` membership helpers.
+  Deliberately not appended to `posRepository.js`, keeping `posRepository.contract.js` untouched.
+- New `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js` — 7 use cases: create, list,
+  get, update a run; replace its personnel roster (whole-roster `PUT`, not incremental — the STORED
+  generated `accountable_run_id` column's unique index would reject an incremental edit's transient
+  two-accountable/zero-accountable states); bulk-add members (validates the whole batch atomically:
+  online delivery order, manual provider, `pending_dispatch`, single-location match, not already in
+  a different run — deliberately not checking `fulfillment_status`, so F&B orders that never reach
+  `packed` are not excluded); remove a single member with conditional-clear removal semantics
+  (clears the assignment only when the job is still `pending_dispatch` and its personnel identity
+  still matches the run's accountable person; otherwise leaves it untouched with
+  `assignment_cleared: false` and a reason code).
+- New `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js` (transport-only) and
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`.
+- `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js` (7 routes under
+  `/api/pos/delivery-runs`, `pos:transact`/`pos:view`, no new permission constant),
+  `apps/dgfy-api/src/validators/posValidator.js` (7 new Joi validators).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md` — `major`, surfaces
+  `pos,terminal`.
+
+**Out of scope, unchanged:** whole-run dispatch (#1271/Phase 228, including the run-level unpacked-
+order gate, #1272), any POS UI (#1270/Phases 226-227), run-level COD cash totals (#838), route
+optimization/fleet tracking.
+
+### Status
+
+`completed` for the API surface; the DB-backed live acceptance walk proving #1273's three Phase-225
+acceptance criteria against a real tenant database was **not** run — no local MySQL/Redis reachable
+in this environment. All unit-level use-case/validator/route tests pass against an in-memory fake
+repository; the live walk is outstanding acceptance evidence, not omitted.
+
+### Dependencies
+
+Builds on Phase 224's schema (`delivery_runs`, `delivery_run_personnel`,
+`delivery_jobs.delivery_run_id`) and on ADR 0034's 2026-08-07/2026-08-08/2026-08-12/2026-08-31
+amendments. Phase 228 (whole-run dispatch, #1271) and Phases 226-227 (POS UI, #1270) depend on this
+phase.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on all 8 changed/new `.js` files.
+- [x] `npm run check:architecture` (guardrails + controller boundaries) — OK, zero new allowlist
+  entries.
+- [x] `npm run check:adr` / `npm run lint:docs` — OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (7 sensitive files),
+  pass once it was added.
+- [x] Regression suites unchanged and green: `posDeliveryAssignment.usecase.test.js`,
+  `posDeliveryJobStatus.usecase.test.js`, `posDeliveryCompletionGuard.usecase.test.js`,
+  `posValidator.deliveryAssignment.test.js`, `rbacRouteCoverage.contract.test.js` (all 7 new routes
+  carry `checkPermission`, no exemption needed). `posHandlers.transport.test.js` fails on this
+  branch, but confirmed pre-existing on `origin/develop` before this phase's changes (git-stash
+  comparison), not a regression introduced here.
+- [x] New suites, all passing: `deliveryRun.usecase.test.js`, `deliveryRunWriteThrough.usecase.test.js`
+  (covers every case #1273's Phase 225 acceptance criteria imply: add-with-no-accountable,
+  non-manual job, cross-location mismatch, `preparing`-status success, status-untouched
+  write-through, idempotent replay, free-text courier write-through, and all three removal
+  branches), `posValidator.deliveryRun.test.js`, `deliveryRunRoutes.transport.test.js`.
+- [ ] Live acceptance walk (local MySQL/Redis) — **not run**, no local MySQL/Redis reachable in
+  this environment. Named as outstanding rather than omitted, same posture as Phase 224.
+
+### Links
+
+- Tracking issues: #1273 (Phase 225, this entry), #1081 (schema/API scope, continues into
+  Phase 228's dispatch), #1079 (decision comment), #1272 (run-level dispatch gate, Phase 228).
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/validators/posValidator.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (no new amendment this phase — see
+  Objective and scope above for why).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md`.
+- `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (updated alongside this entry).
+
+### Next eligible phase
+
+226.

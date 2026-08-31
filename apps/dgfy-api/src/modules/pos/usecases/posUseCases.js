@@ -83,7 +83,7 @@ const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
-const ONLINE_ORDER_SOURCE = 'online_store';
+export const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
@@ -156,11 +156,11 @@ const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
-const OPERATION_REPLAY_STATUS = Object.freeze({
+export const OPERATION_REPLAY_STATUS = Object.freeze({
     PROCESSED: 'processed',
     BLOCKED: 'blocked'
 });
-const POS_OPERATION_KEYS = Object.freeze({
+export const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_OPEN: 'terminal.shift_open',
     SHIFT_SWITCH: 'terminal.shift_switch_location',
     CASH_EVENT: 'terminal.cash_event',
@@ -172,7 +172,12 @@ const POS_OPERATION_KEYS = Object.freeze({
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
     ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
-    ORDER_DELIVERY_ADDRESS_UPDATE: 'terminal.order_delivery_address_update'
+    ORDER_DELIVERY_ADDRESS_UPDATE: 'terminal.order_delivery_address_update',
+    // Phase 225 (#1273/#1081): delivery run membership/personnel mutations. Distinct operation
+    // keys from DELIVERY_JOB_ASSIGNMENT because these are batch/run-scoped idempotency fingerprints,
+    // not per-job ones.
+    DELIVERY_RUN_MEMBERSHIP: 'terminal.delivery_run_membership',
+    DELIVERY_RUN_PERSONNEL: 'terminal.delivery_run_personnel'
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
@@ -254,7 +259,7 @@ const assertPosComplianceAllowed = async ({ operation, context = {}, settings = 
     return result.data.decision;
 };
 
-const parsePositiveInt = (value) => {
+export const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     if (!Number.isInteger(normalized) || normalized <= 0) return null;
     return normalized;
@@ -435,7 +440,7 @@ const stableStringify = (value) => {
     return JSON.stringify(value);
 };
 
-const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+export const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
 const settingString = (settings = {}, key) => String(settings?.[key]?.value ?? '').trim();
 
@@ -447,7 +452,7 @@ const settingBoolean = (settings = {}, key) => {
     return ['1', 'true', 'yes', 'on'].includes(normalized);
 };
 
-const normalizeOptionalIdempotencyKey = (value) => {
+export const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
     return normalized.length >= 8 ? normalized : null;
 };
@@ -466,7 +471,7 @@ const buildOperationReplayConflictError = () => new DomainError(
     }
 );
 
-const serializeReplayFailure = (error) => ({
+export const serializeReplayFailure = (error) => ({
     message: error?.message || 'Operation blocked',
     error_code: error?.code || DomainErrorCode.VALIDATION_FAILED,
     status_code: Number.parseInt(error?.statusCode || 422, 10) || 422,
@@ -488,7 +493,7 @@ const buildReplayBlockedError = (payload = {}) => new DomainError(
     }
 );
 
-const findOperationReplayEntry = async ({
+export const findOperationReplayEntry = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -530,7 +535,7 @@ const findOperationReplayEntry = async ({
     };
 };
 
-const persistOperationReplay = async ({
+export const persistOperationReplay = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -594,7 +599,7 @@ const buildBusinessDateRange = (dateInput) => {
     };
 };
 
-const toSerializable = (value) => (
+export const toSerializable = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
@@ -1278,7 +1283,7 @@ const resolvePosReadLocationScope = async ({
     };
 };
 
-const resolvePosOperationalLocationScope = async ({
+export const resolvePosOperationalLocationScope = async ({
     requestedLocationId = null,
     userId = null,
     transaction = null,
@@ -1842,7 +1847,7 @@ export const buildGetPairedPosTerminalUseCase = ({
     };
 };
 
-const assertOpenShiftForPosMutation = async ({
+export const assertOpenShiftForPosMutation = async ({
     posRepository,
     cashierId,
     shiftId = null,
@@ -9478,6 +9483,89 @@ export const buildListActiveDeliveryPersonnelUseCase = ({
     };
 };
 
+// Phase 225 (#1273/#1081): the write half of delivery-personnel assignment, extracted from
+// buildAssignDeliveryPersonnelUseCase below so the delivery-run write-through
+// (deliveryRunUseCases.js) can share it rather than authoring a second path that writes
+// delivery_personnel_id/_name/assigned_by/assigned_shift_id/assigned_at. This remains the ONLY
+// code in the repo that writes those fields. `advanceJobStatus: true` reproduces the original
+// per-order assignment endpoint's behavior byte-for-byte (job status advances to `assigned`);
+// `advanceJobStatus: false` is the run write-through path, which populates the assignment fields
+// while leaving delivery_jobs.status untouched (still `pending_dispatch`) -- see ADR 0034's
+// 2026-08-07 and 2026-08-31 amendments for why that split is governance-correct.
+export const applyDeliveryPersonnelAssignment = async ({
+    posRepository,
+    orderId,
+    deliveryJob,
+    personnel,
+    hasRegisteredPersonnel,
+    deliveryPersonnelName,
+    cashierId,
+    activeShift,
+    orderLocationId,
+    advanceJobStatus = false,
+    auditContext = {},
+    transaction
+}) => {
+    const hasThirdPartyPersonnel = !hasRegisteredPersonnel && Boolean(deliveryPersonnelName);
+    const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+    const nextStatus = advanceJobStatus ? 'assigned' : currentStatus;
+    const assignedAt = new Date();
+
+    const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
+        delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+        delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+        assigned_by: cashierId,
+        assigned_shift_id: activeShift.pos_terminal_shift_id,
+        assigned_at: assignedAt,
+        ...(advanceJobStatus ? { status: nextStatus } : {})
+    }, {
+        transaction,
+        lock: true
+    });
+    if (!updatedDeliveryJob) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'The delivery assignment could not be saved.',
+            {
+                statusCode: 409,
+                details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
+            }
+        );
+    }
+
+    await posRepository.createAuditLog({
+        user_id: cashierId,
+        entity_type: 'delivery_job',
+        entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
+        action: 'UPDATE',
+        changes: {
+            event: 'delivery_personnel_assigned',
+            pos_transaction_id: orderId,
+            provider: deliveryJob.provider,
+            previous_status: currentStatus,
+            status: nextStatus,
+            previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
+            previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
+            delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+            delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+            assigned_by: cashierId,
+            assigned_shift_id: activeShift.pos_terminal_shift_id,
+            location_id: orderLocationId,
+            assigned_at: assignedAt.toISOString()
+        },
+        ip_address: auditContext.ipAddress || null,
+        user_agent: auditContext.userAgent || null
+    }, { transaction });
+
+    return {
+        updatedDeliveryJob,
+        assignedAt,
+        currentStatus,
+        nextStatus,
+        hasThirdPartyPersonnel
+    };
+};
+
 export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
@@ -9672,53 +9760,25 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 };
             }
 
-            const assignedAt = new Date();
-            const nextStatus = 'assigned';
-            const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
-                delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                assigned_by: cashierId,
-                assigned_shift_id: activeShift.pos_terminal_shift_id,
-                assigned_at: assignedAt,
-                status: nextStatus
-            }, {
-                transaction,
-                lock: true
+            const {
+                updatedDeliveryJob,
+                assignedAt,
+                currentStatus: previousStatus,
+                nextStatus
+            } = await applyDeliveryPersonnelAssignment({
+                posRepository,
+                orderId,
+                deliveryJob,
+                personnel,
+                hasRegisteredPersonnel,
+                deliveryPersonnelName,
+                cashierId,
+                activeShift,
+                orderLocationId,
+                advanceJobStatus: true,
+                auditContext,
+                transaction
             });
-            if (!updatedDeliveryJob) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'The delivery assignment could not be saved.',
-                    {
-                        statusCode: 409,
-                        details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
-                    }
-                );
-            }
-
-            await posRepository.createAuditLog({
-                user_id: cashierId,
-                entity_type: 'delivery_job',
-                entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
-                action: 'UPDATE',
-                changes: {
-                    event: 'delivery_personnel_assigned',
-                    pos_transaction_id: orderId,
-                    provider: deliveryJob.provider,
-                    previous_status: currentStatus,
-                    status: nextStatus,
-                    previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
-                    previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
-                    delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                    delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                    assigned_by: cashierId,
-                    assigned_shift_id: activeShift.pos_terminal_shift_id,
-                    location_id: orderLocationId,
-                    assigned_at: assignedAt.toISOString()
-                },
-                ip_address: auditContext.ipAddress || null,
-                user_agent: auditContext.userAgent || null
-            }, { transaction });
 
             const updatedOrder = {
                 ...order,
@@ -9734,7 +9794,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     assigned_by: cashierId,
                     assigned_shift_id: activeShift.pos_terminal_shift_id,
                     assigned_at: assignedAt.toISOString(),
-                    outcome: currentStatus === nextStatus ? 'reassigned' : 'assigned'
+                    outcome: previousStatus === nextStatus ? 'reassigned' : 'assigned'
                 },
                 idempotency: {
                     key: idempotencyKey,
