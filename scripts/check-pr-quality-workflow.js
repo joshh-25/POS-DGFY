@@ -621,6 +621,55 @@ function checkReporterHasNoShellBinaryDependency(qualityWorkflowText) {
   return problems;
 }
 
+// 2026-08-31 (#1253, pr-reviewer RF-1/RF-2/RF-4 on PR #1257): the six-quality-job revert alone
+// wasn't the full #1124/#1165 item 4 undo -- two more jobs also lost the `is_staging_leg`
+// exclusion in that same commit and needed it restored too: `report-advisory-failures` (has
+// nothing to report when every job it depends on was itself skipped) and `salvage-api-evidence`
+// (added by that same commit, never carried the exclusion, and without it burns a runner slot
+// "salvaging" evidence for a dgfy-api-quality run that never happened). Neither job shares the six
+// quality jobs' exact `if:` shape (both carry `always()` and other clauses SANCTIONED_SKIP_STAGING_IF
+// doesn't), so this is a substring check against each job's own `if:` line rather than an exact-match
+// reuse of checkStagingLegSkipShape -- RF-4's own point was that an exact-shape check on the wrong
+// job set is precisely why RF-1 slipped through unnoticed in both the original change and the first
+// revert attempt.
+const STAGING_LEG_RESPECTING_JOBS = [REPORTER_JOB_NAME, 'salvage-api-evidence'];
+
+/**
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when both jobs' `if:` excludes the staging leg
+ */
+function checkReportingJobsRespectStagingLeg(qualityWorkflowText) {
+  const problems = [];
+  for (const name of STAGING_LEG_RESPECTING_JOBS) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${name}:" job block -- was it renamed or ` +
+        'restructured? checkReportingJobsRespectStagingLeg needs updating to match.'
+      );
+      continue;
+    }
+    const ifLines = blockMatch[1].match(/^ {4}if:.*$/gm) || [];
+    if (ifLines.length !== 1) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}" must have exactly one job-level \`if:\` line ` +
+        `(found: ${ifLines.length}) -- checkReportingJobsRespectStagingLeg needs updating to match.`
+      );
+      continue;
+    }
+    if (!ifLines[0].includes("needs.gate.outputs.is_staging_leg != 'true'")) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}"'s \`if:\` (${ifLines[0].trim()}) does not exclude ` +
+        "the staging leg (`needs.gate.outputs.is_staging_leg != 'true'`) -- #1253 requires this job " +
+        'to also be skipped entirely on the develop->staging soak leg, not just the six quality jobs.'
+      );
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
@@ -630,7 +679,8 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
-    ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText)
+    ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
+    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText)
   ];
 
   return missing;
@@ -666,6 +716,8 @@ module.exports = {
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
+  checkReportingJobsRespectStagingLeg,
+  STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,

@@ -1119,7 +1119,10 @@ jobs:
       - frontend-pos-quality
       - frontend-storefront-quality
       - repository-quality
-    if: always() && needs.gate.outputs.is_promotion == 'true'
+    # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
+    # job has nothing to report when every job it depends on was itself skipped on the staging leg,
+    # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
     permissions:
@@ -1267,7 +1270,13 @@ jobs:
   # as full recovery.
   salvage-api-evidence:
     needs: [gate, dgfy-api-quality]
-    if: always() && needs.gate.outputs.is_promotion == 'true'
+    # 2026-08-31 (#1253): is_staging_leg exclusion added -- this job never carried it even before
+    # #1124/#1165 (it was added by that same commit), but under #1253's intent (the staging leg
+    # never runs this gate at all) it has nothing to salvage when dgfy-api-quality itself was
+    # skipped; without this it would otherwise burn a 5-minute-timeout runner slot salvaging
+    # evidence for a job that never ran (dgfy-api-quality.conclusion == 'skipped' would read as
+    # needing salvage, per the needsSalvage check below).
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 5
