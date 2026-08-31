@@ -6651,6 +6651,7 @@ function PosRestorationLoadingScreen() {
           handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
           deliveryPersonnelState={deliveryPersonnelState}
           onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleViewBalancePaymentProof={handleViewBalancePaymentProof}

@@ -14672,3 +14672,111 @@ phase.
 ### Next eligible phase
 
 226.
+
+## Phase 226 - Delivery Runs: Run Management UI (#1273/#1270)
+
+### Initiative and release
+
+Delivery Runs build track, continuing #1273 (track) and #1270 (POS UI scope, Phases 226-227).
+Builds on Phase 225's API.
+
+### Objective and scope
+
+Add the retail-only "Delivery Runs" tab to the POS terminal's incoming-order workspace: create/edit
+a run, manage its whole-roster personnel (exactly one accountable), and view/remove/move its member
+orders. No bulk multi-select from the Active Queue (Phase 227) and no dispatch UI (Phase 228) —
+this phase is the run-management surface only, over Phase 225's already-shipped 7-route API.
+
+**Where this lives, settled by inspection:** `apps/dgfy-pos/src/` contains only `main.jsx` and
+`README.md` — the whole POS app lives in `packages/web-core`, which
+`apps/dgfy-ims/src/main.jsx:127` also lazily imports for its own `/terminal` route. All new code
+therefore lives in `packages/web-core/src/features/pos/`, none in `apps/dgfy-pos/`, and both apps'
+builds are required (see Acceptance evidence below).
+
+**The retail gate:** reuses `normalizeWorkflowMode(workflowMode) === 'retail'` verbatim from
+`orderFulfillmentUi.js:56`'s existing precedent, not `WORKFLOW_PAGE_CAPABILITIES`/
+`isWorkflowPageVisible` — the run API itself is mode-agnostic by design (ADR 0034's 2026-08-31
+amendment: "membership is keyed on `delivery_jobs`, never on `packed`"), so a route-level capability
+gate would misrepresent the backend. A `React.useEffect` resets the tab back to `'active'` if
+`WORKFLOW_MODE_CHANGED_EVENT` flips the mode off retail while the runs tab is open.
+
+**Scope:**
+- New `packages/web-core/src/features/pos/services/deliveryRunService.js` — thin wrappers over all
+  7 of Phase 225's routes, mirroring `deliveryPersonnelService.js`'s shape.
+- New `components/DeliveryRunsWorkspacePanel.jsx` — the tab body (master/detail, panel-local state
+  and fetches, modeled on `DeliveryPersonnelManagementPanel.jsx`); `DeliveryRunFormDialog.jsx`
+  (create/edit, `status` edit-only and limited to `draft`/`scheduled`/`cancelled`);
+  `DeliveryRunPersonnelEditor.jsx` (whole-roster editor, a radio group makes "exactly one
+  accountable" structural, reuses `DeliveryAssignmentControl.jsx`'s datalist + name-match pattern
+  for the registry-vs-free-text XOR); `DeliveryRunMembersList.jsx` (remove + move-to-another-run).
+- Modified `components/TerminalOperationsPanels.jsx` (third retail-gated tab + mode-flip reset
+  effect), `components/TerminalOperationsWorkspace.jsx` and `components/TerminalPageLayout.jsx` /
+  `pages/TerminalPage.jsx` (thread the existing `ensureDeliveryPersonnelLoaded` callback down
+  rather than forking a second independent fetch — reuses `TerminalPage.jsx`'s single-flight fetch
+  ref and the state Phase 205 RF-3's `handleDeliveryPersonnelChanged` already keeps live).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-ui.md` — `major`, surfaces
+  `pos,terminal`.
+
+**"Move to another run" is DELETE-then-ADD, not atomic** — there is no server-side move verb
+(`POST .../members` 409s `DELIVERY_JOB_ALREADY_IN_RUN` for a job already in a different run). If the
+ADD leg fails after the DELETE leg succeeds, the order is left in no run. Mitigated (not
+eliminated): the confirm dialog states the two-step nature up front, and on ADD failure a
+persistent (non-auto-dismissing) error toast plus an automatic refresh of both runs lets the
+operator retry the add from the target run. A transactional server-side move verb is a candidate
+follow-up, not filed as part of this phase.
+
+**Out of scope, unchanged:** bulk multi-select "Add to run" from the Active Queue (#1270/Phase 227
+— this phase leaves it the exact seams it needs, all in `deliveryRunService.js` and none private to
+the panel), whole-run dispatch and the run-level unpacked-order gate (#1271/#1272/Phase 228),
+run-level COD cash totals (#838), surfacing `delivery_run_id` on an Active-Queue order (named in
+Phase 225's own declaration as Phase 227's first backend task).
+
+### Status
+
+`completed` for the UI surface; the live acceptance walk (create → set personnel → add a real order
+→ list → remove → move against a deployed tenant) was **not** run — no deployed tenant database
+reachable in this environment. All Vitest behavior coverage passes against mocked service calls;
+the live walk is outstanding acceptance evidence, not omitted, same posture as Phases 224/225.
+
+### Dependencies
+
+Builds on Phase 225's 7-route delivery-run API and ADR 0034's 2026-08-31 amendment. Phase 227
+(bulk multi-select) depends on the seams this phase leaves in `deliveryRunService.js`; Phase 228
+(dispatch) is independent of this phase's UI.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` — real Vite build, OK.
+- [x] `npm run build:skupervisor` — also required (`apps/dgfy-ims` lazily imports the same
+  `TerminalPage.jsx` tree via `packages/web-core`), OK.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx` —
+  actually executed (Vitest, run from `apps/dgfy-ims` per its `vite.config.js`'s
+  `packages/web-core` test `include` entry — **not** from `apps/dgfy-pos`, a correction against
+  this phase's own planning doc, which named the wrong app), 6/6 passing: retail-only tab
+  visibility, mode-flip fallback, create sends the typed label + scheduled date, roster save sends
+  exactly one `is_accountable: true` row with the registry/free-text XOR, members list renders
+  `order.invoice_number`/`customer_name`, remove/move calls `removeDeliveryRunMember` then
+  `addDeliveryRunMembers` in that order.
+- [x] `npm run check:architecture` — OK, trivially green (`apps/dgfy-api`-scoped; this phase
+  touches no backend file).
+- [x] `npm run lint:docs` — OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (10 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) — **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as Phases 224/225.
+
+### Links
+
+- Tracking issues: #1273 (track), #1270 (POS UI scope, Phases 226-227).
+- `packages/web-core/src/features/pos/services/deliveryRunService.js`,
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+  `DeliveryRunFormDialog.jsx`, `DeliveryRunPersonnelEditor.jsx`, `DeliveryRunMembersList.jsx`,
+  `TerminalOperationsPanels.jsx`, `TerminalOperationsWorkspace.jsx`, `TerminalPageLayout.jsx`,
+  `pages/TerminalPage.jsx`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (no new amendment this phase).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-ui.md`.
+- `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (updated alongside this entry).
+
+### Next eligible phase
+
+227.

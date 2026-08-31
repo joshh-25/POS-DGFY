@@ -9164,6 +9164,11 @@ export default function TerminalOperationsWorkspace({
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
   onDeliveryPersonnelChanged = () => {},
+  // Phase 226 (#1273): threaded through rather than fetched independently by
+  // DeliveryRunsWorkspacePanel, so it reuses TerminalPage.jsx's existing single-flight
+  // deliveryPersonnelFetchStartedRef and the shared state handleDeliveryPersonnelChanged already
+  // keeps live after an admin registry edit (Phase 205 RF-3) -- a second fetch would fork it.
+  ensureDeliveryPersonnelLoaded = () => {},
   handleOpenCashCollection = () => {},
   // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
   // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it
@@ -9208,6 +9213,7 @@ export default function TerminalOperationsWorkspace({
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
