@@ -224,8 +224,11 @@ export default function DeliveryRunsWorkspacePanel({
       await refreshAll();
       return true;
     } catch (error) {
-      const errorCode = error?.response?.data?.error_code;
-      const message = errorCode === 'DELIVERY_RUN_LOCKED'
+      // F-3 fix (Phase 227, #1273): `error_code` is the DomainErrorCode ('CONFLICT'), not the
+      // reason -- the actual per-condition reason lives under `errors.reason_code`. Checking
+      // `error_code === 'DELIVERY_RUN_LOCKED'` never fires; read the reason_code instead.
+      const reasonCode = error?.response?.data?.errors?.reason_code;
+      const message = reasonCode === 'DELIVERY_RUN_LOCKED'
         ? 'This run is locked and can no longer be edited.'
         : getErrorMessage(error, 'Failed to save run personnel.');
       toast.error(message);
