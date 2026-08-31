@@ -109,8 +109,11 @@ jobs:
           fi
           echo "OK: dispatched against refs/heads/main."
 
-  # Shared dgfy-api image (environment-agnostic; built once, tagged beta to
-  # match the server's IMAGE_TAG=beta). backend = api + migration-runner
+  # Shared dgfy-api image (environment-agnostic; built once, tagged latest
+  # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
+  # input below -- see #913 for why this was renamed off beta). The
+  # server's own .env IMAGE_TAG rename is separate, human-only scope
+  # (also #913). backend = api + migration-runner
   # together, never separately -- see deploy.yml's comment on the same
   # coupling (compose's depends_on: service_completed_successfully means a
   # mismatched pair is a schema/code mismatch waiting to happen).
