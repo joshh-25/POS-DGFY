@@ -480,13 +480,25 @@ jobs:
           # `2>/dev/null || echo ""` fallback collapsed that failure into an empty bucket list,
           # which the logic below would then read as "no pending checks" and proceed straight to
           # merge -- failing OPEN during exactly the kind of outage this gate exists to be safe
-          # against. `if ! buckets=$(...)` distinguishes a genuine query failure (retry, bounded by
-          # the same loop) from a real empty/terminal bucket list, and never falls through to
-          # `checks_terminal=1` on a failed query.
+          # against.
+          #
+          # RF-3 (Codex re-review round 2, PR #1249, 2026-08-31): `gh pr checks` documents a
+          # nonzero exit code (8) for a genuine `fail` bucket too, not only for a query error --
+          # the RF-2 fix's `if ! buckets=$(...)` treated both cases identically and retried a real
+          # failure for up to 10 minutes instead of stopping immediately, which is both slower to
+          # surface a real problem and wastes this repo's single-concurrency runner, worsening the
+          # exact queue-starvation risk this PR exists to avoid. Fixed by capturing stdout under
+          # `set +e` (so a nonzero exit never trips this script's own `set -e`) and only treating a
+          # GENUINELY EMPTY response as a query failure -- any real bucket data, `fail` included, is
+          # inspected regardless of what exit code produced it.
           checks_terminal=0
           for _ in $(seq 1 40); do
-            if ! buckets=$(gh pr checks "$PR_NUMBER" --json bucket --jq '.[].bucket'); then
-              echo "::warning::Failed to query checks for PR #${PR_NUMBER} (will retry) -- see stderr above for the gh CLI error"
+            set +e
+            buckets=$(gh pr checks "$PR_NUMBER" --json bucket --jq '.[].bucket' 2>/tmp/pr-checks-stderr.log)
+            checks_exit=$?
+            set -e
+            if [ -z "$buckets" ] && [ "$checks_exit" != "0" ]; then
+              echo "::warning::Failed to query checks for PR #${PR_NUMBER} (will retry): $(cat /tmp/pr-checks-stderr.log 2>/dev/null)"
               sleep 15
               continue
             fi
