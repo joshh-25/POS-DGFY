@@ -133,6 +133,12 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
   slate afterward for confirmation before handing off to Planner/PM to file. Sits upstream of every
   other role in this roster. @.agents/skills/notes/SKILL.md
+- **Conduct** (#331/#1250) — manual-invocation-only (`disable-model-invocation: true`) dispatcher
+  that sequences `implement`/`pr-reviewer`/`promoter` across a multi-phase epic in parallel or
+  serial worktrees, with per-slot (`WORKER_PLANNER`/`WORKER_BUILDER`/`REVIEWER`) model selection.
+  Never auto-invoked, never redefines the roles it sequences. `.claude/skills/conduct/SKILL.md`
+  (Claude Code only — no `.agents/skills/` canonical form, since manual-only skill discovery is a
+  Claude Code–specific mechanism).
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
