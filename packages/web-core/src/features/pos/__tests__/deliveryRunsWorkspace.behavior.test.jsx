@@ -447,24 +447,32 @@ describe('Idempotency key scoped to run (RF-4)', () => {
 
 describe('Location scope switch discards stale data (RF-3)', () => {
   it('discards an older fetchDeliveryRuns response that resolves after a newer one', async () => {
+    // Phase 227 (#1273): the Active Queue's own QueueRunAssignBar toolbar also calls
+    // fetchDeliveryRuns independently of this panel (it mounts as soon as the workspace does, on
+    // the default "active" view) -- so this mock keys off the request's own `location_id` rather
+    // than raw call order/count, which no longer maps 1:1 to "this panel's fetch" once a second,
+    // independent caller exists. Every call at the pre-switch scope (`location_id: undefined`,
+    // i.e. queueLocationScopeId === null) hangs on the same shared stale promise; every call at
+    // the post-switch scope (`location_id: 55`) resolves immediately with runB.
     let resolveStaleFetch;
     const staleFetchPromise = new Promise((resolve) => { resolveStaleFetch = resolve; });
     const runA = { delivery_run_id: 1, label: 'Location A Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
     const runB = { delivery_run_id: 2, label: 'Location B Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
 
-    fetchDeliveryRuns.mockImplementationOnce(() => staleFetchPromise);
-    fetchDeliveryRuns.mockResolvedValueOnce({ items: [runB], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRuns.mockImplementation(({ location_id } = {}) => (
+      location_id ? Promise.resolve({ items: [runB], pagination: { total: 1, page: 1, limit: 100 } }) : staleFetchPromise
+    ));
 
     const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: null })} />);
     fireEvent.click(screen.getByRole('tab', { name: /Delivery Runs/i }));
-    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalled());
 
     // Switch location scope before the first (slow) request resolves.
     rerender(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: 55 })} />);
-    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalledTimes(2));
     await screen.findByText('Location B Run');
 
-    // Now let the stale first request resolve -- it must be discarded, not overwrite state.
+    // Now let the stale first request(s) resolve -- they must be discarded, not overwrite state,
+    // in every component that independently calls fetchDeliveryRuns (the panel AND the toolbar).
     resolveStaleFetch({ items: [runA], pagination: { total: 1, page: 1, limit: 100 } });
     await waitFor(() => expect(screen.getByText('Location B Run')).toBeTruthy());
     expect(screen.queryByText('Location A Run')).toBeNull();
