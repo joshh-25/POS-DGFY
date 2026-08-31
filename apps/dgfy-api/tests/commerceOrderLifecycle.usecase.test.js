@@ -171,6 +171,26 @@ describe('downpayment refund vs forfeiture (Phase 144, #824)', () => {
     expect(submitted.payload.amount_centavos).not.toBe(100000);
   });
 
+  // Phase 210 (#1179): posUseCases.js now allows a store-side reject from BOTH `placed` and the
+  // newly-widened `confirmed` origin (ONLINE_FULFILLMENT_TRANSITIONS.confirmed). This use case
+  // takes no "origin status" parameter at all -- posUseCases.js's call site is byte-identical for
+  // either origin -- so the money rule (never forfeit, always refund exactly the captured
+  // downpayment) is pinned for both by construction. Asserted explicitly for both origins so a
+  // future edit that threads an origin-status parameter through can't silently reintroduce a
+  // forfeit-on-confirmed-reject branch.
+  it('never forfeits on a store reject, regardless of whether the order originated from placed or confirmed', async () => {
+    for (const rejectionReason of ['Out of stock', 'Outside our delivery route (confirmed order)']) {
+      const fixture = buildDownpayment({ refundable: false });
+      const result = await runTerminal(fixture, { fulfillmentStatus: 'rejected', actor: 'pos_user:8', rejectionReason });
+
+      expect(result.success).toBe(true);
+      expect(result.data.payment_action).not.toBe('forfeited');
+      expect(fixture.createCommercePaymentRefundUseCase).toHaveBeenCalledTimes(1);
+      const submitted = fixture.createCommercePaymentRefundUseCase.mock.calls[0][0];
+      expect(submitted.payload.amount_centavos).toBe(20000);
+    }
+  });
+
   // Decision 1 (Pat, 2026-08-22): the store's inability to fulfil is never the customer's
   // forfeiture, so a store-side reject refunds regardless of the toggle.
   it('refunds a non-refundable downpayment anyway when the STORE rejects', async () => {

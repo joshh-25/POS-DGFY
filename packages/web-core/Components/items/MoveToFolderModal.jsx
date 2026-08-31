@@ -33,7 +33,7 @@ export default function MoveToFolderModal({
                 <div className="py-4">
                     <p className="text-sm text-slate-500 mb-4">
                         {itemName ? (
-                            <>Select a folder to move <span className="font-medium text-slate-900">"{itemName}"</span> to:</>
+                            <>Select a folder to move <span className="font-medium text-slate-900">&quot;{itemName}&quot;</span> to:</>
                         ) : (
                             <>Select a destination folder for the selected items:</>
                         )}

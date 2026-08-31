@@ -252,10 +252,36 @@ const getIminBridge = () => {
 
 // Native (see IminBridge.kt's printReceiptWithLogo / ReceiptLogoProvider) can only
 // fetch an absolute http(s) URL or decode a data: URI -- a root-relative path or a
-// page-scoped blob: URL means nothing outside this WebView document. resolveAssetUrl
-// already resolves root-relative uploads against the asset origin when one is
-// configured, so this only rejects what it couldn't turn into something fetchable.
+// page-scoped blob: URL means nothing outside this WebView document.
 const isNativeFetchableLogoSource = (value) => /^(https?:|data:)/i.test(String(value || ''));
+
+// The tenant company icon is stored as a backend-relative /uploads/storefront-assets
+// path (apps/dgfy-api settingsValidator.js's storefrontAssetUrlSchema) and the POS
+// image ships no asset origin (resolveAssetOrigin skips a root-relative VITE_API_URL),
+// so resolveAssetUrl hands that path straight back. The on-screen preview still works
+// -- <img src="/uploads/..."> resolves against the document -- but native has no such
+// base, received '', and printed the bundled DGFY drawable instead of the tenant's
+// icon (issue #321). Supply the base explicitly: every POS-serving edge vhost proxies
+// /uploads to dgfy-api on the same origin the WebView already loaded
+// (infrastructure/docker/nginx/nginx.conf.template, infrastructure/nginx-host/*.conf),
+// and /uploads is public static mounted ahead of auth (apps/dgfy-api/src/server.js),
+// so a bare native GET against that origin resolves. Anything this cannot absolutize
+// still falls through to the fetchability gate above rather than being forwarded.
+const absolutizeLogoSource = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw.startsWith('/')) return raw;
+    // Runs under Node/Vitest as well as the WebView, hence the window guard.
+    const origin = typeof window === 'undefined'
+        ? ''
+        : String(window?.location?.origin || '').trim();
+    if (!origin) return raw;
+
+    try {
+        return new URL(raw, origin).toString();
+    } catch {
+        return raw;
+    }
+};
 
 const resolveReceiptLogoSource = (businessSettings = {}) => {
     const raw = String(
@@ -264,7 +290,15 @@ const resolveReceiptLogoSource = (businessSettings = {}) => {
         || ''
     ).trim();
     if (!raw) return '';
-    const resolved = resolveAssetUrl(raw);
+    // An already-absolute source must reach native byte-identical. resolveAssetUrl
+    // round-trips its input through `new URL(...).toString()`, which can silently
+    // canonicalize a valid absolute URL (lowercase the host, drop an explicit
+    // default port) before absolutizeLogoSource ever sees it -- so skip it entirely
+    // here rather than relying on absolutizeLogoSource's own no-op-on-non-root-
+    // relative-input behaviour to undo a normalization that already happened.
+    const resolved = isNativeFetchableLogoSource(raw)
+        ? raw
+        : absolutizeLogoSource(resolveAssetUrl(raw));
     return isNativeFetchableLogoSource(resolved) ? resolved : '';
 };
 

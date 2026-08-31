@@ -69,6 +69,7 @@ import {
   writeCheckoutAuthResumeDraft,
   writeSavedCustomerDetails
 } from './shared/model/storefrontCustomerStorage.js';
+import { readGuestDeliveryAddress } from './shared/model/storefrontGuestDeliveryAddressStorage.js';
 import {
   buildStockExceededMessage,
   extractStockViolation,
@@ -91,6 +92,7 @@ import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from './shared/model/storefrontOrderMethodOptions.js';
+import { resolveOrderTimingPolicy, resolveTimingStepScheduleMode } from './shared/model/storefrontOrderTimingPolicy.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
@@ -186,8 +188,8 @@ import { createAddressPinEditorRenderer } from './features/locations/renderers/a
 import {
   buildPinnedDeliveryAddress,
   formatReverseGeocodedAddress,
-  isGeneratedPinnedDeliveryAddress,
   normalizeCoordinatePair,
+  resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
@@ -411,7 +413,14 @@ export default function StorefrontApp() {
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
 
-  useAffiliateAttributionCapture({ routeSlug });
+  useAffiliateAttributionCapture({
+    routeSlug,
+    // #452 (Phase 212): fires once GET /affiliate/s/:short_code resolves a /s/{short_code} path
+    // to a store slug, so this component's own routeSlug state (and everything downstream of it
+    // -- isStorePage, the catalog/checkout/tracking chain) behaves exactly as it does for an
+    // ordinary /tenant-store/{slug} visit.
+    onShareRouteResolved: setRouteSlug
+  });
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
@@ -1410,6 +1419,20 @@ export default function StorefrontApp() {
       setIsUsingDifferentGuestDetails(false);
     }
   }, [isDgfyCustomerSignedIn]);
+  // #1219: hydrate the single remembered guest delivery address on mount --
+  // only for a not-signed-in visitor, and only when nothing is in progress
+  // yet, so this never overwrites a live in-progress checkout.
+  useEffect(() => {
+    if (isDgfyCustomerSignedIn) return;
+    if (String(customerAddress || '').trim() || customerPin) return;
+    const savedGuestAddress = readGuestDeliveryAddress();
+    if (!savedGuestAddress) return;
+    setCustomerAddress(savedGuestAddress.addressLine);
+    if (Number.isFinite(savedGuestAddress.latitude) && Number.isFinite(savedGuestAddress.longitude)) {
+      setCustomerPin({ latitude: savedGuestAddress.latitude, longitude: savedGuestAddress.longitude });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydration, deliberately not re-running on every keystroke
+  }, [isDgfyCustomerSignedIn]);
   useEffect(() => {
     if (isDgfyCustomerSignedIn || !guestCheckoutUnlocked) {
       setGuestDetailsEditMode(false);
@@ -2048,6 +2071,15 @@ export default function StorefrontApp() {
     setOrderMethod(enabledMethods[0].value);
   }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod]);
   useEffect(() => {
+    if (!isStorePage || !(isFnbMode || isSimpleMode || isRetailMode)) return;
+    const policy = resolveOrderTimingPolicy(
+      resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+    );
+    const nextMode = resolveTimingStepScheduleMode(policy, fnbScheduleMode);
+    if (nextMode !== fnbScheduleMode) setFnbScheduleMode(nextMode);
+    if (nextMode !== 'schedule' && fnbScheduledFor) setFnbScheduledFor('');
+  }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, fnbScheduleMode, fnbScheduledFor]);
+  useEffect(() => {
     setServicePage(1);
   }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
   useEffect(() => {
@@ -2449,7 +2481,7 @@ export default function StorefrontApp() {
     customerName,
     customerPhone,
     customerPin,
-    deliveryAddress: resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin),
+    deliveryAddress: resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }),
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
@@ -2673,6 +2705,16 @@ export default function StorefrontApp() {
     if (!paymentSessionId || !selectedStore?.slug || !['awaiting_payment', 'paid'].includes(paymentStatus)) {
       return undefined;
     }
+    // #852: this component is hoisted -- storefront "pages" are conditionally-rendered views, not
+    // routes that unmount, so nothing about navigating catalog <-> checkout <-> track changes any
+    // of this effect's session-shaped dependencies. Without this gate the scheduler below outlives
+    // the screen that owns it and polls dgfy-api for the life of the tab; a full page reload was
+    // the only thing observed to stop it. Same `isOrderSubpage`/`checkoutTab === 'checkout'`
+    // expression the #889 out-of-hours checkout guard uses (see :3038) -- one definition of "the
+    // customer is actually looking at checkout", not two that can drift.
+    if (!isOrderSubpage || checkoutTab !== 'checkout') {
+      return undefined;
+    }
 
     const scheduler = createCompletionTrackingScheduler({
       poll: () => {
@@ -2696,7 +2738,13 @@ export default function StorefrontApp() {
       scheduler.stop();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [qrphPaymentSession?.payment_session_id, qrphPaymentSession?.status, selectedStore?.slug]);
+  }, [
+    checkoutTab,
+    isOrderSubpage,
+    qrphPaymentSession?.payment_session_id,
+    qrphPaymentSession?.status,
+    selectedStore?.slug
+  ]);
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
@@ -2828,6 +2876,7 @@ export default function StorefrontApp() {
     customerEmail,
     customerName,
     customerPhone,
+    customerPin,
     DGFY_BRAND_NAME,
     downloadDataUrl,
     extractStockViolation,
@@ -3153,6 +3202,7 @@ export default function StorefrontApp() {
     cart,
     cartCount,
     cartImageErrors,
+    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
@@ -3182,6 +3232,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    setCustomerAddress,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
@@ -3220,6 +3271,9 @@ export default function StorefrontApp() {
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
+  const orderTimingPolicy = resolveOrderTimingPolicy(
+    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+  );
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
     activeFnbOrderStepMeta,
     applySavedDeliveryLocation,
@@ -3234,6 +3288,7 @@ export default function StorefrontApp() {
     checkoutLoading,
     checkoutResult,
     checkoutTab,
+    customerAddress,
     customerEmail,
     customerName,
     customerPhone,
@@ -3247,6 +3302,7 @@ export default function StorefrontApp() {
     fnbCheckoutContentPadding,
     fnbCustomerStepComplete,
     fnbFulfillmentStepComplete,
+    orderTimingPolicy,
     fulfillmentOptions: simpleOrderMethodOptions,
     fnbMobileSummaryItemCountLabel,
     fnbOrderBrand,

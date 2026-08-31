@@ -3,6 +3,13 @@
 - What changed
 - Why this change is needed
 
+## Promotion Summary (staging/main base only)
+<!-- Required when this PR's base is `staging` or `main` — one row per item this promotion
+     bundles, each citing its source issue and/or PR. Leave this whole section out (or mark N/A)
+     on an ordinary `develop`-based PR. -->
+| Area | Change | Source |
+|---|---|---|
+
 ## Architecture Impact
 - [ ] No architecture impact
 - [ ] Within existing module boundary
@@ -35,23 +42,6 @@
 - [ ] Manual verification performed (if applicable)
 - Key test command outputs:
 
-## Batch Inventory And Promotion
-- [ ] Batch inventory generated for this candidate
-- Inventory artifact:
-- [ ] Every changed file belongs to exactly one release batch
-- [ ] Excluded work and non-goals are listed
-- [ ] Slice name, plain-English purpose, implementation summary, owner/source branch or PR reference, affected surfaces, risk level, tests/docs, rollback notes, production proof, and accuracy checks are complete for every slice
-- [ ] Regression Risk Notice is complete for every release slice
-- [ ] Possible regressions, affected existing behaviors, evidence gaps, and rollback/monitoring notes are disclosed
-- Regression risk artifact:
-- [ ] All batches are `ship`, or non-ship batches are removed from this PR
-- [ ] Payment-sensitive changes are absent, or explicit payment-release approval is linked
-- Required command:
-```bash
-npm run check:batch-inventory -- --base origin/master --head HEAD --write --require-ship
-npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_inventory.json" --base origin/master --head HEAD --require-ship
-```
-
 ## Telemetry And Observability
 - [ ] New behavior emits required events/metrics
 - [ ] Event schema changes documented
@@ -61,28 +51,9 @@ npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<sha>/batch_
 - [ ] Migration and rollback steps documented
 - [ ] Feature flag/gradual rollout strategy documented (if needed)
 - [ ] Backward compatibility validated
-- [ ] If this is a `staging -> master` promotion PR, exact staging SHA qualification evidence is linked
-- [ ] Production deployment is not claimed complete until exact `origin/master` SHA proof and deployed-change accuracy review are complete
+- [ ] If this is a promotion PR (base `staging` or `main`), exact source-branch SHA qualification evidence is linked
+- [ ] Production deployment is not claimed complete until the exact `main` SHA proof and deployed-change accuracy review are complete
 - [ ] Source branch may be deleted after merge, or apply `branch-cleanup:keep` with a reason before merge
-
-## Merge Adoption Evidence
-- [ ] Lightweight merge hygiene passed
-- Merge hygiene report:
-- [ ] This PR does not require merge-adoption proof
-- [ ] Merge-adoption manifest prepared for final master/deploy adoption
-- Manifest path:
-- Source refs and merge base:
-- User-approved merge decisions:
-  - If any conflict or semantic conflict affects UI, routing, API payloads, checkout steps, auth flow, customer dashboard data, governed docs, tests, or deployment gates, the AI agent asked the user what should win.
-  - Approved decisions are recorded in `semantic_conflict_review.user_approved_decisions`.
-- [ ] New PR/branch behavior is proved present in the final tree
-- [ ] Preserved master behavior is listed and proved when the resolution combines both sides
-- [ ] Rejected files/behavior have explicit reasons
-- Required command:
-```bash
-npm run check:merge-adoption -- --manifest <manifest>
-npm run check:merge-adoption-required -- --base origin/master --head HEAD --manifest <manifest>
-```
 
 ## Documentation Citation (Required For Planning/Design Changes)
 - Authoritative docs used:

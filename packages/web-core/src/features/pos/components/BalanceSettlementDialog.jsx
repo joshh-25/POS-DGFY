@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,16 +21,19 @@ import {
 // of reaching into the terminal's whole `model` object, so its guard behaviour is testable without
 // standing up every other dialog in the layer.
 
-// ADR 0063 clause 4 [binding]'s merchant-owned V1 tender set, plus cash. `card` is a store-owned
-// card terminal, never PayMongo card -- no balance leg ever routes through a provider (ADR 0069
-// clause 2 [binding], carried forward verbatim by ADR 0070; ADR 0063 clause 12 [binding]). Mirrors
-// BALANCE_SETTLEMENT_METHODS in posUseCases.js; the server is the authority, this is the picker.
+// ADR 0063 clause 4 [binding]'s merchant-owned V1 tender set, plus cash, plus `cheque` (Phase 202,
+// #1085) -- ADR 0077 scoped-supersedes clause 4 for this widening only; the rest of ADR 0063 is
+// unchanged. `card` is a store-owned card terminal, never PayMongo card -- no balance leg ever
+// routes through a provider (ADR 0069 clause 2 [binding], carried forward verbatim by ADR 0070;
+// ADR 0063 clause 12 [binding]). Mirrors BALANCE_SETTLEMENT_METHODS in posUseCases.js; the server
+// is the authority, this is the picker.
 export const BALANCE_SETTLEMENT_METHOD_OPTIONS = [
   { value: 'cash', label: 'Cash' },
   { value: 'gcash', label: 'GCash' },
   { value: 'maya', label: 'Maya' },
   { value: 'card', label: 'Card terminal' },
-  { value: 'bank_transfer', label: 'Bank transfer' }
+  { value: 'bank_transfer', label: 'Bank transfer' },
+  { value: 'cheque', label: 'Cheque' }
 ];
 
 export default function BalanceSettlementDialog({
@@ -45,10 +48,18 @@ export default function BalanceSettlementDialog({
   onCashInputChange,
   onReferenceChange,
   onConfirmedChange,
-  onSubmit
+  onSubmit,
+  // Phase 204 (#965): proof-of-payment capture, additive alongside the reference field --
+  // "alongside not instead of" (Pat's framing on #965). Optional and never gates canSubmit below;
+  // the balance settlement itself must never depend on whether staff chose to attach a photo.
+  proofFile,
+  onProofFileChange,
+  proofUploading,
+  proofError
 }) {
   const balanceDue = Number(order?.balance_due || 0);
   const isCash = method === 'cash';
+  const isCheque = method === 'cheque';
   // The UI half of ADR 0063 clause 6 [binding]'s fail-closed rule: a merchant-owned method cannot
   // be submitted until the attestation is ticked. The server enforces the same thing independently
   // (BALANCE_SETTLEMENT_CONFIRMATION_REQUIRED); this only stops the request from being made, it is
@@ -57,6 +68,31 @@ export default function BalanceSettlementDialog({
     ? balanceDue > 0 && Number(cashInput || 0) >= balanceDue
     : confirmed === true;
   const changeAmount = Math.max(0, Number(cashInput || 0) - balanceDue);
+
+  // Local preview only -- the file itself is uploaded by the caller AFTER the settlement succeeds
+  // (TerminalPage.jsx's handleSettleBalance), never as part of this dialog's own submit. The
+  // object URL is scoped to this component and revoked on every change/unmount so a stale blob
+  // URL never lingers past the file it points at.
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const fileInputRef = useRef(null);
+  useEffect(() => {
+    if (!proofFile) {
+      setPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(proofFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [proofFile]);
+
+  const handleFileInputChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    onProofFileChange?.(file);
+  };
+  const handleClearProofFile = () => {
+    onProofFileChange?.(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => { if (!open && !saving) onClose?.(); }}>
@@ -111,7 +147,7 @@ export default function BalanceSettlementDialog({
           ) : (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="balance-payment-reference">Reference number (optional)</Label>
+                <Label htmlFor="balance-payment-reference">{isCheque ? 'Cheque number (optional)' : 'Reference number (optional)'}</Label>
                 <Input
                   id="balance-payment-reference"
                   type="text"
@@ -121,8 +157,42 @@ export default function BalanceSettlementDialog({
                 />
                 {/* ADR 0063 clause 7 [default]: a merchant-owned reference is an audit aid, not
                     proof DGFY verified anything -- and the copy has to say so, because a printed
-                    store QR may not even expose a usable reference at the counter. */}
-                <p className="text-xs text-slate-500">An audit aid only. It is not proof that DGFY verified the payment.</p>
+                    store QR may not even expose a usable reference at the counter. For cheque
+                    (Phase 202, #1085) the same clause applies: the number proves a cheque was
+                    presented bearing it, not that it will clear or that DGFY verified anything. */}
+                <p className="text-xs text-slate-500">
+                  {isCheque
+                    ? 'An audit aid only. It proves a cheque was presented bearing this number -- not that it will clear, and not that DGFY verified anything.'
+                    : 'An audit aid only. It is not proof that DGFY verified the payment.'}
+                </p>
+              </div>
+              {/* Phase 204 (#965): an audit aid only -- extends ADR 0063 clause 7 [default]'s
+                  framing verbatim, it does not become independent verification (clause 5
+                  [binding] stays unweakened). Optional, additive, and never gates canSubmit. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="balance-proof-file">Attach proof (optional)</Label>
+                <input
+                  id="balance-proof-file"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileInputChange}
+                  disabled={saving || proofUploading}
+                  className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700"
+                />
+                {previewUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={previewUrl} alt="Proof of payment preview" className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+                    <Button type="button" variant="outline" size="sm" onClick={handleClearProofFile} disabled={saving || proofUploading}>
+                      Remove
+                    </Button>
+                  </div>
+                ) : null}
+                {proofError ? <p className="text-xs text-red-600">{proofError}</p> : null}
+                <p className="text-xs text-slate-500">
+                  An audit aid only. An attached photo is evidence the store captured at the counter -- it is not proof that DGFY verified the payment.
+                </p>
               </div>
               {/* ADR 0063 clause 6 [binding] requires the confirmation to be explicit in the UI as
                   well as the request: this checkbox is the UI half, `manual_payment_received` the
@@ -138,8 +208,9 @@ export default function BalanceSettlementDialog({
                   disabled={saving}
                 />
                 <span>
-                  I confirm the store received PHP {balanceDue.toFixed(2)} through its own account.
-                  This is recorded as a store-attested payment, not verified by DGFY.
+                  {isCheque
+                    ? `I confirm the store received a cheque for PHP ${balanceDue.toFixed(2)}. This is recorded as a store-attested payment, not verified by DGFY, and is not confirmation that the cheque has cleared.`
+                    : `I confirm the store received PHP ${balanceDue.toFixed(2)} through its own account. This is recorded as a store-attested payment, not verified by DGFY.`}
                 </span>
               </label>
             </div>

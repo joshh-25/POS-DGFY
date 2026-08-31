@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-08-08
+last_reviewed: 2026-08-30
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -38,8 +38,8 @@ skip directly from `pending_dispatch` to `delivered` or `completed`.
 
 ## Manual delivery assignment contract
 
-The implementation phase must add a tenant-scoped delivery-person registry.
-Each active person must have:
+A tenant-scoped delivery-person registry exists (Phase 205, #1080; the `delivery_personnel`
+table itself was created earlier, in the Phase 0 migration). Each active person has:
 
 - a display name;
 - a contact number;
@@ -61,7 +61,15 @@ auditable assignment data.
 The backend exposes the following guarded POS operations:
 
 - `GET /pos/delivery-personnel` returns active personnel in the authorized
-  location scope.
+  location scope (`pos:view`).
+- `GET /pos/delivery-personnel/registry` returns the full registry, including
+  inactive rows by default, for administrator/settings management
+  (`pos:employees:manage`, Phase 205/#1080).
+- `POST /pos/delivery-personnel` creates a registry row
+  (`pos:employees:manage`, Phase 205/#1080).
+- `PATCH /pos/delivery-personnel/:deliveryPersonnelId` updates a registry row;
+  `is_active: false` is the deactivation operation -- there is no separate
+  delete route and no hard delete (`pos:employees:manage`, Phase 205/#1080).
 - `PATCH /pos/orders/:id/delivery-job/assignment` assigns or reassigns an
   active person before pickup and records the assigning user, open shift, and
   timestamp.
@@ -79,16 +87,19 @@ transition in one transaction.
 The POS Incoming Online Queue now provides the operator workflow for the API
 boundary:
 
-- manual delivery orders show a typed courier-name field and an auditable assign
-  or reassign action;
+- manual delivery orders show a courier field that offers registry entries via
+  a picker (Phase 205/#1080) **and** still accepts a typed third-party courier
+  name, plus an auditable assign or reassign action;
 - lifecycle actions are hidden until assignment evidence is present;
 - provider-owned delivery jobs are explicitly read-only in POS;
 - assignment and lifecycle controls are disabled while locked, offline, without
   an open shift, or without `pos:transact` permission;
 - the compact queue continues to show the delivery provider and current status.
 
-Registered personnel remain supported for existing assignments, but cashier
-assignment no longer depends on a registry lookup or a personnel dropdown.
+Registered personnel are offered through a registry-backed picker; cashier
+assignment never *requires* a registry lookup -- typing an unregistered
+third-party courier name still works exactly as before, and exactly one of a
+registered person or a typed name is sent per assignment, never both.
 
 ## Phase 5 regression hardening
 
@@ -119,9 +130,11 @@ npm --prefix backend test -- --runInBand --runTestsByPath tests/posDeliveryAssig
   delivery lifecycle when the authenticated user owns an open shift at the
   order location.
 - Delivery-person registry creation, editing, activation, and deactivation
-  belong to an administrator/settings authority. Cashiers may use registered
-  personnel but may also assign an unregistered third-party courier by name;
-  this does not create or modify the registry.
+  belong to an administrator/settings authority, concretely `pos:employees:manage`
+  (Phase 205/#1080; reused from the employees module rather than a new permission
+  string). Cashiers may use registered personnel but may also assign an
+  unregistered third-party courier by name; this does not create or modify the
+  registry.
 - Provider-owned delivery jobs remain read-only in POS.
 - Every mutation records the authenticated actor, tenant, location, shift,
   previous state, new state, and timestamp.

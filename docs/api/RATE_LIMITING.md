@@ -112,6 +112,7 @@ front of the endpoint, and an unscoped skip would have made it silently unlimite
 | `storeLocationsLimiter` | 90 | 1 min | `<ip>:<store_slug>` | `GET /store/locations` |
 | `storeVoucherLookupLimiter` | 20 | 1 min | `<ip>:<store_slug>` | catalog/QR resolve, only when `voucher_code` is present |
 | `storefrontDiscoveryLimiter` | 90 | 1 min | `<ip>:slug\|search\|browse` | `/storefront/discovery*` |
+| `affiliateShareResolveLimiter` | 90 | 1 min | `<ip>:<short_code>` | `GET /affiliate/s/:short_code` (#452) |
 | `storefrontFollowLimiter` | 30 | 1 min | `<tenant>:<slug>:<customer\|guest visitor_id>:<ip>` | `/store/follow*` |
 | `geoSearchLimiter` | 60 | 1 min | `<ip>:query\|browse` | `/geo/*`, `/storefront/*` geo search |
 | `routeCalculatorLimiter` | 60 | 1 min | `<ip>` — pure IP | `/geo`, `/storefront` route calculator |
@@ -119,10 +120,11 @@ front of the endpoint, and an unscoped skip would have made it silently unlimite
 | `onboardingEventsLimiter` | 60 | 5 min | `<tenant>:<user>:<event_key>:<ip>` | `/onboarding/events` |
 
 **Known gap:** `routeCalculatorLimiter`, `storefrontDiscoveryLimiter`, `storeLocationsLimiter`,
-and `storeVoucherLookupLimiter` key wholly or mostly on IP — everyone browsing the **same store**
-from the **same network** collides into one bucket. `storefront_discovery` was the second-largest
-rejected scope in the 2026-08-24 incident (25 of 148 rejections). Tracked in
-[#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
+`storeVoucherLookupLimiter`, and `affiliateShareResolveLimiter` key wholly or mostly on IP —
+everyone browsing the **same store** from the **same network** collides into one bucket.
+`storefront_discovery` was the second-largest rejected scope in the 2026-08-24 incident (25 of 148
+rejections). Tracked in [#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
+`affiliateShareResolveLimiter` inherits this same gap — see #452 (Phase 212).
 
 ## POS limiters
 

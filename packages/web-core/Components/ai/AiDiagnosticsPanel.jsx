@@ -162,7 +162,7 @@ export default function AiDiagnosticsPanel({ onClose }) {
           <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-xl">
             <ShieldAlert className="w-12 h-12 text-slate-200 mx-auto mb-3" />
             <p className="text-sm text-slate-500">
-              Click "Run Analysis" to generate a coverage report.
+              Click &quot;Run Analysis&quot; to generate a coverage report.
             </p>
           </div>
         )}

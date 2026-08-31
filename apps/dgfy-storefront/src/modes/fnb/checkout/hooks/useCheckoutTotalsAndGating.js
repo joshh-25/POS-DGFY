@@ -5,6 +5,7 @@ import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 import { round4 } from '../../../../shared/utils/storefrontFormatters.js';
 import { buildServiceCartValidationIssues } from '../../../services/booking/model/serviceBookingValidation.js';
 import { buildFnbCartStatusLabel } from '../model/fnbCartPresentation.js';
@@ -122,9 +123,10 @@ export function useCheckoutTotalsAndGating({
   // #1093: the mode's delivery/pickup candidate set, narrowed to what the resolved
   // fulfillment location actually supports -- mirrors the server's own checkout-time
   // enforcement (assertCheckoutLocationOperationalReadiness, storeUseCases.js).
+  const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
   const simpleOrderMethodOptions = buildStorefrontOrderMethodOptions(
     ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery'),
-    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
+    fulfillmentLocation
   );
   // Phase 142 (#823): fnb/simple/retail's product checkout normally never requires a quote (each
   // has its own client-computable totals fallback) -- but a downpayment-required store's payment

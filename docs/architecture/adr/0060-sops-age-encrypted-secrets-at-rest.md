@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-13
-last_reviewed: 2026-08-29
+last_reviewed: 2026-08-31
 review_by: 2027-02-13
 applies_to: production_deployment, secrets_management, ci_cd
 topic: sops_age_encrypted_secrets_at_rest
@@ -311,4 +311,47 @@ it. Verify this explicitly as part of Phase 2's own completion check next time, 
 discovering it only when a different account first attempts a real deploy. No `binding` clause is
 affected — Decision 6 and Decision 7 were both already correctly implemented; this is a file-mode
 gap in Phase 2's execution, not a design flaw in either decision.
+
+### 2026-08-31 — nginx's domain vars literal-ized, `.env` fully retired, compose split into 5 files (#1236)
+
+The 2026-08-28 amendment above ("three buckets, literals in compose") landed EDIT 1-3 on
+`dgfy-api`/`dgfy-migration-runner`/`mysql` the same day, but left `nginx`'s 11 domain vars
+(`SKUPERVISOR_DOMAIN`, `POS_DOMAIN`, `STOREFRONT_DOMAIN`, `CERT_DOMAIN`, `DGFY_API_DOMAIN`, and
+their `_PROD`/`_ALT` variants) `${VAR}`-interpolated from `.env`, deferred to #401. That amendment's
+own "at most `IMAGE_TAG`" end-state language for `.env` was written against that gap still being
+open — a #1155/#1236 audit found it was never closed, and separately that the `.env` cleanup delta
+the fragment itself specified (stripping now-redundant bucket-A/dead vars once baked elsewhere) was
+never executed either: live `.env` still held all ~100 original names, including inert plaintext
+copies of every bucket-A secret, as of 2026-08-31.
+
+**Corrected end state:** `infrastructure/docker/env/prod.sops-cutover-fragment.yml`'s EDIT 4
+literal-izes nginx's 11 domain vars the same way EDIT 3 already did for `dgfy-api`, closing #401's
+compose half. With EDIT 4 applied, **`.env` has zero remaining consumers on PROD** — not "at most
+`IMAGE_TAG`" — since bucket C (`IMAGE_TAG`, every `SENTRY_*` var) already resolves from a
+`${VAR:-default}` fallback in the compose file itself and is already shell-exported per-deploy by
+`publish-platform.yml` or left at its default, never read from `.env`. The corrected instruction is
+to retire `.env` from the active deployment directory once EDIT 4 is live and verified — moved into
+a dated `_archive/` path (#1155's move-never-delete convention, not `rm`'d), not trimmed in place.
+
+**Compose file split (#1236):** alongside EDIT 4, both `infrastructure/docker/docker-compose.yml`
+(the generic, multi-environment template used by DEV/QA/staging) and PROD's own hand-maintained
+mirror are split into 5 files via Compose's top-level `include:` directive — an entry file
+(`name:`, `networks:`, `mysql`, `redis`, `include:`) plus `docker-compose.migration.yml` /
+`docker-compose.api.yml` / `docker-compose.frontend.yml` / `docker-compose.proxy.yml`. Confirmed
+against current Compose documentation and by direct `docker compose config` validation that this
+split is transparent to every existing caller (`publish-platform.yml`, `deploy-sops.sh`,
+`verify-deployment.yml` all just `cd $DOCKER_DIR && docker compose ...`, none pass `-f` flags) and
+that host/shell-exported env always takes precedence over `.env` regardless of file count — the
+split does not change how `deploy-sops.sh`'s secrets mechanism resolves values. No `binding` clause
+is affected; this is a `default`/untagged-tier correction and extension of the 2026-08-28
+amendment, not a reversal of any Decision above.
+
+**Scope, stated explicitly:** this amendment records the *design* — the repo-side split and the
+fragment-doc update (Phase A of #1236, a `develop`-targeted PR with no production impact). Applying
+EDIT 4 and the file split to the live server, then retiring `.env` there (Phase B, moved into
+`_archive/` per #1155's move-never-delete convention, not `rm`'d), is a
+separate, explicitly-gated follow-up: it restarts `nginx`/`dgfy-api` in production, which is exactly
+the class of change the 2026-08-29 amendment above (`CORS_ORIGIN` incident) already shows can break
+production silently if rushed. Phase B is not authorized by this amendment landing; it needs its
+own sign-off and low-disruption sequencing.
 

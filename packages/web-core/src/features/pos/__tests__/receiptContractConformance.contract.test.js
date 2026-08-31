@@ -119,6 +119,60 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(printCalls[0][2]).toBe('');
   });
 
+  it('resolves preview and physical print to the same tenant branding source (issue #321)', () => {
+    // The reported bug: preview showed the tenant icon while the printed receipt showed
+    // the bundled DGFY drawable, because the print path dropped the root-relative
+    // /uploads path native cannot resolve. Both sides read the same businessSettings
+    // field, so both must land on the same absolute asset -- the preview implicitly (the
+    // browser resolves <img src="/uploads/..."> against the document), the print path
+    // explicitly (iminHardwareBridge absolutizes before handing the value to native).
+    const iconPath = '/uploads/storefront-assets/t1/profile.png';
+
+    renderReceipt({
+      transaction: buildTransaction(),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        storefront_profile_image_url: iconPath
+      }
+    });
+
+    const previewSrc = screen
+      .getByRole('img', { name: 'Compliance Test Store icon' })
+      .getAttribute('src');
+
+    const printCalls = [];
+    window.iMinBridge = {
+      isIminWrapper: () => true,
+      printReceiptWithLogo: (...args) => {
+        printCalls.push(args);
+        return { success: true, message: 'Receipt printed.' };
+      },
+      printReceipt: () => ({ success: true, message: 'Receipt printed.' })
+    };
+
+    const printResult = printReceiptWithIminBridge({
+      transaction: buildTransaction(),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        storefront_profile_image_url: iconPath
+      },
+      openDrawerAfterPrint: false
+    });
+
+    expect(printResult.handled).toBe(true);
+    expect(printCalls).toHaveLength(1);
+
+    const printedLogoSource = printCalls[0][2];
+    // Never the empty string -- that is precisely what makes native print the bundled
+    // DGFY drawable (ReceiptLogoProvider.kt: blank logoSource -> fallbackRasterBytes).
+    expect(printedLogoSource).not.toBe('');
+    // Absolute, so native's HttpURLConnection can fetch it without a document base.
+    expect(printedLogoSource).toMatch(/^https?:\/\//);
+    // And the same asset the preview shows, once the preview's src is resolved against
+    // the page the way the browser already does.
+    expect(new URL(previewSrc, window.location.href).toString()).toBe(printedLogoSource);
+  });
+
   it('does not infer fiscal status from an invoice number prefix', () => {
     renderReceipt({
       transaction: buildTransaction({

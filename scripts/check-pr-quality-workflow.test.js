@@ -6,10 +6,13 @@ const {
   checkStagingLegSkipShape,
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
+  checkReporterHasNoShellBinaryDependency,
+  checkReportingJobsRespectStagingLeg,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,
   ADVISORY_JOB_NAMES,
+  STAGING_LEG_RESPECTING_JOBS,
   REPORTER_JOB_NAME
 } = require('./check-pr-quality-workflow');
 
@@ -127,8 +130,14 @@ test('checkStagingLegSkipShape: sanctioned skip-if + unconditional continue-on-e
   assert.deepEqual(checkStagingLegSkipShape(text), []);
 });
 
-test('checkStagingLegSkipShape: an `if:` that does not exclude the staging leg is caught', () => {
-  const text = buildWorkflowWithJobLines(() => ({ ifLine: "if: needs.gate.outputs.is_promotion == 'true'" }));
+// 2026-08-31 (#1253): SANCTIONED_SKIP_STAGING_IF excludes the staging leg again (the #1124/#1165
+// advisory-everywhere relaxation was itself reverted -- see this file's own top-of-file comment) --
+// a job carrying that now-retired advisory-everywhere shape (no staging-leg exclusion) is the
+// deviant case this test exercises.
+test('checkStagingLegSkipShape: an `if:` missing the staging-leg exclusion (the retired advisory-everywhere shape) is caught', () => {
+  const text = buildWorkflowWithJobLines(() => ({
+    ifLine: "if: needs.gate.outputs.is_promotion == 'true'"
+  }));
   const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
   problems.forEach((problem) => assert.match(problem, /`if:` must be exactly/));
@@ -264,20 +273,36 @@ function buildReporterJob(jobNames, {
   missingNeeds = [],
   missingEnvRefs = [],
   missingCoe = false,
-  mismatchedAddIfPresentVarFor = []
+  mismatchedAddIfPresentVarFor = [],
+  useShellGhForm = false
 } = {}) {
   const needsList = ['gate', ...jobNames.filter((n) => !missingNeeds.includes(n))];
   const envLines = jobNames
     .filter((n) => !missingEnvRefs.includes(n))
     .map((n) => `          ${envVarNameFor(n)}: \${{ needs.${n}.outputs.real_failures }}`);
-  // Matches the real reporter's actual shape: add_if_present "<job>" "$<the var that job's
-  // real_failures was assigned to above>" -- unless the test deliberately asks for a mismatch
-  // (RF-5's own reproduction: a swapped/misspelled variable there).
+  // #1124/#1165: matches the real reporter's actual (post actions/github-script@v7) shape --
+  // addIfPresent('<job>', process.env.<the var that job's real_failures was assigned to above>, ...)
+  // -- unless the test deliberately asks for a mismatch (RF-5's own reproduction: a swapped/
+  // misspelled variable there) or the retired shell form (useShellGhForm, for
+  // checkReporterHasNoShellBinaryDependency's own coverage).
   const addLines = jobNames.map((n) => (
     mismatchedAddIfPresentVarFor.includes(n)
-      ? `          add_if_present "${n}" "$WRONG_VAR_NAME"`
-      : `          add_if_present "${n}" "$${envVarNameFor(n)}"`
+      ? `            addIfPresent('${n}', process.env.WRONG_VAR_NAME, process.env.WRONG_RESULT);`
+      : `            addIfPresent('${n}', process.env.${envVarNameFor(n)}, process.env.${n.toUpperCase().replace(/-/g, '_')}_RESULT);`
   ));
+  const runBlock = useShellGhForm
+    ? [
+      '        run: |',
+      ...jobNames.map((n) => `          add_if_present "${n}" "$${envVarNameFor(n)}"`),
+      '          gh issue comment 1063 --body-file /tmp/advisory-failure-comment.md'
+    ]
+    : [
+      '        uses: actions/github-script@v7',
+      '        with:',
+      '          script: |',
+      ...addLines,
+      '            // no-op tail'
+    ];
   return [
     `  ${REPORTER_JOB_NAME}:`,
     '    needs:',
@@ -289,9 +314,7 @@ function buildReporterJob(jobNames, {
     ...(missingCoe ? [] : ['        continue-on-error: true']),
     '        env:',
     ...envLines,
-    '        run: |',
-    ...addLines,
-    '          echo done'
+    ...runBlock
   ].join('\n');
 }
 
@@ -355,9 +378,86 @@ test('checkAdvisoryFailureReportingShape: a duplicated STEP_OUTCOMES reference t
   assert.match(problems[0], /STEP_OUTCOMES references `steps\.run_lint\.outcome` 2 times/);
 });
 
-test('checkAdvisoryFailureReportingShape: add_if_present using a different job\'s variable is caught, not silently accepted', () => {
+test('checkAdvisoryFailureReportingShape: addIfPresent using a different job\'s variable is caught, not silently accepted', () => {
   const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { mismatchedAddIfPresentVarFor: ['dgfy-api-quality'] })}\n`;
   const problems = checkAdvisoryFailureReportingShape(text);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /does not match the env var needs\.dgfy-api-quality\.outputs\.real_failures is actually assigned to/);
+});
+
+// 2026-08-29 (#1124/#1165): checkReporterHasNoShellBinaryDependency is the regression guard for the
+// bug this epic actually found -- `gh` is not installed on the self-hosted runners, and the old
+// reporter's shell-out to it failed 100% silently for as long as that job existed. Covers the
+// sanctioned actions/github-script form (no problem), the retired shell `gh issue`/`add_if_present`
+// form (caught), and confirms a `gh` mention elsewhere in the file (e.g. a comment citing
+// `gh api .../actions/runners` as evidence, as this very file's header does) is not itself flagged.
+
+test('checkReporterHasNoShellBinaryDependency: the sanctioned actions/github-script reporter reports no problems', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
+  assert.deepEqual(checkReporterHasNoShellBinaryDependency(text), []);
+});
+
+test('checkReporterHasNoShellBinaryDependency: a reporter that shells out to `gh issue` is caught', () => {
+  const text = `\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'], { useShellGhForm: true })}\n`;
+  const problems = checkReporterHasNoShellBinaryDependency(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /shells out to a `gh` subcommand/);
+});
+
+test('checkReporterHasNoShellBinaryDependency: a `gh` mention in a comment elsewhere in the file is not flagged', () => {
+  const text = `# see gh api repos/.../actions/runners for evidence\n\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
+  assert.deepEqual(checkReporterHasNoShellBinaryDependency(text), []);
+});
+
+// 2026-08-31 (#1253, pr-reviewer RF-1/RF-2/RF-4 on PR #1257): report-advisory-failures and
+// salvage-api-evidence both lost their is_staging_leg exclusion in the same #1124/#1165 commit that
+// made the six quality jobs advisory-everywhere -- the first revert attempt (checkStagingLegSkipShape,
+// scoped to QUALITY_JOB_NAMES only) restored the six but missed these two, exactly the gap this check
+// exists to close now. Builds each job's block directly rather than via buildReporterJob (whose
+// fixture is deliberately `if: always()`, used by other tests above that don't care about the
+// staging-leg exclusion).
+function buildStagingLegRespectingJobBlock(name, ifLine) {
+  return [
+    `  ${name}:`,
+    '    needs: [gate]',
+    `    ${ifLine}`,
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: echo noop'
+  ].join('\n');
+}
+
+test('checkReportingJobsRespectStagingLeg: both jobs excluding the staging leg reports no problems', () => {
+  const text = STAGING_LEG_RESPECTING_JOBS
+    .map((name) => buildStagingLegRespectingJobBlock(name, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"))
+    .join('\n\n');
+  assert.deepEqual(checkReportingJobsRespectStagingLeg(`\n${text}\n`), []);
+});
+
+test('checkReportingJobsRespectStagingLeg: a job missing the staging-leg exclusion (the #1124/#1165 shape) is caught', () => {
+  const text = STAGING_LEG_RESPECTING_JOBS
+    .map((name) => buildStagingLegRespectingJobBlock(name, "if: always() && needs.gate.outputs.is_promotion == 'true'"))
+    .join('\n\n');
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, STAGING_LEG_RESPECTING_JOBS.length);
+  problems.forEach((problem) => assert.match(problem, /does not exclude the staging leg/));
+});
+
+test('checkReportingJobsRespectStagingLeg: only one of the two jobs missing the exclusion is reported individually', () => {
+  const [first, second] = STAGING_LEG_RESPECTING_JOBS;
+  const text = [
+    buildStagingLegRespectingJobBlock(first, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"),
+    buildStagingLegRespectingJobBlock(second, "if: always() && needs.gate.outputs.is_promotion == 'true'")
+  ].join('\n\n');
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], new RegExp(`"${second}"`));
+});
+
+test('checkReportingJobsRespectStagingLeg: a missing job block is caught rather than silently skipped', () => {
+  const [first] = STAGING_LEG_RESPECTING_JOBS;
+  const text = buildStagingLegRespectingJobBlock(first, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'");
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /could not find the ".*:" job block/);
 });

@@ -38,6 +38,7 @@ import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
 import PosOrderPayment from './PosOrderPayment.js';
+import PosOrderAddressChange from './PosOrderAddressChange.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
@@ -193,6 +194,8 @@ import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMeth
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
+import DgfyAffiliateCategoryRateFactory from './Landlord/DgfyAffiliateCategoryRate.js';
+import DgfyAffiliateEnrollmentStatusEventFactory from './Landlord/DgfyAffiliateEnrollmentStatusEvent.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
@@ -268,6 +271,8 @@ const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
+const DgfyAffiliateCategoryRate = DgfyAffiliateCategoryRateFactory(sequelize);
+const DgfyAffiliateEnrollmentStatusEvent = DgfyAffiliateEnrollmentStatusEventFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
@@ -442,6 +447,17 @@ DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' })
 // Sequelize include.
 Tenant.hasMany(DgfyAffiliatePriceRule, { foreignKey: 'tenant_id', as: 'affiliatePriceRules' });
 DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #448 (Phase 209) - same rationale as dgfy_affiliate_price_rules above: enrollment_id/folder_id
+// use the sentinel-0 "applies to all" convention, so only tenant_id gets a strict association.
+// Resolution queries filter directly on tenant_id/enrollment_id/folder_id instead of an include.
+Tenant.hasMany(DgfyAffiliateCategoryRate, { foreignKey: 'tenant_id', as: 'affiliateCategoryRates' });
+DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #1202 (Phase 214) - deliberately NO Tenant.hasMany/belongsTo association for
+// DgfyAffiliateEnrollmentStatusEvent. tenant_id and enrollment_id are both held by value (ADR 0036
+// Decision 1, no cross-database FK) so a future enrollment hard-delete cannot cascade away audit
+// evidence; reads filter directly on tenant_id/enrollment_id instead of an include.
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -621,6 +637,12 @@ PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as
 PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
 PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
 User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
+
+PosTransaction.hasMany(PosOrderAddressChange, { foreignKey: 'pos_transaction_id', as: 'addressChanges' });
+PosOrderAddressChange.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderAddressChange.belongsTo(User, { foreignKey: 'changed_by', as: 'changedByUser' });
+PosOrderAddressChange.belongsTo(PosTerminalShift, { foreignKey: 'changed_by_shift_id', as: 'changedByShift' });
+User.hasMany(PosOrderAddressChange, { foreignKey: 'changed_by', as: 'addressChanges' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -1095,6 +1117,7 @@ const db = {
   PosPaymentAllocation,
   PosTransactionAdjustment,
   PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
@@ -1249,6 +1272,8 @@ const db = {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings
   ,TenantDownpaymentSettings
   ,PlatformAdminUser
@@ -1310,6 +1335,7 @@ export {
   PosPaymentAllocation,
   PosTransactionAdjustment,
   PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
@@ -1462,6 +1488,8 @@ export {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings,
   TenantDownpaymentSettings,
   PlatformAdminUser,

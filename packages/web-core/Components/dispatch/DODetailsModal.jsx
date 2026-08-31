@@ -389,7 +389,7 @@ export default function DODetailsModal({
                     {linesWithoutPrice > 0 && (
                       <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                        {linesWithoutPrice} line{linesWithoutPrice !== 1 ? 's' : ''} {linesWithoutPrice !== 1 ? 'have' : 'has'} no sale price — use "Add sale price" above to set {linesWithoutPrice !== 1 ? 'them' : 'it'} retroactively.
+                        {linesWithoutPrice} line{linesWithoutPrice !== 1 ? 's' : ''} {linesWithoutPrice !== 1 ? 'have' : 'has'} no sale price — use &quot;Add sale price&quot; above to set {linesWithoutPrice !== 1 ? 'them' : 'it'} retroactively.
                       </p>
                     )}
                   </>

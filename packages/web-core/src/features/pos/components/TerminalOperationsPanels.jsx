@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -17,6 +17,7 @@ import {
   getNextStatusActions
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
+import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
 
 const parseDeliveryCoords = (order = {}) => {
   if (
@@ -374,9 +375,11 @@ function IncomingQueueWorkspace({
   handleIncomingOrderStatusChange,
   handleDeliveryJobStatusChange,
   handleAssignDeliveryPersonnel,
+  handleUpdateOnlineOrderDeliveryAddress,
   deliveryPersonnelState,
   handleOpenCashCollection,
   handleOpenBalanceSettlement,
+  handleViewBalancePaymentProof,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   refreshIncomingOrders,
@@ -385,7 +388,8 @@ function IncomingQueueWorkspace({
   queueLocationScopeId,
   locked,
   isOnline = true,
-  sectionId
+  sectionId,
+  workflowMode = ''
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
@@ -538,7 +542,7 @@ function IncomingQueueWorkspace({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {sortedIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
-            const nextActions = getNextStatusActions(order);
+            const nextActions = getNextStatusActions(order, workflowMode);
             const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
             const utilityActions = getIncomingOrderUtilityActions(order);
             const canCollectCash = order.payment_type === 'cash'
@@ -596,6 +600,24 @@ function IncomingQueueWorkspace({
                 </Button>
               );
             }
+            // Phase 204 (#965): "View proof" -- the smallest place the settled payment is already
+            // displayed, not a full evidence-browser UI. Independent of canSettleBalance: the
+            // balance may already be settled (payment_status moved off 'partially_paid') while the
+            // order is still visible in this queue during fulfillment.
+            if (order.has_payment_proof) {
+              buttons.push(
+                <Button
+                  key="view_payment_proof"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleViewBalancePaymentProof?.(order)}
+                >
+                  <Receipt className="mr-2 h-4 w-4 shrink-0" />
+                  View Proof
+                </Button>
+              );
+            }
             if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
               const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
               buttons.push(
@@ -621,6 +643,8 @@ function IncomingQueueWorkspace({
                   return <Ban className="mr-2 h-4 w-4 shrink-0" />;
                 case 'preparing':
                   return <Clipboard className="mr-2 h-4 w-4 shrink-0" />;
+                case 'packed':
+                  return <Package className="mr-2 h-4 w-4 shrink-0" />;
                 case 'ready_for_pickup':
                   return <ShoppingBag className="mr-2 h-4 w-4 shrink-0" />;
                 case 'out_for_delivery':
@@ -886,6 +910,18 @@ function IncomingQueueWorkspace({
                       </a>
                     </div>
                   )}
+
+                  <DeliveryAddressEditControl
+                    orderId={order.pos_transaction_id}
+                    order={order}
+                    addressChanges={order.addressChanges}
+                    actionLoading={actionLoading}
+                    canTransactPos={canTransactPos}
+                    locked={locked}
+                    isOnline={isOnline}
+                    hasActiveShift={hasActiveShift}
+                    onSave={handleUpdateOnlineOrderDeliveryAddress}
+                  />
                 </div>
 
                 <div>

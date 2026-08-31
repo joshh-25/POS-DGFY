@@ -13,7 +13,11 @@ import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeatur
 import {
     accruePendingForOnlineOrder,
     resolveActiveAffiliateEnrollmentById,
-    resolveCommissionRateBps
+    resolveCommissionRateBps,
+    // #448 (Phase 209) - the category-aware commission ladder, shared with the POS path so the two
+    // channels can never diverge.
+    loadApplicableCategoryRates,
+    computeCategoryAwareCommission
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
 import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
 import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
@@ -116,6 +120,7 @@ const FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
     'preparing',
+    'packed',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -244,6 +249,7 @@ const toStatusLabel = (status) => {
     case 'placed': return 'Order placed';
     case 'confirmed': return 'Confirmed by store';
     case 'preparing': return 'Preparing';
+    case 'packed': return 'Packed';
     case 'ready_for_pickup': return 'Ready for pickup';
     case 'out_for_delivery': return 'Out for delivery';
     case 'completed': return 'Completed';
@@ -341,7 +347,11 @@ const serializeLocationSummary = (location) => {
         current_wait_time_minutes: location.current_wait_time_minutes,
         supports_delivery: location.supports_delivery,
         supports_pickup: location.supports_pickup,
-        supports_dine_in: location.supports_dine_in
+        supports_dine_in: location.supports_dine_in,
+        scheduling_enabled: location.scheduling_enabled,
+        immediate_fulfillment_enabled: location.immediate_fulfillment_enabled,
+        fulfillment_lead_time_min_days: location.fulfillment_lead_time_min_days ?? null,
+        fulfillment_lead_time_max_days: location.fulfillment_lead_time_max_days ?? null
     };
 };
 
@@ -381,6 +391,9 @@ const serializeOrderBase = (order) => ({
     fulfillment_status: order?.fulfillment_status,
     status_label: toStatusLabel(order?.fulfillment_status),
     status: order?.fulfillment_status,
+    // Phase 210 (#1179). Deliberately NOT rejected_by/rejected_at here -- staff identity is not
+    // customer-facing PII to publish on a public, PIN-addressable tracking page.
+    rejection_reason: order?.rejection_reason ?? null,
     subtotal_amount: order?.subtotal_amount,
     discount_amount: order?.discount_amount,
     discount_label_snapshot: order?.discount_label_snapshot,
@@ -535,7 +548,7 @@ const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
     return null;
 };
 
-const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) => {
+const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod, scheduledFor = null }) => {
     if (!location) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -565,6 +578,13 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) =
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             `Selected location does not support ${orderMethod} orders`,
+            { statusCode: 409 }
+        );
+    }
+    if (scheduledFor && location?.scheduling_enabled === false) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Selected location does not accept scheduled orders',
             { statusCode: 409 }
         );
     }
@@ -980,6 +1000,13 @@ const prepareCheckoutLines = ({
 
         preparedLines.push({
             item_id: item.item_id,
+            // #448 (Phase 209) - snapshotted so post-commit affiliate accrual can resolve a
+            // per-category commission rate without re-querying the item. Nullable: an
+            // uncategorized item matches no category rate and falls to the tenant default.
+            folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
+            // Phase 209 weight source for commission_base_mode: 'base_price_subtotal' - the
+            // per-line twin of the aggregate baseSubtotalAmount this function already returns.
+            base_line_subtotal: baseLineSubtotal,
             item_name: item.name,
             item_name_snapshot: item.name || null,
             sku_snapshot: item.sku_code || null,
@@ -1389,13 +1416,19 @@ const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) =>
     const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
     if (!enrollment) return null;
 
-    const [settings, priceRule] = await Promise.all([
-        dgfyAffiliateRepository.getSettings(tenantId),
+    // #448 (Phase 209): settings must be fetched BEFORE the Promise.all below, because
+    // loadApplicableCategoryRates' category_rates_enabled / enrollment-override guard needs it to
+    // decide whether the category-rate fetch runs at all. An unconditional fetch here would
+    // violate A7's zero-added-query guarantee on every attributed storefront checkout.
+    const settings = await dgfyAffiliateRepository.getSettings(tenantId);
+
+    const [priceRule, categoryRates] = await Promise.all([
         dgfyAffiliateRepository.resolveActivePriceRule({
             tenantId,
             enrollmentId: enrollment.enrollment_id,
             itemId: 0
-        })
+        }),
+        loadApplicableCategoryRates({ tenantId, enrollment, settings })
     ]);
 
     const sellingPriceRule = priceRule
@@ -1411,9 +1444,24 @@ const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) =>
         enrollment,
         priceRule,
         sellingPriceRule,
+        // commissionRule.rateBps is now the FALLBACK rate only (correct: with no cart in hand
+        // there is no per-line category to resolve against). The applied rate is resolved per-line
+        // at accrual time by computeCategoryAwareCommission - do not mistake this for the applied
+        // rate on a category-aware tenant.
         commissionRule: { type: commissionType, rateBps: commissionRateBps },
         settlementPolicy: settings?.settlement_policy || null,
-        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal'
+        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal',
+        // #448 (Phase 209). Category rows applicable to this enrollment (both the enrollment's own
+        // scope and the tenant-wide template scope, every folder) - [] when category_rates_enabled
+        // is off, or when the enrollment override shadows it outright (loadApplicableCategoryRates'
+        // own zero-query guard - see its comment). Precedence within this set is resolved per-line
+        // at accrual time, not here.
+        categoryRates,
+        // Carried through separately so the accrual block (storeUseCases.js's else branch, §7.3)
+        // doesn't need to re-derive the enrollment/tenant-default ladder itself - that would
+        // duplicate resolveCommissionRateBps's own ladder in two places, the exact drift its header
+        // comment warns against.
+        fallbackRateBps: commissionRateBps
     };
 };
 
@@ -1559,7 +1607,8 @@ const resolveCheckoutContext = async ({
     });
     assertCheckoutLocationOperationalReadiness({
         location,
-        orderMethod
+        orderMethod,
+        scheduledFor
     });
     assertCheckoutTimeWithinStorefrontHours({
         scheduledFor,
@@ -2141,6 +2190,19 @@ export const buildListStoreCatalogUseCase = ({
                     tenantId: tenantId || currentTenantAccessContext().tenantId
                 })
             ]);
+            // #626 (Phase 203): cash availability is orthogonal to PayMongo readiness -- a tenant
+            // with no PayMongo account at all must still be able to take cash, so this is merged
+            // at the call site rather than inside resolveStorefrontPaymentCapabilities (which has
+            // six early `disabled(...)` returns for PayMongo-specific failure modes that must never
+            // gate cash).
+            const paymentCapabilitiesWithCash = {
+                ...paymentCapabilities,
+                cash: {
+                    enabled: accessPolicy.cash_payment_enabled !== false,
+                    environment: null,
+                    reason_code: accessPolicy.cash_payment_enabled === false ? 'STORE_CASH_DISABLED' : null
+                }
+            };
             // Live (15s-cached) workflow mode + composed-capability overlay, so a
             // retail/fnb tenant with `services` enabled via ops_enabled_capabilities
             // can be recognized by the storefront even though its scalar
@@ -2159,7 +2221,7 @@ export const buildListStoreCatalogUseCase = ({
                     access_policy: accessPolicy,
                     workflow_mode: workflowMode,
                     enabled_capabilities: enabledCapabilities,
-                    payment_capabilities: paymentCapabilities,
+                    payment_capabilities: paymentCapabilitiesWithCash,
                     payment_mode: paymentMode
                 });
             }
@@ -2209,7 +2271,7 @@ export const buildListStoreCatalogUseCase = ({
                 access_policy: accessPolicy,
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
-                payment_capabilities: paymentCapabilities,
+                payment_capabilities: paymentCapabilitiesWithCash,
                 payment_mode: paymentMode
             });
         } catch (error) {
@@ -3050,6 +3112,19 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
+            // #626 (Phase 203): hiding the cash option in the UI alone is not enforcement -- a
+            // hand-crafted POST with payment_type: 'cash' must also be rejected server-side. Same
+            // placement and same `!== false` fail-open comparison as assertGuestCheckoutAllowed
+            // below. Reached by both the direct handler and the webhook finalizer, same as that
+            // guard (see the Phase 141 comment above).
+            if (normalized.payment_type === 'cash' && resolved.accessPolicy?.cash_payment_enabled === false) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This store does not accept cash on delivery/pickup. Please choose an online payment method.',
+                    { statusCode: 422, details: { reason_code: 'STORE_CASH_DISABLED' } }
+                );
+            }
+
             assertGuestCheckoutAllowed({
                 guestCheckoutEnabled: resolved.accessPolicy?.guest_checkout_enabled,
                 storeCustomer: normalizedStoreCustomer
@@ -3324,16 +3399,27 @@ export const buildStoreCheckoutUseCase = ({
             // succeeded, mirroring recordDgfyOrderActivity's convention above.
             if (payload?.attribution_enrollment_id) {
                 try {
-                    // Reuse whatever resolveCheckoutContext already resolved (same enrollment/rule
-                    // that priced this exact order) rather than re-querying - falls back to a fresh
-                    // lookup only if that resolution is unexpectedly missing, so a transient gap
-                    // there still degrades to pre-Phase-1 behavior instead of skipping accrual.
+                    // #450 decision D2 (Phase 206): re-verify the enrollment against the database
+                    // at commit time rather than trusting resolveCheckoutContext's pricing-time
+                    // object. `resolved.affiliatePricing.enrollment` is a snapshot taken before the
+                    // order was written, and a checkout can span real work in between (F&B kitchen
+                    // order creation, inventory movements, payment settlement) - if the affiliate
+                    // was revoked/suspended, or the tenant's program disabled, inside that window,
+                    // the cached object is stale. The previous `||` fallback only fired when that
+                    // object was *missing*, never when it was *stale*, which is exactly the case
+                    // D2 names. This is a plain, non-locking read on the default connection: the
+                    // order's own transaction has already committed above, so it necessarily sees
+                    // current committed state - no lock and no transaction handle are needed or
+                    // wanted here (accrual is already idempotent on (tenant_id, order_reference)).
+                    //
+                    // affiliatePricing is still the source of the commission *math* (rule, rate,
+                    // commission_base_mode) - deliberately unchanged. Only the enrollment used to
+                    // decide whether, and to whom, commission accrues is re-resolved.
                     const affiliatePricing = resolved.affiliatePricing;
-                    const affiliateEnrollment = affiliatePricing?.enrollment
-                        || await resolveActiveAffiliateEnrollmentById({
-                            tenantId: normalizedTenantId,
-                            enrollmentId: payload.attribution_enrollment_id
-                        });
+                    const affiliateEnrollment = await resolveActiveAffiliateEnrollmentById({
+                        tenantId: normalizedTenantId,
+                        enrollmentId: payload.attribution_enrollment_id
+                    });
                     if (affiliateEnrollment) {
                         // baseSubtotalAmount is the catalog-price subtotal, pre-affiliate-rule;
                         // subtotalAmount is what the buyer actually paid. The two are identical
@@ -3375,12 +3461,33 @@ export const buildStoreCheckoutUseCase = ({
                             resellerMarginCentavos = Math.max(0, buyerSubtotalCentavos - baseSubtotalCentavos);
                             resolvedCommission = { rateBps: 0, amountCentavos: resellerMarginCentavos };
                         } else {
-                            const rateBps = Number.isInteger(affiliatePricing?.commissionRule?.rateBps)
-                                ? affiliatePricing.commissionRule.rateBps
+                            // #448 (Phase 209). Weights follow commission_base_mode, matching how
+                            // commissionableBaseCentavos itself was derived ~20 lines up, so the
+                            // split is always consistent with the total it is splitting. The
+                            // enrollment-override tier has already been applied upstream (see
+                            // resolveAffiliatePricingForCheckout's fallbackRateBps), so this passes
+                            // fallbackRateBps rather than a raw enrollment/settings pair - re-deriving
+                            // the override here would duplicate the ladder in two places.
+                            const commissionLines = resolved.prepared.preparedLines.map((line) => ({
+                                folderId: line.folder_id_snapshot ?? null,
+                                weightCentavos: Math.max(0, toCentavos(
+                                    commissionBaseMode === 'base_price_subtotal'
+                                        ? line.base_line_subtotal
+                                        : line.line_subtotal
+                                ))
+                            }));
+                            const fallbackRateBps = Number.isInteger(affiliatePricing?.fallbackRateBps)
+                                ? affiliatePricing.fallbackRateBps
                                 : 500;
+                            const computed = computeCategoryAwareCommission({
+                                fallbackRateBps,
+                                categoryRateRows: affiliatePricing?.categoryRates || [],
+                                lines: commissionLines,
+                                commissionableBaseCentavos
+                            });
                             resolvedCommission = {
-                                rateBps,
-                                amountCentavos: Math.round(commissionableBaseCentavos * rateBps / 10000)
+                                rateBps: computed.rateBpsSnapshot,
+                                amountCentavos: computed.amountCentavos
                             };
                         }
 
@@ -3399,6 +3506,17 @@ export const buildStoreCheckoutUseCase = ({
                             },
                             buyerDgfyAccountId: normalizedStoreCustomer?.dgfy_account_id || null,
                             storeSlug: String(payload.store_slug || '').trim().toLowerCase() || null
+                        });
+                    } else if (affiliatePricing?.enrollment) {
+                        // In-flight attribution drop (#450 D2): this order *was* priced under an
+                        // active enrollment, and that enrollment is no longer active at commit
+                        // time. The order stands and the buyer sees nothing - only the commission
+                        // is withheld. Logged (never thrown) so the drop is attributable later;
+                        // this is the same non-blocking convention as the catch block below.
+                        logger.warn('[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit', {
+                            tenant_id: normalizedTenantId,
+                            order_id: orderId,
+                            enrollment_id: payload.attribution_enrollment_id
                         });
                     }
                 } catch (accrualError) {
@@ -4242,6 +4360,9 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
 
             const rejected = order.fulfillment_status === 'rejected';
             const cancelled = order.fulfillment_status === 'cancelled';
+            // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
+            // order (defensive: the column is only ever written on reject anyway).
+            const rejectionReason = String(order?.rejection_reason || '').trim();
             const reviewInvites = order.fulfillment_status === 'completed'
                 ? await issueReviewInvitesForOrder({
                     tenantId,
@@ -4257,10 +4378,13 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                 status_label: toStatusLabel(order.fulfillment_status),
                 is_trackable: !rejected && !cancelled,
                 message: rejected
-                    ? 'This order was not accepted by the store.'
+                    ? (rejectionReason
+                        ? `This order was not accepted by the store: ${rejectionReason}`
+                        : 'This order was not accepted by the store.')
                     : cancelled
                         ? 'This order was cancelled.'
                         : 'Tracking information loaded successfully.',
+                rejection_reason: rejected ? (rejectionReason || null) : null,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites
             });

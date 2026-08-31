@@ -178,6 +178,7 @@ export default function TerminalPageLayout({
     handleIncomingOrderStatusChange,
     handleAssignDeliveryPersonnel,
     deliveryPersonnelState,
+    onDeliveryPersonnelChanged,
     handleDeliveryJobStatusChange,
     handleOpenCashCollection,
     handleOpenBalanceSettlement,
@@ -1008,6 +1009,7 @@ export default function TerminalPageLayout({
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
                 handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
                 deliveryPersonnelState={deliveryPersonnelState}
+                onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
                 handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
                 handleOpenCashCollection={handleOpenCashCollection}
                 handleOpenBalanceSettlement={handleOpenBalanceSettlement}

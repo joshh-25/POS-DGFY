@@ -126,4 +126,11 @@ describe('external product lookup contracts', () => {
       expect(content).toContain('handleExternalProductLookup(code)');
     });
   });
+
+  it('re-arms the camera scanner after a successful decode', () => {
+    expect(scannerContent).toMatch(/setCameraRequested\(false\);\s*\n\s*onDetectedRef\.current\(code\);/);
+    // and the cleanup guard: a cancelled/torn-down camera effect must never
+    // strand the Scan button disabled on "Starting..."
+    expect(scannerContent).toMatch(/cancelled = true;[\s\S]*stopCamera\(\);[\s\S]*setStarting\(false\);/);
+  });
 });

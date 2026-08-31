@@ -17,6 +17,7 @@ import { resolveTrackedTotals } from '../model/trackedTotals.js';
 import { GUEST_CHECKOUT_DISABLED_MESSAGE, GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
 import { isGuestCheckoutAllowed } from '../model/customerAccess.js';
 import { requiresBillingEmail } from '../../checkout/checkoutValidation.js';
+import { writeGuestDeliveryAddress } from '../model/storefrontGuestDeliveryAddressStorage.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -50,6 +51,7 @@ export function useCheckoutSubmission({
   customerEmail,
   customerName,
   customerPhone,
+  customerPin,
   DGFY_BRAND_NAME,
   downloadDataUrl,
   extractStockViolation,
@@ -535,6 +537,13 @@ export function useCheckoutSubmission({
           updatedAt: Date.now()
         });
         if (persistedDetails) setSavedCustomerDetails(persistedDetails);
+      }
+      if (!isDgfyCustomerSignedIn && String(customerAddress || '').trim()) {
+        writeGuestDeliveryAddress({
+          addressLine: customerAddress,
+          latitude: customerPin?.latitude,
+          longitude: customerPin?.longitude
+        });
       }
       if (data?.tracking_pin) {
         setTrackingPinInput(data.tracking_pin);

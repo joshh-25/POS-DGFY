@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-08-26
+last_reviewed: 2026-08-31
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -233,6 +233,43 @@ promotion was sound) — unaffected by this ADR either way.
 - Scope check, confirmed unaffected: same as the correction above — Decision 8 itself is untouched;
   this closes the gap between the advisory *design* and what it could actually produce.
 - PR: #1068. Refs #1063, #1066.
+
+### 2026-08-31 — Decision 5's preflight target: ephemeral CI instance, not a deployed host (#1163/#1248)
+
+- Clause amended: Decision 5, `[default]` tier — "the compliance preflight sweep re-anchors to the
+  `develop -> main` leg ... against a deployed non-production host, DEV sufficing."
+- Why: the deployed-host requirement was never actually satisfiable. Its four
+  `PREFLIGHT_HOST`/`PREFLIGHT_COMPANY_TOKEN`/`PREFLIGHT_BOT_EMAIL`/`PREFLIGHT_BOT_PASSWORD` GitHub
+  Environment secrets were never provisioned on either `STAGING` or `DEV` (#1163, confirmed empty
+  2026-08-29) and blocked the 2026-08-29 `develop -> main` promotion outright, requiring #1007's
+  expedited override to ship. Investigating why led to the actual finding: a deployed host bought
+  no compliance property this ADR's own reasoning depends on. The preflight endpoint
+  (`POST /api/v1/compliance/preflight`) writes nothing, never executes the change's code (it
+  evaluates the declaration's *proposed* `impact_declaration` payload against the target tenant's
+  own compliance posture, not the host's deployed version), and its response carries no
+  server-generated request id — `preflight_request_ref` was always entirely operator-authored.
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) already states the principle this
+  requirement violated: "A merge gate ... must be satisfiable without a deployed environment, or
+  every leg that needs one becomes circular."
+- Change: the sweep (`.github/workflows/compliance-preflight-sweep.yml`) now provisions its own
+  ephemeral `mysql` + `redis` + `dgfy-api` instance on the CI runner, seeds a throwaway fixture
+  tenant + `settings:edit` bot (`apps/dgfy-api/scripts/seed-preflight-fixture.js`, using the
+  existing `provisionTenant()` service — not a new provisioning path), and calls the real endpoint
+  over `127.0.0.1`. No GitHub Environment, no secrets, nothing to provision or rotate by hand.
+  Confirmed live end to end (#1163/#1248 spike, 2026-08-31): a real declaration from the
+  2026-08-31 batch returned `result: no_breach`, `can_proceed: true` from the real endpoint. Also
+  now auto-triggers on any `develop` push touching `docs/compliance/impact-declarations/**` and
+  reconciles + auto-merges a PR when every result passes, rather than waiting for the promotion
+  leg — so the sweep is continuous, not a promotion-time gate a batch can still get blocked on.
+- Scope check, confirmed unaffected: the pinned fixture posture
+  (`complianceMode: 'non_compliant'`, `plan: 'premium'`, `subscription_status: 'active'`) is
+  strictly more reproducible than the deployed host it replaces — a tenant on `stage.dgfy.ph` is
+  unpinned and drifts with whoever last edited its settings; this one is recreated identically
+  every run. Decisions 6 (production tenant-schema report) and 8 (Merge Safety) are untouched —
+  neither concerns preflight.
+- Supersedes: #1163, which tracked provisioning the manual bot account and secrets this change
+  removes the need for.
+- PR: (this PR). Refs #1163, #1248.
 
 ## Related
 

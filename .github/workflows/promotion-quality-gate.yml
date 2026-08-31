@@ -105,6 +105,61 @@ name: Promotion Quality Gate
 # `Initialize containers` step has never actually failed in this workflow's run history as of this
 # writing -- this fix closes a real mechanism gap that had not yet been observed to fire, not an
 # incident postmortem.
+#
+# 2026-08-29 (#1124/#1165), evidence-durability pass -- said plainly up front: **this pass does not
+# re-arm the gate.** Every `continue-on-error` above and below is unchanged, on every leg. What
+# changed is whether a run's results are actually observable and retained, because they mostly
+# weren't:
+#
+#   1. `report-advisory-failures`' reporting mechanism had never worked, at all, since it was added.
+#      It shelled out to `gh issue view`/`gh issue comment`, but `gh` is not installed on these
+#      self-hosted runners (`gh: command not found`, exit 127 -- there is no other use of `gh`
+#      anywhere in .github/workflows/ that would have caught this sooner) and the step's
+#      `set -uo pipefail` (no `-e`) meant the failure was 100% silent. Every advisory failure since
+#      that job was added has gone unreported. Fixed by replacing the shell-out with
+#      `actions/github-script@v7` (a node20 JS action the runner already knows how to fetch, same
+#      as `actions/checkout`/`actions/upload-artifact`) -- see that job's own comment.
+#   2. A real `release/*->main` promotion (run `33241398956`, PR #1164) reached `main` with zero
+#      quality signal: `dgfy-api-quality`'s test-matrix step finished in ~3 minutes (vs ~19 healthy
+#      -- the #986 early-stop, see below) and the job's own envelope then died 3 seconds into the
+#      *next* step, before the artifact-upload step or the per-step-outcome recorder ever ran. The
+#      job log itself now 404s; nothing in a workflow file can recover that. What this pass adds:
+#      a `$GITHUB_STEP_SUMMARY` write from inside the matrix step itself (survives a job death in a
+#      *later* step, since a step's summary flushes when that step ends) and a `salvage-api-evidence`
+#      job that uploads the matrix's evidence from a durable, job-workspace-external directory even
+#      if the matrix step's own job dies mid-run -- see both jobs' own comments for the mechanism
+#      and the two assumptions it rests on.
+#   3. #986: `run-backend-test-matrix.js` used to stop at the first failing db-tier group (and skip
+#      the entire db tier on any fast-tier failure) -- a cost optimization from when the full matrix
+#      took ~19.6min that no longer holds now that #1015/#1016 cut it to ~2-4min, while the cost of
+#      stopping early (every later group's coverage going silently unknown) was unchanged. Flipped
+#      to continue-on-failure by default; `--fail-fast` is the explicit opt-out. The artifact now
+#      also carries `coverage_complete`, so a reader can tell "green because everything passed" from
+#      "green because we stopped looking."
+#   4. The `to-staging/*->staging` soak leg is no longer skipped entirely -- it now runs every
+#      quality job exactly as advisory (`continue-on-error: true`, unchanged) as the `release/*
+#      ->main` leg always has. It produced zero signal on 25 of the last 30 workflow runs; running
+#      it advisory-only is the fastest way to build the track record this epic needs before any
+#      future pass considers re-arming anything to actually block. `is_staging_leg` stays as a gate
+#      output (still potentially useful for a future leg-specific policy) even though no job's `if:`
+#      references it for skipping anymore.
+#
+# Measured locally the same day, on the exact commit run 33241398956 promoted (`6cf8c37fd`): the
+# fast tier passed clean, 559/559. So that run's fast-tier failure was environmental (a sick runner
+# or a dying service container), not a code defect -- runner reliability, not stale/false-positive
+# tests, is the dominant problem this pass's evidence is expected to surface next. That question is
+# left deliberately open; this pass is what makes it observable, not what answers it.
+#
+# 2026-08-31 (#1253), Pat's call: item 4 immediately above is reverted. The `develop -> staging`
+# leg was never meant to carry this gate at all, advisory or not -- it's meant to be the quick
+# soak/QA leg, contrasted deliberately with the `staging -> main` (and default `develop -> main`)
+# leg where quality checks belong because that leg ships to production. Every quality job's `if:`
+# below is back to excluding `is_staging_leg`, i.e. the `to-staging/*->staging` leg is again skipped
+# entirely -- no runner time spent, no results produced at all on this leg, exactly the pre-#1124/
+# #1165-item-4 shape. `scripts/check-pr-quality-workflow.js`'s `checkStagingLegSkipShape` is updated
+# to match. Accepted trade-off, stated explicitly rather than silently reintroduced: this brings
+# back the "zero signal on 25 of the last 30 runs" gap #1124/#1165 cited for making the leg
+# advisory in the first place -- deliberate, because that leg is optimized for speed, not signal.
 on:
   pull_request:
     branches:
@@ -351,13 +406,53 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # #1124/#1165: three durability fixes landed on this step together, all responding to run
+      # 33241398956 (a real `release/*->main` promotion) where this step finished in 3 minutes
+      # (vs ~19 healthy) and the *next* step then killed the whole job 3 seconds in -- destroying
+      # every downstream step, including the artifact upload, and leaving zero evidence of what
+      # failed.
+      #   1. RELEASE_TARGET_SHA pins the matrix's own evidence directory to the same SHA the
+      #      "Upload API test-matrix evidence" step's `path:` uses (github.sha) -- previously these
+      #      coincided only by construction (both happen to resolve to the checked-out HEAD on a
+      #      pull_request/workflow_dispatch run) rather than by a shared value, a landmine for any
+      #      future workflow_call caller that passes a different ref.
+      #   2. RELEASE_GATES_EVIDENCE_ROOT points the script at a durable, job-workspace-external
+      #      directory instead of the default `.tmp/release-gates` (which dies with the job) --
+      #      salvage-api-evidence (bottom of this file) uploads straight from there even if this
+      #      step itself is killed mid-run, and #1124's persist-after-every-chunk change to the
+      #      script means a partial JSON survives that too. `dirname "$RUNNER_WORKSPACE"` is
+      #      `_work`'s parent, not `runner.temp` (`_work/_temp`) -- the latter is wiped per job,
+      #      the former isn't (confirmed by this file's own long-standing reliance on a fixed
+      #      3306/6379 port pair surviving across jobs on the same runner). Resolved via shell
+      #      (`dirname`) into `$GITHUB_ENV` rather than written as `${{ runner.workspace }}/..`
+      #      directly in YAML -- confirmed live (#1124/#1165, PR #1167 dispatch verification) that
+      #      `actions/upload-artifact@v4` rejects any `path:` glob containing a literal `..`
+      #      ("Relative pathing '.' and '..' is not allowed"), so the artifact upload step below
+      #      needs an already-resolved, `..`-free absolute path to reference.
+      #   3. The step summary write (scripts/summarize-backend-test-matrix.js) makes this step's
+      #      own result visible in the GitHub Checks UI's summary panel even if it's the *next*
+      #      step that kills the job -- $GITHUB_STEP_SUMMARY is flushed when a step ends, which
+      #      this step reaches even on run 33241398956's exact failure shape.
       - name: Run dgfy-api test matrix
         id: run_test_matrix
         if: steps.wait_services.outcome == 'success'
         working-directory: .
-        run: node scripts/run-backend-test-matrix.js
+        run: |
+          set +e
+          echo "RELEASE_GATES_EVIDENCE_ROOT=$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_ENV"
+          export RELEASE_GATES_EVIDENCE_ROOT="$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}"
+          node scripts/run-backend-test-matrix.js
+          status=$?
+          node scripts/summarize-backend-test-matrix.js >> "$GITHUB_STEP_SUMMARY" || true
+          exit $status
         continue-on-error: true
-        timeout-minutes: 30
+        # #1124/#986: raised from 30 to 35 alongside flipping the test matrix's own default to
+        # continue-on-failure (every db-tier group now runs instead of stopping at the first
+        # failure) -- deliberately NOT raising the 45-minute job timeout to match. Keeping the step
+        # timeout as the first tripwire means a runaway run is still absorbed by this step's own
+        # continue-on-error instead of taking down the whole job via the job-level timeout, which
+        # continue-on-error cannot soften.
+        timeout-minutes: 35
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
@@ -370,6 +465,7 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          RELEASE_TARGET_SHA: ${{ github.sha }}
 
       - name: Run F&B contracts with open-handle diagnostics
         id: run_fnb_contracts
@@ -414,16 +510,27 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
+      # #1124: path now points at RELEASE_GATES_EVIDENCE_ROOT (the same durable dir the matrix step
+      # itself was pointed at above), not the job-workspace-relative `.tmp/release-gates` -- one
+      # source of truth, not a mirror that can drift. `if-no-files-found` flipped from `ignore` to
+      # `error`: a missing artifact is itself real signal ("the matrix produced nothing"), and
+      # `ignore` is exactly what turned that into total silence on run 33241398956 -- an `error`
+      # here still can't block anything (continue-on-error, plus record_outcomes below reports it as
+      # a real failure instead of dropping it). retention-days raised 5->30 to match this file's
+      # other long-lived evidence uploads (build-android-manual.yml, compliance-preflight-sweep.yml)
+      # -- this is promotion evidence, not routine per-push scratch. The `steps.run_test_matrix...`
+      # guard on `if:` keeps a legitimately-skipped matrix (services never came up) from being
+      # reported as a missing-artifact failure it isn't.
       - name: Upload API test-matrix evidence
         id: upload_test_matrix_evidence
-        if: always()
+        if: always() && steps.run_test_matrix.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: dgfy-api-test-matrix-${{ github.sha }}
-          path: .tmp/release-gates/${{ github.sha }}/backend-test-matrix/**
-          if-no-files-found: ignore
-          retention-days: 5
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Stop service containers
         id: stop_services
@@ -639,6 +746,17 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # packages/web-core has no lint script/devDependencies of its own (ADR 0071 Decision 4
+      # [binding] -- it must never get its own node_modules or test runner), so coverage runs from
+      # dgfy-ims's already-installed ESLint via --resolve-plugins-relative-to, the same pattern the
+      # "Run shared F&B contract tests" step below already uses for web-core's test suite. #918.
+      - name: Run web-core lint
+        id: run_web_core_lint
+        working-directory: apps/dgfy-ims
+        run: npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .
+        continue-on-error: true
+        timeout-minutes: 5
+
       - name: Run shared F&B contract tests
         id: run_shared_fnb_contract_tests
         working-directory: apps/dgfy-ims
@@ -664,6 +782,7 @@ jobs:
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
+            Run web-core lint|${{ steps.run_web_core_lint.outcome }}
             Run shared F&B contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
@@ -803,6 +922,10 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # #1124: retention 5->30 and if-no-files-found ignore->error, matching the API test-matrix
+      # upload's own fix above and for the same reason -- a missing artifact is real signal, not
+      # something to swallow, and record_outcomes below reports it as a real failure instead of
+      # silently dropping it.
       - name: Upload F&B browser evidence
         id: upload_fnb_browser_evidence
         if: always()
@@ -813,8 +936,8 @@ jobs:
           path: |
             apps/dgfy-storefront/playwright-report/fnb-contract/**
             apps/dgfy-storefront/test-results/fnb-contract/**
-          if-no-files-found: ignore
-          retention-days: 5
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Record real per-step outcomes for advisory-failure reporting
         id: record_outcomes
@@ -958,13 +1081,35 @@ jobs:
   # output (set by that job's own "Record real per-step outcomes" step, from steps.<id>.outcome --
   # NOT the Actions API's steps[].conclusion, which is post-override and would never show a failure
   # here; see the workflow-level comment's #1066 RF-1 note for why the first version of this job was
-  # wrong) and files it where it won't be lost: one comment on #1063 (already the standing tracking
-  # issue for "this gate is unreliable, needs investigation"), not a new issue per run -- avoids
-  # issue-spam across retries while still leaving a paper trail to pick up later. Deduped per commit
-  # SHA (skips if #1063 already carries a comment for this SHA) so a re-run or a `workflow_dispatch`
-  # retry against the same commit doesn't pile up duplicates. The reporting step itself carries
-  # `continue-on-error: true` (#1066 RF-2) so a `gh` API hiccup here doesn't turn this job's own
-  # check-run red -- the one thing this job must never do is become a new blocking check itself.
+  # wrong) and files it where it won't be lost: one comment on the tracking issue, not a new issue
+  # per run -- avoids issue-spam across retries while still leaving a paper trail to pick up later.
+  # Deduped per commit SHA (skips if the tracking issue already carries a comment for this SHA) so a
+  # re-run or a `workflow_dispatch` retry against the same commit doesn't pile up duplicates.
+  #
+  # 2026-08-29 (#1124/#1165), two changes:
+  #   1. Replaced the `gh issue view`/`gh issue comment` shell-out with `actions/github-script@v7`.
+  #      `gh` is not installed on these self-hosted runners (`gh: command not found`, exit 127 --
+  #      confirmed live; there is no other use of `gh` anywhere in .github/workflows/ to have caught
+  #      this earlier) and the old step's `set -uo pipefail` (no `-e`) meant that failure was 100%
+  #      silent -- every advisory failure since this job was added has gone unreported. github-script
+  #      is a node20 JS action the runner already knows how to fetch (same mechanism as
+  #      actions/checkout and actions/upload-artifact, both of which demonstrably work here), needs
+  #      no external binary, and needs no `jq` (the old script depended on `gh`'s bundled `--jq`).
+  #   2. A dead job envelope is now itself reportable. Previously, a quality job that died mid-run
+  #      (its own job envelope killed, as observed live on run 33241398956) never reached its
+  #      "Record real per-step outcomes" step, so `outputs.real_failures` came back empty and this
+  #      job saw *nothing to report* -- exactly the run that promoted to `main` with zero quality
+  #      signal. Each job's `result` (via `needs.<job>.result`, which reflects the job's own
+  #      conclusion independent of whether record_outcomes ran) is now read alongside its
+  #      `real_failures` output, and a non-success/non-skipped result with no per-step detail is
+  #      reported as "job envelope did not complete" -- distinct from, and no less real than, a
+  #      per-step failure.
+  #   3. Target moved from #1063 to #1124 (parameterized via ADVISORY_TRACKING_ISSUE): #1063's own
+  #      root cause was found and fixed (PR #1067); #1124 is the current epic this evidence pipeline
+  #      serves.
+  # The reporting step itself still carries exactly one step-level `continue-on-error: true` (RF-2b,
+  # unchanged) so a GitHub API hiccup here doesn't turn this job's own check-run red -- the one thing
+  # this job must never do is become a new blocking check itself.
   report-advisory-failures:
     needs:
       - gate
@@ -974,21 +1119,37 @@ jobs:
       - frontend-pos-quality
       - frontend-storefront-quality
       - repository-quality
-    if: >-
-      always() && needs.gate.outputs.is_promotion == 'true' &&
-      needs.gate.outputs.is_staging_leg != 'true'
+    # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
+    # job has nothing to report when every job it depends on was itself skipped on the staging leg,
+    # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
     permissions:
       contents: read
       issues: write
+      # #1124: listJobsForWorkflowRun (the real, non-overridden job conclusion lookup this job's
+      # own step now makes, see its comment) needs read access to this run's own Actions data.
+      actions: read
     steps:
-      - name: Report real quality-job failures on #1063
+      # 2026-08-29 (#1124/#1165), live `workflow_dispatch` verification on PR #1167 caught a real
+      # design bug in this step's first version: `needs.<job>.result` is NOT the job's true
+      # conclusion when that job carries job-level `continue-on-error: true` (every quality job
+      # does, per the sanctioned #1063 shape) -- GitHub Actions overrides `result` to `success` for
+      # a downstream job's `needs` context regardless of what actually happened inside, confirmed
+      # live: `dgfy-api-quality`'s job envelope died mid-run on that dispatch (matrix step
+      # succeeded, job died 3s into the next step, real conclusion `failure`, steps after the
+      # matrix never ran) and this job still saw `needs.dgfy-api-quality.result == 'success'`. The
+      # REST Jobs API's own `.conclusion` field is NOT overridden the same way -- it matches the
+      # check-run shown in the UI -- so that's what this queries instead, replacing the `*_RESULT`
+      # env vars the first version relied on.
+      - name: Report real quality-job failures
+        id: report_failures
         continue-on-error: true
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ github.token }}
+          ADVISORY_TRACKING_ISSUE: '1124'
           RUN_ID: ${{ github.run_id }}
-          REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PR_URL: ${{ github.event.pull_request.html_url || '' }}
           DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}
@@ -997,51 +1158,174 @@ jobs:
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
           REPOSITORY_FAILURES: ${{ needs.repository-quality.outputs.real_failures }}
-        run: |
-          set -uo pipefail
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const trackingIssue = Number(process.env.ADVISORY_TRACKING_ISSUE);
+            const headSha = process.env.HEAD_SHA;
+            const runId = Number(process.env.RUN_ID);
+            const prUrl = process.env.PR_URL;
 
-          FAILURES=""
-          add_if_present() {
-            local job_name="$1" value="$2"
-            if [ -n "$value" ]; then
-              FAILURES="${FAILURES}- **${job_name}**: ${value}
-          "
-            fi
-          }
-          add_if_present "dgfy-api-quality" "$DGFY_API_FAILURES"
-          add_if_present "migration-runner-quality" "$MIGRATION_RUNNER_FAILURES"
-          add_if_present "frontend-ims-quality" "$IMS_FAILURES"
-          add_if_present "frontend-pos-quality" "$POS_FAILURES"
-          add_if_present "frontend-storefront-quality" "$STOREFRONT_FAILURES"
-          add_if_present "repository-quality" "$REPOSITORY_FAILURES"
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo,
+              run_id: runId,
+            });
+            const realConclusionOf = (jobName) => jobs.find((j) => j.name === jobName)?.conclusion;
 
-          if [ -z "$FAILURES" ]; then
-            echo "No real step failures reported by any quality job this run -- nothing to report."
-            exit 0
-          fi
+            const lines = [];
+            // #1124 RF (forbidden-token check, scripts/check-pr-quality-workflow.js): each call's
+            // second arg must be the SAME env var this job's real_failures output was assigned to
+            // above -- a swapped or misspelled reference here silently drops that job's findings
+            // instead of surfacing them, same class of bug #1066 RF-5 guarded against for the old
+            // shell form.
+            const addIfPresent = (jobName, failures) => {
+              if (failures && failures.trim()) {
+                lines.push(`- **${jobName}**: ${failures.trim()}`);
+                return;
+              }
+              const conclusion = realConclusionOf(jobName);
+              if (conclusion && conclusion !== 'success' && conclusion !== 'skipped') {
+                lines.push(`- **${jobName}**: job envelope did not complete (conclusion=\`${conclusion}\`) -- no per-step evidence was recorded for this run`);
+              }
+            };
+            addIfPresent('dgfy-api-quality', process.env.DGFY_API_FAILURES);
+            addIfPresent('migration-runner-quality', process.env.MIGRATION_RUNNER_FAILURES);
+            addIfPresent('frontend-ims-quality', process.env.IMS_FAILURES);
+            addIfPresent('frontend-pos-quality', process.env.POS_FAILURES);
+            addIfPresent('frontend-storefront-quality', process.env.STOREFRONT_FAILURES);
+            addIfPresent('repository-quality', process.env.REPOSITORY_FAILURES);
 
-          # --jq is gh's own bundled jq engine -- no standalone jq binary dependency.
-          ALREADY_REPORTED=$(gh issue view 1063 --json comments \
-            --jq ".comments[] | select(.body | contains(\"sha=${HEAD_SHA}\")) | .id" | head -1)
-          if [ -n "$ALREADY_REPORTED" ]; then
-            echo "Already reported for sha=${HEAD_SHA} (comment ${ALREADY_REPORTED}) -- skipping duplicate."
-            exit 0
-          fi
+            if (lines.length === 0) {
+              console.log('No real step failures or dead job envelopes reported by any quality job this run -- nothing to report.');
+              return;
+            }
 
-          {
-            echo "<!-- promotion-quality-gate-advisory-failure sha=${HEAD_SHA} run=${RUN_ID} -->"
-            echo "### promotion-quality-gate advisory failure(s) -- \`${HEAD_SHA}\`"
-            echo
-            echo "These quality jobs are advisory (\`continue-on-error: true\` on every step, #1066"
-            echo "correction) so this run did not block the merge -- but real steps failed. Filed"
-            echo "here automatically so it isn't lost; not a substitute for #1063's own root-cause."
-            echo
-            echo "Run: https://github.com/${REPO}/actions/runs/${RUN_ID}"
-            if [ -n "$PR_URL" ]; then
-              echo "PR: ${PR_URL}"
-            fi
-            echo
-            echo "$FAILURES"
-          } > /tmp/advisory-failure-comment.md
+            const marker = `sha=${headSha}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: trackingIssue,
+            });
+            const alreadyReported = comments.find((comment) => (comment.body || '').includes(marker));
+            if (alreadyReported) {
+              console.log(`Already reported for ${marker} (comment ${alreadyReported.id}) -- skipping duplicate.`);
+              return;
+            }
 
-          gh issue comment 1063 --body-file /tmp/advisory-failure-comment.md
+            const body = [
+              `<!-- promotion-quality-gate-advisory-failure ${marker} run=${runId} -->`,
+              `### promotion-quality-gate advisory failure(s) -- \`${headSha}\``,
+              '',
+              'These quality jobs are advisory (`continue-on-error: true` on every step, #1066',
+              'correction) so this run did not block the merge -- but real steps failed, or a job',
+              'envelope itself did not complete. Filed here automatically so it isn\'t lost; not a',
+              'substitute for this epic\'s own root-cause work.',
+              '',
+              `Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`,
+              ...(prUrl ? [`PR: ${prUrl}`] : []),
+              '',
+              ...lines,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: trackingIssue,
+              body,
+            });
+
+  # #1124/#1165: salvages dgfy-api-quality's test-matrix evidence when that job's own envelope dies
+  # mid-run, before "Upload API test-matrix evidence" (a step inside dgfy-api-quality itself) ever
+  # gets to run -- exactly run 33241398956's shape (the matrix step finished; the *next* step then
+  # killed the job 3s in; nothing downstream, including that upload step, ever ran). Reads from
+  # RELEASE_GATES_EVIDENCE_ROOT, the same durable, job-workspace-external directory
+  # dgfy-api-quality's matrix step was pointed at -- and, since #1124 also made the matrix script
+  # persist its JSON after every chunk instead of only at the very end, a mid-run kill now leaves a
+  # partial-but-valid artifact there for this job to pick up, not nothing.
+  #
+  # Only actually uploads when dgfy-api-quality did NOT really succeed -- on a clean pass, the
+  # normal in-job upload already covered it, and this job has nothing worth salvaging. No
+  # `actions/checkout` -- checkout would wipe the workspace this job depends on, and it needs no
+  # repo content of its own.
+  #
+  # 2026-08-29 (#1124/#1165), live `workflow_dispatch` verification on PR #1167: this job's own
+  # `if:` originally read `needs.dgfy-api-quality.result != 'success'` -- and never fired, even on
+  # a run where dgfy-api-quality's job envelope genuinely died mid-run (real conclusion `failure`,
+  # confirmed live). `needs.<job>.result` is overridden to `success` by that job's own job-level
+  # `continue-on-error: true` regardless of its real outcome -- the same GitHub Actions quirk
+  # report-advisory-failures' own comment now documents. A job's `if:` can only reference
+  # `needs`/`vars`/`github` contexts, not run arbitrary script -- there is no `if:`-level fix -- so
+  # the decision moved inside a step, which *can* call the REST Jobs API for the real, non-
+  # overridden conclusion the same way report-advisory-failures does.
+  #
+  # Two assumptions, stated plainly rather than silently relied on: (a) exactly one runner carries
+  # the `sieitz-lg` label, so this job schedules onto the same box dgfy-api-quality ran on --
+  # already relied on elsewhere in this file for the fixed 3306/6379 service-container ports; (b)
+  # `_work`'s parent directory is not swept between jobs on that runner. If either assumption breaks,
+  # this job finds nothing, uploads nothing (`if-no-files-found: warn`, not `error` -- a missing
+  # salvage directory is the expected case on a healthy run, not a failure), and the situation
+  # degrades to exactly today's behavior rather than turning red.
+  #
+  # What this still cannot recover: the runner's own job log for the killed job (the HTTP 404
+  # observed live on run 33241398956's dgfy-api-quality job). Nothing in a workflow file can fix
+  # that -- the log is written by the very process that died. Said outright so this job isn't read
+  # as full recovery.
+  salvage-api-evidence:
+    needs: [gate, dgfy-api-quality]
+    # 2026-08-31 (#1253): is_staging_leg exclusion added -- this job never carried it even before
+    # #1124/#1165 (it was added by that same commit), but under #1253's intent (the staging leg
+    # never runs this gate at all) it has nothing to salvage when dgfy-api-quality itself was
+    # skipped; without this it would otherwise burn a 5-minute-timeout runner slot salvaging
+    # evidence for a job that never ran (dgfy-api-quality.conclusion == 'skipped' would read as
+    # needing salvage, per the needsSalvage check below).
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # Independently recomputes the same durable path dgfy-api-quality's matrix step resolved --
+      # this is a separate job, so it has no access to that job's $GITHUB_ENV. Deterministic given
+      # the same run id/attempt and the two jobs sharing a runner (see the assumptions above), so
+      # recomputing here is correct, not fragile. `dirname "$RUNNER_WORKSPACE"` rather than a
+      # literal `${{ runner.workspace }}/..` -- confirmed live (#1124/#1165, PR #1167 dispatch
+      # verification) that actions/upload-artifact@v4 rejects any `path:` glob containing `..`.
+      - name: Resolve durable evidence path
+        id: resolve_evidence_path
+        continue-on-error: true
+        run: echo "RELEASE_GATES_EVIDENCE_ROOT=$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_ENV"
+
+      - name: Check dgfy-api-quality's real job conclusion
+        id: check_api_quality_envelope
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          RUN_ID: ${{ github.run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo,
+              run_id: Number(process.env.RUN_ID),
+            });
+            const job = jobs.find((j) => j.name === 'dgfy-api-quality');
+            const needsSalvage = Boolean(job) && job.conclusion !== 'success';
+            core.setOutput('needs_salvage', String(needsSalvage));
+            console.log(`dgfy-api-quality real conclusion: ${job?.conclusion ?? 'not found'} -> needs_salvage=${needsSalvage}`);
+
+      - name: Upload salvaged API test-matrix evidence
+        id: upload_salvaged_evidence
+        if: steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dgfy-api-test-matrix-salvaged-${{ github.sha }}
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Sweep salvaged evidence
+        id: sweep_salvaged_evidence
+        if: always()
+        continue-on-error: true
+        run: rm -rf "${{ env.RELEASE_GATES_EVIDENCE_ROOT }}"

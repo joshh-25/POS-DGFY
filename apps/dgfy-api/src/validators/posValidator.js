@@ -10,11 +10,12 @@ const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
 const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
-const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+// 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
+const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'];
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
-const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
+const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
 
@@ -187,6 +188,15 @@ const checkoutPosSchema = Joi.object({
     discount_beneficiary: discountBeneficiarySchema.optional(),
     discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
+    // #1239 (Phase 222): declared so `stripUnknown: true` (see validateSchema below) stops
+    // deleting it. Deliberately permissive - validity is not decided here. posUseCases.js:2982-2990
+    // resolves the code and hard-rejects an unknown one with a reason-coded
+    // 422 AFFILIATE_CODE_INVALID; a stricter shape here would produce a second, different error
+    // contract for the same user mistake. No .uppercase() (hashAffiliateShareCode already
+    // trim/uppercases, dgfyAffiliateRepository.js:60) and no .pattern() (the AF-XXXXXX format is a
+    // generation detail, not a request contract). '' / null are accepted because the use case maps
+    // them to "no attribution", never to an error.
+    affiliate_code: Joi.string().trim().max(40).allow('', null).optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
@@ -478,6 +488,13 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+// Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
+// GET has no body at all.
+const balancePaymentProofParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    payment_id: Joi.number().integer().positive().required()
+});
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -759,6 +776,19 @@ const updateOnlineOrderStatusSchema = Joi.object({
     })
 });
 
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. `.and(...)` because a
+// pin is a pair or it is nothing -- a half-updated pin is worse than none. `change_reason` is
+// required: this is a staff mutation of customer-supplied data on a money-bearing order with no
+// customer confirmation loop, so an unexplained change is not acceptable. `precision(8)` matches
+// DECIMAL(10,8)/DECIMAL(11,8) on the model.
+const updateOnlineOrderDeliveryAddressSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    delivery_address: Joi.string().trim().min(3).max(500).required(),
+    delivery_latitude: Joi.number().min(-90).max(90).precision(8).allow(null).optional(),
+    delivery_longitude: Joi.number().min(-180).max(180).precision(8).allow(null).optional(),
+    change_reason: Joi.string().trim().min(3).max(255).required()
+}).and('delivery_latitude', 'delivery_longitude');
+
 const updateDeliveryJobStatusSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     status: Joi.string().valid('assigned', 'picked_up', 'delivered').required()
@@ -778,18 +808,22 @@ const collectCashPickupOrderSchema = Joi.object({
 
 // Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance. Distinct
 // from collectCashPickupOrderSchema above -- that one is the plain-COD path and is deliberately
-// untouched. Method set is ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
-// store-owned terminal, never PayMongo card.
+// untouched. Method set was ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
+// store-owned terminal, never PayMongo card. Phase 202 (#1085) adds `cheque` as a sixth method --
+// ADR 0077 scoped-supersedes clause 4 for exactly this widening, ADR 0063 itself is otherwise
+// unchanged.
 //
 // The cash/non-cash split is structural, not cosmetic: cash is TENDERED (change is possible, so
 // the server computes it from cash_received), while a merchant-owned digital tender is an EXACT
 // amount the client must echo back. `manual_payment_received` is ADR 0063 clause 6 [binding]'s
 // explicit request-side confirmation -- required for every non-cash method and forbidden as a
-// substitute for it on cash, so it can never be sent as a blanket "trust me" flag.
+// substitute for it on cash, so it can never be sent as a blanket "trust me" flag. Cheque falls on
+// the non-cash branch by construction, so it inherits the same fail-closed attestation and the
+// same optional `payment_reference` (the cheque number) with no new branch or guard.
 const recordOrderBalancePaymentSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
-    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer').required(),
+    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque').required(),
     cash_received: Joi.number().positive().precision(4).when('payment_method', {
         is: 'cash',
         then: Joi.required(),
@@ -1053,6 +1087,30 @@ const employeeUpdateSchema = Joi.object({
     is_active: Joi.boolean().optional()
 }).min(1);
 
+const deliveryPersonnelRegistryQuerySchema = Joi.object({
+    include_inactive: Joi.boolean().truthy('true').falsy('false').default(true)
+});
+
+const deliveryPersonnelParamSchema = Joi.object({
+    deliveryPersonnelId: Joi.number().integer().positive().required()
+});
+
+const deliveryPersonnelCreateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).required(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().default(true)
+});
+
+const deliveryPersonnelUpdateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).optional(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().optional()
+}).min(1);
+
 const employeeCreditAccountUpdateSchema = Joi.object({
     is_eligible: Joi.boolean().optional(),
     credit_limit: Joi.number().min(0).precision(4).allow(null).optional(),
@@ -1184,11 +1242,13 @@ export const validateSplitAllocationReversal = validateSchema(splitAllocationRev
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validateUpdateOnlineOrderDeliveryAddress = validateSchema(updateOnlineOrderDeliveryAddressSchema, 'body', 'validatedData');
 export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
+export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
@@ -1213,6 +1273,10 @@ export const validateEmployeeParam = validateSchema(employeeParamSchema, 'params
 export const validateEmployeeListQuery = validateSchema(employeeListQuerySchema, 'query', 'validatedQuery');
 export const validateEmployeeCreate = validateSchema(employeeCreateSchema, 'body', 'validatedData');
 export const validateEmployeeUpdate = validateSchema(employeeUpdateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelRegistryQuery = validateSchema(deliveryPersonnelRegistryQuerySchema, 'query', 'validatedQuery');
+export const validateDeliveryPersonnelParam = validateSchema(deliveryPersonnelParamSchema, 'params', 'validatedParams');
+export const validateDeliveryPersonnelCreate = validateSchema(deliveryPersonnelCreateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelUpdate = validateSchema(deliveryPersonnelUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditAccountUpdate = validateSchema(employeeCreditAccountUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditRepayment = validateSchema(employeeCreditRepaymentSchema, 'body', 'validatedData');
 export const validateEmployeeCreditOutstandingAdjustment = validateSchema(employeeCreditOutstandingAdjustmentSchema, 'body', 'validatedData');
