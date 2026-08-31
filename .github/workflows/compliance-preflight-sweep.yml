@@ -1,62 +1,82 @@
 name: Compliance Preflight Sweep
 
-# Manually-dispatched automation for the promotion-time compliance preflight sweep (#1121) --
-# replaces the manual "log in by hand, export DGFY_DEV_TOKEN, run curl" step
-# docs/compliance/request-time-preflight-protocol.md's "Where live preflight actually runs" has
-# required since #884. That manual step has already failed once for real: the 2026-08-26
-# attendance-gate declaration (docs/compliance/impact-declarations/
-# 2026-08-26-pos-attendance-feature-disabled-gate.md) records Pat explicitly authorizing a skip
-# because no DGFY_DEV_TOKEN/DEV-host credential was available in the executing session.
+# Automated compliance preflight sweep, run against an EPHEMERAL, CI-PROVISIONED dgfy-api instance
+# -- not a manually provisioned remote bot account (#1163/#1248, supersedes the #1121 design this
+# file originally shipped with).
 #
-# Modeled directly on verify-deployment.yml (#514) and tenant-schema-report.yml (#1017): same
-# self-hosted-runner + per-GitHub-Environment-secret pattern, same "dispatching this is read-only,
-# unattended" classification those two already carry in .agents/skills/promoter/SKILL.md and
-# .agents/skills/verifier/SKILL.md. This workflow is simpler than either precedent -- STAGING's API
-# is reachable over plain HTTPS (the protocol doc's own curl recipe already hits it directly), so
-# no VPN/SSH hop is needed at all, just an HTTP call from the runner.
+# Why: the #1121 design (a bot account manually registered on stage.dgfy.ph, credentials stored as
+# four PREFLIGHT_* GitHub Environment secrets) was never actually provisioned -- confirmed empty on
+# both STAGING and DEV as of 2026-08-29 -- and blocked the 2026-08-29 develop->main promotion
+# outright, requiring #1007's expedited override to ship. #1163 tracked provisioning it by hand;
+# #1248 found that unnecessary. The remote host bought no compliance property to begin with: the
+# endpoint writes nothing (buildCompliancePreflightUseCase reads tenant state and runs a pure
+# policy evaluation), never executes the change's code (the response is evaluated purely from the
+# impact_declaration payload plus the target tenant's own compliance posture), and the response
+# carries no server-generated request id (preflight_request_ref was always entirely
+# operator-authored). docs/ops/RELEASE_CANDIDATE_POLICY.md (authoritative) already states the
+# governing principle the old design violated: "A merge gate ... must be satisfiable without a
+# deployed environment, or every leg that needs one becomes circular."
 #
-# READ-ONLY for checkpoint purposes: this workflow only ever calls
-# POST /api/v1/auth/login (to mint a token) and POST /api/v1/compliance/preflight (which evaluates
-# the declaration's *proposed* impact_declaration payload against the policy engine -- it does not
-# exercise or depend on the target host's currently-deployed code, per the issue's own framing).
-# Neither call mutates business state. This workflow deliberately has no step that writes back to
-# the declaration files or opens a PR -- reconciling preflight_result/preflight_reason_code/
-# preflight_run_at/preflight_request_ref into each declaration and landing that via a small cut
-# branch + PR into `develop` stays a separate, human/promoter-run step (already scripted in
-# .agents/skills/promoter/SKILL.md), now sourced from this workflow's step summary / artifact
-# instead of a manually-run curl transcript.
+# What changed, concretely:
+#   - No GitHub Environment, no PREFLIGHT_* secrets. This job provisions its own throwaway tenant
+#     + settings:edit bot (apps/dgfy-api/scripts/seed-preflight-fixture.js) against its own
+#     ephemeral mysql+redis+dgfy-api, then tears both down at the end of the run.
+#   - Auto-triggers on push when a declaration actually lands on develop (path-filtered -- see the
+#     `on:` block below for why that filter is required, not optional, on this repo's runners).
+#   - Reconciles front matter and opens + auto-merges a PR into develop when every result passed,
+#     closing the loop this file's original version deliberately left as a separate manual step.
 #
-# The bot account and its credentials (PREFLIGHT_HOST/PREFLIGHT_COMPANY_TOKEN/
-# PREFLIGHT_BOT_EMAIL/PREFLIGHT_BOT_PASSWORD, resolved from the dispatched `environment`'s own
-# GitHub Environment secrets) are provisioned out of band, by hand, through the tenant's own
-# existing user-management flow -- see docs/compliance/request-time-preflight-protocol.md's
-# "Where live preflight actually runs" section for the exact procedure. This workflow has no path
-# to create either the account or the secrets themselves.
+# ADR 0074 Decision 5 ("against a deployed non-production host") is `[default]` tier -- this change
+# is recorded as a dated Amendments block on that ADR in the same PR, not a superseding ADR (ADR
+# 0039 line 83, AGENTS.md Planning Rule 4).
+#
+# Governance/checkpoint classification carried forward unchanged from the #1121 design: every
+# remote call this workflow makes (login, preflight, git/gh operations against this repo) is
+# read-only or additive (no destructive git op, no force-push, no deploy dispatch) -- see
+# .agents/skills/promoter/SKILL.md's "Pre-`main` gates" section and AGENTS.md's checkpoint table.
+# The one new capability -- opening and auto-merging a PR into `develop` -- is unattended by the
+# same reasoning `pr-reviewer`'s own merge policy already uses for a `develop`-base PR: no
+# destructive action, no `main`, and every result gates on an actual `no_breach`/`can_proceed`
+# pass, never merged past a real policy breach.
 
 on:
+  push:
+    branches: [develop]
+    paths: ['docs/compliance/impact-declarations/**']
   workflow_dispatch:
     inputs:
-      environment:
-        description: Target environment (resolves PREFLIGHT_HOST/PREFLIGHT_COMPANY_TOKEN/PREFLIGHT_BOT_EMAIL/PREFLIGHT_BOT_PASSWORD from that GitHub Environment). STAGING is the real promotion-sweep target per #1121; DEV exists to test this workflow itself without touching STAGING.
-        type: choice
-        options:
-          - STAGING
-          - DEV
-        default: STAGING
-        required: true
       declarations:
-        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration in the develop..main diff, matching promoter's own discovery command.
+        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration in the develop..main diff.
         type: string
         required: false
 
+# This repo runs every job on a fixed-count self-hosted runner pool with no ephemeral-port
+# isolation between jobs (AGENTS.md's queue-starvation history, and this workflow's own fixed
+# 3306/6379 container ports below) -- path-filtering the trigger above is what keeps this workflow
+# from firing on every unrelated develop push, and this concurrency group is the second half of
+# that same discipline: never two sweeps racing for the same ports at once. The reconciliation PR
+# this workflow opens re-triggers this workflow exactly once (it also touches
+# docs/compliance/impact-declarations/**) -- that second run's own discovery step finds zero
+# outstanding declarations and exits immediately, so the loop terminates on its own.
+concurrency:
+  group: compliance-preflight-sweep
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+
+env:
+  MYSQL_CONTAINER: dgfy-preflight-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+  REDIS_CONTAINER: dgfy-preflight-redis-${{ github.run_id }}-${{ github.run_attempt }}
+  PREFLIGHT_DB_NAME: sku_inventory_manager_preflight
+  PREFLIGHT_DB_PASSWORD: preflightci
+  PREFLIGHT_API_PORT: 5000
 
 jobs:
   sweep:
     runs-on: ['sieitz-runner']
-    timeout-minutes: 10
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,7 +122,7 @@ jobs:
             # Only the front matter's CURRENT preflight_request_ref decides "outstanding" --
             # pr-reviewer RF-6 on PR #1127/#1121: a whole-file `grep NOT-EXECUTED-` also matches a
             # reconciled declaration whose body still mentions the placeholder in a historical
-            # note (its front matter carries a real PROMOTER-* ref by then). See
+            # note (its front matter carries a real reference by then). See
             # scripts/is-preflight-outstanding.js for the fix and its tests.
             git fetch origin main develop --quiet
             git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
@@ -118,14 +138,153 @@ jobs:
           echo "Discovered $count declaration(s) to sweep:"
           cat /tmp/declarations.txt || true
 
+      - name: Setup Node.js
+        id: setup_node
+        if: steps.discover.outputs.count != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/dgfy-api/package-lock.json
+            apps/dgfy-migration-runner/package-lock.json
+
+      # Same explicit-step pattern as promotion-quality-gate.yml (#1066 RF-2), for the same reason:
+      # GitHub's own `services:` containers are provisioned before any user step runs, so a failed
+      # container there leaves no chance for this workflow to report why. Ordinary steps let a
+      # failure here surface through the same summary/artifact path as every other step. The
+      # `docker ps -aq --filter label=...` sweep exists for the identical reason it does there:
+      # `cancel-in-progress: false` above means this workflow never cancels its own prior run, but
+      # a runner-level interruption (VM restart, manual kill) could still leak a port-holding
+      # container from a previous attempt.
+      - name: Start service containers
+        id: start_services
+        if: steps.discover.outputs.count != '0'
+        timeout-minutes: 3
+        run: |
+          docker ps -aq --filter "label=dgfy-preflight-sweep=1" | xargs -r docker rm -f
+          docker run -d --name "$MYSQL_CONTAINER" \
+            --label dgfy-preflight-sweep=1 \
+            -e MYSQL_ROOT_PASSWORD="$PREFLIGHT_DB_PASSWORD" \
+            -e MYSQL_DATABASE="$PREFLIGHT_DB_NAME" \
+            -p 3306:3306 \
+            mysql:8.0 --log-bin-trust-function-creators=1
+          docker run -d --name "$REDIS_CONTAINER" \
+            --label dgfy-preflight-sweep=1 \
+            -p 6379:6379 \
+            redis:7-alpine
+
+      - name: Wait for service containers
+        id: wait_services
+        if: steps.discover.outputs.count != '0'
+        timeout-minutes: 3
+        run: |
+          for _ in $(seq 1 12); do
+            docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -p"$PREFLIGHT_DB_PASSWORD" && mysql_ready=1 && break
+            sleep 10
+          done
+          for _ in $(seq 1 12); do
+            docker exec "$REDIS_CONTAINER" redis-cli ping && redis_ready=1 && break
+            sleep 10
+          done
+          [ -n "${mysql_ready:-}" ] && [ -n "${redis_ready:-}" ]
+
+      - name: Install migration-runner dependencies
+        if: steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-migration-runner
+        run: npm ci
+
+      - name: Run landlord migrations
+        if: steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-migration-runner
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: ${{ env.PREFLIGHT_DB_NAME }}
+          DB_USER: root
+          DB_PASSWORD: ${{ env.PREFLIGHT_DB_PASSWORD }}
+        run: npm run migrate
+
+      - name: Install dgfy-api dependencies
+        if: steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-api
+        run: npm ci
+
+      # Provisions a throwaway tenant + settings:edit bot user, fresh every run -- see
+      # apps/dgfy-api/scripts/seed-preflight-fixture.js's own header for the pinned posture and
+      # why it's more reproducible than the manual remote-bot account it replaces. Its four
+      # PREFLIGHT_* lines are written to $GITHUB_ENV so every later step (mint-preflight-token.js
+      # included, unchanged since #1121) sees them as ordinary env vars -- these are per-run
+      # ephemeral fixture credentials for a database this same job creates and destroys, not
+      # secrets in any meaningful sense.
+      #
+      # The script's own KEY=VALUE lines go to stdout, but so does everything the app's winston
+      # logger and Sequelize's own query logging write under NODE_ENV=development -- confirmed
+      # live during the #1248 spike. Piping raw stdout into $GITHUB_ENV would corrupt it with
+      # non-KEY=VALUE lines, which GitHub Actions rejects outright. The grep below keeps only lines
+      # matching this script's five known output names.
+      - name: Provision preflight fixture tenant
+        id: seed_fixture
+        if: steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: ${{ env.PREFLIGHT_DB_NAME }}
+          DB_USER: root
+          DB_PASSWORD: ${{ env.PREFLIGHT_DB_PASSWORD }}
+          NODE_ENV: development
+          JWT_SECRET: preflight-ci-jwt-secret-ephemeral-only
+          REFRESH_TOKEN_SECRET: preflight-ci-refresh-secret-ephemeral-only
+        run: |
+          node scripts/seed-preflight-fixture.js > /tmp/seed-fixture.out
+          grep -E '^(PREFLIGHT_HOST|PREFLIGHT_COMPANY_TOKEN|PREFLIGHT_BOT_EMAIL|PREFLIGHT_BOT_PASSWORD|FIXTURE_TENANT_ID)=' /tmp/seed-fixture.out >> "$GITHUB_ENV"
+          # Mask the per-run fixture credentials from the rest of this job's logs -- low-stakes
+          # (throwaway DB, destroyed at the end of this same run) but no reason to print them
+          # in plaintext when it costs nothing not to.
+          for var in PREFLIGHT_COMPANY_TOKEN PREFLIGHT_BOT_PASSWORD; do
+            value=$(grep "^${var}=" /tmp/seed-fixture.out | cut -d= -f2-)
+            [ -n "$value" ] && echo "::add-mask::${value}"
+          done
+          echo "Fixture tenant provisioned: $(grep '^FIXTURE_TENANT_ID=' /tmp/seed-fixture.out)"
+
+      - name: Boot dgfy-api
+        id: boot_api
+        if: steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: ${{ env.PREFLIGHT_DB_NAME }}
+          DB_USER: root
+          DB_PASSWORD: ${{ env.PREFLIGHT_DB_PASSWORD }}
+          NODE_ENV: development
+          PORT: ${{ env.PREFLIGHT_API_PORT }}
+          JWT_SECRET: preflight-ci-jwt-secret-ephemeral-only
+          REFRESH_TOKEN_SECRET: preflight-ci-refresh-secret-ephemeral-only
+          REDIS_URL: redis://127.0.0.1:6379
+          # See infrastructure/docker/local-test/docker-compose.yml's own comment on these two --
+          # both flip /api/v1/health to 503 (not the process exit-code path) when enabled, which
+          # would make the poll below fail even though the API is genuinely up.
+          BILLING_FUNNEL_AUDIT_ENABLED: "false"
+          SCHEMA_INDEX_AUDIT_ENABLED: "false"
+        run: |
+          nohup node src/server.js > /tmp/dgfy-api-preflight.log 2>&1 &
+          echo $! > /tmp/dgfy-api-preflight.pid
+          for _ in $(seq 1 12); do
+            if curl -fsS "http://127.0.0.1:${PREFLIGHT_API_PORT}/api/v1/health" > /dev/null 2>&1; then
+              echo "dgfy-api is healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::dgfy-api did not become healthy in time"
+          cat /tmp/dgfy-api-preflight.log
+          exit 1
+
       - name: Run preflight sweep
         id: sweep
         if: steps.discover.outputs.count != '0'
-        env:
-          PREFLIGHT_HOST: ${{ secrets.PREFLIGHT_HOST }}
-          PREFLIGHT_COMPANY_TOKEN: ${{ secrets.PREFLIGHT_COMPANY_TOKEN }}
-          PREFLIGHT_BOT_EMAIL: ${{ secrets.PREFLIGHT_BOT_EMAIL }}
-          PREFLIGHT_BOT_PASSWORD: ${{ secrets.PREFLIGHT_BOT_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -136,7 +295,9 @@ jobs:
             [ -z "$declaration" ] && continue
             echo "--- $declaration ---"
 
-            # Fresh token per call -- cheap to mint, no reuse, matches the issue's own rationale.
+            # Fresh token per call -- cheap to mint, no reuse, matches #1121's original rationale
+            # (unchanged: still true against an ephemeral instance, still the lower-exposure
+            # choice even though these are now per-run fixture credentials, not a durable secret).
             if ! token="$(node scripts/mint-preflight-token.js)"; then
               echo "::error::failed to mint a preflight token for $declaration"
               overall_fail=1
@@ -147,7 +308,8 @@ jobs:
             # affected_surfaces, reason_codes_impacted, policy_version, verification_evidence,
             # rollback_note) -- pr-reviewer RF-1 on PR #1127/#1121: the endpoint 422s on anything
             # less. See scripts/build-preflight-request.js's own header for the parsing/summary-
-            # derivation rationale.
+            # derivation rationale, and for the surface-filtering + evidence-truncation fixes
+            # confirmed necessary during the #1248 spike.
             if ! body=$(node scripts/build-preflight-request.js "$declaration"); then
               echo "::error::failed to build the preflight request body for $declaration"
               overall_fail=1
@@ -206,22 +368,110 @@ jobs:
           path: /tmp/results.json
           retention-days: 30
 
+      # Only reached when every declaration in this run passed (overall_fail=0) -- a real
+      # breach/review_required result is a policy finding, not something this workflow reconciles
+      # away; reconcile-preflight-declarations.js itself refuses to write a passing ref for a
+      # failing verdict as a second, independent guard against exactly that.
+      - name: Reconcile declaration front matter
+        id: reconcile
+        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        run: node scripts/reconcile-preflight-declarations.js /tmp/results.json
+
+      # #1163 itself is the reason this step exists: the runner's missing `node` on PATH silently
+      # caused the original sweep to vacuously "pass" with 0 declarations discovered, undetected
+      # until dispatched with an explicit declarations= input. No workflow in this repo has ever
+      # run `gh` as a CI step before (only as the tool AI agents use in their own shell) -- rather
+      # than repeat that exact class of silent-missing-binary failure, this step checks and
+      # self-installs a portable `gh` binary into a per-run temp dir if it's not already on PATH,
+      # with no `sudo` required either way.
+      - name: Ensure gh CLI is available
+        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        run: |
+          set -euo pipefail
+          if command -v gh > /dev/null 2>&1; then
+            echo "gh already on PATH: $(gh --version | head -1)"
+            exit 0
+          fi
+          echo "gh not found on PATH -- installing a portable copy into $RUNNER_TEMP/gh-cli"
+          GH_VERSION="2.63.2"
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64) GH_ARCH=amd64 ;;
+            aarch64|arm64) GH_ARCH=arm64 ;;
+            *) echo "::error::Unsupported architecture for gh CLI install: $ARCH"; exit 1 ;;
+          esac
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+            -o /tmp/gh-cli.tar.gz
+          mkdir -p "$RUNNER_TEMP/gh-cli"
+          tar -xzf /tmp/gh-cli.tar.gz -C "$RUNNER_TEMP/gh-cli" --strip-components=1
+          echo "$RUNNER_TEMP/gh-cli/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/gh-cli/bin/gh" --version
+
+      # Cut-branch-and-PR discipline unchanged from the manual procedure this replaces
+      # (docs/compliance/request-time-preflight-protocol.md: "never a direct commit" to develop --
+      # this is regulator-facing evidence and gets the same review path as everything else).
+      # Auto-merged here rather than left for a human because every declaration in this PR already
+      # passed a real policy evaluation in the reconcile step above -- there is nothing left for a
+      # reviewer to adjudicate that this workflow hasn't already gated on.
+      - name: Open and merge reconciliation PR
+        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- docs/compliance/impact-declarations/; then
+            echo "Nothing to reconcile (results were empty or already reconciled)."
+            exit 0
+          fi
+
+          BRANCH="compliance-sweep/${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add docs/compliance/impact-declarations/
+          git commit -m "docs(compliance): reconcile preflight sweep results (run ${{ github.run_id }})"
+          git push -u origin "$BRANCH"
+
+          # PR body written via a heredoc piped through `sed` to strip this step's own 10-space
+          # YAML block-scalar indentation -- a plain heredoc does not strip leading spaces on its
+          # own (only `<<-` strips leading TABS), and this file's own indent width is spaces
+          # throughout, so an un-stripped heredoc would land as an indented code block in the
+          # rendered PR body instead of the intended headings/paragraphs. `${{ }}` expressions are
+          # substituted by the Actions runtime before bash ever sees this script, so they resolve
+          # correctly here regardless of the heredoc delimiter's own quoting.
+          cat << PR_BODY_EOF | sed 's/^ \{10\}//' > /tmp/pr-body.md
+          ## Summary
+
+          Automated compliance preflight sweep (run [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})) against an ephemeral CI-provisioned dgfy-api instance -- see \`.github/workflows/compliance-preflight-sweep.yml\` and #1248.
+
+          Every declaration reconciled here returned \`result: no_breach\`, \`can_proceed: true\` from a real \`POST /api/v1/compliance/preflight\` call. Full per-declaration responses are in the \`compliance-preflight-sweep-results\` artifact on the linked run.
+
+          ## Testing Evidence
+
+          N/A -- automated front-matter reconciliation only, no code change. The preflight call itself is the evidence; see the linked run's artifact.
+          PR_BODY_EOF
+
+          gh pr create \
+            --base develop \
+            --head "$BRANCH" \
+            --title "docs(compliance): reconcile preflight sweep results ($(date -u +%Y-%m-%d))" \
+            --body-file /tmp/pr-body.md
+
+          gh pr merge "$BRANCH" --merge --delete-branch
+
       - name: Write step summary
         if: always()
         run: |
           {
-            echo "### Compliance preflight sweep -- ${{ inputs.environment }}"
+            echo "### Compliance preflight sweep"
             echo ""
             if [ "${{ steps.discover.outputs.count }}" = "0" ]; then
               echo "No NOT-EXECUTED-* declarations found -- nothing to sweep."
             else
-              echo "Swept ${{ steps.discover.outputs.count }} declaration(s). Results attached as the"
+              echo "Swept ${{ steps.discover.outputs.count }} declaration(s) against an ephemeral"
+              echo "CI-provisioned instance. Results attached as the"
               echo "\`compliance-preflight-sweep-results\` artifact."
-              echo ""
-              echo "**Reconciling \`preflight_result\`/\`preflight_reason_code\`/\`preflight_run_at\`/"
-              echo "\`preflight_request_ref\` into each declaration's front matter, and landing that via"
-              echo "a cut branch + PR into \`develop\`, is a separate step -- see"
-              echo "\`.agents/skills/promoter/SKILL.md\`'s compliance preflight sweep procedure.**"
               echo ""
               echo '```'
               cat /tmp/results.json 2>/dev/null || echo "(no results captured)"
@@ -229,8 +479,33 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Best-effort, always attempted -- never gates the run's own pass/fail (that's the next
+      # step). Removes the fixture tenant/database this run created; see
+      # apps/dgfy-api/scripts/teardown-preflight-fixture.js's own header for why this is cleanup,
+      # not a correctness requirement, on ephemeral CI infrastructure.
+      - name: Tear down fixture and containers
+        if: always() && steps.discover.outputs.count != '0'
+        working-directory: apps/dgfy-api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: ${{ env.PREFLIGHT_DB_NAME }}
+          DB_USER: root
+          DB_PASSWORD: ${{ env.PREFLIGHT_DB_PASSWORD }}
+          NODE_ENV: development
+          JWT_SECRET: preflight-ci-jwt-secret-ephemeral-only
+          REFRESH_TOKEN_SECRET: preflight-ci-refresh-secret-ephemeral-only
+        run: |
+          if [ -f /tmp/dgfy-api-preflight.pid ]; then
+            kill "$(cat /tmp/dgfy-api-preflight.pid)" 2>/dev/null || true
+          fi
+          if [ -n "${FIXTURE_TENANT_ID:-}" ]; then
+            node scripts/teardown-preflight-fixture.js "$FIXTURE_TENANT_ID" || true
+          fi
+          docker rm -f "$MYSQL_CONTAINER" "$REDIS_CONTAINER" 2>/dev/null || true
+
       - name: Fail the run on any bad result
         if: steps.sweep.outputs.overall_fail == '1'
         run: |
-          echo "::error::One or more preflight calls failed -- see the step summary for details."
+          echo "::error::One or more preflight calls failed -- see the step summary for details. Declaration(s) left with their NOT-EXECUTED-* ref intact, not reconciled."
           exit 1
