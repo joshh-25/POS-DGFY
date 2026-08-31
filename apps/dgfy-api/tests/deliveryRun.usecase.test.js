@@ -6,7 +6,11 @@ import {
     buildUpdateDeliveryRunUseCase,
     buildSetDeliveryRunPersonnelUseCase
 } from '../src/modules/pos/usecases/deliveryRunUseCases.js';
-import { createDeliveryRunTestHarness, runInTenantContext } from './testHelpers/deliveryRunTestHarness.js';
+import {
+    createDeliveryRunTestHarness,
+    createLocationScopeResolver,
+    runInTenantContext
+} from './testHelpers/deliveryRunTestHarness.js';
 
 describe('Delivery run use cases (Phase 225)', () => {
     it('creates a draft run with a resolved location scope', async () => {
@@ -50,8 +54,11 @@ describe('Delivery run use cases (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         addOrder({ orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id });
 
-        const useCase = buildListDeliveryRunsUseCase({ deliveryRunRepository });
-        const result = await useCase({ query: {} });
+        const useCase = buildListDeliveryRunsUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+        const result = await useCase({ query: {}, user: { user_id: 12 } });
 
         expect(result.success).toBe(true);
         expect(result.data.items).toHaveLength(1);
@@ -60,9 +67,12 @@ describe('Delivery run use cases (Phase 225)', () => {
 
     it('returns 404 for a missing run on get', async () => {
         const { deliveryRunRepository } = createDeliveryRunTestHarness();
-        const useCase = buildGetDeliveryRunUseCase({ deliveryRunRepository });
+        const useCase = buildGetDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
-        const result = await useCase({ deliveryRunId: 999 });
+        const result = await useCase({ deliveryRunId: 999, user: { user_id: 12 } });
 
         expect(result.success).toBe(false);
         expect(result.error.details.reason_code).toBe('DELIVERY_RUN_NOT_FOUND');
@@ -71,7 +81,10 @@ describe('Delivery run use cases (Phase 225)', () => {
     it('updates label/notes/status but refuses once dispatched', async () => {
         const { deliveryRunRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
-        const useCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const updated = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -95,7 +108,11 @@ describe('Delivery run use cases (Phase 225)', () => {
         const harness = createDeliveryRunTestHarness();
         const { posRepository, deliveryRunRepository } = harness;
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
-        const useCase = buildSetDeliveryRunPersonnelUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildSetDeliveryRunPersonnelUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -118,7 +135,11 @@ describe('Delivery run use cases (Phase 225)', () => {
         const harness = createDeliveryRunTestHarness();
         const { posRepository, deliveryRunRepository } = harness;
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
-        const useCase = buildSetDeliveryRunPersonnelUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildSetDeliveryRunPersonnelUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -133,5 +154,88 @@ describe('Delivery run use cases (Phase 225)', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
+    });
+});
+
+// RF-1 fix (PR #1276 review): a POS user scoped to location A must never be able to list,
+// retrieve, update, or set personnel on a run belonging to location B, even with a valid
+// pos:view/pos:transact permission grant. Actor (user 12) is scoped to location 7 throughout;
+// every run here belongs to location 8.
+describe('Delivery run location scoping (PR #1276 RF-1)', () => {
+    const actorUser = { user_id: 12 };
+    const locationScopeResolver = () => createLocationScopeResolver({ 12: 7 });
+
+    it('list excludes another location\'s runs even when requested by id', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        const useCase = buildListDeliveryRunsUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: locationScopeResolver()
+        });
+
+        const scopedByActor = await useCase({ query: {}, user: actorUser });
+        expect(scopedByActor.success).toBe(true);
+        expect(scopedByActor.data.items.find((item) => item.delivery_run_id === runB.delivery_run_id)).toBeUndefined();
+
+        const explicitCrossLocationRequest = await useCase({ query: { location_id: 8 }, user: actorUser });
+        expect(explicitCrossLocationRequest.success).toBe(false);
+        expect(explicitCrossLocationRequest.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+    });
+
+    it('get denies retrieval of a run belonging to another location', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        const useCase = buildGetDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: locationScopeResolver()
+        });
+
+        const result = await useCase({ deliveryRunId: runB.delivery_run_id, user: actorUser });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+    });
+
+    it('update denies mutating a run belonging to another location', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: locationScopeResolver()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: runB.delivery_run_id,
+            payload: { label: 'Hijacked' },
+            user: actorUser
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+        const untouched = await deliveryRunRepository.getRunById(runB.delivery_run_id);
+        expect(untouched.label).toBe('Run B');
+    });
+
+    it('set-personnel denies replacing the roster on a run belonging to another location', async () => {
+        const { posRepository, deliveryRunRepository } = createDeliveryRunTestHarness();
+        const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        const useCase = buildSetDeliveryRunPersonnelUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: locationScopeResolver()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: runB.delivery_run_id,
+            payload: {
+                idempotency_key: 'cross-location-set-personnel',
+                personnel: [{ delivery_personnel_id: 21, is_accountable: true }]
+            },
+            user: actorUser
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+        expect(await deliveryRunRepository.listRunPersonnel(runB.delivery_run_id)).toHaveLength(0);
     });
 });

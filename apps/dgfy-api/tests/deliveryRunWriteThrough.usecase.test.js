@@ -3,7 +3,11 @@ import {
     buildAddDeliveryRunMembersUseCase,
     buildRemoveDeliveryRunMemberUseCase
 } from '../src/modules/pos/usecases/deliveryRunUseCases.js';
-import { createDeliveryRunTestHarness, runInTenantContext } from './testHelpers/deliveryRunTestHarness.js';
+import {
+    createDeliveryRunTestHarness,
+    createLocationScopeResolver,
+    runInTenantContext
+} from './testHelpers/deliveryRunTestHarness.js';
 
 const setAccountable = async (deliveryRunRepository, runId, row) => (
     deliveryRunRepository.replaceRunPersonnel(runId, [{ ...row, is_accountable: true }])
@@ -15,7 +19,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const { posRepository, deliveryRunRepository, addOrder } = harness;
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         addOrder({ orderId: 501, deliveryJobId: 601 });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -33,7 +41,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 502, deliveryJobId: 602, provider: 'provider_x' });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -51,7 +63,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 503, deliveryJobId: 603, locationId: 8 });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -69,7 +85,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 504, deliveryJobId: 604, fulfillmentStatus: 'preparing' });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -94,7 +114,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 505, deliveryJobId: 605 });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         const payload = { idempotency_key: 'add-members-005', pos_transaction_ids: [505] };
 
         const first = await runInTenantContext(() => useCase({ deliveryRunId: run.delivery_run_id, payload, user: { user_id: 12 } }));
@@ -112,7 +136,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_name: 'Juan Dela Cruz' });
         addOrder({ orderId: 506, deliveryJobId: 606 });
-        const useCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
 
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
@@ -132,14 +160,22 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 507, deliveryJobId: 607 });
-        const addUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const addUseCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         await runInTenantContext(() => addUseCase({
             deliveryRunId: run.delivery_run_id,
             payload: { idempotency_key: 'add-members-007', pos_transaction_ids: [507] },
             user: { user_id: 12 }
         }));
 
-        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
+        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         const result = await runInTenantContext(() => removeUseCase({
             deliveryRunId: run.delivery_run_id,
             posTransactionId: 507,
@@ -160,7 +196,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 508, deliveryJobId: 608 });
-        const addUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const addUseCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         await runInTenantContext(() => addUseCase({
             deliveryRunId: run.delivery_run_id,
             payload: { idempotency_key: 'add-members-008', pos_transaction_ids: [508] },
@@ -172,7 +212,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         job.delivery_personnel_id = null;
         job.delivery_personnel_name = 'Someone Else';
 
-        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
+        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         const result = await runInTenantContext(() => removeUseCase({
             deliveryRunId: run.delivery_run_id,
             posTransactionId: 508,
@@ -192,7 +236,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
         addOrder({ orderId: 509, deliveryJobId: 609 });
-        const addUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+        const addUseCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         await runInTenantContext(() => addUseCase({
             deliveryRunId: run.delivery_run_id,
             payload: { idempotency_key: 'add-members-009', pos_transaction_ids: [509] },
@@ -202,7 +250,11 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         const job = state.deliveryJobsById.get(609);
         job.status = 'assigned';
 
-        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
+        const removeUseCase = buildRemoveDeliveryRunMemberUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
         const result = await runInTenantContext(() => removeUseCase({
             deliveryRunId: run.delivery_run_id,
             posTransactionId: 509,
@@ -214,5 +266,54 @@ describe('Delivery run membership write-through (Phase 225)', () => {
         expect(result.data.reason_code).toBe('DELIVERY_JOB_ASSIGNMENT_LOCKED');
         expect(job.delivery_run_id).toBeNull();
         expect(job.delivery_personnel_id).toBe(21);
+    });
+
+    // RF-1 fix (PR #1276 review): a POS user scoped to location A must never be able to add
+    // members to, or remove members from, a run belonging to location B. Actor (user 12) is
+    // scoped to location 7; the run here belongs to location 8.
+    it('add-members denies adding to a run belonging to another location', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const { posRepository, deliveryRunRepository, addOrder, state } = harness;
+        const run = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
+        addOrder({ orderId: 510, deliveryJobId: 610, locationId: 8 });
+        const useCase = buildAddDeliveryRunMembersUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'cross-location-add-members', pos_transaction_ids: [510] },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+        expect(state.deliveryJobsById.get(610).delivery_run_id).toBeNull();
+    });
+
+    it('remove-member denies removing a member from a run belonging to another location', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const { posRepository, deliveryRunRepository, addOrder, state } = harness;
+        const run = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
+        await setAccountable(deliveryRunRepository, run.delivery_run_id, { delivery_personnel_id: 21 });
+        addOrder({ orderId: 511, deliveryJobId: 611, locationId: 8, runId: run.delivery_run_id });
+        const useCase = buildRemoveDeliveryRunMemberUseCase({
+            posRepository,
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            posTransactionId: 511,
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+        expect(state.deliveryJobsById.get(611).delivery_run_id).toBe(run.delivery_run_id);
     });
 });

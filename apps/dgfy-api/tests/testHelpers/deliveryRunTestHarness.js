@@ -4,6 +4,7 @@
 // personnel/membership state.
 import { jest } from '@jest/globals';
 import dbStore from '../../src/utils/dbStore.js';
+import { DomainError, DomainErrorCode } from '../../src/modules/shared/contracts/domainErrors.js';
 
 export const createTransaction = () => ({
     finished: false,
@@ -90,9 +91,10 @@ const buildDeliveryRunRepository = (state) => ({
         Object.assign(run, payload);
         return { ...run };
     },
-    async listRuns({ status = null } = {}) {
+    async listRuns({ status = null, locationId = null } = {}) {
         let items = Array.from(state.runs.values());
         if (status) items = items.filter((run) => run.status === status);
+        if (locationId != null) items = items.filter((run) => Number(run.location_id) === Number(locationId));
         return {
             items: items.map((run) => ({
                 ...run,
@@ -162,6 +164,42 @@ const buildDeliveryRunRepository = (state) => ({
         return job ? { ...job } : null;
     }
 });
+
+// RF-1 fix (PR #1276 review): a fake resolveLocationScope matching the real
+// resolvePosOperationalLocationScope contract -- given a { userId: homeLocationId } map, resolves
+// requestedLocationId when it matches the actor's home location, otherwise throws the same
+// DomainError shape (403, reason_code POS_LOCATION_ACCESS_DENIED) the real POS location-scope
+// resolver throws for a cross-location actor. Lets the location-scoping regression tests inject a
+// deterministic actor-to-location mapping without touching the real DB-backed resolver.
+export const createLocationScopeResolver = (homeLocationByUserId = {}) => (
+    async ({ requestedLocationId = null, userId = null } = {}) => {
+        const normalizedUserId = Number(userId);
+        const homeLocationId = homeLocationByUserId[normalizedUserId] ?? null;
+
+        if (requestedLocationId != null) {
+            if (!homeLocationId || Number(requestedLocationId) !== Number(homeLocationId)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Access denied for delivery run location scope.',
+                    {
+                        statusCode: 403,
+                        details: { reason_code: 'POS_LOCATION_ACCESS_DENIED', location_id: requestedLocationId }
+                    }
+                );
+            }
+            return { location_id: Number(requestedLocationId) };
+        }
+
+        if (!homeLocationId) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Delivery run operation could not resolve a location scope.',
+                { statusCode: 422, details: { reason_code: 'POS_LOCATION_SCOPE_UNRESOLVED' } }
+            );
+        }
+        return { location_id: homeLocationId };
+    }
+);
 
 export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocationId = 7 } = {}) => {
     const state = {

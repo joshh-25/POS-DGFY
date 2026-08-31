@@ -96,7 +96,7 @@ describe('deliveryRunHandlers transport contracts', () => {
 
         await listDeliveryRuns(req, res, jest.fn());
 
-        expect(mockListDeliveryRunsUseCase).toHaveBeenCalledWith({ query: { status: 'draft' } });
+        expect(mockListDeliveryRunsUseCase).toHaveBeenCalledWith({ query: { status: 'draft' }, user: req.user });
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
@@ -110,7 +110,7 @@ describe('deliveryRunHandlers transport contracts', () => {
 
         await getDeliveryRun(req, res, jest.fn());
 
-        expect(mockGetDeliveryRunUseCase).toHaveBeenCalledWith({ deliveryRunId: 999 });
+        expect(mockGetDeliveryRunUseCase).toHaveBeenCalledWith({ deliveryRunId: 999, user: req.user });
         expect(res.status).toHaveBeenCalledWith(404);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
             success: false,
