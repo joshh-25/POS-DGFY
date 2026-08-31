@@ -2,9 +2,11 @@ import React from 'react';
 import { toast } from 'sonner';
 import { Plus, RefreshCw, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   addDeliveryRunMembers,
   createDeliveryRun,
+  dispatchDeliveryRun,
   fetchDeliveryRun,
   fetchDeliveryRuns,
   removeDeliveryRunMember,
@@ -14,6 +16,8 @@ import {
 import DeliveryRunFormDialog from './DeliveryRunFormDialog.jsx';
 import DeliveryRunPersonnelEditor from './DeliveryRunPersonnelEditor.jsx';
 import DeliveryRunMembersList from './DeliveryRunMembersList.jsx';
+import DeliveryRunDispatchSummary from './DeliveryRunDispatchSummary.jsx';
+import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatchReasons.js';
 
 // Phase 226 (#1273). Self-contained master/detail panel over Phase 225's delivery-run API,
 // modeled on DeliveryPersonnelManagementPanel.jsx / EmployeeCreditManagementPanel.jsx: panel-local
@@ -30,6 +34,16 @@ const RUN_STATUS_LABELS = Object.freeze({
 });
 
 const LOCKED_RUN_STATUSES = new Set(['dispatched', 'completed']);
+
+// Phase 228 (#1273/#1271). Distinct from LOCKED_RUN_STATUSES above -- `dispatched` is deliberately
+// absent here, matching buildDispatchDeliveryRunUseCase's own RUN_DISPATCH_BLOCKED_STATUSES: the
+// Dispatch button stays enabled (relabeled "Re-dispatch run") on an already-dispatched run, since
+// re-dispatch is the retry path for stragglers.
+const DISPATCH_BLOCKED_STATUSES = new Set(['completed', 'cancelled']);
+// #1272 (2026-08-31), retail-only backstop: pre-flight client-side check only, the 409 is the real
+// gate. This panel is only ever rendered in retail mode (see the module comment above), so no
+// workflow-mode check is needed here.
+const PRE_PACKED_FULFILLMENT_STATUSES = new Set(['placed', 'confirmed', 'preparing']);
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
@@ -62,6 +76,8 @@ export default function DeliveryRunsWorkspacePanel({
   const [savingKey, setSavingKey] = React.useState('');
   const [formOpen, setFormOpen] = React.useState(false);
   const [formRun, setFormRun] = React.useState(null);
+  const [dispatchConfirmOpen, setDispatchConfirmOpen] = React.useState(false);
+  const [dispatchResult, setDispatchResult] = React.useState(null);
 
   // RF-3 fix (PR #1277 review): a request-generation counter per fetch kind so a slower, older
   // response can never overwrite state committed by a newer one (e.g. two location-scope switches
@@ -141,6 +157,7 @@ export default function DeliveryRunsWorkspacePanel({
     runDetailRequestIdRef.current += 1;
     setSelectedRunId(null);
     setRunDetailState({ loading: false, run: null, errorMessage: '' });
+    setDispatchResult(null);
   }, [queueLocationScopeId]);
 
   React.useEffect(() => {
@@ -149,6 +166,7 @@ export default function DeliveryRunsWorkspacePanel({
 
   const selectRun = (deliveryRunId) => {
     setSelectedRunId(deliveryRunId === selectedRunId ? null : deliveryRunId);
+    setDispatchResult(null);
   };
 
   const refreshAll = async () => {
@@ -330,12 +348,86 @@ export default function DeliveryRunsWorkspacePanel({
     }
   };
 
+  // Phase 228 (#1273/#1271). Idempotency key signature matches Phase 226/227's established
+  // retention pattern: identical (run, member set) reuses the key on retry; a changed member set
+  // (e.g. a member removed between attempts) is treated as a new logical dispatch call and gets a
+  // fresh key.
+  const dispatchSubmitRef = React.useRef({ key: null, signature: null });
+
+  const handleDispatchRun = async () => {
+    const run = runDetailState.run;
+    if (!run) return false;
+    if (!isOnline) {
+      toast.error('Reconnect before dispatching a delivery run.');
+      return false;
+    }
+    const sortedMemberIds = (Array.isArray(run.members) ? run.members : [])
+      .map((member) => member.pos_transaction_id)
+      .sort((a, b) => a - b);
+    const signature = `${run.delivery_run_id}:dispatch:${sortedMemberIds.join(',')}`;
+    if (dispatchSubmitRef.current.signature !== signature) {
+      dispatchSubmitRef.current = { key: createIdempotencyKey('run-dispatch'), signature };
+    }
+    setSavingKey('dispatch');
+    try {
+      const result = await dispatchDeliveryRun(run.delivery_run_id, {
+        idempotency_key: dispatchSubmitRef.current.key
+      });
+      setDispatchResult(result);
+      const dispatchedCount = Array.isArray(result?.dispatched) ? result.dispatched.length : 0;
+      const failedCount = Array.isArray(result?.failed) ? result.failed.length : 0;
+      const skippedCount = Array.isArray(result?.skipped) ? result.skipped.length : 0;
+      if (failedCount > 0) {
+        toast.warning(`Dispatched ${dispatchedCount}, ${skippedCount} already dispatched, ${failedCount} failed. See the run detail for reasons.`);
+      } else {
+        toast.success(`Dispatched ${dispatchedCount} order(s)${skippedCount > 0 ? `, ${skippedCount} already dispatched` : ''}.`);
+      }
+      dispatchSubmitRef.current = { key: null, signature: null };
+      await refreshAll();
+      return true;
+    } catch (error) {
+      // Same reason_code-under-`errors` pattern as F-3 (Phase 227): the actual reason lives under
+      // `errors.reason_code`, not `error_code`.
+      const reasonCode = error?.response?.data?.errors?.reason_code;
+      if (reasonCode === 'DELIVERY_RUN_UNPACKED_MEMBERS') {
+        const unpacked = error?.response?.data?.errors?.unpacked || [];
+        const orderList = unpacked.map((entry) => `#${entry.pos_transaction_id}`).join(', ');
+        toast.error(`Every order must be packed before dispatch. Not yet packed: ${orderList || 'see run detail'}.`);
+      } else {
+        toast.error(reasonCode
+          ? getDeliveryRunDispatchReasonMessage(reasonCode, getErrorMessage(error, 'Failed to dispatch delivery run.'))
+          : getErrorMessage(error, 'Failed to dispatch delivery run.'));
+      }
+      return false;
+    } finally {
+      setSavingKey('');
+    }
+  };
+
   const runs = Array.isArray(runsState.items) ? runsState.items : [];
   const selectedRun = runDetailState.run;
   const selectedRunLocked = selectedRun ? LOCKED_RUN_STATUSES.has(String(selectedRun.status || '').trim()) : false;
   const hasAccountablePersonnel = Array.isArray(selectedRun?.personnel)
     && selectedRun.personnel.some((person) => person?.is_accountable);
   const canManage = canTransactPos && !locked;
+
+  // Phase 228 (#1273/#1271). Dispatch pre-flight: a backstop, client-side mirror of the server's
+  // own 409 preconditions -- the 409 stays the real gate, this only saves an operator a round trip.
+  const selectedRunMembers = Array.isArray(selectedRun?.members) ? selectedRun.members : [];
+  const selectedRunStatus = String(selectedRun?.status || '').trim();
+  const selectedRunIsDispatched = selectedRunStatus === 'dispatched';
+  const unpackedMembers = selectedRunMembers.filter((member) => (
+    PRE_PACKED_FULFILLMENT_STATUSES.has(String(member?.order?.fulfillment_status || '').trim())
+  ));
+  const dispatchDisabled = !selectedRun
+    || !canTransactPos
+    || locked
+    || !isOnline
+    || !hasActiveShift
+    || !hasAccountablePersonnel
+    || selectedRunMembers.length === 0
+    || DISPATCH_BLOCKED_STATUSES.has(selectedRunStatus)
+    || unpackedMembers.length > 0;
 
   if (runsState.accessState === 'forbidden') {
     return (
@@ -421,10 +513,30 @@ export default function DeliveryRunsWorkspacePanel({
                   <h4 className="text-base font-black text-slate-950">{selectedRun.label}</h4>
                   <p className="text-xs text-slate-500">{selectedRun.notes || 'No notes'}</p>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => openEditForm(selectedRun)} disabled={!canManage || selectedRunLocked}>
-                  Edit run
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEditForm(selectedRun)} disabled={!canManage || selectedRunLocked}>
+                    Edit run
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setDispatchConfirmOpen(true)}
+                    disabled={dispatchDisabled || savingKey === 'dispatch'}
+                    className="!bg-[#1A4E8D] text-white hover:!bg-[#123B6D]"
+                  >
+                    <Truck className="mr-1 h-3.5 w-3.5" /> {selectedRunIsDispatched ? 'Re-dispatch run' : 'Dispatch run'}
+                  </Button>
+                </div>
               </div>
+
+              {unpackedMembers.length > 0 ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Every order must be packed before this run can be dispatched. Not yet packed:{' '}
+                  {unpackedMembers.map((member) => `#${member.pos_transaction_id}`).join(', ')}.
+                </p>
+              ) : null}
+
+              <DeliveryRunDispatchSummary result={dispatchResult} />
 
               {selectedRunLocked ? (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -451,6 +563,7 @@ export default function DeliveryRunsWorkspacePanel({
                 otherRuns={runs}
                 disabled={!canManage || selectedRunLocked}
                 savingKey={savingKey}
+                dispatchResult={dispatchResult}
                 onRemoveMember={handleRemoveMember}
                 onMoveMember={handleMoveMember}
               />
@@ -458,6 +571,20 @@ export default function DeliveryRunsWorkspacePanel({
           ) : null}
         </div>
       ) : null}
+
+      <ConfirmActionDialog
+        open={dispatchConfirmOpen}
+        onOpenChange={setDispatchConfirmOpen}
+        title={selectedRunIsDispatched ? 'Re-dispatch this run?' : 'Dispatch this run?'}
+        description={`${selectedRunMembers.length} order(s) will be sent out for delivery. This action is not reversible from this screen -- undoing a dispatch means editing each affected order individually.`}
+        confirmLabel={selectedRunIsDispatched ? 'Re-dispatch' : 'Dispatch'}
+        cancelLabel="Cancel"
+        onConfirm={async () => {
+          const succeeded = await handleDispatchRun();
+          if (succeeded !== false) setDispatchConfirmOpen(false);
+          return succeeded;
+        }}
+      />
 
       <DeliveryRunFormDialog
         open={formOpen}

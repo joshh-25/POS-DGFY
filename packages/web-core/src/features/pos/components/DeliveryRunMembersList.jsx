@@ -3,6 +3,33 @@ import { ArrowRightLeft, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { DELIVERY_JOB_STATUS_LABELS, FULFILLMENT_STATUS_LABELS } from './orderFulfillmentUi.js';
+import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatchReasons.js';
+
+// Phase 228 (#1273/#1271): per-row outcome badge, built from the last dispatchDeliveryRun() result
+// (three buckets: dispatched/skipped/failed). Returns null when the member wasn't part of that
+// result at all, so a row with no dispatch history yet renders no badge.
+const buildDispatchOutcomeByOrderId = (dispatchResult) => {
+  const byOrderId = new Map();
+  (dispatchResult?.dispatched || []).forEach((entry) => {
+    byOrderId.set(entry.pos_transaction_id, { tone: 'dispatched', message: 'Dispatched' });
+  });
+  (dispatchResult?.skipped || []).forEach((entry) => {
+    byOrderId.set(entry.pos_transaction_id, { tone: 'skipped', message: 'Already dispatched' });
+  });
+  (dispatchResult?.failed || []).forEach((entry) => {
+    byOrderId.set(entry.pos_transaction_id, {
+      tone: 'failed',
+      message: entry.message || getDeliveryRunDispatchReasonMessage(entry.reason_code)
+    });
+  });
+  return byOrderId;
+};
+
+const DISPATCH_BADGE_CLASSES = Object.freeze({
+  dispatched: 'bg-emerald-100 text-emerald-700',
+  skipped: 'bg-slate-200 text-slate-600',
+  failed: 'bg-rose-100 text-rose-700'
+});
 
 // Phase 226 (#1273). "Move to another run" is DELETE-then-ADD -- there is no server-side move
 // verb (POST .../members 409s DELIVERY_JOB_ALREADY_IN_RUN if the job is already in a different
@@ -17,6 +44,7 @@ export default function DeliveryRunMembersList({
   otherRuns = [],
   disabled = false,
   savingKey = '',
+  dispatchResult = null,
   onRemoveMember = async () => false,
   onMoveMember = async () => false
 }) {
@@ -43,6 +71,8 @@ export default function DeliveryRunMembersList({
     );
   }
 
+  const dispatchOutcomeByOrderId = buildDispatchOutcomeByOrderId(dispatchResult);
+
   return (
     <div className="mt-3 space-y-2">
       {members.map((member) => {
@@ -56,6 +86,7 @@ export default function DeliveryRunMembersList({
             disabled={disabled}
             savingKey={savingKey}
             moveTargets={moveTargets}
+            dispatchOutcome={dispatchOutcomeByOrderId.get(rowKey) || null}
             onRequestRemove={() => setPendingRemoveId(rowKey)}
             onRequestMove={(targetRunId) => setPendingMove({ posTransactionId: rowKey, targetRunId })}
           />
@@ -94,7 +125,7 @@ export default function DeliveryRunMembersList({
   );
 }
 
-function MemberRow({ member, order, disabled, savingKey, moveTargets, onRequestRemove, onRequestMove }) {
+function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOutcome, onRequestRemove, onRequestMove }) {
   const [targetRunId, setTargetRunId] = React.useState('');
   const removeKey = `delivery-run-member-remove:${member.pos_transaction_id}`;
   const moveKey = `delivery-run-member-move:${member.pos_transaction_id}`;
@@ -103,9 +134,19 @@ function MemberRow({ member, order, disabled, savingKey, moveTargets, onRequestR
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm font-black text-slate-950">
-          {order.invoice_number || `Order #${member.pos_transaction_id}`}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-black text-slate-950">
+            {order.invoice_number || `Order #${member.pos_transaction_id}`}
+          </p>
+          {dispatchOutcome ? (
+            <span
+              title={dispatchOutcome.message}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${DISPATCH_BADGE_CLASSES[dispatchOutcome.tone] || 'bg-slate-100 text-slate-600'}`}
+            >
+              {dispatchOutcome.message}
+            </span>
+          ) : null}
+        </div>
         <p className="text-xs text-slate-500">
           {order.customer_name || 'Guest'} • {order.delivery_address || 'No address on file'}
         </p>
