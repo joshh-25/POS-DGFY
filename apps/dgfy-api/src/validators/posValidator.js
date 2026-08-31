@@ -847,6 +847,12 @@ const addDeliveryRunMembersSchema = Joi.object({
     pos_transaction_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).unique().required()
 });
 
+// Phase 228 (#1273/#1271): dispatch takes no member selection -- it dispatches every eligible
+// member of the run, best-effort. Body is just the idempotency key.
+const dispatchDeliveryRunSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
 const deliveryRunListQuerySchema = Joi.object({
     status: Joi.string().valid('draft', 'scheduled', 'dispatched', 'completed', 'cancelled').optional(),
     scheduled_date_from: Joi.date().iso().optional(),
@@ -1306,6 +1312,7 @@ export const validateDeliveryRunIdParam = validateSchema(deliveryRunIdParamSchem
 export const validateDeliveryRunMemberParam = validateSchema(deliveryRunMemberParamSchema, 'params', 'validatedParams');
 export const validateDeliveryRunPersonnelSet = validateSchema(setDeliveryRunPersonnelSchema, 'body', 'validatedData');
 export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMembersSchema, 'body', 'validatedData');
+export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');

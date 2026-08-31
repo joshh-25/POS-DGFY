@@ -8,7 +8,8 @@ import {
     updateDeliveryRunUseCase,
     setDeliveryRunPersonnelUseCase,
     addDeliveryRunMembersUseCase,
-    removeDeliveryRunMemberUseCase
+    removeDeliveryRunMemberUseCase,
+    dispatchDeliveryRunUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -153,6 +154,29 @@ export const addDeliveryRunMembers = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Members added to delivery run successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const dispatchDeliveryRun = async (req, res, next) => {
+    try {
+        const result = await dispatchDeliveryRunUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: buildAuditContext(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run dispatched successfully.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
