@@ -83,39 +83,37 @@ none of this — including `gate:release:local` — runs on the `develop → sta
 `references/promotion-runbook.md`'s "Optional: a `staging` soak first" section and stops at
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
-**Compliance preflight sweep.** For every `major`/`regulatory` impact declaration in the batch still
-carrying a `NOT-EXECUTED-*` `preflight_request_ref`, dispatch
-`compliance-preflight-sweep.yml` for **STAGING** (#1121, 2026-08-28 — the target this sweep now
-re-anchors to; DEV is optional/stale per #982 and only useful for testing the workflow itself):
+**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31).** The
+sweep (`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
+auto-triggers whenever a declaration lands on `develop` and, once every result in a run passes,
+reconciles the front matter and opens + auto-merges its own PR into `develop`
+(`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"). In
+the ordinary case every declaration in the batch is already reconciled by the time promotion
+starts. This role's job here is only to **confirm** that:
 
 ```bash
-gh workflow run compliance-preflight-sweep.yml -f environment=STAGING
+git fetch origin main develop
+git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
+  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
 ```
 
-This is **unattended, read-only** — same tier as dispatching `verify-deployment.yml`/
-`tenant-schema-report.yml` — it only calls `POST /api/v1/auth/login` (minting a fresh token from
-credentials held in that GitHub Environment's own secrets, never a local shell) and
-`POST /api/v1/compliance/preflight` per outstanding declaration; it does not write back to the
-declaration files or open a PR. Read the run's step summary / `compliance-preflight-sweep-results`
-artifact (`gh run view <id>` after polling to `completed`, same pattern as dispatching
-`verify-deployment.yml`) for the per-declaration `result`/`reason_code`. Full protocol, the request-
-body shape, and the token-minting mechanism itself: `docs/compliance/request-time-preflight-
-protocol.md`, "Where live preflight actually runs" — read it there, don't reconstruct the request
-shape here. The workflow auto-discovers the batch's declarations the same way this step used to by
-hand — `git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/`
-(or `origin/staging origin/develop` if the optional soak already ran and `staging` reflects the
-batch), filtered to `NOT-EXECUTED-` — or accept an explicit `-f declarations=<comma-separated
-paths>` if the auto-discovery diff isn't the right one for this promotion.
+Empty output means zero outstanding — proceed. If the command lists any file, the continuous
+trigger hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't
+cover, e.g. a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait
+for it —
 
-**Land the reconciled front matter the same way as the hotfix back-port below: a small cut branch
-off fresh `origin/develop` (e.g. `compliance-sweep/<label>`), a commit updating only the swept
-declarations' front matter, and a PR into `develop` — never a direct commit to `develop`.** This
-mirrors `AGENTS.md`'s and `implement`'s standing "never commit directly to develop" rule; regulator-
-facing compliance evidence gets the same review path as everything else, no exception for this role.
-Merge that PR (ordinary merge gate — build checks, `check:compliance` — applies) before cutting
-`release/<label>`, so the promoted tree carries the reconciled declarations. **No `NOT-EXECUTED-*`
-declaration may reach `main`** — this sweep is what clears them first, unless #1007's expedited
-override (below) is explicitly invoked for this specific promotion.
+```bash
+gh workflow run compliance-preflight-sweep.yml
+gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
+```
+
+— rather than treat a missed declaration as blocking indefinitely. The workflow runs against its
+own ephemeral CI-provisioned instance now — no `environment:` input, no secrets, nothing to
+provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated
+2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — but the
+sweep itself is what clears them now, continuously, not a step this role dispatches and waits on
+per promotion; #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
+declaration may legitimately still reach `main`, logged and authorized, not silent.
 
 **`gate:release:local`.** Run `npm run gate:release:local` against the exact target SHA — **invoke
 it, do not rebuild it** (the policy says this outright). ~25 minutes on a full run, needs local
@@ -161,6 +159,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
+| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched; auto-merges only when every result already passed a real policy evaluation, same reasoning as `verify-deployment.yml`'s read-only classification |
 | Dispatching `deploy-main.yml` (BETA+PROD dual-deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. **Two** narrow, phrase-gated exceptions exist, neither a standing pre-authorization: `incident-responder`'s own override for an actively open production incident (`.agents/skills/incident-responder/SKILL.md` — belongs to that role, invoked there, not here), and this role's own #1007 expedited override (below) for Pat's business-urgency call, invoked here |
 | Invoking the #1007 expedited override (skipping `gate:release:local` and/or the compliance preflight sweep before a `main` merge) | **Only** on Pat's explicit real-time phrase given in this exact moment — never inferred, never a standing pre-authorization from a prior invocation. Restate the standing "these are normally required" rule out loud, then post the authorization comment on the promotion PR/tracking issue **before** merging, not after. The production tenant-schema report, `AGENTS.md` Merge Safety, never-`--squash`, and the `release/` head-cut rule stay mandatory regardless — this override never touches those. Run the retro-verification checklist (`RELEASE_CANDIDATE_POLICY.md`'s amendment) afterward as part of "done," not a follow-up |
