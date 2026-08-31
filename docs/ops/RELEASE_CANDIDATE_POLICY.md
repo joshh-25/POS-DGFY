@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-26
+last_reviewed: 2026-08-31
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -474,3 +474,46 @@ treats as a hard stop too). None of these are addressed by either fix; named her
 implied away. For the record: GitHub's own service-container provisioning has never actually failed
 in this workflow's run history as of this writing — the #1066 round-2 fix closes a real mechanism
 gap that had not yet been observed to fire, not an incident postmortem.
+
+### 2026-08-31: The compliance preflight sweep is continuous, not a promotion-time gate (#1163/#1248)
+
+The row above (2026-08-22 amendment, "What actually gates a release into `main` today") and the
+2026-08-25 amendment below it both describe the preflight sweep as something a promoter dispatches
+"against a deployed non-production host (DEV suffices)" once per promotion batch. That description
+is now historical, not current — left as-is above rather than rewritten in place, since this
+section's own convention is to record what changed and when, not silently edit prior entries.
+
+**What changed:** the four `PREFLIGHT_HOST`/`PREFLIGHT_COMPANY_TOKEN`/`PREFLIGHT_BOT_EMAIL`/
+`PREFLIGHT_BOT_PASSWORD` GitHub Environment secrets the deployed-host design depended on were never
+actually provisioned (#1163, confirmed empty on both `STAGING` and `DEV` as of 2026-08-29) and
+blocked the 2026-08-29 `develop → main` promotion outright, requiring #1007's expedited override to
+ship. Investigating why led to the finding this amendment records: a deployed host bought no
+compliance property this policy's own governing principle depends on — restated here since it's the
+reason the fix looks the way it does: **"A merge gate ... must be satisfiable without a deployed
+environment, or every leg that needs one becomes circular."** The preflight endpoint evaluates the
+declaration's *proposed* `impact_declaration` payload against the target tenant's own compliance
+posture; it writes nothing, never executes the change's code, and its response carries no
+server-generated request id.
+
+**The fix:** the sweep (`.github/workflows/compliance-preflight-sweep.yml`) now provisions its own
+ephemeral `mysql` + `redis` + `dgfy-api` instance on the CI runner and a throwaway fixture tenant +
+`settings:edit` bot (`apps/dgfy-api/scripts/seed-preflight-fixture.js`, built on the existing
+`provisionTenant()` service), rather than hitting a manually provisioned remote bot account. No
+GitHub Environment, no secrets, nothing to provision or rotate by hand. It also now
+**auto-triggers** on any push to `develop` touching `docs/compliance/impact-declarations/**` and
+reconciles + auto-merges its own PR into `develop` once every result in a run passes — so in the
+ordinary case every declaration is already reconciled well before a promotion is cut, not something
+a promoter dispatches and waits on per batch. Confirmed live end to end (#1163/#1248 spike,
+2026-08-31): a real declaration from the 2026-08-31 batch returned `result: no_breach`,
+`can_proceed: true` from the real endpoint.
+
+**What's unchanged:** "No `NOT-EXECUTED-*` declaration may reach `main`" (this row's own rule),
+`promoter`'s obligation to *verify* zero outstanding declarations before cutting `release/<label>`
+(now a check, not a dispatch-and-wait), and #1007's expedited override as the one case a
+`NOT-EXECUTED-*` may legitimately still reach `main`. Full detail, the governance path (ADR 0074
+Decision 5 is `[default]` tier — amended via a dated block on that ADR, no superseding ADR
+required), and the fixture's pinned posture:
+`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs";
+`.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section owns the executable verify-only
+form. Supersedes #1163, which tracked provisioning the manual bot account this change removes the
+need for.

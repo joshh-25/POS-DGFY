@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-31
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -106,9 +106,16 @@ is written without a live preflight, say so explicitly in its body rather than
 leaving the front matter to imply otherwise — see
 `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` for
 the established shape of that caveat. Reconciling `preflight_run_at` /
-`preflight_request_ref` against a real run remains a human step.
+`preflight_request_ref` against a real run is automated as of #1163/#1248
+(2026-08-31) — see the next section — but note this section's own point still
+holds regardless: `check:compliance` itself still cannot tell a reconciled ref
+from a hand-typed one that merely matches the accepted pattern. Automating the
+sweep closes the "nothing ever converts the placeholder" gap; it does not by
+itself make `check:compliance` able to verify a ref's authenticity — that
+remains open, tracked as a follow-up rather than solved here.
 
-### Where live preflight actually runs (#884, 2026-08-22; token minting automated #1121, 2026-08-28)
+### Where live preflight actually runs (#884, 2026-08-22; token minting automated #1121, 2026-08-28;
+### run against an ephemeral CI instance, no secrets, #1163/#1248, 2026-08-31)
 
 The endpoint requires an authenticated session against a running backend
 (`SYSTEM.EDIT_SETTINGS`), which no `develop`-merge PR ever has — so a per-PR
@@ -117,137 +124,116 @@ live call was never realistic, and #884 named the consequence: every
 `NOT-EXECUTED-*` placeholder and no stage ever converted it to a real run.
 
 **The resolution: a `NOT-EXECUTED-*` placeholder is the accepted, expected
-state for a `develop`-targeting PR.** It is not a defect and `pr-reviewer`
-should not raise it as a should-fix at that stage (see
-`.agents/skills/pr-reviewer/SKILL.md`, "Compliance"). The real preflight runs
-once per promotion batch, before `release/<label>` is cut — since ADR 0074/#980
-(2026-08-25), that means the `develop → main` leg by default, or the
-`develop → staging` leg first if a promoter chooses the optional soak for that
-batch — against a **deployed non-production host**. **Target STAGING** (#1121,
-2026-08-28) — DEV is being made optional and intentionally allowed to go stale
-(#982), so it can no longer be assumed to reflect anything current; STAGING is
-named first here ahead of #982's own docs amendment landing, per Pat's explicit
-redirect on #1121. DEV remains named below only as a still-valid fallback for
-testing the mechanism itself. Note both hosts share a real, unresolved
-limitation: `docs/ops/DEV_STAGING_ENVIRONMENT_HEALTH_2026-08-08.md` (#304,
-diagnosed not fixed) found the office network path truncates large responses on
-both `dev.dgfy.ph` and `stage.dgfy.ph` — this doesn't affect the small JSON
-calls below, but is worth knowing if either host looks unreachable for a larger
-request. The endpoint evaluates the change *proposal* carried in the
-declaration's `impact_declaration` payload against the policy engine; it does
-not need the change's code to be running anywhere, so the target host's
-currently-deployed version is irrelevant and production is never required.
-`.agents/skills/promoter/SKILL.md` owns the executable form of this sweep;
-`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment (superseded in
-part by its 2026-08-25 amendment) owns the ladder this sits in.
+state at PR-open time.** It is not a defect and `pr-reviewer` should not raise
+it as a should-fix (see `.agents/skills/pr-reviewer/SKILL.md`, "Compliance").
+What changed since #1121, though, is *when* it gets cleared: the sweep is no
+longer a promotion-time-only step a batch can still get blocked on — it now
+also runs **continuously**, triggered automatically whenever a declaration
+lands on `develop` (`.github/workflows/compliance-preflight-sweep.yml`'s
+`push` trigger, path-filtered to
+`docs/compliance/impact-declarations/**`). In the ordinary case a
+`NOT-EXECUTED-*` ref is cleared within minutes of merge, well before any
+promotion is cut — the promotion-time run described below is what a promoter
+still explicitly verifies (per `.agents/skills/promoter/SKILL.md`), not the
+only place the sweep executes.
 
-**Minting `DGFY_DEV_TOKEN` is automated (#1121).** The primary path is
-dispatching `.github/workflows/compliance-preflight-sweep.yml`:
+**No deployed host, no GitHub Environment, no secrets (#1163/#1248, 2026-08-31,
+ADR 0074 Decision 5 amendment).** The original design (#1121) called for the
+sweep to hit a manually provisioned bot account on `stage.dgfy.ph`, with its
+credentials stored as four `PREFLIGHT_*` GitHub Environment secrets. Those
+secrets were never actually provisioned — confirmed empty on both `STAGING`
+and `DEV` as of 2026-08-29 (#1163) — and blocked the 2026-08-29
+`develop → main` promotion outright, requiring #1007's expedited override to
+ship. Investigating why led to the finding that made this section's rewrite
+necessary: **a deployed host bought no compliance property to begin with.**
+The endpoint evaluates the change *proposal* carried in the declaration's
+`impact_declaration` payload against the target tenant's own compliance
+posture — it writes nothing (no audit row is persisted), never executes the
+change's code, and its response carries no server-generated request id
+(`preflight_request_ref` was always entirely operator-authored). See
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s governing principle: "A merge gate
+... must be satisfiable without a deployed environment, or every leg that
+needs one becomes circular."
+
+So the sweep now provisions its own throwaway target instead: it boots an
+ephemeral `mysql` + `redis` + `dgfy-api` on the CI runner (the same
+container-per-step pattern `promotion-quality-gate.yml` already uses), seeds a
+fixture tenant + `settings:edit` bot
+(`apps/dgfy-api/scripts/seed-preflight-fixture.js`, built on the existing
+`provisionTenant()` service — not a new provisioning path), calls the real
+endpoint over `127.0.0.1`, and tears both down at the end of the run
+(`apps/dgfy-api/scripts/teardown-preflight-fixture.js`). Confirmed live
+end to end (#1163/#1248 spike, 2026-08-31): a real declaration from the
+2026-08-31 batch returned `result: no_breach`, `can_proceed: true` from the
+real endpoint. The fixture's pinned posture
+(`complianceMode: 'non_compliant'`, `plan: 'premium'`,
+`subscription_status: 'active'`) is strictly more reproducible than the
+deployed host it replaces — a tenant on `stage.dgfy.ph` was unpinned and drifts
+with whoever last edited its settings; this one is recreated identically
+every run.
+
+`apps/dgfy-migration-runner` remains landlord-DB-only and still has no path to
+create a tenant-scoped user directly — that fact hasn't changed. What changed
+is that `provisionTenant()` (`apps/dgfy-api/src/services/
+tenantProvisioningService.js`), already used by the real tenant-onboarding
+flow, does have that path, and the seeder script above uses it. Provisioning a
+bot account by hand on a real tenant is no longer part of this protocol at
+all — see the note at the end of this section on what stays deleted below.
+
+**Run it.** The primary path is now automatic (the `push` trigger above); to
+run it manually (backfill, or exercising the mechanism without waiting for a
+push):
 
 ```bash
-gh workflow run compliance-preflight-sweep.yml -f environment=STAGING
+gh workflow run compliance-preflight-sweep.yml
 ```
 
-It mints a fresh token per declaration (via `scripts/mint-preflight-token.js`,
-below) from credentials held only in that GitHub Environment's own secrets —
-never a human's or Claude's local shell — calls the preflight endpoint for
-every outstanding `NOT-EXECUTED-*` declaration in the `develop → main` (or
-`develop → staging`) diff, and writes the results to the run's step summary
-and a `compliance-preflight-sweep-results` artifact. It does **not** write
-back to the declaration files or open a PR — reconciling
-`preflight_result`/`preflight_reason_code`/`preflight_run_at`/
-`preflight_request_ref` from that artifact into each declaration, and landing
-it via a cut branch + PR into `develop`, stays a separate step (unchanged from
-before, see below).
+Mints a fresh token per declaration (`scripts/mint-preflight-token.js`,
+unchanged since #1121 — it still just reads `PREFLIGHT_HOST`/
+`PREFLIGHT_COMPANY_TOKEN`/`PREFLIGHT_BOT_EMAIL`/`PREFLIGHT_BOT_PASSWORD` from
+env, now supplied by the fixture seeder rather than a GitHub Environment),
+calls the preflight endpoint for every outstanding `NOT-EXECUTED-*`
+declaration in the `develop → main` diff, and — unlike the #1121 design —
+**does** write back: it reconciles `preflight_result`/`preflight_reason_code`/
+`preflight_run_at`/`preflight_request_ref` into each declaration
+(`scripts/reconcile-preflight-declarations.js`) and opens + auto-merges a PR
+into `develop`, but only when every declaration in the run actually passed
+(`result: no_breach`, `can_proceed: true`) — a real `breach`/`review_required`
+result is never written over, and that declaration's `NOT-EXECUTED-*` ref
+stays intact for a human to look at. The cut-branch-and-PR discipline itself
+is unchanged: still never a direct commit to `develop`, this is
+regulator-facing evidence and gets the same review path as everything else —
+what changed is who opens and merges that PR (the workflow, once every result
+passes) rather than a human every time.
 
-For local debugging only (e.g. exercising the mechanism against DEV without
-dispatching the workflow), mint a token directly:
+For local debugging (exercising the mechanism without dispatching the
+workflow — e.g. against a local `dgfy-api` you've stood up yourself), the
+underlying scripts are directly runnable:
 
 ```bash
+node apps/dgfy-api/scripts/seed-preflight-fixture.js   # prints PREFLIGHT_* + FIXTURE_TENANT_ID
 DGFY_DEV_TOKEN=$(node scripts/mint-preflight-token.js)
 ```
 
-`scripts/mint-preflight-token.js` reads `PREFLIGHT_HOST`,
-`PREFLIGHT_COMPANY_TOKEN`, `PREFLIGHT_BOT_EMAIL`, `PREFLIGHT_BOT_PASSWORD` from
-the environment and logs in as the dedicated, least-privilege bot account
-(`SYSTEM.EDIT_SETTINGS` only, never `role: admin`) via
-`POST /api/v1/auth/login`, printing only the resulting JWT to stdout. Neither
-this script nor the workflow above stores, caches, or reuses a token — a fresh
-one is minted per call, matching the 24h `JWT_EXPIRY` default
-(`apps/dgfy-api/src/services/authService.js`) and the "cheap to mint, lower
-exposure than a long-lived token" reasoning #1121 raised.
+**No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged. In the
+ordinary case the continuous trigger above already clears every declaration
+well before a promotion is cut, so this is now rarely something a promoter
+has to actively wait on; `promoter`'s own procedure still verifies zero
+outstanding declarations before cutting `release/<label>`, and #1007's
+phrase-gated expedited override remains the one case a `NOT-EXECUTED-*`
+declaration may legitimately still reach `main`, logged and authorized, not
+silent (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment).
 
-**Provisioning the bot account itself is a manual, one-time step, not part of
-this automation** — `authService.loginUser`'s `requireTenantAuthContext()`
-resolves a **per-tenant** database connection from the `x-company-token`
-header, and `apps/dgfy-migration-runner` (the only migration/seed tooling this
-repo has) is scoped to the **landlord** database only
-(`apps/dgfy-migration-runner/README.md`) — it has no path to create a
-tenant-scoped user. Create the account through the tenant's own existing
-user-management flow instead (`POST /api/v1/auth/register`, or the
-invite/`accept-invite` pair), then edit its `permissions` down to exactly
-`["settings:edit"]` via the existing user-management surface — never leave it
-on a broader role. Record the chosen tenant and its `x-company-token` value as
-`PREFLIGHT_COMPANY_TOKEN` alongside the bot's `PREFLIGHT_BOT_EMAIL`/
-`PREFLIGHT_BOT_PASSWORD` in the target GitHub Environment's secrets (`STAGING`,
-and optionally `DEV` for testing this workflow) — never in this repo.
-
-**Storage mechanism: GitHub Environment secrets, superseding #1121's original SOPS+age proposal
-(pr-reviewer RF-4 on PR #1127, 2026-08-28).** #1121 itself proposed storing the bot account's
-credentials via this repo's SOPS+age path (`docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`). That path's
-ciphertext lives in a separate private repo, `Sieitzz/dgfy-secrets` (ADR 0060 Decision 4, by
-design — so `dgfy-platform` never carries secret history), which has no read path wired into any
-GitHub Actions workflow today — nothing decrypts it into a CI job's env. GitHub Environment secrets
-is the mechanism actually wired into this exact self-hosted-runner CI path already, for a
-comparable credential class: `verify-deployment.yml` and `tenant-schema-report.yml` both resolve
-`SSH_PRIVATE_KEY`/`SSH_TARGET` the same way, per dispatched `environment`. Using the same mechanism
-for `PREFLIGHT_*` keeps one credential-handling pattern for this CI path instead of two. **This is
-an explicit, accepted substitution for #1121's storage mechanism, not an unstated deviation** — the
-credential still never lives in this repo, in a script, or in a plain env file, which was the actual
-constraint #1121's proposal was protecting. **Not yet designed: a rotation/revocation procedure for
-the bot account's password or the GitHub Environment secrets themselves** — this is a real,
-undesigned follow-up, not silently assumed solved by "GitHub Environment secrets are secret."
-
-**No `NOT-EXECUTED-*` declaration may reach `main`** — the promotion-time sweep
-must have reconciled every one in the batch first, unless `promoter`'s #1007
-phrase-gated expedited override is explicitly invoked for that specific
-promotion (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment — the
-one case where a `NOT-EXECUTED-*` declaration may legitimately still reach
-`main`, logged and authorized, not silent).
-
-Recipe (adapted from the worked example in
-`docs/compliance/impact-declarations/2026-08-07-pos-sentry-independent-debugging.md`,
-run once per outstanding declaration in the batch):
-
-```bash
-curl -sS -X POST https://<target-host>/api/v1/compliance/preflight \
-  -H 'Content-Type: application/json' \
-  -H "x-company-token: ${PREFLIGHT_COMPANY_TOKEN}" \
-  -H "Authorization: Bearer ${DGFY_DEV_TOKEN}" \
-  -d '{
-    "request_name": "<PR title or declaration_id>",
-    "surfaces": [<declaration.surfaces>],
-    "impact_declaration": { <the declaration'"'"'s own fields, verbatim> }
-  }'
-```
-
-Note the `x-company-token` header — the original recipe omitted it, but the same tenant-resolution
-middleware that requires it for the login call above (`requireTenantAuthContext()`) also gates
-`/api/v1/compliance/preflight` itself, so it's required here too.
-
-Record the response's `result`, `reason_code`, and a run timestamp into the
-declaration's `preflight_result` / `preflight_reason_code` / `preflight_run_at`
-/ `preflight_request_ref` fields, replacing the `NOT-EXECUTED-*` placeholder.
-**Land the reconciled front matter via a small cut branch and PR into
-`develop`, never a direct commit** — the same cut-branch discipline
-`RELEASE_CANDIDATE_POLICY.md`'s hotfix/back-port amendment already requires
-for anything landing on `develop` outside the normal feature-PR path; this is
-regulator-facing evidence and gets the same review, not an exception. Merge
-that PR before `release/<label>` is cut (or before `to-staging/<label>`, if
-the optional soak is used for this batch). If the response is
-`breach` or `review_required`, do not write `no_breach` — record the actual
-result and treat the change as blocked from promotion pending review, per the
-Mandatory Workflow above.
+**What's deleted from this protocol, not just changed:** the manual
+bot-account-provisioning procedure (register on the tenant's own
+`POST /api/v1/auth/register` flow, trim `permissions` by hand, paste
+credentials into a GitHub Environment); the "GitHub Environment secrets vs.
+SOPS+age" storage-mechanism decision (there's no secret to store); and the
+"not yet designed: rotation/revocation" open gap (there's no durable
+credential to rotate — every fixture credential is generated fresh per run
+and destroyed with the tenant that held it). None of these apply to the
+current design; they're preserved only in this doc's own git history and in
+#1121/#1163's issue history, not restated here as if still live.
 
 ## Dirty Worktree Handling
 1. Use path-scoped diffs while preparing declaration evidence:

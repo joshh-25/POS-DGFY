@@ -14347,3 +14347,114 @@ declaration avoidance, per J5).
 
 223. #1240 (offline-sync hard-reject) and #1241 (split-payment rollback hazard) are the strongest
 candidates, per the plan's own §11.
+
+## Phase 223 - Compliance Preflight Sweep: Ephemeral CI Target, No Secrets, Continuous Trigger (#1163/#1248)
+
+### Initiative and release
+
+Compliance/release-flow reliability, no parent epic. Fixes #1163 (open, superseded by this phase
+rather than closed silently — closing an issue is a `pm` checkpoint, ask first) by finding the
+manual bot-account/secrets provisioning it tracked unnecessary. Tracking issue: #1248.
+
+### Objective and scope
+
+The compliance preflight sweep (`compliance-preflight-sweep.yml`, #1121) blocked the 2026-08-29
+`develop → main` promotion outright because its four `PREFLIGHT_HOST`/`PREFLIGHT_COMPANY_TOKEN`/
+`PREFLIGHT_BOT_EMAIL`/`PREFLIGHT_BOT_PASSWORD` GitHub Environment secrets were never provisioned —
+confirmed empty on `STAGING`/`DEV`, requiring #1007's expedited override to ship that promotion. 15
+declarations in the 2026-08-31 batch carried the same block. Investigation (not assumed) found the
+deployed-host design bought no compliance property to begin with: the endpoint
+(`POST /api/v1/compliance/preflight`) writes nothing, never executes the change's code, and its
+response carries no server-generated request id — `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s own
+governing principle ("a merge gate must be satisfiable without a deployed environment") was being
+violated by the design meant to satisfy it.
+
+**Scope:**
+- Rewrite `.github/workflows/compliance-preflight-sweep.yml` to provision its own ephemeral
+  `mysql` + `redis` + `dgfy-api` instance on the CI runner (reusing `promotion-quality-gate.yml`'s
+  container-per-step pattern) instead of hitting a manually provisioned remote bot account.
+- New `apps/dgfy-api/scripts/seed-preflight-fixture.js` / `teardown-preflight-fixture.js` — seed
+  and tear down a throwaway tenant + `settings:edit` bot via the existing `provisionTenant()`
+  service (`apps/dgfy-api/src/services/tenantProvisioningService.js`), not a new provisioning path.
+- New `scripts/reconcile-preflight-declarations.js` (+ tests) — writes real
+  `preflight_result`/`preflight_reason_code`/`preflight_run_at`/`preflight_request_ref` values into
+  each declaration's front matter only (never the body), refusing to write a passing ref for a
+  failing verdict.
+- Auto-trigger on `push` to `develop` touching `docs/compliance/impact-declarations/**`
+  (path-filtered — required, not optional, on this repo's single-concurrency self-hosted runners),
+  plus `workflow_dispatch` for backfill/debugging.
+- Auto-merge the reconciliation PR into `develop` only when every declaration in a run passed.
+- ADR 0074 Decision 5 (`[default]` tier) amended via a dated block, not superseded — the deployed-
+  host clause is no longer accurate.
+- Two pre-existing defects fixed along the way, both since #1121 and never previously exercised
+  end to end (the one real prior sweep run, 2026-08-29, reached only one declaration before the
+  missing secrets blocked it): issue #1233 (`DgfyAffiliateCategoryRate` missing from
+  `NON_TENANT_MODEL_EXPORTS`, confirmed to actively break `provisionTenant()` for every fresh
+  tenant, not merely latent risk as originally scoped) and `scripts/build-preflight-request.js`
+  (the endpoint 422s on the `store`/`privacy` surfaces several real declarations legitimately carry,
+  and on any evidence entry over 300 chars — both now filtered/truncated rather than sent raw).
+
+**Out of scope, named explicitly:** `check:compliance` still cannot distinguish a real preflight
+run from a hand-typed placeholder matching the accepted ref pattern — automating the sweep closes
+the "nothing ever converts the placeholder" gap, it does not make the control itself verifiable.
+Flagged as a follow-up to raise with `pm`, not fixed here.
+
+### Status
+
+`in_progress` — every acceptance item that can be validated outside CI has passed (see below); the
+one outstanding item (the workflow's first live CI dispatch) is exactly what makes this
+`in_progress` rather than `completed`, per this ledger's own rule that a phase closes only once its
+acceptance gates and required validation actually pass, not once the code merges.
+
+### Dependencies
+
+None blocking. Builds on #1121 (token-minting automation, unchanged — `mint-preflight-token.js`,
+`build-preflight-request.js`, `parse-preflight-response.js` are reused as-is or fixed in place, not
+replaced) and #980/ADR 0074 (the `develop → main` default promotion path this sweep re-anchors to).
+
+### Acceptance and validation evidence
+
+- [x] **Live spike, 2026-08-31** (the load-bearing evidence for this phase): isolated docker
+  network → `mysql:8.0` + `redis:7-alpine` → `dgfy-migration-runner` migrate → `provisionTenant()`
+  → seed bot user → boot `dgfy-api` → `/api/v1/auth/login` → real
+  `POST /api/v1/compliance/preflight` call against a real declaration
+  (`2026-08-30-affiliate-reactivation-endpoint.md`) from the current batch. Result: `HTTP 200`,
+  `"result":"no_breach"`, `"can_proceed":true`. Repeated against the final production seeder script
+  (`seed-preflight-fixture.js`), not just the throwaway spike version, with the same result.
+  Teardown script confirmed to remove the tenant DB and landlord row cleanly.
+- [x] `node --test scripts/build-preflight-request.test.js` — 12/12 passing (5 new, covering the
+  surface-filter and evidence-truncation fixes).
+- [x] `node --test scripts/reconcile-preflight-declarations.test.js` — 6/6 passing, including that
+  a failing verdict is never reconciled and the file is left untouched.
+- [x] Manual reconcile run against a real declaration copy — diff showed exactly the two intended
+  front-matter lines changed, nothing else (including the declaration's own historical
+  `NOT-EXECUTED-*` body prose, which must survive untouched).
+- [x] `node --check` on every changed/new `.js` file. YAML structural validation (`yaml.safe_load`)
+  and `bash -n` on every `run:` block in the rewritten workflow.
+- [x] `npm run check:compliance` — clean; no rule in `COMPLIANCE_SENSITIVE_RULES` matches
+  `.github/workflows/`, `scripts/`, or `docs/`, confirmed empirically rather than assumed. A
+  voluntary `minor` declaration filed anyway, matching #1121's own precedent for this exact class
+  of change.
+- [ ] The workflow's own first live CI run (auto-trigger firing for real, `gh` CLI self-install
+  path, `git push`/`gh pr create`/`gh pr merge` from the runner) is **unverified from within this
+  session** — no CI dispatch capability here. First real dispatch against the actual 15 outstanding
+  declarations is the calibration evidence for this mechanism, per Pat's own sequencing call (no
+  #1007 override invoked; build the fix, then sweep the batch clean with it).
+
+### Links
+
+- Tracking issue: #1248. Superseded: #1163 (not closed — `pm` checkpoint, ask first).
+- `.github/workflows/compliance-preflight-sweep.yml`,
+  `apps/dgfy-api/scripts/seed-preflight-fixture.js`,
+  `apps/dgfy-api/scripts/teardown-preflight-fixture.js`,
+  `scripts/reconcile-preflight-declarations.js`, `scripts/build-preflight-request.js`,
+  `apps/dgfy-api/src/utils/tenantModelFactory.js` (#1233 fix).
+- ADR 0074 (`docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`),
+  dated `## Amendments` block, 2026-08-31.
+- `docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"
+  (rewritten). `docs/ops/RELEASE_CANDIDATE_POLICY.md`, 2026-08-31 amendment.
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/pr-reviewer/SKILL.md` (both updated to match).
+
+### Next eligible phase
+
+224.
