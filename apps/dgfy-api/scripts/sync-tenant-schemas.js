@@ -401,6 +401,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         assigned_shift_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `assigned_shift_id` INT NULL"
+        }),
+        // #1273/#1081 Phase 224: nullable grouping link into delivery_runs. Bare column, no FK,
+        // matching every other delivery_jobs repair entry in this block.
+        delivery_run_id: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -1020,6 +1025,58 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_jobs_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `delivery_jobs_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // #1273/#1081 Phase 224: groups many delivery_jobs rows under one manual operational run.
+    // delivery_jobs.pos_transaction_id (above) stays UNIQUE, untouched by this table.
+    delivery_runs: Object.freeze({
+        sql: "CREATE TABLE `delivery_runs` (\n"
+            + "  `delivery_run_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `label` varchar(120) NOT NULL,\n"
+            + "  `scheduled_date` date DEFAULT NULL,\n"
+            + "  `status` enum('draft','scheduled','dispatched','completed','cancelled') NOT NULL DEFAULT 'draft',\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `notes` text,\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_runs_status_scheduled` (`status`,`scheduled_date`),\n"
+            + "  KEY `idx_delivery_runs_location_status` (`location_id`,`status`),\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_1` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // `accountable_run_id` is a STORED generated column enforcing "at most one accountable
+    // personnel row per run" via its unique index below -- see PosTerminalShift's
+    // active_terminal_id for the established precedent of this pattern. `delivery_run_id`'s FK is
+    // RESTRICT/RESTRICT rather than CASCADE because it is that generated column's own base column
+    // -- #1166 established live (MySQL 8.0.46) that InnoDB unconditionally rejects a CASCADE/SET
+    // NULL FK action on a generated column's base column. See the migration
+    // (20260901000005-create-delivery-runs.cjs) and models/index.js for the same reasoning.
+    delivery_run_personnel: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_personnel` (\n"
+            + "  `delivery_run_personnel_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_id` int NOT NULL,\n"
+            + "  `delivery_personnel_id` int DEFAULT NULL,\n"
+            + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
+            + "  `is_accountable` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  `accountable_run_id` int GENERATED ALWAYS AS (CASE WHEN `is_accountable` = 1 THEN `delivery_run_id` ELSE NULL END) STORED,\n"
+            + "  PRIMARY KEY (`delivery_run_personnel_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_personnel_accountable` (`accountable_run_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_personnel_member` (`delivery_run_id`,`delivery_personnel_id`),\n"
+            + "  KEY `idx_delivery_run_personnel_run` (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_run_personnel_personnel` (`delivery_personnel_id`),\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_1` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_2` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_4` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     pos_transaction_discount_lines: Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discount_lines` (\n"
@@ -1892,6 +1949,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_delivery_jobs_assignment_shift: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_assignment_shift` (`assigned_shift_id`)"
+        }),
+        idx_delivery_jobs_run_status: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
         })
     }),
     fnb_modifier_groups: Object.freeze({
@@ -2200,7 +2260,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.3';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.4';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
