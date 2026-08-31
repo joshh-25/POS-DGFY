@@ -207,6 +207,31 @@ export const deliveryRunRepository = {
         return toPlain(row);
     },
 
+    // Phase 225 (#1273/#1081) removal conditional-clear: nulls the assignment fields a run
+    // write-through wrote, only ever called by buildRemoveDeliveryRunMemberUseCase once it has
+    // already established the job is run-owned and still pending_dispatch. See
+    // PHASE-225-PLAN.md section 4.7.
+    async clearDeliveryJobAssignment(deliveryJobId, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        const normalizedId = toPositiveInt(deliveryJobId);
+        if (!normalizedId) return null;
+
+        const row = await DeliveryJob.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+
+        await row.update({
+            delivery_personnel_id: null,
+            delivery_personnel_name: null,
+            assigned_by: null,
+            assigned_shift_id: null,
+            assigned_at: null
+        }, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async getDeliveryJobByOrderId(posTransactionId, options = {}) {
         const DeliveryJob = dbStore.get('DeliveryJob');
         const normalizedId = toPositiveInt(posTransactionId);

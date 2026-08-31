@@ -87,7 +87,10 @@ const personnelIdentityMatches = (deliveryJob, accountableRow) => {
     return Boolean(jobName) && jobName === accountableName;
 };
 
-export const buildCreateDeliveryRunUseCase = ({ deliveryRunRepository }) => {
+export const buildCreateDeliveryRunUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ payload = {}, user = {}, auditContext = {} } = {}) => {
         const actorUserId = parsePositiveInt(user?.user_id);
         const label = String(payload?.label || '').trim();
@@ -108,7 +111,7 @@ export const buildCreateDeliveryRunUseCase = ({ deliveryRunRepository }) => {
         }
 
         try {
-            const locationScope = await resolvePosOperationalLocationScope({
+            const locationScope = await resolveLocationScope({
                 requestedLocationId: payload?.location_id ?? null,
                 userId: actorUserId,
                 operationLabel: 'Delivery run creation',
@@ -821,19 +824,7 @@ export const buildRemoveDeliveryRunMemberUseCase = ({ posRepository, deliveryRun
             updatedDeliveryJob = await deliveryRunRepository.removeJobFromRun(deliveryJob.delivery_job_id, { transaction, lock: true });
 
             if (isRunOwned) {
-                const DeliveryJob = dbStore.get('DeliveryJob');
-                const row = await DeliveryJob.findByPk(deliveryJob.delivery_job_id, {
-                    transaction,
-                    lock: transaction.LOCK.UPDATE
-                });
-                await row.update({
-                    delivery_personnel_id: null,
-                    delivery_personnel_name: null,
-                    assigned_by: null,
-                    assigned_shift_id: null,
-                    assigned_at: null
-                }, { transaction });
-                updatedDeliveryJob = row.toJSON();
+                updatedDeliveryJob = await deliveryRunRepository.clearDeliveryJobAssignment(deliveryJob.delivery_job_id, { transaction, lock: true });
                 assignmentCleared = true;
             }
 
