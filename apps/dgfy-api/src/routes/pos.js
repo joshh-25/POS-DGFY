@@ -103,8 +103,16 @@ import {
     validateDeliveryPersonnelRegistryQuery,
     validateDeliveryPersonnelParam,
     validateDeliveryPersonnelCreate,
-    validateDeliveryPersonnelUpdate
+    validateDeliveryPersonnelUpdate,
+    validateDeliveryRunCreate,
+    validateDeliveryRunUpdate,
+    validateDeliveryRunIdParam,
+    validateDeliveryRunMemberParam,
+    validateDeliveryRunPersonnelSet,
+    validateDeliveryRunMembersAdd,
+    validateDeliveryRunListQuery
 } from '../validators/posValidator.js';
+import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
 
 const router = express.Router();
 const employeeCreditCheckoutPermission = checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT);
@@ -264,6 +272,16 @@ router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_P
 router.get('/delivery-personnel/registry', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelRegistryQuery, deliveryPersonnelController.listDeliveryPersonnelRegistry);
 router.post('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelCreate, deliveryPersonnelController.createDeliveryPersonnel);
 router.patch('/delivery-personnel/:deliveryPersonnelId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelParam, validateDeliveryPersonnelUpdate, deliveryPersonnelController.updateDeliveryPersonnel);
+// Phase 225 (#1273/#1081): delivery run CRUD + membership. `pos:transact` for mutations, matching
+// ADR 0034's 2026-08-08 amendment grant for selecting a delivery person / advancing a manual job --
+// runs are that same authority exercised in bulk. `pos:view` for reads matches GET /delivery-personnel.
+router.post('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunCreate, deliveryRunController.createDeliveryRun);
+router.get('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunListQuery, deliveryRunController.listDeliveryRuns);
+router.get('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunIdParam, deliveryRunController.getDeliveryRun);
+router.patch('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunUpdate, deliveryRunController.updateDeliveryRun);
+router.put('/delivery-runs/:deliveryRunId/personnel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunPersonnelSet, deliveryRunController.setDeliveryRunPersonnel);
+router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunMembersAdd, deliveryRunController.addDeliveryRunMembers);
+router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
