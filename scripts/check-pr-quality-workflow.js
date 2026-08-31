@@ -27,9 +27,13 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // still fails this check) -- it does not mean "anything goes."
 //
 // 2026-08-29 (#1124/#1165): the staging-leg *skip* half of the original relaxation (every quality
-// job's `if:` additionally excluding `to-staging/*->staging` entirely) is retired -- that leg now
-// runs every job too, advisory-only, same as every other leg. checkStagingLegSkipShape's own
-// comment has the full "why" and the current sanctioned `if:` shape; not restated here.
+// job's `if:` additionally excluding `to-staging/*->staging` entirely) was retired for a few days --
+// that leg ran every job too, advisory-only, same as every other leg.
+//
+// 2026-08-31 (#1253): reverted, Pat's call -- the develop->staging leg is meant to be the quick
+// soak/QA leg, not the one that runs quality checks; that's `staging->main`'s job. Back to skipping
+// every quality job entirely on the staging leg. checkStagingLegSkipShape's own comment has the
+// full "why" and the current sanctioned `if:` shape; not restated here.
 //
 // Revert `checkStagingLegSkipShape` to the original blanket forbid once #1063 closes.
 //
@@ -212,20 +216,20 @@ function checkRunnerCacheConsistency(prChecksText) {
   return problems;
 }
 
-// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines --
-// unconditionally advisory everywhere it runs.
+// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines -- skipped
+// entirely on the develop->staging soak leg, unconditionally advisory everywhere else it runs.
 //
-// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of this is retired -- the
-// `to-staging/*->staging` soak leg used to skip every quality job entirely (`&&
+// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of this was retired for a few days -- the
+// `to-staging/*->staging` soak leg skipped every quality job entirely (`&&
 // needs.gate.outputs.is_staging_leg != 'true'`), producing zero signal on 25 of the last 30
-// workflow runs. It now runs every job, advisory-only exactly like the `release/*->main` leg
-// always has, to start building the track record this epic needs. The name
-// `checkStagingLegSkipShape` is now a slight misnomer (there is no more skip to check the shape
-// of) but is kept rather than renamed -- it still asserts the one thing that actually matters,
-// every quality job's `if:`/`continue-on-error:` pair, and a rename buys nothing this comment
-// doesn't already explain. `is_staging_leg` itself stays as a `gate` output (still potentially
-// useful for a future leg-specific policy) even though no job's `if:` below references it anymore.
-const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true'";
+// workflow runs, so it was made to run every job advisory-only instead, same as `release/*->main`.
+//
+// 2026-08-31 (#1253), Pat's call: reverted. The `develop->staging` leg was never meant to carry
+// this gate at all -- it's the quick soak/QA leg, deliberately contrasted with `staging->main`
+// (and default `develop->main`) where quality checks belong before shipping to production. Back to
+// skipping entirely on the staging leg, accepting the zero-signal trade-off #1124/#1165 tried to
+// avoid -- that leg optimizes for speed, not signal.
+const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
 const SANCTIONED_CONTINUE_ON_ERROR = 'continue-on-error: true';
 
 // The six jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
@@ -617,6 +621,55 @@ function checkReporterHasNoShellBinaryDependency(qualityWorkflowText) {
   return problems;
 }
 
+// 2026-08-31 (#1253, pr-reviewer RF-1/RF-2/RF-4 on PR #1257): the six-quality-job revert alone
+// wasn't the full #1124/#1165 item 4 undo -- two more jobs also lost the `is_staging_leg`
+// exclusion in that same commit and needed it restored too: `report-advisory-failures` (has
+// nothing to report when every job it depends on was itself skipped) and `salvage-api-evidence`
+// (added by that same commit, never carried the exclusion, and without it burns a runner slot
+// "salvaging" evidence for a dgfy-api-quality run that never happened). Neither job shares the six
+// quality jobs' exact `if:` shape (both carry `always()` and other clauses SANCTIONED_SKIP_STAGING_IF
+// doesn't), so this is a substring check against each job's own `if:` line rather than an exact-match
+// reuse of checkStagingLegSkipShape -- RF-4's own point was that an exact-shape check on the wrong
+// job set is precisely why RF-1 slipped through unnoticed in both the original change and the first
+// revert attempt.
+const STAGING_LEG_RESPECTING_JOBS = [REPORTER_JOB_NAME, 'salvage-api-evidence'];
+
+/**
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when both jobs' `if:` excludes the staging leg
+ */
+function checkReportingJobsRespectStagingLeg(qualityWorkflowText) {
+  const problems = [];
+  for (const name of STAGING_LEG_RESPECTING_JOBS) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${name}:" job block -- was it renamed or ` +
+        'restructured? checkReportingJobsRespectStagingLeg needs updating to match.'
+      );
+      continue;
+    }
+    const ifLines = blockMatch[1].match(/^ {4}if:.*$/gm) || [];
+    if (ifLines.length !== 1) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}" must have exactly one job-level \`if:\` line ` +
+        `(found: ${ifLines.length}) -- checkReportingJobsRespectStagingLeg needs updating to match.`
+      );
+      continue;
+    }
+    if (!ifLines[0].includes("needs.gate.outputs.is_staging_leg != 'true'")) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}"'s \`if:\` (${ifLines[0].trim()}) does not exclude ` +
+        "the staging leg (`needs.gate.outputs.is_staging_leg != 'true'`) -- #1253 requires this job " +
+        'to also be skipped entirely on the develop->staging soak leg, not just the six quality jobs.'
+      );
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
@@ -626,7 +679,8 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
-    ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText)
+    ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
+    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText)
   ];
 
   return missing;
@@ -647,7 +701,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (advisory on every leg it runs, including the staging soak leg since #1124/#1165 -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), the reporter has no `gh` shell dependency, and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
+  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (skipped entirely on the develop->staging soak leg per #1253, advisory on every other leg it runs -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), the reporter has no `gh` shell dependency, and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
 }
 
 if (require.main === module) {
@@ -662,6 +716,8 @@ module.exports = {
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
+  checkReportingJobsRespectStagingLeg,
+  STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,

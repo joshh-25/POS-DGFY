@@ -475,6 +475,32 @@ implied away. For the record: GitHub's own service-container provisioning has ne
 in this workflow's run history as of this writing — the #1066 round-2 fix closes a real mechanism
 gap that had not yet been observed to fire, not an incident postmortem.
 
+### 2026-08-29 → 2026-08-31: the staging-leg skip was briefly retired, then reverted (#1124/#1165, #1253)
+
+Not previously recorded in this file — flagged as a gap by #1253, filed mid-task by `promoter` after
+this drift caused live confusion during a real promotion run (PR #1252). Between these two dates,
+the `to-staging/*→staging` row above ("skipped entirely as of 2026-08-26") was briefly inaccurate:
+
+- **2026-08-29 (#1124/#1165, item 4):** `promotion-quality-gate.yml` stopped skipping every quality
+  job on the `to-staging/*→staging` leg entirely and instead ran them advisory-only, same as the
+  `release/*→main` leg — reasoning being that the skip produced zero signal on 25 of the last 30
+  runs, and the fastest way to build a track record for #1063's investigation was to actually run
+  the jobs, non-blocking. This file's own row above was never updated to match, which is the drift
+  #1253 originally flagged.
+- **2026-08-31 (#1253), Pat's call:** reverted. The `develop → staging` leg is meant to be the quick
+  soak/QA leg — contrasted deliberately with `staging → main` (and the default `develop → main`
+  promotion), which is where quality checks belong because that leg ships to production. Back to
+  skipping every quality job entirely on the `to-staging/*→staging` leg, matching this row's
+  original 2026-08-26 wording again. `scripts/check-pr-quality-workflow.js`'s
+  `checkStagingLegSkipShape` and `.agents/skills/promoter/SKILL.md`'s runbook reference are both
+  updated to match.
+
+**Accepted trade-off, stated explicitly rather than silently reintroduced:** this brings back the
+"zero signal on 25 of the last 30 runs" gap #1124/#1165 tried to close — deliberate, because the
+`develop → staging` leg optimizes for promotion speed, not for quality-gate signal; that signal is
+still required, unconditionally, at the `staging → main` (or default `develop → main`) leg before
+anything reaches production.
+
 ### 2026-08-31: The compliance preflight sweep is continuous, not a promotion-time gate (#1163/#1248)
 
 The row above (2026-08-22 amendment, "What actually gates a release into `main` today") and the

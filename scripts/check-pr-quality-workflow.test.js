@@ -7,10 +7,12 @@ const {
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
+  checkReportingJobsRespectStagingLeg,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,
   ADVISORY_JOB_NAMES,
+  STAGING_LEG_RESPECTING_JOBS,
   REPORTER_JOB_NAME
 } = require('./check-pr-quality-workflow');
 
@@ -128,12 +130,13 @@ test('checkStagingLegSkipShape: sanctioned skip-if + unconditional continue-on-e
   assert.deepEqual(checkStagingLegSkipShape(text), []);
 });
 
-// 2026-08-29 (#1124/#1165): SANCTIONED_SKIP_STAGING_IF no longer excludes the staging leg (that
-// relaxation was retired -- see this file's own top-of-file comment) -- a job that still carries
-// the old, retired shape is now itself the deviant case this test exercises.
-test('checkStagingLegSkipShape: an `if:` still carrying the retired staging-leg exclusion is caught', () => {
+// 2026-08-31 (#1253): SANCTIONED_SKIP_STAGING_IF excludes the staging leg again (the #1124/#1165
+// advisory-everywhere relaxation was itself reverted -- see this file's own top-of-file comment) --
+// a job carrying that now-retired advisory-everywhere shape (no staging-leg exclusion) is the
+// deviant case this test exercises.
+test('checkStagingLegSkipShape: an `if:` missing the staging-leg exclusion (the retired advisory-everywhere shape) is caught', () => {
   const text = buildWorkflowWithJobLines(() => ({
-    ifLine: "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"
+    ifLine: "if: needs.gate.outputs.is_promotion == 'true'"
   }));
   const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
@@ -404,4 +407,57 @@ test('checkReporterHasNoShellBinaryDependency: a reporter that shells out to `gh
 test('checkReporterHasNoShellBinaryDependency: a `gh` mention in a comment elsewhere in the file is not flagged', () => {
   const text = `# see gh api repos/.../actions/runners for evidence\n\n${buildQualityJobWithReportingShape('dgfy-api-quality')}\n\n${buildReporterJob(['dgfy-api-quality'])}\n`;
   assert.deepEqual(checkReporterHasNoShellBinaryDependency(text), []);
+});
+
+// 2026-08-31 (#1253, pr-reviewer RF-1/RF-2/RF-4 on PR #1257): report-advisory-failures and
+// salvage-api-evidence both lost their is_staging_leg exclusion in the same #1124/#1165 commit that
+// made the six quality jobs advisory-everywhere -- the first revert attempt (checkStagingLegSkipShape,
+// scoped to QUALITY_JOB_NAMES only) restored the six but missed these two, exactly the gap this check
+// exists to close now. Builds each job's block directly rather than via buildReporterJob (whose
+// fixture is deliberately `if: always()`, used by other tests above that don't care about the
+// staging-leg exclusion).
+function buildStagingLegRespectingJobBlock(name, ifLine) {
+  return [
+    `  ${name}:`,
+    '    needs: [gate]',
+    `    ${ifLine}`,
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: echo noop'
+  ].join('\n');
+}
+
+test('checkReportingJobsRespectStagingLeg: both jobs excluding the staging leg reports no problems', () => {
+  const text = STAGING_LEG_RESPECTING_JOBS
+    .map((name) => buildStagingLegRespectingJobBlock(name, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"))
+    .join('\n\n');
+  assert.deepEqual(checkReportingJobsRespectStagingLeg(`\n${text}\n`), []);
+});
+
+test('checkReportingJobsRespectStagingLeg: a job missing the staging-leg exclusion (the #1124/#1165 shape) is caught', () => {
+  const text = STAGING_LEG_RESPECTING_JOBS
+    .map((name) => buildStagingLegRespectingJobBlock(name, "if: always() && needs.gate.outputs.is_promotion == 'true'"))
+    .join('\n\n');
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, STAGING_LEG_RESPECTING_JOBS.length);
+  problems.forEach((problem) => assert.match(problem, /does not exclude the staging leg/));
+});
+
+test('checkReportingJobsRespectStagingLeg: only one of the two jobs missing the exclusion is reported individually', () => {
+  const [first, second] = STAGING_LEG_RESPECTING_JOBS;
+  const text = [
+    buildStagingLegRespectingJobBlock(first, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"),
+    buildStagingLegRespectingJobBlock(second, "if: always() && needs.gate.outputs.is_promotion == 'true'")
+  ].join('\n\n');
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], new RegExp(`"${second}"`));
+});
+
+test('checkReportingJobsRespectStagingLeg: a missing job block is caught rather than silently skipped', () => {
+  const [first] = STAGING_LEG_RESPECTING_JOBS;
+  const text = buildStagingLegRespectingJobBlock(first, "if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'");
+  const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /could not find the ".*:" job block/);
 });
