@@ -19,13 +19,15 @@ vi.mock('../services/deliveryRunService.js', () => ({
   updateDeliveryRun: vi.fn(),
   setDeliveryRunPersonnel: vi.fn(),
   addDeliveryRunMembers: vi.fn(),
-  removeDeliveryRunMember: vi.fn()
+  removeDeliveryRunMember: vi.fn(),
+  dispatchDeliveryRun: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
-    success: vi.fn()
+    success: vi.fn(),
+    warning: vi.fn()
   }
 }));
 
