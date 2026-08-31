@@ -177,7 +177,12 @@ export const POS_OPERATION_KEYS = Object.freeze({
     // keys from DELIVERY_JOB_ASSIGNMENT because these are batch/run-scoped idempotency fingerprints,
     // not per-job ones.
     DELIVERY_RUN_MEMBERSHIP: 'terminal.delivery_run_membership',
-    DELIVERY_RUN_PERSONNEL: 'terminal.delivery_run_personnel'
+    DELIVERY_RUN_PERSONNEL: 'terminal.delivery_run_personnel',
+    // Phase 228 (#1273/#1271): run-scoped, not per-order -- hashed on { delivery_run_id } only, so
+    // a legitimate retry with a different (e.g. one member removed) member set still replays
+    // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
+    // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
+    DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch'
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
@@ -1380,12 +1385,16 @@ const enforceTerminalHomeLocationPolicy = ({
     return normalizedTargetLocationId;
 };
 
-const normalizeOnlineFulfillmentStatus = (value) => {
+// Phase 228 (#1273/#1271): exported (no behavior change) so
+// buildDispatchDeliveryRunUseCase (deliveryRunUseCases.js) can reuse the same per-order
+// fulfillment-status guard chain the per-order online-order status endpoint uses, rather than
+// forking a second copy of ONLINE_FULFILLMENT_TRANSITIONS.
+export const normalizeOnlineFulfillmentStatus = (value) => {
     const status = String(value || '').trim();
     return ONLINE_FULFILLMENT_STATUSES.includes(status) ? status : null;
 };
 
-const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
+export const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
     if (currentStatus === nextStatus) {
         return;
     }
@@ -1922,7 +1931,9 @@ export const assertOpenShiftForPosMutation = async ({
     return toSerializable(shift);
 };
 
-const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
+// Phase 228 (#1273/#1271): exported (no behavior change) -- see normalizeOnlineFulfillmentStatus's
+// own comment above for why.
+export const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
     const activeShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
     if (parsePositiveInt(order?.shift_id) || !activeShiftId) return {};
 

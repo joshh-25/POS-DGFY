@@ -38,3 +38,10 @@ export const removeDeliveryRunMember = async (deliveryRunId, posTransactionId) =
   const response = await api.delete(`/pos/delivery-runs/${deliveryRunId}/members/${posTransactionId}`);
   return response.data?.data || null;
 };
+
+// Phase 228 (#1273). Best-effort dispatch of every eligible member -- three-bucket result
+// (dispatched/skipped/failed), not the two-bucket {added,skipped} shape addDeliveryRunMembers uses.
+export const dispatchDeliveryRun = async (deliveryRunId, payload) => {
+  const response = await api.post(`/pos/delivery-runs/${deliveryRunId}/dispatch`, payload);
+  return response.data?.data || null;
+};
