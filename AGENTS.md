@@ -133,13 +133,12 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
   slate afterward for confirmation before handing off to Planner/PM to file. Sits upstream of every
   other role in this roster. @.agents/skills/notes/SKILL.md
-- **Conduct** (#331/#1250) — manual-invocation-only (`disable-model-invocation: true`) dispatcher
-  that sequences `implement`/`pr-reviewer`/`promoter` across a multi-phase epic in parallel or
-  serial worktrees, with per-slot (`WORKER_PLANNER`/`WORKER_BUILDER`/`REVIEWER`) model selection.
-  Never auto-invoked, never redefines the roles it sequences. Canonical definition
-  @.agents/skills/conduct/SKILL.md, per #442's pattern; `.claude/skills/conduct/SKILL.md` is the
-  usual thin shim, carrying only the Claude-specific `disable-model-invocation: true` flag that
-  has no cross-tool equivalent.
+- **Conduct** — manual-invocation-only (`disable-model-invocation: true`) preset over Orca's
+  `orchestration` skill: runs a task or epic through Orca with per-slot
+  (`WORKER_PLANNER`/`WORKER_BUILDER`/`REVIEWER`) model selection, otherwise identical to calling
+  `/orchestration` directly. Never auto-invoked. @.agents/skills/conduct/SKILL.md;
+  `.claude/skills/conduct/SKILL.md` is the usual thin shim, carrying only the Claude-specific
+  `disable-model-invocation: true` flag that has no cross-tool equivalent.
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than

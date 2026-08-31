@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Sequence implement/pr-reviewer/promoter across a multi-phase epic or initiative, in parallel or serial worktrees, with per-slot model selection. Manual invocation only.
+description: Run a task or epic through Orca's orchestration skill, pre-configured with which model plans/builds/reviews. Manual invocation only.
 disable-model-invocation: true
 ---
 
