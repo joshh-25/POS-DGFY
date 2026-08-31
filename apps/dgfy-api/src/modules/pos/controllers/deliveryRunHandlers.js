@@ -55,7 +55,8 @@ export const createDeliveryRun = async (req, res, next) => {
 export const listDeliveryRuns = async (req, res, next) => {
     try {
         const result = await listDeliveryRunsUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            user: req.user
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -75,7 +76,8 @@ export const listDeliveryRuns = async (req, res, next) => {
 export const getDeliveryRun = async (req, res, next) => {
     try {
         const result = await getDeliveryRunUseCase({
-            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            user: req.user
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,

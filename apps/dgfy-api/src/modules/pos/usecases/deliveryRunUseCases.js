@@ -133,14 +133,46 @@ export const buildCreateDeliveryRunUseCase = ({
     };
 };
 
-export const buildListDeliveryRunsUseCase = ({ deliveryRunRepository }) => {
-    return async ({ query = {} } = {}) => {
+// RF-1 fix (PR #1276 review): list/get must resolve the actor's own operational location scope
+// -- the same resolvePosOperationalLocationScope mechanism buildAssignDeliveryPersonnelUseCase's
+// siblings already use for this purpose (see buildListActiveDeliveryPersonnelUseCase for the
+// closest precedent) -- so a POS user can never read a run belonging to a location they aren't
+// authorized for.
+export const buildListDeliveryRunsUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ query = {}, user = {} } = {}) => {
+        const actorUserId = parsePositiveInt(user?.user_id);
+        if (!actorUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        const requestedLocationId = query?.location_id == null ? null : parsePositiveInt(query.location_id);
+        if (query?.location_id != null && !requestedLocationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
         try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId,
+                userId: actorUserId,
+                operationLabel: 'Delivery run list'
+            });
+
             const { items, total, page, limit } = await deliveryRunRepository.listRuns({
                 status: query?.status || null,
                 scheduledDateFrom: query?.scheduled_date_from || null,
                 scheduledDateTo: query?.scheduled_date_to || null,
-                locationId: query?.location_id || null,
+                locationId: locationScope.location_id,
                 page: query?.page || 1,
                 limit: query?.limit || 20
             });
@@ -155,14 +187,25 @@ export const buildListDeliveryRunsUseCase = ({ deliveryRunRepository }) => {
     };
 };
 
-export const buildGetDeliveryRunUseCase = ({ deliveryRunRepository }) => {
-    return async ({ deliveryRunId } = {}) => {
+export const buildGetDeliveryRunUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ deliveryRunId, user = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
+        const actorUserId = parsePositiveInt(user?.user_id);
         if (!runId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'deliveryRunId must be a positive integer',
                 { statusCode: 400 }
+            ));
+        }
+        if (!actorUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
             ));
         }
 
@@ -175,6 +218,18 @@ export const buildGetDeliveryRunUseCase = ({ deliveryRunRepository }) => {
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 ));
             }
+
+            // A run with no location scope (allowed at creation for an unresolved multi-location
+            // actor) is not location-gated -- otherwise require the actor be authorized for the
+            // run's own location, same standard denial every other POS use case throws.
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: actorUserId,
+                    operationLabel: 'Delivery run retrieval'
+                });
+            }
+
             return ok(serializeDeliveryRun(run));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve delivery run'));
@@ -182,7 +237,10 @@ export const buildGetDeliveryRunUseCase = ({ deliveryRunRepository }) => {
     };
 };
 
-export const buildUpdateDeliveryRunUseCase = ({ deliveryRunRepository }) => {
+export const buildUpdateDeliveryRunUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ deliveryRunId, payload = {}, user = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
         const actorUserId = parsePositiveInt(user?.user_id);
@@ -222,6 +280,14 @@ export const buildUpdateDeliveryRunUseCase = ({ deliveryRunRepository }) => {
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
             }
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: actorUserId,
+                    operationLabel: 'Delivery run update',
+                    transaction
+                });
+            }
             if (RUN_LOCKED_STATUSES.includes(run.status)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
@@ -248,7 +314,11 @@ export const buildUpdateDeliveryRunUseCase = ({ deliveryRunRepository }) => {
     };
 };
 
-export const buildSetDeliveryRunPersonnelUseCase = ({ posRepository, deliveryRunRepository }) => {
+export const buildSetDeliveryRunPersonnelUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ deliveryRunId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
         const cashierId = parsePositiveInt(user?.user_id);
@@ -320,6 +390,14 @@ export const buildSetDeliveryRunPersonnelUseCase = ({ posRepository, deliveryRun
                     'Delivery run was not found.',
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
+            }
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: cashierId,
+                    operationLabel: 'Delivery run personnel set',
+                    transaction
+                });
             }
             if (RUN_LOCKED_STATUSES.includes(run.status)) {
                 throw new DomainError(
@@ -484,7 +562,11 @@ export const buildSetDeliveryRunPersonnelUseCase = ({ posRepository, deliveryRun
     };
 };
 
-export const buildAddDeliveryRunMembersUseCase = ({ posRepository, deliveryRunRepository }) => {
+export const buildAddDeliveryRunMembersUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ deliveryRunId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
         const cashierId = parsePositiveInt(user?.user_id);
@@ -558,6 +640,17 @@ export const buildAddDeliveryRunMembersUseCase = ({ posRepository, deliveryRunRe
                     'Delivery run was not found.',
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
+            }
+            // Step 1b: the actor must be authorized for the run's own location -- distinct from,
+            // and prior to, the per-order run-location-vs-order-location check in step 4 below,
+            // which only validates the *order's* data, never the actor.
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: cashierId,
+                    operationLabel: 'Delivery run membership add',
+                    transaction
+                });
             }
 
             // Step 2: at-least-one-accountable is enforced before a member job is added
@@ -758,7 +851,11 @@ export const buildAddDeliveryRunMembersUseCase = ({ posRepository, deliveryRunRe
     };
 };
 
-export const buildRemoveDeliveryRunMemberUseCase = ({ posRepository, deliveryRunRepository }) => {
+export const buildRemoveDeliveryRunMemberUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
     return async ({ deliveryRunId, posTransactionId, user = {}, auditContext = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
         const orderId = parsePositiveInt(posTransactionId);
@@ -791,6 +888,14 @@ export const buildRemoveDeliveryRunMemberUseCase = ({ posRepository, deliveryRun
                     'Delivery run was not found.',
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
+            }
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: cashierId,
+                    operationLabel: 'Delivery run member removal',
+                    transaction
+                });
             }
 
             const deliveryJob = await deliveryRunRepository.getDeliveryJobByOrderId(orderId, { transaction, lock: true });

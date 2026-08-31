@@ -1,13 +1,13 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-01
+last_reviewed: 2026-08-31
 declaration_id: 2026-09-01-pos-delivery-run-api
 classification: major
 surfaces: pos,terminal
-reason_codes_impacted: DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_JOB_ALREADY_IN_RUN,DELIVERY_ASSIGNMENT_NOT_RUN_OWNED,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_MEMBER_NOT_FOUND,DELIVERY_ORDER_REQUIRED,DELIVERY_JOB_REQUIRED,MANUAL_DELIVERY_JOB_REQUIRED,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_PERSONNEL_NOT_AVAILABLE,DELIVERY_ASSIGNMENT_REQUIRED
+reason_codes_impacted: DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_JOB_ALREADY_IN_RUN,DELIVERY_ASSIGNMENT_NOT_RUN_OWNED,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_MEMBER_NOT_FOUND,DELIVERY_ORDER_REQUIRED,DELIVERY_JOB_REQUIRED,MANUAL_DELIVERY_JOB_REQUIRED,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_PERSONNEL_NOT_AVAILABLE,DELIVERY_ASSIGNMENT_REQUIRED,POS_LOCATION_ACCESS_DENIED,POS_LOCATION_SCOPE_UNRESOLVED
 policy_version: 2026.09.01
-verification_evidence: apps/dgfy-api/tests/deliveryRun.usecase.test.js -- actually executed (Jest): create/list/get/update/personnel-set happy paths plus the DELIVERY_RUN_LOCKED and exactly-one-accountable validation branches,apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js -- actually executed (Jest): add-with-no-accountable 409 DELIVERY_RUN_ACCOUNTABLE_REQUIRED; add a non-manual job 409 MANUAL_DELIVERY_JOB_REQUIRED; add a cross-location order 409 DELIVERY_RUN_LOCATION_MISMATCH; add an order whose fulfillment_status is preparing (never packed) succeeds; write-through leaves delivery_jobs.status at pending_dispatch; idempotency_key replay does not double-write; free-text accountable name writes through as delivery_personnel_name; removal clears when run-owned + pending_dispatch; removal leaves when the assignment was overwritten per-order; removal leaves when the job is past pending_dispatch,apps/dgfy-api/tests/posValidator.deliveryRun.test.js -- actually executed (Jest): all 7 new validators including the registered-vs-free-text XOR and the dispatched/completed status rejection,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js -- actually executed (Jest): deliveryRunHandlers.js transport contracts plus a route-registration content check confirming all 7 routes carry checkPermission,apps/dgfy-api/tests/posDeliveryAssignment.usecase.test.js -- actually executed (Jest), unchanged, confirms the applyDeliveryPersonnelAssignment extraction is byte-equivalent for the existing per-order path,apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/posDeliveryCompletionGuard.usecase.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/posValidator.deliveryAssignment.test.js -- actually executed (Jest), unchanged, regression-clean,tests/rbacRouteCoverage.contract.test.js -- actually executed (Jest), confirms all 7 new routes carry checkPermission,node --check on every changed/new apps/dgfy-api .js file,npm run check:architecture (check:architecture-guardrails + check:controller-boundaries) -- OK with zero new allowlist entries,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
+verification_evidence: apps/dgfy-api/tests/deliveryRun.usecase.test.js -- actually executed (Jest): create/list/get/update/personnel-set happy paths, the DELIVERY_RUN_LOCKED and exactly-one-accountable validation branches, plus a Delivery run location scoping describe block proving a location-7 actor is denied POS_LOCATION_ACCESS_DENIED on list/get/update/set-personnel against a location-8 run,apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js -- actually executed (Jest): add-with-no-accountable 409 DELIVERY_RUN_ACCOUNTABLE_REQUIRED; add a non-manual job 409 MANUAL_DELIVERY_JOB_REQUIRED; add a cross-location order 409 DELIVERY_RUN_LOCATION_MISMATCH; add an order whose fulfillment_status is preparing (never packed) succeeds; write-through leaves delivery_jobs.status at pending_dispatch; idempotency_key replay does not double-write; free-text accountable name writes through as delivery_personnel_name; removal clears when run-owned + pending_dispatch; removal leaves when the assignment was overwritten per-order; removal leaves when the job is past pending_dispatch; add-members and remove-member each deny a location-7 actor against a location-8 run with POS_LOCATION_ACCESS_DENIED,apps/dgfy-api/tests/posValidator.deliveryRun.test.js -- actually executed (Jest): all 7 new validators including the registered-vs-free-text XOR and the dispatched/completed status rejection,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js -- actually executed (Jest): deliveryRunHandlers.js transport contracts (list/get now assert req.user is forwarded to the use case) plus a route-registration content check confirming all 7 routes carry checkPermission,apps/dgfy-api/tests/posDeliveryAssignment.usecase.test.js -- actually executed (Jest), unchanged, confirms the applyDeliveryPersonnelAssignment extraction is byte-equivalent for the existing per-order path,apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/posDeliveryCompletionGuard.usecase.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/posValidator.deliveryAssignment.test.js -- actually executed (Jest), unchanged, regression-clean,tests/rbacRouteCoverage.contract.test.js -- actually executed (Jest), confirms all 7 new routes carry checkPermission,node --check on every changed/new apps/dgfy-api .js file,npm run check:architecture (check:architecture-guardrails + check:controller-boundaries) -- OK with zero new allowlist entries,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
 rollback_note: No schema change in this phase -- Phase 224 (PR #1275) already landed delivery_runs, delivery_run_personnel, and delivery_jobs.delivery_run_id. This phase is API-only (routes/use cases/validators), so rollback is a plain code revert with no migration to reason about. The extracted applyDeliveryPersonnelAssignment helper is additive/refactor-only for the existing per-order assignment path -- reverting this PR restores the prior single inline implementation with no data-shape change.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -165,3 +165,35 @@ See the `verification_evidence` frontmatter key for the full list. Summary:
 pr-reviewer/AGENTS.md rule confirmed at #884: this is expected, not a review finding, on a PR
 targeting `develop`. The continuous `compliance-preflight-sweep.yml` (#1163/#1248) reconciles this
 after merge.
+
+## Amendments
+
+### 2026-08-31: RF-1 fix -- actor location-scope enforcement on every run use case
+
+PR #1276 review (pr-reviewer, blocker RF-1): the initial cut of `list`/`get` never received
+`req.user`, and `update`/`set-personnel`/`add-members`/`remove-member` loaded a run by unscoped
+primary key -- a POS user holding a valid `pos:view`/`pos:transact` grant could read or mutate a
+run (and its personnel/member assignments) belonging to a **different location in the same
+tenant**. The add-members path's existing order-vs-run location check validated the run's own
+data, but never established the *actor* was authorized for that location; set-personnel/update/
+remove had no location check at all.
+
+Fixed by threading `req.user` through every run use case and resolving the actor's operational
+location via the existing `resolvePosOperationalLocationScope` policy (the same mechanism
+`buildListActiveDeliveryPersonnelUseCase` already uses for this purpose) -- no new authorization
+primitive introduced, no architecture allowlist entry added:
+
+- `list` forces the repository's `locationId` filter to the actor's resolved scope instead of
+  trusting the raw `query.location_id`.
+- `get`/`update`/`set-personnel`/`add-members`/`remove-member` require the actor be authorized for
+  the run's own `location_id` immediately after the run is loaded, before any further business
+  logic runs -- denying with the standard `POS_LOCATION_ACCESS_DENIED` (403) every other POS use
+  case already throws for a cross-location access attempt. A run with no `location_id` (allowed at
+  creation for an unresolved multi-location actor) is not location-gated.
+
+New reason codes: `POS_LOCATION_ACCESS_DENIED`, `POS_LOCATION_SCOPE_UNRESOLVED` (frontmatter
+updated above). Six new regression cases (one per verb -- list/get/update/set-personnel/
+add-members/remove-member) prove a location-A actor is denied against a location-B run; see the
+`verification_evidence` frontmatter key for the exact test names. No schema change, no new surface,
+no change to `classification`/`surfaces` -- the fix closes a gap inside the already-declared `pos`
+surface.
