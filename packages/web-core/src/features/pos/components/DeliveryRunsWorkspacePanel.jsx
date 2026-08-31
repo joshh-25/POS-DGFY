@@ -63,7 +63,14 @@ export default function DeliveryRunsWorkspacePanel({
   const [formOpen, setFormOpen] = React.useState(false);
   const [formRun, setFormRun] = React.useState(null);
 
+  // RF-3 fix (PR #1277 review): a request-generation counter per fetch kind so a slower, older
+  // response can never overwrite state committed by a newer one (e.g. two location-scope switches
+  // in quick succession, or a scope switch racing the request it interrupted).
+  const runsRequestIdRef = React.useRef(0);
+  const runDetailRequestIdRef = React.useRef(0);
+
   const loadRuns = React.useCallback(async () => {
+    const requestId = (runsRequestIdRef.current += 1);
     setRunsState((current) => ({ ...current, loading: true, accessState: 'loading' }));
     try {
       const payload = await fetchDeliveryRuns({
@@ -71,6 +78,7 @@ export default function DeliveryRunsWorkspacePanel({
         location_id: queueLocationScopeId || undefined,
         limit: 100
       });
+      if (requestId !== runsRequestIdRef.current) return; // stale -- a newer request has since started
       const items = Array.isArray(payload?.items) ? payload.items : [];
       setRunsState({
         loading: false,
@@ -82,6 +90,7 @@ export default function DeliveryRunsWorkspacePanel({
       });
       onRunCountChange(items.length);
     } catch (error) {
+      if (requestId !== runsRequestIdRef.current) return; // stale
       const isForbidden = error?.response?.status === 403;
       setRunsState({
         loading: false,
@@ -104,6 +113,7 @@ export default function DeliveryRunsWorkspacePanel({
   }, [ensureDeliveryPersonnelLoaded]);
 
   const loadRunDetail = React.useCallback(async (deliveryRunId) => {
+    const requestId = (runDetailRequestIdRef.current += 1);
     if (!deliveryRunId) {
       setRunDetailState({ loading: false, run: null, errorMessage: '' });
       return;
@@ -111,11 +121,27 @@ export default function DeliveryRunsWorkspacePanel({
     setRunDetailState((current) => ({ ...current, loading: true }));
     try {
       const run = await fetchDeliveryRun(deliveryRunId);
+      if (requestId !== runDetailRequestIdRef.current) return; // stale
       setRunDetailState({ loading: false, run, errorMessage: '' });
     } catch (error) {
+      if (requestId !== runDetailRequestIdRef.current) return; // stale
       setRunDetailState({ loading: false, run: null, errorMessage: getErrorMessage(error, 'Failed to load run detail.') });
     }
   }, []);
+
+  // RF-3 fix (PR #1277 review): a location-scope switch must not leave a previously selected run's
+  // (or a previous scope's runs list) data visible under the new scope. Clear the selection/detail
+  // synchronously on the scope change itself -- don't wait for the new fetchDeliveryRuns/
+  // fetchDeliveryRun to resolve -- and bump the detail request generation so any in-flight fetch
+  // from the old scope is discarded rather than committed.
+  const previousLocationScopeRef = React.useRef(queueLocationScopeId);
+  React.useEffect(() => {
+    if (previousLocationScopeRef.current === queueLocationScopeId) return;
+    previousLocationScopeRef.current = queueLocationScopeId;
+    runDetailRequestIdRef.current += 1;
+    setSelectedRunId(null);
+    setRunDetailState({ loading: false, run: null, errorMessage: '' });
+  }, [queueLocationScopeId]);
 
   React.useEffect(() => {
     loadRunDetail(selectedRunId);
@@ -165,6 +191,13 @@ export default function DeliveryRunsWorkspacePanel({
     }
   };
 
+  // RF-1 fix (PR #1277 review): retain the idempotency key for a logical personnel-submit across
+  // retries of that same submit -- keyed on a snapshot of the personnel payload being sent, so a
+  // retry (identical payload) reuses the key, while genuinely editing the roster again (a
+  // different payload) is treated as a new logical submit and gets a fresh key. Cleared on
+  // success so the next distinct save starts clean.
+  const personnelSubmitRef = React.useRef({ key: null, signature: null });
+
   const handleSavePersonnel = async (personnel) => {
     const run = runDetailState.run;
     if (!run) return false;
@@ -172,13 +205,18 @@ export default function DeliveryRunsWorkspacePanel({
       toast.error('Reconnect before saving delivery run personnel.');
       return false;
     }
+    const signature = JSON.stringify(personnel);
+    if (personnelSubmitRef.current.signature !== signature) {
+      personnelSubmitRef.current = { key: createIdempotencyKey('run-personnel'), signature };
+    }
     setSavingKey('personnel');
     try {
       await setDeliveryRunPersonnel(run.delivery_run_id, {
-        idempotency_key: createIdempotencyKey('run-personnel'),
+        idempotency_key: personnelSubmitRef.current.key,
         personnel
       });
       toast.success('Run personnel saved.');
+      personnelSubmitRef.current = { key: null, signature: null };
       await refreshAll();
       return true;
     } catch (error) {
@@ -215,6 +253,11 @@ export default function DeliveryRunsWorkspacePanel({
     }
   };
 
+  // RF-1 fix (PR #1277 review): same retention pattern as personnel-save, keyed on
+  // (posTransactionId, targetRunId) since that pair identifies the logical move being retried;
+  // starting a move for a different member or a different target run gets a fresh key.
+  const moveAddSubmitRef = React.useRef({ key: null, posTransactionId: null, targetRunId: null });
+
   const handleMoveMember = async (posTransactionId, targetRunId) => {
     const run = runDetailState.run;
     if (!run || !targetRunId) return false;
@@ -225,6 +268,24 @@ export default function DeliveryRunsWorkspacePanel({
     if (!hasActiveShift) {
       toast.error('Open a shift before adding orders to a run.');
       return false;
+    }
+    // RF-2 fix (PR #1277 review): never attempt the DELETE leg if the target run has no
+    // accountable person -- the ADD would 409 on DELIVERY_RUN_ACCOUNTABLE_REQUIRED after the
+    // member has already been removed from the source run, leaving it in no run at all. The
+    // target-run picker already excludes these runs (DeliveryRunMembersList.jsx), but this guard
+    // covers any caller that bypasses the picker.
+    const targetRun = runs.find((candidate) => candidate.delivery_run_id === targetRunId);
+    const targetHasAccountable = Array.isArray(targetRun?.personnel)
+      && targetRun.personnel.some((person) => person?.is_accountable);
+    if (!targetHasAccountable) {
+      toast.error('The target run has no accountable person set. Choose a different run.');
+      return false;
+    }
+    if (
+      moveAddSubmitRef.current.posTransactionId !== posTransactionId
+      || moveAddSubmitRef.current.targetRunId !== targetRunId
+    ) {
+      moveAddSubmitRef.current = { key: createIdempotencyKey('run-move-add'), posTransactionId, targetRunId };
     }
     const key = `delivery-run-member-move:${posTransactionId}`;
     setSavingKey(key);
@@ -237,10 +298,11 @@ export default function DeliveryRunsWorkspacePanel({
     }
     try {
       await addDeliveryRunMembers(targetRunId, {
-        idempotency_key: createIdempotencyKey('run-move-add'),
+        idempotency_key: moveAddSubmitRef.current.key,
         pos_transaction_ids: [posTransactionId]
       });
       toast.success('Order moved to the new run.');
+      moveAddSubmitRef.current = { key: null, posTransactionId: null, targetRunId: null };
       await refreshAll();
       return true;
     } catch (error) {

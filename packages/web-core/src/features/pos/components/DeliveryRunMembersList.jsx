@@ -24,9 +24,15 @@ export default function DeliveryRunMembersList({
   const [pendingMove, setPendingMove] = React.useState(null); // { posTransactionId, targetRunId }
 
   const members = Array.isArray(run?.members) ? run.members : [];
+  // RF-2 fix (PR #1277 review): a target run with no accountable person 409s on the ADD leg
+  // (DELIVERY_RUN_ACCOUNTABLE_REQUIRED) after the DELETE leg has already removed the order from
+  // its current run -- exclude such runs from the picker entirely rather than let the operator
+  // pick one and hit a generic error with the order stranded in no run.
   const moveTargets = otherRuns.filter(
     (candidate) => candidate.delivery_run_id !== run?.delivery_run_id
       && !LOCKED_OR_BLOCKED_RUN_STATUSES.has(String(candidate.status || '').trim())
+      && Array.isArray(candidate.personnel)
+      && candidate.personnel.some((person) => person?.is_accountable)
   );
 
   if (members.length === 0) {
