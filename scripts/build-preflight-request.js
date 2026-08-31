@@ -21,6 +21,27 @@
  * is a heuristic, not a schema guarantee -- a declaration whose first paragraph doesn't read as a
  * standalone summary will produce an awkward one, same as it would confuse a human skimming it.
  *
+ * Two fixes confirmed live against the real endpoint (#1163 ephemeral-target spike, 2026-08-31),
+ * both pre-existing since #1121 and never previously exercised end to end (the one real prior
+ * sweep run, 2026-08-29, only reached one declaration before the missing secrets blocked it):
+ *
+ * 1. `apps/dgfy-api/src/validators/complianceValidator.js`'s `preflightSchema` accepts only
+ *    `pos|terminal|settings|payments|compliance` for `surfaces`/`affected_surfaces` and 422s on
+ *    anything else. Several real declarations legitimately carry `store`/`privacy` too --
+ *    `scripts/check-compliance-impact.js`'s own surface set is broader and those extra values are
+ *    explicitly "voluntary, not mechanically enforced" (see e.g.
+ *    docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md's own comment).
+ *    `ENDPOINT_ACCEPTED_SURFACES` below filters both fields down to the endpoint's accepted set
+ *    before sending -- filtering both identically keeps complianceUseCases.js's own
+ *    "affected_surfaces must include requested surface" cross-check satisfied.
+ * 2. `verification_evidence` entries are capped at 300 chars by the same schema. The comma-split
+ *    parser above (shared with check-compliance-impact.js) is not evidence-prose-aware -- a long
+ *    evidence sentence containing internal commas ends up split into fragments, and a fragment
+ *    itself can still exceed 300 chars. Each entry is truncated (not silently dropped) rather than
+ *    rejected outright; this is a display-fidelity tradeoff, not a data-loss one -- the full,
+ *    untruncated evidence stays in the declaration file itself, which is what a reviewer actually
+ *    reads.
+ *
  * Usage:
  *   node scripts/build-preflight-request.js <path-to-declaration.md>
  * Prints the JSON request body to stdout.
@@ -31,6 +52,9 @@
 const fs = require('fs');
 
 const SUMMARY_MAX_LENGTH = 600;
+const VERIFICATION_EVIDENCE_MAX_LENGTH = 300;
+// Must match complianceValidator.js's preflightSchema exactly -- see this file's header comment.
+const ENDPOINT_ACCEPTED_SURFACES = new Set(['pos', 'terminal', 'settings', 'payments', 'compliance']);
 
 const parseFrontMatter = (content) => {
   const text = String(content || '');
@@ -57,6 +81,20 @@ const parseCsvField = (value) => (
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean)
+);
+
+// Filters to only the surface values the preflight endpoint's own Joi schema accepts -- see this
+// file's header comment for why a declaration can legitimately carry more than that.
+const filterEndpointAcceptedSurfaces = (surfaces) => (
+  surfaces.filter((surface) => ENDPOINT_ACCEPTED_SURFACES.has(surface))
+);
+
+// Truncates (never drops) an evidence entry to the endpoint's 300-char field limit -- see this
+// file's header comment.
+const truncateEvidenceEntry = (entry) => (
+  entry.length > VERIFICATION_EVIDENCE_MAX_LENGTH
+    ? `${entry.slice(0, VERIFICATION_EVIDENCE_MAX_LENGTH - 1)}…`
+    : entry
 );
 
 const deriveSummary = (content) => {
@@ -104,9 +142,9 @@ const buildRequestFromContent = (content, { declarationPath = '<declaration>' } 
     throw new Error(`Missing declaration_id in ${declarationPath}`);
   }
 
-  const surfaces = parseCsvField(frontMatter.surfaces);
+  const surfaces = filterEndpointAcceptedSurfaces(parseCsvField(frontMatter.surfaces));
   const reasonCodesImpacted = parseCsvField(frontMatter.reason_codes_impacted);
-  const verificationEvidence = parseCsvField(frontMatter.verification_evidence);
+  const verificationEvidence = parseCsvField(frontMatter.verification_evidence).map(truncateEvidenceEntry);
   const classification = String(frontMatter.classification || '').trim();
   const policyVersion = String(frontMatter.policy_version || '').trim();
   const rollbackNote = String(frontMatter.rollback_note || '').trim();
@@ -159,4 +197,13 @@ const main = () => {
 
 if (require.main === module) main();
 
-module.exports = { parseFrontMatter, parseCsvField, deriveSummary, buildRequestFromContent };
+module.exports = {
+  parseFrontMatter,
+  parseCsvField,
+  deriveSummary,
+  buildRequestFromContent,
+  filterEndpointAcceptedSurfaces,
+  truncateEvidenceEntry,
+  ENDPOINT_ACCEPTED_SURFACES,
+  VERIFICATION_EVIDENCE_MAX_LENGTH
+};
