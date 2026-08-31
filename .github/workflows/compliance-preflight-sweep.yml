@@ -452,13 +452,54 @@ jobs:
           N/A -- automated front-matter reconciliation only, no code change. The preflight call itself is the evidence; see the linked run's artifact.
           PR_BODY_EOF
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base develop \
             --head "$BRANCH" \
             --title "docs(compliance): reconcile preflight sweep results ($(date -u +%Y-%m-%d))" \
-            --body-file /tmp/pr-body.md
+            --body-file /tmp/pr-body.md)
+          PR_NUMBER="${PR_URL##*/}"
+          echo "Opened PR #${PR_NUMBER}: ${PR_URL}"
 
-          gh pr merge "$BRANCH" --merge --delete-branch
+          # AGENTS.md's Merge Safety hard stop applies to every GitHub merge in this repo,
+          # unconditionally -- "confirm no check run on the head commit has status in_progress or
+          # queued... and that merge state is CLEAN, not unstable... never merge past it and never
+          # wait it out silently." This step is a real `gh pr merge`, so it is not exempt just
+          # because the reconciliation content was already gated on a real preflight pass above
+          # (Codex review, PR #1249 RF-1, 2026-08-31): the preflight gate proves the declaration
+          # content is safe, it says nothing about whether THIS PR's own checks (compliance/
+          # architecture/docs lint against the reconciled front matter) have actually finished, and
+          # this repo has no branch protection to enforce that separately.
+          #
+          # Bounded poll, not an indefinite wait: 10 minutes at 15s intervals. `gh pr checks`
+          # exits non-zero while any check is still pending OR failing, so its exit code alone
+          # can't distinguish "still running" from "failed" -- read --json bucket instead: any
+          # `pending` bucket means keep polling, any `fail` bucket means stop and never merge.
+          checks_terminal=0
+          for _ in $(seq 1 40); do
+            buckets=$(gh pr checks "$PR_NUMBER" --json bucket --jq '.[].bucket' 2>/dev/null || echo "")
+            if printf '%s\n' "$buckets" | grep -qx "fail"; then
+              echo "::error::PR #${PR_NUMBER} has a failing check -- refusing to merge. Left open for investigation: ${PR_URL}"
+              exit 1
+            fi
+            if ! printf '%s\n' "$buckets" | grep -qx "pending"; then
+              checks_terminal=1
+              break
+            fi
+            sleep 15
+          done
+          if [ "$checks_terminal" != "1" ]; then
+            echo "::error::PR #${PR_NUMBER}'s checks did not reach a terminal state within 10 minutes -- refusing to merge. Left open for investigation: ${PR_URL}"
+            exit 1
+          fi
+
+          merge_state=$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')
+          mergeable=$(gh pr view "$PR_NUMBER" --json mergeable --jq '.mergeable')
+          if [ "$merge_state" != "CLEAN" ] || [ "$mergeable" != "MERGEABLE" ]; then
+            echo "::error::PR #${PR_NUMBER} is not safe to merge (mergeStateStatus=${merge_state}, mergeable=${mergeable}) -- refusing to merge. Left open for investigation: ${PR_URL}"
+            exit 1
+          fi
+
+          gh pr merge "$PR_NUMBER" --merge --delete-branch
 
       - name: Write step summary
         if: always()
