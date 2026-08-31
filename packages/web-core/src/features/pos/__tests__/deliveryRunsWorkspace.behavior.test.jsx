@@ -205,7 +205,15 @@ describe('Run members list', () => {
 
   it('remove calls removeDeliveryRunMember; move calls remove then add, in that order', async () => {
     const run = buildRunWithMember();
-    const otherRun = { delivery_run_id: 702, label: 'Other Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
+    const otherRun = {
+      delivery_run_id: 702,
+      label: 'Other Run',
+      status: 'draft',
+      scheduled_date: null,
+      notes: '',
+      personnel: [{ delivery_run_personnel_id: 9, delivery_personnel_id: null, delivery_personnel_name: 'Rider B', is_accountable: true }],
+      member_count: 0
+    };
     fetchDeliveryRuns.mockResolvedValue({ items: [run, otherRun], pagination: { total: 2, page: 1, limit: 100 } });
     fetchDeliveryRun.mockImplementation(async (id) => (Number(id) === run.delivery_run_id ? run : otherRun));
     removeDeliveryRunMember.mockResolvedValue({});
@@ -241,5 +249,192 @@ describe('Run members list', () => {
       otherRun.delivery_run_id,
       expect.objectContaining({ pos_transaction_ids: [9001] })
     );
+  });
+
+  it('excludes a target run with no accountable person from the move picker and never sends the DELETE', async () => {
+    const run = buildRunWithMember();
+    const otherRun = { delivery_run_id: 702, label: 'Other Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run, otherRun], pagination: { total: 2, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockImplementation(async (id) => (Number(id) === run.delivery_run_id ? run : otherRun));
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Evening Run'));
+    await screen.findByText('INV-9001');
+
+    // No accountable-having target exists, so the picker (and its Move button) never renders.
+    expect(screen.queryByDisplayValue('Move to...')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Move$/i })).toBeNull();
+    expect(removeDeliveryRunMember).not.toHaveBeenCalled();
+  });
+});
+
+describe('Idempotency key retention on retry (RF-1)', () => {
+  it('reuses the identical idempotency key when the same personnel submit is retried', async () => {
+    const run = {
+      delivery_run_id: 601,
+      label: 'Morning Run',
+      status: 'draft',
+      scheduled_date: null,
+      notes: '',
+      personnel: [],
+      members: [],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+    setDeliveryRunPersonnel.mockRejectedValueOnce(new Error('transient failure'));
+    setDeliveryRunPersonnel.mockResolvedValueOnce({ run });
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Morning Run'));
+    await screen.findByText('Run personnel');
+
+    const nameInput = screen.getByPlaceholderText('Pick a registered rider or type a name');
+    fireEvent.change(nameInput, { target: { value: 'Rider A' } });
+    fireEvent.click(screen.getByRole('radio'));
+
+    fireEvent.click(screen.getByRole('button', { name: /Save personnel/i }));
+    await waitFor(() => expect(setDeliveryRunPersonnel).toHaveBeenCalledTimes(1));
+
+    // Retry the same (unchanged) submit after the failure.
+    fireEvent.click(screen.getByRole('button', { name: /Save personnel/i }));
+    await waitFor(() => expect(setDeliveryRunPersonnel).toHaveBeenCalledTimes(2));
+
+    const firstKey = setDeliveryRunPersonnel.mock.calls[0][1].idempotency_key;
+    const secondKey = setDeliveryRunPersonnel.mock.calls[1][1].idempotency_key;
+    expect(typeof firstKey).toBe('string');
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('reuses the identical idempotency key when the same move ADD is retried', async () => {
+    const run = {
+      delivery_run_id: 701,
+      label: 'Evening Run',
+      status: 'scheduled',
+      scheduled_date: null,
+      notes: '',
+      personnel: [{ delivery_run_personnel_id: 1, delivery_personnel_id: null, delivery_personnel_name: 'Rider A', is_accountable: true }],
+      member_count: 1,
+      members: [{
+        delivery_job_id: 1,
+        pos_transaction_id: 9001,
+        status: 'pending_dispatch',
+        provider: 'manual',
+        delivery_personnel_id: null,
+        delivery_personnel_name: null,
+        order: {
+          pos_transaction_id: 9001,
+          invoice_number: 'INV-9001',
+          customer_name: 'Maria Santos',
+          delivery_address: '123 Rizal St',
+          fulfillment_status: 'out_for_delivery'
+        }
+      }]
+    };
+    const otherRun = {
+      delivery_run_id: 702,
+      label: 'Other Run',
+      status: 'draft',
+      scheduled_date: null,
+      notes: '',
+      personnel: [{ delivery_run_personnel_id: 9, delivery_personnel_id: null, delivery_personnel_name: 'Rider B', is_accountable: true }],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run, otherRun], pagination: { total: 2, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockImplementation(async (id) => (Number(id) === run.delivery_run_id ? run : otherRun));
+    removeDeliveryRunMember.mockResolvedValue({});
+    addDeliveryRunMembers.mockRejectedValueOnce(new Error('add failed'));
+    addDeliveryRunMembers.mockResolvedValueOnce({});
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Evening Run'));
+    await screen.findByText('INV-9001');
+
+    const attemptMove = async () => {
+      const targetSelect = screen.getByDisplayValue('Move to...');
+      fireEvent.change(targetSelect, { target: { value: String(otherRun.delivery_run_id) } });
+      fireEvent.click(screen.getByRole('button', { name: /^Move$/i }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Move order$/i }));
+    };
+
+    await attemptMove();
+    await waitFor(() => expect(addDeliveryRunMembers).toHaveBeenCalledTimes(1));
+
+    // The ADD failed. The workspace's own refreshAll() (triggered from the failure handler)
+    // flips the detail panel through its "Loading run..." branch, which remounts
+    // DeliveryRunMembersList and closes the confirm dialog -- so a real retry is the operator
+    // re-selecting the same target and re-confirming, not clicking a still-open dialog. Wait for
+    // the dialog to close and the picker to come back before retrying.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await screen.findByDisplayValue('Move to...');
+
+    await attemptMove();
+    await waitFor(() => expect(addDeliveryRunMembers).toHaveBeenCalledTimes(2));
+
+    const firstKey = addDeliveryRunMembers.mock.calls[0][1].idempotency_key;
+    const secondKey = addDeliveryRunMembers.mock.calls[1][1].idempotency_key;
+    expect(typeof firstKey).toBe('string');
+    expect(secondKey).toBe(firstKey);
+  });
+});
+
+describe('Location scope switch discards stale data (RF-3)', () => {
+  it('discards an older fetchDeliveryRuns response that resolves after a newer one', async () => {
+    let resolveStaleFetch;
+    const staleFetchPromise = new Promise((resolve) => { resolveStaleFetch = resolve; });
+    const runA = { delivery_run_id: 1, label: 'Location A Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
+    const runB = { delivery_run_id: 2, label: 'Location B Run', status: 'draft', scheduled_date: null, notes: '', personnel: [], member_count: 0 };
+
+    fetchDeliveryRuns.mockImplementationOnce(() => staleFetchPromise);
+    fetchDeliveryRuns.mockResolvedValueOnce({ items: [runB], pagination: { total: 1, page: 1, limit: 100 } });
+
+    const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: null })} />);
+    fireEvent.click(screen.getByRole('tab', { name: /Delivery Runs/i }));
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalledTimes(1));
+
+    // Switch location scope before the first (slow) request resolves.
+    rerender(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: 55 })} />);
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalledTimes(2));
+    await screen.findByText('Location B Run');
+
+    // Now let the stale first request resolve -- it must be discarded, not overwrite state.
+    resolveStaleFetch({ items: [runA], pagination: { total: 1, page: 1, limit: 100 } });
+    await waitFor(() => expect(screen.getByText('Location B Run')).toBeTruthy());
+    expect(screen.queryByText('Location A Run')).toBeNull();
+  });
+
+  it('clears the selected run and its detail immediately when the location scope changes', async () => {
+    const run = {
+      delivery_run_id: 701,
+      label: 'Evening Run',
+      status: 'scheduled',
+      scheduled_date: null,
+      notes: '',
+      personnel: [],
+      member_count: 0,
+      members: []
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+
+    const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: null })} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Evening Run'));
+    await screen.findByText('Run personnel');
+
+    // The next fetchDeliveryRuns (for the new scope) never resolves -- if the selection/detail
+    // were only cleared once that fetch resolves, the old run's detail would still be visible.
+    fetchDeliveryRuns.mockImplementationOnce(() => new Promise(() => {}));
+    rerender(<IncomingQueueWorkspace {...baseProps({ queueLocationScopeId: 77 })} />);
+
+    await waitFor(() => expect(screen.queryByText('Run personnel')).toBeNull());
   });
 });
