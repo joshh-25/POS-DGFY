@@ -36,8 +36,9 @@ Conduct the following for this worktree's task/epic into sub-worktrees:
 - Worker Planner using <WORKER_PLANNER model>
 - Worker Execution using <WORKER_BUILDER model>
 - pr-reviewer using <REVIEWER model>
-- If the reviewer's verdict is not APPROVE, the same worker addresses the feedback
-- Keep addressing feedback until the final verdict is APPROVE
+- If the reviewer's verdict is not APPROVE, Worker Execution addresses the feedback, then
+  pr-reviewer re-reviews
+- Keep looping until the final verdict is APPROVE
 
 <what to build/fix/review, from the user's request>
 ```
