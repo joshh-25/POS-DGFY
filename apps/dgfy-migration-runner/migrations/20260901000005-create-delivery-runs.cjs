@@ -99,19 +99,26 @@ module.exports = {
           primaryKey: true,
           autoIncrement: true
         },
-        // ON DELETE RESTRICT, not CASCADE: delivery_run_id is also the base column of the
-        // accountable_run_id STORED generated column below. #1166's own investigation established
-        // (live against MySQL 8.0.46) that InnoDB unconditionally rejects a CASCADE or SET NULL FK
-        // action on a column that is also a generated column's base column elsewhere in the same
-        // table, regardless of whether the FK is added inline at CREATE TABLE time or via a later
-        // ALTER. RESTRICT is the only action MySQL accepts here. A run with member rows must have
-        // its personnel deleted (or reparented) before the run itself can be deleted.
+        // No inline `references` here on purpose -- the FK is added by a separate
+        // `ALTER TABLE ... ADD CONSTRAINT` after the accountable_run_id STORED generated column
+        // exists (below). #1166 found that adding a generated column via ALTER TABLE on a table
+        // that already carries an FK on the generated expression's base column can throw
+        // "Cannot add foreign key constraint" (errno 150); #1172 (the fix that actually landed for
+        // #1166) root-caused this precisely: MySQL/InnoDB rejects it only when that FK's ON
+        // UPDATE/ON DELETE action is CASCADE or SET NULL -- a RESTRICT/RESTRICT FK on the same
+        // column was confirmed safe either inline at CREATE TABLE time or via a later ALTER TABLE
+        // ADD CONSTRAINT (see #1172's `getForeignKeyDefinition`/`addGeneratedColumnIfMissing`
+        // rework of 20260824000001-create-pos-cashier-attendance-operator-sessions.cjs). This
+        // migration still defers the FK to the later ALTER below -- the literal
+        // drop/generated-column/re-add-FK DDL shape #1172 established as this repo's proven
+        // sequence for "an FK-referenced column is also a generated column's base" -- rather than
+        // relying on the second, narrower confirmed-safe case (inline RESTRICT). Not verified
+        // against a real MySQL instance in this pass (no local MySQL available in this worktree);
+        // ON DELETE RESTRICT (not CASCADE) either way, since a run with member rows must have its
+        // personnel deleted (or reparented) before the run itself can be deleted.
         delivery_run_id: {
           type: Sequelize.INTEGER,
-          allowNull: false,
-          references: { model: 'delivery_runs', key: 'delivery_run_id' },
-          onUpdate: 'RESTRICT',
-          onDelete: 'RESTRICT'
+          allowNull: false
         },
         delivery_personnel_id: {
           type: Sequelize.INTEGER,
@@ -166,6 +173,17 @@ module.exports = {
         GENERATED ALWAYS AS (
           CASE WHEN is_accountable = 1 THEN delivery_run_id ELSE NULL END
         ) STORED
+      `);
+
+      // delivery_run_id's FK is added here, after accountable_run_id exists, per the comment on
+      // the column definition above (#1166/#1172). ON DELETE RESTRICT, not CASCADE: delivery_run_id
+      // is that generated column's own base column, and RESTRICT is the action #1172 confirmed
+      // MySQL accepts there.
+      await queryInterface.sequelize.query(`
+        ALTER TABLE delivery_run_personnel
+        ADD CONSTRAINT fk_delivery_run_personnel_delivery_run
+        FOREIGN KEY (delivery_run_id) REFERENCES delivery_runs (delivery_run_id)
+        ON UPDATE RESTRICT ON DELETE RESTRICT
       `);
     }
 

@@ -1051,10 +1051,18 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
     // `accountable_run_id` is a STORED generated column enforcing "at most one accountable
     // personnel row per run" via its unique index below -- see PosTerminalShift's
     // active_terminal_id for the established precedent of this pattern. `delivery_run_id`'s FK is
-    // RESTRICT/RESTRICT rather than CASCADE because it is that generated column's own base column
-    // -- #1166 established live (MySQL 8.0.46) that InnoDB unconditionally rejects a CASCADE/SET
-    // NULL FK action on a generated column's base column. See the migration
-    // (20260901000005-create-delivery-runs.cjs) and models/index.js for the same reasoning.
+    // RESTRICT/RESTRICT rather than CASCADE because it is that generated column's own base column.
+    // #1166 first surfaced this class of failure; #1172 (the fix that actually landed for #1166)
+    // established the precise, narrower restriction: MySQL/InnoDB rejects only a CASCADE/SET NULL
+    // FK action on a generated column's base column, not RESTRICT. The migration
+    // (20260901000005-create-delivery-runs.cjs) defers `delivery_run_id`'s FK to a separate
+    // `ALTER TABLE ... ADD CONSTRAINT fk_delivery_run_personnel_delivery_run` issued *after*
+    // `accountable_run_id` exists, matching #1172's proven drop/generated-column/re-add DDL order
+    // for this failure mode -- so its constraint is named and ordered last below (added last,
+    // physically), and `delivery_personnel_id`/`created_by`/`updated_by` (still declared inline at
+    // CREATE TABLE, unaffected by this) shift up to `ibfk_1..3` accordingly. Not verified against a
+    // real MySQL instance (no local MySQL available in this worktree) -- this string is expected to
+    // match a real `SHOW CREATE TABLE` once the migration has actually run once, not confirmed yet.
     delivery_run_personnel: Object.freeze({
         sql: "CREATE TABLE `delivery_run_personnel` (\n"
             + "  `delivery_run_personnel_id` int NOT NULL AUTO_INCREMENT,\n"
@@ -1072,10 +1080,10 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  UNIQUE KEY `uq_delivery_run_personnel_member` (`delivery_run_id`,`delivery_personnel_id`),\n"
             + "  KEY `idx_delivery_run_personnel_run` (`delivery_run_id`),\n"
             + "  KEY `idx_delivery_run_personnel_personnel` (`delivery_personnel_id`),\n"
-            + "  CONSTRAINT `delivery_run_personnel_ibfk_1` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `delivery_run_personnel_ibfk_2` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `delivery_run_personnel_ibfk_4` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_1` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_personnel_delivery_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     pos_transaction_discount_lines: Object.freeze({
