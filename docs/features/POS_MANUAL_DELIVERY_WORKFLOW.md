@@ -234,6 +234,50 @@ This is a deliberate choice, not the only option considered:
   judged strictly better than the alternative false negative (a live order
   still carrying an accountable person nobody agreed to).
 
+## Delivery run management UI (Phase 226, #1273/#1270)
+
+Phase 225 wired the API; Phase 226 puts a management surface over it inside the POS terminal.
+
+### Where it lives, and who sees it
+
+A third "Delivery Runs" tab sits alongside Active Queue / Order History in the terminal's incoming-
+orders workspace, **retail mode only** -- gated on
+`normalizeWorkflowMode(workflowMode) === 'retail'`, the same check `orderFulfillmentUi.js` already
+uses for the `packed` handoff step. This is a UI-visibility gate only: the run API itself stays
+mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see above), so an F&B
+tenant is not locked out at the data layer, only from this particular tab. If the workflow mode
+flips off retail while the tab is open, the view falls back to Active Queue automatically rather
+than continuing to render a tab that no longer applies.
+
+### What the tab does, and does not, do
+
+From the tab an operator can: create and edit a run (label, scheduled date, notes, and -- once a
+run exists -- its `draft`/`scheduled`/`cancelled` status); replace its personnel roster in one save
+(exactly one person marked accountable, enforced client-side before the request is even sent, on
+top of the server's own enforcement); and, per member order, remove it from the run or move it to
+another run.
+
+**Setting personnel before adding members is surfaced, not just enforced.** The server already
+409s `DELIVERY_RUN_ACCOUNTABLE_REQUIRED` if a run with no accountable person is asked to add a
+member; this UI additionally shows an inline warning on the run's detail view whenever it has no
+accountable person, so the operator sees the constraint before attempting the action rather than
+only after a rejected request.
+
+**"Move to another run" is remove-then-add, because that is what the server actually offers.**
+There is no dedicated move endpoint -- `POST .../members` refuses a job already assigned to a
+*different* run (`DELIVERY_JOB_ALREADY_IN_RUN`). A move is therefore always two separate requests:
+remove the member from its current run, then add it to the target run. This is not atomic: if the
+add fails after the remove already succeeded, the order is left in no run at all. The confirm
+dialog states this two-step nature before the operator commits to it, and on an add failure the UI
+shows a persistent error naming the order and target run and refreshes both runs so the operator
+can see the order is unassigned and retry the add from the target run's own view.
+
+**Bulk-adding orders from the Active Queue is not built yet.** An operator adds an order to a run
+only from that order's own delivery-assignment context, one at a time (unchanged from Phase 225's
+API-only state). Multi-select "add to run" from the Active Queue is Phase 227's job; a run with no
+members shows an honest empty state ("No orders in this run yet. Add orders from the Active
+Queue.") rather than implying bulk-add already exists.
+
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
