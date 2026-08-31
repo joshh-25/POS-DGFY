@@ -25,14 +25,31 @@ planner/builder, and a different model or tier for reviewer than whatever built 
 same model reviewing its own work. State which model landed in each slot and why (env var,
 override, or fallback) before dispatching.
 
+## Compose the campaign
+
+Fill this template with the resolved models and the task/issue/epic the user described, then hand
+it to Orca's `orchestration` skill exactly as if the user had typed it themselves after
+`/orchestration`:
+
+```
+Conduct the following for this worktree's task/epic into sub-worktrees:
+- Worker Planner using <WORKER_PLANNER model>
+- Worker Execution using <WORKER_BUILDER model>
+- pr-reviewer using <REVIEWER model>
+- If the reviewer's verdict is not APPROVE, the same worker addresses the feedback
+- Keep addressing feedback until the final verdict is APPROVE
+
+<what to build/fix/review, from the user's request>
+```
+
 ## Run it
 
 Load Orca's own orchestration guide fresh every time (`orca skills get orchestration` — never
-from memory) and follow its Preferred Supervised Worker Loop exactly as if `/orchestration` had
-been typed directly: `run-create` once, `task-create` per phase/step, `worker-start --agent <cli>
---model <model> [--effort <effort>]` per resolved slot, `check --wait` until every dispatch
-settles. Run the commands the loaded guide actually returns — don't paraphrase or reimplement
-them from a remembered grammar.
+from memory) and follow its Preferred Supervised Worker Loop to run the campaign above exactly as
+if `/orchestration` had been typed directly: `run-create` once, `task-create` per phase/step,
+`worker-start --agent <cli> --model <model> [--effort <effort>]` per resolved slot, `check --wait`
+until every dispatch settles. Run the commands the loaded guide actually returns — don't
+paraphrase or reimplement them from a remembered grammar.
 
 Real dispatched output only: a `worker_done` message, a review comment a worker actually posted.
 Narrating what a worker "would" produce is never a substitute for waiting on it.
