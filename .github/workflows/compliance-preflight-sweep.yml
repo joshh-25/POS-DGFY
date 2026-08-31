@@ -474,9 +474,22 @@ jobs:
           # exits non-zero while any check is still pending OR failing, so its exit code alone
           # can't distinguish "still running" from "failed" -- read --json bucket instead: any
           # `pending` bucket means keep polling, any `fail` bucket means stop and never merge.
+          #
+          # RF-2 (Codex re-review, PR #1249, 2026-08-31): the query itself can fail independently
+          # of any check's own state -- a transient GitHub API/auth/network error. The original
+          # `2>/dev/null || echo ""` fallback collapsed that failure into an empty bucket list,
+          # which the logic below would then read as "no pending checks" and proceed straight to
+          # merge -- failing OPEN during exactly the kind of outage this gate exists to be safe
+          # against. `if ! buckets=$(...)` distinguishes a genuine query failure (retry, bounded by
+          # the same loop) from a real empty/terminal bucket list, and never falls through to
+          # `checks_terminal=1` on a failed query.
           checks_terminal=0
           for _ in $(seq 1 40); do
-            buckets=$(gh pr checks "$PR_NUMBER" --json bucket --jq '.[].bucket' 2>/dev/null || echo "")
+            if ! buckets=$(gh pr checks "$PR_NUMBER" --json bucket --jq '.[].bucket'); then
+              echo "::warning::Failed to query checks for PR #${PR_NUMBER} (will retry) -- see stderr above for the gh CLI error"
+              sleep 15
+              continue
+            fi
             if printf '%s\n' "$buckets" | grep -qx "fail"; then
               echo "::error::PR #${PR_NUMBER} has a failing check -- refusing to merge. Left open for investigation: ${PR_URL}"
               exit 1
