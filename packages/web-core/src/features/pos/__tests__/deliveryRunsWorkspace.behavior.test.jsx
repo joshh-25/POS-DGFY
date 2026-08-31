@@ -385,6 +385,66 @@ describe('Idempotency key retention on retry (RF-1)', () => {
   });
 });
 
+describe('Idempotency key scoped to run (RF-4)', () => {
+  it('sends a different idempotency key when switching runs with an identical roster payload', async () => {
+    const runA = {
+      delivery_run_id: 601,
+      label: 'Run A',
+      status: 'draft',
+      scheduled_date: null,
+      notes: '',
+      personnel: [],
+      members: [],
+      member_count: 0
+    };
+    const runB = {
+      delivery_run_id: 602,
+      label: 'Run B',
+      status: 'draft',
+      scheduled_date: null,
+      notes: '',
+      personnel: [],
+      members: [],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [runA, runB], pagination: { total: 2, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockImplementation(async (id) => (Number(id) === runA.delivery_run_id ? runA : runB));
+    // Run A's submit never resolves successfully, so its retained idempotency-key ref is not
+    // cleared -- this is the pending/failed-then-switch-run scenario RF-4 describes.
+    setDeliveryRunPersonnel.mockRejectedValueOnce(new Error('run A save still pending'));
+    setDeliveryRunPersonnel.mockResolvedValueOnce({ run: runB });
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    const saveIdenticalRoster = async () => {
+      const nameInput = screen.getByPlaceholderText('Pick a registered rider or type a name');
+      fireEvent.change(nameInput, { target: { value: 'Rider A' } });
+      fireEvent.click(screen.getByRole('radio'));
+      fireEvent.click(screen.getByRole('button', { name: /Save personnel/i }));
+    };
+
+    // Submit for run A -- fails, leaving the retained submit ref set (not cleared by success).
+    fireEvent.click(await screen.findByText('Run A'));
+    await screen.findByText('Run personnel');
+    await saveIdenticalRoster();
+    await waitFor(() => expect(setDeliveryRunPersonnel).toHaveBeenCalledTimes(1));
+
+    // Switch to run B and build the identical roster payload (same name, same accountable flag).
+    fireEvent.click(await screen.findByText('Run B'));
+    await screen.findByText('Run personnel');
+    await saveIdenticalRoster();
+    await waitFor(() => expect(setDeliveryRunPersonnel).toHaveBeenCalledTimes(2));
+
+    const [firstRunId, firstPayload] = setDeliveryRunPersonnel.mock.calls[0];
+    const [secondRunId, secondPayload] = setDeliveryRunPersonnel.mock.calls[1];
+    expect(firstRunId).toBe(runA.delivery_run_id);
+    expect(secondRunId).toBe(runB.delivery_run_id);
+    expect(secondPayload.personnel).toEqual(firstPayload.personnel);
+    expect(secondPayload.idempotency_key).not.toBe(firstPayload.idempotency_key);
+  });
+});
+
 describe('Location scope switch discards stale data (RF-3)', () => {
   it('discards an older fetchDeliveryRuns response that resolves after a newer one', async () => {
     let resolveStaleFetch;

@@ -196,6 +196,10 @@ export default function DeliveryRunsWorkspacePanel({
   // retry (identical payload) reuses the key, while genuinely editing the roster again (a
   // different payload) is treated as a new logical submit and gets a fresh key. Cleared on
   // success so the next distinct save starts clean.
+  // RF-4 fix (PR #1277 review, round 3): the signature is scoped by run.delivery_run_id as well as
+  // the personnel payload -- otherwise switching from run A to run B and coincidentally building an
+  // identical roster payload would reuse A's key for B's genuine write, risking the server treating
+  // B's PUT as a replay of A's and silently not applying it.
   const personnelSubmitRef = React.useRef({ key: null, signature: null });
 
   const handleSavePersonnel = async (personnel) => {
@@ -205,7 +209,7 @@ export default function DeliveryRunsWorkspacePanel({
       toast.error('Reconnect before saving delivery run personnel.');
       return false;
     }
-    const signature = JSON.stringify(personnel);
+    const signature = `${run.delivery_run_id}:${JSON.stringify(personnel)}`;
     if (personnelSubmitRef.current.signature !== signature) {
       personnelSubmitRef.current = { key: createIdempotencyKey('run-personnel'), signature };
     }
@@ -274,9 +278,11 @@ export default function DeliveryRunsWorkspacePanel({
     // member has already been removed from the source run, leaving it in no run at all. The
     // target-run picker already excludes these runs (DeliveryRunMembersList.jsx), but this guard
     // covers any caller that bypasses the picker.
+    // RF-5 fix (PR #1277 review, round 3): match the actual invariant -- exactly one accountable
+    // person, not merely "at least one" -- rather than relying on the DB unique index holding.
     const targetRun = runs.find((candidate) => candidate.delivery_run_id === targetRunId);
     const targetHasAccountable = Array.isArray(targetRun?.personnel)
-      && targetRun.personnel.some((person) => person?.is_accountable);
+      && targetRun.personnel.filter((person) => person?.is_accountable).length === 1;
     if (!targetHasAccountable) {
       toast.error('The target run has no accountable person set. Choose a different run.');
       return false;
