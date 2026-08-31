@@ -64,9 +64,9 @@ export function resolveFulfillmentSelectorPresentation(options = []) {
   };
 }
 
-export function buildCheckoutSectionNumbers({ showOrderMethodSelector = true, showTimingStep = true } = {}) {
+export function buildCheckoutSectionNumbers({ showOrderMethodSelector = true, showTimingStep = true, isDeliveryOrder = false } = {}) {
   let next = 1;
   const orderMethod = showOrderMethodSelector ? next++ : null;
   const timing = showTimingStep ? next++ : null;
-  return { orderMethod, timing, address: next };
+  return { orderMethod, timing, address: next, notes: isDeliveryOrder ? next + 1 : next };
 }
