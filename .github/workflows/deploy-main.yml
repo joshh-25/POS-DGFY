@@ -63,9 +63,10 @@ permissions:
 #                         setup (deploy-api.yml reads no `vars.*`, only
 #                         `secrets.GITHUB_TOKEN`) since flipping it just
 #                         retires the now-meaningless BETA distinction for
-#                         these two jobs. The image TAG stays `beta` for now
-#                         (see below) -- this comment is about the
-#                         `environment:` input, a separate thing from the tag.
+#                         these two jobs. The image TAG itself was renamed
+#                         off `beta` to `latest` below (#913) -- this comment
+#                         is about the `environment:` input, a separate thing
+#                         from the tag.
 #
 # `image_tags: "latest"` (#913, 2026-08-25): the shared backend was tagged
 # `beta` from the retired beta/prod split, a name that outlived its own
@@ -73,11 +74,12 @@ permissions:
 # the frontend-split cutover's own coordinated server restart (docs/
 # deployment/2026-08-23-frontend-split-cutover-runbook.md), rather than as a
 # separate downtime window -- the server's `.env` `IMAGE_TAG=beta` -> `latest`
-# edit lands in that same `docker compose up -d`, not on its own.
+# edit lands in that same `docker compose up -d`, not on its own (that server
+# edit + restart is #913's remaining, human-only scope as of this comment).
 #
 # After all four images are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
-# refreshes all three frontend containers and backend:beta in one go. The
+# refreshes all three frontend containers and backend:latest in one go. The
 # deploy is resolved from the PROD Environment's SSH secrets (validated in
 # the 2026-07-20 cutover).
 #
