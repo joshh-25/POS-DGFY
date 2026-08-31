@@ -7,6 +7,7 @@ const DeliveryJob = sequelize.define('DeliveryJob', {
   location_id: { type: DataTypes.INTEGER, allowNull: true },
   delivery_personnel_id: { type: DataTypes.INTEGER, allowNull: true },
   delivery_personnel_name: { type: DataTypes.STRING(255), allowNull: true },
+  delivery_run_id: { type: DataTypes.INTEGER, allowNull: true },
   assigned_by: { type: DataTypes.INTEGER, allowNull: true },
   assigned_shift_id: { type: DataTypes.INTEGER, allowNull: true },
   assigned_at: { type: DataTypes.DATE, allowNull: true },
@@ -28,7 +29,8 @@ const DeliveryJob = sequelize.define('DeliveryJob', {
     { fields: ['pos_transaction_id'], unique: true },
     { fields: ['location_id', 'status'] },
     { fields: ['delivery_personnel_id', 'status'] },
-    { fields: ['provider', 'provider_delivery_id'] }
+    { fields: ['provider', 'provider_delivery_id'] },
+    { fields: ['delivery_run_id', 'status'] }
   ]
 });
 

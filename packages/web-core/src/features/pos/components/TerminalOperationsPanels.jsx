@@ -1,4 +1,5 @@
 import React from 'react';
+import { toast } from 'sonner';
 import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -18,6 +19,18 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
+import QueueRunAssignBar from './QueueRunAssignBar.jsx';
+import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
+import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
+import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+// Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
+// normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
+// gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
+// route-level capability.
+import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
+
+const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
 const parseDeliveryCoords = (order = {}) => {
   if (
@@ -97,7 +110,7 @@ const resolveBalanceCollectionLabel = (orderMethod) => (
   orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
 );
 
-function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount }) {
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null }) {
   const tabs = [
     {
       key: 'active',
@@ -112,6 +125,16 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount })
       icon: Receipt
     }
   ];
+  // Phase 226 (#1273): retail-only third tab -- the caller decides visibility via
+  // normalizeWorkflowMode(...) === 'retail', this component just renders what it's told.
+  if (showDeliveryRuns) {
+    tabs.push({
+      key: 'runs',
+      label: 'Delivery Runs',
+      count: runCount,
+      icon: Truck
+    });
+  }
 
   return (
     <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist" aria-label="Online order views">
@@ -389,10 +412,13 @@ function IncomingQueueWorkspace({
   locked,
   isOnline = true,
   sectionId,
-  workflowMode = ''
+  workflowMode = '',
+  ensureDeliveryPersonnelLoaded = () => {}
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
+  const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
+  const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -404,6 +430,119 @@ function IncomingQueueWorkspace({
 
     return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
   });
+
+  // Phase 227 (#1273): bulk "add to run" selection for the Active Queue. A Set<Number> of
+  // pos_transaction_id, NEVER an index -- sortedIncomingOrders is re-sorted every render (the
+  // sort direction is itself a piece of UI state), so an index-based selection would silently
+  // point at the wrong order the moment the sort or the underlying poll result reorders the
+  // list. State lives here (not in the toolbar) so it survives a tab switch away from and back
+  // to Active Queue -- IncomingQueueWorkspace stays mounted across the OrderWorkspaceTabs
+  // switch, only the render branch changes.
+  const [selectedOrderIds, setSelectedOrderIds] = React.useState(() => new Set());
+  const [bulkAssignSubmitting, setBulkAssignSubmitting] = React.useState(false);
+  const activeShiftLocationId = shiftState?.shift?.location_id ?? null;
+
+  // Deliberately NOT pruned against sortedIncomingOrders on every poll tick -- a transient poll
+  // error can return `orders: []` and would otherwise wipe the whole selection. Eligibility is
+  // instead re-derived live below (selectedEligibleOrders) so a genuinely stale id just stops
+  // counting toward the selection rather than being silently dropped from the Set.
+  const selectedEligibleOrders = sortedIncomingOrders.filter(
+    (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
+      && getRunAssignEligibility(order, {}).eligible
+  );
+  const selectedDriftCount = Math.max(0, selectedOrderIds.size - selectedEligibleOrders.length);
+
+  const toggleOrderSelection = (orderId, checked) => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(Number(orderId));
+      else next.delete(Number(orderId));
+      return next;
+    });
+  };
+
+  const handleSelectAllEligible = (eligibleOrderIds) => {
+    setSelectedOrderIds(new Set((Array.isArray(eligibleOrderIds) ? eligibleOrderIds : []).map(Number)));
+  };
+
+  const handleClearSelection = () => setSelectedOrderIds(new Set());
+
+  // RF-1/RF-4 pattern from Phase 226 (PR #1277 review): retain the idempotency key for a retry
+  // of the identical submit, keyed on a signature that includes the target run id (never reuse
+  // a key across two different runs' membership writes) and the sorted selected ids (a genuinely
+  // different selection is a new logical submit and gets a fresh key).
+  const bulkAssignSubmitRef = React.useRef({ key: null, signature: null });
+
+  const handleBulkAssignSubmit = async (targetRunId) => {
+    if (!isOnline) {
+      toast.error('Reconnect before adding orders to a run.');
+      return false;
+    }
+    if (!hasActiveShift) {
+      toast.error('Open a shift before adding orders to a run.');
+      return false;
+    }
+    const sortedSelectedIds = selectedEligibleOrders
+      .map((order) => Number(order.pos_transaction_id))
+      .sort((left, right) => left - right);
+    if (sortedSelectedIds.length === 0) {
+      toast.error('Select at least one eligible order first.');
+      return false;
+    }
+
+    const signature = `${targetRunId}:${sortedSelectedIds.join(',')}`;
+    if (bulkAssignSubmitRef.current.signature !== signature) {
+      bulkAssignSubmitRef.current = { key: createIdempotencyKey('run-bulk-add'), signature };
+    }
+
+    setBulkAssignSubmitting(true);
+    try {
+      const result = await addDeliveryRunMembers(targetRunId, {
+        idempotency_key: bulkAssignSubmitRef.current.key,
+        pos_transaction_ids: sortedSelectedIds
+      });
+      const addedCount = Array.isArray(result?.added) ? result.added.length : 0;
+      const skippedCount = Array.isArray(result?.skipped) ? result.skipped.length : 0;
+      toast.success(
+        skippedCount > 0
+          ? `${addedCount} order${addedCount === 1 ? '' : 's'} added to the run (${skippedCount} already there).`
+          : `${addedCount} order${addedCount === 1 ? '' : 's'} added to the run.`
+      );
+      bulkAssignSubmitRef.current = { key: null, signature: null };
+      setSelectedOrderIds((current) => {
+        const next = new Set(current);
+        sortedSelectedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      await refreshIncomingOrders?.();
+      return true;
+    } catch (error) {
+      // F-3 pattern (Phase 227, #1273): `error_code` is the DomainErrorCode ('CONFLICT'), the
+      // actual per-order reason lives under `errors.reason_code`/`errors.pos_transaction_id`.
+      // The whole batch was rejected together -- nothing was added -- so name the offending
+      // order, auto-deselect it, and let the operator retry with the rest via the same button.
+      const errorDetails = error?.response?.data?.errors || {};
+      const reasonCode = errorDetails.reason_code;
+      const offendingOrderId = Number(errorDetails.pos_transaction_id) || null;
+      const remainingCount = offendingOrderId ? sortedSelectedIds.length - 1 : sortedSelectedIds.length;
+      const reasonText = reasonCode ? String(reasonCode).replace(/_/g, ' ').toLowerCase() : 'a conflict';
+      const message = offendingOrderId
+        ? `Order #${offendingOrderId} could not be added (${reasonText}). Nothing was added -- the whole batch was rejected together. Retry with the remaining ${remainingCount} order${remainingCount === 1 ? '' : 's'}.`
+        : `Could not add the selected orders (${reasonText}). Nothing was added -- the whole batch was rejected together.`;
+      toast.error(message, { duration: Infinity });
+      if (offendingOrderId) {
+        setSelectedOrderIds((current) => {
+          const next = new Set(current);
+          next.delete(offendingOrderId);
+          return next;
+        });
+      }
+      await refreshIncomingOrders?.();
+      return false;
+    } finally {
+      setBulkAssignSubmitting(false);
+    }
+  };
   // Phase 144 (#824): the reject dialog renders outside the per-order .map, so it only ever held
   // an id. Resolving the order back out of the list lets the copy state the ACTUAL amount at
   // stake instead of the old unconditional "DGFY will request a full refund", which on a
@@ -424,6 +563,16 @@ function IncomingQueueWorkspace({
     refreshOrderHistory?.();
   }, [activeView, refreshOrderHistory]);
 
+  // Phase 226 (#1273): WORKFLOW_MODE_CHANGED_EVENT can flip the mode while this tab is open --
+  // a stale activeView === 'runs' must never render the panel once retail mode is off. Belt +
+  // braces alongside the isRetailMode guard on the render branch itself below.
+  // Phase 227: a bulk-add selection is a retail-only concept -- clear it here too so it never
+  // survives a flip into F&B mode.
+  React.useEffect(() => {
+    if (activeView === 'runs' && !isRetailMode) setActiveView('active');
+    if (!isRetailMode) setSelectedOrderIds(new Set());
+  }, [activeView, isRetailMode]);
+
   if (activeView === 'history') {
     return (
       <div id={sectionId} className="space-y-4">
@@ -432,6 +581,8 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
         />
         <OnlineOrderHistoryPanel
           canViewPos={canViewPos}
@@ -446,6 +597,32 @@ function IncomingQueueWorkspace({
     );
   }
 
+  if (activeView === 'runs' && isRetailMode) {
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={incomingOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
+        />
+        <DeliveryRunsWorkspacePanel
+          canViewPos={canViewPos}
+          canTransactPos={canTransactPos}
+          locked={locked}
+          isOnline={isOnline}
+          hasActiveShift={hasActiveShift}
+          queueLocationScopeId={queueLocationScopeId}
+          deliveryPersonnelState={deliveryPersonnelState}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
+          onRunCountChange={setDeliveryRunCount}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id={sectionId} className="space-y-4">
       <OrderWorkspaceTabs
@@ -453,7 +630,24 @@ function IncomingQueueWorkspace({
         onChange={setActiveView}
         activeCount={incomingOrders.length}
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+        showDeliveryRuns={isRetailMode}
+        runCount={deliveryRunCount}
       />
+      {isRetailMode ? (
+        <QueueRunAssignBar
+          orders={sortedIncomingOrders}
+          selectedCount={selectedOrderIds.size}
+          selectedEligibleCount={selectedEligibleOrders.length}
+          driftCount={selectedDriftCount}
+          activeShiftLocationId={activeShiftLocationId}
+          queueLocationScopeId={queueLocationScopeId}
+          disabled={!canTransactPos || locked || !isOnline || !hasActiveShift}
+          submitting={bulkAssignSubmitting}
+          onSelectAllEligible={handleSelectAllEligible}
+          onClearSelection={handleClearSelection}
+          onSubmit={handleBulkAssignSubmit}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]">
@@ -730,16 +924,31 @@ function IncomingQueueWorkspace({
               );
             }
 
+            const bulkAssignEligibility = getRunAssignEligibility(order, {});
+            const orderId = Number(order.pos_transaction_id);
+
             return (
               <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-4 xl:p-5 shadow-sm shadow-slate-200/70 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                    <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                    <div className="flex items-center gap-2">
+                      {isRetailMode ? (
+                        <QueueOrderSelectCheckbox
+                          orderId={orderId}
+                          checked={selectedOrderIds.has(orderId)}
+                          eligible={bulkAssignEligibility.eligible}
+                          reason={bulkAssignEligibility.reason}
+                          disabled={!canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting}
+                          onToggle={toggleOrderSelection}
+                        />
+                      ) : null}
+                      <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                    </div>
                     <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
                       {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
                     </span>
                   </div>
-                  
+
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
                     {/* Left Column */}
                     <div className="flex flex-col">

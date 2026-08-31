@@ -91,7 +91,7 @@ export function RetailOrderFulfillmentStep({
     resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
-  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep });
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep, isDeliveryOrder });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -449,7 +449,7 @@ export function RetailOrderFulfillmentStep({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
           Special instructions (optional)
           <textarea

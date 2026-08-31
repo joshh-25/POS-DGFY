@@ -800,6 +800,67 @@ const assignDeliveryPersonnelSchema = Joi.object({
     delivery_personnel_name: Joi.string().trim().min(1).max(255).optional()
 }).or('delivery_personnel_id', 'delivery_personnel_name')
     .oxor('delivery_personnel_id', 'delivery_personnel_name');
+
+// Phase 225 (#1273/#1081): delivery run CRUD + membership schemas.
+const DELIVERY_RUN_UPDATABLE_STATUSES = ['draft', 'scheduled', 'cancelled'];
+
+const createDeliveryRunSchema = Joi.object({
+    label: Joi.string().trim().min(1).max(120).required(),
+    scheduled_date: Joi.date().iso().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional()
+});
+
+const updateDeliveryRunSchema = Joi.object({
+    label: Joi.string().trim().min(1).max(120).optional(),
+    scheduled_date: Joi.date().iso().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
+    status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
+}).min(1);
+
+const deliveryRunIdParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunMemberParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    posTransactionId: Joi.number().integer().positive().required()
+});
+
+// Same XOR the per-order assignDeliveryPersonnelSchema enforces (ADR 0034, 2026-08-12 amendment):
+// each roster row is either a registered courier or a free-text one, never both, never neither.
+const deliveryRunPersonnelRowSchema = Joi.object({
+    delivery_personnel_id: Joi.number().integer().positive().optional(),
+    delivery_personnel_name: Joi.string().trim().min(1).max(255).optional(),
+    is_accountable: Joi.boolean().required()
+}).or('delivery_personnel_id', 'delivery_personnel_name')
+    .oxor('delivery_personnel_id', 'delivery_personnel_name');
+
+const setDeliveryRunPersonnelSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    personnel: Joi.array().items(deliveryRunPersonnelRowSchema).min(1).max(20).required()
+});
+
+const addDeliveryRunMembersSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    pos_transaction_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).unique().required()
+});
+
+// Phase 228 (#1273/#1271): dispatch takes no member selection -- it dispatches every eligible
+// member of the run, best-effort. Body is just the idempotency key.
+const dispatchDeliveryRunSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const deliveryRunListQuerySchema = Joi.object({
+    status: Joi.string().valid('draft', 'scheduled', 'dispatched', 'completed', 'cancelled').optional(),
+    scheduled_date_from: Joi.date().iso().optional(),
+    scheduled_date_to: Joi.date().iso().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    page: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().positive().max(100).optional()
+});
 const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
@@ -1245,6 +1306,14 @@ export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderS
 export const validateUpdateOnlineOrderDeliveryAddress = validateSchema(updateOnlineOrderDeliveryAddressSchema, 'body', 'validatedData');
 export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
+export const validateDeliveryRunCreate = validateSchema(createDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunUpdate = validateSchema(updateDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunIdParam = validateSchema(deliveryRunIdParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunMemberParam = validateSchema(deliveryRunMemberParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunPersonnelSet = validateSchema(setDeliveryRunPersonnelSchema, 'body', 'validatedData');
+export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMembersSchema, 'body', 'validatedData');
+export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');

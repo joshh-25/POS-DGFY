@@ -74,9 +74,41 @@ describe('resolveFulfillmentSelectorPresentation', () => {
   });
 
   it('numbers address after whichever checkout sections remain', () => {
-    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: true })).toEqual({ orderMethod: 1, timing: 2, address: 3 });
-    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: true })).toEqual({ orderMethod: null, timing: 1, address: 2 });
-    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: false })).toEqual({ orderMethod: 1, timing: null, address: 2 });
-    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: false })).toEqual({ orderMethod: null, timing: null, address: 1 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: true })).toEqual({ orderMethod: 1, timing: 2, address: 3, notes: 3 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: true })).toEqual({ orderMethod: null, timing: 1, address: 2, notes: 2 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: false })).toEqual({ orderMethod: 1, timing: null, address: 2, notes: 2 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: false })).toEqual({ orderMethod: null, timing: null, address: 1, notes: 1 });
+  });
+
+  it('bumps notes past address only when the order is a delivery order (#1266)', () => {
+    // Both fulfillment chooser and timing step shown -- the collapsed-steps regression case
+    // isn't reachable here, but this establishes the baseline delivery/non-delivery split.
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: true, isDeliveryOrder: true }))
+      .toEqual({ orderMethod: 1, timing: 2, address: 3, notes: 4 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: true, isDeliveryOrder: false }))
+      .toEqual({ orderMethod: 1, timing: 2, address: 3, notes: 3 });
+  });
+
+  it('keeps notes numbering correct for a collapsed order-method step, crossed with isDeliveryOrder (#1266)', () => {
+    // #1217: one available fulfillment method hides the chooser -- this is the exact
+    // collapsed-steps scenario #1266 reports as producing a wrong hardcoded "4." for notes.
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: true, isDeliveryOrder: true }))
+      .toEqual({ orderMethod: null, timing: 1, address: 2, notes: 3 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: true, isDeliveryOrder: false }))
+      .toEqual({ orderMethod: null, timing: 1, address: 2, notes: 2 });
+  });
+
+  it('keeps notes numbering correct for a collapsed timing step, crossed with isDeliveryOrder (#1266)', () => {
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: false, isDeliveryOrder: true }))
+      .toEqual({ orderMethod: 1, timing: null, address: 2, notes: 3 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: true, showTimingStep: false, isDeliveryOrder: false }))
+      .toEqual({ orderMethod: 1, timing: null, address: 2, notes: 2 });
+  });
+
+  it('keeps notes numbering correct when both order-method and timing steps are collapsed, crossed with isDeliveryOrder (#1266)', () => {
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: false, isDeliveryOrder: true }))
+      .toEqual({ orderMethod: null, timing: null, address: 1, notes: 2 });
+    expect(buildCheckoutSectionNumbers({ showOrderMethodSelector: false, showTimingStep: false, isDeliveryOrder: false }))
+      .toEqual({ orderMethod: null, timing: null, address: 1, notes: 1 });
   });
 });

@@ -130,6 +130,7 @@ import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonom
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
+import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
@@ -607,7 +608,12 @@ const createDefaultLocationForm = () => ({
   allow_out_of_stock_sales: false,
   supports_delivery: true,
   supports_pickup: true,
-  supports_dine_in: true
+  supports_dine_in: true,
+  // #1246/#1218: buyer-facing scheduling/lead-time settings, surfaced read-write on POS.
+  scheduling_enabled: true,
+  immediate_fulfillment_enabled: true,
+  fulfillment_lead_time_min_days: '',
+  fulfillment_lead_time_max_days: ''
 });
 
 const isValidOpeningCashAmount = (value) => {
@@ -5450,6 +5456,10 @@ function SettingsWorkspace({
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
   const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
     && locationForm.supports_delivery !== locationForm.supports_pickup;
+  // #1218: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid via the shared
+  // evaluateFulfillmentLeadTime helper -- same rule handleSaveLocation's own localErrors check
+  // below re-runs against the built payload; this is the live-typing render-time version.
+  const { requiredMissing: leadTimeRequiredMissing, rangeInverted: leadTimeRangeInverted } = evaluateFulfillmentLeadTime(locationForm);
   const maxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMaxMode || 'transaction', 'transaction');
   const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const customerAccessRollbackActive = storefrontForm.customerAccessFlagStatus === 'rollback';
@@ -6500,7 +6510,11 @@ function SettingsWorkspace({
       allow_out_of_stock_sales: location.allow_out_of_stock_sales === true,
       supports_delivery: location.supports_delivery !== false,
       supports_pickup: location.supports_pickup !== false,
-      supports_dine_in: location.supports_dine_in !== false
+      supports_dine_in: location.supports_dine_in !== false,
+      scheduling_enabled: location?.scheduling_enabled !== false,
+      immediate_fulfillment_enabled: location?.immediate_fulfillment_enabled !== false,
+      fulfillment_lead_time_min_days: location?.fulfillment_lead_time_min_days == null ? '' : String(location.fulfillment_lead_time_min_days),
+      fulfillment_lead_time_max_days: location?.fulfillment_lead_time_max_days == null ? '' : String(location.fulfillment_lead_time_max_days)
     });
     setRenderedTab('storefront');
     setActiveTab('storefront');
@@ -6520,7 +6534,11 @@ function SettingsWorkspace({
       allow_out_of_stock_sales: locationForm.allow_out_of_stock_sales === true,
       supports_delivery: locationForm.supports_delivery !== false,
       supports_pickup: locationForm.supports_pickup !== false,
-      supports_dine_in: locationForm.supports_dine_in !== false
+      supports_dine_in: locationForm.supports_dine_in !== false,
+      scheduling_enabled: locationForm.scheduling_enabled !== false,
+      immediate_fulfillment_enabled: locationForm.immediate_fulfillment_enabled !== false,
+      fulfillment_lead_time_min_days: locationForm.fulfillment_lead_time_min_days === '' ? null : Number(locationForm.fulfillment_lead_time_min_days),
+      fulfillment_lead_time_max_days: locationForm.fulfillment_lead_time_max_days === '' ? null : Number(locationForm.fulfillment_lead_time_max_days)
     };
     if (editingLocationId && locationForm.location_version) {
       payload.last_known_updated_at = locationForm.location_version;
@@ -6537,6 +6555,22 @@ function SettingsWorkspace({
     }
     if (!Number.isFinite(payload.longitude)) {
       localErrors.push({ field: 'longitude', message: 'Longitude is required.' });
+    }
+    // #1218: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid via the shared
+    // evaluateFulfillmentLeadTime helper. The server 422s either way -- this exists so the
+    // cashier/owner is told before the round trip, not instead of it.
+    const leadTimeCheck = evaluateFulfillmentLeadTime(payload);
+    if (leadTimeCheck.requiredMissing) {
+      localErrors.push({
+        field: 'fulfillment_lead_time_min_days',
+        message: 'A fulfillment lead time (minimum and maximum days) is required when immediate fulfillment is disabled for this location.'
+      });
+    }
+    if (leadTimeCheck.rangeInverted) {
+      localErrors.push({
+        field: 'fulfillment_lead_time_max_days',
+        message: 'Fulfillment lead time maximum days must be greater than or equal to minimum days.'
+      });
     }
 
     if (localErrors.length > 0) {
@@ -8705,6 +8739,79 @@ function SettingsWorkspace({
                       )}
                     </div>
                   </label>
+
+                  {/* #1246/#1218: buyer-facing scheduling/lead-time settings. Editing gated on
+                      canEditSettings (settings:edit / is_master_admin) -- same permission the
+                      backend's PUT /tenant-locations/:id already enforces -- disabled rather than
+                      hidden for non-privileged roles, matching PosCashierAttendanceSettingsCard's
+                      own canEdit precedent. */}
+                  <label className={`flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 transition-colors ${canEditSettings ? 'hover:bg-slate-50/70 cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.scheduling_enabled === true}
+                      disabled={!canEditSettings}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, scheduling_enabled: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Allow Scheduled Orders</p>
+                      <p className="text-[11px] text-slate-500">Let buyers choose a delivery or pickup date and time</p>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 transition-colors ${canEditSettings ? 'hover:bg-slate-50/70 cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.immediate_fulfillment_enabled === true}
+                      disabled={!canEditSettings}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, immediate_fulfillment_enabled: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Allow Immediate Fulfillment</p>
+                      <p className="text-[11px] text-slate-500">Show the NOW option and an immediate-fulfillment promise at checkout</p>
+                    </div>
+                  </label>
+
+                  {locationForm.immediate_fulfillment_enabled === false && (
+                    <div className="grid gap-1.5 p-2.5 rounded-xl border border-slate-100">
+                      <Label className="text-xs font-bold text-[#0F172A]">Fulfillment Lead Time (days)</Label>
+                      <p className="text-[11px] text-slate-500">
+                        Shown to buyers in place of the NOW promise. Required while immediate fulfillment is off.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="365"
+                          placeholder="Minimum days"
+                          value={locationForm.fulfillment_lead_time_min_days}
+                          disabled={!canEditSettings}
+                          onChange={(event) => setLocationForm((current) => ({ ...current, fulfillment_lead_time_min_days: event.target.value }))}
+                          className="h-10 rounded-xl border-slate-200 text-xs"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          max="365"
+                          placeholder="Maximum days"
+                          value={locationForm.fulfillment_lead_time_max_days}
+                          disabled={!canEditSettings}
+                          onChange={(event) => setLocationForm((current) => ({ ...current, fulfillment_lead_time_max_days: event.target.value }))}
+                          className="h-10 rounded-xl border-slate-200 text-xs"
+                        />
+                      </div>
+                      {leadTimeRequiredMissing && (
+                        <p className="text-[11px] text-amber-700">
+                          A minimum and maximum lead time are required while immediate fulfillment is off. Buyers need
+                          something concrete to expect.
+                        </p>
+                      )}
+                      {leadTimeRangeInverted && (
+                        <p className="text-[11px] text-amber-700">Maximum days must be greater than or equal to minimum days.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -9057,6 +9164,11 @@ export default function TerminalOperationsWorkspace({
   handleAssignDeliveryPersonnel = () => {},
   deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
   onDeliveryPersonnelChanged = () => {},
+  // Phase 226 (#1273): threaded through rather than fetched independently by
+  // DeliveryRunsWorkspacePanel, so it reuses TerminalPage.jsx's existing single-flight
+  // deliveryPersonnelFetchStartedRef and the shared state handleDeliveryPersonnelChanged already
+  // keeps live after an admin registry edit (Phase 205 RF-3) -- a second fetch would fork it.
+  ensureDeliveryPersonnelLoaded = () => {},
   handleOpenCashCollection = () => {},
   // Phase 148 (#825): mirrors handleOpenCashCollection's own plumbing through this
   // wrapper -- TerminalPage.jsx's handler doesn't reach IncomingQueueWorkspace directly, it
@@ -9101,6 +9213,7 @@ export default function TerminalOperationsWorkspace({
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           deliveryPersonnelState={deliveryPersonnelState}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
