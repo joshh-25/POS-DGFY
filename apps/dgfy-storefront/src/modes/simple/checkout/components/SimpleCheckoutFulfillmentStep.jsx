@@ -79,7 +79,8 @@ export function SimpleCheckoutFulfillmentStep({
   const resolvedOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
   const sectionNumbers = buildCheckoutSectionNumbers({
     showOrderMethodSelector: resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector,
-    showTimingStep: resolvedOrderTimingPolicy.showTimingStep
+    showTimingStep: resolvedOrderTimingPolicy.showTimingStep,
+    isDeliveryOrder
   });
 
   return (
@@ -261,7 +262,7 @@ export function SimpleCheckoutFulfillmentStep({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
         <SimpleSpecialInstructionsField
           specialInstructions={specialInstructions}
           onSpecialInstructionsChange={onSpecialInstructionsChange}

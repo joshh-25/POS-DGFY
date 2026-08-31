@@ -200,7 +200,8 @@ export function FnbCheckoutRouteContainer({
   const resolvedFnbOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
   const fnbSectionNumbers = buildCheckoutSectionNumbers({
     showOrderMethodSelector: resolveFulfillmentSelectorPresentation(fulfillmentOptions).showSelector,
-    showTimingStep: resolvedFnbOrderTimingPolicy.showTimingStep
+    showTimingStep: resolvedFnbOrderTimingPolicy.showTimingStep,
+    isDeliveryOrder
   });
   return (
   <FnbCheckoutRouteMount
@@ -566,7 +567,7 @@ export function FnbCheckoutRouteContainer({
                   />
             </FnbCheckoutExpandedMapModal>
             <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.notes}. Anything else we should know?</div>
               <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
                 Special Instructions (optional)
                 <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
