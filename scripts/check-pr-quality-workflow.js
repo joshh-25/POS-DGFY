@@ -27,9 +27,13 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // still fails this check) -- it does not mean "anything goes."
 //
 // 2026-08-29 (#1124/#1165): the staging-leg *skip* half of the original relaxation (every quality
-// job's `if:` additionally excluding `to-staging/*->staging` entirely) is retired -- that leg now
-// runs every job too, advisory-only, same as every other leg. checkStagingLegSkipShape's own
-// comment has the full "why" and the current sanctioned `if:` shape; not restated here.
+// job's `if:` additionally excluding `to-staging/*->staging` entirely) was retired for a few days --
+// that leg ran every job too, advisory-only, same as every other leg.
+//
+// 2026-08-31 (#1253): reverted, Pat's call -- the develop->staging leg is meant to be the quick
+// soak/QA leg, not the one that runs quality checks; that's `staging->main`'s job. Back to skipping
+// every quality job entirely on the staging leg. checkStagingLegSkipShape's own comment has the
+// full "why" and the current sanctioned `if:` shape; not restated here.
 //
 // Revert `checkStagingLegSkipShape` to the original blanket forbid once #1063 closes.
 //
@@ -212,20 +216,20 @@ function checkRunnerCacheConsistency(prChecksText) {
   return problems;
 }
 
-// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines --
-// unconditionally advisory everywhere it runs.
+// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines -- skipped
+// entirely on the develop->staging soak leg, unconditionally advisory everywhere else it runs.
 //
-// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of this is retired -- the
-// `to-staging/*->staging` soak leg used to skip every quality job entirely (`&&
+// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of this was retired for a few days -- the
+// `to-staging/*->staging` soak leg skipped every quality job entirely (`&&
 // needs.gate.outputs.is_staging_leg != 'true'`), producing zero signal on 25 of the last 30
-// workflow runs. It now runs every job, advisory-only exactly like the `release/*->main` leg
-// always has, to start building the track record this epic needs. The name
-// `checkStagingLegSkipShape` is now a slight misnomer (there is no more skip to check the shape
-// of) but is kept rather than renamed -- it still asserts the one thing that actually matters,
-// every quality job's `if:`/`continue-on-error:` pair, and a rename buys nothing this comment
-// doesn't already explain. `is_staging_leg` itself stays as a `gate` output (still potentially
-// useful for a future leg-specific policy) even though no job's `if:` below references it anymore.
-const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true'";
+// workflow runs, so it was made to run every job advisory-only instead, same as `release/*->main`.
+//
+// 2026-08-31 (#1253), Pat's call: reverted. The `develop->staging` leg was never meant to carry
+// this gate at all -- it's the quick soak/QA leg, deliberately contrasted with `staging->main`
+// (and default `develop->main`) where quality checks belong before shipping to production. Back to
+// skipping entirely on the staging leg, accepting the zero-signal trade-off #1124/#1165 tried to
+// avoid -- that leg optimizes for speed, not signal.
+const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
 const SANCTIONED_CONTINUE_ON_ERROR = 'continue-on-error: true';
 
 // The six jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
@@ -647,7 +651,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (advisory on every leg it runs, including the staging soak leg since #1124/#1165 -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), the reporter has no `gh` shell dependency, and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
+  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (skipped entirely on the develop->staging soak leg per #1253, advisory on every other leg it runs -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), the reporter has no `gh` shell dependency, and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
 }
 
 if (require.main === module) {

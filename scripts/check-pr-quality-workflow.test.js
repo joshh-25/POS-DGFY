@@ -128,12 +128,13 @@ test('checkStagingLegSkipShape: sanctioned skip-if + unconditional continue-on-e
   assert.deepEqual(checkStagingLegSkipShape(text), []);
 });
 
-// 2026-08-29 (#1124/#1165): SANCTIONED_SKIP_STAGING_IF no longer excludes the staging leg (that
-// relaxation was retired -- see this file's own top-of-file comment) -- a job that still carries
-// the old, retired shape is now itself the deviant case this test exercises.
-test('checkStagingLegSkipShape: an `if:` still carrying the retired staging-leg exclusion is caught', () => {
+// 2026-08-31 (#1253): SANCTIONED_SKIP_STAGING_IF excludes the staging leg again (the #1124/#1165
+// advisory-everywhere relaxation was itself reverted -- see this file's own top-of-file comment) --
+// a job carrying that now-retired advisory-everywhere shape (no staging-leg exclusion) is the
+// deviant case this test exercises.
+test('checkStagingLegSkipShape: an `if:` missing the staging-leg exclusion (the retired advisory-everywhere shape) is caught', () => {
   const text = buildWorkflowWithJobLines(() => ({
-    ifLine: "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'"
+    ifLine: "if: needs.gate.outputs.is_promotion == 'true'"
   }));
   const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, QUALITY_JOB_NAMES.length);
