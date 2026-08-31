@@ -18,6 +18,12 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
+// Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
+// normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
+// gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
+// route-level capability.
+import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const parseDeliveryCoords = (order = {}) => {
   if (
@@ -97,7 +103,7 @@ const resolveBalanceCollectionLabel = (orderMethod) => (
   orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
 );
 
-function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount }) {
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null }) {
   const tabs = [
     {
       key: 'active',
@@ -112,6 +118,16 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount })
       icon: Receipt
     }
   ];
+  // Phase 226 (#1273): retail-only third tab -- the caller decides visibility via
+  // normalizeWorkflowMode(...) === 'retail', this component just renders what it's told.
+  if (showDeliveryRuns) {
+    tabs.push({
+      key: 'runs',
+      label: 'Delivery Runs',
+      count: runCount,
+      icon: Truck
+    });
+  }
 
   return (
     <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist" aria-label="Online order views">
@@ -389,10 +405,13 @@ function IncomingQueueWorkspace({
   locked,
   isOnline = true,
   sectionId,
-  workflowMode = ''
+  workflowMode = '',
+  ensureDeliveryPersonnelLoaded = () => {}
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
+  const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
+  const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -424,6 +443,13 @@ function IncomingQueueWorkspace({
     refreshOrderHistory?.();
   }, [activeView, refreshOrderHistory]);
 
+  // Phase 226 (#1273): WORKFLOW_MODE_CHANGED_EVENT can flip the mode while this tab is open --
+  // a stale activeView === 'runs' must never render the panel once retail mode is off. Belt +
+  // braces alongside the isRetailMode guard on the render branch itself below.
+  React.useEffect(() => {
+    if (activeView === 'runs' && !isRetailMode) setActiveView('active');
+  }, [activeView, isRetailMode]);
+
   if (activeView === 'history') {
     return (
       <div id={sectionId} className="space-y-4">
@@ -432,6 +458,8 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
         />
         <OnlineOrderHistoryPanel
           canViewPos={canViewPos}
@@ -446,6 +474,32 @@ function IncomingQueueWorkspace({
     );
   }
 
+  if (activeView === 'runs' && isRetailMode) {
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={incomingOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
+        />
+        <DeliveryRunsWorkspacePanel
+          canViewPos={canViewPos}
+          canTransactPos={canTransactPos}
+          locked={locked}
+          isOnline={isOnline}
+          hasActiveShift={hasActiveShift}
+          queueLocationScopeId={queueLocationScopeId}
+          deliveryPersonnelState={deliveryPersonnelState}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
+          onRunCountChange={setDeliveryRunCount}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id={sectionId} className="space-y-4">
       <OrderWorkspaceTabs
@@ -453,6 +507,8 @@ function IncomingQueueWorkspace({
         onChange={setActiveView}
         activeCount={incomingOrders.length}
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+        showDeliveryRuns={isRetailMode}
+        runCount={deliveryRunCount}
       />
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-3">
