@@ -222,3 +222,41 @@ Verification for this amendment: `npm run build:pos` OK, `npm run build:skupervi
 `packages/web-core` Vitest suite (308 files / 1904 tests) passing including the 5 tests added here,
 `npm run check:architecture` OK (trivially green, no backend file touched), `npm run lint:docs` OK,
 `npm run check:compliance` re-run against this amendment.
+
+### 2026-08-31: RF-4/RF-5 fixes -- idempotency key scoped to run, exact-one accountable check
+
+PR #1277 review, round 3 (pr-reviewer, blocker RF-4, should-fix RF-5):
+
+- **RF-4.** The RF-1 fix above retained `personnelSubmitRef`'s idempotency key across retries of
+  the *same* submit, but the retention signature was a JSON snapshot of the `personnel` payload
+  alone, not scoped by which run it was for. If the operator submitted a roster for run A (the
+  submit failing or still pending), then switched to run B and happened to build an identical
+  roster payload (same names/roles), `personnelSubmitRef.current.signature` would still match --
+  B's genuine `PUT` would reuse A's idempotency key, and the server could treat B's write as a
+  replay of A's and silently not apply it. Fixed by including `run.delivery_run_id` in the
+  signature (`` `${run.delivery_run_id}:${JSON.stringify(personnel)}` ``), so a key is never reused
+  across two different runs' submits even with coincidentally identical payloads. Covered by a new
+  test: submit for run A (fails, leaving the ref set), switch to run B, submit an identical roster,
+  assert the two idempotency keys sent differ.
+- **RF-5.** The move-target accountable check in `handleMoveMember` used
+  `targetRun.personnel.some((person) => person?.is_accountable)` -- "at least one," not "exactly
+  one." The DB unique index makes this equivalent in practice today, but the check didn't express
+  the actual invariant, and a future change to that constraint (or a stale/duplicated client-side
+  `personnel` array from an in-flight refresh) would silently pass here with no clear signal.
+  Changed to `targetRun.personnel.filter((p) => p?.is_accountable).length === 1` to match the
+  stated invariant directly rather than relying on the DB constraint holding elsewhere. No new test
+  needed -- the existing "excludes a target run with no accountable person" test already exercises
+  this predicate and continues to pass unchanged.
+
+No new file, no schema change, no new route -- both fixes are contained to
+`components/DeliveryRunsWorkspacePanel.jsx` and the test file, the same two files this declaration
+already lists. Classification, surfaces, and every Compliance Precondition/Residual Risk not called
+out above are unchanged.
+
+Verification for this amendment: `npm run build:pos` OK, `npm run build:skupervisor` OK, the
+targeted `deliveryRunsWorkspace.behavior.test.jsx` suite (12/12 passing, including the new RF-4
+test) and the full `packages/web-core` Vitest suite re-run, `npm run check:architecture` OK
+(trivially green, no backend file touched), `npm run lint:docs` OK, `npm run check:compliance`
+re-run against this amendment. The full-suite's 2 pre-existing failures outside the delivery-run
+files (reported by the prior review round) are addressed in the PR body/reply, not this
+declaration -- they are unrelated to any file this phase touches.
