@@ -77,14 +77,43 @@ in order:
 2. `command -v orca` (or the equivalent for another known substrate), if the listing is
    inconclusive.
 
-**If found:** dispatch phases through that substrate's own primitives — see "Applying model
-selection" below for exactly how the parsed `{model, effort}` values get passed through.
+**If found: dispatching is mandatory, not optional, and it means actually running Orca commands —
+never reasoning about what a dispatched worker would produce and writing that yourself.** This is
+the exact bug #1258 reports: without a hard requirement to invoke real commands, an executing
+model with no other constraint will silently do the role's work itself, in its own conversation,
+under its own model — defeating the entire point of per-slot model selection (a `REVIEWER=codex...`
+run must produce an actual Codex-authored review, not a Claude-authored one that merely claims the
+role). **If you (the executing model) catch yourself about to plan, write code for, or review a PR
+directly in this conversation after Step 2 found a substrate, stop — that is the failure this rule
+exists to prevent, not a shortcut.**
+
+The mandatory sequence, every time a substrate is found, in this order:
+
+1. `orca status --json` — confirm a running, reachable runtime. If it isn't, this is not "no
+   substrate found" (Step 2 already found `orca` present) — it's a real error; report it and stop
+   rather than silently falling through to serial mode.
+2. `orca skills get orchestration` — load the full, version-matched command guide **fresh, every
+   invocation.** Never rely on a cached or remembered command grammar from an earlier run or from
+   this file's own prose — Orca's own skill stub says outright not to guess subcommands/flags from
+   memory, and that applies here with the same force.
+3. Follow the loaded guide's Preferred Supervised Worker Loop verbatim for each role slot:
+   `run-create` (once), `task-create` per phase/step, `worker-start --agent <cli-for-the-slot>`
+   (see "Applying model selection" below for the model/effort/lineage arguments), then
+   `check --wait --types worker_done,escalation,question` until every dispatched slot settles.
+   Do not paraphrase or reimplement these commands from memory — run the ones the guide just
+   returned.
+4. Only text that actually came back from a dispatched worker (a `worker_done` message, a posted
+   PR comment from that worker's own tool) counts as that slot's output. Narrating what a worker
+   "would say" is never a substitute for waiting on `check --wait` and reading the real message.
 
 **If not found:** run the same role sequence **serially, in this session**, using plain
 `git worktree add ../<repo>-<label>` per phase (sibling layout — matching `implement`'s own
-convention, never nested inside another worktree's directory tree). State explicitly that no
-orchestration substrate was found and serial mode is in use — never degrade silently, never error
-opaquely. See "Applying model selection" for the serial-mode limitation this implies.
+convention, never nested inside another worktree's directory tree). This sibling-git-worktree
+convention is specific to this no-substrate fallback — it does not apply to the Orca path above,
+which uses Orca's own worktree/lineage system instead (see "Applying model selection"). State
+explicitly that no orchestration substrate was found and serial mode is in use — never degrade
+silently, never error opaquely. See "Applying model selection" for the serial-mode limitation this
+implies.
 
 ## Applying model selection — how the parsed values actually get used
 
@@ -92,15 +121,24 @@ This is the part a description of *intent* isn't enough for; state the concrete 
 runtime.
 
 **With an orchestration substrate found (e.g. Orca):** pass the parsed `model` and `effort` as
-that substrate's own per-worker launch arguments when starting the worker for the relevant slot
-(for Orca specifically: `--model <model>` and, only when `effort` is set and the launched
-agent/model supports it, `--effort <effort>`, on the `worker-start` call that launches the
-planner/builder/reviewer for that phase — never combine `--model`/`--effort` with reusing an
-existing terminal via `--terminal`, per Orca's own rule that those options apply only to a fresh
-agent launch). If the substrate reports the requested model/effort as unsupported (a launch
-receipt error, or the worker-server not advertising launch-preference support), **stop and name
-that phase's dispatch as blocked** — do not silently launch under a different model and claim the
-requested one was used.
+that substrate's own per-worker launch arguments on the `worker-start` call that launches the
+planner/builder/reviewer for that phase (for Orca specifically: `--model <model>` and, only when
+`effort` is set and the launched agent/model supports it, `--effort <effort>` — never combine
+`--model`/`--effort` with reusing an existing terminal via `--terminal`, per Orca's own rule that
+those options apply only to a fresh agent launch). Also pass `--agent <cli>` matching the model's
+own CLI (e.g. `--agent codex` for a Codex model, `--agent claude` for a Claude model) — the model
+flag alone does not select the CLI. If the substrate reports the requested model/effort as
+unsupported (a launch receipt error, or the worker-server not advertising launch-preference
+support), **stop and name that phase's dispatch as blocked** — do not silently launch under a
+different model and claim the requested one was used.
+
+**Worktree lineage for the Orca path** (distinct from the no-substrate sibling-git-worktree
+convention above): default to **child** lineage (`--worktree new-child`) for a phase stacked under
+or dependent on the initiative `conduct` is currently running — matching how a human invokes
+Orca's own `orchestration` skill directly. Use **top-level** (`--worktree new-top-level`,
+`--no-parent`) only for a phase that's genuinely independent of the active worktree, mirroring
+Orca's own `orchestration` skill's lineage rule. State which lineage was chosen and why, same as
+model selection.
 
 **In serial, no-substrate mode:** a single interactive session generally runs under one fixed
 model for its lifetime. If the current session's model differs from a slot's resolved value,
