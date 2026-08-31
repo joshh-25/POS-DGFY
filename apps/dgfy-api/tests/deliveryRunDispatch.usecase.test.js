@@ -228,6 +228,77 @@ describe('buildDispatchDeliveryRunUseCase -- fan-out taxonomy', () => {
     });
 });
 
+describe('buildDispatchDeliveryRunUseCase -- per-member write-failure isolation (RF-1, PR #1280 review)', () => {
+    it('rolls back only the member whose write fails, keeps an earlier success dispatched, and still flips the run status', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        // 501 dispatches first and succeeds; 502's job-status write then throws mid-fan-out.
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id });
+        addDispatchReadyOrder(harness, { orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id });
+        harness.injectWriteFailure(502, 'updateDeliveryJobByOrderId');
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-write-failure' },
+            user: { user_id: 12 }
+        }), { state: harness.state });
+
+        expect(result.success).toBe(true);
+        const { dispatched, failed } = result.data;
+
+        // The earlier successful member remains dispatched -- both writes persisted.
+        expect(dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
+        const dispatchedOrder = await harness.posRepository.getOrderByIdForLifecycle(501);
+        expect(dispatchedOrder.fulfillment_status).toBe('out_for_delivery');
+        expect(harness.state.deliveryJobsByOrder.get(501).status).toBe('assigned');
+
+        // The failed member has NEITHER write applied -- rolled back to its pre-dispatch state.
+        expect(failed).toEqual([{
+            pos_transaction_id: 502,
+            reason_code: 'DISPATCH_WRITE_FAILED',
+            message: expect.stringContaining('502'),
+            details: expect.objectContaining({ error_message: expect.stringContaining('Injected write failure') })
+        }]);
+        const untouchedOrder = await harness.posRepository.getOrderByIdForLifecycle(502);
+        expect(untouchedOrder.fulfillment_status).toBe('packed');
+        expect(harness.state.deliveryJobsByOrder.get(502).status).toBe('pending_dispatch');
+
+        // The overall call still returns 200 (success) and the run status reflects the genuine
+        // partial success -- it flips to dispatched because at least the earlier member succeeded.
+        expect(result.data.run_status).toEqual({ previous: 'draft', current: 'dispatched', advanced: true });
+        expect(result.data.run.status).toBe('dispatched');
+    });
+
+    it('rolls back an updateOrderById write failure the same way -- no order or job mutation survives', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 503, deliveryJobId: 603, runId: run.delivery_run_id });
+        harness.injectWriteFailure(503, 'updateOrderById');
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-write-failure-order' },
+            user: { user_id: 12 }
+        }), { state: harness.state });
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched).toEqual([]);
+        expect(result.data.failed).toEqual([{
+            pos_transaction_id: 503,
+            reason_code: 'DISPATCH_WRITE_FAILED',
+            message: expect.stringContaining('503'),
+            details: expect.objectContaining({ error_message: expect.stringContaining('Injected write failure') })
+        }]);
+        const untouchedOrder = await harness.posRepository.getOrderByIdForLifecycle(503);
+        expect(untouchedOrder.fulfillment_status).toBe('packed');
+        expect(harness.state.deliveryJobsByOrder.get(503).status).toBe('pending_dispatch');
+        // Zero successes -- run status stays untouched.
+        expect(result.data.run_status).toEqual({ previous: 'draft', current: 'draft', advanced: false });
+    });
+});
+
 describe('buildDispatchDeliveryRunUseCase -- run status flip (D-3)', () => {
     it('flips the run to dispatched when at least one member succeeds', async () => {
         const harness = createDeliveryRunTestHarness();

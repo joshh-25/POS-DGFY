@@ -13,8 +13,56 @@ export const createTransaction = () => ({
     rollback: jest.fn(async function rollback() { this.finished = true; })
 });
 
-export const runInTenantContext = (callback) => {
-    const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+// RF-1 fix (PR #1280 review): `sequelize.transaction` now needs to answer both call shapes the
+// production code actually uses -- the bare `sequelize.transaction()` that opens the outer,
+// unmanaged transaction, and the managed `sequelize.transaction({ transaction }, callback)` used
+// per member as a savepoint. The savepoint variant snapshots the relevant state maps before running
+// the callback and, on the callback throwing, restores every touched order/job object IN PLACE
+// (Object.assign onto the same reference, not a map-entry swap) so `state.orders`,
+// `state.deliveryJobsById`, and `state.deliveryJobsByOrder` -- which all three hold the very same
+// job object for a given order -- stay consistent after a rollback, exactly mirroring what a real
+// `ROLLBACK TO SAVEPOINT` does to the row your read pointer already has open.
+const snapshotState = (state) => ({
+    orders: new Map(Array.from(state.orders.entries()).map(([id, row]) => [id, { ...row }])),
+    deliveryJobsByOrder: new Map(Array.from(state.deliveryJobsByOrder.entries()).map(([id, row]) => [id, { ...row }]))
+});
+
+const restoreState = (state, snapshot) => {
+    snapshot.orders.forEach((snapshotRow, id) => {
+        const current = state.orders.get(id);
+        if (current) Object.assign(current, snapshotRow);
+    });
+    snapshot.deliveryJobsByOrder.forEach((snapshotRow, id) => {
+        const current = state.deliveryJobsByOrder.get(id);
+        if (current) Object.assign(current, snapshotRow);
+    });
+};
+
+export const runInTenantContext = (callback, { state = null } = {}) => {
+    const sequelize = {
+        transaction: jest.fn((...args) => {
+            const callbackFn = args.find((arg) => typeof arg === 'function');
+            if (!callbackFn) {
+                // Bare `sequelize.transaction()` -- the outer, unmanaged transaction.
+                return Promise.resolve(createTransaction());
+            }
+            // Managed style -- `sequelize.transaction(callback)` or
+            // `sequelize.transaction(options, callback)` (the per-member savepoint shape).
+            const savepointTxn = createTransaction();
+            const snapshot = state ? snapshotState(state) : null;
+            return (async () => {
+                try {
+                    const result = await callbackFn(savepointTxn);
+                    await savepointTxn.commit();
+                    return result;
+                } catch (error) {
+                    if (snapshot) restoreState(state, snapshot);
+                    await savepointTxn.rollback();
+                    throw error;
+                }
+            })();
+        })
+    };
     return dbStore.run({ tenantId: 'delivery-run-test', sequelize }, callback);
 };
 
@@ -36,6 +84,13 @@ const buildPosRepository = (state) => ({
         return { ...state.openShift, location_id: locationId ?? state.openShift.location_id };
     },
     async updateOrderById(orderId, payload) {
+        // RF-1 fix (PR #1280 review): lets a test inject a genuine write-layer failure (a
+        // transient DB error, a lock timeout) for one specific member, distinct from the
+        // guard/transition rejections every other fan-out test already covers.
+        const failure = state.writeFailures?.get(Number(orderId));
+        if (failure === 'updateOrderById') {
+            throw new Error(`Injected write failure for order ${orderId} (updateOrderById)`);
+        }
         const order = state.orders.get(Number(orderId));
         if (!order) return null;
         Object.assign(order, payload);
@@ -44,6 +99,10 @@ const buildPosRepository = (state) => ({
     // Phase 228 (#1273/#1271): dispatch advances the job to `assigned` via this method (mirrors
     // posRepository.js's real updateDeliveryJobByOrderId -- lookup by pos_transaction_id).
     async updateDeliveryJobByOrderId(orderId, payload) {
+        const failure = state.writeFailures?.get(Number(orderId));
+        if (failure === 'updateDeliveryJobByOrderId') {
+            throw new Error(`Injected write failure for order ${orderId} (updateDeliveryJobByOrderId)`);
+        }
         const job = state.deliveryJobsByOrder.get(Number(orderId));
         if (!job) return null;
         Object.assign(job, payload);
@@ -219,6 +278,10 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
         deliveryJobsByOrder: new Map(),
         personnelRegistry: new Map(),
         replays: new Map(),
+        // RF-1 fix (PR #1280 review): orderId -> 'updateOrderById' | 'updateDeliveryJobByOrderId',
+        // set via `injectWriteFailure` below to simulate a genuine write-layer error for that one
+        // member's dispatch write step.
+        writeFailures: new Map(),
         audit: [],
         openShift: {
             pos_terminal_shift_id: 9,
@@ -289,6 +352,11 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
     return {
         state,
         addOrder,
+        // RF-1 fix (PR #1280 review): injects a write-layer failure for `orderId`'s dispatch write
+        // step -- `method` is 'updateOrderById' (default) or 'updateDeliveryJobByOrderId'.
+        injectWriteFailure: (orderId, method = 'updateOrderById') => {
+            state.writeFailures.set(Number(orderId), method);
+        },
         posRepository: buildPosRepository(state),
         deliveryRunRepository: buildDeliveryRunRepository(state)
     };
