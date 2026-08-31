@@ -52,7 +52,9 @@ This isn't an omission to infer from silence: this leg's own CI-side check
 is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
 a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
 on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
-that were never this leg's gate to fail on.
+that were never this leg's gate to fail on. (Briefly untrue 2026-08-29→2026-08-31 — #1124/#1165
+made this leg's quality jobs advisory-only instead of skipped, then #1253 reverted that; expect the
+plain skip described above, not a ~15-20min advisory run.)
 
 ```bash
 git fetch origin

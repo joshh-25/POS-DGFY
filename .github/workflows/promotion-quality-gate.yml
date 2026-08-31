@@ -149,6 +149,17 @@ name: Promotion Quality Gate
 # or a dying service container), not a code defect -- runner reliability, not stale/false-positive
 # tests, is the dominant problem this pass's evidence is expected to surface next. That question is
 # left deliberately open; this pass is what makes it observable, not what answers it.
+#
+# 2026-08-31 (#1253), Pat's call: item 4 immediately above is reverted. The `develop -> staging`
+# leg was never meant to carry this gate at all, advisory or not -- it's meant to be the quick
+# soak/QA leg, contrasted deliberately with the `staging -> main` (and default `develop -> main`)
+# leg where quality checks belong because that leg ships to production. Every quality job's `if:`
+# below is back to excluding `is_staging_leg`, i.e. the `to-staging/*->staging` leg is again skipped
+# entirely -- no runner time spent, no results produced at all on this leg, exactly the pre-#1124/
+# #1165-item-4 shape. `scripts/check-pr-quality-workflow.js`'s `checkStagingLegSkipShape` is updated
+# to match. Accepted trade-off, stated explicitly rather than silently reintroduced: this brings
+# back the "zero signal on 25 of the last 30 runs" gap #1124/#1165 cited for making the leg
+# advisory in the first place -- deliberate, because that leg is optimized for speed, not signal.
 on:
   pull_request:
     branches:
@@ -255,7 +266,7 @@ jobs:
     # job-level alone wasn't enough) -- including the mysql/redis containers below, now started and
     # waited-on as ordinary steps rather than the runner's own `services:` mechanism, so they're
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
@@ -580,7 +591,7 @@ jobs:
     # job-level alone wasn't enough) -- including the mysql container below, now started and
     # waited-on as an ordinary step rather than the runner's own `services:` mechanism, so it's
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
@@ -699,7 +710,7 @@ jobs:
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
@@ -787,7 +798,7 @@ jobs:
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
@@ -847,7 +858,7 @@ jobs:
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
@@ -957,7 +968,7 @@ jobs:
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
-    if: needs.gate.outputs.is_promotion == 'true'
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 15
@@ -1108,7 +1119,10 @@ jobs:
       - frontend-pos-quality
       - frontend-storefront-quality
       - repository-quality
-    if: always() && needs.gate.outputs.is_promotion == 'true'
+    # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
+    # job has nothing to report when every job it depends on was itself skipped on the staging leg,
+    # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
     permissions:
@@ -1256,7 +1270,13 @@ jobs:
   # as full recovery.
   salvage-api-evidence:
     needs: [gate, dgfy-api-quality]
-    if: always() && needs.gate.outputs.is_promotion == 'true'
+    # 2026-08-31 (#1253): is_staging_leg exclusion added -- this job never carried it even before
+    # #1124/#1165 (it was added by that same commit), but under #1253's intent (the staging leg
+    # never runs this gate at all) it has nothing to salvage when dgfy-api-quality itself was
+    # skipped; without this it would otherwise burn a 5-minute-timeout runner slot salvaging
+    # evidence for a job that never ran (dgfy-api-quality.conclusion == 'skipped' would read as
+    # needing salvage, per the needsSalvage check below).
+    if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 5
