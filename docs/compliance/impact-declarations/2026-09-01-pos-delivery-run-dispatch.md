@@ -1,14 +1,14 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-01
+last_reviewed: 2026-08-31
 declaration_id: 2026-09-01-pos-delivery-run-dispatch
 classification: major
 surfaces: pos,terminal
-reason_codes_impacted: ALREADY_DISPATCHED,DELIVERY_ORDER_REQUIRED,DELIVERY_JOB_REQUIRED,MANUAL_DELIVERY_JOB_REQUIRED,ORDER_STATUS_TRANSITION_INVALID,ORDER_METHOD_DELIVERY_REQUIRED,DELIVERY_ASSIGNMENT_REQUIRED,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_LOCKED,DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_EMPTY,DELIVERY_RUN_UNPACKED_MEMBERS
+reason_codes_impacted: ALREADY_DISPATCHED,DELIVERY_ORDER_REQUIRED,DELIVERY_JOB_REQUIRED,MANUAL_DELIVERY_JOB_REQUIRED,ORDER_STATUS_TRANSITION_INVALID,ORDER_METHOD_DELIVERY_REQUIRED,DELIVERY_ASSIGNMENT_REQUIRED,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_LOCKED,DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_EMPTY,DELIVERY_RUN_UNPACKED_MEMBERS,DISPATCH_WRITE_FAILED
 policy_version: 2026.09.01
-verification_evidence: node --check on every changed apps/dgfy-api .js file -- OK,npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims lazily imports the same TerminalPage.jsx tree via packages/web-core),apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js -- actually executed (Jest), 16/16 passing,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js -- actually executed (Jest), extended for the dispatch handler + 8-route registration assertion, all passing,apps/dgfy-api/tests/posValidator.deliveryRun.test.js -- actually executed (Jest), extended for the dispatch schema, all passing,apps/dgfy-api/tests/deliveryRun.usecase.test.js -- re-run after the shared test harness was extended, 22/22 passing,apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js -- re-run after the shared test harness was extended, all passing,packages/web-core/src/features/pos/utils/__tests__/deliveryRunDispatchReasons.test.js -- actually executed (Vitest via apps/dgfy-ims), 4/4 passing,packages/web-core/src/features/pos/__tests__/deliveryRunDispatch.behavior.test.jsx -- actually executed (Vitest via apps/dgfy-ims), 11/11 passing,packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx -- re-run after this phase's changes, all passing,packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx -- re-run after this phase's changes, all passing,npm run check:architecture -- OK,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
-rollback_note: One new backend route (POST /pos/delivery-runs/:deliveryRunId/dispatch) plus one new use case, handler, validator schema, and repository-free write-through against already-existing repository methods (no new migration, delivery_runs.status's `dispatched` enum value already existed since Phase 224). Rollback is a plain code revert of this PR's commits: removing the route/handler/use-case/validator removes the dispatch capability entirely; the run/personnel/membership endpoints from Phases 225-227 are untouched and continue to function. Frontend rollback similarly removes the Dispatch button, summary panel, and per-row badges, leaving the Phase 226/227 UI intact.
+verification_evidence: node --check on every changed apps/dgfy-api .js file -- OK,npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims lazily imports the same TerminalPage.jsx tree via packages/web-core),apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js -- actually executed (Jest), extended with 2 new per-member write-failure-isolation cases (RF-1) for 18 total, all passing,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js -- actually executed (Jest), extended for the dispatch handler + 8-route registration assertion, all passing,apps/dgfy-api/tests/posValidator.deliveryRun.test.js -- actually executed (Jest), extended for the dispatch schema, all passing,apps/dgfy-api/tests/deliveryRun.usecase.test.js -- re-run after the shared test harness was extended, 22/22 passing,apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js -- re-run after the shared test harness was extended, all passing,packages/web-core/src/features/pos/utils/__tests__/deliveryRunDispatchReasons.test.js -- actually executed (Vitest via apps/dgfy-ims), 4/4 passing,packages/web-core/src/features/pos/__tests__/deliveryRunDispatch.behavior.test.jsx -- actually executed (Vitest via apps/dgfy-ims), 11/11 passing,packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx -- re-run after this phase's changes, all passing,packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx -- re-run after this phase's changes, all passing,npm run check:architecture -- OK,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
+rollback_note: One new backend route (POST /pos/delivery-runs/:deliveryRunId/dispatch) plus one new use case, handler, validator schema, and repository-free write-through against already-existing repository methods (no new migration, delivery_runs.status's `dispatched` enum value already existed since Phase 224). Rollback is a plain code revert of this PR's commits: removing the route/handler/use-case/validator removes the dispatch capability entirely; the run/personnel/membership endpoints from Phases 225-227 are untouched and continue to function. Frontend rollback similarly removes the Dispatch button, summary panel, and per-row badges, leaving the Phase 226/227 UI intact. The RF-1 amendment below (per-member write savepoint) is additionally revertible on its own: reverting just that hunk restores the prior bare-write fan-out with no other behavior change.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-01T00:00:00Z
@@ -187,3 +187,43 @@ See the `verification_evidence` frontmatter key for the full list. Summary:
 pr-reviewer/AGENTS.md rule confirmed at #884: this is expected, not a review finding, on a PR
 targeting `develop`. The continuous `compliance-preflight-sweep.yml` (#1163/#1248) reconciles this
 after merge.
+
+## Amendments
+
+### 2026-08-31: RF-1 fix -- per-member write-failure isolation (PR #1280 review)
+
+`pr-reviewer` blocked the original dispatch PR (#1280) on a real gap: the fan-out's per-member `try`
+only wrapped `validateOnlineOrderTransition` (a pure read/validation check). The two writes that
+follow it -- `updateOrderById` then `updateDeliveryJobByOrderId` -- ran bare against the outer
+transaction. A write failure for member N (a transient DB error, a lock timeout -- not a validation
+rejection) would propagate to the outer catch and roll back the entire dispatch, including every
+member already successfully dispatched earlier in the same loop -- defeating the best-effort
+contract this phase's own Compliance Precondition 2 requires ("every non-dispatched member ends up
+in exactly one of `skipped`/`failed`... nothing is omitted") for every member, not just the one that
+hit the write error.
+
+**Fix.** Each member's write step (`updateOrderById` + `updateDeliveryJobByOrderId`) is now wrapped
+in its own per-member savepoint -- `sequelize.transaction({ transaction }, async (memberSavepoint) =>
+{...})`, a nested transaction inside the outer one that MySQL/Sequelize implements as a real
+`SAVEPOINT`/`ROLLBACK TO SAVEPOINT`. On any error during that member's write step, only that
+member's savepoint rolls back (neither its order nor its job is changed), the member is classified
+`failed` with the new `DISPATCH_WRITE_FAILED` reason code (distinct from the existing
+validation-failure codes, so an operator/log reader can tell a write-layer error apart from a guard
+rejection), and the loop continues with the remaining members. Nothing else about the fan-out
+changed -- guard order, the existing reason-code taxonomy, the `ALREADY_DISPATCHED` skip path, and
+audit logging are all untouched.
+
+**Compliance effect.** No classification change (still `major`, still `pos,terminal`) and no new
+route/surface. One reason code added: `DISPATCH_WRITE_FAILED` (see frontmatter). Compliance
+Precondition 2 above is now actually true under a partial write failure, not just under a
+validation rejection -- this amendment closes that gap rather than widening this declaration's
+scope.
+
+**Verification.** `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js` gained two new cases: one
+injects an `updateDeliveryJobByOrderId` failure for a member dispatched *after* another member
+already succeeded in the same call, and asserts the earlier success stays dispatched (both writes
+persisted), the failed member has neither write applied, the call still returns success (200) with
+the failed member in `failed`, and the run status still flips to `dispatched` on the strength of the
+earlier success; the second injects an `updateOrderById` failure with no other successful member,
+asserting a full rollback of that member's writes and no run-status flip. See the frontmatter
+`verification_evidence` for the full re-run list.
