@@ -14901,3 +14901,160 @@ Phase 228 (dispatch).
 ### Next eligible phase
 
 228.
+
+## Phase 228 - Delivery Runs: Whole-Run Dispatch (#1273/#1271) — FINAL PHASE OF THE #1273 TRACK
+
+### Initiative and release
+
+Delivery Runs build track, completing #1273 (track), #1271 (dispatch scope), and #1272 (the
+retail-only packing precondition). Builds on Phase 225's API, Phase 226's run-management UI, and
+Phase 227's bulk add-to-run flow. **This is the final phase of the #1273 build track** — the PR
+uses `Refs #1273`, not `Closes #1273`; closing the tracking issues (#1273/#1271/#1272) is a
+coordinator/PM decision, not made by this phase or this entry.
+
+### Objective and scope
+
+Let staff dispatch every eligible member of a delivery run in one request — advancing each order's
+`fulfillment_status -> out_for_delivery` and its `delivery_jobs.status pending_dispatch ->
+assigned` — instead of the per-order status-update flow Phase 210 already exposes.
+
+**Source-verified findings re-confirmed against `origin/develop` at merge-base `c065a0d91`
+(the Phase 227 merge commit) before implementation** — see F-1 through F-7 in
+`docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md`'s own "Source-verified
+findings" section rather than restating them here; summary: the real per-order guard chain for
+`-> out_for_delivery` does not include the money-route-only terminal middlewares; the transition
+guards were module-private and are now exported (zero behavior change) for reuse; Phase 225
+deliberately left member jobs at `pending_dispatch` for this phase to advance; the run-mutation
+locked-status set and the member-removal no-run-status-guard both hold unchanged; no migration was
+needed (`delivery_runs.status`'s `dispatched` value already existed since Phase 224); the
+workflow-mode read and every repository method needed already existed.
+
+**Design decisions implemented exactly as specified (D-1 through D-6)**:
+
+- **D-1.** One endpoint, `POST /pos/delivery-runs/:deliveryRunId/dispatch`, body is just an
+  idempotency key. The 200 response carries three buckets — `dispatched`/`skipped`/`failed` —
+  deliberately not the two-bucket `{added,skipped}` shape Phase 227's membership endpoint uses,
+  because best-effort dispatch has a genuine third outcome (should have gone, didn't) two buckets
+  can't express.
+- **D-2 (#1272).** A run-level, retail-only, pre-fan-out packing gate: if any member's order
+  `fulfillment_status` is earlier than `packed`, the whole call 409s
+  (`DELIVERY_RUN_UNPACKED_MEMBERS`, naming every offender) and writes nothing.
+  `ONLINE_FULFILLMENT_TRANSITIONS` is untouched by this gate — F&B skips it entirely by
+  construction. A cancelled/rejected member is not part of this gate; it is an ordinary per-order
+  fan-out failure instead.
+- **D-3.** The run flips to `dispatched` on **at least one** success, never "all"; zero successes
+  leaves run status untouched and still returns 200 (the per-order report IS the result, never a
+  409). `dispatched` is deliberately the one status this endpoint does not treat as locked — a
+  code comment on the dedicated `RUN_DISPATCH_BLOCKED_STATUSES` constant explains why, so a future
+  reader does not "fix" it into the shared locked-status constants every other run mutation still
+  uses correctly.
+- **D-4.** Two-layer idempotency: a durable `POS_OPERATION_KEYS.DELIVERY_RUN_DISPATCH` replay
+  hashed on `{ delivery_run_id }` only (not the member list, so a retry with a changed member set
+  still replays), plus an in-fan-out `ALREADY_DISPATCHED` skip that fires regardless of idempotency
+  key and still advances a straggler job to `assigned` if it was left behind.
+- **D-5.** The exact reason-code taxonomy specified, applied in the specified guard order.
+- **D-6.** `MOBILE_ORDER_VERSION_CONFLICT` deliberately not implemented here — it only fires on
+  client-supplied expected-version fields with no run-dispatch analogue.
+
+**Scope:**
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — exports
+  `normalizeOnlineFulfillmentStatus`/`validateOnlineOrderTransition`/
+  `buildOnlineOrderShiftAttributionPayload` (exports only); adds
+  `POS_OPERATION_KEYS.DELIVERY_RUN_DISPATCH`.
+- `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js` — new
+  `buildDispatchDeliveryRunUseCase`: one outer transaction, the run-level preconditions above in
+  order, one open-shift check for the whole run, the read-before-write per-order fan-out, the D-3
+  status flip, one run-scoped + N per-member audit rows, the two-layer idempotency, and a
+  post-commit best-effort `recordDgfyOrderActivity` call per dispatched order (wrapped so a
+  failure never fails the already-committed dispatch).
+- `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/validators/posValidator.js` — wiring: new `dispatchDeliveryRun`
+  handler/export, new route (`checkPermission(TRANSACT_POS)` + `validateDeliveryRunIdParam` +
+  `validateDeliveryRunDispatch`), new schema.
+- New `packages/web-core/src/features/pos/components/DeliveryRunDispatchSummary.jsx` (persistent
+  three-bucket result panel — deliberately not a toast, Phase 227's own residual-risk note flags
+  this same limit) and `utils/deliveryRunDispatchReasons.js` (pure reason_code -> operator message
+  map).
+- Modified `components/DeliveryRunsWorkspacePanel.jsx` (Dispatch/Re-dispatch button +
+  `ConfirmActionDialog`, the client-side packing pre-flight backstop, idempotency-key retention
+  keyed on `${runId}:dispatch:${sortedMemberIds}`) and `components/DeliveryRunMembersList.jsx`
+  (per-row outcome badge from the last dispatch result); `services/deliveryRunService.js` gains
+  `dispatchDeliveryRun()`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` — new 2026-09-01 amendment (the
+  `dispatched` lifecycle, its best-effort contract, and the packing precondition restated as
+  compatible with the 2026-08-31 amendment's additive-by-design promise).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md` — `major`,
+  surfaces `pos,terminal`; a new declaration, per this repo's one-declaration-per-phase precedent.
+
+**Out of scope, unchanged:** run advancing to `completed` (#908's territory), rollback of a
+dispatched order from this endpoint, run-level COD cash totals (#838).
+
+### Status
+
+`completed` for the dispatch surface; the live acceptance walk (dispatch a real run against a
+deployed tenant database, confirm order/job status transitions and the audit trail) was **not**
+run — no deployed tenant database reachable in this environment. All Jest/Vitest coverage passes
+against an in-memory fake repository and mocked services; the live walk is outstanding acceptance
+evidence, not omitted, same posture as every prior phase in this track (224-227).
+
+### Dependencies
+
+Builds on Phase 225's API, Phase 226's run-management UI, and Phase 227's eligibility/idempotency
+patterns. Independent of Phase 227's bulk-add flow otherwise.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` `.js` file — OK.
+- [x] `npm run build:pos` — real Vite build, OK.
+- [x] `npm run build:skupervisor` — also required (a `packages/web-core` change), OK.
+- [x] New `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js` — actually executed (Jest),
+  16/16 passing: every run-level precondition (404/locked/no-accountable/empty), the packing gate
+  firing in retail and skipped in F&B (with the unpacked list named), a mixed multi-member fan-out
+  covering every taxonomy row in one call, the run status flip on >=1 success and its absence on
+  zero, a dispatched run accepting re-dispatch with `ALREADY_DISPATCHED` skips and no double-write,
+  the job advancing `pending_dispatch -> assigned` per success, and both replay outcomes
+  (processed/blocked).
+- [x] `apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js` — extended for the dispatch
+  handler and the 8-route registration assertion; all passing.
+- [x] `apps/dgfy-api/tests/posValidator.deliveryRun.test.js` — extended for the dispatch schema;
+  all passing.
+- [x] `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js` — re-run after the shared test
+  harness (`testHelpers/deliveryRunTestHarness.js`) gained `updateDeliveryJobByOrderId` and
+  dispatch-assignment fields on `addOrder`; no regressions.
+- [x] New `packages/web-core/src/features/pos/utils/__tests__/deliveryRunDispatchReasons.test.js`
+  — actually executed (Vitest via `apps/dgfy-ims`), 4/4 passing.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunDispatch.behavior.test.jsx` —
+  actually executed, 11/11 passing: button gating per condition (no shift, no accountable, zero
+  members, completed/cancelled status, unpacked members), the unpacked pre-flight notice naming
+  the order, confirm-then-submit (no call before confirmation), idempotency-key retention on retry,
+  the three-bucket summary panel rendering all three groups, the `DELIVERY_RUN_UNPACKED_MEMBERS`
+  409 naming the offending order, and the "Re-dispatch run" label on an already-dispatched run.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `__tests__/deliveryRunBulkAssign.behavior.test.jsx` — re-run after this phase's changes
+  (both mock files extended with `dispatchDeliveryRun`/`toast.warning`), no regressions.
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` — all OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (14 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) — **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase.
+
+### Links
+
+- Tracking issues: #1273 (track, final phase), #1271 (dispatch scope), #1272 (packing
+  precondition).
+- `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/routes/pos.js`, `apps/dgfy-api/src/validators/posValidator.js`,
+  `packages/web-core/src/features/pos/services/deliveryRunService.js`,
+  `components/DeliveryRunDispatchSummary.jsx`, `components/DeliveryRunsWorkspacePanel.jsx`,
+  `components/DeliveryRunMembersList.jsx`, `utils/deliveryRunDispatchReasons.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (2026-09-01 amendment, this
+  phase).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md`.
+
+### Next eligible phase
+
+229.
