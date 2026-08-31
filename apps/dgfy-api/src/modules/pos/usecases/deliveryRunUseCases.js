@@ -1254,14 +1254,38 @@ export const buildDispatchDeliveryRunUseCase = ({
                     fulfillment_status: 'out_for_delivery',
                     ...buildOnlineOrderShiftAttributionPayload({ order, activeShift })
                 };
-                const updatedOrder = await posRepository.updateOrderById(orderId, updatePayload, {
-                    transaction,
-                    lock: true
-                });
-                await posRepository.updateDeliveryJobByOrderId(orderId, { status: 'assigned' }, {
-                    transaction,
-                    lock: true
-                });
+
+                // RF-1 fix (PR #1280 review): the two writes below are wrapped in their own
+                // per-member savepoint (a nested transaction inside the outer one) rather than
+                // running bare against `transaction`. Without this, a write failure for member N
+                // (a transient DB error, a lock timeout -- not just a validation rejection, which
+                // is already caught above) would propagate to the outer catch and roll back every
+                // member already dispatched earlier in this same loop, defeating the best-effort
+                // contract for everyone rather than just the one problem order. On any error here,
+                // only this member's savepoint rolls back -- neither its order nor its job is
+                // changed -- and the loop continues with the remaining members.
+                let updatedOrder;
+                try {
+                    const sequelize = getSequelize();
+                    await sequelize.transaction({ transaction }, async (memberSavepoint) => {
+                        updatedOrder = await posRepository.updateOrderById(orderId, updatePayload, {
+                            transaction: memberSavepoint,
+                            lock: true
+                        });
+                        await posRepository.updateDeliveryJobByOrderId(orderId, { status: 'assigned' }, {
+                            transaction: memberSavepoint,
+                            lock: true
+                        });
+                    });
+                } catch (writeError) {
+                    failed.push({
+                        pos_transaction_id: orderId,
+                        reason_code: 'DISPATCH_WRITE_FAILED',
+                        message: `Order ${orderId} could not be dispatched due to a write failure.`,
+                        details: { error_message: writeError?.message || String(writeError) }
+                    });
+                    continue;
+                }
 
                 dispatched.push({ pos_transaction_id: orderId, order: toSerializable(updatedOrder) });
             }
