@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +15,8 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5175';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
+const authStorageState = path.resolve(__dirname, 'playwright/.auth/user.json');
+const hasAuthStorageState = existsSync(authStorageState);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -57,7 +60,10 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chrome',
-        storageState: 'playwright/.auth/user.json',
+        // Keep authenticated coverage opt-in to an existing local fixture. A
+        // missing fixture must never make the default public E2E suite fail or
+        // encourage credentials to be added to the repository.
+        storageState: hasAuthStorageState ? authStorageState : { cookies: [], origins: [] },
       },
     },
   ],
