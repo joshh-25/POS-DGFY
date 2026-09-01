@@ -56,4 +56,3 @@ router.patch('/api/v1/dgfy/laundry/orders/:externalOrderReference', authenticate
 router.post('/api/v1/dgfy/laundry/orders/:externalOrderReference/cancel', authenticateDgfyAccount, resolveLaundryCompany, cancelDglaundryOrder);
 
 export default router;
-

@@ -47,4 +47,3 @@ place these values in source, browser storage, or a shared database.
 
 Passing local tests means “DGFY storefront-orders implementation ready for
 review”; it is not provider, hosted, or production authorization.
-

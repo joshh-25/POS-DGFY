@@ -26,4 +26,3 @@ local HMAC fixture profile and fails closed in production unless the
 asymmetric HTTP Message Signature profile is configured. No DGLaundry
 password, refresh token, private key, database credential, or runtime source
 is imported.
-

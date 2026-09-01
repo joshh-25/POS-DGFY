@@ -85,4 +85,3 @@ export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
   }
   return { rawBody, headers };
 };
-

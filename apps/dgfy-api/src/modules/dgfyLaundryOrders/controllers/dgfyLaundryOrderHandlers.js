@@ -18,7 +18,6 @@ export const getDglaundryCatalog = (req, res, next) => run(
   res,
   next
 );
-
 export const getDglaundryAvailability = (req, res, next) => run(
   dgfyLaundryOrderUseCases.getAvailability,
   { companyId: req.laundryCompany.company_id, locationId: req.query?.location_id },
@@ -71,4 +70,3 @@ export const listDglaundryDeadLetters = (req, res, next) => run(
   res,
   next
 );
-

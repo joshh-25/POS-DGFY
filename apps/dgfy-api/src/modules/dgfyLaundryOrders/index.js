@@ -8,4 +8,3 @@ export const dgfyLaundryOrderUseCases = buildDgfyLaundryOrderUseCases({
 });
 
 export { dgfyLaundryOrderRepository, dglaundryPartnerClient };
-
