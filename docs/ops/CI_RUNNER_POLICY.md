@@ -19,8 +19,9 @@ the explicit, auditable switch used when a runner class becomes unavailable. Fil
 **Scope note, stated once:** this doc answers *where a job runs*. It does not decide *what runs in
 CI at all* — that's #1147's scope (moving `gate:release:local`'s 19 gates into CI), covered
 separately below in "#1147 gate mapping" because #1364's own acceptance criteria calls for
-reconciling with it, not duplicating it. This doc also does not implement any routing change itself
-— that's #1365, deliberately kept out of the PR that introduces this doc (see "Status" below).
+reconciling with it, not duplicating it. The PR that originally introduced this doc deliberately
+implemented no routing change itself — that was left to #1365, which has since shipped its live
+cutover (Phase 234 Wave 3, 2026-09-02); see "Status" below for the current state.
 
 `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` remains the living change-log of every runner-hosting
 decision made to date (2026-08-01 hosted → 2026-08-13 reverted to self-hosted on exhausted billing →
@@ -189,16 +190,23 @@ still open and gate the remaining work, per #1147's own body.
 
 ## Status
 
-This doc lands #1364's matrix/capability/fallback-switch deliverable and #1147's gate-mapping
-deliverable. It does **not** implement any routing change — no `runs-on:`/`runner_labels_json`
-value in any real workflow changes as part of the PR that introduces this doc. That's #1365's scope,
-to follow as a separate PR once this doc has been reviewed.
+This doc originally landed #1364's matrix/capability/fallback-switch deliverable and #1147's
+gate-mapping deliverable, with no routing change implemented as part of that PR. **That has since
+changed: #1365's Phase 234 Wave 3 (2026-09-02) flipped the live routing** — production
+build/deploy/promotion jobs in `deploy-main.yml` and `promotion-quality-gate.yml` now route to
+GitHub-hosted (`ubuntu-latest`) by default, per the matrix below, not self-hosted. See
+`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`'s "Status as of 2026-09-02 — Phase 234 Wave 3" entry for
+the full flip record, the Wave 2 T1–T5 evidence it was based on, and the current flip/fallback
+procedure. Wave 4 (a real production promotion exercising this path) and Wave 5 (closeout) remain
+separate, gated, not-yet-run work — this doc's matrix and fallback-switch mechanism below are
+otherwise unchanged by the flip.
 
 ## Related
 
-#1363 (epic), #1365 (implementation, not yet started), #1147 (gate umbrella), #1018 (fast-tier
-subset — functionally merged via PR #1036, issue left open), #1015 (hard prerequisite for the
-remaining DB-backed gates), #1124 (quality-gate trust, gates full #1147 closure), #724/#662 (local-
-CI fallback evidence path), #715 (alternative CI provider exploration), #923 (runner size labeling),
-`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (full history), `AGENTS.md` (Merge Safety carve-out's
-four-way unavailability classification, reused here rather than duplicated).
+#1363 (epic), #1365 (Phase 234 Wave 3 — live cutover shipped 2026-09-02), #1147 (gate umbrella),
+#1018 (fast-tier subset — functionally merged via PR #1036, issue left open), #1015 (hard
+prerequisite for the remaining DB-backed gates), #1124 (quality-gate trust, gates full #1147
+closure), #724/#662 (local-CI fallback evidence path), #715 (alternative CI provider exploration),
+#923 (runner size labeling), `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (full history), `AGENTS.md`
+(Merge Safety carve-out's four-way unavailability classification, reused here rather than
+duplicated).

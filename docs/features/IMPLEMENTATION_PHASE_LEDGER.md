@@ -15905,8 +15905,124 @@ phase built, not an action this phase's own implementation session took).
 ### Next eligible phase
 
 240 -- noting the 238 ledger gap above for whoever claims it next.
+## Phase 240 - CI Runner Routing: Live Cutover (#1365 Wave 3)
 
-## Phase 240 - free_delivery voucher benefit class, code-entered (#1331, epic #1321)
+### Initiative and release
+
+Build stage of Phase 234's plan document, child of epic #1363 -- taking ledger number **240**, not
+234. Numbering note, confirmed live rather than assumed: Phase 233's own entry (above) informally
+called this work "Phase 234," anticipating it as the next item in the CI-runner-routing initiative.
+Per Continuous Phase Numbering (`AGENTS.md`), phase numbers are never reserved in advance, and the
+Phase 239 entry (above) already recorded that 234 was independently claimed by epic #1321's
+delivery-pricing track while this work was still pending, making 239 the next free number at that
+time and, per that entry's own "Next eligible phase" note, **240** the number for whoever claims it
+next -- this phase. The planning document this phase implements (`PHASE-234-PLAN.md`, "Wave 3 -- The
+flip") keeps its own "234" name for continuity with the plan's earlier waves (Wave 0/#1375, Wave 1/2
+recorded under the ledger's actual Phase 233 entry above); only the ledger's own sequence number
+differs from the plan's informal label, which is exactly the situation Phase 239's entry predicted.
+
+### Objective and scope
+
+Purely mechanical comment⇄uncomment flip at the 14 pair sites Phase 233 scaffolded (6 in
+`deploy-main.yml`, 8 in `promotion-quality-gate.yml`), making GitHub-hosted (`ubuntu-latest`) the
+active class for every non-exempt production build/deploy/promotion job, plus four required
+non-pair edits: `scripts/lib/runner-routing-state.js`'s `EXPECTED_ACTIVE_CLASS` constant flipped to
+`'hosted'`; `deploy-main.yml`'s `guard-branch` preflight step's `--class self-hosted` →
+`--class both`; a new `runner_labels_json` `workflow_dispatch` input on `deploy-main.yml` itself
+(default hosted, commented self-hosted alternate) threaded to all 6 job call sites, turning the
+emergency fallback from "commit to `main`" into "re-dispatch with one input" (F-5) --
+`check-runner-routing.js` extended with a delegation-aware site resolution and new regression tests
+to match; and doc updates (`CI_RUNNER_MIGRATION_HANDOFF.md` new dated status entry,
+`CI_RUNNER_POLICY.md`'s Status section corrected, this ledger entry). Out of scope, per the plan:
+Wave 4 (a real production promotion actually exercising the hosted path) and Wave 5 (closeout) --
+both separate, gated, `promoter`-role work, not attempted here.
+
+### Status
+
+`in_progress`. This build stage is complete and self-verified (below), and its PR is open against
+`develop` -- but Wave 4 (the first real production promotion over this hosted path) and Wave 5
+(closeout) have not run yet, and this phase's own acceptance criteria (#1365's AC-5) explicitly
+depend on Wave 4 actually happening. Marking `completed` before that live exercise would overstate
+what's actually been proven beyond Wave 2's controlled, non-production T1-T5 evidence (below).
+Revisit once Wave 4/5 land.
+
+### Dependencies
+
+Phase 233 (#1365, this file, scaffold + preflight tooling -- the 14 pair sites and
+`check-runner-routing.js` this phase flips/extends). Wave 0 (#1375, PR #1376,
+`salvage-api-evidence`'s hosted-routing residual accepted and made loud, not silent -- a named
+prerequisite for flipping `dgfy-api-quality`/`salvage-api-evidence` specifically). Wave 2's
+dispatch-only evidence run (PR #1380, `ci/1365-runner-switch-harness`) is the basis for confidence
+in this flip, not a code dependency: T1/T2 proved both runner classes still pick up dispatches: T3
+proved the whole `promotion-quality-gate.yml` runs clean hosted (all 9 jobs `success`, ~50 est.
+billed minutes, wall-clock 35m28s); T4 the self-hosted control (same job set, unbilled, 38m42s); T5
+proved hosted → PROD SSH works read-only. The plan's predicted AVX surprise
+(`menuPdfRasterService.test.js`'s `CANVAS_SUPPORTED_ON_THIS_HOST`-gated render tests) did not
+materialize on the hosted runner image used; two advisory `dgfy-api-quality` failures were shown
+identical on both T3/T4, confirming them pre-existing and runner-independent, not new noise from
+this flip. T6 (optional Tier 2 build+GHCR smoke) was skipped in Wave 2 and not attempted here either.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file -- OK
+  (`scripts/check-runner-routing.js`, `scripts/check-runner-routing.test.js`,
+  `scripts/lib/runner-routing-state.js`, `scripts/ci-runner-preflight.test.js`).
+- [x] `npm run check:runner-routing` -- OK, confirms every non-exempt site's active class now
+  matches `EXPECTED_ACTIVE_CLASS` ("hosted"), the pairing invariant holds at all 14 sites plus the
+  new `deploy-main.yml` input-default site, the 3 anchor exceptions are untouched, co-location
+  (`salvage-api-evidence`/`dgfy-api-quality`) still matches, and no DEV/STAGING or `NON_HOSTED_FILES`
+  target carries a hosted literal.
+- [x] `npm run test:runner-routing` -- OK, 34/34 passing (17 pre-existing fixtures updated for the
+  new hosted-active baseline, 3 new tests covering the delegation-to-input resolution path).
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing;
+  the #1063 shape is unaffected by the pair-flip (comment/uncomment + delegation only, no gate
+  structure changed).
+- [x] `npm run test:runner-preflight` -- OK, 30/30 passing after updating two fixtures/assertions
+  that had hardcoded the pre-flip "self-hosted" baseline (`resolveActiveRouting` default-read test,
+  and `runner-routing-state.js`'s own delegation-aware rewrite of `readActiveRouting`, needed once
+  `deploy-main.yml`'s 6 job sites stopped carrying their own literal and started delegating to the
+  new input -- otherwise this resolver read them as self-hosted-active, deriving `'mixed'` instead
+  of `'hosted'`).
+- [x] `npm run test:runner-availability` -- OK, 8/8 passing, unaffected.
+- [x] `node --test scripts/pr-checks.test.js` -- OK, 29/29 passing, unaffected.
+- [x] `npm run lint:docs` -- OK (29 governed docs) + `check:adr --strict` -- OK (85 ADRs).
+- [x] `npm run check:compliance` -- `.github/**`/`scripts/**` confirmed not a compliance-impact
+  surface for this shape of change (routing-class only, no tenant-data/runtime-behavior surface);
+  ran the tool against the diff rather than assuming, no declaration produced.
+- [x] `git diff` review: every workflow-file change is comment/uncomment plus exactly the four
+  enumerated non-pair edits (EXPECTED_ACTIVE_CLASS, `--class both`, the new input + 6 delegated call
+  sites); no unrelated line touched.
+- [ ] Wave 4's live production promotion over this hosted path -- **not run**, out of scope for this
+  phase (gated, `promoter`-role, never unattended per the plan).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change;
+`.github/**`/`scripts/**` not a `check-compliance-impact.js` surface; base is `develop`, branched
+fresh (`git fetch` then `origin/develop`, including Wave 1/Wave 2's merges); nothing dispatches a
+deploy workflow or touches a deployed environment; no force-push, branch deletion, or rewriting
+shared history.
+
+### Links
+
+- Tracking issue: #1365 (child of epic #1363). This PR uses `Refs #1365`, not `Closes` -- #1365's
+  full AC-3 depends on #1147, which isn't done; AC-5 depends on Wave 4, not attempted here either.
+- `.github/workflows/deploy-main.yml`, `.github/workflows/promotion-quality-gate.yml` (both
+  modified, the 14-site pair flip plus the new `deploy-main.yml` input + `guard-branch --class both`),
+  `scripts/lib/runner-routing-state.js` (modified, `EXPECTED_ACTIVE_CLASS` flip + delegation-aware
+  `readActiveRouting`), `scripts/check-runner-routing.js` + `.test.js` (modified, delegation-site
+  resolution + new tests), `scripts/ci-runner-preflight.test.js` (modified, one fixture updated for
+  the new baseline), `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (modified, new dated status entry),
+  `docs/ops/CI_RUNNER_POLICY.md` (modified, Status section corrected), this file (new entry).
+- Referenced plan: `PHASE-234-PLAN.md`, "Wave 3 -- The flip" (external to this repo's own docs tree,
+  a planning-session artifact -- summarized here and in `CI_RUNNER_MIGRATION_HANDOFF.md`, not linked
+  as a repo-relative path since it isn't one).
+
+### Next eligible phase
+
+241.
+
+## Phase 241 - free_delivery voucher benefit class, code-entered (#1331, epic #1321)
 
 ### Initiative and release
 
@@ -15914,8 +16030,24 @@ Epic #1321 (Customer delivery pricing), decision 9. Depends on Phase 237 (#1329,
 merged -- the delivery-fee breakdown `resolveStoreDeliveryFee`/`resolveCheckoutContext` wiring this
 phase's waiver folds into) and Phase 239 (epic #1321's own numbering; ADR 0066's Decision 8
 2026-08-19 amendment's `benefit_target`-shaped call-site contract this phase fulfils --
-`voucherBenefitPolicy.js`'s own header names this exact phase as the intended caller). Number
-claimed per Phase 239's ledger entry above ("Next eligible phase: 240").
+`voucherBenefitPolicy.js`'s own header names this exact phase as the intended caller).
+
+**Numbering note, confirmed live rather than assumed** (mirrors Phase 239's own gap-documentation
+precedent, above): this phase was planned and implemented as "Phase 240," per Phase 239's own ledger
+entry ("Next eligible phase: 240"). Before this branch's PR could merge, PR #1386 (#1365 Wave 3, CI
+runner routing live cutover) independently claimed and merged its own "Phase 240" entry into
+`develop` -- a genuine concurrent-numbering race, both sessions reading the same "240" note. Per
+Continuous Phase Numbering (`AGENTS.md`), phase numbers are never reserved in advance and historical
+entries are never renumbered; since PR #1386's Phase 240 entry landed on `develop` first, it is the
+one that keeps the number, and this entry takes the next actually-free number, **241**, on rebase
+into this branch. Every in-repo reference this phase's own diff created before the collision was
+discovered -- code comments, the ADR 0066 amendment, the compliance declaration, commit messages
+already pushed -- still says "Phase 240" and is intentionally left that way rather than rewritten:
+rewriting already-pushed commit messages is its own checkpoint-worthy action (`implement`'s own
+"rewriting already-pushed shared history" trigger) this diff does not take, and Phase 233's own
+entry (above) already establishes the precedent that an informal in-place label may keep a stale
+number while the ledger's own authoritative number is what's correct. This entry's own number is
+the one to trust.
 
 ### Objective and scope
 
@@ -15965,13 +16097,12 @@ from and builds no UI, mirroring #1382's own precedent for Phase 237's breakdown
 
 ### Status
 
-`in_progress`. All non-migration code, tests, and docs are implemented and self-verified (below).
-The migration (`20260904000001-add-delivery-voucher-benefit.cjs`) is drafted, syntax-checked, and
-covered by a passing unit-test suite, but held UNCOMMITTED pending explicit confirmation per
-`.agents/skills/implement/SKILL.md`'s checkpoint policy (an `ENUM MODIFY` on a tenant-fanned-out
-table is the checkpoint-policy row-1 trigger, in its strictly harder ordinal-shifting sub-case) --
-see the coordinator handoff for the exact file content held for confirmation. Not yet committed,
-pushed, or opened as a PR.
+`in_progress`. All code, tests, and docs are implemented and self-verified (below), including the
+migration (`20260904000001-add-delivery-voucher-benefit.cjs`) -- held uncommitted pending explicit
+confirmation per `.agents/skills/implement/SKILL.md`'s checkpoint policy (an `ENUM MODIFY` on a
+tenant-fanned-out table is the checkpoint-policy row-1 trigger, in its strictly harder
+ordinal-shifting sub-case), then confirmed and committed after the coordinating session reviewed
+its exact content. PR open against `develop` (PR #1389); not yet reviewed or merged.
 
 ### Dependencies
 
@@ -15998,10 +16129,13 @@ phase narrows in scope, not weakens.
   `posVoucherDiscountCalculator` (all byte-identity regressions, unmodified, 100% pass),
   `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (new, 12 -- the headline acceptance case plus
   11 supporting cases from plan §9).
-- [ ] `npm run check:compliance` -- not yet run against the full, final diff (migration held
-  uncommitted); the declaration itself is drafted (see the compliance impact-declaration file, this
-  commit set).
-- [ ] `npm run check:architecture` -- pending the final diff for the same reason.
+- [x] `npm run check:compliance` -- confirmed to fail first (listing the four sensitive files with
+  no declaration), then pass once `docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md`
+  was added.
+- [x] `npm run check:architecture` -- OK, 52 modules / 537 files; controller boundary check OK, 92
+  controller files, no unauthorized model imports.
+- [x] `npm run check:tenant-schema-coverage --staged` (pre-commit, fired on the migration commit) --
+  `PASS`, 1 migration file checked.
 
 ### Deviations from the plan -- surfaced explicitly, not silently absorbed
 
@@ -16048,18 +16182,19 @@ assumption about existing file contents, surfaced here rather than silently abso
 
 ### Checkpoints (`.agents/skills/implement/SKILL.md`)
 
-**Fired: migration checkpoint (row 1), held.** `20260904000001-add-delivery-voucher-benefit.cjs`
+**Fired: migration checkpoint (row 1), resolved.** `20260904000001-add-delivery-voucher-benefit.cjs`
 is a new file under `apps/dgfy-migration-runner/migrations/` performing an `ENUM MODIFY` on the
 tenant-fanned-out `vouchers` table -- ordinal-shifting and NOT cleanly reversible once any delivery
 voucher is authored (`down()` throws rather than truncating such rows, matching
-`20260830000003-add-cheque-payment-method.cjs`'s own precedent). Per the coordinator's explicit
-instruction for this phase, held uncommitted pending confirmation rather than proceeding past this
-row on the standing "skip routine checkpoints" preference.
+`20260830000003-add-cheque-payment-method.cjs`'s own precedent). Held uncommitted pending
+confirmation rather than proceeding past this row on the standing "skip routine checkpoints"
+preference; its exact content was reviewed and explicitly confirmed by the coordinating session,
+then committed as its own final commit.
 
 **Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per
 plan §12's mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`,
-`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`). Declaration drafted; `check:compliance` not
-yet run against the final diff (migration held).
+`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`). `check:compliance` confirmed to fail first,
+then pass once the declaration was added.
 
 **Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition
 scope beyond what this skill already owns (board Status set at branch time and PR-open time, per
@@ -16067,10 +16202,10 @@ the skill's own "Board transitions" section).
 
 ### Links
 
-- Tracking issue: #1331. Epic: #1321. Refs ADR 0066's 2026-09-02 amendment, ADR 0078, ADR 0012's
-  2026-09-02 amendment (the totals term this waiver reduces).
-- New: `apps/dgfy-migration-runner/migrations/20260904000001-add-delivery-voucher-benefit.cjs`
-  (held uncommitted -- see Status), `apps/dgfy-api/tests/addDeliveryVoucherBenefit.migration.test.js`,
+- Tracking issue: #1331. Epic: #1321. PR: #1389. Refs ADR 0066's 2026-09-02 amendment, ADR 0078,
+  ADR 0012's 2026-09-02 amendment (the totals term this waiver reduces).
+- New: `apps/dgfy-migration-runner/migrations/20260904000001-add-delivery-voucher-benefit.cjs`,
+  `apps/dgfy-api/tests/addDeliveryVoucherBenefit.migration.test.js`,
   `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`,
   `docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md`.
 - Modified: `apps/dgfy-api/src/models/Voucher.js`, `PosTransaction.js`,
@@ -16086,5 +16221,6 @@ the skill's own "Board transitions" section).
 
 ### Next eligible phase
 
-241 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
-work lands, per plan §10).
+242 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
+work lands, per plan §10; renumbered from this entry's own pre-collision "241" reference per the
+Numbering note above).

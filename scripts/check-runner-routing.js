@@ -92,6 +92,15 @@ const NON_HOSTED_FILES = [
 // dispatch actually does.
 const VERIFY_DEPLOYMENT_FILE = 'verify-deployment.yml';
 
+// Phase 234 Wave 3 (#1365, F-5): deploy-main.yml's own runner_labels_json workflow_dispatch
+// input, added at the live cutover so the emergency fallback is "re-dispatch with one input" not
+// "comment/uncomment 6 sites and push a commit to main". A job's active `runner_labels_json:` line
+// that matches this exactly (no fromJSON/`||` fallback -- that's promotion-quality-gate.yml's
+// reusable-workflow-runs-on pattern, a different site shape) delegates its class to that single
+// input rather than carrying its own local commented alternate; checkFile below resolves such a
+// site's class from the file's own input default instead of requiring a per-job pair.
+const DELEGATED_INPUT_RE = /^\s*runner_labels_json:\s*\$\{\{\s*inputs\.runner_labels_json\s*\}\}\s*$/;
+
 /**
  * Extracts every top-level (`  <name>:`) job block from a workflow file's `jobs:` section text,
  * keyed by job name, each value being the block's raw text (job header line through the line
@@ -154,32 +163,47 @@ function findActiveSites(block) {
 }
 
 /**
- * Checks the single special site outside any job block: the `default:` value on the
- * `runner_labels_json` input, shared by the `workflow_call:`/`workflow_dispatch:` triggers via the
- * `&runner_labels_input` YAML anchor (one physical site, both triggers). Not a job block, so it's
- * handled separately rather than forcing findActiveSites/extractJobBlocks to understand YAML
- * anchors and non-job top-level keys.
+ * Locates the single special site outside any job block: the `default:` value on a
+ * `runner_labels_json` workflow input. In promotion-quality-gate.yml this is shared by the
+ * `workflow_call:`/`workflow_dispatch:` triggers via the `&runner_labels_input` YAML anchor (one
+ * physical site, both triggers); in deploy-main.yml (Phase 234 Wave 3, F-5) it's a plain
+ * `workflow_dispatch:` input with no anchor. Same shape either way -- an 8-space-indented
+ * `default:` line following a `runner_labels_json:` key line -- so one extractor covers both
+ * rather than forcing findActiveSites/extractJobBlocks to understand YAML anchors and non-job
+ * top-level keys.
  *
- * @param {string} qualityWorkflowText contents of promotion-quality-gate.yml
+ * @param {string} text workflow file contents
+ * @returns {{activeLine: string, precedingLine: string} | null} the site, or null if not found
+ */
+function extractInputDefaultSite(text) {
+  const anchorMatch = text.match(/runner_labels_json:\n(?:[^\n]*\n)*?( {8}default: .*)\n/);
+  if (!anchorMatch) return null;
+  const activeLine = anchorMatch[1];
+  const beforeIndex = anchorMatch.index + anchorMatch[0].indexOf(activeLine);
+  const precedingLine = text.slice(0, beforeIndex).split('\n').slice(-2, -1)[0] ?? '';
+  return { activeLine, precedingLine };
+}
+
+/**
+ * Checks one file's `runner_labels_json` input `default:` site -- must be correctly paired with a
+ * commented, opposite-class alternate directly above it, same convention as every job-level site.
+ *
+ * @param {string} file which file, for message prefixing
+ * @param {string} text workflow file contents
  * @returns {string[]} problems found; empty when the site is correctly paired
  */
-function checkInputDefaultSite(qualityWorkflowText) {
+function checkInputDefaultSite(file, text) {
   const problems = [];
-  const anchorMatch = qualityWorkflowText.match(
-    /runner_labels_json:\n(?:[^\n]*\n)*?( {8}default: .*)\n/
-  );
-  if (!anchorMatch) {
+  const site = extractInputDefaultSite(text);
+  if (!site) {
     problems.push(
-      'promotion-quality-gate.yml: could not find the runner_labels_json input\'s `default:` line ' +
-      '-- did the workflow_call/workflow_dispatch input block get renamed or restructured? ' +
+      `${file}: could not find the runner_labels_json input's \`default:\` line -- did the ` +
+      'workflow_call/workflow_dispatch input block get renamed or restructured? ' +
       'checkInputDefaultSite needs updating to match.'
     );
     return problems;
   }
-  const activeLine = anchorMatch[1];
-  const beforeIndex = anchorMatch.index + anchorMatch[0].indexOf(activeLine);
-  const precedingLine = qualityWorkflowText.slice(0, beforeIndex).split('\n').slice(-2, -1)[0] ?? '';
-  problems.push(...checkPair('promotion-quality-gate.yml', 'runner_labels_json input default', activeLine, precedingLine, 'default:'));
+  problems.push(...checkPair(file, 'runner_labels_json input default', site.activeLine, site.precedingLine, 'default:'));
   return problems;
 }
 
@@ -238,6 +262,8 @@ function checkFile(file, text) {
   const jobClasses = new Map();
   const blocks = extractJobBlocks(text);
   const allowlist = ANCHOR_ALLOWLIST[file] || new Set();
+  const inputSite = extractInputDefaultSite(text);
+  const inputDefaultHosted = inputSite ? isHosted(inputSite.activeLine) : null;
 
   for (const [jobName, { block }] of blocks) {
     const sites = findActiveSites(block);
@@ -249,6 +275,26 @@ function checkFile(file, text) {
       );
     }
     const { line, precedingLine } = sites[0];
+
+    // Phase 234 Wave 3 (F-5): a job that delegates to the file's own runner_labels_json input has
+    // no local literal to pair-check -- its class is whatever the input's own default: site
+    // resolves to, and *that* site is what carries the commented alternate (checked once, by
+    // checkInputDefaultSite, not per delegating job).
+    if (DELEGATED_INPUT_RE.test(line)) {
+      if (inputDefaultHosted === null) {
+        problems.push(
+          `${file}: "${jobName}" delegates its runner class to this file's own runner_labels_json ` +
+          `workflow_dispatch input ("${line.trim()}"), but no such input default: site could be ` +
+          'found in this file -- add one, or stop delegating and give this job its own literal ' +
+          'commented/active pair.'
+        );
+        jobClasses.set(jobName, false);
+      } else {
+        jobClasses.set(jobName, inputDefaultHosted);
+      }
+      continue;
+    }
+
     jobClasses.set(jobName, isHosted(line));
 
     if (allowlist.has(jobName)) {
@@ -405,7 +451,8 @@ function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesTex
     jobClassesByFile.set(file, jobClasses);
   }
 
-  problems.push(...checkInputDefaultSite(qualityGateText));
+  problems.push(...checkInputDefaultSite('promotion-quality-gate.yml', qualityGateText));
+  problems.push(...checkInputDefaultSite('deploy-main.yml', deployMainText));
   problems.push(...checkCoLocation(jobClassesByFile));
   problems.push(...checkActiveClassMatchesExpected(jobClassesByFile));
 
@@ -467,6 +514,7 @@ module.exports = {
   checkFile,
   checkPair,
   checkInputDefaultSite,
+  extractInputDefaultSite,
   checkCoLocation,
   checkNoDevStagingTarget,
   checkActiveClassMatchesExpected,
@@ -478,5 +526,6 @@ module.exports = {
   CO_LOCATION_PAIRS,
   TARGET_FILES,
   NON_HOSTED_FILES,
-  VERIFY_DEPLOYMENT_FILE
+  VERIFY_DEPLOYMENT_FILE,
+  DELEGATED_INPUT_RE
 };

@@ -5,6 +5,112 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-09-02 — Phase 234 Wave 3, the live cutover (#1365)
+
+Worker/Implementer build stage of Phase 234 Wave 3 (#1365, child of epic #1363) — the flip this
+whole handoff doc has been building toward since the 2026-08-13 self-hosted revert. **Production
+build/deploy/promotion routing is now hosted (`ubuntu-latest`) by default**, not self-hosted. This
+follows directly from Wave 0 (#1375, the `salvage-api-evidence` prerequisite, resolved), Wave 1
+(the commented-hosted scaffold + `check-runner-routing.js` validator, inert by design), and Wave 2
+(the controlled non-production T1–T5 evidence run below, all passing) — read those entries below
+for the full history; this entry states only what Wave 3 itself changed.
+
+**What flipped — purely mechanical comment⇄uncomment at the 14 pair sites, plus 4 non-pair edits:**
+
+- `deploy-main.yml` (6 sites: `dgfy-api`, `dgfy-migration-runner`, `frontend-ims-prod`,
+  `frontend-pos-prod`, `frontend-storefront-prod`, `publish`) — each site's active `sieitz-runner`
+  line commented, its commented `ubuntu-latest` alternate uncommented.
+- `promotion-quality-gate.yml` (8 sites: the shared `runner_labels_json` input `default:` — one
+  physical site via the `&runner_labels_input` anchor, covers both `workflow_call` and
+  `workflow_dispatch` — plus `dgfy-api-quality`, `migration-runner-quality`, `frontend-ims-quality`,
+  `frontend-pos-quality`, `frontend-storefront-quality`, `repository-quality`,
+  `salvage-api-evidence`) — same comment⇄uncomment flip.
+- `scripts/lib/runner-routing-state.js`'s `EXPECTED_ACTIVE_CLASS` constant: `'self-hosted'` →
+  `'hosted'` — without this the flip fails Wave 1's own Assertion 6 by design; the constant and
+  every site move together or not at all.
+- `deploy-main.yml`'s `guard-branch` preflight step: `ci-runner-preflight.js --class self-hosted` →
+  `--class both` — single-class probing can't produce the informative mixed-state exit code once
+  both classes are legitimately in play; `activeRouting` is derived from the file itself, not
+  passed as an argument.
+- **New `runner_labels_json` `workflow_dispatch` input on `deploy-main.yml` itself**
+  (default `'["ubuntu-latest"]'`, commented alternate `# '["sieitz-runner"]'`), threaded into all 6
+  job call sites as `runner_labels_json: ${{ inputs.runner_labels_json }}` instead of each site
+  carrying its own literal. This turns the emergency fallback from "comment/uncomment 6 sites and
+  push a commit to `main`" into "re-dispatch with one input" (F-5) — a single dispatch-time override
+  now covers every production build/publish job in one shot. `check-runner-routing.js` was extended
+  (a job whose active line delegates to `${{ inputs.runner_labels_json }}` resolves its class from
+  the file's own input `default:` site instead of requiring its own local commented pair; that
+  input-default site itself still carries the ordinary commented/active pair and is validated the
+  same way `promotion-quality-gate.yml`'s always has been) and gained regression tests for the new
+  delegation shape.
+
+**Untouched, deliberately** (unchanged from Wave 1): the 3 anchor exceptions (`guard-branch`,
+`gate`, `report-advisory-failures` — permanently self-hosted, no commented alternate);
+`deploy.yml`/`deployment-orchestrator.yml` (DEV/STAGING — no LAN path from a hosted VM,
+`CI_RUNNER_POLICY.md` "VPN"); all `pr-*-build-checks.yml`; the four reusable workflows' own
+`default: '["sieitz-runner"]'` (`deploy-api.yml`, `deploy-migration-runner.yml`,
+`deploy-frontend.yml`, `publish-platform.yml`) — shared with `deploy.yml`'s DEV/STAGING calls,
+`deploy-main.yml` passes its class explicitly at every call site so it never reaches them.
+
+### Wave 2 evidence (T1–T5) — the basis for confidence in this flip
+
+From PR #1380's evidence-matrix comment (dispatch-only, non-production, run against
+`ci/1365-runner-switch-harness`):
+
+| # | Proves | Result |
+|---|---|---|
+| T1 | hosted picks up a `runner-probe.yml` job | **PASS** — hosted runner (`runnervmgx7h7`) |
+| T2 | self-hosted still picks up a job (fallback direction) | **PASS** — `vm-openproject` |
+| T3 | the whole `promotion-quality-gate.yml` runs hosted | **PASS** — all 9 jobs `success`; wall-clock 35m28s; ~50 est. billed hosted minutes |
+| T4 | self-hosted control, same job set | **PASS** — all 9 jobs `success`; wall-clock 38m42s; 0 billed minutes |
+| T5 | hosted → PROD SSH works, read-only | **PASS** — `conclusion: success` |
+| T6 | (optional, Tier 2) build+GHCR smoke | Skipped — not run, out of scope for that pass |
+
+Notably, the plan's predicted AVX surprise (`menuPdfRasterService.test.js`'s
+`CANVAS_SUPPORTED_ON_THIS_HOST`-gated render tests) **did not materialize** — that suite passed on
+both T3 (hosted) and T4 (self-hosted). Two pre-existing, runner-independent advisory failures in
+`dgfy-api-quality` (a missing-export bug and an index-audit failure) showed up identically on both
+runs, confirming they predate the runner class and aren't new noise from this flip.
+
+### #1375 resolution and its accepted residual (Wave 0, carried forward)
+
+`salvage-api-evidence`'s cross-job recovery mechanism cannot survive hosted routing (every hosted
+job gets a fresh ephemeral VM, breaking the co-location assumption it depended on). Investigation
+found the feared capability loss was narrower than the issue's own framing: `dgfy-api-quality`'s own
+`if: always()` "Upload API test-matrix evidence" step already re-implements the recovery path PR
+#1167 built `salvage-api-evidence` to provide, so no re-implementation was needed. What shipped
+instead (#1376): `salvage-api-evidence`'s working steps are now gated at the *step* level on
+`runner.environment == 'self-hosted'`, and a first step that fires only when the job lands hosted
+emits a loud `::warning::` + `$GITHUB_STEP_SUMMARY` entry naming the one genuinely uncovered case —
+**the job envelope dying mid-run, before any step (`always()` or not) ever executes** — as an
+accepted residual, not a silent loss. That residual is unchanged by Wave 3; it was a precondition
+for the flip, not something the flip itself needed to resolve further.
+
+### The flip procedure, now that hosted is the active line
+
+Reversing this flip (should it ever be needed as a considered decision, not the emergency fallback
+below) means the same 14-site comment⇄uncomment plus the 4 non-pair edits, run in reverse — see
+Wave 1's original scaffold entry below for exact site locations, and re-derive live line numbers via
+`grep -n 'runner_labels_json\|runs-on:' .github/workflows/deploy-main.yml
+.github/workflows/promotion-quality-gate.yml` rather than trusting any doc's line numbers, which go
+stale as soon as an unrelated edit shifts lines. `EXPECTED_ACTIVE_CLASS` in
+`scripts/lib/runner-routing-state.js` must move with it, or `check-runner-routing.js`'s Assertion 6
+fails CI by design.
+
+**The emergency fallback no longer needs a commit at all**, for the 6 `deploy-main.yml`
+build/publish jobs specifically: re-dispatch with `-f runner_labels_json='["sieitz-runner"]'` and
+every one of those 6 jobs runs self-hosted for that one dispatch, with no file edit. This does not
+cover `promotion-quality-gate.yml`'s 8 sites (those still require the file-level comment/uncomment,
+or — for the quality-gate leg specifically — a `-f runner_labels_json='["sieitz-lg"]'` dispatch
+override on a manual `workflow_dispatch`/`workflow_call` invocation of that workflow, per its own
+long-standing input).
+
+### Not part of this PR — Wave 4 and Wave 5
+
+Wave 4 (a real production promotion that actually exercises this hosted path end to end) and Wave 5
+(closeout) are separate, gated, `promoter`-role work — **not** part of Wave 3's scope and not
+unattended. See the Phase 234 plan for their procedures.
+
 ## Status as of 2026-09-02 — Phase 234 Wave 0, #1375 resolved (prerequisite for the live cutover)
 
 Worker/Implementer build stage of Phase 234 Wave 0 (#1375), the prerequisite the Phase 234 plan
