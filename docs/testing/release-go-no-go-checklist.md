@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-02
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
@@ -41,8 +41,21 @@ has neither by default, so on that host run it inside Docker against the already
 containers (`dgfy-mysql-test` / `dgfy-redis-test` on the `dgfy-local-test` network, or spin up fresh
 ones with the same shape):
 
+Earlier versions of this command bind-mounted `$PWD` directly; the container's own
+`npm run install:all` step (needed because the fresh image has no `node_modules`) rewrote
+lockfiles in the real working tree during the 2026-09-01/02 promotion (#1358) — this scratch-copy
+step exists to make that impossible, not just unlikely:
+
 ```bash
-docker run --rm --network dgfy-local-test -v "$PWD":/repo -w /repo \
+# The container's own `npm run install:all` needs somewhere to write `node_modules` (and, if npm's
+# lockfile normalization kicks in on a version mismatch, rewritten lockfiles) — never let that land
+# in this checkout. Copy the repo into a disposable scratch directory next to it and mount that
+# instead of `$PWD` directly (#1358). Using a sibling of the repo, not /tmp, guarantees the path is
+# already inside whatever Docker Desktop file-sharing root makes `$PWD` itself mountable today.
+GATE_SCRATCH=$(mktemp -d "$(dirname "$PWD")/.dgfy-gate-scratch-XXXXXX")
+rsync -a --exclude='node_modules' --exclude='**/node_modules' --exclude='.tmp' "$PWD"/ "$GATE_SCRATCH"/
+
+docker run --rm --network dgfy-local-test -v "$GATE_SCRATCH":/repo -w /repo \
   -e NODE_OPTIONS="--max-old-space-size=4096" -e NODE_ENV=test \
   -e DB_HOST=dgfy-mysql-test -e DB_PORT=3306 \
   -e DB_NAME=sku_inventory_manager_test -e DB_NAME_TEST=sku_inventory_manager_test \
@@ -52,7 +65,25 @@ docker run --rm --network dgfy-local-test -v "$PWD":/repo -w /repo \
   -e REFRESH_TOKEN_SECRET=ci_refresh_secret_key_for_tests_only_123 \
   -e RELEASE_TARGET_SHA="$(git rev-parse HEAD)" \
   node:22-alpine npm run gate:release:local
+GATE_EXIT=$?
+
+# Copy the evidence artifact back — it's the only output anyone needs out of the scratch copy —
+# then discard the rest. Capture the exit code above first: without it, this cleanup's own exit
+# status would silently overwrite a real gate failure.
+mkdir -p .tmp/release-gates
+cp -R "$GATE_SCRATCH"/.tmp/release-gates/. .tmp/release-gates/ 2>/dev/null
+rm -rf "$GATE_SCRATCH"
+exit $GATE_EXIT
 ```
+
+`node_modules` is deliberately excluded from the copy, not just for `.gitignore` parity — copying
+host-built `node_modules` in would let npm treat dependencies as already satisfied and skip
+reinstalling them for Linux/musl, silently reproducing the exact "eslint: not found"/"Jest binary
+not found" failure the container-install step exists to prevent. The evidence copy-back step is
+required, not optional — `.tmp/release-gates/<sha>/local_readiness.json` is what the rest of this
+doc (and the promotion runbook, which pastes its result into the promotion PR) points at as *the*
+evidence location; skipping the copy-back would silently make that path stop existing for
+Docker-run gates.
 
 On a host with node, MySQL, and Redis already configured (e.g. Pat's own VM), plain
 `npm run gate:release:local` is enough — it reads `RELEASE_TARGET_SHA` from the environment and

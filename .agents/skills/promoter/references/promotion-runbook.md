@@ -5,6 +5,17 @@ points at — don't duplicate the reasoning here, just the commands.
 
 ## Default: `develop` → `main`
 
+**Ran `gate:release:local` locally at any point earlier in this session? `git status` before
+cutting any branch below.** The documented Docker invocation now copies the repo into a disposable
+scratch directory before running (#1358), but that protection only covers a session that follows
+the current doc exactly — a stale terminal, a command pasted from shell history before the fix
+landed, or a gate run directly on a host with node/MySQL/Redis already configured (no Docker, no
+scratch copy involved) can all still leave an unintended `node_modules`/lockfile diff sitting in
+the working tree. `git switch -c` carries a dirty tree's uncommitted changes into the new branch —
+an unnoticed diff here rides straight onto `release/$LABEL` (or `to-staging/$LABEL`). A clean
+`git status` (or `git checkout -- <file>` on anything unexpected) before the branch cut is the
+cheap backstop that catches it regardless of cause.
+
 Pre-flight, then confirm the compliance sweep is clear against the target SHA — the one real
 precondition here, since no `NOT-EXECUTED-*` declaration may reach `main` (full detail:
 `../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359):
