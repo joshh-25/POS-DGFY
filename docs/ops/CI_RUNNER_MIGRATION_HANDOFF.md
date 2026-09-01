@@ -5,6 +5,26 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-09-02 — Phase 234 Wave 0, #1375 resolved (prerequisite for the live cutover)
+
+Worker/Implementer build stage of Phase 234 Wave 0 (#1375), the prerequisite the Phase 234 plan
+identified before the 14-site flip below can land atomically. #1375 asked for a re-implementation
+of `salvage-api-evidence`'s recovery over `actions/upload-artifact`/`if: always()` for the case
+where both it and `dgfy-api-quality` flip hosted. Verified against the tree: that re-implementation
+**already exists** — `dgfy-api-quality`'s own `if: always()` "Upload API test-matrix evidence" step
+— so no re-implementation was needed. What actually shipped: `salvage-api-evidence`'s working steps
+(`resolve_evidence_path`, `check_api_quality_envelope`, `upload_salvaged_evidence`,
+`sweep_salvaged_evidence`) are now additionally gated at the *step* level (not job-level — the job's
+`if:` can't see `runner.environment`) on `runner.environment == 'self-hosted'`, and a new first step
+fires only when the job lands hosted, emitting a loud `::warning::` plus a `$GITHUB_STEP_SUMMARY`
+entry stating that cross-job evidence salvage is unavailable there, that
+`dgfy-api-quality`'s own upload remains the evidence path, and that the one genuinely uncovered case
+— the job envelope dying mid-run, before any step (`always()` or not) executes (run 33241398956) —
+is accepted, not recovered. The job itself, its `runs-on:` pair, and the co-location invariant in
+`scripts/check-runner-routing.js` are unchanged — this was a loudness fix, not a capability fix, and
+not a streaming/chunked upload redesign (out of proportion to a residual this narrow). See #1375 for
+the discussion and F-3 in the Phase 234 plan for the full correction.
+
 ## Status as of 2026-09-02 — Phase 233 scaffold (#1365)
 
 Worker/Implementer build stage of Phase 233 (#1365, child of epic #1363), the phase after
