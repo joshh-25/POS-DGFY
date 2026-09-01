@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '../../src/lib/utils.js'
 
 const DialogContext = createContext(null)
@@ -28,7 +29,7 @@ const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
 
   if (!open) return null
 
-  return (
+  const dialog = (
     <DialogContext.Provider value={{ onOpenChange, rootRef }}>
       <div ref={rootRef} data-dialog-root="true" className="fixed inset-0 z-[100] flex items-center justify-center">
         <div
@@ -57,6 +58,8 @@ const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
       </div>
     </DialogContext.Provider>
   )
+
+  return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body)
 }
 
 const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => {

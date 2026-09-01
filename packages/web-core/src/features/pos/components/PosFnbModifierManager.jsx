@@ -4,15 +4,25 @@ import { Plus, Save, X } from 'lucide-react';
 const emptyOption = () => ({ name: '', price_delta: 0, sku_item_id: '', is_default: false, is_active: true, visible_in_pos: true, visible_in_storefront: true, is_sold_out: false, location_availability: [] });
 const emptyGroup = () => ({ name: '', display_name: '', group_kind: 'modifier', parent_modifier_option_id: '', min_select: 0, max_select: 1, required: false, is_active: true, visible_in_pos: true, visible_in_storefront: true, sort_order: 0, location_availability: [], options: [emptyOption()] });
 
-const normalizeGroup = (group) => ({
-  ...emptyGroup(), ...group,
-  options: (group.options || []).map((option) => ({ ...emptyOption(), ...option, sku_item_id: option.sku_item_id || '', location_availability: option.locationAvailability || option.location_availability || [] })),
-  location_availability: group.locationAvailability || group.location_availability || []
-});
+const isRequiredGroup = (group = {}) => group.group_kind === 'combo_choice' || group.required === true;
+const getEffectiveMinimum = (group = {}) => (
+  isRequiredGroup(group) ? Math.max(1, Number(group.min_select || 0)) : 0
+);
+const normalizeGroup = (group) => {
+  const merged = { ...emptyGroup(), ...group };
+  const required = isRequiredGroup(merged);
+  return {
+    ...merged,
+    required,
+    min_select: required ? Math.max(1, Number(merged.min_select || 0)) : 0,
+    options: (group.options || []).map((option) => ({ ...emptyOption(), ...option, sku_item_id: option.sku_item_id || '', location_availability: option.locationAvailability || option.location_availability || [] })),
+    location_availability: group.locationAvailability || group.location_availability || []
+  };
+};
 
-const Toggle = ({ label, checked, onChange }) => (
+const Toggle = ({ label, checked, onChange, disabled = false }) => (
   <label className="flex min-w-0 items-center gap-2 text-xs text-slate-700">
-    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="shrink-0 rounded border-slate-300 text-teal-600" />
+    <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="shrink-0 rounded border-slate-300 text-teal-600" />
     <span className="min-w-0 break-words">{label}</span>
   </label>
 );
@@ -32,11 +42,14 @@ export default function PosFnbModifierManager({ groups = [], items = [], locatio
     ]
   }));
   const submit = async () => {
+    const required = isRequiredGroup(draft);
+    const minSelect = required ? Math.max(1, Number(draft.min_select || 0)) : 0;
+    const maxSelect = Math.max(1, Number(draft.max_select || 1));
     const payload = {
       ...draft,
       parent_modifier_option_id: draft.parent_modifier_option_id ? Number(draft.parent_modifier_option_id) : null,
-      min_select: Number(draft.min_select), max_select: Number(draft.max_select), sort_order: Number(draft.sort_order),
-      required: draft.required || Number(draft.min_select) > 0,
+      min_select: minSelect, max_select: maxSelect, sort_order: Number(draft.sort_order),
+      required,
       options: draft.options.filter((option) => option.name.trim()).map((option, index) => ({ ...option, price_delta: Number(option.price_delta || 0), sku_item_id: option.sku_item_id ? Number(option.sku_item_id) : null, sort_order: index }))
     };
     if (editingId) await onUpdate(editingId, payload);
@@ -57,7 +70,7 @@ export default function PosFnbModifierManager({ groups = [], items = [], locatio
             <button type="button" key={group.modifier_group_id} disabled={!canManage} onClick={() => { setEditingId(group.modifier_group_id); setDraft(normalizeGroup(group)); }} className={`min-w-0 rounded-lg border p-3 text-left disabled:cursor-default ${Number(editingId) === Number(group.modifier_group_id) ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200'}`}>
               <div className="flex min-w-0 justify-between gap-2"><span className="min-w-0 break-words font-semibold text-slate-900">{group.display_name || group.name}</span><span className={`shrink-0 text-xs ${group.is_active === false ? 'text-rose-600' : 'text-emerald-600'}`}>{group.is_active === false ? 'Inactive' : 'Active'}</span></div>
               <p className="mt-1 text-xs font-semibold text-teal-700">{group.group_kind === 'combo_choice' ? 'Combo choice' : 'Menu modifier'}</p>
-              <p className="mt-1 text-xs text-slate-500">Select {group.min_select}–{group.max_select} · {(group.options || []).length} options</p>
+              <p className="mt-1 text-xs text-slate-500">Select {getEffectiveMinimum(group)}–{group.max_select} · {(group.options || []).length} options</p>
               <div className="mt-2 flex flex-wrap gap-1">{(group.options || []).slice(0, 5).map((option) => <span key={option.modifier_option_id} className="rounded bg-slate-100 px-2 py-1 text-xs">{option.name} {Number(option.price_delta) ? `+₱${Number(option.price_delta).toFixed(2)}` : ''}</span>)}</div>
             </button>
           ))}
@@ -79,8 +92,8 @@ export default function PosFnbModifierManager({ groups = [], items = [], locatio
           <input aria-label="Customer-facing name" value={draft.display_name} onChange={(e) => setDraft({ ...draft, display_name: e.target.value })} placeholder="Customer-facing name" className="h-10 w-full min-w-0 max-w-full rounded-lg border px-3 text-sm" />
           <select aria-label="Group type" value={draft.group_kind} onChange={(e) => setDraft({ ...draft, group_kind: e.target.value, ...(e.target.value === 'combo_choice' ? { required: true, min_select: Math.max(1, Number(draft.min_select || 0)) } : {}) })} className="h-10 w-full min-w-0 max-w-full rounded-lg border px-3 text-sm"><option value="modifier">Menu modifier</option><option value="combo_choice">Combo choice</option></select>
           <select aria-label="Show only after option" value={draft.parent_modifier_option_id || ''} onChange={(e) => setDraft({ ...draft, parent_modifier_option_id: e.target.value })} className="h-10 w-full min-w-0 max-w-full rounded-lg border px-3 text-sm"><option value="">Always show this group</option>{groups.filter((group) => Number(group.modifier_group_id) !== Number(editingId)).flatMap((group) => (group.options || []).filter((option) => option.is_active !== false).map((option) => <option key={option.modifier_option_id} value={option.modifier_option_id}>After: {group.display_name || group.name} — {option.name}</option>))}</select>
-          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2"><input aria-label="Minimum selections" type="number" min="0" value={draft.min_select} onChange={(e) => setDraft({ ...draft, min_select: e.target.value })} className="h-10 w-full min-w-0 rounded-lg border px-3 text-sm" /><input aria-label="Maximum selections" type="number" min="1" value={draft.max_select} onChange={(e) => setDraft({ ...draft, max_select: e.target.value })} className="h-10 w-full min-w-0 rounded-lg border px-3 text-sm" /></div>
-          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2"><Toggle label="Active" checked={draft.is_active} onChange={(value) => setDraft({ ...draft, is_active: value })} /><Toggle label="Required" checked={draft.required} onChange={(value) => setDraft({ ...draft, required: value })} /><Toggle label="Show in POS" checked={draft.visible_in_pos} onChange={(value) => setDraft({ ...draft, visible_in_pos: value })} /><Toggle label="Show online" checked={draft.visible_in_storefront} onChange={(value) => setDraft({ ...draft, visible_in_storefront: value })} /></div>
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2"><input aria-label="Minimum selections" type="number" min="0" disabled={!isRequiredGroup(draft)} value={draft.min_select} onChange={(e) => setDraft({ ...draft, min_select: e.target.value })} className="h-10 w-full min-w-0 rounded-lg border px-3 text-sm disabled:bg-slate-50 disabled:text-slate-500" /><input aria-label="Maximum selections" type="number" min="1" value={draft.max_select} onChange={(e) => setDraft({ ...draft, max_select: e.target.value })} className="h-10 w-full min-w-0 rounded-lg border px-3 text-sm" /></div>
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2"><Toggle label="Active" checked={draft.is_active} onChange={(value) => setDraft({ ...draft, is_active: value })} /><Toggle label="Required" checked={isRequiredGroup(draft)} disabled={draft.group_kind === 'combo_choice'} onChange={(value) => setDraft((current) => ({ ...current, required: value, min_select: value ? Math.max(1, Number(current.min_select || 0)) : 0 }))} /><Toggle label="Show in POS" checked={draft.visible_in_pos} onChange={(value) => setDraft({ ...draft, visible_in_pos: value })} /><Toggle label="Show online" checked={draft.visible_in_storefront} onChange={(value) => setDraft({ ...draft, visible_in_storefront: value })} /></div>
           {locations.length > 0 && <div className="min-w-0"><p className="text-xs font-semibold text-slate-600">Location availability</p><div className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">{locations.map((location) => { const row = draft.location_availability.find((entry) => Number(entry.location_id) === Number(location.location_id)); return <Toggle key={location.location_id} label={location.name} checked={row?.is_available !== false} onChange={(value) => setGroupLocation(location.location_id, value)} />; })}</div></div>}
            <div className="min-w-0 space-y-2"><div className="flex min-w-0 items-center justify-between gap-2"><p className="text-sm font-semibold">Options</p><button type="button" onClick={() => setDraft({ ...draft, options: [...draft.options, emptyOption()] })} className="shrink-0 text-xs font-semibold text-teal-700">+ Add option</button></div>
              <div data-testid="fnb-modifier-options-list" className="min-w-0 max-h-96 space-y-2 overflow-y-auto pr-1">

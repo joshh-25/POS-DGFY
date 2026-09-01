@@ -10,10 +10,100 @@ import { isPosDrawerAdmin, verifyPosDrawerOperator } from '../domain/posDrawerAu
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
+    ONLINE_ORDER_RECEIPT_AUTO_PRINT: 'terminal.online_order_receipt_auto_print',
     DRAWER_OPEN: 'terminal.device_drawer_open',
     SHIFT_SUMMARY_PRINT: 'terminal.device_shift_summary_print',
     Z_READING_PRINT: 'terminal.device_z_reading_print'
 });
+
+export const buildClaimOnlineOrderReceiptAutoPrintUseCase = ({ posRepository }) => {
+    return async ({ payload, user }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
+        const transactionId = parsePositiveInt(payload?.transaction_id);
+        const terminalId = String(payload?.terminal_id || '').trim() || null;
+
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!transactionId || !terminalId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'transaction_id and terminal_id are required',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const activeShift = toSerializable(await posRepository.findOpenTerminalShift({
+                cashierId: registerShiftOwnerUserId
+            }));
+            if (!activeShift) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Automatic receipt printing requires an open shift',
+                    { statusCode: 422 }
+                );
+            }
+
+            const transaction = toSerializable(await posRepository.getTransactionById(transactionId));
+            if (!transaction) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${transactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+
+            const eligible = String(transaction.order_source || '').toLowerCase() === 'online_store'
+                && String(transaction.fulfillment_status || '').toLowerCase() === 'confirmed'
+                && String(transaction.payment_status || '').toLowerCase() === 'paid'
+                && String(transaction.payment_provider || '').toLowerCase() === 'paymongo'
+                && Number(transaction.balance_due || 0) <= 0
+                && Number(activeShift.location_id || 0) === Number(transaction.location_id || 0);
+
+            if (!eligible) {
+                return ok({
+                    claimed: false,
+                    eligible: false,
+                    reason_code: 'ONLINE_RECEIPT_AUTO_PRINT_NOT_ELIGIBLE'
+                });
+            }
+
+            const claimToken = crypto.randomUUID();
+            const idempotencyKey = `online-order-receipt:${transactionId}`;
+            const requestHash = hashPayload({ transaction_id: transactionId });
+            const replay = toSerializable(await posRepository.createOperationReplay({
+                operation_key: POS_DEVICE_OPERATION_KEYS.ONLINE_ORDER_RECEIPT_AUTO_PRINT,
+                idempotency_key: idempotencyKey,
+                request_hash: requestHash,
+                replay_status: 'processed',
+                response_payload: {
+                    claim_token: claimToken,
+                    transaction_id: transactionId,
+                    terminal_id: terminalId,
+                    claimed_by: userId,
+                    claimed_at: new Date().toISOString()
+                },
+                created_by: userId
+            }));
+            const storedPayload = parseJsonObject(replay?.response_payload);
+            const claimed = storedPayload.claim_token === claimToken;
+
+            return ok({
+                claimed,
+                eligible: true,
+                reason_code: claimed ? 'ONLINE_RECEIPT_AUTO_PRINT_CLAIMED' : 'ONLINE_RECEIPT_AUTO_PRINT_ALREADY_CLAIMED'
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to claim online order receipt printing'));
+        }
+    };
+};
 
 const toSerializable = (value) => (
     value && typeof value.toJSON === 'function'

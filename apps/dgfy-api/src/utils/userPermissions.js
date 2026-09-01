@@ -26,11 +26,19 @@ export const normalizePermissionArray = (rawPermissions) => {
 
 export const resolveEffectivePermissions = (user) => {
   const explicitPermissions = normalizePermissionArray(user?.permissions);
+  const role = String(user?.role || 'staff').trim().toLowerCase();
+  if (role === 'cashier') {
+    const cashierPermissions = explicitPermissions.length > 0
+      ? explicitPermissions
+      : (DEFAULT_ROLE_PERMISSIONS.cashier || []);
+    return Array.from(new Set([...cashierPermissions, 'items:edit']))
+      .filter((permission) => permission !== 'items:delete');
+  }
+
   if (explicitPermissions.length > 0) {
     return explicitPermissions;
   }
 
-  const role = String(user?.role || 'staff').trim().toLowerCase();
   const defaults = DEFAULT_ROLE_PERMISSIONS[role];
   return Array.isArray(defaults) ? [...defaults] : [];
 };

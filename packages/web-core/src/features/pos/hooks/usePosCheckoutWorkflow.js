@@ -52,6 +52,26 @@ import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { getDiscountLineRef } from '../utils/posDiscountSelection.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 
+const parseTransactionPaymentBreakdown = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const transactionIncludesCashTender = (transaction) => {
+    const breakdown = parseTransactionPaymentBreakdown(transaction?.payment_breakdown)
+        .filter((entry) => Number(entry?.amount || 0) > 0);
+    if (breakdown.length > 0) {
+        return breakdown.some((entry) => String(entry?.payment_type || '').trim().toLowerCase() === 'cash');
+    }
+    return String(transaction?.payment_type || '').trim().toLowerCase() === 'cash';
+};
+
 /**
  * Owns checkout submission, offline replay, parked-sale ownership, split-payment
  * cancellation/completion, idempotency, and new-sale reset timing. The terminal
@@ -192,6 +212,49 @@ export const usePosCheckoutWorkflow = ({
                 });
         }, 0);
     }, []);
+
+    const runCheckoutHardware = useCallback(async ({
+        transaction,
+        receiptContract,
+        cashPayment,
+        printReason = 'checkout_auto_print',
+        drawerReason = 'checkout_auto_open_drawer'
+    }) => {
+        try {
+            if (!posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)) return;
+            const printOutcome = await posHardware.printReceipt({
+                transaction,
+                businessSettings: receiptSettings,
+                receiptContract,
+                openDrawerAfterPrint: cashPayment,
+                shiftId: activeShiftId,
+                transactionId: transaction?.pos_transaction_id,
+                terminalId: normalizedTerminalId,
+                reason: printReason
+            });
+            if (printOutcome.success) {
+                toast.success(cashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
+            } else if (
+                cashPayment
+                && printOutcome.reasonCode !== 'IMIN_COMMAND_TIMEOUT'
+                && printOutcome.raw?.hardware?.mayHaveExecuted === false
+                && printOutcome.raw?.hardware?.drawerOpened !== true
+            ) {
+                const drawerOutcome = await posHardware.openDrawer({
+                    shiftId: activeShiftId,
+                    transactionId: transaction?.pos_transaction_id,
+                    terminalId: normalizedTerminalId,
+                    reason: drawerReason
+                });
+                if (drawerOutcome.success) toast.success('Cash drawer opened.');
+                else toast.error(drawerOutcome.message || 'Receipt printing and cash drawer opening failed.');
+            } else {
+                toast.error(printOutcome.message || 'Checkout completed, but receipt printing failed.');
+            }
+        } catch (hardwareError) {
+            toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
+        }
+    }, [activeShiftId, normalizedTerminalId, posHardware, receiptSettings]);
 
     const handleSplitPaymentOpenChange = useCallback((nextOpen) => {
         setSplitPaymentDialogOpen(nextOpen);
@@ -1120,6 +1183,15 @@ export const usePosCheckoutWorkflow = ({
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
+            const receiptContract = inferReceiptContract(transaction, result?.receipt_contract);
+            const includesCashTender = transactionIncludesCashTender(transaction);
+            schedulePostCheckoutTask(() => runCheckoutHardware({
+                transaction,
+                receiptContract,
+                cashPayment: includesCashTender,
+                printReason: 'split_checkout_auto_print',
+                drawerReason: 'split_checkout_auto_open_drawer'
+            }));
             loadCatalog();
             loadHistory(historyPage);
             if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
@@ -1130,7 +1202,7 @@ export const usePosCheckoutWorkflow = ({
         } finally {
             setCheckoutLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
+    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, runCheckoutHardware, schedulePostCheckoutTask, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
 
     const splitPaymentCheckoutContext = useMemo(() => ({
         orderMethod,
@@ -1502,41 +1574,11 @@ export const usePosCheckoutWorkflow = ({
         }
 
         schedulePostCheckoutTask(async () => {
-            try {
-                if (posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)) {
-                    const printOutcome = await posHardware.printReceipt({
-                        transaction: completedTransaction,
-                        businessSettings: receiptSettings,
-                        receiptContract,
-                        openDrawerAfterPrint: isCashPayment,
-                        shiftId: activeShiftId,
-                        transactionId: completedTransaction?.pos_transaction_id,
-                        terminalId: normalizedTerminalId,
-                        reason: 'checkout_auto_print'
-                    });
-                    if (printOutcome.success) {
-                        toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
-                    } else if (
-                        isCashPayment
-                        && printOutcome.reasonCode !== 'IMIN_COMMAND_TIMEOUT'
-                        && printOutcome.raw?.hardware?.mayHaveExecuted === false
-                        && printOutcome.raw?.hardware?.drawerOpened !== true
-                    ) {
-                        const drawerOutcome = await posHardware.openDrawer({
-                            shiftId: activeShiftId,
-                            transactionId: completedTransaction?.pos_transaction_id,
-                            terminalId: normalizedTerminalId,
-                            reason: 'checkout_auto_open_drawer'
-                        });
-                        if (drawerOutcome.success) toast.success('Cash drawer opened.');
-                        else toast.error(drawerOutcome.message || 'Receipt printing and cash drawer opening failed.');
-                    } else {
-                        toast.error(printOutcome.message || 'Checkout completed, but receipt printing failed.');
-                    }
-                }
-            } catch (hardwareError) {
-                toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
-            }
+            await runCheckoutHardware({
+                transaction: completedTransaction,
+                receiptContract,
+                cashPayment: isCashPayment
+            });
 
             try {
                 await markTerminalOperationReplayed(payload.idempotency_key, {
@@ -1596,6 +1638,7 @@ export const usePosCheckoutWorkflow = ({
         posWorkflow.mode,
         receiptSettings,
         restaurantServiceChargeAmount,
+        runCheckoutHardware,
         resetEmployeeCredit,
         safeCart,
         saveCatalogSnapshot,

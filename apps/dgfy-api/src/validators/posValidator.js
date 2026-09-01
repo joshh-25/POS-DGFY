@@ -923,6 +923,11 @@ const devicePrintReceiptSchema = Joi.object({
     client_result: deviceClientResultSchema.optional()
 });
 
+const onlineOrderReceiptAutoPrintClaimSchema = Joi.object({
+    transaction_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required()
+});
+
 const devicePrintShiftSummarySchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     copies: Joi.number().integer().min(1).max(3).default(1),
@@ -1044,6 +1049,38 @@ const mobilePosVoidSyncSchema = Joi.object({
     entries: Joi.array().items(mobilePosVoidSyncEntrySchema).required()
 });
 
+const mobilePosRefundSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        workflow: Joi.string().valid('cash', 'external', 'provider', 'split').required(),
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        local_availment_id: Joi.string().trim().max(120).required(),
+        transaction_id: Joi.number().integer().positive().required(),
+        reason: Joi.string().trim().min(3).max(255).required(),
+        shift_id: Joi.number().integer().positive().required(),
+        terminal_id: Joi.string().trim().max(100).required(),
+        expected_status: Joi.string().valid('voided').required(),
+        expected_payment_status: Joi.string().trim().lowercase().valid('paid', 'refund_pending', 'partial_refunded').required(),
+        expected_server_version: Joi.date().iso().required(),
+        external_reference: Joi.string().trim().min(3).max(255).when('workflow', {
+            is: Joi.valid('external'), then: Joi.required(), otherwise: Joi.optional()
+        }),
+        completion_confirmed: Joi.boolean().optional(),
+        provider_reason: Joi.string().trim().max(255).allow('', null).optional(),
+        allocation_id: Joi.number().integer().positive().when('workflow', {
+            is: 'split', then: Joi.required(), otherwise: Joi.forbidden()
+        }),
+        amount: Joi.number().positive().precision(4).optional()
+    }).required().unknown(true)
+});
+
+const mobilePosRefundSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosRefundSyncEntrySchema).required()
+});
+
 const mobilePosOrderActionSyncEntrySchema = Joi.object({
     local_operation_id: Joi.string().trim().max(160).required(),
     payload: Joi.object({
@@ -1105,7 +1142,8 @@ const mobilePosItemSyncEntrySchema = Joi.object({
     // entry envelope for every entity (see checkout sync above), so the
     // repository can only shape what's inside payload itself.
     payload: Joi.object({
-        op: Joi.string().valid('create', 'update', 'delete').required()
+        op: Joi.string().valid('create', 'update', 'delete').required(),
+        expected_server_version: Joi.date().iso().optional()
     }).required().unknown(true)
 });
 
@@ -1189,10 +1227,12 @@ const employeeCreditAccountUpdateSchema = Joi.object({
 }).or('is_eligible', 'credit_limit', 'adjustment_amount');
 
 const employeeCreditRepaymentSchema = Joi.object({
-    amount: Joi.number().positive().precision(4).required(),
+    amount: Joi.number().positive().precision(4),
+    repay_all: Joi.boolean().valid(true),
+    expected_version: Joi.number().integer().min(0),
     reason: Joi.string().trim().min(3).max(500).required(),
     idempotency_key: Joi.string().trim().min(8).max(120).required()
-});
+}).xor('amount', 'repay_all').with('repay_all', 'expected_version');
 
 const employeeCreditOutstandingAdjustmentSchema = Joi.object({
     adjustment_amount: Joi.number().precision(4).invalid(0).required(),
@@ -1327,6 +1367,7 @@ export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickup
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
@@ -1340,6 +1381,7 @@ export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalR
 export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
 export const validateMobilePosTransactionCheckpointQuery = validateSchema(mobilePosTransactionCheckpointQuerySchema, 'query', 'validatedQuery');
 export const validateMobilePosVoidSync = validateSchema(mobilePosVoidSyncSchema, 'body', 'validatedData');
+export const validateMobilePosRefundSync = validateSchema(mobilePosRefundSyncSchema, 'body', 'validatedData');
 export const validateMobilePosOrderActionSync = validateSchema(mobilePosOrderActionSyncSchema, 'body', 'validatedData');
 export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema, 'body', 'validatedData');
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');

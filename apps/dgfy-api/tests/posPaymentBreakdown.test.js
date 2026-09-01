@@ -75,7 +75,6 @@ describe('POS close-report payment breakdown', () => {
                 payment_breakdown: paymentBreakdown
             }
         });
-        expect(shiftLines).toContainEqual(expect.stringContaining('Post-close voids (1)'));
         const zReadingLines = buildZReadingLines({
             z_reading: {
                 summary: {
@@ -94,7 +93,17 @@ describe('POS close-report payment breakdown', () => {
         expect(shiftLines).toContainEqual(expect.stringContaining('Other (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('GCash (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Maya (1)'));
-        expect(shiftLines).toContainEqual(expect.stringContaining('POS voids'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Transactions'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Subtotal'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Discounts'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('VAT'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Total sales'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('POS voids'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Transactions'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Subtotal'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Discounts'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('VAT'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Total sales'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('POS voids'));
         expect(zReadingLines).toContain('Provider refunds are reconciled separately.');
     });

@@ -173,12 +173,20 @@ describe('POS walk-in cash refund use case', () => {
                 terminal_id: 'COUNTER-01',
                 terminal_location_id: 7,
                 reason: 'Customer returned paid item',
-                idempotency_key: 'cash-refund-168'
+                idempotency_key: 'cash-refund-168',
+                expected_status: 'voided',
+                expected_payment_status: 'paid',
+                expected_server_version: '2026-09-01T01:00:00.000Z'
             },
             user: { user_id: 99 }
         };
+        fixture.state.transaction.updated_at = '2026-09-01T01:00:00.000Z';
 
         const first = await runInTenantContext(fixture.sequelize, () => useCase(request));
+        // Simulates a committed refund whose HTTP acknowledgement was lost.
+        // A retry with the same idempotency key must replay even though the
+        // transaction version/payment state now differ from the original.
+        fixture.state.transaction.updated_at = '2026-09-01T02:00:00.000Z';
         const second = await runInTenantContext(fixture.sequelize, () => useCase(request));
 
         expect(first.success).toBe(true);

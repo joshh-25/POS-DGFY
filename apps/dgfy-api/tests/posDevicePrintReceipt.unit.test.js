@@ -7,12 +7,14 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
 }));
 
 let buildPrintPosReceiptUseCase;
+let buildClaimOnlineOrderReceiptAutoPrintUseCase;
 let buildPrintPosShiftSummaryUseCase;
 let buildPrintPosZReadingUseCase;
 
 beforeAll(async () => {
     ({
         buildPrintPosReceiptUseCase,
+        buildClaimOnlineOrderReceiptAutoPrintUseCase,
         buildPrintPosShiftSummaryUseCase,
         buildPrintPosZReadingUseCase
     } = await import('../src/modules/pos/usecases/posDeviceUseCases.js'));
@@ -174,6 +176,64 @@ describe('buildPrintPosReceiptUseCase — client-delegated printing', () => {
 
         const [printCall] = deviceDriver.printReceipt.mock.calls;
         expect(printCall[0].receipt.business).toHaveProperty('logo_raster', null);
+    });
+});
+
+describe('buildClaimOnlineOrderReceiptAutoPrintUseCase', () => {
+    const eligibleTransaction = {
+        pos_transaction_id: 42,
+        order_source: 'online_store',
+        fulfillment_status: 'confirmed',
+        payment_status: 'paid',
+        payment_provider: 'paymongo',
+        balance_due: 0,
+        location_id: 3
+    };
+
+    it('atomically grants only one automatic receipt claim across terminals', async () => {
+        let storedReplay = null;
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({ location_id: 3 }),
+            getTransactionById: jest.fn().mockResolvedValue(eligibleTransaction),
+            createOperationReplay: jest.fn(async (payload) => {
+                storedReplay ||= payload;
+                return storedReplay;
+            })
+        };
+        const claim = buildClaimOnlineOrderReceiptAutoPrintUseCase({ posRepository });
+
+        const first = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-01' },
+            user: { user_id: 7 }
+        });
+        const second = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-02' },
+            user: { user_id: 8 }
+        });
+
+        expect(first).toMatchObject({ success: true, data: { claimed: true, eligible: true } });
+        expect(second).toMatchObject({ success: true, data: { claimed: false, eligible: true } });
+    });
+
+    it.each([
+        ['cash on delivery', { payment_provider: null, payment_status: 'unpaid' }],
+        ['downpayment', { payment_provider: 'paymongo', payment_status: 'partially_paid', balance_due: 75 }],
+        ['unconfirmed order', { fulfillment_status: 'placed' }]
+    ])('does not auto-print an ineligible %s order', async (_label, override) => {
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({ location_id: 3 }),
+            getTransactionById: jest.fn().mockResolvedValue({ ...eligibleTransaction, ...override }),
+            createOperationReplay: jest.fn()
+        };
+        const claim = buildClaimOnlineOrderReceiptAutoPrintUseCase({ posRepository });
+
+        const result = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-01' },
+            user: { user_id: 7 }
+        });
+
+        expect(result).toMatchObject({ success: true, data: { claimed: false, eligible: false } });
+        expect(posRepository.createOperationReplay).not.toHaveBeenCalled();
     });
 });
 
