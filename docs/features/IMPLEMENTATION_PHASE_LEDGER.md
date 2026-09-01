@@ -16399,7 +16399,7 @@ merge commit `01510ac29`. #1333's already-merged Phase 242 entry is left complet
 Continuous Phase Numbering, `AGENTS.md`: historical entries are never renumbered); this entry alone
 renumbers to **243**, the actual next-free integer confirmed live post-merge via
 `grep -n '^## Phase ' docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -5` against the merged
-state. Merge commit: `c7bba2491`.
+state. Merge commit: `21c2b77e6`.
 
 ### Objective and scope
 
