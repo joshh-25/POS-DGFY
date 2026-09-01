@@ -15778,3 +15778,123 @@ capture, now wired into fee pricing for the first time) -- all three merged to `
 
 238 (#1330, POS staff fee override, already merged separately -- confirm its own ledger status
 before claiming further numbers; this entry does not assert 238's own status).
+## Phase 239 - Compliance Preflight Sweep: Supervised Handoff + Full-Scan Discovery (#1374)
+
+### Initiative and release
+
+Note on numbering: Phase 233's own status text (above) informally calls Phase 234 "the runner live
+cutover," anticipating that work as the next item in the CI-runner-routing initiative (#1365). That
+work has not started as of this entry -- per Continuous Phase Numbering (`AGENTS.md`), phase numbers
+are never reserved in advance, so this unrelated, independently-scoped initiative (#1374) does not
+take that number. Phase 233's own text is unedited; the runner live cutover keeps its informal "234"
+label there until it is actually scheduled. Phase 234 itself was independently claimed by epic
+#1321's delivery-pricing work (see the Phase 237 entry immediately above, which documents that
+233/235/236/237 already merged) while this branch's work was in flight -- confirmed live via a rebase
+conflict against `origin/develop`, not assumed. Phase 238 is also already spoken for (`#1330`, POS
+staff fee override, referenced by the Phase 237 entry's own "Next eligible phase" note) even though
+it has no ledger entry of its own yet -- the same kind of gap Phase 237 itself flags for 233/235/236,
+not backfilled here either. The next genuinely free number is therefore 239, taken here.
+
+Closes out #1374: `compliance-preflight-sweep.yml` conflated three distinct outcomes as one
+undifferentiated red run -- a real preflight failure, an operator-input error (a `declarations=`
+entry missing on the checked-out ref), and `gh pr create` being blocked by an org-level policy
+(#1295, "GitHub Actions is not permitted to create or approve pull requests") even when the
+preflight itself had genuinely passed. #1374's own research (2026-09-02) also found the sweep's
+auto-discovery (a `develop..main` diff) had a permanent blind spot for declarations that reached
+`main` via a #1007-override promotion, and that 11 `compliance-sweep/<run_id>` branches had leaked
+on origin with no cleanup path. Built across five sequenced commits on one branch
+(`fix/1374-preflight-sweep-handoff`): `31d516ff5` (classification/rendering script + tests),
+`5a56cf9ce` (workflow rewrite), `24db1586a` (structure test + CI wiring), and this docs/ADR/skills/
+ledger commit.
+
+### Objective and scope
+
+New `scripts/report-preflight-sweep-outcome.js` (+ `.test.js`, 25 cases): pure, DI-friendly
+classification/rendering functions (`classifyPrCreate`, `classifyOutcome`, `buildOperatorCommands`,
+`renderSummary`, `renderIssue`, `writeArtifact`) behind a `classify-pr-create`/`report` CLI, never
+throwing past `main()`. `compliance-preflight-sweep.yml` rewritten: `permissions` gains
+`issues: write`; discovery switches from a `develop..main` diff to a full `git ls-files` scan of the
+checked-out ref (26 outstanding found vs. the diff's 4, confirmed live) with a new validation pass
+distinguishing an operator input error from a compliance failure; the auto-merge PR step is replaced
+by a supervised-handoff step that still attempts `gh pr create` every run but classifies a
+policy-blocked failure as green-with-warning (`handoff_required`) instead of red, and prunes
+superseded, bot-committed, no-open-PR `compliance-sweep/<numeric run id>` branches (fails closed on a
+`gh pr list` query failure); a new report step renders the outcome to `$GITHUB_STEP_SUMMARY`, a new
+`compliance-preflight-sweep-handoff` artifact, and a new step files/updates a labelled
+`compliance:preflight-handoff`/`compliance:preflight-failed` GitHub issue (one open per class,
+updated in place, both labels created once by hand, never by the workflow). New
+`scripts/check-compliance-sweep-workflow.test.js` (19 regression assertions against the live YAML)
+and a new `test:preflight-sweep` npm script wiring it plus the report script's tests and four
+pre-existing `scripts/*preflight*.test.js` files that had never been wired to any npm script, plus a
+new advisory `Validate compliance sweep contract` step in `promotion-quality-gate.yml`. Docs/ADR/
+skills updated to describe the supervised handoff and full-scan discovery in place of the retired
+"opens + auto-merges" / `develop..main`-diff description. Out of scope, per the plan: partial
+reconciliation (one `breach` still blocks the other declarations in a batch -- flagged follow-up,
+not this phase); a rollback mechanism for a bad merge (none exists, unchanged); the pre-existing,
+separately-flagged "deployed non-production host" staleness in
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s promotion-stage table (left as found, not this phase's
+scope).
+
+### Status
+
+`completed`. All five commits landed on `fix/1374-preflight-sweep-handoff`; PR open/merge is the
+next step, owned by the coordinating session, not this phase's own work.
+
+### Dependencies
+
+`scripts/is-preflight-outstanding.js`, `scripts/build-preflight-request.js`,
+`scripts/parse-preflight-response.js`, `scripts/reconcile-preflight-declarations.js` (all
+pre-existing, unmodified -- their test files were wired into CI here for the first time, not
+changed). `scripts/summarize-backend-test-matrix.js` and `scripts/ci-runner-preflight.js` supplied
+the house style (DI-friendly, no-deps, never-throws-past-`main()`) the new script follows.
+`scripts/check-runner-routing.test.js` supplied the style for the new structure test. Builds on
+ADR 0074 Decision 5 (the ephemeral-CI-instance preflight target, 2026-08-31 amendment) and #1295
+(the org policy finding that motivated the supervised-handoff redesign).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every new/changed `.js` file -- OK.
+- [x] `bash -n` on every rewritten `run:` block in `compliance-preflight-sweep.yml` (extracted via a
+  PyYAML step-by-step parse) -- OK, all 16 blocks.
+- [x] `npm run test:preflight-sweep` -- OK, 75/75 passing across all six wired files
+  (`is-preflight-outstanding.test.js` 6, `build-preflight-request.test.js` 12,
+  `parse-preflight-response.test.js` 7, `reconcile-preflight-declarations.test.js` 6,
+  `report-preflight-sweep-outcome.test.js` 25, `check-compliance-sweep-workflow.test.js` 19); none
+  of the four pre-existing files needed any changes to pass.
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing,
+  confirming the new `promotion-quality-gate.yml` step matches the sanctioned #1063 advisory shape.
+- [x] `npm run check:adr` -- OK.
+- [x] `npm run lint:docs` -- OK.
+- [x] `npm run check:compliance` -- "No compliance-sensitive changes detected"; no declaration
+  required (CI/docs/skills-only change, no runtime or tenant-data surface touched) -- decided by
+  running the tool against the diff, not assumed from the change's apparent shape.
+- [x] `npm run check:architecture` -- OK.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change; base
+is `develop` (branched fresh before this work); nothing dispatches a deploy workflow or touches a
+deployed environment; no force-push or branch deletion during implementation (the workflow's own new
+`git push origin --delete` of superseded `compliance-sweep/*` branches is CI-runtime behavior this
+phase built, not an action this phase's own implementation session took).
+
+### Links
+
+- Tracking issue: #1374. Refs `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s expedited-override amendment,
+  ADR 0074 (2026-09-02 Amendments block, this phase), #1295 (the org policy finding).
+- `scripts/report-preflight-sweep-outcome.js` + `.test.js` (new),
+  `scripts/check-compliance-sweep-workflow.test.js` (new),
+  `.github/workflows/compliance-preflight-sweep.yml` (modified, supervised-handoff + full-scan
+  discovery rewrite), `.github/workflows/promotion-quality-gate.yml` (modified, new advisory step +
+  `STEP_OUTCOMES` entry), `package.json` (modified, new `test:preflight-sweep` script),
+  `docs/compliance/request-time-preflight-protocol.md` (modified, "Where live preflight actually
+  runs" + "Run it." + new "Operator handoff procedure"),
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md` (modified, new
+  2026-09-02 Amendments block), `.agents/skills/promoter/SKILL.md` (modified, full-scan verification
+  snippet + handoff fast-signal check + checkpoint-table row),
+  `.agents/skills/pr-reviewer/SKILL.md` (modified, Compliance item 3),
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (modified, one clause on the `develop → main` promotion row).
+
+### Next eligible phase
+
+240 -- noting the 238 ledger gap above for whoever claims it next.
