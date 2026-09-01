@@ -1697,14 +1697,16 @@ const DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS = 60 * 60 * 1000;
 // never be able to block a checkout that would otherwise succeed.
 const PINNED_DISTANCE_SOURCES = Object.freeze(['road', 'fallback', 'none']);
 
-const isFiniteNonNegativeNumber = (value) => Number.isFinite(value) && value >= 0;
+// typeof-gated, not merely Number.isFinite -- Number.isFinite(Number("97")) is true, so checking
+// finiteness alone would silently coerce and accept a stringified numeric value. Every numeric pin
+// field must already BE a number, not just look like one (#1377 post-merge audit, RF-2).
+const isFiniteNonNegativeNumber = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 const isValidPinnedDeliveryBreakdown = (pin) => {
     if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
     if (!DELIVERY_FEE_MODES.includes(pin.mode)) return false;
 
-    const finalFee = Number(pin.finalFee);
-    if (!Number.isFinite(finalFee) || finalFee < 0) return false;
+    if (!isFiniteNonNegativeNumber(pin.finalFee)) return false;
 
     // A calcVersion mismatch means a formula change shipped between pin and finalize -- re-resolving
     // is more correct than honoring a fee priced under a since-superseded formula.
@@ -1712,19 +1714,19 @@ const isValidPinnedDeliveryBreakdown = (pin) => {
 
     // baseFee/waiverAmount: always finite, nonnegative money values -- never null/absent in a
     // genuinely-produced breakdown (resolveStoreDeliveryFee always sets both to a number).
-    if (!isFiniteNonNegativeNumber(Number(pin.baseFee))) return false;
-    if (!isFiniteNonNegativeNumber(Number(pin.waiverAmount))) return false;
+    if (!isFiniteNonNegativeNumber(pin.baseFee)) return false;
+    if (!isFiniteNonNegativeNumber(pin.waiverAmount)) return false;
 
     // overrideAmount: null (the overwhelming common case this phase -- #238 hasn't shipped yet) or a
     // finite nonnegative number. Anything else (a string, a negative number, NaN) is malformed.
-    if (pin.overrideAmount !== null && !isFiniteNonNegativeNumber(Number(pin.overrideAmount))) return false;
+    if (pin.overrideAmount !== null && !isFiniteNonNegativeNumber(pin.overrideAmount)) return false;
 
     // distanceSource: closed enum, no coercion -- an unrecognized value is unconditionally malformed.
     if (!PINNED_DISTANCE_SOURCES.includes(pin.distanceSource)) return false;
 
     // distanceMeters: null (mirrors distanceSource !== 'road', see resolveStoreDeliveryFee's own
     // `distanceSource === 'road' ? distanceMeters : null`) or a finite nonnegative number.
-    if (pin.distanceMeters !== null && !isFiniteNonNegativeNumber(Number(pin.distanceMeters))) return false;
+    if (pin.distanceMeters !== null && !isFiniteNonNegativeNumber(pin.distanceMeters)) return false;
 
     // fallbackApplied/outOfRange: real booleans, not merely truthy -- a stray string/number here
     // would otherwise be copied verbatim into the persisted breakdown.
