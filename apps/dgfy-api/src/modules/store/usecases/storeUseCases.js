@@ -2309,8 +2309,22 @@ const resolveCheckoutContext = async ({
     // what makes this a second, independent axis rather than something the slot guard above must
     // also police -- ONLY the item-axis guard (promoApplication.applied && normalized.voucher_code)
     // applies to voucher_code; this field is never slot-guarded.
+    //
+    // #1389 review fixup (RF-1): gated on `orderMethod === 'delivery'` ONLY -- NOT on
+    // `delivery.baseFee > 0`. A pickup order has no delivery-fee axis at all and must still skip
+    // this block entirely (never burn a redemption). But a delivery order with a zero base fee
+    // (free-delivery mode, or any other legitimate zero -- Phase 239's own comment already treats
+    // `0` and `null` as distinct) still has the axis; it just resolves to a zero waiver. The
+    // original `delivery.baseFee > 0` guard skipped validation/mismatch-checking/redemption
+    // entirely whenever baseFee was zero, which (a) let an item-targeted code entered in this
+    // field pass through silently instead of failing closed with VOUCHER_BENEFIT_TARGET_MISMATCH,
+    // and (b) skipped the required exactly-once redemption on the pinned QRPh/webhook replay path
+    // for a validly-entered code that correctly resolves to a zero waiver. Phase 240 plan §13.12
+    // called this out directly: the domain layer accepts `deliveryFeeCentavos: 0` as legal, so it's
+    // this call site's job to still distinguish pickup (skip) from free-mode-delivery (still run,
+    // let the math naturally produce a 0 waiver) -- do not special-case the zero amount.
     let deliveryWaiverApplication = DEFAULT_DELIVERY_WAIVER_APPLICATION;
-    if (normalized.delivery_voucher_code && orderMethod === 'delivery' && delivery.baseFee > 0) {
+    if (normalized.delivery_voucher_code && orderMethod === 'delivery') {
         const deliveryVoucherContext = { ...voucherContext, deliveryFeeCentavos: toCentavos(delivery.baseFee) };
         const deliveryResult = options?.transaction
             ? await redeemVoucherUseCase({

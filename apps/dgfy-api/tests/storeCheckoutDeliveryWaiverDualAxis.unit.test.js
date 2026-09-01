@@ -193,6 +193,7 @@ const {
     buildStoreCheckoutUseCase
 } = await import('../src/modules/store/usecases/storeUseCases.js');
 const { generateStoreGuestCheckoutProof } = await import('../src/modules/store/utils/storeJwtToken.js');
+const { DELIVERY_FEE_CALC_VERSION } = await import('../src/modules/deliveryPricing/index.js');
 
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
@@ -526,6 +527,93 @@ describe('supporting cases', () => {
         expect(itemRedemptions[0].idempotency_key).not.toBe(deliveryRedemptions[0].idempotency_key);
         expect(deliveryRedemptions[0].idempotency_key).toContain(':delivery:');
         expect(itemRedemptions[0].idempotency_key).not.toContain(':delivery:');
+    });
+});
+
+describe('free-mode tenant (baseFee === 0) -- #1389 review fixup, RF-1', () => {
+    // resolveStoreDeliveryFee returns baseFee: 0 for 'free' mode (storeUseCases.js's own comment:
+    // "0 and null are distinct there -- 0 is a legal base for a free-delivery tenant"). Before this
+    // fixup, the call-site guard was `delivery.baseFee > 0`, which skipped validation, axis-mismatch
+    // checking, AND redemption entirely for every one of these cases -- silently ignoring a
+    // mismatched code instead of failing closed, and skipping the required exactly-once redemption
+    // on the pinned replay path.
+    const freeModeSettingsRows = () => [
+        ...registeredTransactionSettings(),
+        { setting_key: 'store_delivery_fee_mode', setting_value: 'free' },
+        { setting_key: 'pos_open_status', setting_value: 'true' }
+    ];
+
+    test('(a) a valid delivery-targeted voucher: redemption happens, waiverAmount is 0, no error', async () => {
+        const { result, storeRepository } = await runCheckout({
+            settingsRows: freeModeSettingsRows(),
+            payloadOverrides: { delivery_voucher_code: 'FREEDEL' }
+        });
+
+        expect(result.success).toBe(true);
+        const [{ header }] = storeRepository.createOnlineTransactionWithLines.mock.calls[0];
+        expect(header.delivery_fee_base).toBe(0);
+        expect(header.delivery_fee_waiver).toBe(0);
+        expect(header.delivery_fee).toBe(0);
+        expect(header.delivery_fee_waiver_voucher_id).toBe(FREEDEL_ID);
+        expect(
+            currentFakeVoucherRepository.__state.redemptions.filter((r) => r.voucher_id === FREEDEL_ID)
+        ).toHaveLength(1);
+    });
+
+    test('(b) an item-targeted code entered in the delivery field is still rejected as a mismatch', async () => {
+        const { result, storeRepository } = await runCheckout({
+            settingsRows: freeModeSettingsRows(),
+            payloadOverrides: { delivery_voucher_code: 'SAVE10' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error?.details?.reason_code).toBe('VOUCHER_BENEFIT_TARGET_MISMATCH');
+        expect(storeRepository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+        // Not asserting on the fake voucher repository's redemption ledger here: the mismatch throw
+        // (storeUseCases.js) happens AFTER redeemVoucherUseCase's own reservation/ledger write for
+        // the entered code, same as the pre-existing (non-free-mode) mismatch path -- see the
+        // 'axis mismatch' test in "supporting cases" above, which doesn't assert this either. In
+        // production this is rolled back by the checkout's own DB transaction; this in-memory fake
+        // doesn't model that rollback, so asserting on it here would test the fake, not the fix.
+    });
+
+    // (c) pickup + delivery_voucher_code present, no redemption burned -- already covered by
+    // "supporting cases" > 'pickup order: the delivery-voucher block is skipped entirely...' above.
+    // That test's guard (orderMethod !== 'delivery') is unaffected by this fixup: pickup orders skip
+    // the block regardless of baseFee, both before and after this change.
+
+    test('pinned QRPh/webhook replay: a free-mode zero-base pin still performs the required exactly-once redemption', async () => {
+        const freeModePin = Object.freeze({
+            mode: 'free',
+            baseFee: 0,
+            waiverAmount: 0,
+            overrideAmount: null,
+            finalFee: 0,
+            distanceMeters: null,
+            distanceSource: 'none',
+            fallbackApplied: false,
+            outOfRange: false,
+            calcVersion: DELIVERY_FEE_CALC_VERSION,
+            pinned_at: new Date().toISOString()
+        });
+        const storeRepository = buildFakeCheckoutStoreRepository({ settingsRows: freeModeSettingsRows() });
+        const useCase = buildStoreCheckoutUseCase({ storeRepository, revenueSharingEnabled: true });
+        const payload = withGuestProof(deliveryPayload({
+            idempotency_key: `dual-axis-free-pin-${Math.floor(Math.random() * 1e9)}`,
+            delivery_voucher_code: 'FREEDEL'
+        }));
+
+        const result = await useCase({ tenantId: TENANT_ID, payload, pinnedDeliveryBreakdown: freeModePin });
+
+        expect(result.success).toBe(true);
+        const [{ header }] = storeRepository.createOnlineTransactionWithLines.mock.calls[0];
+        expect(header.delivery_fee_base).toBe(0);
+        expect(header.delivery_fee_waiver).toBe(0);
+        expect(header.delivery_fee).toBe(0);
+        expect(header.delivery_fee_waiver_voucher_id).toBe(FREEDEL_ID);
+        expect(
+            currentFakeVoucherRepository.__state.redemptions.filter((r) => r.voucher_id === FREEDEL_ID)
+        ).toHaveLength(1);
     });
 });
 
