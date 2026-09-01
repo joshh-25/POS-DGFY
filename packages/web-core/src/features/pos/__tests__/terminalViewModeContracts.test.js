@@ -12,6 +12,10 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
+// Phase 229 (#1289), §2.7: the order-card grid (payment status, print actions, the empty-queue
+// lifecycle copy) moved out of TerminalOperationsPanels.jsx into this pure extraction. A handful
+// of this file's assertions target that content directly and now read this file instead.
+const incomingQueueOrderListPath = path.resolve(__dirname, '../components/IncomingQueueOrderList.jsx');
 const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenantSetupModal.jsx');
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
@@ -39,6 +43,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let terminalOperationsPanelsContent = '';
+  let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
@@ -66,6 +71,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
+    incomingQueueOrderListContent = fs.readFileSync(incomingQueueOrderListPath, 'utf8');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
@@ -564,13 +570,14 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps receipt print state out of online-order detail panels', () => {
-    for (const source of [terminalOperationsPanelsContent, terminalSidebarPanelContent]) {
+    for (const source of [terminalOperationsPanelsContent, incomingQueueOrderListContent, terminalSidebarPanelContent]) {
       expect(source).not.toContain('Not printed');
       expect(source).not.toContain('Print failed');
       expect(source).not.toContain('Receipt: <span');
     }
-    expect(terminalOperationsPanelsContent).toContain('Payment Status');
-    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
+    // Phase 229 (#1289), §2.7: this content moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Payment Status');
+    expect(incomingQueueOrderListContent).toContain('Print Receipt');
     expect(terminalSidebarPanelContent).toContain('Payment:');
     expect(terminalSidebarPanelContent).toContain('Print Receipt');
   });
@@ -586,7 +593,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('Active Queue');
     expect(terminalOperationsPanelsContent).toContain('Order History');
     expect(terminalOperationsPanelsContent).toContain('Rejected, cancelled, and unpaid online orders');
-    expect(terminalOperationsPanelsContent).toContain('Completed paid sales move to Sales History.');
+    // Phase 229 (#1289), §2.7: the empty-queue lifecycle copy moved into
+    // IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Completed paid sales move to Sales History.');
     expect(terminalOperationsPanelsContent).toContain('Previous order history page');
     expect(terminalOperationsPanelsContent).toContain('Next order history page');
     expect(terminalOperationsPanelsContent).toContain("if (activeView !== 'history') return;");
@@ -608,9 +617,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('posHardware.printOrderTicket({');
     expect(terminalPageContent).toContain('printOrder = false');
     expect(terminalPageContent).toContain('await printOnlineOrderKitchenTicket(detail);');
-    expect(terminalOperationsPanelsContent).toContain("utilityActions.includes('print_receipt')");
-    expect(terminalOperationsPanelsContent).toContain("{ printOrder: true }");
-    expect(terminalOperationsPanelsContent).toContain("'Print Order'");
+    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain("utilityActions.includes('print_receipt')");
+    expect(incomingQueueOrderListContent).toContain("{ printOrder: true }");
+    expect(incomingQueueOrderListContent).toContain("'Print Order'");
     expect(terminalSidebarPanelContent).toContain("utilityActions.includes('print_receipt')");
     expect(terminalSidebarPanelContent).toContain("{ printOrder: true }");
     expect(terminalSidebarPanelContent).toContain("'Print Order'");
@@ -619,10 +629,11 @@ describe('POS terminal view-mode contracts', () => {
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
-    expect(terminalOperationsPanelsContent).toContain('Opening...');
-    expect(terminalOperationsPanelsContent).toContain('Retry Print');
-    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
-    expect(terminalOperationsPanelsContent).toContain('Reprint Receipt');
+    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Opening...');
+    expect(incomingQueueOrderListContent).toContain('Retry Print');
+    expect(incomingQueueOrderListContent).toContain('Print Receipt');
+    expect(incomingQueueOrderListContent).toContain('Reprint Receipt');
     expect(terminalPageContent).toContain('retryPrint = false');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
   });
@@ -675,8 +686,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    expect(terminalOperationsPanelsContent).toContain('{sortedIncomingOrders.map((order) => {');
-    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
+    // Phase 229 (#1289), §2.7: the sort itself (and passing its result down) stays in
+    // TerminalOperationsPanels.jsx; the render of that sorted list (including its own
+    // empty-state branch) moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(terminalOperationsPanelsContent).toContain('orders={sortedIncomingOrders}');
+    expect(incomingQueueOrderListContent).toContain('orders.length === 0');
   });
 
   it('keeps completed receipt history out of the active queue', () => {
