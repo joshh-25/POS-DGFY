@@ -5,6 +5,7 @@ import {
   INVENTORY_DISPLAY_MODES
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
+import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -449,6 +450,24 @@ const posBestSellerSettingsSchema = Joi.object({
   daily_top_enabled: Joi.boolean().default(false)
 }).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
+// Phase 233 (#1324, epic #1321): the calculated-mode delivery-fee formula, as ONE JSON blob per
+// Wave 0a decision #1 -- replaced wholesale on write, never merged field-by-field with whatever is
+// already stored. Reference values from the epic (₱50 minimum / first 3 km / ₱10 per km / ₱5 per
+// started 0.5 km / 15 km cap) are not defaults here -- an absent or invalid blob is meaningless
+// until a per-tenant value is actually set, and `deliveryFeeConfig.js`'s normalizer already
+// resolves that case to `mode: 'fixed'` rather than silently assuming a formula. Validated leniently
+// here (allow() rather than required()) so PUTting a `fixed`-mode-only settings body never needs to
+// also supply a calc blob it doesn't use.
+const storeDeliveryFeeCalcSchema = Joi.object({
+  min_fee: Joi.number().min(0).precision(4).required(),
+  included_km: Joi.number().min(0).precision(4).required(),
+  per_km_rate: Joi.number().min(0).precision(4).required(),
+  increment_km: Joi.number().greater(0).precision(4).required(),
+  max_distance_km: Joi.number().greater(0).precision(4).min(Joi.ref('included_km')).required().messages({
+    'number.min': 'Max distance must be greater than or equal to the included distance'
+  })
+}).optional();
+
 // Phase 6 composed-capability overlay: capabilities the master admin has
 // additionally granted on top of the tenant's base ops_workflow_mode.
 const enabledCapabilitiesSchema = Joi.array()
@@ -540,6 +559,12 @@ export const updateSettingsSchema = Joi.object({
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   pos_best_seller_settings: posBestSellerSettingsSchema.optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
+  // Phase 233 (#1324): fee-mode config schema, fixed-only behavior -- see
+  // modules/deliveryPricing/domain/deliveryFeeConfig.js for the normalization this feeds.
+  store_delivery_fee_mode: Joi.string().trim().lowercase().valid(...DELIVERY_FEE_MODES).optional().messages({
+    'any.only': `Delivery fee mode must be one of: ${DELIVERY_FEE_MODES.join(', ')}`
+  }),
+  store_delivery_fee_calc: storeDeliveryFeeCalcSchema,
   store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').optional().messages({
     'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
   }),
@@ -713,6 +738,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     pos_best_seller_settings: posBestSellerSettingsSchema,
     store_delivery_fee: Joi.number().min(0).precision(4),
+    store_delivery_fee_mode: Joi.string().trim().lowercase().valid(...DELIVERY_FEE_MODES).messages({
+      'any.only': `Delivery fee mode must be one of: ${DELIVERY_FEE_MODES.join(', ')}`
+    }),
+    store_delivery_fee_calc: storeDeliveryFeeCalcSchema,
     store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').messages({
       'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
     }),

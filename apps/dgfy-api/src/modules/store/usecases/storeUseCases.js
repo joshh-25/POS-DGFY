@@ -36,6 +36,10 @@ import {
     resolveVoucherDisplayPricesUseCase,
     VoucherReasonCode
 } from '../../vouchers/index.js';
+// Phase 233 (#1324, epic #1321): fee-mode config schema, fixed-only behavior. resolveStoreDeliveryFee
+// below starts consuming this but still returns today's flat store_delivery_fee value regardless of
+// the resolved mode -- no behavior change yet. See deliveryPricing/domain/deliveryFeeConfig.js.
+import { resolveDeliveryFeeConfig } from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -307,6 +311,10 @@ const mapSettings = (rows = []) => {
 };
 const CHECKOUT_SETTING_KEYS = Object.freeze([
     'store_delivery_fee',
+    // Phase 233 (#1324): read allowlist for the new fee-mode config keys -- consumed below by
+    // resolveStoreDeliveryFee via deliveryPricing's resolveDeliveryFeeConfig, no behavior change yet.
+    'store_delivery_fee_mode',
+    'store_delivery_fee_calc',
     'pos_wait_time_minutes',
     'storefront_promo',
     'storefront_promos',
@@ -528,6 +536,20 @@ const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, de
 
 const resolveStoreDeliveryFee = (settings = {}, orderMethod) => {
     if (orderMethod !== 'delivery') return 0;
+
+    // Phase 233 (#1324): start consuming the fee-mode config. Deliberately unused beyond this --
+    // every mode still resolves to today's flat store_delivery_fee value below. Calculated/free
+    // fee computation (and branching on feeConfig.mode) is #237's job, not this phase's.
+    // locationOverride stays hardwired null per epic #1321 decision 2 until a later phase resolves
+    // a real per-location override.
+    resolveDeliveryFeeConfig({
+        tenantSettings: {
+            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
+            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
+        },
+        locationOverride: null
+    });
+
     const rawFee = settings?.store_delivery_fee?.value;
     const parsed = Number(rawFee);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
