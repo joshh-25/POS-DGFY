@@ -16224,3 +16224,160 @@ the skill's own "Board transitions" section).
 242 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
 work lands, per plan §10; renumbered from this entry's own pre-collision "241" reference per the
 Numbering note above).
+
+## Phase 242 - Discovery from-price + close #478 (#1333, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing). The epic's own ticket calls this "Phase 243"; per
+Continuous Phase Numbering (`AGENTS.md`), the repo-wide ledger sequence is decoupled from the
+epic's internal labels, so the ledger number used here is the next actually-free integer, not the
+epic's own count.
+
+**Numbering note, confirmed live rather than assumed** (same pattern as Phase 241's own note,
+above): Phase 241's entry names **242** as its own "next eligible phase," reserved for #1332
+(auto-applied delivery campaigns). #1332 is unmerged as of this PR -- confirmed via
+`gh issue view 1332 --json state` (`OPEN`) immediately before this commit -- so no `## Phase 242`
+heading exists yet anywhere in this file. Per Continuous Phase Numbering, phase numbers are never
+reserved in advance and historical entries are never renumbered; this PR claims 242 as the number
+actually free at this PR's own commit time. If #1332 merges into `develop` first with its own
+`## Phase 242` entry, this entry (or #1332's, whichever merges second) renumbers to the next free
+integer at that merge -- the same collision-resolution precedent Phase 241's own note already
+established for the 240/241 race with PR #1386.
+
+### Objective and scope
+
+Adds a `delivery_fee_mode` column to the landlord-only `storefront_discovery_index` table and
+derives a `store_delivery_fee` value that is honestly a FROM-price (the fixed fee in `fixed` mode,
+the calc `min_fee` in `calculated` mode, `0` in `free` mode) rather than the flat rate the column
+held before this phase. Closes issue #478 (delivery-radius enforcement) on the enforcement question,
+resolved by Phase 237/#1329 -- see the closure comment posted to #478 for the full verified
+mechanism and the explicit caveat about #478's own 2026-08-19 stakeholder note. **Does not close
+#625** -- #625's closure depends on #1332 (auto-apply), which is unmerged; #625 is left completely
+untouched by this PR, per the ticket's own explicit hold (plan §8).
+
+A new pure module, `modules/deliveryPricing/domain/deliveryFromPrice.js`
+(`resolveAdvertisedDeliveryFromPrice`), mirrors every branch of `resolveStoreDeliveryFee`
+(`storeUseCases.js:586-694`) including its fail-open-to-fixed behavior for a `calculated`-mode store
+with a malformed/absent calc blob -- that store still advertises `mode: 'calculated'` (the
+configured mode), with `fromPrice` falling back to the flat fee rather than a floor the store will
+not actually charge. Deliberately duplicates `parseFixedDeliveryFee`'s ~7-line guard rather than
+exporting it from `modules/store/usecases/storeUseCases.js`, to keep this diff out of
+`COMPLIANCE_SENSITIVE_RULES[2]`'s `major`/`payments` floor for no functional benefit.
+
+Two silent-wrong-but-green traps guarded against explicitly (the reason this phase's plan flagged
+them as blocking, and the reason `deliveryFeeModeDiscoveryIndexPersistence.contract.test.js` exists
+as a source-contract guard, #713-class):
+
+1. `STOREFRONT_SETTING_KEYS` (`storefrontDiscoveryIndexService.js`) did not include
+   `store_delivery_fee_mode`/`store_delivery_fee_calc` -- without both, the SystemSetting rows are
+   never fetched and every store silently resolves `mode: 'fixed'` forever.
+2. `storefrontDiscoveryIndexService.js`'s `settings.<key>` is the raw `setting_value` string
+   (`toSettingsMap`), not `storeUseCases.js`'s `{ ...row, value }` wrapper --
+   `store_delivery_fee_calc` is explicitly `parseJsonObject(...)`-ed before reaching
+   `resolveDeliveryFeeConfig`, or every calculated-mode store would silently advertise its fixed fee
+   instead of its `min_fee`.
+
+Read paths updated to carry the new field alongside the existing scalar: `geoSearchRepository.js`'s
+raw-SQL SELECT and row mapper, and `storefrontDiscoveryRepository.js`'s response mapper --
+deliberately NOT added to that file's `LEGACY_SCHEMA_SAFE_ATTRIBUTES` (the missing-column fallback
+allowlist; adding a brand-new column there would break the exact legacy-schema case it exists to
+survive). An external listing (`entity_type: 'external_listing'`) has no tenant settings to resolve
+a mode from and is hardcoded to `delivery_fee_mode: 'fixed'`.
+
+**No discovery-card renderer consumes this field anywhere in the repo as of this phase** (`grep -rn
+"store_delivery_fee"` across every frontend app returns zero hits) -- this phase's deliverable is
+the API contract only, asserted at that level by the tests below. The recommended display contract
+(a `fixed`-mode fee renders without "from," every other mode renders "From ₱X") is documented in
+the PR body for whoever builds the card, not implemented here.
+
+Out of scope, named in the PR body for `pm` to action: (a) the discovery index is not refreshed on
+a `store_delivery_fee_mode`/`store_delivery_fee_calc` settings write -- nothing in
+`modules/settings/` calls `syncStorefrontDiscoveryIndexForTenant`, so a mode change takes up to the
+existing 15-minute reconciliation sweep to appear (pre-existing behavior for every field on this
+table, not introduced by this phase); (b) the discovery-card renderer itself; (c) an adjacent latent
+bug, unrelated to this ticket and not fixed here -- `storefrontDiscoveryIndexService.js`'s voucher-
+eligibility timezone read (`settings.storefront_hours?.value?.timezone`) is always `undefined`
+against this file's raw-string `settings` map, so it always falls back to
+`DEFAULT_VOUCHER_TIMEZONE`.
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop`, `Refs #1333` (not `Closes` -- #625's hold keeps this issue open past this PR); not yet
+reviewed or merged.
+
+### Dependencies
+
+Phase 233 (#1324) -- `resolveDeliveryFeeConfig`/`DELIVERY_FEE_MODES`, the config-normalization
+module this phase's `resolveAdvertisedDeliveryFromPrice` wraps. Phase 235 (#1325) --
+`computeCalculatedDeliveryFeeCentavos`, the calculated-mode formula this phase's parity test
+verifies the floor property against. Phase 237/#1329, ADR 0078 -- the checkout-side
+`resolveStoreDeliveryFee` branching this phase's advertised value must mirror, and the #478 closure
+mechanism. #1332 (unmerged) -- the dependency #625's closure is held on; not a code dependency of
+this phase's own diff.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file and the new migration `.cjs`
+  file -- OK.
+- [x] Full targeted test run, `apps/dgfy-api` (`node --experimental-vm-modules .../jest.js
+  --runInBand`, 5 suites): 67/67 passing -- `deliveryFromPrice.unit.test.js` (14, the mode matrix
+  incl. the raw-JSON-string trap as a named case), `deliveryFromPrice.parity.unit.test.js` (7, the
+  floor-is-real and floor-is-reachable properties against the actual checkout formula),
+  `deliveryFeeModeDiscoveryIndexPersistence.contract.test.js` (6, the #713-class source-contract
+  guard covering both traps above plus the `LEGACY_SCHEMA_SAFE_ATTRIBUTES` backwards-easy mistake),
+  `addDeliveryFeeModeDiscoveryIndex.migration.test.js` (6, idempotence/down/no-tenant-fan-out),
+  `storefrontDiscoveryRepository.test.js` (extended, existing suite unmodified elsewhere + 4 new
+  mode-pair cases, all passing).
+- [x] `npm run check:architecture` -- OK, 52 modules / 538 code files; controller boundary check OK,
+  92 controller files, no unauthorized model imports.
+- [x] `npm run check:compliance` -- confirmed to report "No compliance-sensitive changes detected"
+  on this diff's full file set (none of `apps/dgfy-api/src/services/`,
+  `modules/geoSearch/repositories/`, `modules/storefrontDiscovery/repositories/`,
+  `modules/deliveryPricing/`, or the migration are in `COMPLIANCE_SENSITIVE_RULES`) -- matching the
+  plan's §9.1 prediction exactly. A `minor` declaration is still written (§9.2's reasoning: this
+  diff changes the meaning of a customer-visible advertised price, even though the mechanical floor
+  doesn't require one).
+- [x] `npm run check:tenant-schema-coverage -- --staged` (pre-commit, fired on the migration
+  commit) -- `PASS`, 1 migration file checked (landlord-only, no tenant-schema-registry entry
+  needed or added).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), not held.** New file under
+`apps/dgfy-migration-runner/migrations/` (`20260905000001-add-delivery-fee-mode-to-discovery-index.cjs`).
+Per the standing "skip routine migration/compliance checkpoints by default" preference (Pat has
+confirmed this twice), and because this migration is about the lowest-risk shape this repo has --
+landlord-only, single additive `NOT NULL DEFAULT 'fixed'` column, idempotence-guarded, fully
+reversible -- proceeded straight through to commit/PR without holding for confirmation. Called out
+explicitly here and in the PR body's Testing Evidence, per the plan's own §10 instruction.
+
+**Not fired:** `check:compliance` did not report a missing required declaration (confirmed, not
+merely predicted -- see Acceptance evidence above). No deploy dispatch, no SSH, no force-push/branch
+deletion. PR base is `develop`. Board: #1333 set to `In progress` at branch time, `For Review` at
+PR-open time.
+
+### Links
+
+- Tracking issue: #1333. Epic: #1321. Closes (via a direct `gh issue close`, not this PR's own
+  linkage) #478. Explicitly does NOT close #625 -- see #1333 for the #1332-dependent hold. Refs ADR
+  0078 (the #478 closure mechanism), Phase 237/#1329, Phase 233/#1324.
+- New: `apps/dgfy-migration-runner/migrations/20260905000001-add-delivery-fee-mode-to-discovery-index.cjs`,
+  `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`,
+  `apps/dgfy-api/tests/deliveryFromPrice.unit.test.js`,
+  `apps/dgfy-api/tests/deliveryFromPrice.parity.unit.test.js`,
+  `apps/dgfy-api/tests/deliveryFeeModeDiscoveryIndexPersistence.contract.test.js`,
+  `apps/dgfy-api/tests/addDeliveryFeeModeDiscoveryIndex.migration.test.js`,
+  `docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md`.
+- Modified: `apps/dgfy-api/src/models/Landlord/StorefrontDiscoveryIndex.js`,
+  `apps/dgfy-api/src/modules/deliveryPricing/index.js`,
+  `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`,
+  `apps/dgfy-api/src/modules/geoSearch/repositories/geoSearchRepository.js`,
+  `apps/dgfy-api/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`,
+  `apps/dgfy-api/tests/storefrontDiscoveryRepository.test.js`.
+
+### Next eligible phase
+
+243. #625's closure and any product/category-conditional delivery-fee follow-up remain gated on
+#1332 (still tracked as this ledger's own "242," pending its merge).
