@@ -101,24 +101,40 @@ checkpoint table below; this reordering changes nothing about what gates the mer
 the branch/PR mechanics happen relative to the other two gates. `references/promotion-runbook.md`
 shows the concurrent command sequence.
 
-**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31).** The
-sweep (`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
+**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31; PR handoff
+is now supervised, not auto-merge, #1295/#1374, 2026-09-02).** The sweep
+(`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
 auto-triggers whenever a declaration lands on `develop` and, once every result in a run passes,
-reconciles the front matter and opens + auto-merges its own PR into `develop`
+reconciles the front matter and pushes a `compliance-sweep/<run_id>` branch
 (`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"). In
 the ordinary case every declaration in the batch is already reconciled by the time promotion
-starts. This role's job here is only to **confirm** that:
+starts. This role's job here is two checks, not one — verify outstanding declarations, **and**
+check for a stuck handoff:
 
 ```bash
-git fetch origin main develop
-git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
+git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
   | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
+gh issue list --label compliance:preflight-handoff --state open --json number,title,url
 ```
 
-Empty output means zero outstanding — proceed. If the command lists any file, the continuous
-trigger hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't
-cover, e.g. a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait
-for it —
+The first command is a **full scan of the checked-out ref**, not a `develop..main` diff — the diff
+had a permanent blind spot (a declaration that reached `main` via a #1007-override promotion sits on
+both branches and never appears in a diff between them; #1374's own research found 26 outstanding on
+a full scan where the diff found 4). Empty output means zero outstanding.
+
+The second command is the **fast signal for a stuck handoff**: `gh pr create` from
+`github-actions[bot]` is blocked by an org-level policy (#1295), so a sweep whose preflight passed
+can leave a reconciliation branch pushed with no PR ever opened for it — invisible to the first
+command alone, since the declarations *are* reconciled in that pushed branch's working tree, just
+not yet merged into `develop`. **If this returns any open issue, open and merge that handoff PR
+before cutting `release/<label>`** — follow `docs/compliance/request-time-preflight-protocol.md`'s
+"Operator handoff procedure" (find the branch/commands from the issue or the run's
+`compliance-preflight-sweep-handoff` artifact, `gh pr create` + Merge Safety poll + merge). Its merge
+re-triggers one more sweep that reports zero outstanding and closes the issue.
+
+If the first command lists any file and the second returns no open issue, the continuous trigger
+hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't cover, e.g.
+a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait for it —
 
 ```bash
 gh workflow run compliance-preflight-sweep.yml
@@ -129,9 +145,10 @@ gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,stat
 own ephemeral CI-provisioned instance now — no `environment:` input, no secrets, nothing to
 provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated
 2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — but the
-sweep itself is what clears them now, continuously, not a step this role dispatches and waits on
-per promotion; #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
-declaration may legitimately still reach `main`, logged and authorized, not silent.
+sweep itself is what clears them now, continuously (once its PR is actually merged — see the handoff
+check above), not a step this role dispatches and waits on per promotion; #1007's expedited override
+(below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
+logged and authorized, not silent.
 
 **`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
 into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
@@ -197,7 +214,8 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
-| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched; auto-merges only when every result already passed a real policy evaluation, same reasoning as `verify-deployment.yml`'s read-only classification |
+| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
+| Opening and merging a stuck compliance-sweep handoff PR (per the "Compliance preflight sweep" fast-signal check above, before cutting `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |
 | Dispatching `deploy-main.yml` (PROD deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. **Two** narrow, phrase-gated exceptions exist, neither a standing pre-authorization: `incident-responder`'s own override for an actively open production incident (`.agents/skills/incident-responder/SKILL.md` — belongs to that role, invoked there, not here), and this role's own #1007 expedited override (below) for Pat's business-urgency call, invoked here |
 | Invoking the #1007 expedited override (skipping `gate:release:local` and/or the compliance preflight sweep before a `main` merge) | **Only** on Pat's explicit real-time phrase given in this exact moment — never inferred, never a standing pre-authorization from a prior invocation. Restate the standing "these are normally required" rule out loud, then post the authorization comment on the promotion PR/tracking issue **before** merging, not after. The production tenant-schema report, `AGENTS.md` Merge Safety, never-`--squash`, and the `release/` head-cut rule stay mandatory regardless — this override never touches those. Run the retro-verification checklist (`RELEASE_CANDIDATE_POLICY.md`'s amendment) afterward as part of "done," not a follow-up |
