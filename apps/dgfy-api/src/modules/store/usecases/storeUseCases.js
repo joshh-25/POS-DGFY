@@ -427,6 +427,12 @@ const serializeOrderBase = (order) => ({
     service_fee_label_snapshot: order?.service_fee_label_snapshot,
     service_fee_method_snapshot: order?.service_fee_method_snapshot,
     delivery_fee: order?.delivery_fee,
+    // #1331 (Phase 240): additive, same posture Phase 237 already used for delivery_fee itself --
+    // deliberately NOT delivery_fee_waiver_voucher_id, a raw internal id has no place on a public,
+    // PIN-addressable tracking page (see serializeOrderBase's own rejected_by/rejected_at note
+    // above). The label is the customer-facing fact.
+    delivery_fee_waiver: order?.delivery_fee_waiver ?? null,
+    delivery_fee_waiver_label_snapshot: order?.delivery_fee_waiver_label_snapshot ?? null,
     total_amount: order?.total_amount,
     discount: order?.discount || null,
     outside_radius_flag: order?.outside_radius_flag,
@@ -485,6 +491,10 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
         payment_election: String(payload.payment_election || 'full').trim().toLowerCase() === 'downpayment' ? 'downpayment' : 'full',
         promo_code: normalizePromoCode(payload.promo_code),
         voucher_code: normalizeVoucherCode(payload.voucher_code),
+        // #1331 (Phase 240): a SECOND, independent code-entry field -- the item-voucher slot guard
+        // (resolveCheckoutContext, below) only ever fires on `voucher_code`, never this one, which
+        // is the whole point of the two-axis design (ADR 0066 Decision 8's 2026-09-02 amendment).
+        delivery_voucher_code: normalizeVoucherCode(payload.delivery_voucher_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
         customer_phone: String(payload.customer_phone || storeCustomer?.phone || '').trim(),
         customer_email: String(payload.customer_email || storeCustomer?.email || '').trim().toLowerCase(),
@@ -666,7 +676,12 @@ const resolveStoreDeliveryFee = async ({
         }
     }
 
-    const waiverAmount = 0; // Hardcoded this phase -- #240 (free_delivery voucher benefit) populates it.
+    // #1331 (Phase 240): still hardcoded HERE, deliberately. This function stays I/O-free (see its
+    // own header) and a voucher lookup is not -- resolveCheckoutContext rebuilds `delivery` with the
+    // resolved waiver AFTER this function returns (its own §5.3 in the Phase 240 plan), rather than
+    // dragging a repository call into a function whose byte-identity regression tests depend on it
+    // staying await-free.
+    const waiverAmount = 0;
     const overrideAmount = null; // Hardcoded this phase -- #238 overrides the PERSISTED column post-hoc, not resolve-time.
     const finalFee = overrideAmount !== null ? overrideAmount : Math.max(0, round4(baseFee - waiverAmount));
 
@@ -1676,6 +1691,24 @@ const buildVoucherDiscountRecord = (voucherApplication) => ({
     })
 });
 
+// #1331 (Phase 240 plan §3.2, epic #1321 decision 9): the delivery-fee waiver's resolved shape --
+// deliberately NOT a voucherApplication, and deliberately field-disjoint from one (no
+// benefitClass/discountRate/discountAmount/enteredVoucherCode/lineAllocations keys). This is
+// Mechanism B of the four structural mechanisms that keep a delivery waiver out of
+// pos_transaction_discounts (ADR 0066 Decision 8's 2026-09-02 amendment): routing this object
+// through buildVoucherDiscountRecord throws a TypeError on `undefined.map(...)` at the first call
+// rather than silently writing a structurally-invalid discount row. Do not add any of the five
+// voucherApplication keys to this shape.
+const DEFAULT_DELIVERY_WAIVER_APPLICATION = Object.freeze({
+    applied: false,
+    waiverAmount: 0,
+    voucherId: null,
+    labelSnapshot: null,
+    redemptionId: null,
+    idempotentReplay: false,
+    enteredDeliveryVoucherCode: null
+});
+
 // Phase 237 (#1329, epic #1321, Wave 0 decision #2 / D2): advisory-only quoted-fee pin window.
 // 60 minutes -- >= the PayMongo QRPh intent window (no legitimately-paid session is ever flagged),
 // short enough that a genuinely stuck/redelivered webhook is visible in logs. ADVISORY ONLY: never
@@ -2059,6 +2092,23 @@ const resolveCheckoutContext = async ({
                 locationId: normalized.location_id,
                 transaction: options.transaction
             });
+            // #1331 (Phase 240 plan §5.4): fail closed -- a delivery-targeted voucher entered in
+            // THIS field (voucher_code) would otherwise reach calculateVoucherBenefit with
+            // deliveryFeeCentavos: null and throw INVALID_DELIVERY_FEE_CENTAVOS, a 500-shaped
+            // internal error instead of a clean 422 naming the actual mistake.
+            if (redemption.applied && redemption.benefitTarget !== 'items') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This code is a delivery-fee voucher and cannot be entered as an item voucher.',
+                    {
+                        statusCode: 422,
+                        details: {
+                            reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                            voucher_code: normalized.voucher_code
+                        }
+                    }
+                );
+            }
             voucherApplication = {
                 applied: redemption.applied,
                 discountAmount: centavosToPeso(redemption.discountCentavos),
@@ -2088,6 +2138,21 @@ const resolveCheckoutContext = async ({
                 context: voucherContext,
                 lines: voucherLines
             });
+            // #1331 (Phase 240 plan §5.4): same axis-mismatch guard as the transactional branch
+            // above, for the preview/quote path.
+            if (preview.applied && preview.benefitTarget !== 'items') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This code is a delivery-fee voucher and cannot be entered as an item voucher.',
+                    {
+                        statusCode: 422,
+                        details: {
+                            reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                            voucher_code: normalized.voucher_code
+                        }
+                    }
+                );
+            }
             voucherApplication = {
                 applied: preview.applied,
                 discountAmount: centavosToPeso(preview.discountCentavos),
@@ -2150,7 +2215,11 @@ const resolveCheckoutContext = async ({
     // hard-invalidates the pin, because the money is already captured and this repo has no rollback
     // mechanism (#495 open). A shape/version-invalid pin falls through to normal resolution.
     let delivery = null;
+    // #1331 (Phase 240 plan §5.5): tracks which branch below actually ran, so the delivery voucher
+    // block further down knows whether to trust a freshly-recomputed waiver or clamp to the pin.
+    let deliveryBreakdownWasPinned = false;
     if (pinnedDeliveryBreakdown !== null && isValidPinnedDeliveryBreakdown(pinnedDeliveryBreakdown)) {
+        deliveryBreakdownWasPinned = true;
         const pinnedAtMs = Date.parse(pinnedDeliveryBreakdown.pinned_at);
         const pinAgeMs = Number.isFinite(pinnedAtMs) ? (Date.now() - pinnedAtMs) : null;
         if (pinAgeMs === null || pinAgeMs > DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS) {
@@ -2231,6 +2300,107 @@ const resolveCheckoutContext = async ({
         );
     }
 
+    // #1331 (Phase 240, epic #1321 decision 9): a SECOND, independent voucher resolution -- the
+    // delivery-fee axis. Deliberately a NEW step here, not folded into the item-voucher block
+    // above: it must run AFTER `delivery` is resolved (its benefit base, `delivery.baseFee`, does
+    // not exist before this point -- Phase 240 plan §5.1/§13.3/§13.11) and AFTER the out-of-range
+    // hard block above (an out-of-range order must not burn a redemption on a checkout that was
+    // always going to 422 -- Phase 240 plan §5.1). ADR 0066 Decision 8's 2026-09-02 amendment is
+    // what makes this a second, independent axis rather than something the slot guard above must
+    // also police -- ONLY the item-axis guard (promoApplication.applied && normalized.voucher_code)
+    // applies to voucher_code; this field is never slot-guarded.
+    let deliveryWaiverApplication = DEFAULT_DELIVERY_WAIVER_APPLICATION;
+    if (normalized.delivery_voucher_code && orderMethod === 'delivery' && delivery.baseFee > 0) {
+        const deliveryVoucherContext = { ...voucherContext, deliveryFeeCentavos: toCentavos(delivery.baseFee) };
+        const deliveryResult = options?.transaction
+            ? await redeemVoucherUseCase({
+                code: normalized.delivery_voucher_code,
+                context: deliveryVoucherContext,
+                lines: voucherLines,
+                // #1331 (Phase 240 plan §4/§13.5): distinct from the item voucher's bare key above
+                // -- that key is unchanged, so every existing order's key stays byte-identical to
+                // before this phase.
+                idempotencyKey: `${normalized.idempotency_key}:delivery`,
+                channel: 'storefront',
+                storeCustomerId: storeCustomer?.customer_id || null,
+                locationId: normalized.location_id,
+                transaction: options.transaction
+            })
+            : await previewVoucherEligibilityUseCase({
+                code: normalized.delivery_voucher_code,
+                context: deliveryVoucherContext,
+                lines: voucherLines
+            });
+
+        // #1331 (Phase 240 plan §5.4): fail closed -- an item-targeted code entered in THIS field
+        // would otherwise silently resolve against the delivery fee using the item math.
+        if (deliveryResult.applied && deliveryResult.benefitTarget !== 'delivery') {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'This code is not a delivery-fee voucher.',
+                {
+                    statusCode: 422,
+                    details: {
+                        reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                        delivery_voucher_code: normalized.delivery_voucher_code
+                    }
+                }
+            );
+        }
+
+        const resolvedWaiverAmount = centavosToPeso(deliveryResult.discountCentavos);
+        const labelSnapshot = deliveryResult.applied
+            ? (deliveryResult.badge || deliveryResult.title || `Voucher (${deliveryResult.code})`)
+            : null;
+
+        if (deliveryBreakdownWasPinned) {
+            // Phase 240 plan §5.5: the pinned-breakdown replay path -- every QRPh/webhook-finalized
+            // order takes this branch. The redemption above still has to happen exactly once, on
+            // this transactional pass -- but the PERSISTED waiver amount comes from the pin
+            // captured at payment-session creation, never from a fresh recomputation that could
+            // disagree with the amount PayMongo actually captured. Never throws, never re-prices --
+            // this repo has no rollback (#495).
+            if (deliveryResult.applied && resolvedWaiverAmount !== pinnedDeliveryBreakdown.waiverAmount) {
+                logger.warn('[DeliveryFee] Delivery voucher waiver recomputed differently from the pinned amount -- honoring the pin', {
+                    pinned_waiver_amount: pinnedDeliveryBreakdown.waiverAmount,
+                    resolved_waiver_amount: resolvedWaiverAmount
+                });
+            }
+            deliveryWaiverApplication = Object.freeze({
+                applied: deliveryResult.applied,
+                waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+                voucherId: deliveryResult.voucherId,
+                labelSnapshot,
+                redemptionId: deliveryResult.redemptionId ?? null,
+                idempotentReplay: Boolean(deliveryResult.idempotentReplay),
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null
+            });
+            // `delivery` stays exactly as the pin gave it -- do not rebuild it on this branch.
+        } else {
+            deliveryWaiverApplication = Object.freeze({
+                applied: deliveryResult.applied,
+                waiverAmount: resolvedWaiverAmount,
+                voucherId: deliveryResult.voucherId,
+                labelSnapshot,
+                redemptionId: deliveryResult.redemptionId ?? null,
+                idempotentReplay: Boolean(deliveryResult.idempotentReplay),
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null
+            });
+            // ADR 0078: finalFee = max(0, baseFee - waiverAmount); overrideAmount (#1330, not built
+            // yet) still wins when present -- the same precedence resolveStoreDeliveryFee's own
+            // formula already encodes. overrideAmount is always null here today (#1330 hasn't
+            // shipped), kept for when it does.
+            const nextFinalFee = delivery.overrideAmount !== null
+                ? delivery.overrideAmount
+                : Math.max(0, round4(delivery.baseFee - deliveryWaiverApplication.waiverAmount));
+            delivery = Object.freeze({
+                ...delivery,
+                waiverAmount: deliveryWaiverApplication.waiverAmount,
+                finalFee: nextFinalFee
+            });
+        }
+    }
+
     // Kept as a scalar alongside the new `delivery` breakdown object (purely additive) -- every
     // existing read site (cart-quote response, checkout persistence/response, payment-session
     // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
@@ -2283,6 +2453,10 @@ const resolveCheckoutContext = async ({
         recipePlan,
         promoApplication,
         voucherApplication,
+        // #1331 (Phase 240): the delivery-fee axis's own application object, deliberately separate
+        // from voucherApplication above (ADR 0066 Decision 8's 2026-09-02 amendment -- two
+        // independent axes, not one governed slot).
+        deliveryWaiverApplication,
         deliveryFee,
         // Phase 237 (#1329): the full resolved breakdown, additive alongside the deliveryFee scalar
         // above (which stays === delivery.finalFee). See resolveStoreDeliveryFee's own doc comment
@@ -3281,6 +3455,9 @@ export const buildStoreCartQuoteUseCase = ({
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
+                // #1331 (Phase 240, epic #1321 decision 9): additive, alongside delivery_fee above
+                // -- so a shopper sees the waiver applied at quote time, before reaching checkout.
+                delivery_fee_waiver: resolved.deliveryWaiverApplication.waiverAmount,
                 // Phase 237 (#1329, D6): additive. `delivery_out_of_range` mirrors
                 // resolved.delivery.outOfRange; `delivery_distance_meters` mirrors
                 // resolved.delivery.distanceMeters (populated only when distanceSource === 'road').
@@ -3335,6 +3512,10 @@ export const buildStoreCartQuoteUseCase = ({
                     : null,
                 voucher_feedback: resolved.voucherApplication.applied
                     ? { applied: true, voucher_code: normalizeVoucherCode(payload.voucher_code) }
+                    : null,
+                // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
+                    ? { applied: true, voucher_code: normalizeVoucherCode(payload.delivery_voucher_code) }
                     : null
             });
         } catch (error) {
@@ -3480,6 +3661,10 @@ export const buildStoreCheckoutUseCase = ({
                 payment_timing: normalized.payment_timing,
                 promo_code: normalized.promo_code,
                 voucher_code: normalized.voucher_code,
+                // #1331 (Phase 240 plan §13.6): omitting this would let two carts differing only in
+                // their delivery voucher share one idempotency key -- the second request would
+                // silently return the first order.
+                delivery_voucher_code: normalized.delivery_voucher_code,
                 customer_name: normalized.customer_name,
                 customer_phone: normalized.customer_phone,
                 customer_email: normalized.customer_email,
@@ -3672,6 +3857,13 @@ export const buildStoreCheckoutUseCase = ({
                     delivery_fee_waiver: resolved.delivery.waiverAmount,
                     delivery_fee_override: resolved.delivery.overrideAmount,
                     delivery_fee_calc_version: resolved.delivery.calcVersion,
+                    // #1331 (Phase 240, epic #1321): the two genuinely-new provenance columns --
+                    // which voucher waived the fee, and what it was called at the time. Header
+                    // fields, deliberately NOT on the `discount` argument below -- see
+                    // buildVoucherDiscountRecord's own field-disjoint contract and ADR 0066 Decision
+                    // 8's 2026-09-02 amendment (Mechanism A: a separate write path).
+                    delivery_fee_waiver_voucher_id: resolved.deliveryWaiverApplication.voucherId,
+                    delivery_fee_waiver_label_snapshot: resolved.deliveryWaiverApplication.labelSnapshot,
                     accepted_by: null,
                     accepted_at: null
                 },
@@ -3787,6 +3979,24 @@ export const buildStoreCheckoutUseCase = ({
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Voucher redemption produced no discounted line allocations for this order.',
+                    { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
+            }
+
+            // #1331 (Phase 240 plan §5.3): the delivery waiver's sibling to the redemptionId guard
+            // above. Deliberately WITHOUT that guard's line-allocation half -- a delivery-targeted
+            // benefit has no per-line component BY CONSTRUCTION (voucherBenefitPolicy.js's own
+            // Direction A), so an all-zero lineAllocations here is correct, not a defect (Phase 240
+            // plan §3.3/§13.2 -- routing this through the item guard would misfire on every single
+            // delivery voucher redemption).
+            if (
+                resolved.deliveryWaiverApplication.applied
+                && !resolved.deliveryWaiverApplication.redemptionId
+                && !resolved.deliveryWaiverApplication.idempotentReplay
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery voucher redemption could not be recorded for this order.',
                     { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
                 );
             }
@@ -4023,6 +4233,14 @@ export const buildStoreCheckoutUseCase = ({
                         applied: true,
                         voucher_code: normalized.voucher_code,
                         redemption_id: resolved.voucherApplication.redemptionId
+                    }
+                    : null,
+                // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
+                    ? {
+                        applied: true,
+                        voucher_code: normalized.delivery_voucher_code,
+                        redemption_id: resolved.deliveryWaiverApplication.redemptionId
                     }
                     : null,
                 account_action: accountAction,
