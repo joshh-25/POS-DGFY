@@ -973,6 +973,14 @@ const voidPosTransactionSchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
+// Phase 238 (#1330): staff delivery-fee override, unsettled payment only. delivery_fee is the new
+// absolute value to charge (not a delta) -- resending the same value on a retry is a no-op at the
+// use-case layer, so no separate idempotency_key is required here the way void/refund need one.
+const overrideDeliveryFeeSchema = Joi.object({
+    delivery_fee: Joi.number().min(0).precision(4).required(),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
 const esalesGenerateSchema = Joi.object({
     report_month: Joi.string().trim().pattern(/^\d{4}-\d{2}$/).required()
 });
@@ -1325,6 +1333,7 @@ export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema
 export const validatePosDrawerAuthorization = validateSchema(deviceDrawerAuthorizationSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
+export const validateOverrideDeliveryFee = validateSchema(overrideDeliveryFeeSchema, 'body', 'validatedData');
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');

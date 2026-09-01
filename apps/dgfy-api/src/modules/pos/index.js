@@ -88,6 +88,7 @@ import {
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
 import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
+import { buildOverrideDeliveryFeeUseCase } from './usecases/deliveryFeeOverrideUseCases.js';
 import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
 import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRefundUseCases.js';
 import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
@@ -228,6 +229,7 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     employeeCreditService
 });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
+export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
 export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({
     posRepository,

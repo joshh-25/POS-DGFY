@@ -54,7 +54,7 @@ import {
     assertStoreProfileNotClientWritten
 } from './storeProfileShadowWrite.js';
 import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '../../shared/constants/storeProfile.js';
-import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
+import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
@@ -90,31 +90,6 @@ const clearCapabilityCachesIfTouched = async (settingsData) => {
     // both modules have finished evaluating.
     const { clearItemRepositorySettingsCache } = await import('../../inventory/index.js');
     clearItemRepositorySettingsCache();
-};
-
-// Mode-switch hardening (issue #178 phase 5): capture the pre-write values so
-// the audit log can record an accurate from -> to, even though the actual
-// diffing/writing of the log happens after the setting write succeeds.
-const resolveWorkflowModeAuditBeforeValues = async ({ settingsRepository, settingsData }) => {
-    const touchesMode = Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY);
-    const touchesOverlay = Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
-    const touchesDisabledOverlay = Object.prototype.hasOwnProperty.call(settingsData, DISABLED_CAPABILITIES_SETTING_KEY);
-    if (
-        (!touchesMode && !touchesOverlay && !touchesDisabledOverlay)
-        || typeof settingsRepository?.getSettingsByKeys !== 'function'
-    ) {
-        return {};
-    }
-    const current = await settingsRepository.getSettingsByKeys([
-        WORKFLOW_MODE_SETTING_KEY,
-        ENABLED_CAPABILITIES_SETTING_KEY,
-        DISABLED_CAPABILITIES_SETTING_KEY
-    ]);
-    return {
-        [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
-        [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null,
-        [DISABLED_CAPABILITIES_SETTING_KEY]: current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
-    };
 };
 
 // The audit log is diagnostic, not authoritative: a logging failure must

@@ -84,6 +84,17 @@ import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constant
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
+// Phase 233 (#1324, epic #1321): mirrors apps/dgfy-api's DELIVERY_FEE_MODES
+// (modules/deliveryPricing/domain/deliveryFeeConfig.js). Calculated/free logic isn't wired to
+// checkout yet (#237) -- this phase only round-trips the config.
+const DELIVERY_FEE_MODE_OPTIONS = ['fixed', 'calculated', 'free'];
+const DEFAULT_DELIVERY_FEE_CALC = Object.freeze({
+  min_fee: '',
+  included_km: '',
+  per_km_rate: '',
+  increment_km: '',
+  max_distance_km: ''
+});
 const HASH_TARGET_ID_PATTERN = /^[A-Za-z][-A-Za-z0-9_:.]*$/;
 const LOCATION_REFERENCE_LABELS = {
   itemLocationStocks: 'Item location stock',
@@ -196,6 +207,8 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   posPettyCashAmount: 0,
   opsWorkflowMode: workflowMode,
   storeDeliveryFee: 0,
+  storeDeliveryFeeMode: 'fixed',
+  storeDeliveryFeeCalc: DEFAULT_DELIVERY_FEE_CALC,
   storeTenantSlug: '',
   storeIsVisible: false,
   storeHasNoLocation: false,
@@ -315,6 +328,8 @@ const SETTINGS_FIELD_LABELS = {
   pos_petty_cash_amount: 'Petty Cash Amount',
   ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
+  store_delivery_fee_mode: 'Delivery Fee Mode',
+  store_delivery_fee_calc: 'Delivery Fee Calculation',
   store_tenant_slug: 'Storefront Slug',
   store_has_no_location: 'Store Has No Location',
   pos_wait_time_minutes: 'Customer Wait Time',
@@ -366,6 +381,8 @@ const POS_SETUP_SETTING_KEYS = [
 
 const STOREFRONT_SETTING_KEYS = [
   'store_delivery_fee',
+  'store_delivery_fee_mode',
+  'store_delivery_fee_calc',
   'store_tenant_slug',
   'store_is_visible',
   'store_has_no_location',
@@ -566,6 +583,48 @@ const parseNullableNumberInput = (value, {
     normalized = Number(normalized.toFixed(precision));
   }
   return normalized;
+};
+
+// Phase 233 (#1324): hydrates the store_delivery_fee_calc blob into form-friendly strings.
+// Deliberately field-by-field rather than "all or nothing" -- a partially-filled saved blob (or
+// one edited by hand via the API) still shows whatever fields it has instead of blanking the form.
+// Save-time validation/normalization is a separate concern; see the updatePayload builder below.
+const normalizeDeliveryFeeCalcSettings = (raw) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_DELIVERY_FEE_CALC };
+  const toFieldString = (value) => (value == null || value === '' ? '' : String(value));
+  return {
+    min_fee: toFieldString(raw.min_fee),
+    included_km: toFieldString(raw.included_km),
+    per_km_rate: toFieldString(raw.per_km_rate),
+    increment_km: toFieldString(raw.increment_km),
+    max_distance_km: toFieldString(raw.max_distance_km)
+  };
+};
+
+// Phase 233 (#1324): builds the save-time store_delivery_fee_calc value. The backend's Joi schema
+// (storeDeliveryFeeCalcSchema) requires all five fields together when the blob is present at all --
+// mirrored here by returning undefined (omit the key entirely, leaving whatever is already stored
+// untouched) for anything partial or blank, rather than send a payload the backend would 422 on.
+const serializeDeliveryFeeCalcForSave = (calc) => {
+  if (!calc || typeof calc !== 'object') return undefined;
+  const minFee = parseNullableNumberInput(calc.min_fee, { min: 0, precision: 4 });
+  const includedKm = parseNullableNumberInput(calc.included_km, { min: 0, precision: 4 });
+  const perKmRate = parseNullableNumberInput(calc.per_km_rate, { min: 0, precision: 4 });
+  const incrementKm = parseNullableNumberInput(calc.increment_km, { min: 0.0001, precision: 4 });
+  const maxDistanceKm = parseNullableNumberInput(calc.max_distance_km, { min: 0.0001, precision: 4 });
+
+  if ([minFee, includedKm, perKmRate, incrementKm, maxDistanceKm].some((value) => value == null)) {
+    return undefined;
+  }
+  if (maxDistanceKm < includedKm) return undefined;
+
+  return {
+    min_fee: minFee,
+    included_km: includedKm,
+    per_km_rate: perKmRate,
+    increment_km: incrementKm,
+    max_distance_km: maxDistanceKm
+  };
 };
 
 const normalizeStorefrontGallerySettings = (raw) => {
@@ -1062,6 +1121,10 @@ export default function Settings() {
           posPettyCashAmount: Number(systemSettings.pos_petty_cash_amount?.value ?? 0) || 0,
           opsWorkflowMode: normalizedWorkflowMode,
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
+          storeDeliveryFeeMode: DELIVERY_FEE_MODE_OPTIONS.includes(String(systemSettings.store_delivery_fee_mode?.value || '').trim().toLowerCase())
+            ? String(systemSettings.store_delivery_fee_mode.value).trim().toLowerCase()
+            : 'fixed',
+          storeDeliveryFeeCalc: normalizeDeliveryFeeCalcSettings(systemSettings.store_delivery_fee_calc?.value),
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value === true,
           storeHasNoLocation: systemSettings.store_has_no_location?.value === true,
@@ -1222,6 +1285,18 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Phase 233 (#1324): updates one field of the store_delivery_fee_calc form blob without
+  // clobbering the others -- mirrors handleStorefrontWhyChange's per-slot update below.
+  const handleDeliveryFeeCalcChange = (field, value) => {
+    setSettings((prev) => ({
+      ...prev,
+      storeDeliveryFeeCalc: {
+        ...(prev.storeDeliveryFeeCalc || DEFAULT_DELIVERY_FEE_CALC),
+        [field]: value
+      }
+    }));
   };
 
   const handleStorefrontWhyChange = (index, value) => {
@@ -1945,6 +2020,16 @@ export default function Settings() {
       )
         ? String(settings.posTerminalRegistryMode || '').trim().toLowerCase()
         : 'warn';
+
+      // Phase 233 (#1324): fee-mode config round-trip. storeDeliveryFeeCalcForSave is undefined
+      // (key omitted from updatePayload below) whenever the calc form is blank or partially
+      // filled -- see serializeDeliveryFeeCalcForSave's own comment.
+      const storeDeliveryFeeMode = DELIVERY_FEE_MODE_OPTIONS.includes(
+        String(settings.storeDeliveryFeeMode || '').trim().toLowerCase()
+      )
+        ? String(settings.storeDeliveryFeeMode || '').trim().toLowerCase()
+        : 'fixed';
+      const storeDeliveryFeeCalcForSave = serializeDeliveryFeeCalcForSave(settings.storeDeliveryFeeCalc);
       const activeRegistryEntries = posTerminalRegistry.filter((entry) => entry?.is_active !== false);
       if (posTerminalRegistryMode === 'enforce' && activeRegistryEntries.length === 0) {
         toast.error('Terminal registry mode "enforce" requires at least one active terminal entry.');
@@ -2026,6 +2111,8 @@ export default function Settings() {
         pos_petty_cash_symbol: settings.posPettyCashSymbol,
         pos_petty_cash_amount: Number(settings.posPettyCashAmount || 0),
         store_delivery_fee: Number(settings.storeDeliveryFee || 0),
+        store_delivery_fee_mode: storeDeliveryFeeMode,
+        ...(storeDeliveryFeeCalcForSave ? { store_delivery_fee_calc: storeDeliveryFeeCalcForSave } : {}),
         store_tenant_slug: String(settings.storeTenantSlug || '').trim().toLowerCase(),
         store_is_visible: settings.storeIsVisible === true,
         store_has_no_location: settings.storeHasNoLocation === true,
@@ -2722,7 +2809,98 @@ export default function Settings() {
                     onChange={(e) => handleChange('storeDeliveryFee', e.target.value)}
                     placeholder="0.00"
                   />
+                  <p className="text-xs text-slate-500">
+                    Charged flat any time delivery fee mode is Fixed -- also the fallback fee used
+                    if Calculated mode can&apos;t resolve a distance.
+                  </p>
                 </div>
+                <div className="space-y-2">
+                  <Label>Delivery Fee Mode</Label>
+                  <select
+                    value={settings.storeDeliveryFeeMode || 'fixed'}
+                    onChange={(e) => handleChange('storeDeliveryFeeMode', e.target.value)}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <option value="fixed">Fixed</option>
+                    <option value="calculated">Calculated (distance-based)</option>
+                    <option value="free">Free</option>
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    Calculated and Free modes are configurable here but not yet applied at
+                    checkout -- every order is still charged the flat fee above until that lands.
+                  </p>
+                </div>
+                {settings.storeDeliveryFeeMode === 'calculated' && (
+                  <div className="space-y-2 md:col-span-2 rounded-lg border border-slate-200 p-3 bg-slate-50">
+                    <Label>Calculated Delivery Fee Formula</Label>
+                    <p className="text-xs text-slate-500">
+                      Minimum fee covers the included distance; the per-km rate then charges per
+                      started increment out to the max distance. Not applied at checkout yet -- see
+                      note above.
+                    </p>
+                    <div className="grid md:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Minimum Fee (PHP)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={settings.storeDeliveryFeeCalc?.min_fee ?? ''}
+                          onChange={(e) => handleDeliveryFeeCalcChange('min_fee', e.target.value)}
+                          placeholder="50"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Included Distance (km)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={settings.storeDeliveryFeeCalc?.included_km ?? ''}
+                          onChange={(e) => handleDeliveryFeeCalcChange('included_km', e.target.value)}
+                          placeholder="3"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Rate per km (PHP)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          value={settings.storeDeliveryFeeCalc?.per_km_rate ?? ''}
+                          onChange={(e) => handleDeliveryFeeCalcChange('per_km_rate', e.target.value)}
+                          placeholder="10"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Charge Increment (km)</Label>
+                        <Input
+                          type="number"
+                          min="0.0001"
+                          step="0.0001"
+                          value={settings.storeDeliveryFeeCalc?.increment_km ?? ''}
+                          onChange={(e) => handleDeliveryFeeCalcChange('increment_km', e.target.value)}
+                          placeholder="0.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Max Distance (km)</Label>
+                        <Input
+                          type="number"
+                          min="0.0001"
+                          step="0.0001"
+                          value={settings.storeDeliveryFeeCalc?.max_distance_km ?? ''}
+                          onChange={(e) => handleDeliveryFeeCalcChange('max_distance_km', e.target.value)}
+                          placeholder="15"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      All five fields are required together to save the formula -- an incomplete
+                      set is left unsaved rather than partially applied.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Public Map and Storefront Page</Label>
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">

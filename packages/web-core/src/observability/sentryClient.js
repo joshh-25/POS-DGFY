@@ -108,11 +108,11 @@ export const resolveWebviewChromeMajor = (userAgent) => {
 
 // Mirrors backend/src/config/sentry.js's resolveSentryEnvironment: `MODE` is
 // "production" for every `vite build` regardless of which real environment
-// (DEV/STAGING/BETA/PROD) produced it, so falling back to it here would
+// (DEV/STAGING/PROD) produced it, so falling back to it here would
 // silently file an unconfigured environment's errors under "production" the
 // moment VITE_SENTRY_ENABLED flips on without VITE_SENTRY_ENVIRONMENT also
-// being set (this is exactly how BETA is configured today). Only fall back
-// to MODE when it is NOT "production"; otherwise resolve to a value that is
+// being set (this is exactly the failure mode a misconfigured environment
+// produces). Only fall back to MODE when it is NOT "production"; otherwise resolve to a value that is
 // obviously wrong in the Sentry UI and prompts a fix, rather than quietly
 // polluting the real PROD environment's data.
 export const resolveSentryEnvironment = (env) => {
@@ -252,11 +252,11 @@ export const sanitizeSentryEvent = (rawEvent) => {
 // the browser console (or chrome://inspect on a WebView, e.g. the iMin
 // POS terminal) without shipping a trigger to PROD. `import.meta.env.DEV`
 // was the original gate here, but that's a Vite build-mode flag -- every
-// `vite build` (including DEV/STAGING/BETA deploys, not just a local `vite
+// `vite build` (including DEV/STAGING/PROD deploys, not just a local `vite
 // dev` server) runs in "production" mode, so `import.meta.env.DEV` is false
 // on every deployed environment and this never existed outside a local
 // dev server. Gate on the resolved Sentry *environment* instead (DEV/
-// STAGING/BETA all get it; only PROD does not), so a real deployed
+// STAGING all get it; only PROD does not), so a real deployed
 // device -- like a Chrome 80 iMin terminal that has never sent a single
 // Sentry event -- can actually be used to prove delivery works.
 // Registered on every initBrowserSentry() call (regardless of whether

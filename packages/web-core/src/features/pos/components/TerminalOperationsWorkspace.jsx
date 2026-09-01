@@ -157,6 +157,7 @@ import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
 import DownpaymentSettingsPanel from './DownpaymentSettingsPanel.jsx';
+import PosDeliveryPricingSettingsCard from './PosDeliveryPricingSettingsCard.jsx';
 import PosCashierAttendanceSettingsCard from './PosCashierAttendanceSettingsCard.jsx';
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
@@ -5500,6 +5501,12 @@ function SettingsWorkspace({
     ...(canViewDownpayment
       ? [{ id: 'payments', label: 'Payments', icon: Banknote }]
       : []),
+    // Phase 233b (#1341, epic #1321): hidden entirely (not merely disabled) for a POS role
+    // without settings:edit -- matches #1341's acceptance evidence ("a POS role without the
+    // required permission cannot see or use the screen").
+    ...(canEditSettings
+      ? [{ id: 'delivery_pricing', label: 'Delivery Pricing', icon: Truck }]
+      : []),
     ...(canManageEmployees || canManageEmployeeCredit
       ? [{ id: 'employees', label: 'Employees', icon: Users }]
       : [])
@@ -8871,6 +8878,15 @@ function SettingsWorkspace({
     if (renderedTab === 'payments' && canViewDownpayment) {
       return (
         <DownpaymentSettingsPanel
+          terminalUser={terminalUser}
+          locked={locked}
+          sectionId={sectionId}
+        />
+      );
+    }
+    if (renderedTab === 'delivery_pricing' && canEditSettings) {
+      return (
+        <PosDeliveryPricingSettingsCard
           terminalUser={terminalUser}
           locked={locked}
           sectionId={sectionId}
