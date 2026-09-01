@@ -29,6 +29,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = require('./lib/runner-availability');
+const { readActiveRouting } = require('./lib/runner-routing-state');
 
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
 const ORG_SLUG = 'Sieitzz';
@@ -334,10 +335,41 @@ function runPreflight(options, deps = {}) {
   };
 }
 
+/**
+ * Phase 234 (#1365) Wave 1 (F-4): derives the currently-active routing class from the two
+ * PROD-facing workflow files themselves, via runner-routing-state.js's readActiveRouting -- rather
+ * than the Phase 233 scaffold's hardcoded 'self-hosted' literal, which would silently start lying
+ * ("OK, self-hosted is available") the moment Wave 3's flip lands and every real job actually runs
+ * hosted. A green preflight that proves nothing is worse than no preflight.
+ *
+ * @param {{deployMainText?: string, qualityGateText?: string, readFile?: (relPath: string) => string}} deps
+ * @returns {'hosted' | 'self-hosted' | 'mixed'}
+ */
+function resolveActiveRouting(deps = {}) {
+  const readFile = deps.readFile || ((relPath) => fs.readFileSync(path.resolve(__dirname, '..', relPath), 'utf8'));
+  const deployMainText = deps.deployMainText !== undefined
+    ? deps.deployMainText
+    : readFile('.github/workflows/deploy-main.yml');
+  const qualityGateText = deps.qualityGateText !== undefined
+    ? deps.qualityGateText
+    : readFile('.github/workflows/promotion-quality-gate.yml');
+  return readActiveRouting({ deployMainText, qualityGateText });
+}
+
 function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    options.activeRouting = 'self-hosted'; // Phase 233 scaffold: every site's active class today.
+    const activeRouting = resolveActiveRouting();
+    if (activeRouting === 'mixed') {
+      console.error(
+        '[ci-runner-preflight] routing inconsistent across sites, refusing to report a class -- ' +
+        'deploy-main.yml and promotion-quality-gate.yml disagree on which class is active (or one ' +
+        'file disagrees internally). Run `npm run check:runner-routing` for the specific site(s), ' +
+        'fix the inconsistency, then re-run this preflight.'
+      );
+      process.exit(1);
+    }
+    options.activeRouting = activeRouting;
     const report = runPreflight(options);
 
     if (options.output) {
@@ -381,6 +413,7 @@ module.exports = {
   probeHostedAvailability,
   probeSelfHostedAvailability,
   runPreflight,
+  resolveActiveRouting,
   REPO_SLUG,
   ORG_SLUG,
   PROBE_WORKFLOW

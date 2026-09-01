@@ -8,7 +8,8 @@ const {
   probeCanary,
   probeHostedAvailability,
   probeSelfHostedAvailability,
-  runPreflight
+  runPreflight,
+  resolveActiveRouting
 } = require('./ci-runner-preflight');
 
 const SHA = 'a'.repeat(40);
@@ -263,4 +264,46 @@ test('runPreflight: --class self-hosted skips the hosted probe entirely', () => 
     fetchCheckRuns: () => ({ check_runs: [] })
   });
   assert.equal(report.hosted.reason, 'not_probed');
+});
+
+// --- Phase 234 (#1365) Wave 1 (F-4): resolveActiveRouting -- replaces the Phase 233 hardcoded ------
+// 'self-hosted' literal with a derived read of the two PROD-facing workflow files themselves. -------
+
+function pairJobBlock(name, activeHosted) {
+  return activeHosted
+    ? `\n  ${name}:\n    # runner_labels_json: '["sieitz-runner"]'\n    runner_labels_json: '["ubuntu-latest"]'\n`
+    : `\n  ${name}:\n    # runner_labels_json: '["ubuntu-latest"]'\n    runner_labels_json: '["sieitz-runner"]'\n`;
+}
+
+test('resolveActiveRouting: derives self-hosted from an all-self-hosted-active tree', () => {
+  const deployMainText = `jobs:${pairJobBlock('job-a', false)}`;
+  const qualityGateText = `jobs:${pairJobBlock('job-b', false)}`;
+  assert.equal(resolveActiveRouting({ deployMainText, qualityGateText }), 'self-hosted');
+});
+
+test('resolveActiveRouting: derives hosted from an all-hosted-active tree (post-flip shape)', () => {
+  const deployMainText = `jobs:${pairJobBlock('job-a', true)}`;
+  const qualityGateText = `jobs:${pairJobBlock('job-b', true)}`;
+  assert.equal(resolveActiveRouting({ deployMainText, qualityGateText }), 'hosted');
+});
+
+test('resolveActiveRouting: derives mixed when non-exempt sites disagree (inconsistent tree)', () => {
+  const deployMainText = `jobs:${pairJobBlock('job-a', true)}`;
+  const qualityGateText = `jobs:${pairJobBlock('job-b', false)}`;
+  assert.equal(resolveActiveRouting({ deployMainText, qualityGateText }), 'mixed');
+});
+
+test('resolveActiveRouting: defaults to reading the two real workflow files off disk when no text is injected', () => {
+  // Wave 1 is inert -- the real tree today must derive self-hosted, matching EXPECTED_ACTIVE_CLASS.
+  assert.equal(resolveActiveRouting(), 'self-hosted');
+});
+
+test('runPreflight with a mixed-derived activeRouting is never asked to run -- main() must exit 1 before calling it', () => {
+  // resolveActiveRouting's 'mixed' result is handled by main() (process.exit(1) with an explicit
+  // "routing inconsistent" message) before runPreflight is ever invoked -- runPreflight itself has
+  // no 'mixed' branch and isn't expected to grow one; this test documents that boundary rather than
+  // exercising unreachable code inside runPreflight.
+  const deployMainText = `jobs:${pairJobBlock('job-a', true)}`;
+  const qualityGateText = `jobs:${pairJobBlock('job-b', false)}`;
+  assert.equal(resolveActiveRouting({ deployMainText, qualityGateText }), 'mixed');
 });
