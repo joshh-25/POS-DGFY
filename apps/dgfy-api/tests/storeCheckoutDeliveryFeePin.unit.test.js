@@ -215,7 +215,27 @@ describe('resolveCheckoutContext pinnedDeliveryBreakdown -- the mechanism itself
     test.each([
         ['empty object', {}],
         ['finalFee not a number', { ...VALID_PIN_AT_5400M, finalFee: 'x' }],
-        ['negative finalFee', { ...VALID_PIN_AT_5400M, finalFee: -1 }]
+        ['negative finalFee', { ...VALID_PIN_AT_5400M, finalFee: -1 }],
+        // #1377 review, RF-2: isValidPinnedDeliveryBreakdown used to validate only mode/finalFee/
+        // calcVersion -- every field below is now validated too, since all of them get copied
+        // verbatim into the persisted order on webhook finalization.
+        ['baseFee missing', (() => { const { baseFee, ...rest } = VALID_PIN_AT_5400M; return rest; })()],
+        ['baseFee wrong type', { ...VALID_PIN_AT_5400M, baseFee: 'ninety-seven' }],
+        ['baseFee negative', { ...VALID_PIN_AT_5400M, baseFee: -1 }],
+        ['waiverAmount missing', (() => { const { waiverAmount, ...rest } = VALID_PIN_AT_5400M; return rest; })()],
+        ['waiverAmount wrong type', { ...VALID_PIN_AT_5400M, waiverAmount: 'none' }],
+        ['waiverAmount negative', { ...VALID_PIN_AT_5400M, waiverAmount: -1 }],
+        // overrideAmount: null-vs-zero -- null (no override) is valid, see VALID_PIN_AT_5400M itself;
+        // a non-null override must still be a real finite nonnegative number, not a stringified one.
+        ['overrideAmount wrong type (stringified number)', { ...VALID_PIN_AT_5400M, overrideAmount: '10' }],
+        ['overrideAmount negative', { ...VALID_PIN_AT_5400M, overrideAmount: -1 }],
+        ['distanceSource invalid enum value', { ...VALID_PIN_AT_5400M, distanceSource: 'gps' }],
+        ['distanceMeters wrong type', { ...VALID_PIN_AT_5400M, distanceMeters: '5400' }],
+        ['distanceMeters negative', { ...VALID_PIN_AT_5400M, distanceMeters: -1 }],
+        ['fallbackApplied not a boolean', { ...VALID_PIN_AT_5400M, fallbackApplied: 1 }],
+        ['outOfRange not a boolean', { ...VALID_PIN_AT_5400M, outOfRange: 'false' }],
+        ['pinned_at missing', (() => { const { pinned_at, ...rest } = VALID_PIN_AT_5400M; return rest; })()],
+        ['pinned_at unparseable', { ...VALID_PIN_AT_5400M, pinned_at: 'not-a-date' }]
     ])('malformed pin (%s) falls through to normal resolution, does not throw', async (_label, malformedPin) => {
         const roadDistanceProvider = fakeRoadDistanceProvider({ distanceMeters: 5400, source: 'road' });
         const { useCase } = buildCheckoutFixture({
@@ -233,6 +253,29 @@ describe('resolveCheckoutContext pinnedDeliveryBreakdown -- the mechanism itself
         // Falls through to a fresh resolution -- 5400m calculated-mode prices at ₱97, same as the
         // pin would have, but arrived at by re-resolving, not by honoring the malformed pin.
         expect(result.data.totals.delivery_fee).toBe(97);
+    });
+
+    test('overrideAmount: 0 (a real override to zero, not "no override") is honored, not treated as invalid', async () => {
+        // Guards against a subtle falsy-coercion bug (e.g. `if (!pin.overrideAmount)`) that would
+        // treat a legitimate zero override the same as `null` (no override) and reject/ignore it.
+        const roadDistanceProvider = fakeRoadDistanceProvider({ distanceMeters: null, source: 'unavailable' });
+        const { useCase, createOnlineTransactionWithLines } = buildCheckoutFixture({
+            settingsRows: calculatedModeSettingsRows(),
+            roadDistanceProvider
+        });
+        const zeroOverridePin = { ...VALID_PIN_AT_5400M, overrideAmount: 0, finalFee: 0 };
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(deliveryPayload()),
+            pinnedDeliveryBreakdown: zeroOverridePin
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.totals.delivery_fee).toBe(0);
+        const persistedHeader = createOnlineTransactionWithLines.mock.calls[0][0].header;
+        expect(persistedHeader.delivery_fee).toBe(0);
+        expect(persistedHeader.delivery_fee_override).toBe(0);
     });
 
     test('calcVersion mismatch falls through to normal resolution, does not throw', async () => {

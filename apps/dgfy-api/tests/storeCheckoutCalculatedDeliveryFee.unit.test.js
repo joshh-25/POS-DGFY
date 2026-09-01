@@ -246,14 +246,22 @@ describe('resolveStoreDeliveryFee calculated mode -- fail-open-to-fixed (ADR 007
         expect(result.data.totals.delivery_fee).toBe(50);
     });
 
-    test('no coordinates on payload: the provider is never called, fallback applies', async () => {
+    // #1377 review, RF-3: toNumberOrNull() used to coerce `null`/`''` straight through `Number(...)`,
+    // which silently produced a finite `0` -- indistinguishable from a genuine (0, 0) coordinate --
+    // so only an omitted/undefined coordinate actually normalized to `null` (Number(undefined) is
+    // NaN). Fixed at toNumberOrNull() itself; this matrix asserts every one of these shapes now
+    // behaves identically: the provider is never called, and calculated mode falls back to fixed.
+    test.each([
+        ['omitted (undefined)', undefined],
+        ['explicit null', null],
+        ['empty string', ''],
+        ['non-numeric string', 'not-a-number']
+    ])('no usable coordinates on payload (%s): the provider is never called, fallback applies', async (_label, coordinateValue) => {
         const roadDistanceProvider = fakeRoadDistanceProvider({ distanceMeters: 5400, source: 'road' });
-        // `undefined`, not `null` -- toNumberOrNull(null) === 0 (Number(null) is finite), so only an
-        // omitted/undefined coordinate actually normalizes to `null` (Number(undefined) is NaN).
         const { result } = await runCheckout({
             settingsRows: calculatedModeSettingsRows(),
             roadDistanceProvider,
-            payloadOverrides: { delivery_latitude: undefined, delivery_longitude: undefined }
+            payloadOverrides: { delivery_latitude: coordinateValue, delivery_longitude: coordinateValue }
         });
 
         expect(roadDistanceProvider.resolveRoadDistance).not.toHaveBeenCalled();

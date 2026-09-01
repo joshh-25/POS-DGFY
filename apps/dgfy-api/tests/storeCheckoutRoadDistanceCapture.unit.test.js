@@ -27,7 +27,7 @@ const registeredTransactionSettings = () => [
     }
 ];
 
-const buildFakeCheckoutStoreRepository = ({ createdOrderId = 9101 } = {}) => {
+const buildFakeCheckoutStoreRepository = ({ createdOrderId = 9101, extraSettings = [] } = {}) => {
     const transaction = {
         finished: false,
         commit: jest.fn(async () => { transaction.finished = 'commit'; }),
@@ -55,7 +55,8 @@ const buildFakeCheckoutStoreRepository = ({ createdOrderId = 9101 } = {}) => {
         getSettingsByKeys: jest.fn().mockResolvedValue([
             ...registeredTransactionSettings(),
             { setting_key: 'store_delivery_fee', setting_value: '50' },
-            { setting_key: 'pos_open_status', setting_value: 'true' }
+            { setting_key: 'pos_open_status', setting_value: 'true' },
+            ...extraSettings
         ]),
         findSellableItemsByIds: jest.fn().mockResolvedValue([
             {
@@ -217,5 +218,35 @@ describe('buildStoreCheckoutUseCase — Phase 236 (#1328) road-distance capture'
         // distance/source above.
         expect(result.data.totals.delivery_fee).toBe(50);
         expect(result.data.totals.total_amount).toBe(555);
+    });
+
+    // #1377 review, RF-4: the test.each above proves legacy absent-config defaulting is
+    // byte-identical, but says nothing about a tenant who has EXPLICITLY set
+    // store_delivery_fee_mode: 'fixed' -- the first customer-visible price change this phase ships
+    // must also leave that tenant's checkout unaffected, not just one that never touched the setting.
+    test.each([
+        ['road, zero distance', { distanceMeters: 0, source: 'road' }],
+        ['road, large distance', { distanceMeters: 50000, source: 'road' }],
+        ['unavailable', { distanceMeters: null, source: 'unavailable' }]
+    ])('fee-boundary regression (explicit store_delivery_fee_mode: "fixed"): %s never changes delivery_fee or total_amount', async (_label, providerResult) => {
+        const storeRepository = buildFakeCheckoutStoreRepository({
+            extraSettings: [{ setting_key: 'store_delivery_fee_mode', setting_value: 'fixed' }]
+        });
+        const roadDistanceProvider = fakeRoadDistanceProvider(providerResult);
+        const useCase = buildStoreCheckoutUseCase({ storeRepository, roadDistanceProvider });
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(deliveryCheckoutPayload({ idempotency_key: `rd-fee-fixed-${Math.random()}` }))
+        });
+
+        expect(result.success).toBe(true);
+        // Same pre-PR flat-fee result as the absent-config case above: store_delivery_fee = 50,
+        // subtotal 500, service fee 5 (1%) => 555 total, regardless of distance/source.
+        expect(result.data.totals.delivery_fee).toBe(50);
+        expect(result.data.totals.total_amount).toBe(555);
+        const persistedAttrs = storeRepository.createOnlineTransactionWithLines.mock.calls[0][0].header;
+        expect(persistedAttrs.delivery_fee_mode).toBe('fixed');
+        expect(persistedAttrs.delivery_fee_base).toBe(50);
     });
 });
