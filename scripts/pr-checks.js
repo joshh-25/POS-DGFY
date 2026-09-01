@@ -47,6 +47,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = require('./lib/runner-availability');
 
 const repoRoot = path.resolve(__dirname, '..');
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
@@ -168,6 +169,11 @@ function detectComponents(changedFiles) {
 }
 
 // --- unavailability classification ------------------------------------------
+// Phase 233 (#1365), F-4 refactor (no behavior change): the reason-code constants and the two pure
+// interpretation helpers below (self-hosted pool, githubstatus Actions-component) now live in
+// scripts/lib/runner-availability.js, reused by scripts/ci-runner-preflight.js's *pre-dispatch*
+// classification. The fetch functions and their deps-injection points are unchanged -- this file
+// keeps exactly the same dependency-injection surface scripts/pr-checks.test.js exercises.
 
 function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {}) {
   const fetchRunners = deps.fetchRunners || (() => captureJson('gh', ['api', `repos/${REPO_SLUG}/actions/runners`]));
@@ -187,10 +193,8 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
   });
 
   const runnersResponse = fetchRunners();
-  const runners = runnersResponse && Array.isArray(runnersResponse.runners) ? runnersResponse.runners : null;
-  if (runners && runners.length > 0 && runners.every((r) => r.status !== 'online')) {
-    return { reason: 'runner_offline', evidence: `all ${runners.length} runner(s) reported non-online status` };
-  }
+  const offlineFinding = evaluateSelfHostedPool(runnersResponse);
+  if (offlineFinding) return offlineFinding;
 
   const checkRunsResponse = fetchCheckRuns();
   const checkRuns = checkRunsResponse && Array.isArray(checkRunsResponse.check_runs) ? checkRunsResponse.check_runs : [];
@@ -205,14 +209,14 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
   });
   if (starved.length > 0) {
     return {
-      reason: 'queue_starvation',
+      reason: REASON_CODES.QUEUE_STARVATION,
       evidence: `${starved.length} check run(s) queued/in_progress past ${thresholdMinutes}min or cancelled without a conclusion: ${starved.map((r) => r.name).join(', ')}`,
     };
   }
 
   const billingReport = tryBillingFallback();
   if (billingReport && billingReport.status === 'pass') {
-    return { reason: 'billing_allocation_failure', evidence: 'verified GitHub billing allocation failure (see scripts/collect-github-actions-unavailability.js)' };
+    return { reason: REASON_CODES.BILLING_ALLOCATION_FAILURE, evidence: 'verified GitHub billing allocation failure (see scripts/collect-github-actions-unavailability.js)' };
   }
 
   // RF-1 gate: only ask "is GitHub down globally" once local evidence shows
@@ -242,28 +246,12 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
       // actually confirm.
       const fetchGithubStatus = deps.fetchGithubStatus || (() => captureJson('curl', ['-s', '--max-time', '5', 'https://www.githubstatus.com/api/v2/summary.json']));
       const statusSummary = fetchGithubStatus();
-      const actionsComponent = statusSummary && Array.isArray(statusSummary.components)
-        ? statusSummary.components.find((c) => c.name === 'Actions')
-        : null;
-      if (actionsComponent && actionsComponent.status && actionsComponent.status !== 'operational') {
-        // Match the incident that actually lists the Actions component --
-        // incidents[] can carry incidents affecting other components (Pages,
-        // Packages, ...) that have nothing to do with why Actions is down.
-        // Omit the note entirely rather than cite the wrong one.
-        const relevantIncident = Array.isArray(statusSummary.incidents)
-          ? statusSummary.incidents.find((inc) => Array.isArray(inc.components)
-            && inc.components.some((c) => c.id === actionsComponent.id))
-          : null;
-        const incidentNote = relevantIncident ? ` (incident: "${relevantIncident.name}", status ${relevantIncident.status})` : '';
-        return {
-          reason: 'github_platform_outage',
-          evidence: `githubstatus.com reports Actions component status="${actionsComponent.status}"${incidentNote}, and zero check-suites exist for ${headSha}`,
-        };
-      }
+      const outageFinding = evaluateGithubStatusOutage(statusSummary, headSha);
+      if (outageFinding) return outageFinding;
     }
   }
 
-  return { reason: 'healthy', evidence: 'no verified unavailability condition found' };
+  return { reason: REASON_CODES.HEALTHY, evidence: 'no verified unavailability condition found' };
 }
 
 // --- individual checks -------------------------------------------------------

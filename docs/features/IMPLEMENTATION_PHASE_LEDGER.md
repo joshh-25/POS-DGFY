@@ -15560,6 +15560,108 @@ run filter narrows the split view's drop-eligible orders the same way it narrows
 
 233.
 
+## Phase 233 - CI Runner Routing: Prod-Hosted Scaffold + Runner Preflight (#1365)
+
+### Initiative and release
+
+Build stage of Phase 233 (#1365, child of epic #1363), following `docs/ops/CI_RUNNER_POLICY.md`
+(PR #1368, merged to `develop`) declaring GitHub-hosted (`ubuntu-latest`) the intended default
+class for production build/deploy/quality jobs -- an inversion of every prior entry in
+`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, which routed self-hosted as default and hosted as
+emergency fallback. This phase builds the commented-hosted scaffold and the runner-preflight
+tooling; it does not flip anything live. Full build spec: the planning-stage artifact this phase
+followed verbatim (Wave 1 scaffold + Wave 2 preflight tooling), summarized in
+`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`'s own "Status as of 2026-09-02 -- Phase 233 scaffold"
+entry rather than restated here.
+
+### Objective and scope
+
+Wave 1 (scaffold, inert): commented hosted alternates at every non-exempt `runner_labels_json:`/
+`runs-on:` site in `deploy-main.yml` and `promotion-quality-gate.yml` (both deploy path and the six
+`promotion-quality-gate.yml` quality jobs plus `salvage-api-evidence`, per the resolved Q-2 --
+in-scope per the plan's own §1.3, not descoped to deploy-only), three anchor exceptions left
+self-hosted with a documented reason, plus a new `check:runner-routing` validator enforcing the
+pairing invariant. Wave 2 (tooling): a shared `scripts/lib/runner-availability.js` (F-4 refactor,
+no behavior change to `scripts/pr-checks.js`), a new pre-dispatch `scripts/ci-runner-preflight.js`
++ `runner-probe.yml` canary, wired into `deploy-main.yml`'s `guard-branch` (H2, in-workflow) and
+`.agents/skills/promoter/SKILL.md`'s pre-`main` gate list (H1, standalone). Out of scope, per the
+plan's own §3: any live flip of an active routing value, any deploy-workflow dispatch, any Phase
+234 (live cutover) work, `pr-checks.yml`'s own anchors, `deploy.yml`/`deployment-orchestrator.yml`
+(DEV/STAGING), and `CI_RUNNER_POLICY.md`'s stale `deploy-production.yml` row (F-5, handed to
+`pm`/PR #1368's reviewer instead of fixed here).
+
+### Status
+
+`completed` for the scaffold and tooling as specified; Phase 234 (live cutover) is the next
+eligible phase and is explicitly not started here -- no active `runner_labels_json`/`runs-on` value
+changed, no workflow dispatched, no `main` merge or production promotion.
+
+### Dependencies
+
+`docs/ops/CI_RUNNER_POLICY.md` (PR #1368, merged to `develop` first -- the plan's own Q-1,
+resolved by sequencing this phase's branch cut after that merge). Builds on
+`scripts/check-pr-quality-workflow.js`'s existing DI/text-assertion style (`check-runner-routing.js`
+extends its spirit rather than duplicating its pairing logic) and `scripts/pr-checks.js`'s existing
+`classifyCiUnavailability()` four-way taxonomy (F-4 refactor reuses it via extraction, not
+duplication).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `.js` file -- OK.
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing,
+  confirming the `promotion-quality-gate.yml` comment-only edits didn't disturb the existing #1063
+  contract.
+- [x] `npm run check:runner-routing && npm run test:runner-routing` -- OK, 17/17 passing (new
+  validator, including a live integration test against the real workflow files on disk).
+- [x] `npm --prefix . run test:runner-availability` (`scripts/lib/runner-availability.test.js`) --
+  OK, 8/8 passing; `scripts/pr-checks.test.js`'s pre-existing 29/29 pass unmodified, confirming the
+  F-4 refactor didn't change `classifyCiUnavailability()`'s observable behavior.
+- [x] `npm run test:runner-preflight` (`scripts/ci-runner-preflight.test.js`) -- OK, 25/25 passing,
+  fully dependency-injected (no real network calls).
+- [x] `npm run lint:docs` -- OK, covering the two doc edits
+  (`CI_RUNNER_MIGRATION_HANDOFF.md`, this file).
+- [x] `git diff` proof: every uncommented `runner_labels_json:`/`runs-on:` value in
+  `deploy-main.yml`/`promotion-quality-gate.yml` is byte-identical to `develop`; the only non-
+  comment, non-purely-additive change is `guard-branch`'s `timeout-minutes: 1 -> 5` (R-2, needed for
+  the added preflight step's network calls).
+- [x] `npm run check:compliance` -- `.github/**` confirmed not a compliance surface; no
+  declaration needed or produced.
+- [ ] Live exercise of `scripts/ci-runner-preflight.js` against real `gh api`/`curl` calls, and a
+  live `guard-branch` H2 run -- **not run**, out of scope for an inert scaffold with no dispatch
+  permitted (checkpoint policy and the task brief's own hard invariant). Deferred to Phase 234.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change;
+`.github/**` is not a `check-compliance-impact.js` surface; base is `develop`; nothing dispatches a
+deploy workflow (`runner-probe.yml` is added, never dispatched); no force-push or branch deletion.
+
+### Links
+
+- Tracking issue: #1365 (child of epic #1363). This PR uses `Refs #1365`, not `Closes` -- Phase 234
+  completes the issue.
+- `.github/workflows/deploy-main.yml`, `.github/workflows/promotion-quality-gate.yml` (both
+  modified, comment/scaffold-only plus the `guard-branch` timeout bump),
+  `.github/workflows/runner-probe.yml` (new),
+  `scripts/check-runner-routing.js` + `.test.js` (new),
+  `scripts/lib/runner-availability.js` + `.test.js` (new),
+  `scripts/ci-runner-preflight.js` + `.test.js` (new),
+  `scripts/pr-checks.js` (modified, F-4 refactor consumer change),
+  `.agents/skills/promoter/SKILL.md` (modified, H1 pre-`main` gate wiring),
+  `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (modified, new dated status entry).
+- Open questions carried into Phase 234, per the plan's §4: Q-2 resolved this phase (quality jobs
+  in scope); Q-3 (AVX-gated test behavior change on hosted), Q-4 (PROD SSH source-IP restriction --
+  **partially checked only**: `sshd_config` confirmed to carry no `AllowUsers`/`Match Address`
+  restriction, but `ufw`/Linode Cloud Firewall status is unconfirmed, needs root/Pat's own server
+  access), Q-5 (org billing-token scope gap), and Q-6 (`salvage-api-evidence` re-implementation for
+  an independent hosted flip) remain open blockers for Phase 234, not resolved here.
+
+### Next eligible phase
+
+234 (not yet recorded in this ledger as its own entry; the next entry actually recorded here is
+Phase 237, a separate epic/track -- see that entry's own "Ledger gap" note for why 233/235/236 of
+epic #1321 have no ledger entries of their own either).
+
 ## Phase 237 - Wire calculated + free delivery-fee modes (#1329, epic #1321) — RISK GATE
 
 ### Ledger gap, flagged not silently papered over
@@ -15601,8 +15703,11 @@ ticket via `pm` (D4); both new migrations are a Worker checkpoint (D5).
 coverage are complete and self-verified (see below). **The two new migrations, the matching
 `sync-tenant-schemas.js` entries, and the `PosTransaction.js`/`CommercePaymentSession.js` model
 field additions are held pending explicit Worker-checkpoint approval per D5/`.agents/skills/implement/SKILL.md`
--- drafted, self-verified, but not yet committed.** The PR itself has not been opened yet for the
-same reason. This entry will be updated once that approval lands and the PR opens.
+-- drafted, self-verified, but not yet committed.** PR #1377 is open (`Refs #1329`) carrying
+everything else. `pr-reviewer`'s first pass `BLOCK`ed on three findings (merge conflict against
+`develop`, incomplete pin-shape validation, an explicit-`null`-coordinate gap); addressed in a
+2026-09-02 fixup pass -- see the compliance declaration's own dated Amendments section for the
+fix-by-fix detail, not restated here. This entry will be updated once D5's migration approval lands.
 
 ### Dependencies
 
@@ -15620,21 +15725,25 @@ capture, now wired into fee pricing for the first time) -- all three merged to `
 - [x] `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` (new, 2/2) -- the ticket's
   own named acceptance evidence: cart quote, checkout, and payment-session creation resolve strictly
   `===` `delivery_fee`/`total_amount` from one frozen fixture, calculated and free modes both.
-- [x] `storeCheckoutCalculatedDeliveryFee.unit.test.js` (new, 10/10) -- ADR 0078 Decision 2
-  `[binding]` fail-open-to-fixed on every named failure branch, the happy-path formula (hand-computed
-  against the real algorithm: 5400m -> ₱97), the in-range boundary at exactly `max_distance_km`, and
-  the out-of-range hard block at all three entry points.
-- [x] `storeCheckoutDeliveryFeePin.unit.test.js` (new, 10/10) -- the pin mechanism itself, the
-  malformed/version-mismatch fall-through paths, the advisory-TTL-never-enforces behavior, and
-  `finalizePaidCommerceSession.js`'s own plumbing.
+- [x] `storeCheckoutCalculatedDeliveryFee.unit.test.js` (13/13, up from 10 in the 2026-09-02 review
+  fixup) -- ADR 0078 Decision 2 `[binding]` fail-open-to-fixed on every named failure branch, the
+  happy-path formula (hand-computed against the real algorithm: 5400m -> ₱97), the in-range boundary
+  at exactly `max_distance_km`, the out-of-range hard block at all three entry points, and (RF-3) a
+  4-row no-usable-coordinates matrix (omitted/explicit-null/empty-string/non-numeric).
+- [x] `storeCheckoutDeliveryFeePin.unit.test.js` (26/26, up from 10 in the 2026-09-02 review fixup)
+  -- the pin mechanism itself, the advisory-TTL-never-enforces behavior, `finalizePaidCommerceSession.js`'s
+  own plumbing, and (RF-2) full field-by-field shape validation of every persisted breakdown field,
+  not just mode/finalFee/calcVersion.
 - [x] `addDeliveryFeeBreakdown.migration.test.js` (new, 10/10) -- both migrations' idempotence/down
   behavior, plus a drift guard confirming `sync-tenant-schemas.js`'s DDL strings are
   column-definition-identical to the tenant-fanout migration's own DDL.
 - [x] `deliveryFeePolicy.unit.test.js` (31/31, 1 new case) -- the new `DELIVERY_FEE_CALC_VERSION`
   constant.
-- [x] `deliveryFeeModeConfig.checkoutFallback.unit.test.js` (5/5) and
-  `storeCheckoutRoadDistanceCapture.unit.test.js` (7/7) -- both run **unmodified**, the actual
-  evidence that every fixed-mode tenant stays byte-identical to pre-237.
+- [x] `deliveryFeeModeConfig.checkoutFallback.unit.test.js` (5/5, unmodified) and
+  `storeCheckoutRoadDistanceCapture.unit.test.js` (10/10, up from 7 -- RF-4 added an explicit
+  `store_delivery_fee_mode: 'fixed'` fixture variant to the byte-identity parameterized regression,
+  alongside the pre-existing absent-config case) -- together the actual evidence that every
+  fixed-mode tenant, explicit or defaulted, stays byte-identical to pre-237.
 - [x] Whole-suite regression gate -- `storeCartQuotePreviewNoContactRequired`,
   `storeCheckoutAffiliatePricing`, `storeCheckoutDownpaymentResolution`,
   `storeCheckoutInventoryReservation`, `storeCheckoutVoucherPromoStacking`, `storePaymentTruth`,
