@@ -21,6 +21,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { EXPECTED_ACTIVE_CLASS } = require('./lib/runner-routing-state');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -69,6 +70,27 @@ const CO_LOCATION_PAIRS = [
 const DEV_STAGING_ENV_RE = /environment:\s*(DEV|STAGING)\b/;
 
 const TARGET_FILES = ['deploy-main.yml', 'promotion-quality-gate.yml'];
+
+// Phase 234 (#1365) Wave 1, Assertion 7 (AC-1 regression guard): ordinary develop/staging-facing
+// workflow files that must never carry a hosted runner literal at any runs-on:/runner_labels_json:
+// site -- deploy.yml/deployment-orchestrator.yml have no LAN path from a hosted VM to the DEV/
+// STAGING boxes (CI_RUNNER_POLICY.md, "VPN"), and the three pr-*-build-checks.yml files listed here
+// are ordinary PR-triggered checks that stay self-hosted by policy. Deliberately excludes
+// pr-android-build-checks.yml and build-android-manual.yml -- documented exception, neither box
+// carries an Android SDK either way, so those two are free to run hosted.
+const NON_HOSTED_FILES = [
+  'deploy.yml',
+  'deployment-orchestrator.yml',
+  'pr-dgfy-api-build-checks.yml',
+  'pr-frontend-build-checks.yml',
+  'pr-migration-runner-build-checks.yml'
+];
+
+// Phase 234 Wave 1: verify-deployment.yml's runner_labels_json input `default:` must stay
+// self-hosted -- Wave 2 added an input to it (default unchanged) precisely so hosted could be
+// *proven* read-only via a dispatch-time override without ever changing what an un-overridden
+// dispatch actually does.
+const VERIFY_DEPLOYMENT_FILE = 'verify-deployment.yml';
 
 /**
  * Extracts every top-level (`  <name>:`) job block from a workflow file's `jobs:` section text,
@@ -310,7 +332,64 @@ function checkNoDevStagingTarget(file, text) {
   return problems;
 }
 
-function checkRunnerRouting({ deployMainText, qualityGateText }) {
+/**
+ * Assertion 6 (F-1, AC-6): every non-exempt site's active class must equal
+ * EXPECTED_ACTIVE_CLASS -- the pairing invariant (Assertions 1-3) is necessary but not sufficient,
+ * since it only ever asserts the two lines are *opposite* classes, never *which one is meant to be
+ * active*. Both a full inversion of every site and a silent single-site inversion pass Assertions
+ * 1-3 with zero problems; this is the assertion that actually catches either.
+ *
+ * The failure message deliberately names the constant and both files that must move together --
+ * so a genuine emergency fallback flip isn't blocked by a confusing error, it's told exactly what
+ * two things to edit.
+ */
+function checkActiveClassMatchesExpected(jobClassesByFile) {
+  const problems = [];
+  for (const file of TARGET_FILES) {
+    const allowlist = ANCHOR_ALLOWLIST[file] || new Set();
+    const classes = jobClassesByFile.get(file) || new Map();
+    for (const [jobName, isJobHosted] of classes) {
+      if (allowlist.has(jobName)) continue;
+      const jobClass = isJobHosted ? 'hosted' : 'self-hosted';
+      if (jobClass !== EXPECTED_ACTIVE_CLASS) {
+        problems.push(
+          `${file}: "${jobName}" is active-${jobClass} but scripts/lib/runner-routing-state.js's ` +
+          `EXPECTED_ACTIVE_CLASS constant says "${EXPECTED_ACTIVE_CLASS}" -- a deliberate strategy ` +
+          'flip requires editing EXPECTED_ACTIVE_CLASS *and* every runner_labels_json:/runs-on: ' +
+          'site in deploy-main.yml/promotion-quality-gate.yml together, never one without the other.'
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Assertion 7 (AC-1 regression guard): NON_HOSTED_FILES must contain no hosted runner literal at
+ * any runs-on:/runner_labels_json: site, active or commented -- these files aren't part of the
+ * commented-alternate scaffold at all, so a hosted literal appearing anywhere in them (not just
+ * "active") is itself the regression: a hosted class typo'd or copy-pasted into a DEV/STAGING or
+ * ordinary-PR-check workflow with no VPN path to those hosts.
+ */
+function checkNoHostedLiteral(file, text) {
+  const problems = [];
+  const lines = text.split('\n');
+  const siteRe = /^\s*#?\s*(runner_labels_json|runs-on):\s*(.+)$/;
+  for (const line of lines) {
+    if (siteRe.test(line) && isHosted(line)) {
+      problems.push(
+        `${file}: found a hosted runner literal at "${line.trim()}" -- this file is in ` +
+        'NON_HOSTED_FILES/VERIFY_DEPLOYMENT_FILE and must never carry a hosted runner_labels_json:/' +
+        'runs-on: value, active or commented (no LAN path from a hosted VM to DEV/STAGING, ' +
+        'CI_RUNNER_POLICY.md "VPN"). Documented exception: pr-android-build-checks.yml / ' +
+        'build-android-manual.yml.'
+      );
+    }
+  }
+  return problems;
+}
+
+function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText }) {
   const filesText = {
     'deploy-main.yml': deployMainText,
     'promotion-quality-gate.yml': qualityGateText
@@ -328,6 +407,24 @@ function checkRunnerRouting({ deployMainText, qualityGateText }) {
 
   problems.push(...checkInputDefaultSite(qualityGateText));
   problems.push(...checkCoLocation(jobClassesByFile));
+  problems.push(...checkActiveClassMatchesExpected(jobClassesByFile));
+
+  // nonHostedFilesText is opt-in: omitted entirely (undefined), Assertion 7's NON_HOSTED_FILES
+  // scan is skipped -- used by fixture-only tests that exercise Assertions 1-6 without needing
+  // to also supply the five unrelated non-hosted files. main() below always supplies it (real run).
+  if (nonHostedFilesText !== undefined) {
+    for (const file of NON_HOSTED_FILES) {
+      if (nonHostedFilesText[file] === undefined) {
+        problems.push(`${file}: NON_HOSTED_FILES entry has no text supplied to checkRunnerRouting -- caller needs updating.`);
+        continue;
+      }
+      problems.push(...checkNoHostedLiteral(file, nonHostedFilesText[file]));
+    }
+  }
+
+  if (verifyDeploymentText !== undefined) {
+    problems.push(...checkNoHostedLiteral(VERIFY_DEPLOYMENT_FILE, verifyDeploymentText));
+  }
 
   return problems;
 }
@@ -335,8 +432,13 @@ function checkRunnerRouting({ deployMainText, qualityGateText }) {
 function main() {
   const deployMainText = read('.github/workflows/deploy-main.yml');
   const qualityGateText = read('.github/workflows/promotion-quality-gate.yml');
+  const nonHostedFilesText = {};
+  for (const file of NON_HOSTED_FILES) {
+    nonHostedFilesText[file] = read(`.github/workflows/${file}`);
+  }
+  const verifyDeploymentText = read(`.github/workflows/${VERIFY_DEPLOYMENT_FILE}`);
 
-  const problems = checkRunnerRouting({ deployMainText, qualityGateText });
+  const problems = checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText });
 
   if (problems.length > 0) {
     console.error('[runner-routing] FAILED');
@@ -349,8 +451,10 @@ function main() {
     'and promotion-quality-gate.yml carries a commented, opposite-class alternate directly above ' +
     'its active line; the three documented anchor exceptions (guard-branch, gate, ' +
     'report-advisory-failures) carry no such alternate and are self-explained in place; ' +
-    'salvage-api-evidence\'s active class matches dgfy-api-quality\'s (F-2); and neither file ' +
-    'targets DEV/STAGING (Wave 1 Sec 1.5).'
+    'salvage-api-evidence\'s active class matches dgfy-api-quality\'s (F-2); neither file targets ' +
+    'DEV/STAGING (Wave 1 Sec 1.5); every non-exempt site\'s active class matches ' +
+    `EXPECTED_ACTIVE_CLASS ("${EXPECTED_ACTIVE_CLASS}"); NON_HOSTED_FILES and ` +
+    'verify-deployment.yml carry no hosted runner literal.'
   );
 }
 
@@ -365,10 +469,14 @@ module.exports = {
   checkInputDefaultSite,
   checkCoLocation,
   checkNoDevStagingTarget,
+  checkActiveClassMatchesExpected,
+  checkNoHostedLiteral,
   extractJobBlocks,
   findActiveSites,
   isHosted,
   ANCHOR_ALLOWLIST,
   CO_LOCATION_PAIRS,
-  TARGET_FILES
+  TARGET_FILES,
+  NON_HOSTED_FILES,
+  VERIFY_DEPLOYMENT_FILE
 };
