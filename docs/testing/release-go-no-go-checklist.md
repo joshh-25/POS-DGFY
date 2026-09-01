@@ -64,7 +64,7 @@ docker run --rm --network dgfy-local-test -v "$GATE_SCRATCH":/repo -w /repo \
   -e JWT_SECRET=ci_jwt_secret_key_for_tests_only_123456 \
   -e REFRESH_TOKEN_SECRET=ci_refresh_secret_key_for_tests_only_123 \
   -e RELEASE_TARGET_SHA="$(git rev-parse HEAD)" \
-  node:22-alpine npm run gate:release:local
+  node:22-alpine sh -c 'npm run install:all && npm run gate:release:local'
 GATE_EXIT=$?
 
 # Copy the evidence artifact back — it's the only output anyone needs out of the scratch copy —
