@@ -1,5 +1,10 @@
 import { jest } from '@jest/globals';
-import { applyWorkflowModeAuditLog, listWorkflowModeChangeLogs } from '../src/modules/settings/usecases/workflowModeAuditLog.js';
+import {
+    applyWorkflowModeAuditLog,
+    listWorkflowModeChangeLogs,
+    resolveWorkflowModeAuditBeforeValues,
+    touchesWorkflowModeAuditedSetting
+} from '../src/modules/settings/usecases/workflowModeAuditLog.js';
 import dbStore from '../src/utils/dbStore.js';
 
 describe('workflow mode audit log (issue #178 phase 5)', () => {
@@ -96,6 +101,101 @@ describe('workflow mode audit log (issue #178 phase 5)', () => {
 
         expect(result).toBeNull();
         expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('logs a store_delivery_fee_mode change with actor and from/to (issue #1327)', async () => {
+        const createMock = jest.fn().mockResolvedValue({ workflow_mode_change_log_id: 2 });
+        jest.spyOn(dbStore, 'get').mockImplementation((name) => (
+            name === 'WorkflowModeChangeLog' ? { create: createMock } : null
+        ));
+
+        await applyWorkflowModeAuditLog({
+            settingsData: { store_delivery_fee_mode: 'flat' },
+            beforeValues: { store_delivery_fee_mode: 'distance_based' },
+            actorUser: { user_id: 9, username: 'master_admin' }
+        });
+
+        expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+            actor_user_id: 9,
+            actor_username_snapshot: 'master_admin',
+            from_store_delivery_fee_mode: 'distance_based',
+            to_store_delivery_fee_mode: 'flat'
+        }));
+    });
+
+    it('logs a store_delivery_fee_calc blob change even when the mode is untouched (issue #1327)', async () => {
+        const createMock = jest.fn().mockResolvedValue({});
+        jest.spyOn(dbStore, 'get').mockImplementation((name) => (
+            name === 'WorkflowModeChangeLog' ? { create: createMock } : null
+        ));
+
+        await applyWorkflowModeAuditLog({
+            settingsData: { store_delivery_fee_calc: { flat_amount: 75 } },
+            beforeValues: { store_delivery_fee_calc: { flat_amount: 50 } },
+            actorUser: { user_id: 9 }
+        });
+
+        expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+            from_store_delivery_fee_calc: { flat_amount: 50 },
+            to_store_delivery_fee_calc: { flat_amount: 75 }
+        }));
+    });
+
+    it('does not log a no-op re-save of store_delivery_fee_mode/calc (issue #1327 acceptance evidence)', async () => {
+        const createMock = jest.fn();
+        jest.spyOn(dbStore, 'get').mockImplementation((name) => (
+            name === 'WorkflowModeChangeLog' ? { create: createMock } : null
+        ));
+
+        await applyWorkflowModeAuditLog({
+            settingsData: { store_delivery_fee_mode: 'flat' },
+            beforeValues: { store_delivery_fee_mode: 'flat' },
+            actorUser: { user_id: 9 }
+        });
+        await applyWorkflowModeAuditLog({
+            settingsData: { store_delivery_fee_calc: { flat_amount: 50 } },
+            beforeValues: { store_delivery_fee_calc: { flat_amount: 50 } },
+            actorUser: { user_id: 9 }
+        });
+
+        expect(createMock).not.toHaveBeenCalled();
+    });
+
+    describe('resolveWorkflowModeAuditBeforeValues / touchesWorkflowModeAuditedSetting (issue #1327)', () => {
+        it('fetches all audited keys, including the new delivery-fee pair, when one is touched', async () => {
+            const getSettingsByKeysMock = jest.fn().mockResolvedValue({
+                store_delivery_fee_mode: { value: 'distance_based' }
+            });
+
+            const before = await resolveWorkflowModeAuditBeforeValues({
+                settingsRepository: { getSettingsByKeys: getSettingsByKeysMock },
+                settingsData: { store_delivery_fee_mode: 'flat' }
+            });
+
+            expect(getSettingsByKeysMock).toHaveBeenCalledWith(expect.arrayContaining([
+                'ops_workflow_mode',
+                'store_delivery_fee_mode',
+                'store_delivery_fee_calc'
+            ]));
+            expect(before).toEqual(expect.objectContaining({
+                store_delivery_fee_mode: 'distance_based',
+                store_delivery_fee_calc: null
+            }));
+        });
+
+        it('skips the DB round-trip entirely for an untouched settings write', async () => {
+            const getSettingsByKeysMock = jest.fn();
+
+            const before = await resolveWorkflowModeAuditBeforeValues({
+                settingsRepository: { getSettingsByKeys: getSettingsByKeysMock },
+                settingsData: { pos_business_name: 'New Name' }
+            });
+
+            expect(getSettingsByKeysMock).not.toHaveBeenCalled();
+            expect(before).toEqual({});
+            expect(touchesWorkflowModeAuditedSetting({ pos_business_name: 'New Name' })).toBe(false);
+            expect(touchesWorkflowModeAuditedSetting({ store_delivery_fee_calc: {} })).toBe(true);
+        });
     });
 
     it('lists logs newest-first with a bounded limit', async () => {
