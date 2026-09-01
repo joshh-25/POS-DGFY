@@ -8,9 +8,20 @@
 
 import {
     DeliveryFeePolicyError,
-    computeCalculatedDeliveryFeeCentavos
+    computeCalculatedDeliveryFeeCentavos,
+    DELIVERY_FEE_CALC_VERSION
 } from '../src/modules/deliveryPricing/domain/deliveryFeePolicy.js';
 import fixtures from './fixtures/deliveryFeePolicyCases.json' with { type: 'json' };
+
+// Phase 237 (#1329, epic #1321): the only new pure-domain surface this phase adds -- the algorithm
+// version constant storeUseCases.js persists on every resolved order (fixed mode included), so
+// historical rows stay interpretable without a backfill if a future phase changes the formula.
+describe('DELIVERY_FEE_CALC_VERSION', () => {
+    test('is the integer 1', () => {
+        expect(DELIVERY_FEE_CALC_VERSION).toBe(1);
+        expect(Number.isInteger(DELIVERY_FEE_CALC_VERSION)).toBe(true);
+    });
+});
 
 describe('computeCalculatedDeliveryFeeCentavos — fixture cases', () => {
     for (const testCase of fixtures.cases) {
