@@ -3,6 +3,10 @@ import { commercePaymentRepository } from '../commercePayments/repositories/comm
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
 import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
 import { inventoryReservationService } from '../inventory/index.js';
+// #1390: cancelStoreOrderUseCase's own half of the voucher-reversal wiring -- see
+// buildCancelStoreOrderUseCase's own comment on why this is injected here rather than statically
+// imported inside storeUseCases.js the way the checkout-side voucherRepository import is.
+import { voucherRepository, reverseVoucherRedemptionUseCase } from '../vouchers/index.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -130,7 +134,9 @@ const commerceOrderLifecycleUseCaseLazy = async (input) => {
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
     storeRepository,
     inventoryReservationService,
-    commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy
+    commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy,
+    voucherRepository,
+    reverseVoucherRedemptionUseCase
 });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({

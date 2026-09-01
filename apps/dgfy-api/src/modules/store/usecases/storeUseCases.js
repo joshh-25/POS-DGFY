@@ -34,7 +34,12 @@ import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
     resolveVoucherDisplayPricesUseCase,
-    VoucherReasonCode
+    VoucherReasonCode,
+    // #1390: the checkout-side half of closing the redemption<->order link -- see the
+    // attachRedemptionsToTransaction call site below, near the two VOUCHER_REDEMPTION_UNRECORDED
+    // guards. cancelStoreOrderUseCase's own half is injected as an optional builder dependency
+    // instead (store/index.js), not imported here -- see buildCancelStoreOrderUseCase's own comment.
+    voucherRepository
 } from '../../vouchers/index.js';
 // Phase 233 (#1324, epic #1321): fee-mode config schema. Phase 237 (#1329) wires the calculated-mode
 // formula and fail-open-to-fixed branching into resolveStoreDeliveryFee below -- see
@@ -4015,6 +4020,27 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
+            // #1390: close the ledger<->order link. voucher_redemptions.pos_transaction_id has
+            // existed (and been indexed) since #455 but was written by nothing -- the redemption
+            // necessarily happens above, inside resolveCheckoutContext, before this transaction had
+            // an orderId. Attaching it here, in the same transaction, is what lets
+            // buildCancelStoreOrderUseCase find what to reverse on cancel without reconstructing a
+            // composite idempotency key from string parts. Both redemption ids are already in
+            // memory (including on an idempotent-replay branch -- voucherRedemptionUseCases.js
+            // returns the existing row's id on replay too), so this is a single indexed UPDATE, no
+            // lookup.
+            const redemptionIdsToAttach = [
+                resolved.voucherApplication.redemptionId,
+                resolved.deliveryWaiverApplication.redemptionId
+            ].filter((id) => parsePositiveInt(id));
+            if (redemptionIdsToAttach.length > 0) {
+                await voucherRepository.attachRedemptionsToTransaction(
+                    redemptionIdsToAttach,
+                    orderId,
+                    { transaction }
+                );
+            }
+
             const shouldCreateFnbKitchenOrder = (
                 resolved.recipePlan.allMovements.length > 0
                 || resolved.prepared.preparedLines.some((line) => line.fnb_course_snapshot || line.fnb_modifiers_snapshot)
@@ -5198,12 +5224,87 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
+// #1390 (ADR 0066 Validation #3, closing Consequences #3's cancelled-order half): a cancelled
+// order must return its voucher budget/usage, IN-TRANSACTION -- unlike the payment lifecycle below,
+// this is a same-database write with no provider call, so ADR 0052's cross-database fail-open
+// carve-out does not apply. A reversal failure throws and rolls the whole cancellation back; the
+// customer sees a retryable error, never a silently-unreturned campaign budget. Kept out of
+// buildCancelStoreOrderUseCase's own body so that function does not grow a fourth concern.
+const reverseOrderVoucherRedemptions = async ({
+    voucherRepository,
+    reverseVoucherRedemptionUseCase,
+    order,
+    transaction,
+    trackingPin
+}) => {
+    // Cheap in-memory gate FIRST: an order with neither axis touched costs zero queries, and every
+    // existing cancel unit test (which wires no voucher repository at all) is unaffected.
+    const hasDeliveryAxis = parsePositiveInt(order?.delivery_fee_waiver_voucher_id) !== null;
+    const hasItemAxis = order?.discount?.discount_type === 'voucher';
+    if (!hasDeliveryAxis && !hasItemAxis) {
+        return { attempted: 0, reversed: 0, entries: [] };
+    }
+    if (!voucherRepository || typeof reverseVoucherRedemptionUseCase !== 'function') {
+        return { attempted: 0, reversed: 0, entries: [], skipped_reason: 'unwired' };
+    }
+
+    const orderId = parsePositiveInt(order.pos_transaction_id);
+    const rows = orderId ? await voucherRepository.listRedemptionsByTransactionId(orderId, { transaction }) : [];
+    let candidates = rows.filter((row) => row.entry_type === 'redemption');
+
+    // Legacy orders (placed before #1390) have pos_transaction_id NULL. The delivery axis is still
+    // exactly reconstructable from the header's voucher id; the item axis is not -- a prefix scan
+    // has a real collision hazard against client-supplied idempotency keys (see the PR's own plan,
+    // section 3.2), so it is a documented gap, not silently dropped.
+    if (candidates.length === 0 && hasDeliveryAxis && order.idempotency_key) {
+        const legacyKey = `storefront:${order.idempotency_key}:delivery:${order.delivery_fee_waiver_voucher_id}`;
+        const legacy = await voucherRepository.findRedemptionByIdempotencyKey(legacyKey, { transaction, lock: true });
+        if (legacy && legacy.entry_type === 'redemption') {
+            candidates = [legacy];
+        }
+    }
+    // The item axis has no exact-key reconstruction (see the comment above) -- if it's present on
+    // the order but no candidate row carries a 'items' benefit_target, it was silently unrecoverable
+    // and stays that way. Named via a warn rather than silently dropped, per the plan's own gap.
+    const itemAxisRecovered = candidates.some((row) => (row.benefit_config_snapshot?.benefit_target ?? 'items') === 'items');
+    if (hasItemAxis && !itemAxisRecovered) {
+        logger.warn('[StoreUseCases] Cancelled order has an item-axis voucher discount but no reversible redemption row -- likely a legacy order placed before #1390 (pos_transaction_id backfill), or a redemption id that was never attached', {
+            tracking_pin: trackingPin
+        });
+    }
+
+    const entries = [];
+    for (const row of candidates) {
+        const result = await reverseVoucherRedemptionUseCase({
+            originalRedemptionId: row.voucher_redemption_id,
+            reason: `Storefront order cancelled (${trackingPin})`,
+            transaction
+        });
+        entries.push({
+            voucher_id: row.voucher_id,
+            original_redemption_id: row.voucher_redemption_id,
+            reversal_id: result.reversalId,
+            idempotent_replay: result.idempotentReplay,
+            benefit_target: row.benefit_config_snapshot?.benefit_target ?? 'items'
+        });
+    }
+    return { attempted: candidates.length, reversed: entries.length, entries };
+};
+
 export const buildCancelStoreOrderUseCase = ({
     storeRepository,
     inventoryReservationService = null,
     // Phase 144 (#824): injected, optional, and defaulting to null so every existing test that
     // builds this use case without it keeps its current behaviour verbatim.
-    commerceOrderLifecycleUseCase = null
+    commerceOrderLifecycleUseCase = null,
+    // #1390: injected, optional, defaulting to null -- same reasoning as commerceOrderLifecycleUseCase
+    // above. Deliberately NOT the static `../../vouchers/index.js` import storeCheckoutUseCase uses
+    // for its own (checkout-side) voucher call -- storeCancelDownpaymentLifecycle.unit.test.js and
+    // others build this use case with a hand-built fake storeRepository and no voucher wiring at
+    // all, and a hard static import would make every one of those tests exercise the real
+    // repository against a live tenant connection. store/index.js wires the real ones.
+    voucherRepository = null,
+    reverseVoucherRedemptionUseCase = null
 }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
@@ -5292,6 +5393,21 @@ export const buildCancelStoreOrderUseCase = ({
                 });
             }
 
+            // #1390: IN-TRANSACTION and BEFORE commit (ADR 0066 Validation #3) -- a failure here
+            // throws and is caught below, rolling back the inventory release and the
+            // fulfillment_status flip along with it. Fail-CLOSED, deliberately the opposite of the
+            // payment-lifecycle block below: that one is cross-database/cross-provider (ADR 0052)
+            // and genuinely cannot be rolled back; this one is same-database, same-transaction, so
+            // a failure is atomically undoable and a retryable customer-facing error is strictly
+            // better than a silently-unreturned campaign budget.
+            const voucherReversal = await reverseOrderVoucherRedemptions({
+                voucherRepository,
+                reverseVoucherRedemptionUseCase,
+                order: existing,
+                transaction,
+                trackingPin: normalizedTrackingPin
+            });
+
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {
                 fulfillment_status: 'cancelled'
             }, { transaction });
@@ -5353,7 +5469,11 @@ export const buildCancelStoreOrderUseCase = ({
                 tracking_pin: normalizedTrackingPin,
                 status: 'cancelled',
                 order: serializeOrderForPublicTracking(updated),
-                payment_lifecycle: paymentLifecycle
+                payment_lifecycle: paymentLifecycle,
+                // #1390: purely additive, always this stable shape (never null) so a consumer never
+                // has to null-guard it. { attempted: 0, reversed: 0, entries: [] } for any order with
+                // no voucher touched at all.
+                voucher_reversal: voucherReversal
             });
         } catch (error) {
             if (error?.code === DomainErrorCode.VALIDATION_FAILED || error?.code === DomainErrorCode.RESOURCE_NOT_FOUND || error?.code === DomainErrorCode.AUTHENTICATION_FAILED || error?.code === DomainErrorCode.AUTHORIZATION_FAILED) {
