@@ -15082,7 +15082,11 @@ lock/cart-draft cross-tab synchronization gap found during the two-tab investiga
 
 ### Status
 
-`completed`
+`completed` for the split-view/drag-to-assign surface; the live acceptance walk (deployed tenant --
+drag a real order onto a real run, confirm the same server-side add path Phase 227 already exercises)
+was **not** run -- no deployed tenant reachable in this environment. All Vitest coverage passes
+against mocked `@dnd-kit/core` and mocked `deliveryRunService`; the live walk is outstanding
+acceptance evidence, not omitted, same posture as every prior phase in this track (224-228).
 
 ### Dependencies
 
