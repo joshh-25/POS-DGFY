@@ -27,11 +27,19 @@
 // migration that must run against every tenant DB from the landlord-only migration-runner
 // connection, just for an UPDATE instead of an ALTER TABLE.
 //
-// rollback_note: reversible by re-running the identical join and setting pos_transaction_id back to
-// NULL for exactly the rows it would have set -- down() does this rather than a blanket
-// "set every storefront redemption's pos_transaction_id to NULL," which would also undo the
-// checkout-side write this PR ships alongside this migration (a legitimate write, not backfill
-// debt). No data is deleted at any point; only this one nullable attribution column moves.
+// rollback_note: forward-only, by design, not an oversight. up()'s join (buildJoinSql) matches on
+// idempotency-key pattern + pos_transaction_id equality -- a condition that cannot distinguish "a
+// row this migration's up() backfilled" from "a row the checkout-side attachRedemptionsToTransaction
+// write path legitimately set afterward, via ordinary post-deploy checkout traffic." Both satisfy
+// the identical join. Any down() built on that same join would silently NULL out live,
+// freshly-created attribution links alongside the backfilled ones the moment any real checkout has
+// happened post-deploy -- exactly the silent-data-corruption failure mode this repo already refuses
+// elsewhere (see the enum-widening migrations in this epic, e.g.
+// 20260830000003-add-cheque-payment-method.cjs's down(), which throws rather than risk a live write).
+// No marker/tracking table is introduced to make the two cases distinguishable -- disproportionate
+// complexity for a one-time backfill. down() below throws unconditionally instead: loud failure over
+// silent corruption. No data is ever deleted by either direction of this migration; up() is the only
+// state change, and it is a pure NULL -> value fill on one nullable attribution column.
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/;
 const VOUCHER_REDEMPTIONS_TABLE = 'voucher_redemptions';
@@ -91,18 +99,19 @@ module.exports = {
       );
     }
   },
-  async down(queryInterface) {
-    const currentDatabaseName = await getCurrentDatabaseName(queryInterface);
-    if (!currentDatabaseName) return;
-    const tenantDatabaseNames = await getActiveTenantDatabaseNames(queryInterface, currentDatabaseName);
-    for (const databaseName of [...new Set([currentDatabaseName, ...tenantDatabaseNames])]) {
-      if (!(await tableExists(queryInterface, databaseName, VOUCHER_REDEMPTIONS_TABLE))) continue;
-      if (!(await tableExists(queryInterface, databaseName, POS_TRANSACTIONS_TABLE))) continue;
-
-      await queryInterface.sequelize.query(
-        `UPDATE ${buildJoinSql(databaseName)} AND vr.pos_transaction_id = pt.pos_transaction_id
-         SET vr.pos_transaction_id = NULL`
-      );
-    }
+  async down() {
+    // Forward-only -- see the rollback_note above the join builder for why. up()'s join condition
+    // (idempotency-key pattern + pos_transaction_id equality) cannot distinguish a row this
+    // migration backfilled from a row the checkout-side write path legitimately set afterward, so
+    // there is no query this function could run that would be safe to execute unconditionally.
+    // Loud failure over silent data corruption, matching this repo's enum-widening migrations
+    // (e.g. 20260830000003-add-cheque-payment-method.cjs's down()).
+    throw new Error(
+      'Migration 20260904000002 is forward-only: down() would silently null out live redemption-' +
+        'transaction links written by the checkout-side attachRedemptionsToTransaction path after ' +
+        'up() ran, alongside the legacy rows it actually backfilled -- the two are indistinguishable ' +
+        'via the join this migration owns. Reverting the checkout-side code (leaving the backfilled ' +
+        'links in place) is the correct rollback path instead; no data is deleted by doing so.'
+    );
   }
 };

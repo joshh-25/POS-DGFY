@@ -106,29 +106,41 @@ describe('20260904000002-backfill-voucher-redemption-transaction-link up()', () 
 });
 
 describe('20260904000002-backfill-voucher-redemption-transaction-link down()', () => {
-    it('nulls out exactly the rows the same join would have set -- never a blanket null-out', async () => {
+    // RF-1 (PR #1395 review): up()'s join (idempotency-key pattern + pos_transaction_id equality)
+    // cannot distinguish a row this migration backfilled from a row the checkout-side
+    // attachRedemptionsToTransaction path legitimately set afterward -- both satisfy the identical
+    // join. A down() built on that join would silently null out live, freshly-created attribution
+    // links the moment any real checkout has happened post-deploy. down() is forward-only instead:
+    // it always throws and never issues a query, so a post-`up()` checkout link can never be erased
+    // by a rollback -- see the migration's own rollback_note header for the full reasoning.
+    it('always throws -- forward-only, never issues a query', async () => {
         const queryInterface = buildQueryInterface({ tenantDbNames: ['tenant_a'] });
 
-        await migration.down(queryInterface);
+        await expect(migration.down(queryInterface)).rejects.toThrow(/forward-only/i);
 
-        const statements = updateStatementsOf(queryInterface);
-        expect(statements).toHaveLength(2); // landlord_db + tenant_a
-        for (const sql of statements) {
-            expect(sql).toContain('vr.pos_transaction_id = pt.pos_transaction_id');
-            expect(sql).toContain('SET vr.pos_transaction_id = NULL');
-            expect(sql).not.toContain('vr.pos_transaction_id IS NULL');
-        }
+        expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
     });
 
-    it('up() then down() is idempotent -- both are safe to run repeatedly', async () => {
+    it('throws before touching any database, even when tenants exist', async () => {
+        const queryInterface = buildQueryInterface({ tenantDbNames: ['tenant_a', 'tenant_b'] });
+
+        await expect(migration.down(queryInterface)).rejects.toThrow();
+
+        expect(updateStatementsOf(queryInterface)).toHaveLength(0);
+    });
+
+    it('a post-up() checkout-side link survives an attempted down() (it throws instead of nulling anything)', async () => {
         const queryInterface = buildQueryInterface({});
 
-        await migration.up(queryInterface);
-        await migration.down(queryInterface);
-        await migration.up(queryInterface);
-        await migration.down(queryInterface);
+        await migration.up(queryInterface); // legacy rows backfilled
+        // Simulate ordinary post-deploy checkout traffic writing a new, legitimate link via the
+        // checkout-side path -- not exercised via this fake queryInterface's UPDATE statements
+        // directly, since that write lives in application code, not this migration. The point under
+        // test is only that down() never gets the chance to null anything out, regardless of what's
+        // in the table.
+        await expect(migration.down(queryInterface)).rejects.toThrow(/forward-only/i);
 
-        // No throw, and each pass issued exactly one UPDATE (single-database fixture).
-        expect(updateStatementsOf(queryInterface)).toHaveLength(4);
+        // Only up()'s UPDATE ran; down() issued none.
+        expect(updateStatementsOf(queryInterface)).toHaveLength(1);
     });
 });
