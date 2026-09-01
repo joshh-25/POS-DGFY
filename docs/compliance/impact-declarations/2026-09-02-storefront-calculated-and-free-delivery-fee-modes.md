@@ -7,7 +7,7 @@ classification: major
 surfaces: payments
 reason_codes_impacted: DELIVERY_DISTANCE_OUT_OF_RANGE
 policy_version: 2026.09.02
-verification_evidence: apps/dgfy-api/tests/storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js -- actually executed (Jest), 2 passing,apps/dgfy-api/tests/storeCheckoutCalculatedDeliveryFee.unit.test.js -- actually executed (Jest), 10 passing,apps/dgfy-api/tests/storeCheckoutDeliveryFeePin.unit.test.js -- actually executed (Jest), 10 passing,apps/dgfy-api/tests/addDeliveryFeeBreakdown.migration.test.js -- actually executed (Jest), 10 passing incl. the sync-tenant-schemas.js DDL drift guard,apps/dgfy-api/tests/deliveryFeePolicy.unit.test.js -- actually executed (Jest), 31 passing incl. the new DELIVERY_FEE_CALC_VERSION case,apps/dgfy-api/tests/deliveryFeeModeConfig.checkoutFallback.unit.test.js -- actually executed (Jest), unmodified, 5 passing (fixed-mode byte-identity regression),apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js -- actually executed (Jest), unmodified, 7 passing (fixed-mode fee-boundary regression across road/large/unavailable distances),apps/dgfy-api/tests/storeCartQuotePreviewNoContactRequired.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutAffiliatePricing.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutInventoryReservation.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutVoucherPromoStacking.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storePaymentTruth.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeUsecases.applicationResult.test.js -- actually executed (Jest), unmodified, regression-clean,node --check on every changed/new apps/dgfy-api and apps/dgfy-migration-runner .js/.cjs file,npm run lint:docs -- passed (85 ADRs, 29 governed docs, incl. the ADR 0012 amendment),npm run check:architecture -- passed (52 modules, 537 code files),npm run check:compliance -- confirmed to fail first (listing storeUseCases.js and finalizePaidCommerceSession.js as the sensitive files with no declaration), then pass once this declaration was added
+verification_evidence: apps/dgfy-api/tests/storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js -- actually executed (Jest), 2 passing,apps/dgfy-api/tests/storeCheckoutCalculatedDeliveryFee.unit.test.js -- actually executed (Jest), 13 passing (RF-3 fix, #1377 review: expanded the no-coordinates case into a 4-row matrix -- omitted/null/empty-string/non-numeric),apps/dgfy-api/tests/storeCheckoutDeliveryFeePin.unit.test.js -- actually executed (Jest), 26 passing (RF-2 fix, #1377 review: isValidPinnedDeliveryBreakdown now validates every persisted breakdown field, not just mode/finalFee/calcVersion),apps/dgfy-api/tests/addDeliveryFeeBreakdown.migration.test.js -- actually executed (Jest), 10 passing incl. the sync-tenant-schemas.js DDL drift guard,apps/dgfy-api/tests/deliveryFeePolicy.unit.test.js -- actually executed (Jest), 31 passing incl. the new DELIVERY_FEE_CALC_VERSION case,apps/dgfy-api/tests/deliveryFeeModeConfig.checkoutFallback.unit.test.js -- actually executed (Jest), unmodified, 5 passing (fixed-mode byte-identity regression),apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js -- actually executed (Jest), 10 passing (RF-4 fix, #1377 review: added an explicit store_delivery_fee_mode:'fixed' fixture variant to the byte-identity parameterized test, alongside the pre-existing absent-config case),apps/dgfy-api/tests/storeCartQuotePreviewNoContactRequired.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutAffiliatePricing.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutDownpaymentResolution.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutInventoryReservation.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeCheckoutVoucherPromoStacking.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storePaymentTruth.unit.test.js -- actually executed (Jest), unmodified, regression-clean,apps/dgfy-api/tests/storeUsecases.applicationResult.test.js -- actually executed (Jest), unmodified, regression-clean,node --check on every changed apps/dgfy-api .js file (this fixup pass),npm run lint:docs -- passed (85 ADRs, 29 governed docs, incl. the ADR 0012 amendment),npm run check:architecture -- passed (52 modules, 537 code files),npm run check:compliance -- confirmed to fail first (listing storeUseCases.js and finalizePaidCommerceSession.js as the sensitive files with no declaration), then pass once this declaration was added
 rollback_note: All five pos_transactions columns (delivery_fee_mode/base/waiver/override/calc_version) and the one commerce_payment_sessions column (delivery_fee_breakdown) are additive and nullable/defaulted, droppable with no dependent read path outside this diff -- reverting the commit set restores the pre-237 flat-rate resolver exactly, since resolveDeliveryFeeConfig's output was already being computed-and-discarded before this phase (Phase 233). Orders already persisted at a calculated fee are NOT recomputed by a revert -- the fee they carry stays correct for the money that was actually collected; only the provenance columns and the payment-session pin become unreadable. The quoted-fee pin (commerce_payment_sessions.delivery_fee_breakdown) reverting to NULL degrades a webhook finalization back to a fresh re-resolution -- exactly today's (pre-237) behavior, not a new failure mode.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -213,6 +213,8 @@ customer-visible storefront price actually changes based on tenant configuration
 - `apps/dgfy-api/tests/addDeliveryFeeBreakdown.migration.test.js` (new)
 - `apps/dgfy-api/tests/deliveryFeePolicy.unit.test.js`
 - `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
+- `apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js` (2026-09-02 amendment, RF-4:
+  explicit-fixed-mode fixture variant added -- previously listed above as unmodified, no longer is)
 
 Note: the two new migrations
 (`apps/dgfy-migration-runner/migrations/20260903000001-add-delivery-fee-breakdown.cjs`,
@@ -224,6 +226,51 @@ larger than Phase 236's two observation-only columns) and, as of this declaratio
 explicit approval -- not yet committed. This declaration will be amended (or the PR updated with
 those files under the same declaration) once that approval lands; see the PR body for the current
 status. This mirrors the exact posture Phase 236's own declaration took for its migration.
+
+## Amendments
+
+### 2026-09-02: PR #1377 review fixup (RF-1 through RF-4)
+
+`pr-reviewer`'s first pass on this phase's PR (#1377) `BLOCK`ed on three findings; this amendment
+records the fixes, all within the same `storeUseCases.js` surface already covered above -- no new
+compliance-sensitive module is touched.
+
+- **RF-2 (blocker)**: `isValidPinnedDeliveryBreakdown` previously validated only `mode`/`finalFee`/
+  `calcVersion` on a read-back quoted-fee pin -- `baseFee`, `waiverAmount`, `overrideAmount`,
+  `distanceMeters`, `distanceSource`, `fallbackApplied`, `outOfRange`, and `pinned_at` were accepted
+  unchecked and copied verbatim into the persisted order on webhook finalization. Now every field is
+  validated to its actual domain (finite nonnegative money values; `overrideAmount` null-or-finite-
+  nonnegative, explicitly distinguishing a real zero override from "no override"; `distanceSource`
+  against the closed `road|fallback|none` enum; `distanceMeters` null-or-finite-nonnegative;
+  `fallbackApplied`/`outOfRange` as real booleans, not merely truthy; `pinned_at` as a parseable
+  timestamp string) -- any single failure still falls through to the existing warn-and-fresh-
+  resolution path, never a thrown error, unchanged from the original contract.
+- **RF-3 (blocker)**: `toNumberOrNull` (used to normalize `delivery_latitude`/`delivery_longitude`)
+  coerced an explicit JSON `null` (and an empty string) straight through `Number(...)`, which
+  silently produced a finite `0` -- indistinguishable downstream from a genuine `(0, 0)` coordinate.
+  A payload with `delivery_latitude: null` (a realistic client shape) could therefore still pass the
+  road-distance provider's call guard and price calculated mode off a fabricated coordinate instead
+  of correctly falling back to fixed. Fixed at `toNumberOrNull` itself -- explicit null/undefined/
+  empty string all now normalize to `null` (absent) before any numeric coercion -- so every caller of
+  `buildNormalizedCheckoutRequest` benefits, not just the road-distance guard.
+- **RF-4 (should-fix)**: the fixed-mode byte-identity parameterized regression
+  (`storeCheckoutRoadDistanceCapture.unit.test.js`) previously only exercised legacy absent-config
+  defaulting. Added a second parameterized variant with an explicit
+  `store_delivery_fee_mode: 'fixed'` setting, asserting the same strict `delivery_fee`/
+  `total_amount` equality across road-zero/road-large/unavailable-provider distances -- proving a
+  tenant who has explicitly set fixed mode is unaffected too, not just one who never touched the
+  setting.
+- No new `pos_transactions`/`commerce_payment_sessions` columns, no new reason code, no change to
+  the totals-formula shape or the classification (`major`/`payments` stands unchanged) -- this
+  amendment hardens validation on the same surfaces already declared above, it does not widen them.
+
+Verification for this amendment: `storeCheckoutDeliveryFeePin.unit.test.js` (26 tests, up from 10 --
+18 new malformed-pin rows covering every RF-2 field plus a dedicated overrideAmount null-vs-zero
+case), `storeCheckoutCalculatedDeliveryFee.unit.test.js` (13 tests, up from 10 -- the no-coordinates
+case expanded into a 4-row matrix: omitted/explicit-null/empty-string/non-numeric),
+`storeCheckoutRoadDistanceCapture.unit.test.js` (10 tests, up from 7 -- the new explicit-fixed-mode
+parameterized variant), all actually executed (Jest), all passing. `node --check` on every file this
+amendment touched. `npm run check:compliance`/`check:architecture`/`lint:docs` re-run clean.
 
 ## Preflight Reconciliation
 
