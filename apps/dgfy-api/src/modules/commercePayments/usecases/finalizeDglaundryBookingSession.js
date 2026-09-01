@@ -12,6 +12,24 @@ const paymentId = (resource = {}) => {
   return String(candidate).startsWith('pay_') ? candidate : null;
 };
 
+const snapshotLines = (lines) => (Array.isArray(lines) ? lines : []).map((line) => ({
+  externalLineReference: line?.externalLineReference || line?.external_line_reference,
+  serviceName: line?.serviceName || line?.service_name || line?.description || 'Laundry service',
+  quantity: Number(line?.quantity || 0),
+  measurementGrams: Number.isInteger(line?.measurementGrams) ? line.measurementGrams : null,
+  configuration: line?.serviceInputs && typeof line.serviceInputs === 'object'
+    ? line.serviceInputs
+    : (line?.configuration && typeof line.configuration === 'object' ? line.configuration : {}),
+  unitAmountCentavos: Number.isInteger(line?.unitAmountCentavos) ? line.unitAmountCentavos : null
+}));
+
+const snapshotGroup = (group) => (group && typeof group === 'object' ? {
+  externalOrderGroupReference: group.externalOrderGroupReference || group.external_order_group_reference,
+  externalTrackingGroupReference: group.externalTrackingGroupReference || group.external_tracking_group_reference,
+  mode: group.mode,
+  expectedChildModes: Array.isArray(group.expectedChildModes) ? group.expectedChildModes : []
+} : null);
+
 const submissionFor = (session) => {
   const payload = parseObject(session.checkout_payload);
   const submission = parseObject(payload.dglaundry_submission);
@@ -25,8 +43,10 @@ const submissionFor = (session) => {
     quoteId: submission.quoteId || fixed.quoteId || null,
     reservationIds: submission.reservationIds || fixed.reservationIds || [],
     catalogVersion: payload.catalog_version || 'local',
-    lines: submission.lines || fixed.lines || [],
+    lines: snapshotLines(submission.lines || fixed.lines || []),
     fulfillment: submission.fulfillment || payload.fulfillment,
+    orderMode: submission.orderMode || submission.mode || fixed.mode || (payload.dglaundry_booking_group?.mode === 'mixed' ? 'fixed' : payload.dglaundry_booking_group?.mode || null),
+    group: snapshotGroup(submission.group || payload.dglaundry_booking_group),
     customerReference: payload.customer?.id || null,
     customerReferenceKind: payload.customer?.id ? 'dgfy_account' : 'dgfy_guest'
   };

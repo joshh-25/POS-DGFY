@@ -34,28 +34,28 @@ describe('DGLaundry booking payment session', () => {
 
   it('prepares mixed fixed/per-kilo children and charges only the fixed child', async () => {
     const commercePaymentRepository = repository();
-    const partnerClient = { prepareQuote: jest.fn(async (request) => ({ quoteId: `quote-${request.mode}`, totalCentavos: request.mode === 'fixed' ? 12500 : 0, reservationIds: [`reservation-${request.mode}`] })) };
+    const partnerClient = { prepareBookingGroup: jest.fn(async (request) => ({ reservation: { id: `booking-${request.mode}`, quotedAmountCentavos: request.mode === 'fixed' ? 12500 : null, inventoryReservationIds: [`reservation-${request.mode}`] } })) };
     const paymongoService = { createQrphPaymentIntent: jest.fn(async () => ({ paymentIntent: { id: 'pi_1' }, paymentMethod: { id: 'pm_1' }, qrCodeImageUrl: 'https://paymongo.test/qr', expiresAt: new Date(Date.now() + 60000).toISOString() })) };
     const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService, partnerClient });
     const result = await useCase({ payload: payload() });
     expect(result.success).toBe(true);
     expect(result.data.payment_required).toBe(true);
-    expect(partnerClient.prepareQuote).toHaveBeenCalledTimes(2);
+    expect(partnerClient.prepareBookingGroup).toHaveBeenCalledTimes(2);
     expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalledWith(expect.objectContaining({ amount: 12500, splitPayment: null }));
     expect(commercePaymentRepository.createSession).toHaveBeenCalledWith(expect.objectContaining({ target_type: 'dglaundry_booking', platform_fee_centavos: 0 }));
   });
 
   it('returns a reservation-only result for per-kilo and stays dark when the kill switch is on', async () => {
     const commercePaymentRepository = repository();
-    const partnerClient = { prepareQuote: jest.fn(async () => ({ quoteId: 'quote-kilo', totalCentavos: 0, reservationIds: ['reservation-kilo'] })) };
+    const partnerClient = { prepareBookingGroup: jest.fn(async () => ({ reservation: { id: 'booking-kilo', quotedAmountCentavos: null, inventoryReservationIds: ['reservation-kilo'] } })) };
     const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService: {}, partnerClient });
     const result = await useCase({ payload: payload({ mode: 'per_kilo', lines: [{ variantId: 'kilo-1', quantity: 1, externalLineReference: 'line-kilo' }] }) });
     expect(result.success).toBe(true);
     expect(result.data.payment_required).toBe(false);
+    expect(commercePaymentRepository.createSession).toHaveBeenCalledWith(expect.objectContaining({ target_type: 'dglaundry_booking', total_amount_centavos: 0 }));
     process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH = 'true';
     const disabled = await useCase({ payload: payload({ idempotency_key: 'booking-key-2' }) });
     expect(disabled.success).toBe(false);
     expect(disabled.code).toBe('SERVICE_UNAVAILABLE');
   });
 });
-

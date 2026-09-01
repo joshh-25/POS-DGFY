@@ -17,8 +17,8 @@ const branchEnabled = (locationId) => {
 const lineMode = (line, mode) => line?.mode || (mode === 'per_kilo' ? 'per_kilo' : mode === 'fixed' ? 'fixed' : null);
 const paymentSnapshot = ({ status, amountCentavos, externalReference = null, provider = 'paymongo' }) => ({ owner: 'dgfy', status, amountCentavos, externalReference, provider });
 
-const cancelPreparedChildren = async (children, reason) => {
-  await Promise.all(children.map((child) => dglaundryPartnerClient.cancelOrder(createDgfyOrderEvent({
+const cancelPreparedChildren = async (children, reason, partnerClient = dglaundryPartnerClient) => {
+  await Promise.all(children.map((child) => partnerClient.cancelOrder(createDgfyOrderEvent({
     type: 'dgfy.laundry_order.cancelled.v1',
     data: {
       companyId: child.companyId,
@@ -64,6 +64,13 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
     }
     if (!branchEnabled(locationId)) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Online laundry booking is disabled for this branch.', { statusCode: 503 });
 
+    const group = {
+      externalOrderGroupReference: trim(payload.external_order_group_reference || externalOrderReference, 200),
+      externalTrackingGroupReference: trim(payload.external_tracking_group_reference || externalTrackingReference, 200),
+      mode: mode === 'mixed' ? 'mixed' : 'single',
+      expectedChildModes: mode === 'mixed' ? ['fixed', 'per_kilo'] : [mode]
+    };
+
     const existing = await commercePaymentRepository.findSessionByIdempotency({ tenantId, targetType: 'dglaundry_booking', idempotencyKey });
     const requestHash = crypto.createHash('sha256').update(JSON.stringify({ ...payload, idempotency_key: undefined, idempotencyKey: undefined })).digest('hex');
     if (existing) {
@@ -87,10 +94,17 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
           externalTrackingReference: mode === 'mixed' ? childReference(externalTrackingReference, childMode) : externalTrackingReference,
           idempotencyKey: mode === 'mixed' ? `${idempotencyKey}:${childMode}` : idempotencyKey,
           catalogVersion: trim(payload.catalog_version || 'local', 120),
+          group,
           lines,
           fulfillment: payload.fulfillment
         };
-        const quote = await partnerClient.prepareQuote(childPayload);
+        const prepared = await (partnerClient.prepareBookingGroup
+          ? partnerClient.prepareBookingGroup(childPayload)
+          : partnerClient.prepareQuote(childPayload));
+        const reservation = prepared?.reservation || prepared;
+        const reservationId = reservation?.id || reservation?.reservationId || null;
+        if (!reservationId) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'DGLaundry did not return a booking reservation.', { statusCode: 503 });
+        const reservationIds = reservation?.inventoryReservationIds || reservation?.inventory_reservation_ids || reservation?.reservationIds || reservation?.reservation_ids || [];
         children.push({
           mode: childMode,
           companyId,
@@ -98,23 +112,54 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
           externalOrderReference: childPayload.externalOrderReference,
           externalTrackingReference: childPayload.externalTrackingReference,
           lines,
-          quote,
-          quoteId: quote?.quoteId || quote?.quote_id || null,
-          amountCentavos: Number(quote?.totalCentavos ?? quote?.total_amount_centavos ?? quote?.subtotalCentavos ?? 0),
-          reservationIds: quote?.reservationIds || quote?.reservation_ids || []
+          reservationId,
+          quoteId: reservation?.quoteId || reservation?.quote_id || reservationId,
+          amountCentavos: Number(reservation?.quotedAmountCentavos ?? reservation?.quoted_amount_centavos ?? reservation?.totalCentavos ?? reservation?.total_amount_centavos ?? reservation?.subtotalCentavos ?? 0),
+          reservationIds: Array.isArray(reservationIds) ? reservationIds : []
         });
       }
     } catch (error) {
-      await cancelPreparedChildren(children, 'BOOKING_PREPARE_FAILED');
+      await cancelPreparedChildren(children, 'BOOKING_PREPARE_FAILED', partnerClient);
       throw error;
     }
 
     const fixedChild = children.find((child) => child.mode === 'fixed') || null;
     if (!fixedChild) {
-      return ok({ idempotent_replay: false, payment_required: false, booking_group: { mode, children } });
+      // Per-kilo reservations do not create a PayMongo charge, but they still
+      // need a durable landlord row so a retried browser request cannot create
+      // a second provider reservation for the same idempotency key.
+      let reservationSession;
+      try {
+        reservationSession = await commercePaymentRepository.createSession({
+          public_reference: publicReference(),
+          tenant_id: tenantId,
+          store_slug: trim(payload.store_slug || 'tenant-store', 120),
+          provider: 'paymongo',
+          target_type: 'dglaundry_booking',
+          status: 'created',
+          idempotency_key: idempotencyKey,
+          request_hash: requestHash,
+          checkout_payload: { dglaundry_booking: true, company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, external_tracking_reference: externalTrackingReference, customer: payload.customer || null, fulfillment: payload.fulfillment, dglaundry_booking_group: { ...group, mode, children } },
+          subtotal_amount: 0,
+          delivery_fee: 0,
+          service_fee_amount: 0,
+          total_amount: 0,
+          currency: 'PHP',
+          total_amount_centavos: 0,
+          order_total_centavos: 0,
+          platform_fee_centavos: 0,
+          fee_policy: { collection_model: 'dglaundry_counter_tender', split_payment_used: false, payment_authority: 'dglaundry' },
+          tenant_transfer_merchant_id: null,
+          split_payload: null
+        });
+      } catch (error) {
+        await cancelPreparedChildren(children, 'PER_KILO_RESERVATION_PERSIST_FAILED', partnerClient);
+        throw error;
+      }
+      return ok({ idempotent_replay: false, payment_required: false, payment_session: serialized(reservationSession), booking_group: { mode, children } });
     }
     if (!Number.isInteger(fixedChild.amountCentavos) || fixedChild.amountCentavos <= 0) {
-      await cancelPreparedChildren(children, 'INVALID_FIXED_BOOKING_AMOUNT');
+      await cancelPreparedChildren(children, 'INVALID_FIXED_BOOKING_AMOUNT', partnerClient);
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'The provider returned an invalid fixed booking amount.', { statusCode: 422 });
     }
 
@@ -135,7 +180,7 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
       catalog_version: trim(payload.catalog_version || 'local', 120),
       customer: payload.customer || null,
       fulfillment: payload.fulfillment,
-      dglaundry_booking_group: { mode, children },
+      dglaundry_booking_group: { ...group, mode, children },
       dglaundry_submission: submission
     };
     let session;
@@ -163,7 +208,7 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
         split_payload: null
       });
     } catch (error) {
-      await cancelPreparedChildren(children, 'PAYMENT_SESSION_PERSIST_FAILED');
+      await cancelPreparedChildren(children, 'PAYMENT_SESSION_PERSIST_FAILED', partnerClient);
       throw error;
     }
     try {
@@ -188,7 +233,7 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
       return ok({ idempotent_replay: false, payment_required: true, payment_session: serialized(session) });
     } catch (error) {
       await commercePaymentRepository.updateSessionById(session.session_id, { status: 'failed', failure_code: 'PROVIDER_CREATE_FAILED', failure_reason: String(error.message || 'PayMongo creation failed').slice(0, 500) });
-      await cancelPreparedChildren(children, 'PAYMENT_SESSION_CREATE_FAILED');
+      await cancelPreparedChildren(children, 'PAYMENT_SESSION_CREATE_FAILED', partnerClient);
       return ok({ idempotent_replay: false, payment_required: true, payment_session: serialized({ ...session, status: 'failed' }) });
     }
   } catch (error) {
