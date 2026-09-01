@@ -1,0 +1,22 @@
+name: Runner Probe
+
+# Phase 233 (#1365), Wave 2 Sec 2.6: a tiny, controlled, non-production canary that answers exactly
+# one question -- "did a GitHub-hosted runner pick this dispatch up" -- for
+# scripts/ci-runner-preflight.js's opt-in `--canary` path. Deliberately NOT
+# build-android-manual.yml (which is also `runs-on: ubuntu-latest`, but builds a real release APK
+# with JDK 17 + Gradle; the 2026-09-01 manual probe against it worked only because a human cancelled
+# it by hand). This workflow does nothing but echo, has no checkout, no secrets, and no permissions
+# -- its entire cost is a few seconds of billed hosted minutes.
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm a hosted runner picked this up
+        run: |
+          echo "runner-probe OK: $(hostname)"

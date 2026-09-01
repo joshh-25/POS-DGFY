@@ -105,7 +105,10 @@ jobs:
   # docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233 entry.
   guard-branch:
     runs-on: ['sieitz-runner']  # #923: generic, either box
-    timeout-minutes: 1
+    # Raised from 1 to 5 (Phase 233, #1365, Wave 2 R-2): the runner-preflight step below makes its
+    # own network calls (gh api / curl) on top of the branch-ref check, which would trip a
+    # 1-minute timeout on a slow API response.
+    timeout-minutes: 5
     steps:
       - name: Refuse to run against anything but main
         shell: bash
@@ -116,6 +119,36 @@ jobs:
             exit 1
           fi
           echo "OK: dispatched against refs/heads/main."
+
+      # Phase 233 (#1365), Wave 2 H2: runs the same pre-dispatch preflight
+      # scripts/ci-runner-preflight.js exposes to `promoter` (H1), against the class that's
+      # actually active today (self-hosted -- Phase 233 is a scaffold, no active value has
+      # changed). guard-branch is the deliberate anchor for this (Wave 1 Sec 1.4): it always runs,
+      # and every downstream job carries `needs: guard-branch`, so a failure here stops the whole
+      # dispatch before any build starts -- "hosted-runner unavailability fails clearly and permits
+      # only the documented, logged fallback strategy" (#1365's own acceptance criterion). This
+      # step does NOT flip any routing value itself, on any exit code -- it only reports.
+      - name: Checkout for runner preflight
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Runner availability preflight
+        id: runner_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci-runner-preflight.js --target-sha "${{ github.sha }}" --class self-hosted >> "$GITHUB_STEP_SUMMARY" || {
+            status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "::error::Runner preflight says a documented flip is required -- see the step summary above and comment/uncomment the alternate lines in deploy-main.yml (docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md). This job intentionally fails rather than silently degrading."
+            else
+              echo "::error::Runner preflight could not confirm the active (self-hosted) class is available -- see the step summary above."
+            fi
+            exit 1
+          }
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
