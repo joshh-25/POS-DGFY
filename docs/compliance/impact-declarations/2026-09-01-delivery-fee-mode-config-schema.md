@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryFeeConfig.unit.test.js -- act
 rollback_note: No schema, migration, or persisted-behavior change. This phase adds two EAV settings keys (store_delivery_fee_mode, store_delivery_fee_calc; no new DB columns -- settings are key/value rows in the existing tenant settings table) and a new pure, zero-I/O normalization module (modules/deliveryPricing/domain/deliveryFeeConfig.js). resolveStoreDeliveryFee (storeUseCases.js) calls the normalizer but discards its result -- every order still resolves the exact same flat store_delivery_fee value as before this PR, for every order method, every tenant, every input. Reverting this commit set removes the two settings keys' validation/read-allowlist/IMS UI and the new module; no data migration, no backfill, nothing to undo server-side.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1324-DELIVERY-FEE-MODE-CONFIG-SCHEMA
+preflight_run_at: 2026-09-01T15:00:53.191Z
+preflight_request_ref: PREFLIGHT-33522670635-2026-09-01-DELIVERY-FEE-MODE-CONFIG-SCHEMA
 ---
 
 # Delivery-fee mode config schema, fixed-only behavior (Phase 233, #1324)
