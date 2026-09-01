@@ -393,6 +393,49 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   decision 9, ADR 0012's 2026-09-02 amendment (the totals term this waiver reduces).
 - PR: Phase 240 (#1331).
 
+### 2026-09-02 — Storefront order cancellation reverses its voucher redemption(s) (Phase 242, #1390)
+
+- Clauses amended: **Consequences item 3** and **Validation item 3** (both untagged -- Consequences
+  and Validation record effects/checks, not Decisions, so no strictness tier applies).
+- Change: `buildCancelStoreOrderUseCase` now calls `reverseVoucherRedemptionUseCase` (unchanged
+  itself -- it was already complete, per the 2026-08-19 QRPh entry above, just uncalled) for every
+  redemption a cancelled order recorded, item and/or delivery axis, in the same transaction as the
+  `fulfillment_status: 'cancelled'` flip and before commit -- exactly what Validation item 3 already
+  required. Locating which redemption row(s) belong to an order needed a new link:
+  `voucher_redemptions.pos_transaction_id` (indexed since #455, written by nothing until now) is
+  set at checkout time, in the same transaction the redemption itself is written in, immediately
+  after the two `VOUCHER_REDEMPTION_UNRECORDED` guards. Cancel reads it back via a new
+  `voucherRepository.listRedemptionsByTransactionId`.
+- **Consequences item 3, precisely: only its *cancelled-order* half is closed.** Its
+  *refunded-but-not-cancelled* half is unchanged and still open — there is still no storefront
+  refund flow at all, so there is nothing to hook a reversal into for that case.
+- **Validation item 3, precisely: only its storefront half is now satisfied as written.** Its other
+  named half -- a voided POS transaction reversing its own redemption -- is still open;
+  `posUseCases.js` has no `status: 'voided'` reversal path.
+- **Fail-closed, deliberately the opposite of this same function's payment-lifecycle block** (the
+  `commerceOrderLifecycleUseCase` call, further down in the same function, which fails open with a
+  logged warning). That block is cross-database/cross-provider (ADR 0052's Architecture Boundaries
+  carve-out: a provider failure cannot roll back the tenant order decision already committed). The
+  voucher reversal is same-database, same-transaction, so a failure is atomically undoable -- it
+  throws and rolls the entire cancellation back, surfacing a retryable error to the customer rather
+  than silently failing to return a campaign budget.
+- **Legacy orders** (placed before this shipped, `pos_transaction_id IS NULL` on their redemption
+  rows) are handled two ways: an optional data-only backfill migration exact-key-matches existing
+  storefront redemptions to their order (never a `LIKE` scan); for any redemption a cancel still
+  can't find, the delivery axis is exactly reconstructable from the order header's
+  `delivery_fee_waiver_voucher_id` (the ledger idempotency key is deterministic from it), while the
+  item axis is not — its key's voucher-id segment isn't stored anywhere on the order, and a prefix
+  scan was rejected as a mechanism because it collides against client-supplied idempotency keys.
+  That residual gap is logged (`logger.warn`), not silently dropped.
+- `reverseVoucherRedemptionUseCase`'s own header comment, and `finalizePaidCommerceSession.js`'s
+  2026-08-19 comment (this ADR's entry above), both previously stated it had no live caller. It now
+  does; both comments are updated in the same PR as this amendment.
+- Reason: this closes a real, customer-facing correctness bug (a cancelled order permanently burned
+  its voucher's redemption slot/budget) and is a named blocking prerequisite for #1332 (auto-applied
+  free-delivery campaigns) — a campaign whose budget never releases on cancellation cannot be
+  trusted to auto-apply.
+- PR: Phase 242 (#1390, epic #1321).
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
@@ -416,7 +459,8 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
    the `fixed_price` benefit class this extends; #569 — B2B deferral, not reversed by #696
    (#454 decision 2 is the carve-out); #661 — the storefront voucher redemption PR both #667 and
    #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above; #1321 —
-   Customer delivery pricing epic; #1331 — the item/delivery axis split, 2026-09-02 amendment above
+   Customer delivery pricing epic; #1331 — the item/delivery axis split, 2026-09-02 amendment above;
+   #1390 — storefront cancellation voucher-reversal amendment above, blocking prerequisite for #1332
 6. [ADR 0078](0078-customer-delivery-fee-modes.md) — customer delivery fee modes
    (fixed/calculated/free) and the `finalFee = max(0, baseFee - waiverAmount)` formula the
    2026-09-02 amendment's waiver reduces; its own Related section anticipated this amendment

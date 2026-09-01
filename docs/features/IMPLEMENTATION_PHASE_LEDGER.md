@@ -16224,3 +16224,178 @@ the skill's own "Board transitions" section).
 242 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
 work lands, per plan §10; renumbered from this entry's own pre-collision "241" reference per the
 Numbering note above).
+
+## Phase 242 - Storefront order cancellation emits a voucher-redemption reversal, all voucher kinds (#1390, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing). Named by Phase 241's own "Next eligible phase" note above as
+where "Wave 0 decision #5's cancellation-reversal work lands" -- filed and built as its own ticket
+(#1390) rather than folded into #1332, because it is a blocking prerequisite for #1332 (auto-applied
+free-delivery campaigns): a campaign whose budget never releases on cancellation cannot be trusted to
+auto-apply. **Numbering re-verified at commit time, not assumed from the plan** (per this phase's own
+`AGENTS.md`-mandated check): `grep '^## Phase' docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -3`
+confirmed 241 as the highest entry immediately before this one was appended, with no collision from
+#1333 (built in parallel per this ticket's own brief) -- unlike Phase 241's own entry, no renumbering
+was needed here.
+
+### Objective and scope
+
+Closes a real, customer-facing correctness bug the ticket's own framing under-stated: the ticket
+assumed "wiring an existing primitive into an existing call site" was the whole job, but
+`voucher_redemptions.pos_transaction_id` (indexed since #455) was written by nothing anywhere in the
+codebase, so there was no way to locate which redemption row(s) belong to a cancelled order. Closing
+that link is a real, deliberate addition to the **checkout** path, not only the cancel path --
+flagged explicitly per the plan, not silently smuggled in.
+
+- **Checkout-side**: `voucherRepository.attachRedemptionsToTransaction` sets
+  `pos_transaction_id` on whichever redemption(s) (item axis, delivery axis, or both) the order just
+  recorded, in the same transaction, immediately after the two existing
+  `VOUCHER_REDEMPTION_UNRECORDED` guards in `storeUseCases.js`. Both redemption ids are already in
+  memory (including on an idempotent-replay branch), so this is a single indexed `UPDATE`, no lookup.
+- **Cancel-side**: `buildCancelStoreOrderUseCase` reads the redemption(s) back via a new
+  `voucherRepository.listRedemptionsByTransactionId` (`channel: 'storefront'`-scoped, ordered
+  ascending by id for deterministic lock ordering against a concurrent cancel sharing the same
+  voucher) and reverses each via the existing, unmodified `reverseVoucherRedemptionUseCase` --
+  IN-TRANSACTION, between the inventory release and the `fulfillment_status: 'cancelled'` flip,
+  before commit, per ADR 0066 Validation item 3's own already-accepted requirement. Both dependencies
+  are injected as optional builder args defaulting to `null` (mirrors the existing
+  `commerceOrderLifecycleUseCase` pattern), wired for real in `store/index.js`.
+- **Fail-CLOSED** -- the direct opposite of Phase 241's own fail-open precedent for this same
+  function's payment-lifecycle block, and stated as such rather than left as an unexplained
+  inconsistency: that block is cross-database/cross-provider (ADR 0052's carve-out), this reversal is
+  same-database/same-transaction, so a failure is atomically undoable. A reversal failure throws and
+  rolls the ENTIRE cancellation back (inventory release included) -- the customer sees a retryable
+  error, never a silently-unreturned campaign budget.
+- **Legacy orders** (`pos_transaction_id IS NULL`, placed before this ships): the delivery axis is
+  exactly reconstructable from the order header's `delivery_fee_waiver_voucher_id` via a fallback
+  exact-key lookup (never a `LIKE`/prefix scan -- a real collision hazard against client-supplied
+  idempotency keys, per the plan's own finding). The item axis has no equivalent and is a documented,
+  `logger.warn`-observable gap for any redemption the optional backfill migration (below) doesn't
+  already cover.
+- **Included, data-only backfill migration**
+  (`20260904000002-backfill-voucher-redemption-transaction-link.cjs`): no schema change, exact-key
+  `UPDATE ... JOIN` (never `LIKE`) backfilling `pos_transaction_id` on existing storefront
+  redemptions, tenant-fanned-out following `20260901000004`'s established pattern. This is a
+  migration -- per the standing "skip routine checkpoint confirmation, self-verify and proceed"
+  preference recorded for this repo (Pat reviews every PR himself), proceeded without a stop-and-ask,
+  stated plainly in this entry and the PR body's Testing Evidence rather than silently included.
+- Response gains one purely additive field, `voucher_reversal: { attempted, reversed, entries }`,
+  always this stable shape (never `null`).
+- Two doc-drift fixes in the same PR: `reverseVoucherRedemptionUseCase`'s own header comment and
+  `finalizePaidCommerceSession.js`'s comment both previously stated it had no live caller; both are
+  corrected to name the new caller and the narrower gap that survives (an abandoned/expired payment
+  session still has no release path -- a distinct trigger from a cancelled order).
+- ADR 0066 amended (2026-09-02, appended at the end of the `## Amendments` section, after the
+  2026-09-02 Phase 240 entry, per that section's real forward-chronological order): Consequences item
+  3's *cancelled-order* half closed; its *refunded-but-not-cancelled* half stays open. Validation item
+  3's storefront half now satisfied as written; its POS-void half stays open.
+- Out of scope, named rather than silently dropped: a refunded-but-not-cancelled storefront order (no
+  storefront refund flow exists to hook into); POS void reversal (`posUseCases.js` has no
+  `status: 'voided'` path); an admin/manual reversal HTTP surface; #1332 itself (auto-apply campaign
+  budgeting -- this phase is its prerequisite, not part of it).
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop`; not yet reviewed or merged.
+
+### Dependencies
+
+#455 (voucher entity/ledger, `pos_transaction_id` column origin), ADR 0066 Validation item 3 (the
+in-transaction/same-transaction requirement this phase satisfies) and Consequences item 3 (the gap
+this phase partially closes), Phase 240/241 (#1331, the delivery-axis waiver this phase's delivery-
+side reversal depends on existing at all). Blocking prerequisite for #1332 (auto-applied free-
+delivery campaigns) and #1333 (built in parallel per this ticket's own brief -- no phase-number
+collision found at commit time, per the Numbering note above).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] `npm run lint:docs` (chains `check:adr`) -- OK, 29 governed docs / 85 ADRs validated.
+- [x] Targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`, 8 suites): 90/90 passing --
+  `storeCancelVoucherReversal.unit.test.js` (new, 11 -- item-axis only, delivery-axis only with zero
+  benefit_quantity and no mirrored lines, BOTH axes independently, zero-query no-op with no voucher
+  at all, idempotent replay, 409-before-any-voucher-work on a re-cancel, FAIL-CLOSED rollback of the
+  entire cancellation on a reversal failure, lock ordering, legacy delivery-axis recovery, the
+  documented item-axis legacy gap with its `logger.warn` asserted, and a guest cancellation),
+  `backfillRedemptionTransactionLink.migration.test.js` (new, 6 -- one exact-key `UPDATE` per active
+  tenant DB plus landlord, no `LIKE`/prefix scan, table-existence skip, tenants-table-absent no-op,
+  `down()` nulling exactly the same join's rows, up/down idempotence),
+  `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (extended with `attachRedemptionsToTransaction`
+  on the existing fake voucher repository, 12/12 passing, regression-clean),
+  `voucherReversalUseCases.usecases.test.js`, `voucherRedemptionUseCases.usecases.test.js`,
+  `storeCancelDownpaymentLifecycle.unit.test.js`, `storeCheckoutVoucherPromoStacking.unit.test.js`
+  (all unmodified, 100% pass -- the reversal primitive itself and the adjacent payment-lifecycle
+  block are both untouched by this phase).
+- [x] `npm run check:compliance` -- confirmed to fail first (listing all 6 sensitive files with no
+  declaration), then pass once
+  `docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md` was added.
+- [x] `npm run check:architecture` -- OK, 52 modules / 537 files; controller boundary check OK, 92
+  controller files, no unauthorized model imports.
+- [x] `npm run check:tenant-schema-coverage` -- PASS, 1 migration file checked (data-only, no DDL --
+  nothing for the registry to carry).
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **The item-axis legacy-gap warning is broader than the plan's own §4.3 code sample.** The plan's
+   shown helper code has no `logger.warn` call at all, even though its own §6 test-case list (case
+   10) requires one. Implemented by checking whether any surviving candidate row actually carries a
+   `benefit_target: 'items'` snapshot, rather than the narrower `candidates.length === 0 &&
+   !hasDeliveryAxis` condition a literal reading of the plan's code would produce -- the narrower
+   version misses the case where a legacy order has BOTH axes and only the delivery one recovers via
+   the fallback (the item axis would then be silently dropped with no warning, since `candidates`
+   would be non-empty). The broader check covers that combination too.
+2. **`voucherRepository` needed a new export from `vouchers/index.js`.** The plan's call-site code
+   (§3.1, §4.3) references `voucherRepository.attachRedemptionsToTransaction`/
+   `listRedemptionsByTransactionId` directly but does not say how `storeUseCases.js` obtains that
+   repository reference. Every existing cross-module import in this codebase's checkout path goes
+   through a module's own `index.js`, never its `repositories/` file directly -- so `voucherRepository`
+   itself is now re-exported from `vouchers/index.js` (used as a static import at the checkout call
+   site, matching how `redeemVoucherUseCase` is already used there; injected as an optional builder
+   dependency at the cancel call site instead, matching `commerceOrderLifecycleUseCase`'s own
+   pattern, since `storeCancelDownpaymentLifecycle.unit.test.js` and others build that use case with
+   no voucher wiring at all).
+
+Neither is a judgment-call reversal of anything the plan actually decided -- both are gaps the plan's
+own text didn't fully specify, surfaced here rather than silently absorbed into the diff.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), proceeded without a stop-and-ask.**
+`20260904000002-backfill-voucher-redemption-transaction-link.cjs` is a new file under
+`apps/dgfy-migration-runner/migrations/`, but DATA-ONLY (no DDL, no `ENUM MODIFY`, no dropped/added
+column) and reversible by its own `down()` -- lower blast radius than Phase 241's own migration.
+Per the standing "skip checkpoint confirmation by default, draft + self-verify, go straight to
+commit/PR" preference recorded for this repo (Pat reviews every PR himself), proceeded without
+pausing; stated plainly here and in the PR body's Testing Evidence rather than silently included.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`,
+`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`, `COMPLIANCE_SENSITIVE_RULES[5]` on
+`modules/commercePayments/`, redundant with the `payments` floor already reached). `check:compliance`
+confirmed to fail first, then pass once the declaration was added.
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition scope
+beyond what this skill already owns.
+
+### Links
+
+- Tracking issue: #1390. Epic: #1321. Refs ADR 0066's 2026-09-02 (this phase's) amendment.
+- New: `apps/dgfy-migration-runner/migrations/20260904000002-backfill-voucher-redemption-transaction-link.cjs`,
+  `apps/dgfy-api/tests/storeCancelVoucherReversal.unit.test.js`,
+  `apps/dgfy-api/tests/backfillRedemptionTransactionLink.migration.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md`.
+- Modified: `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+  `src/modules/vouchers/index.js`, `src/modules/vouchers/usecases/voucherReversalUseCases.js`
+  (comment-only), `src/modules/store/usecases/storeUseCases.js`, `src/modules/store/index.js`,
+  `src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (comment-only),
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`.
+
+### Next eligible phase
+
+243 (#1332 and/or #1333 -- #1332's auto-applied free-delivery campaigns now unblocked by this phase;
+#1333 is a parallel, independently-numbered initiative per this ticket's own brief, confirmed not to
+collide with 242 at commit time).
