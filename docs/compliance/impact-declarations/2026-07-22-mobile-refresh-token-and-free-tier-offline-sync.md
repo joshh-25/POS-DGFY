@@ -150,3 +150,13 @@ Focused backend tests cover employee-credit repayment validation, mobile sync
 transport and financial replay, cash refund behavior, receipt-device payloads,
 payment breakdowns, and rate-limit restoration. No model or migration-runner
 file changes are included, so this update introduces no schema migration.
+
+### Cashier access and catalog mutation controls
+
+The same reconciliation preserves least-privilege behavior for cashier item
+maintenance and POS settings access. Cashiers may edit catalog items through
+the existing authorized path but cannot delete them, and non-master-admin
+settings access continues to require the configured branch PIN. Permission
+matrix, cashier POS permission, and mobile settings-bootstrap tests cover the
+server-authoritative enforcement; no credential or PIN value is logged or
+added to a client-owned authorization decision.

@@ -274,6 +274,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     ],
     cashier: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
         PERMISSIONS.POS.actions.VIEW_ATTENDANCE,

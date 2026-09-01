@@ -7,6 +7,7 @@ describe('cashier POS least-privilege defaults', () => {
 
     expect(permissions).toEqual(new Set([
       PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+      PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
       PERMISSIONS.POS.actions.VIEW_POS,
       PERMISSIONS.POS.actions.TRANSACT_POS,
       // Added to the cashier role by b86b01704 ("feat(pos): add cashier attendance and operator
@@ -25,5 +26,6 @@ describe('cashier POS least-privilege defaults', () => {
     expect(permissions.has(PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS)).toBe(false);
     expect(permissions.has(PERMISSIONS.POS.actions.PRICE_OVERRIDE_POS)).toBe(false);
     expect(permissions.has(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS)).toBe(false);
+    expect(permissions.has(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS)).toBe(false);
   });
 });

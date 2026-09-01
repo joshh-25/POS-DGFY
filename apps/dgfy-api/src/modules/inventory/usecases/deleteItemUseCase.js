@@ -1,4 +1,7 @@
 export const buildDeleteItemUseCase = ({ itemRepository }) => {
-    return async ({ itemId, userId }) => itemRepository.deleteItem(itemId, userId);
+    return async ({ itemId, userId, expectedServerVersion = null }) => itemRepository.deleteItem(
+        itemId,
+        userId,
+        { expectedServerVersion }
+    );
 };
-
