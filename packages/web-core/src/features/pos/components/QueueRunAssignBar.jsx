@@ -2,62 +2,40 @@ import React from 'react';
 import { toast } from 'sonner';
 import { CheckSquare, Truck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fetchDeliveryRuns } from '../services/deliveryRunService.js';
 import { getEligibleRunTargets, getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
 
 // Phase 227 (#1273). Sticky selection toolbar for the Active Queue's bulk "add to run" flow.
 // Always rendered when retail-gated + the Active Queue tab is showing (even at 0 selected --
 // it's the discoverability surface for the whole feature, not just a contextual action bar).
 // Selection *state* lives in the parent (IncomingQueueWorkspace, so it survives a tab switch);
-// this component owns only its own delivery-runs fetch and the target-run picker's local state.
-
-const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+// this component owns only the target-run picker's own local state.
+//
+// Phase 229 (#1290): the delivery-runs fetch that used to live here was lifted into the shared
+// useDeliveryRunOptions hook (now owned by IncomingQueueWorkspace) so this bar's target picker and
+// the queue's new run filter can never disagree about which runs exist. `runs`/`runsLoading`/
+// `runsError` arrive as props instead.
 
 export default function QueueRunAssignBar({
   orders = [],
   selectedCount = 0,
   selectedEligibleCount = 0,
   driftCount = 0,
+  hiddenCount = 0,
   activeShiftLocationId = null,
-  queueLocationScopeId = null,
+  runs = [],
+  runsLoading = false,
+  runsError = '',
   disabled = false,
   submitting = false,
   onSelectAllEligible = () => {},
   onClearSelection = () => {},
   onSubmit = async () => false
 }) {
-  const [runsState, setRunsState] = React.useState({ loading: false, items: [], errorMessage: '' });
   const [targetRunId, setTargetRunId] = React.useState('');
 
-  // Same RF-3 staleness guard as DeliveryRunsWorkspacePanel.jsx's own loadRuns -- a slower, older
-  // fetch (e.g. one issued before a location-scope switch) must never overwrite state committed
-  // by a newer one.
-  const runsRequestIdRef = React.useRef(0);
-
-  const loadRuns = React.useCallback(async () => {
-    const requestId = (runsRequestIdRef.current += 1);
-    setRunsState((current) => ({ ...current, loading: true }));
-    try {
-      const payload = await fetchDeliveryRuns({
-        location_id: queueLocationScopeId || undefined,
-        limit: 100
-      });
-      if (requestId !== runsRequestIdRef.current) return; // stale
-      const items = Array.isArray(payload?.items) ? payload.items : [];
-      setRunsState({ loading: false, items, errorMessage: '' });
-    } catch (error) {
-      if (requestId !== runsRequestIdRef.current) return; // stale
-      setRunsState({ loading: false, items: [], errorMessage: getErrorMessage(error, 'Failed to load delivery runs.') });
-    }
-  }, [queueLocationScopeId]);
-
-  React.useEffect(() => {
-    loadRuns();
-  }, [loadRuns]);
-
   const eligibleRunTargets = React.useMemo(
-    () => getEligibleRunTargets(runsState.items, { locationId: activeShiftLocationId }),
-    [runsState.items, activeShiftLocationId]
+    () => getEligibleRunTargets(runs, { locationId: activeShiftLocationId }),
+    [runs, activeShiftLocationId]
   );
 
   // A previously chosen target run can drop out of the eligible set (dispatched elsewhere,
@@ -110,8 +88,14 @@ export default function QueueRunAssignBar({
           </p>
         ) : null}
 
-        {runsState.errorMessage ? (
-          <p className="text-xs font-semibold text-rose-700">{runsState.errorMessage}</p>
+        {hiddenCount > 0 ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+            {hiddenCount} selected order{hiddenCount === 1 ? ' is' : 's are'} hidden by the run filter and will not be added.
+          </p>
+        ) : null}
+
+        {runsError ? (
+          <p className="text-xs font-semibold text-rose-700">{runsError}</p>
         ) : null}
       </div>
 
@@ -131,12 +115,12 @@ export default function QueueRunAssignBar({
           <select
             value={targetRunId}
             onChange={(event) => setTargetRunId(event.target.value)}
-            disabled={barDisabled || runsState.loading}
+            disabled={barDisabled || runsLoading}
             className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold"
             aria-label="Target delivery run"
           >
             <option value="">
-              {runsState.loading
+              {runsLoading
                 ? 'Loading runs...'
                 : eligibleRunTargets.length === 0
                   ? 'No eligible runs for this location'
