@@ -50,7 +50,9 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             User
         }, next);
     },
-    invalidateTenantLookupCache: jest.fn()
+    invalidateTenantLookupCache: jest.fn(),
+    resolveDegradedTenantContextFailure: jest.fn(),
+    sendTenantContextError: jest.fn()
 }));
 
 const { default: app } = await import('../src/server.js');
