@@ -874,7 +874,7 @@ describe('window.__sentryTestError', () => {
   it('is registered for a deployed (non-DEV-server) DEV environment build -- import.meta.env.DEV is false here', async () => {
     // Regression guard: this used to gate on import.meta.env.DEV, a Vite
     // build-mode flag that is false for every `vite build` (DEV/STAGING/
-    // BETA deploys included), not just local `vite dev`. That meant the
+    // PROD deploys included), not just local `vite dev`. That meant the
     // trigger never existed outside a developer's own machine -- including
     // on a real deployed DEV/staging device, like the Chrome 80 iMin
     // terminal that had never sent a single Sentry event and needed this
