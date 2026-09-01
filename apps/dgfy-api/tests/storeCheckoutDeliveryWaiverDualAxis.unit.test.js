@@ -170,6 +170,19 @@ const buildFakeVoucherRepository = (vouchers) => {
             }));
             state.lines.push(...rows);
             return rows;
+        },
+        // #1390: the checkout-side write this phase adds, called directly (not through a use case)
+        // right after the two VOUCHER_REDEMPTION_UNRECORDED guards -- see storeUseCases.js.
+        async attachRedemptionsToTransaction(voucherRedemptionIds, posTransactionId) {
+            const ids = (Array.isArray(voucherRedemptionIds) ? voucherRedemptionIds : [voucherRedemptionIds]).map(Number);
+            let affected = 0;
+            state.redemptions.forEach((r) => {
+                if (ids.includes(r.voucher_redemption_id)) {
+                    r.pos_transaction_id = Number(posTransactionId);
+                    affected += 1;
+                }
+            });
+            return affected;
         }
     };
 };
