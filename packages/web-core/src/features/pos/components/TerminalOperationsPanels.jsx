@@ -590,6 +590,40 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
+
+  // Phase 229 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
+  // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
+  // a failed poll as an indistinguishable "no orders" empty state with no recovery. Extracted so
+  // both branches share the exact same ladder and can never drift apart again.
+  const queueAccessNotice = (() => {
+    if (!canViewPos || incomingOrdersAccessState === 'forbidden') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'error') {
+      return (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'shift_required') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
+        </p>
+      );
+    }
+    if (incomingOrdersState?.loading && incomingOrders.length === 0) {
+      return (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      );
+    }
+    return null;
+  })();
   const selectedLocationName = !queueLocationScopeId
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
@@ -688,6 +722,17 @@ function IncomingQueueWorkspace({
           runCount={deliveryRunCount}
           showSplitView={isRetailMode && isSplitViewportEligible}
         />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            onClick={() => refreshIncomingOrders?.()}
+            disabled={incomingOrdersState?.loading || locked || !isOnline || !hasActiveShift}
+            className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
+          </Button>
+        </div>
         <DndContext sensors={sensors} onDragStart={handleQueueDragStart} onDragEnd={handleQueueDragEnd}>
           <QueueRunAssignBar
             orders={sortedIncomingOrders}
@@ -707,43 +752,47 @@ function IncomingQueueWorkspace({
               Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
             </p>
           ) : null}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
-            <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
-              <IncomingQueueOrderList
-                orders={sortedIncomingOrders}
-                isRetailMode={isRetailMode}
-                selectedOrderIds={selectedOrderIds}
-                onToggleSelection={toggleOrderSelection}
-                incomingOrderActionState={incomingOrderActionState}
-                workflowMode={workflowMode}
-                canTransactPos={canTransactPos}
-                canViewPos={canViewPos}
-                locked={locked}
-                isOnline={isOnline}
-                hasActiveShift={hasActiveShift}
-                bulkAssignSubmitting={bulkAssignSubmitting}
-                handleOpenCashCollection={handleOpenCashCollection}
-                handleOpenBalanceSettlement={handleOpenBalanceSettlement}
-                handleViewBalancePaymentProof={handleViewBalancePaymentProof}
-                handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
-                handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
-                onRequestReject={setPendingRejectionOrderId}
-                handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-                incomingReceiptOpeningId={incomingReceiptOpeningId}
-                deliveryPersonnelState={deliveryPersonnelState}
-                handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
-                handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
-                columns={1}
-                draggable
+          {queueAccessNotice ? (
+            queueAccessNotice
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+              <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
+                <IncomingQueueOrderList
+                  orders={sortedIncomingOrders}
+                  isRetailMode={isRetailMode}
+                  selectedOrderIds={selectedOrderIds}
+                  onToggleSelection={toggleOrderSelection}
+                  incomingOrderActionState={incomingOrderActionState}
+                  workflowMode={workflowMode}
+                  canTransactPos={canTransactPos}
+                  canViewPos={canViewPos}
+                  locked={locked}
+                  isOnline={isOnline}
+                  hasActiveShift={hasActiveShift}
+                  bulkAssignSubmitting={bulkAssignSubmitting}
+                  handleOpenCashCollection={handleOpenCashCollection}
+                  handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+                  handleViewBalancePaymentProof={handleViewBalancePaymentProof}
+                  handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+                  handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                  onRequestReject={setPendingRejectionOrderId}
+                  handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+                  incomingReceiptOpeningId={incomingReceiptOpeningId}
+                  deliveryPersonnelState={deliveryPersonnelState}
+                  handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+                  handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
+                  columns={1}
+                  draggable
+                />
+              </div>
+              <DeliveryRunDropPanel
+                activeShiftLocationId={activeShiftLocationId}
+                queueLocationScopeId={queueLocationScopeId}
+                disabled={dragDisabled}
+                refreshSignal={runDropRefreshTick}
               />
             </div>
-            <DeliveryRunDropPanel
-              activeShiftLocationId={activeShiftLocationId}
-              queueLocationScopeId={queueLocationScopeId}
-              disabled={dragDisabled}
-              refreshSignal={runDropRefreshTick}
-            />
-          </div>
+          )}
           <DragOverlay>
             {activeDragOrderId !== null ? (
               <div className="rounded-lg border border-[#1A4E8D] bg-white px-3 py-2 text-xs font-bold text-[#1A4E8D] shadow-lg">
@@ -851,20 +900,8 @@ function IncomingQueueWorkspace({
         </p>
       ) : null}
 
-      {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
-        </p>
-      ) : incomingOrdersAccessState === 'error' ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
-        </p>
-      ) : incomingOrdersAccessState === 'shift_required' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
-        </p>
-      ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      {queueAccessNotice ? (
+        queueAccessNotice
       ) : (
         <IncomingQueueOrderList
           orders={sortedIncomingOrders}

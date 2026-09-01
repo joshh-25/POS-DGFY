@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package } from 'lucide-react';
+import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   FULFILLMENT_STATUS_LABELS,
@@ -207,16 +207,22 @@ function OrderCard({
   // Called unconditionally regardless of `draggable` (rules of hooks); `disabled` covers the
   // "drag isn't enabled on this render" case as well.
   const dragBlocked = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const dragEnabled = draggable && !dragBlocked && bulkAssignEligibility.eligible;
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
     id: orderId,
-    disabled: !draggable || dragBlocked || !bulkAssignEligibility.eligible,
+    disabled: !dragEnabled,
     data: { eligible: bulkAssignEligibility.eligible }
   });
   const dragStyle = draggable && transform ? {
     transform: CSS.Translate.toString(transform),
     zIndex: isDragging ? 50 : undefined
   } : undefined;
-  const dragProps = draggable ? { ...listeners, ...attributes } : {};
+  // Review RF-1/RF-3 (#1305): the activator (listeners/attributes, and the touch-action:none that
+  // comes with them) lives on a dedicated grip handle, not the card root -- dnd-kit's own guidance
+  // for a draggable inside a scrollable list, so the rest of the card stays touch-scrollable on the
+  // Falcon 1 tablet. `setNodeRef` stays on the card root (that's the node dnd-kit actually
+  // repositions); `setActivatorNodeRef` + the listeners/attributes move to the handle instead.
+  const handleDragProps = dragEnabled ? { ...listeners, ...attributes } : {};
 
   const buttons = [];
   if (canCollectCash) {
@@ -381,12 +387,22 @@ function OrderCard({
     <div
       ref={draggable ? setNodeRef : undefined}
       style={dragStyle}
-      {...dragProps}
-      className={`rounded-xl border border-slate-200 bg-white p-4 xl:p-5 shadow-sm shadow-slate-200/70 flex flex-col justify-between ${draggable ? 'touch-none' : ''} ${isDragging ? 'opacity-50 shadow-2xl' : ''}`}
+      className={`rounded-xl border border-slate-200 bg-white p-4 xl:p-5 shadow-sm shadow-slate-200/70 flex flex-col justify-between ${isDragging ? 'opacity-50 shadow-2xl' : ''}`}
     >
       <div>
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
+            {draggable ? (
+              <span
+                ref={dragEnabled ? setActivatorNodeRef : undefined}
+                {...handleDragProps}
+                aria-hidden={!dragEnabled}
+                title={dragEnabled ? 'Drag to assign to a run' : undefined}
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 text-slate-400 ${dragEnabled ? 'touch-none cursor-grab active:cursor-grabbing hover:bg-slate-50 hover:text-slate-600' : 'opacity-40'}`}
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
+            ) : null}
             {isRetailMode ? (
               <QueueOrderSelectCheckbox
                 orderId={orderId}

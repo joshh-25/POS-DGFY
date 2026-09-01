@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: DELIVERY_ORDER_REQUIRED,DELIVERY_JOB_REQUIRED,MANUAL_DELIVERY_JOB_REQUIRED,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_JOB_ALREADY_IN_RUN,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_LOCKED,DELIVERY_RUN_NOT_FOUND
 policy_version: 2026.09.01
-verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims lazily imports the same TerminalPage.jsx tree via packages/web-core),packages/web-core/src/features/pos/utils/__tests__/queueRunDropAssignment.test.js -- actually executed (Vitest via apps/dgfy-ims), 9/9 passing,packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx -- actually executed (Vitest via apps/dgfy-ims), 8/8 passing,packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx -- re-run after this phase's extraction and signature change, all passing (regression guard),packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx -- re-run, all passing (regression guard),packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js -- updated for the extraction (assertions targeting moved content now read IncomingQueueOrderList.jsx) and re-run, all passing,full apps/dgfy-ims Vitest suite -- re-run in full, 314 files / 1966 tests passing, no regressions,npm run check:architecture -- OK,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
+verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims lazily imports the same TerminalPage.jsx tree via packages/web-core),packages/web-core/src/features/pos/utils/__tests__/queueRunDropAssignment.test.js -- actually executed (Vitest via apps/dgfy-ims), 9/9 passing,packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx -- actually executed (Vitest via apps/dgfy-ims), 8/8 passing,packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx -- re-run after this phase's extraction and signature change, all passing (regression guard),packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx -- re-run, all passing (regression guard),packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js -- updated for the extraction (assertions targeting moved content now read IncomingQueueOrderList.jsx) and re-run, all passing,full apps/dgfy-ims Vitest suite -- re-run in full, 314 files / 1966 tests passing, no regressions,npm run check:architecture -- OK,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added,PR #1305 review fix (RF-1/RF-2) -- npm run build:pos OK, npm run build:skupervisor OK, deliveryRunSplitViewDnd.behavior.test.jsx + queueRunDropAssignment.test.js re-run 17/17 passing, full apps/dgfy-ims Vitest suite re-run 314 files / 1966 tests passing
 rollback_note: Pure frontend addition plus one pure-move extraction, zero apps/dgfy-api changes, zero migrations. Removing the 4th "Queue + Run" tab, DeliveryRunDropPanel.jsx, queueRunDropAssignment.js, and reverting the handleBulkAssignSubmit optional-ids parameter back to single-arg restores Phase 227's checkbox-only bulk-add flow exactly. The IncomingQueueOrderList.jsx extraction is independently revertible (inline the JSX back into TerminalOperationsPanels.jsx) without touching the split-view feature at all, since it changes only where the card-grid JSX lives, not its behavior -- the two pre-existing Phase 227 behavior tests (deliveryRunBulkAssign.behavior.test.jsx, deliveryRunsWorkspace.behavior.test.jsx) pass unmodified against it. DeliveryRunMembersList.jsx's new `readOnly` prop defaults to false, so DeliveryRunsWorkspacePanel.jsx's existing call site is unaffected either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -173,6 +173,28 @@ See the `verification_evidence` frontmatter key for the full list. Summary:
    either lands first, the shared seam (`IncomingQueueOrderList.jsx`) is exactly where the plan
    expected the next change to go, so no structural rework is anticipated -- but this is not
    independently verified here since neither change exists yet.
+
+## Amendment (PR #1305 review, same day)
+
+`pr-reviewer`'s review of PR #1305 (verdict `COMMENT`) raised two should-fix findings against
+`IncomingQueueOrderList.jsx` and `TerminalOperationsPanels.jsx`, both fixed on the same branch
+before merge -- classification, surfaces, and reason codes above are unchanged (no new write path,
+no new permission surface, still frontend-only):
+
+- **RF-1/RF-3** -- the dnd-kit activator (`listeners`/`attributes`, and the `touch-action: none`
+  that comes with them) moved off the card root onto a dedicated grip handle
+  (`setActivatorNodeRef`), per dnd-kit's own guidance for a draggable inside a scrollable list. The
+  card root keeps `setNodeRef` only, so the queue stays touch-scrollable on the Falcon 1 inside the
+  split view's `max-h-[70vh]` container. The handle only carries the activator when the card is
+  actually drag-enabled, which also removes the `role="button"`/`aria-roledescription` spread from
+  disabled and ineligible cards.
+- **RF-2** -- the Active Queue's access/error/`shift_required`/loading ladder is now extracted into
+  one `queueAccessNotice` shared by both the tab branch and the split branch, so a failed poll in
+  the split view surfaces the same recoverable messaging instead of a friendly empty-queue
+  illustration; the split view also gained its own Refresh Queue button for manual recovery.
+
+Neither change touches the write path, the eligibility predicate, or the idempotency-key
+retention/regeneration logic -- both remain exactly as described above.
 
 ## Preflight Reconciliation
 
