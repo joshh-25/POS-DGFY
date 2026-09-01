@@ -421,6 +421,30 @@ export const voucherRepository = {
     },
 
     /**
+     * #1390: back-links already-written redemption ledger rows to the order they belong to.
+     * `pos_transaction_id` has existed on `voucher_redemptions` (and been indexed) since #455, but
+     * was written by nothing -- the redemption necessarily happens inside `resolveCheckoutContext`,
+     * before the checkout transaction has an order id. A separate write from
+     * `createRedemptionLedgerEntry` rather than a param on it, for exactly that reason. Idempotent:
+     * a replayed checkout re-sets the same value, and a redemption with `entry_type: 'reversal'`
+     * never reaches this call (only fresh/replayed redemption ids are collected at the call site).
+     */
+    async attachRedemptionsToTransaction(voucherRedemptionIds, posTransactionId, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const ids = (Array.isArray(voucherRedemptionIds) ? voucherRedemptionIds : [voucherRedemptionIds])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0);
+        const orderId = Number(posTransactionId);
+        if (ids.length === 0 || !Number.isInteger(orderId) || orderId <= 0) return 0;
+
+        const [affectedCount] = await VoucherRedemption.update(
+            { pos_transaction_id: orderId },
+            { where: { voucher_redemption_id: ids }, transaction: options.transaction }
+        );
+        return affectedCount;
+    },
+
+    /**
      * List of a redemption's allocated lines, needed to mirror them (quantities/prices, discount
      * negated) into a reversal's own lines -- not part of the task's explicitly-named repository
      * key list, added because `buildReverseVoucherRedemptionUseCase` has no other way to read what
@@ -455,6 +479,27 @@ export const voucherRepository = {
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return toPlain(row);
+    },
+
+    /**
+     * #1390: the read half of `attachRedemptionsToTransaction` -- index-backed on
+     * `idx_voucher_redemptions_transaction`, scoped to `channel: 'storefront'` as a cheap, explicit
+     * guard against ever reversing a POS-channel redemption through this storefront-only path (no
+     * POS writer of this column exists today, but the filter costs nothing and removes the
+     * assumption). Ordered ascending by id -- deliberate, not incidental: reversing in a
+     * deterministic order is what keeps two concurrent cancels sharing both a delivery and an item
+     * voucher from crossing lock order (see the PR's own plan, "Lock ordering").
+     */
+    async listRedemptionsByTransactionId(posTransactionId, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const orderId = Number(posTransactionId);
+        if (!Number.isInteger(orderId) || orderId <= 0) return [];
+        const rows = await VoucherRedemption.findAll({
+            where: { pos_transaction_id: orderId, channel: 'storefront' },
+            order: [['voucher_redemption_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
     },
 
     /**

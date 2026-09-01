@@ -58,3 +58,11 @@ export const archivePricelistUseCase = buildArchivePricelistUseCase({ repository
 // by name instead of a free-floating string literal, matching the registry's own stated purpose
 // ("re-exported... so the registry cannot drift" -- voucherErrors.js's header comment).
 export { VoucherReasonCode };
+
+// #1390: the raw repository, re-exported so storeUseCases.js can call
+// `attachRedemptionsToTransaction`/`listRedemptionsByTransactionId` directly at the checkout and
+// cancel call sites -- neither is a use case in its own right (no eligibility/policy logic, just an
+// indexed read/write), so wrapping either in a `build*UseCase` would be ceremony with no behaviour
+// behind it. Every other cross-module reference in this file already goes through this same public
+// surface (this file), never `./repositories/voucherRepository.js` directly.
+export { voucherRepository };
