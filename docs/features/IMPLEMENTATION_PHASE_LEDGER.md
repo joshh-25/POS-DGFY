@@ -15165,7 +15165,127 @@ Builds on Phase 227's `deliveryRunEligibility.js` module and Phase 228's dispatc
   phase).
 - `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-member-fulfillment-gate.md`.
 
-## Phase 230 - Delivery Runs: Active Queue Delivery-Run Filter (#1290)
+## Phase 230 - Active Queue: View-Mode Toggle (Card / Table) (#1288)
+
+### Initiative and release
+
+Standalone POS UI phase, not part of the #1273 Delivery Runs track (which closed at Phase 228).
+Reuses that track's own Active Queue precedent (`IncomingQueueWorkspace`, `selectedOrderIds`,
+`QueueOrderSelectCheckbox`, `QueueRunAssignBar`) without depending on any of its endpoints.
+Confirmed at implementation time (this entry) that neither #1290 (delivery-run filter) nor #1291
+(disable per-order "Out for Delivery" in a run) had an open PR yet, so Phase 229 was still the
+correct next-eligible number per the continuous phase ledger at authoring time. #1291 (fix/1291,
+PR #1302) merged into `develop` first and took Phase 229 there; this entry was renumbered to
+Phase 230 during the post-approval rebase of this PR, per the reviewer's Merge-safety comment.
+
+### Objective and scope
+
+Give POS/Skupervisor staff a table-view alternative to the Active Queue's card grid, for scanning
+many incoming online orders at a glance. Card view stays the default and is never removed; the
+chosen mode persists per-terminal.
+
+**In scope:** a segmented Card/Table toggle in the queue's existing control bar; a new
+`QueueOrderTableView.jsx` mapping every card field to a column or an explicit,
+presentation-only omission (the "Collected by" derived detail, and the interactive
+`DeliveryAssignmentControl`/`DeliveryAddressEditControl` widgets -- both stay reachable via card
+view only); per-terminal localStorage persistence (`pos_queue_view_mode_v1`, default `'card'`);
+a behavior-preserving extraction of the per-order action-button construction and the small
+order-formatting helpers out of `TerminalOperationsPanels.jsx` so card and table share one code
+path instead of two.
+
+**Out of scope, unchanged:** zero backend change (no new route, no new field, no migration);
+integrating #1290's delivery-run filter (not yet landed -- see "Forward-compat" below); any change
+to selection/bulk-assign logic itself (Phase 227's `selectedOrderIds` state and its derivation are
+untouched, only the render branch that consumes them changes).
+
+### Design decisions
+
+1. **Toggle placement.** A two-option segmented control (`Card`/`Table`, icon + label) in the
+   control bar, to the left of the Sort select -- the queue's existing per-view control surface.
+   Deliberately not on `OrderWorkspaceTabs` (Active/History/Runs is a different axis; table view
+   has no meaning for History or Runs, which use their own components).
+2. **Table columns.** Every card field is mapped to a column or an explicit omission -- full
+   mapping in `plan-1288-queue-view-mode.md`'s "Table columns" table. Every omission is
+   presentation-only: the data/actions stay one click away via card view.
+3. **Persistence.** New `utils/queueViewModePreference.js`, mirroring `posTextSizePreference.js`'s
+   shape but routed through `safeLocalStorageGet`/`safeLocalStorageSet`
+   (`posTerminalStorage.js`) for the existing quota-exceeded recovery behavior. Storage key
+   `pos_queue_view_mode_v1` added to `RECOVERABLE_PREFERENCE_PREFIXES` (one-line change) so a
+   quota-cleanup pass can evict it like the other recoverable UI prefs already listed there.
+   Per-terminal/per-browser, not per-user or tenant-wide -- same posture as every other existing
+   POS UI preference in that file.
+4. **Forward-compat with #1290 (delivery-run filter, not yet built).** Not integrated this phase.
+   A future run-filter would narrow `sortedIncomingOrders` before either render branch sees it --
+   no structural rework needed once it lands.
+5. **Two small extractions, to avoid duplicating logic across two render paths (not requested by
+   the issue itself, but necessary to keep card and table from drifting):**
+   - `utils/incomingQueueOrderActions.js` -- the ~150-line per-order action-button eligibility
+     construction, extracted verbatim (behavior-preserving, confirmed by the full re-run test
+     suite) from `TerminalOperationsPanels.jsx`'s card `.map()`. Written with `React.createElement`
+     rather than JSX, since this repo's Vite/esbuild config does not enable the JSX loader for
+     plain `.js` files.
+   - `utils/incomingQueueOrderFormatting.js` -- the small pure formatting/derivation helpers
+     (`formatOrderDateTime`, `formatOrderAmount`, `resolveOrderDownpaymentSplit`,
+     `resolveBalanceCollectionLabel`, `parseDeliveryCoords`, `humanizeOrderStatus`), moved
+     verbatim out of `TerminalOperationsPanels.jsx` so `QueueOrderTableView.jsx` does not need to
+     import from the component file that itself imports it (a circular-import trap this split
+     avoids).
+
+### Status
+
+`completed` for the toggle/table-view surface; the live acceptance walk (toggle view modes
+against a deployed tenant, confirm the table renders live order data and every action button
+behaves identically to card view) was **not** run -- no deployed tenant database reachable in this
+environment. All Vitest coverage passes against fixture order objects and mocked services; the
+live walk is outstanding acceptance evidence, not omitted, same posture as every prior phase in
+this repo's recent history (224-228).
+
+### Dependencies
+
+None on #1273's own endpoints -- reuses `IncomingQueueWorkspace`'s existing props and Phase 227's
+selection state as-is, adds no new backend dependency. Designed not to conflict with #1290
+(delivery-run filter) landing later.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` -- real Vite build, OK.
+- [x] `npm run build:skupervisor` -- also required (a `packages/web-core` change), OK.
+- [x] New `packages/web-core/src/features/pos/__tests__/incomingQueueViewMode.behavior.test.jsx`
+  -- actually executed (Vitest via `apps/dgfy-ims`), 8/8 passing: default-to-card, toggle switches
+  render branch and back, persistence across remount, default-on-invalid-stored-value, selection
+  survives a toggle plus a real `QueueRunAssignBar` bulk-assign submit with table view active,
+  every mapped column renders for a fixture order (incl. the downpayment-split Balance column and
+  the delivery Address/Delivery columns), the two omitted interactive widgets are absent without
+  throwing, and a non-delivery order renders without a crash.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `deliveryRunBulkAssign.behavior.test.jsx`, `deliveryRunDispatch.behavior.test.jsx`,
+  `orderFulfillmentUi.test.js` -- re-run after this phase's changes, no regressions.
+- [x] `packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js` -- updated
+  (its source-content assertions now also read the extracted `incomingQueueOrderActions.js` file,
+  concatenated the same way `terminalPageContent` already joins multiple files) and re-run, 61/61
+  passing.
+- [x] Full `packages/web-core/src/features/pos/__tests__/` suite -- actually executed (Vitest via
+  `apps/dgfy-ims`), 134 files / 789 tests, all passing, zero regressions from this phase's two
+  extractions.
+- [x] `npm run check:architecture` -- OK (51 modules/530 files, 92 controller files -- zero
+  backend change in this phase, confirming the floor).
+- [x] `npm run check:adr` -- OK (84 ADRs).
+- [x] `npm run lint:docs` -- OK (29 governed docs).
+- [x] `npm run check:compliance` -- confirmed to fail first (8 sensitive files, no declaration),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) -- **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase.
+
+### Links
+
+- Tracking issue: #1288.
+- `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`,
+  `components/QueueOrderTableView.jsx`, `utils/incomingQueueOrderActions.js`,
+  `utils/incomingQueueOrderFormatting.js`, `utils/queueViewModePreference.js`,
+  `utils/posTerminalStorage.js`.
+- `docs/compliance/impact-declarations/2026-09-01-pos-queue-view-mode.md`.
+
+## Phase 231 - Delivery Runs: Active Queue Delivery-Run Filter (#1290)
 
 ### Initiative and release
 
@@ -15294,4 +15414,4 @@ Phase 227/228's `GET /pos/delivery-runs` consumers (`DeliveryRunsWorkspacePanel.
 
 ### Next eligible phase
 
-231.
+232.

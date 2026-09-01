@@ -12,6 +12,12 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
+// Phase 230 (#1288) extracted the incoming-queue per-order action-button construction out of
+// TerminalOperationsPanels.jsx into this shared, behavior-preserving pure function (reused by the
+// new table view mode too) -- concatenated into terminalOperationsPanelsContent below, same
+// pattern terminalPageContent already uses for its own multi-file join, so the source-content
+// assertions below still hold without caring which file actually owns the string.
+const incomingQueueOrderActionsPath = path.resolve(__dirname, '../utils/incomingQueueOrderActions.js');
 const posTenantSetupModalPath = path.resolve(__dirname, '../components/PosTenantSetupModal.jsx');
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
@@ -65,7 +71,9 @@ describe('POS terminal view-mode contracts', () => {
     terminalWorkspaceSidebarContent = fs.readFileSync(terminalWorkspaceSidebarPath, 'utf8');
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
-    terminalOperationsPanelsContent = fs.readFileSync(terminalOperationsPanelsPath, 'utf8');
+    terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
+      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .join('\n');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
@@ -675,7 +683,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 230 (#1290): the grid now maps over visibleIncomingOrders (the run-filtered view of
+    // Phase 231 (#1290): the grid now maps over visibleIncomingOrders (the run-filtered view of
     // sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders itself is
     // still the sort's own output, feeding the filter rather than the render.
     expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');

@@ -8,14 +8,14 @@ surfaces: pos,terminal
 reason_codes_impacted: none
 policy_version: 2026.09.01
 verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims lazily imports the same TerminalPage.jsx tree via packages/web-core),packages/web-core/src/features/pos/utils/__tests__/deliveryRunQueueFilter.test.js -- actually executed (Vitest via apps/dgfy-ims), 13/13 passing,packages/web-core/src/features/pos/__tests__/deliveryRunQueueFilter.behavior.test.jsx -- actually executed (Vitest via apps/dgfy-ims), 14/14 passing,packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx -- re-run after this phase's changes, 12/12 passing,packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx -- re-run after this phase's changes, 12/12 passing,packages/web-core/src/features/pos/utils/__tests__/deliveryRunEligibility.test.js -- re-run unchanged, 17/17 passing,packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js -- one source-text assertion updated to match the new visibleIncomingOrders map target, re-run, passing,full apps/dgfy-ims Vitest suite -- 1976/1977 passing (1 unrelated pre-existing timeout flake in Settings.deepLinking.integration.test.jsx, confirmed passing in isolation, no reference to any file this phase touches),npm run check:architecture -- OK,npm run check:adr -- OK,npm run lint:docs -- OK,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
-rollback_note: Frontend-only, zero apps/dgfy-api diff. New files under packages/web-core/src/features/pos/ (utils/deliveryRunQueueFilter.js, hooks/useDeliveryRunOptions.js, components/QueueRunFilterControl.jsx) plus modifications to TerminalOperationsPanels.jsx and QueueRunAssignBar.jsx. Rollback is a plain code revert: removing the new files and reverting the two modified files restores the pre-Phase-230 Active Queue exactly, including QueueRunAssignBar's own independent fetchDeliveryRuns call (the hook it now uses is a strict lift of that same call, not a behavior change to the underlying API usage). No schema, route, or permission change exists to roll back.
+rollback_note: Frontend-only, zero apps/dgfy-api diff. New files under packages/web-core/src/features/pos/ (utils/deliveryRunQueueFilter.js, hooks/useDeliveryRunOptions.js, components/QueueRunFilterControl.jsx) plus modifications to TerminalOperationsPanels.jsx and QueueRunAssignBar.jsx. Rollback is a plain code revert: removing the new files and reverting the two modified files restores the pre-Phase-231 Active Queue exactly, including QueueRunAssignBar's own independent fetchDeliveryRuns call (the hook it now uses is a strict lift of that same call, not a behavior change to the underlying API usage). No schema, route, or permission change exists to roll back.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-01T00:00:00Z
 preflight_request_ref: NOT-EXECUTED-1290-POS-ACTIVE-QUEUE-DELIVERY-RUN-FILTER
 ---
 
-# Active Queue delivery-run filter (Phase 230, #1290)
+# Active Queue delivery-run filter (Phase 231, #1290)
 
 ## Compliance Impact Classification
 

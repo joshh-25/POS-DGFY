@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-// Phase 230 (#1290). Covers the Active Queue's client-side delivery-run view filter: retail
+// Phase 231 (#1290). Covers the Active Queue's client-side delivery-run view filter: retail
 // gating, the filter narrowing the rendered grid, the tab badge staying unfiltered, the
 // selection/drift re-derivation against the FILTERED list (the correctness crux -- a filter-hidden
 // selection must never be silently submitted), the hidden-selection hint, the filter surviving a
