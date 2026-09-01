@@ -27,4 +27,3 @@ export const dglaundryPartnerClient = {
   resolveOrder: (payload) => request('/api/v1/integrations/dgfy/order-projections/resolve', payload, { method: 'POST' }),
   health: () => request('/api/v1/integrations/dgfy/health', {}, { method: 'GET' })
 };
-
