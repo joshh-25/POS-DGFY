@@ -16,7 +16,9 @@ const REPOSITORY_ERROR_TO_DOMAIN = {
 };
 
 export const buildCalculateRouteUseCase = ({ routeCalculatorRepository }) => {
-    return async ({ originLat, originLng, destLat, destLng, profile }) => {
+    // `timeoutMs` is optional and additive (#1328/epic #1321) -- omitted by every existing caller,
+    // which keeps falling through to the repository's own env-driven default unchanged.
+    return async ({ originLat, originLng, destLat, destLng, profile, timeoutMs }) => {
         if (!routeCalculatorEnabled()) {
             return fail(new DomainError(
                 DomainErrorCode.SERVICE_UNAVAILABLE,
@@ -33,7 +35,8 @@ export const buildCalculateRouteUseCase = ({ routeCalculatorRepository }) => {
                 originLng,
                 destLat,
                 destLng,
-                profile: resolvedProfile
+                profile: resolvedProfile,
+                timeoutMs
             });
             return ok(route);
         } catch (error) {

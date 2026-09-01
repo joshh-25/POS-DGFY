@@ -39,7 +39,7 @@ import {
 // Phase 233 (#1324, epic #1321): fee-mode config schema, fixed-only behavior. resolveStoreDeliveryFee
 // below starts consuming this but still returns today's flat store_delivery_fee value regardless of
 // the resolved mode -- no behavior change yet. See deliveryPricing/domain/deliveryFeeConfig.js.
-import { resolveDeliveryFeeConfig } from '../../deliveryPricing/index.js';
+import { resolveDeliveryFeeConfig, roadDistanceProvider as defaultRoadDistanceProvider } from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -1580,7 +1580,11 @@ const resolveCheckoutContext = async ({
     // not a hard-imported module-level singleton the way dgfyAffiliateRepository is. `undefined`
     // (every existing caller that doesn't pass this) means "don't read, assume full_payment", via
     // the `?.` guard at the call site below.
-    downpaymentSettingsRepository = null
+    downpaymentSettingsRepository = null,
+    // Phase 236 (#1328, epic #1321): injected the same way downpaymentSettingsRepository is, so
+    // tests can supply a fake without touching the real routeCalculator/GraphHopper integration.
+    // Defaults to the real singleton for every existing caller.
+    roadDistanceProvider = defaultRoadDistanceProvider
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1648,6 +1652,32 @@ const resolveCheckoutContext = async ({
     });
 
     normalized.location_id = location.location_id;
+
+    // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Fired
+    // (not awaited) as soon as location + delivery coordinates are both resolved, so it runs
+    // concurrently with the rest of this function's own I/O (voucher/promo resolution, etc.)
+    // rather than adding to this function's serial latency in the common case -- same guard shape
+    // resolveDeliveryRadiusFlag below already uses. Never feeds deliveryFee/totalAmount -- see
+    // resolveStoreDeliveryFee (unchanged) and the mapping applied at this promise's await point
+    // near the end of this function.
+    const deliveryOriginLat = Number(location?.latitude);
+    const deliveryOriginLng = Number(location?.longitude);
+    const deliveryDestLat = Number(normalized.delivery_latitude);
+    const deliveryDestLng = Number(normalized.delivery_longitude);
+    const roadDistancePromise = (
+        orderMethod === 'delivery'
+        && Number.isFinite(deliveryOriginLat) && Number.isFinite(deliveryOriginLng)
+        && Number.isFinite(deliveryDestLat) && Number.isFinite(deliveryDestLng)
+    )
+        ? roadDistanceProvider.resolveRoadDistance({
+            tenantId: tenantId || currentTenantAccessContext().tenantId,
+            locationId: normalized.location_id,
+            originLat: deliveryOriginLat,
+            originLng: deliveryOriginLng,
+            destLat: deliveryDestLat,
+            destLng: deliveryDestLng
+        })
+        : null;
 
     const items = await storeRepository.findSellableItemsByIds(itemIds, {
         ...options,
@@ -1890,6 +1920,22 @@ const resolveCheckoutContext = async ({
         deliveryLongitude: normalized.delivery_longitude
     });
 
+    // Phase 236 (#1328): reconcile the adapter's own {distanceMeters, source: 'road'|'unavailable'}
+    // vocabulary with the persisted road|fallback|none enum -- done ONLY here, never inside the
+    // adapter itself (roadDistanceProvider has no notion of orderMethod or the fallback/none split).
+    let deliveryDistanceMeters = null;
+    let deliveryDistanceSource = 'none';
+    if (roadDistancePromise) {
+        const roadDistanceResult = await roadDistancePromise;
+        if (roadDistanceResult.source === 'road') {
+            deliveryDistanceMeters = roadDistanceResult.distanceMeters;
+            deliveryDistanceSource = 'road';
+        } else {
+            deliveryDistanceMeters = null;
+            deliveryDistanceSource = 'fallback';
+        }
+    }
+
     return {
         normalized,
         settings,
@@ -1913,6 +1959,8 @@ const resolveCheckoutContext = async ({
         // full_payment shape for both. See the payment-session use case's DOWNPAYMENT_POLICY_UNRESOLVED guard.
         downpaymentSettings: downpaymentSettings || null,
         outsideRadiusFlag,
+        deliveryDistanceMeters,
+        deliveryDistanceSource,
         scheduledFor,
         affiliatePricing
     };
@@ -2854,7 +2902,10 @@ export const buildStoreCartQuoteUseCase = ({
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
+    // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
+    roadDistanceProvider
 }) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -2872,6 +2923,7 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 revenueSharingEnabled,
                 downpaymentSettingsRepository,
+                roadDistanceProvider,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false
             });
@@ -2999,7 +3051,10 @@ export const buildStoreCheckoutUseCase = ({
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
-    inventoryReservationService = null
+    inventoryReservationService = null,
+    // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
+    // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
+    roadDistanceProvider
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3057,7 +3112,8 @@ export const buildStoreCheckoutUseCase = ({
                 validateRecipeAvailability: !existing,
                 tenantId: normalizedTenantId,
                 revenueSharingEnabled,
-                downpaymentSettingsRepository
+                downpaymentSettingsRepository,
+                roadDistanceProvider
             });
             const { normalized } = resolved;
 
@@ -3245,6 +3301,10 @@ export const buildStoreCheckoutUseCase = ({
                     delivery_fee: resolved.deliveryFee,
                     store_customer_id: normalizedStoreCustomer?.customer_id || null,
                     outside_radius_flag: resolved.outsideRadiusFlag,
+                    // Phase 236 (#1328, epic #1321): observation-only capture, never fed into
+                    // delivery_fee/total_amount above.
+                    delivery_distance_meters: resolved.deliveryDistanceMeters,
+                    delivery_distance_source: resolved.deliveryDistanceSource,
                     accepted_by: null,
                     accepted_at: null
                 },
