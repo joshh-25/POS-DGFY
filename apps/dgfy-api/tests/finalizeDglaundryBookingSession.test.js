@@ -37,4 +37,3 @@ describe('DGLaundry payment lifecycle bridge', () => {
     expect(partnerClient.updateOrder).toHaveBeenCalledWith(expect.objectContaining({ type: 'dgfy.laundry_order.payment_status_changed.v1' }));
   });
 });
-

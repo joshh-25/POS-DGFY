@@ -56,4 +56,3 @@ manager and rotate any credential that was ever exposed to a developer shell.
 
 Local tests and a draft PR do not authorize production credentials, merging,
 or deployment.
-
