@@ -67,6 +67,7 @@ export const PERMISSION_GROUPS = {
             TRANSACT_POS: "pos:transact",
             AUTHORIZE_DISCOUNTS: "pos:discount_authorize",
             PRICE_OVERRIDE_POS: "pos:price_override",
+            OVERRIDE_DELIVERY_FEE: "pos:delivery_fee_override",
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             CLOSE_SHIFT_POS: "pos:shift_close",
             CLOSE_DAY_POS: "pos:close_day",
