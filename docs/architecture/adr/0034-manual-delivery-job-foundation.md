@@ -155,3 +155,23 @@ authenticated cashier, one open shift check for the whole run, location scope, a
 run-scoped row plus one per successfully-dispatched member), the durable idempotency-key replay
 mechanism, and administrator/settings authority over the delivery-person registry. Provider-owned
 jobs remain out of scope; this endpoint only ever advances `manual` jobs.
+
+### 2026-09-01 — The per-order Incoming Queue control is withheld for active run members
+
+Purely a presentation-layer fact, recorded here because it is a real behavioral contract, not
+because any clause above changes: once an order's `delivery_jobs.delivery_run_id` points at a run
+whose `status` is neither `completed` nor `cancelled`, the Active Queue's own per-order
+"Out for Delivery" control (`TerminalOperationsPanels.jsx`) is disabled with an explanatory tooltip
+rather than hidden — the run's own Dispatch action (the 2026-09-01 best-effort-dispatch amendment
+above) becomes the sole path to `out_for_delivery` for that order. This is a UI gate only; the
+per-order fulfillment route itself enforces nothing new and `ONLINE_FULFILLMENT_TRANSITIONS` is
+untouched, exactly as the packing-precondition amendment above already establishes for a different
+gate on the same dispatch action.
+
+The gate mirrors `RUN_DISPATCH_BLOCKED_STATUSES` (`completed`, `cancelled`) rather than inventing a
+separate rule, because cancelling a run does not clear its members' `delivery_run_id` — only the
+explicit remove-member action does — so `delivery_run_id` truthy alone cannot distinguish "still an
+active run member" from "was in a run that got cancelled." Every other member of `nextActions` for
+that order, in particular `packed`, is left untouched: gating the whole action list at `preparing`
+in retail mode would deadlock the `DELIVERY_RUN_UNPACKED_MEMBERS` precondition above, which requires
+every run member to reach `packed` before the run can dispatch at all.

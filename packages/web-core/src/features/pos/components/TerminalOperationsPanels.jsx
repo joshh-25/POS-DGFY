@@ -13,7 +13,7 @@ import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
 import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
 import {
@@ -591,7 +591,7 @@ function IncomingQueueWorkspace({
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
 
-  // Phase 229 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
+  // Phase 230 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
   // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
   // a failed poll as an indistinguishable "no orders" empty state with no recovery. Extracted so
   // both branches share the exact same ladder and can never drift apart again.

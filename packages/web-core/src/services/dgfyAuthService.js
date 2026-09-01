@@ -209,9 +209,18 @@ export const preflightDgfyAccountRegistration = async (payload) => {
 
 // Affiliate invite claim: preview is public (used to lock the register email + show the business);
 // accept requires a logged-in DGFY account.
+const pendingAffiliateInvitePreviewRequests = new Map();
+
 export const fetchAffiliateInvitePreview = async (token) => {
-  const response = await api.get(`/dgfy/affiliate/invites/${encodeURIComponent(token)}`, dgfyRequestConfig(''));
-  return response.data.data;
+  const normalizedToken = String(token || '').trim();
+  if (!pendingAffiliateInvitePreviewRequests.has(normalizedToken)) {
+    const request = api
+      .get(`/dgfy/affiliate/invites/${encodeURIComponent(normalizedToken)}`, dgfyRequestConfig(''))
+      .then((response) => response.data.data)
+      .finally(() => { pendingAffiliateInvitePreviewRequests.delete(normalizedToken); });
+    pendingAffiliateInvitePreviewRequests.set(normalizedToken, request);
+  }
+  return pendingAffiliateInvitePreviewRequests.get(normalizedToken);
 };
 
 export const acceptAffiliateInvite = async (token) => {

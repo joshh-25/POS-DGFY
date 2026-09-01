@@ -20,7 +20,7 @@ import {
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
@@ -193,6 +193,7 @@ function OrderCard({
     );
   const deliveryCoords = parseDeliveryCoords(order);
   const deliveryJob = order.deliveryJob || null;
+  const activeRunMembership = getActiveRunMembership(order);
   const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
   const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
   const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
@@ -308,13 +309,27 @@ function OrderCard({
         return null;
       }
     };
+    // Phase 229 (#1291): once an order is a member of an active (not
+    // completed/cancelled) delivery run, the run's own Dispatch action is the sole
+    // path to out_for_delivery -- the per-order control is withheld here, with an
+    // explanatory tooltip, rather than hidden. Scoped to `out_for_delivery` only:
+    // gating the whole nextActions array would also disable `packed`, deadlocking the
+    // run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition (#1272).
+    const gatedByActiveRun = status === 'out_for_delivery' && activeRunMembership.inActiveRun;
+    const runGateReason = gatedByActiveRun
+      ? (activeRunMembership.runLabel
+        ? `This order is in delivery run "${activeRunMembership.runLabel}". Dispatch it from the Delivery Runs tab.`
+        : 'This order is in a delivery run. Dispatch it from the Delivery Runs tab.')
+      : null;
     buttons.push(
       <Button
         key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
         type="button"
         size="sm"
         variant={status === 'rejected' ? 'destructive' : 'outline'}
-        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
+        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)) || gatedByActiveRun}
+        title={runGateReason || undefined}
+        aria-label={runGateReason || undefined}
         onClick={() => {
           if (status === 'rejected') {
             onRequestReject(Number(order.pos_transaction_id));

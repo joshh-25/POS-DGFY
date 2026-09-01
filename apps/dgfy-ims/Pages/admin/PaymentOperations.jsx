@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CreditCard, Download, RefreshCw, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CreditCard, Download, QrCode, RefreshCw, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,17 @@ const statusClass = (status) => {
   if (['awaiting_payment', 'pending', 'created', 'refund_pending'].includes(normalized)) return 'border-amber-200 bg-amber-50 text-amber-700';
   if (['failed', 'expired', 'restricted'].includes(normalized)) return 'border-rose-200 bg-rose-50 text-rose-700';
   return 'border-slate-200 bg-slate-50 text-slate-700';
+};
+
+const formatCountdown = (expiresAt) => {
+  if (!expiresAt) return 'no expiry';
+  const remainingMs = new Date(expiresAt).getTime() - Date.now();
+  if (Number.isNaN(remainingMs)) return 'unknown';
+  if (remainingMs <= 0) return 'expired';
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
 const getRefundableCentavos = (session) => Number(session?.refundable_amount_centavos || 0);
@@ -57,6 +68,15 @@ export default function PaymentOperations() {
   const [reconcilingReference, setReconcilingReference] = useState('');
   const [providerAction, setProviderAction] = useState('');
   const [sessions, setSessions] = useState([]);
+  // #1268: debug-only QR Ph sandbox test-payment tooling. `sandboxSessions` is its own dedicated
+  // awaiting_payment query, independent of `statusFilter`, so this section always shows the right
+  // thing regardless of what the operator has typed into the main table's filter.
+  const [sandboxSessions, setSandboxSessions] = useState([]);
+  const [sandboxReference, setSandboxReference] = useState('');
+  const [confirmingSandboxReference, setConfirmingSandboxReference] = useState('');
+  // Unread on purpose — ticking this once a second is only ever used to force a re-render so the
+  // expiry countdowns below stay live; the value itself is never displayed.
+  const [, setCountdownTick] = useState(0);
   const [accounts, setAccounts] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [settlementReport, setSettlementReport] = useState(null);
@@ -106,18 +126,21 @@ export default function PaymentOperations() {
     setLoading(true);
     try {
       const filters = statusFilter ? { status: statusFilter } : {};
-      const [sessionResponse, accountResponse, settlementResponse, certificationResponse, tenantResponse] = await Promise.all([
+      const [sessionResponse, accountResponse, settlementResponse, certificationResponse, tenantResponse, sandboxSessionResponse] = await Promise.all([
         adminService.listCommercePaymentSessions(filters),
         adminService.listTenantPaymentAccounts(),
         adminService.getCommerceSettlementReport(filters),
         adminService.getPayMongoSandboxCertification(),
-        adminService.getTenants('all')
+        adminService.getTenants('all'),
+        // Own dedicated query — see the note on `sandboxSessions` state above.
+        adminService.listCommercePaymentSessions({ status: 'awaiting_payment' })
       ]);
       setSessions(sessionResponse.data?.payment_sessions || []);
       setAccounts(accountResponse.data?.payment_accounts || []);
       setSettlementReport(settlementResponse.data?.settlement_report || null);
       setCertification(certificationResponse.data?.certification || null);
       setTenants(tenantResponse.data || []);
+      setSandboxSessions(sandboxSessionResponse.data?.payment_sessions || []);
     } catch (error) {
       toast.error(error.response?.data?.message || error.message || 'Failed to load payment operations.');
     } finally {
@@ -127,6 +150,12 @@ export default function PaymentOperations() {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Keeps the sandbox section's expiry countdowns live without a per-row timer.
+  useEffect(() => {
+    const timer = setInterval(() => setCountdownTick((tick) => tick + 1), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const saveAccount = async (event) => {
@@ -324,6 +353,28 @@ export default function PaymentOperations() {
       toast.error(error.response?.data?.message || error.message || 'Failed to reconcile PayMongo payment.');
     } finally {
       setReconcilingReference('');
+    }
+  };
+
+  const confirmSandboxPayment = async (reference) => {
+    const normalized = String(reference || '').trim().toUpperCase();
+    if (!normalized) {
+      toast.error('Enter a payment session reference (CPS-...).');
+      return;
+    }
+    setConfirmingSandboxReference(normalized);
+    try {
+      const response = await adminService.confirmCommercePaymentSessionSandbox(normalized);
+      if (response.data?.idempotent_replay) {
+        toast.info('This session is already finalized.');
+      } else {
+        toast.success('Sandbox payment accepted at PayMongo — awaiting webhook finalization. Use "Verify payment" if the status does not update shortly.');
+      }
+      await loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to confirm sandbox payment.');
+    } finally {
+      setConfirmingSandboxReference('');
     }
   };
 
@@ -545,6 +596,85 @@ export default function PaymentOperations() {
           <Button type="submit" variant="destructive" disabled={refundSubmitDisabled}>{submittingRefund ? 'Submitting...' : 'Submit refund'}</Button>
         </form>
       </div>
+
+      {certification?.mode === 'test' && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+          <div>
+            <h2 className="font-semibold text-slate-900 flex items-center gap-2"><QrCode className="w-4 h-4" /> QR Ph Sandbox Test Payment</h2>
+            <p className="text-xs text-slate-500">
+              Debug tooling (#1268) — simulates a scan-and-pay via PayMongo&rsquo;s sandbox <code>test_url</code>.
+              Only shown while PayMongo is in test mode; the button itself is also blocked server-side outside test mode.
+              Finalization is webhook-driven and asynchronous — use &ldquo;Verify payment&rdquo; if a session does not update shortly.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[2fr_auto_auto]">
+            <div>
+              <Label>Payment Session Reference</Label>
+              <Input
+                value={sandboxReference}
+                onChange={(event) => setSandboxReference(event.target.value.toUpperCase())}
+                placeholder="CPS-..."
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                onClick={() => confirmSandboxPayment(sandboxReference)}
+                disabled={!sandboxReference.trim() || confirmingSandboxReference === sandboxReference.trim().toUpperCase()}
+              >
+                {confirmingSandboxReference === sandboxReference.trim().toUpperCase() ? 'Confirming...' : 'Accept test payment'}
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => reconcilePayment(sandboxReference)}
+                disabled={!sandboxReference.trim() || reconcilingReference === sandboxReference.trim().toUpperCase()}
+              >
+                Verify payment
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-wide text-slate-500">Awaiting payment ({sandboxSessions.length})</div>
+            {sandboxSessions.length === 0 && (
+              <div className="text-sm text-slate-500">No sessions are currently awaiting payment (all tenants).</div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {sandboxSessions.map((session) => (
+                <div key={session.public_reference} className="rounded-lg border border-slate-200 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-semibold text-slate-800">{session.public_reference}</span>
+                    <span className={`rounded-full border px-2 py-0.5 ${statusClass(session.status)}`}>{session.status}</span>
+                  </div>
+                  {session.qr_code_image_url && (
+                    <img
+                      src={session.qr_code_image_url}
+                      alt={`QR Ph code for ${session.public_reference}`}
+                      className="w-full rounded-md border border-slate-100"
+                    />
+                  )}
+                  <div className="text-slate-700">{money(session.total_amount_centavos)} {session.currency || 'PHP'}</div>
+                  <div className="text-slate-500">Expires in: {formatCountdown(session.expires_at)}</div>
+                  <div className="text-slate-400">{session.store_slug || session.tenant_id}</div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => confirmSandboxPayment(session.public_reference)}
+                    disabled={confirmingSandboxReference === session.public_reference}
+                  >
+                    {confirmingSandboxReference === session.public_reference ? 'Confirming...' : 'Accept test payment'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

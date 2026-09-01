@@ -15,7 +15,7 @@ preflight_run_at: 2026-09-01T02:48:17.000Z
 preflight_request_ref: NOT-EXECUTED-NO-LIVE-ENVIRONMENT
 ---
 
-# POS Active Queue + Delivery Run split view with drag-and-drop assignment (Phase 229, #1289)
+# POS Active Queue + Delivery Run split view with drag-and-drop assignment (Phase 230, #1289)
 
 ## Compliance Impact Classification
 
