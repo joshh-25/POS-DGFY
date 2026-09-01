@@ -263,6 +263,16 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         packed_by: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        }),
+        // Phase 236 (#1328, epic #1321): two additive columns capturing observation-only
+        // server-side road distance at checkout. Kept in lockstep with migration
+        // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
+        // see docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+        delivery_distance_meters: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `outside_radius_flag`"
+        }),
+        delivery_distance_source: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_source` ENUM('road','fallback','none') NOT NULL DEFAULT 'none'"
         })
     }),
     employee_attendance_sessions: Object.freeze({

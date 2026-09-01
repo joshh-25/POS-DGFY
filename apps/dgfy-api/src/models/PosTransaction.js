@@ -139,6 +139,18 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: false
     },
+    // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Neither
+    // field feeds delivery_fee/total_amount computation anywhere in this codebase -- see
+    // docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+    delivery_distance_meters: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    delivery_distance_source: {
+        type: DataTypes.ENUM('road', 'fallback', 'none'),
+        allowNull: false,
+        defaultValue: 'none'
+    },
     accepted_by: {
         type: DataTypes.INTEGER,
         allowNull: true
