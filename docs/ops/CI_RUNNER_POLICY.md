@@ -36,8 +36,13 @@ Both self-hosted runners are online:
 | `vm-openproject` | 23 | `sieitz-sm`, `sieitz-runner` | Small box; also runs OpenProject, 3 buildx builders, cloudflared, yopass |
 | `vm-sieitzstaging` | 25 | `sieitz-lg`, `sieitz-runner` | Large box; **also the live DEV + STAGING docker-compose host** |
 
-Every workflow in this repo runs on one of these two labels today — no job currently runs on a
-GitHub-hosted image (`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, "Status as of 2026-08-13").
+Every workflow **without an explicit hosted exception** runs on one of these two labels today
+(`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, "Status as of 2026-08-13") — this is not a blanket "zero
+hosted jobs" claim. Three pre-existing exceptions already run on `ubuntu-latest`, predate this
+policy, and stay hosted regardless of it: `build-android-manual.yml` / `pr-android-build-checks.yml`
+(no Android SDK on either self-hosted box) and `deploy-production.yml` (`workflow_dispatch`-only,
+trimmed since its trigger workflow was archived). See the job-by-job inventory below for the full,
+reconciled picture.
 
 **GitHub-hosted availability — verified live, not assumed.** #1363's epic body asserts minutes are
 available again; that assertion was independently confirmed today by dispatching an existing
@@ -114,15 +119,24 @@ inventing a second taxonomy:
   `cancelled` with no conclusion.
 - `billing_allocation_failure` — hosted runner requests fail with the spending-limit/payment
   signature (`scripts/collect-github-actions-unavailability.js`).
-- `github_platform_outage` — zero check-runs/check-suites for the target SHA, cross-checked against
-  `githubstatus.com`.
+- `github_platform_outage` — gated on affirmative target-SHA evidence first: zero check-runs **and**
+  zero check-suites for the target SHA (a completed check-run already proves the checks ran, and is
+  never overridden by a global degraded status elsewhere). Only once that holds is
+  `githubstatus.com`'s public status API consulted, matched to the Actions component specifically
+  reporting an outage/degraded state (`scripts/pr-checks.js`'s `github_platform_outage` branch,
+  #1077, RF-1 tightening per PR #1078).
 
-**The switch itself:** every active `runner_labels_json`/`runs-on` site carries a commented
-alternate-runner line directly above it, per the convention `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`
-already established for both prior flips (2026-08-01 and 2026-08-13). Flipping is comment/uncomment
-per site — not a re-derivation. Once #1365 implements the production-hosted routing, that PR must
-add the mirror-image comment (self-hosted revert line) at each new hosted site, matching this
-existing pattern exactly.
+**The switch itself, as a prospective requirement, not a current-state claim:** the
+2026-08-01/2026-08-13 flips established the convention of a commented alternate-runner line directly
+above each active `runner_labels_json`/`runs-on` site — but that convention has drifted since:
+confirmed live, `tenant-schema-report.yml:54`, `deploy.yml:99`, `deploy-main.yml:99`,
+`compliance-preflight-sweep.yml:84`, and every reusable workflow's `runs-on:
+${{ fromJSON(inputs.runner_labels_json) }}` site carry **no** mirror comment today. This doc does
+not claim the switch is currently executable everywhere — it isn't. #1365 must do two things, not
+one: (a) add the GitHub-hosted routing itself at the production-only sites, and (b) restore the
+mirror-comment convention at *every* active routing site repo-wide (not just the new hosted ones),
+so the switch is actually auditable. Until that lands, treat the "comment/uncomment per site"
+mechanism as aspirational at any site not already carrying the pair.
 
 **Who may flip it, and when:** an operator (Promoter role, or Pat directly) may flip a *specific*
 job class back to self-hosted on a *verified* classification from the four above — never on a
@@ -164,10 +178,12 @@ existing CI job, a CI job still to be added, or a documented reason it stays loc
 | `observability.evidence.report` | Local-only (for now) | Warns, never fails, unless run with `--enforce` (not passed in CI today) |
 | `release.verdict.contract` | Local-only, auto-skips | Only fires if a prior local run already produced `release_verdict.json` — structurally tied to the local flow |
 
-**Read plainly:** 7 of 19 gates are confirmed in CI today (largely via PR #1036, tracked under
-issue #1018 — which is still open despite this work being merged 2026-08-25; flagged separately for
-Pat to confirm and close). A further ~4 are *likely* covered as sub-steps of jobs already in CI but
-need explicit step-level confirmation, not just inferred from the job name. The remaining gates are
+**Read plainly:** 6 of 19 gates are confirmed in CI today (`docs.lint`, `architecture.guardrails`,
+`backend.test_matrix`, and the three `frontend.*.lint` gates — largely via PR #1036, tracked under
+issue #1018, which is still open despite this work being merged 2026-08-25; flagged separately for
+Pat to confirm and close). A further 3 (`backend.lint`, `frontend.contracts`,
+`frontend.storefront.contracts`) are *likely* covered as sub-steps of jobs already in CI but need
+explicit step-level confirmation, not just inferred from the job name. The remaining gates are
 either genuinely not yet assessed, or structurally tied to the promoter's local state/secrets and
 may never move. This table is the "doesn't exist today" deliverable #1147 names — it is **not** a
 claim that #1147 is done; #1015 (fast/DB test-tier split) and #1124 (quality-gate trust audit) are
