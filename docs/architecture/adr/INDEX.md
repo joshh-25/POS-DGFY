@@ -42,7 +42,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0017 | [Customer Access Modes And Inventory Display Controls](0017-customer-access-modes-and-inventory-display.md) | `amended` | customer_access_modes_and_inventory_display | 2026-11-03 | 5 |
 | 0018 | [Barcode Identity, Labels, And Scan Routing](0018-barcode-identity-labels-and-scan-routing.md) | `accepted` | barcode_identity_labels_and_scan_routing | 2026-11-05 | 0 |
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `amended` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
-| 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `accepted` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
+| 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `amended` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
 | 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
 | 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `amended` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
@@ -58,7 +58,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
-| 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `amended` | affiliates_program_commission_and_cashout | 2027-01-24 | 1 |
+| 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `amended` | affiliates_program_commission_and_cashout | 2027-01-24 | 7 |
 | 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 1 |
 | 0038 | [External Barcode Product Registry Lookup](0038-external-barcode-product-registry-lookup.md) | `accepted` | external_barcode_product_registry_lookup | 2027-01-25 | 0 |
 | 0039 | [ADR Lifecycle, Strictness Tiers, and Amendment Path](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) | `amended` | adr_lifecycle_governance | 2026-10-29 | 1 |
@@ -85,7 +85,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `amended` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
 | 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `superseded` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
-| 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
+| 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 18 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
 | 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 6 |
@@ -97,9 +97,10 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
 | 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 5 |
-| 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `accepted` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 8 |
+| 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
+| 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `accepted` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 
 ## Renumbered (collision stubs)
 
