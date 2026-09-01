@@ -16476,15 +16476,17 @@ and claimed Phase 242; this phase renumbered to 243 as a result, per the Numberi
 - [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
 - [x] `npm run lint:docs` (chains `check:adr`) -- OK, 29 governed docs / 85 ADRs validated.
 - [x] Targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
-  .../jest.js --runInBand`, 8 suites): 90/90 passing --
+  .../jest.js --runInBand`, 7 suites): 80/80 passing (re-run post-review, RF-1 fix included) --
   `storeCancelVoucherReversal.unit.test.js` (new, 11 -- item-axis only, delivery-axis only with zero
   benefit_quantity and no mirrored lines, BOTH axes independently, zero-query no-op with no voucher
   at all, idempotent replay, 409-before-any-voucher-work on a re-cancel, FAIL-CLOSED rollback of the
   entire cancellation on a reversal failure, lock ordering, legacy delivery-axis recovery, the
   documented item-axis legacy gap with its `logger.warn` asserted, and a guest cancellation),
-  `backfillRedemptionTransactionLink.migration.test.js` (new, 6 -- one exact-key `UPDATE` per active
-  tenant DB plus landlord, no `LIKE`/prefix scan, table-existence skip, tenants-table-absent no-op,
-  `down()` nulling exactly the same join's rows, up/down idempotence),
+  `backfillRedemptionTransactionLink.migration.test.js` (updated post-review to 7 -- one exact-key
+  `UPDATE` per active tenant DB plus landlord, no `LIKE`/prefix scan, table-existence skip,
+  tenants-table-absent no-op, `down()` always throwing forward-only before issuing any query (RF-1
+  fix, replacing the earlier "nulls exactly the same join's rows" behavior), a post-`up()` link
+  surviving an attempted `down()`),
   `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (extended with `attachRedemptionsToTransaction`
   on the existing fake voucher repository, 12/12 passing, regression-clean),
   `voucherReversalUseCases.usecases.test.js`, `voucherRedemptionUseCases.usecases.test.js`,
@@ -16528,7 +16530,10 @@ own text didn't fully specify, surfaced here rather than silently absorbed into 
 **Fired: migration checkpoint (row 1), proceeded without a stop-and-ask.**
 `20260904000002-backfill-voucher-redemption-transaction-link.cjs` is a new file under
 `apps/dgfy-migration-runner/migrations/`, but DATA-ONLY (no DDL, no `ENUM MODIFY`, no dropped/added
-column) and reversible by its own `down()` -- lower blast radius than Phase 241's own migration.
+column) and, since RF-1's fix, explicitly forward-only rather than reversible via its own `down()`
+(which would otherwise risk nulling live post-deploy attribution links it cannot distinguish from
+the backfilled ones) -- still lower blast radius than Phase 241's own migration, since no data is
+ever deleted by either direction and `up()` alone is the only state change.
 Per the standing "skip checkpoint confirmation by default, draft + self-verify, go straight to
 commit/PR" preference recorded for this repo (Pat reviews every PR himself), proceeded without
 pausing; stated plainly here and in the PR body's Testing Evidence rather than silently included.
@@ -16541,6 +16546,22 @@ confirmed to fail first, then pass once the declaration was added.
 
 **Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition scope
 beyond what this skill already owns.
+
+### Post-review fix (PR #1395 review RF-1, blocker)
+
+`pr-reviewer` found `down()`'s original "null out exactly the rows the identical join would have set"
+behavior was not actually safe: that join (idempotency-key pattern + `pos_transaction_id` equality)
+cannot tell a row this migration's `up()` backfilled apart from a row the checkout-side
+`attachRedemptionsToTransaction` write path legitimately set afterward through ordinary post-deploy
+checkout traffic -- both satisfy the same join, so a rollback after any real checkout had happened
+would have silently nulled live attribution links, contradicting the migration's own original
+header claim. Fixed by making `down()` forward-only: it now always throws, matching this repo's
+existing "loud failure over silent data corruption" posture for not-cleanly-reversible data
+migrations (e.g. `20260830000003-add-cheque-payment-method.cjs`'s `down()`). The migration's header
+comment, the compliance declaration's `rollback_note`, this entry's own Checkpoints reasoning and
+Acceptance evidence line, and the migration's test file were all updated to match -- no marker/
+tracking table was introduced, per the reviewer's own stated preference against that added
+complexity for a one-time backfill.
 
 ### Links
 
