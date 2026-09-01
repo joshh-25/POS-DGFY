@@ -738,8 +738,10 @@ import internalStorefrontDomainOperationRoutes from './routes/internalStorefront
 import registrationRoutes from './routes/registration.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
 import dgfyLaundryOidcRoutes from './routes/dgfyLaundryOidc.js';
+import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
+app.use(dgfyLaundryOrderRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
 app.use('/oidc', dgfyLaundryOidcRoutes);
