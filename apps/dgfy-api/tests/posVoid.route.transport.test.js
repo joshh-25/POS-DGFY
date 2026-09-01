@@ -80,7 +80,8 @@ const posControllerNames = [
     'verifyFiscalEventLedger', 'verifyTerminal', 'voidTransaction', 'cashRefundTransaction', 'externalRefundTransaction', 'providerRefundTransaction', 'splitAllocationReversal',
     // Phase 148 (#825): this list enumerates every named export posController.js provides, so a
     // new one has to be added here too or the route wiring under test fails to construct.
-    'recordOrderBalancePayment'
+    'recordOrderBalancePayment', 'uploadOrderBalancePaymentProof', 'getOrderBalancePaymentProof',
+    'updateOnlineOrderDeliveryAddress'
     , 'getAttendanceConfig', 'updateAttendanceConfig', 'getCurrentAttendance', 'timeInAttendance', 'timeOutAttendance', 'startAttendanceBreak',
     'endAttendanceBreak', 'startReliefDuty', 'endReliefDuty', 'correctAttendance', 'enrollCashierPin',
     'resetCashierPin', 'takeOverRegister', 'returnRegister', 'startSharedRelief', 'endSharedRelief',
@@ -181,7 +182,9 @@ jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
 jest.unstable_mockModule('../src/config/uploadConfig.js', () => ({
     posCatalogBulkImageUpload: { array: () => passThrough },
     posCatalogImageUpload: { single: () => passThrough },
-    preserveTenantContext: () => passThrough
+    posPaymentProofUpload: { single: () => passThrough },
+    preserveTenantContext: () => passThrough,
+    STOREFRONT_ASSET_SOURCE_MAX_BYTES: 100 * 1024 * 1024
 }));
 
 let app;

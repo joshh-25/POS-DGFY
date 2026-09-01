@@ -3128,11 +3128,11 @@ export default function Settings() {
                       no shared module path for this string, so the source of truth is named here
                       rather than silently re-derived.
                     */}
-                    {leadTimeMinRaw !== '' && leadTimeMaxRaw !== '' && !leadTimeRangeInverted && (
+                    {locationForm.fulfillment_lead_time_min_days !== '' && locationForm.fulfillment_lead_time_max_days !== '' && !leadTimeRangeInverted && (
                       <p className="text-xs text-slate-600">
-                        Buyer preview: {Number(leadTimeMinRaw) === Number(leadTimeMaxRaw)
-                          ? `within ${leadTimeMinRaw} ${Number(leadTimeMinRaw) === 1 ? 'day' : 'days'}`
-                          : `in ${leadTimeMinRaw}-${leadTimeMaxRaw} days`}
+                        Buyer preview: {Number(locationForm.fulfillment_lead_time_min_days) === Number(locationForm.fulfillment_lead_time_max_days)
+                          ? `within ${locationForm.fulfillment_lead_time_min_days} ${Number(locationForm.fulfillment_lead_time_min_days) === 1 ? 'day' : 'days'}`
+                          : `in ${locationForm.fulfillment_lead_time_min_days}-${locationForm.fulfillment_lead_time_max_days} days`}
                       </p>
                     )}
                   </div>

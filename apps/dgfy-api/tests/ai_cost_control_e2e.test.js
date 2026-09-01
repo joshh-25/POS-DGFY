@@ -52,7 +52,9 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             AIConversation
         }, next);
     },
-    invalidateTenantLookupCache: jest.fn()
+    invalidateTenantLookupCache: jest.fn(),
+    resolveDegradedTenantContextFailure: jest.fn(),
+    sendTenantContextError: jest.fn()
 }));
 
 // 2. Import dependencies
