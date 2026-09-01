@@ -25,14 +25,16 @@ name: Compliance Preflight Sweep
 #     `on:` block below for why that filter is required, not optional, on this repo's runners).
 #   - Reconciles front matter and pushes a `compliance-sweep/<run_id>` branch, then *attempts* the
 #     PR. PR open + merge is a SUPERVISED HANDOFF (#1295/#1374), not an auto-merge: an org-level
-#     policy blocks `github-actions[bot]` from creating or approving pull requests outright
-#     ("GitHub Actions is not permitted to create or approve pull requests"), confirmed live across
-#     four separate runs (33531804412 / 33536811560 / 33542764832 / 33545741502) before this fix
-#     shipped -- every one of those runs had a preflight that PASSED, red only at PR creation, which
-#     this workflow used to render identically to a real compliance failure. `gh pr create` is still
-#     attempted every run (not skipped) so the loop self-heals for free the moment that org policy
-#     ever changes -- see scripts/report-preflight-sweep-outcome.js's `classifyPrCreate`, which is
-#     what actually tells a policy-blocked create apart from a genuine one.
+#     policy blocks `github-actions[bot]` from creating or approving pull requests outright (its own
+#     error text is pinned exactly once, in scripts/report-preflight-sweep-outcome.js's
+#     POLICY_BLOCKED_PATTERN -- deliberately not repeated here, so there is only ever one place this
+#     could drift), confirmed live across four separate runs (33531804412 / 33536811560 /
+#     33542764832 / 33545741502) before this fix shipped -- every one of those runs had a preflight
+#     that PASSED, red only at PR creation, which this workflow used to render identically to a real
+#     compliance failure. `gh pr create` is still attempted every run (not skipped) so the loop
+#     self-heals for free the moment that org policy ever changes -- see
+#     scripts/report-preflight-sweep-outcome.js's `classifyPrCreate`, which is what actually tells a
+#     policy-blocked create apart from a genuine one.
 #
 # ADR 0074 Decision 5 ("against a deployed non-production host") is `[default]` tier -- this change
 # is recorded as a dated Amendments block on that ADR in the same PR, not a superseding ADR (ADR

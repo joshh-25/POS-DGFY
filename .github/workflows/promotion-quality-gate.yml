@@ -1069,6 +1069,19 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # #1374 Wave 4: regression coverage for compliance-preflight-sweep.yml's supervised-handoff
+      # redesign (the hard-fail-step-is-last invariant, the report step's always()/exit-2-mapping
+      # contract, the handoff step's dual guard, classify-pr-create wiring, the numeric-branch-
+      # prefix-guarded delete, full-tree discovery) -- run in the same step/job as the sibling
+      # contract validators above so it costs no new runner slot. Also runs the four
+      # scripts/*preflight*.test.js files this repo already had but never wired to any npm script
+      # (test:preflight-sweep is the first call site for any of them).
+      - name: Validate compliance sweep contract
+        id: validate_compliance_sweep
+        run: npm run test:preflight-sweep
+        continue-on-error: true
+        timeout-minutes: 5
+
       - name: Run governed documentation lint
         id: run_docs_lint
         run: npm run lint:docs
@@ -1121,6 +1134,7 @@ jobs:
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
             Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
             Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
