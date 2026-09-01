@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-02
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -271,13 +271,59 @@ promotion was sound) — unaffected by this ADR either way.
   removes the need for.
 - PR: (this PR). Refs #1163, #1248.
 
+### 2026-09-02 — Decision 5's PR handoff: supervised, not auto-merge; discovery: full scan (#1295/#1374)
+
+- Clause amended: Decision 5, `[default]` tier — the 2026-08-31 amendment above's "reconciles +
+  auto-merges a PR when every result passes" and its implicit "auto-triggers ... rather than waiting
+  for the promotion leg" discovery mechanism (a `develop..main` diff).
+- Why (PR open + merge): an org-level policy blocks `github-actions[bot]` from creating or approving
+  pull requests outright — confirmed live across four separate runs (33531804412 / 33536811560 /
+  33542764832 / 33545741502) where the preflight itself had genuinely PASSED, red only at the PR-
+  create step, rendering identically to a real compliance breach with no way to tell the two apart
+  from the run's own red status. #1295 settled the underlying policy question: no PAT bot, no direct
+  commit to `develop`; a human or credentialed AI session opens and merges the PR.
+- Why (discovery): the `develop..main` diff had a permanent blind spot — a declaration that reached
+  `main` via #1007's expedited-override path sits on *both* branches and never appears in a diff
+  between them. #1374's own research, 2026-09-02: a full scan of `develop` found 26 outstanding
+  declarations where the diff found 4, and the promoter's own verification snippet (using the same
+  diff) truthfully reported "0 outstanding" on a real promotion PR while 22 sat unreconciled on
+  `main`.
+- Change: the sweep still pushes the reconciliation branch and still *attempts* `gh pr create` every
+  run (so the loop self-heals for free if that org policy ever changes), but now classifies the
+  result (`scripts/report-preflight-sweep-outcome.js`'s `classifyPrCreate`) instead of treating every
+  non-zero exit as an undifferentiated failure: a policy-blocked create finishes the run **green**
+  with a `::warning::` (`handoff_required`) rather than red, backed by a
+  `compliance-preflight-sweep-handoff` artifact and a filed/updated `compliance:preflight-handoff`
+  GitHub issue naming the branch, head/base SHA, swept declarations, and the exact operator commands
+  to finish the handoff; any other create/merge failure is still a genuine, red handoff error. A real
+  preflight failure (`overall_fail=1`) is unchanged — still red — and now also files/updates a
+  `compliance:preflight-failed` issue. Discovery switches from the `develop..main` diff to a full
+  scan of the checked-out ref (`git ls-files` under `docs/compliance/impact-declarations/`, filtered
+  by `scripts/is-preflight-outstanding.js`) — **every outstanding declaration on the checked-out
+  ref**, not a diff against any other branch. Full detail:
+  `docs/compliance/request-time-preflight-protocol.md`'s "Where live preflight actually runs" and
+  "Operator handoff procedure" sections.
+- Scope check, confirmed unaffected: the ephemeral-target mechanism from the 2026-08-31 amendment
+  (fixture tenant, no deployed host, no secrets) is untouched — this amendment only changes who opens
+  the resulting PR and how the sweep finds its own work, not how the preflight call itself runs.
+  Decisions 6 (production tenant-schema report) and 8 (Merge Safety) remain untouched — the handoff
+  PR is still subject to Merge Safety like every other GitHub merge in this repo, unchanged.
+- Risk noted, not resolved here: the first sweep run after this change reconciles all 26 currently-
+  outstanding declarations into one handoff branch/issue in a single run (the discovery blind spot's
+  own backlog); `promoter`'s own verification step now blocks on that one PR merging before cutting
+  `release/<label>`. All-or-nothing reconcile is unchanged — one `breach` in that batch blocks the
+  other 25 from reconciling until resolved; partial reconciliation is a flagged follow-up, not this
+  change.
+- PR: (this PR). Refs #1295, #1374.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
 not define), #1019 (the doc retirement this ADR's Decision 10 executes), #1008 (parent epic), #1018
 / PR #1036 (the CI quality gate that makes this affordable), #860 / PR #858 (the concrete precedent
 and the risk this ADR answers directly), #639, #495, #408, #409, #927 (resolved, unaffected),
-#1063 / PR #1064 (the amendment above), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (the executable
-policy this ADR governs),
+#1063 / PR #1064 (the amendment above), #1295 (the org-policy finding), #1374 (the supervised-
+handoff + full-scan-discovery amendment above), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (the
+executable policy this ADR governs),
 `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` (superseded, the model
 `NO_STAGING_RELEASE_STANDARD.md` described).

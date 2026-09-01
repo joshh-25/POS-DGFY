@@ -44,14 +44,21 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    **A `NOT-EXECUTED-*` `preflight_request_ref` on a PR targeting `develop` is expected, not a
    finding** (#884, 2026-08-22) — per
    `docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs," the
-   sweep now clears it automatically (usually within minutes of merge) rather than at a promotion
-   leg, since ADR 0074/#980 (2026-08-25) retired `staging` from the default promotion path and
-   #1163/#1248 (2026-08-31) made the sweep continuous instead of promotion-time-only. Do not raise
-   it as a should-fix on a `develop`-targeting PR. On a promotion PR (head `release/*`, or
-   `to-staging/*` if the optional soak is chosen for that batch), the opposite applies: a surviving
-   `NOT-EXECUTED-*` in the bundled diff **is** a finding — `should-fix` for a `to-staging/*` PR (the
-   continuous sweep should have cleared it well before this PR was opened), **blocker** for a
-   `release/*` PR (per the policy, none may reach `main`).
+   sweep runs continuously (triggered on every `develop` push touching a declaration) rather than at
+   a promotion leg, since ADR 0074/#980 (2026-08-25) retired `staging` from the default promotion
+   path and #1163/#1248 (2026-08-31) made the sweep continuous instead of promotion-time-only. It
+   reconciles and pushes a branch automatically, but clearing the ref is a **supervised handoff, not
+   an auto-merge** (#1295/#1374, 2026-09-02): `github-actions[bot]` is org-blocked from creating or
+   approving pull requests, so in the ordinary case a human or credentialed AI session still has to
+   open and merge the reconciliation PR (evidence: a `compliance-preflight-sweep-handoff` artifact
+   and a filed/updated `compliance:preflight-handoff` GitHub issue with the exact commands). Do not
+   raise it as a should-fix on a `develop`-targeting PR — the sweep having merely reconciled-and-
+   pushed rather than fully merged is expected, not a defect to flag. On a promotion PR (head
+   `release/*`, or `to-staging/*` if the optional soak is chosen for that batch), the opposite
+   applies: a surviving `NOT-EXECUTED-*` in the bundled diff **is** a finding — `should-fix` for a
+   `to-staging/*` PR (the continuous sweep, once its own handoff PR is merged, should have cleared it
+   well before this PR was opened — worth checking whether an open `compliance:preflight-handoff`
+   issue explains the miss), **blocker** for a `release/*` PR (per the policy, none may reach `main`).
 4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or

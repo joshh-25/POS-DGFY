@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-02
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -137,6 +137,21 @@ promotion is cut — the promotion-time run described below is what a promoter
 still explicitly verifies (per `.agents/skills/promoter/SKILL.md`), not the
 only place the sweep executes.
 
+**Discovery is a full scan, not a `develop..main` diff (#1374, 2026-09-02, ADR
+0074 Decision 5 amendment).** The sweep used to auto-discover its work by
+diffing `origin/main..origin/develop` under
+`docs/compliance/impact-declarations/`, which had a permanent blind spot: a
+declaration that reached `main` via #1007's expedited-override path sits on
+*both* branches at once and never appears in a diff between them. #1374's own
+research found this live — a full scan of `develop` turned up 26 outstanding
+declarations where the diff-based discovery found only 4, and the promoter's
+own verification snippet (using the same diff) had truthfully reported "0
+outstanding" on a promotion PR while 22 sat unreconciled on `main`. The sweep
+now auto-discovers by listing every declaration file on the checked-out ref
+(`git ls-files`) and filtering to whichever ones `scripts/is-preflight-
+outstanding.js` still considers outstanding — i.e. **every outstanding
+declaration on the checked-out ref**, not a diff against any other branch.
+
 **No deployed host, no GitHub Environment, no secrets (#1163/#1248, 2026-08-31,
 ADR 0074 Decision 5 amendment).** The original design (#1121) called for the
 sweep to hit a manually provisioned bot account on `stage.dgfy.ph`, with its
@@ -193,18 +208,85 @@ unchanged since #1121 — it still just reads `PREFLIGHT_HOST`/
 `PREFLIGHT_COMPANY_TOKEN`/`PREFLIGHT_BOT_EMAIL`/`PREFLIGHT_BOT_PASSWORD` from
 env, now supplied by the fixture seeder rather than a GitHub Environment),
 calls the preflight endpoint for every outstanding `NOT-EXECUTED-*`
-declaration in the `develop → main` diff, and — unlike the #1121 design —
-**does** write back: it reconciles `preflight_result`/`preflight_reason_code`/
-`preflight_run_at`/`preflight_request_ref` into each declaration
-(`scripts/reconcile-preflight-declarations.js`) and opens + auto-merges a PR
-into `develop`, but only when every declaration in the run actually passed
-(`result: no_breach`, `can_proceed: true`) — a real `breach`/`review_required`
-result is never written over, and that declaration's `NOT-EXECUTED-*` ref
-stays intact for a human to look at. The cut-branch-and-PR discipline itself
-is unchanged: still never a direct commit to `develop`, this is
-regulator-facing evidence and gets the same review path as everything else —
-what changed is who opens and merges that PR (the workflow, once every result
-passes) rather than a human every time.
+declaration on the checked-out ref (see "Discovery is a full scan" above),
+and — unlike the #1121 design — **does** write back: it reconciles
+`preflight_result`/`preflight_reason_code`/`preflight_run_at`/
+`preflight_request_ref` into each declaration
+(`scripts/reconcile-preflight-declarations.js`), but only when every
+declaration in the run actually passed (`result: no_breach`,
+`can_proceed: true`) — a real `breach`/`review_required` result is never
+written over, and that declaration's `NOT-EXECUTED-*` ref stays intact for a
+human to look at. The cut-branch-and-PR discipline itself is unchanged: still
+never a direct commit to `develop`, this is regulator-facing evidence and
+gets the same review path as everything else.
+
+**PR open + merge is a supervised handoff, not an auto-merge (#1295/#1374,
+2026-09-02, ADR 0074 Decision 5 amendment).** An org-level policy blocks
+`github-actions[bot]` from creating or approving pull requests outright — the
+sweep used to attempt `gh pr create` and treat any non-zero exit as an
+undifferentiated failure, which meant a run whose preflight had genuinely
+*passed* rendered identically to a real compliance breach, red only at the PR
+step. The sweep still pushes the reconciliation branch and still *attempts*
+`gh pr create` every run (so the loop self-heals for free the moment that org
+policy ever changes), but now classifies the result
+(`scripts/report-preflight-sweep-outcome.js`'s `classifyPrCreate`):
+
+- **Policy-blocked** (the expected case today): the run finishes **green**,
+  with a `::warning::` — the branch is pushed and ready, but nothing failed.
+  A `compliance-preflight-sweep-handoff` artifact and a filed/updated
+  `compliance:preflight-handoff` GitHub issue (one open issue, updated in
+  place across runs, never one per run) carry the branch name, head/base SHA,
+  the swept declarations, and the exact operator commands needed to finish
+  the handoff — see "Operator handoff procedure" below.
+- **A real preflight failure** (`overall_fail=1`, unchanged from before) is
+  still **red**, and now also files/updates a `compliance:preflight-failed`
+  issue naming the failing declaration(s) and reason code(s) — the same
+  labelled-issue mechanism, so a compliance failure doesn't wait for someone
+  to notice a red run in the Actions tab either.
+- **Any other `gh pr create` failure**, or a failure later in the merge
+  sequence (checks never reaching a terminal state, `mergeStateStatus` not
+  `CLEAN`), is a genuine, red **handoff error** — left open for investigation,
+  same as before.
+- If org policy ever stops blocking the bot (or a credentialed AI session's
+  own token is used), `gh pr create` succeeds and the existing Merge Safety
+  poll + merge path runs exactly as it always has — auto-merge is not gone,
+  it's just no longer assumed to always be reachable.
+
+### Operator handoff procedure
+
+When a sweep run finishes green-with-warning (`handoff_required`), the
+reconciliation branch is pushed but nobody has opened or merged its PR yet.
+To finish it:
+
+1. **Find the evidence.** Either the run's own `compliance-preflight-sweep-
+   handoff` artifact, or the single open `compliance:preflight-handoff`
+   GitHub issue (`gh issue list --label compliance:preflight-handoff --state
+   open`) — both carry the same branch name, head/base SHA, swept
+   declarations, and the exact commands below.
+2. **Open the PR**, exactly as the artifact/issue names it:
+   ```bash
+   gh pr create --base develop --head compliance-sweep/<run_id> \
+     --title "docs(compliance): reconcile preflight sweep results (<date>)" \
+     --body-file <pr_body>
+   ```
+3. **Watch its checks and merge per this repo's Merge Safety rule**
+   (`AGENTS.md`) — no check `in_progress`/`queued`, `mergeStateStatus: CLEAN`:
+   ```bash
+   gh pr checks <N> --watch
+   gh pr merge <N> --merge --delete-branch
+   ```
+4. **The merge re-triggers exactly one more sweep run** (the PR also touches
+   `docs/compliance/impact-declarations/**`) — that run's own discovery step
+   finds zero outstanding declarations and exits immediately, so the loop
+   terminates on its own; no further action is needed.
+5. **Close the loop on the issue.** If the human-opened PR's body includes
+   `Closes #<handoff issue number>`, the issue closes automatically on merge
+   — the recommended shape, and what the artifact's suggested PR body already
+   does. If it doesn't, the next green sweep run's own "Publish handoff
+   issue" step closes-with-comment any open `compliance:preflight-handoff`
+   issue whose recorded branch is already gone from origin, as a fallback —
+   but don't rely on that path when `Closes` is available; it's simpler and
+   immediate.
 
 For local debugging (exercising the mechanism without dispatching the
 workflow — e.g. against a local `dgfy-api` you've stood up yourself), the

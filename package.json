@@ -46,6 +46,7 @@
     "test:pr-quality-workflow": "node --test scripts/check-pr-quality-workflow.test.js",
     "check:runner-routing": "node scripts/check-runner-routing.js",
     "test:runner-routing": "node --test scripts/check-runner-routing.test.js",
+    "test:preflight-sweep": "node --test scripts/is-preflight-outstanding.test.js scripts/build-preflight-request.test.js scripts/parse-preflight-response.test.js scripts/reconcile-preflight-declarations.test.js scripts/report-preflight-sweep-outcome.test.js scripts/check-compliance-sweep-workflow.test.js",
     "preflight:runner": "node scripts/ci-runner-preflight.js",
     "test:runner-preflight": "node --test scripts/ci-runner-preflight.test.js",
     "test:runner-availability": "node --test scripts/lib/runner-availability.test.js",
