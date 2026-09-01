@@ -2396,6 +2396,37 @@ Gating notes:
 - In billing-paused mode (`PAYMENTS_ENABLED=false`), `requirePremium` is plan-driven (`plan === premium`) and does not block on `subscription_status`.
 - In live billing mode (`PAYMENTS_ENABLED=true`), `requirePremium` also enforces active/grace subscription state.
 
+### Standalone native mobile POS sync
+
+Authenticated native routes are mounted below `/api/v1/mobile-pos`. Read-only
+bootstrap/checkpoint requests are not part of the free-tier push allowance.
+Ledger pushes share the round-aware allowance through a stable
+`client_sync_run_id`; item CRUD is uncapped and enforces create/edit/delete
+permission per entry.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/mobile-pos/bootstrap/catalog` | Return the validated POS catalog snapshot, including authoritative `updated_at` item versions. |
+| `GET` | `/mobile-pos/bootstrap/settings` | Return cached cashier/POS configuration for offline operation. |
+| `GET` | `/mobile-pos/bootstrap/device-policy` | Return device/session policy used by the standalone native runtime. |
+| `GET` | `/mobile-pos/sync/transactions` | Return the ordered transaction checkpoint used to reconcile local History. |
+| `POST` | `/mobile-pos/sync/checkouts` | Replay idempotent offline checkouts. |
+| `POST` | `/mobile-pos/sync/voids` | Replay append-only void requests with expected-version checks. |
+| `POST` | `/mobile-pos/sync/refunds` | Replay cash, external, provider, and split refund requests through the existing authoritative refund use cases. |
+| `POST` | `/mobile-pos/sync/order-actions` | Replay queued online-order cashier actions. |
+| `POST` | `/mobile-pos/sync/items` | Replay item create/update/delete mutations with per-entry permission and optimistic-concurrency checks. |
+| `POST` | `/mobile-pos/sync/shifts` | Replay shift and cash-drawer ledger actions. |
+| `POST` | `/mobile-pos/sync/hardware-events` | Acknowledge auditable native hardware events. |
+| `POST` | `/mobile-pos/sync/checkpoint` | Acknowledge a completed sync checkpoint. |
+
+Every refund batch entry includes a stable `client_mutation_id` and the
+transaction's expected `status`, `payment_status`, and `updated_at` version.
+Cash entries require `pos:cash_drawer_adjust`; external/provider entries
+require `pos:void`; split entries accept either and still apply the
+tender-specific server workflow. Accepted, replayed, and rejected entries are
+returned independently so one conflict does not duplicate or discard other
+financial work in the same batch.
+
 ### GET /pos/catalog
 List sellable POS catalog items.
 
@@ -2785,6 +2816,26 @@ Final Review documentary (tenant self-serve):
 - Print and preview clients must classify fiscal status only from `receipt_contract.document_type`/`receipt_contract.document_context` or the persisted transaction `document_type`/`document_context`.
 - Invoice number prefixes such as `INV-` and `NFS-` are sequence identifiers only. They must not be used by clients to infer fiscal status, choose fiscal headers, or decide whether fiscal print/reprint evidence is required.
 - Idempotent checkout replay returns the persisted transaction receipt contract, not a newly inferred contract from the caller payload, invoice prefix, or current compliance policy state.
+
+### Employee Credit repayment contract
+
+Employee Credit is an open-tab, non-cash tender. Management repayments are
+permissioned and append-only; they do not alter cash-drawer totals.
+
+- `POST /pos/employee-credit/accounts/:accountId/repay` requires
+  `pos:employee_credit:manage`, a reason of at least three characters, and a
+  unique idempotency key.
+- Manual repayment sends a positive `amount` and reduces the current
+  `outstanding_balance` without allowing overpayment.
+- Full repayment sends `repay_all=true` and the account `expected_version`
+  captured when the manager confirmed the displayed balance. The server locks
+  the account, rejects a stale version with `409 Conflict`, and records the
+  exact current outstanding balance as one repayment that leaves
+  `outstanding_balance=0`.
+- `amount` and `repay_all` are mutually exclusive. Repay All is rejected when
+  the account has no outstanding balance.
+- Both modes create the same immutable repayment ledger entry and audit record;
+  retries with the same idempotency key replay the original result.
 
 ### POS split-payment contract (Phases 57-62)
 

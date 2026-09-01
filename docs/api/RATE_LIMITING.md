@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-29
 applies_to: dgfy_api, storefront_frontend, pos_frontend
 topic: rate_limiting
 ---
@@ -130,7 +130,7 @@ rejected scope in the 2026-08-24 incident (25 of 148 rejections). Tracked in
 |---|---|---|---|---|
 | `posLimiter` | 1500 | 15 min | `pos:<tenant>:<user>:<terminal>` | all `/pos`, `/mobile-pos` |
 | `posDrawerAuthorizationLimiter` | 5 | 10 min | `pos:<tenant>:<user>:<shift>:<terminal>:<ip>` | drawer authorization |
-| `mobilePosFreeSyncLimiter` | `MOBILE_SYNC_LIMIT_PER_DAY` (currently 2) | 24 hr | `<tenant>` | mobile sync endpoints, free-tier tenants only |
+| `mobilePosFreeSyncRoundLimiter` | `MOBILE_SYNC_LIMIT_PER_DAY` (currently 2 successful rounds) | 24 hr | `<tenant>:<device>` daily bucket; `<tenant>:<device>:<client_sync_run_id>` bounded reuse | mobile ledger sync endpoints, free-tier tenants only |
 | `itemOperationsLimiter` | 1500 | 15 min | `item_operations:<tenant>:<user>` | all `/items` |
 | `tenantFinancialLimiter` | 240 | 15 min | `<tenant>:<admin>` | `/tenant-revenue/*` |
 
@@ -142,6 +142,21 @@ key collapses further to `pos:<company-token>:anonymous:<NAT-IP>` — every term
 one bucket for the whole store. Not yet observed causing a real incident, but the exposure is
 real. Tracked in [#971](https://github.com/Sieitzz/dgfy-platform/issues/971) — fixing it needs a
 compliance impact declaration, since it touches `routes/pos.js`.
+
+### Mobile sync-round accounting
+
+A native outbox drain can cross several `/mobile-pos/sync/*` endpoints and can
+require multiple dependency waves (for example, shift-open before checkout).
+The client therefore generates one stable `client_sync_run_id` for the leased
+drain. After the first successful 2xx request, the round limiter remembers that
+tenant/device/run tuple for 15 minutes by default
+(`RATE_LIMIT_MOBILE_POS_SYNC_RUN_REUSE_WINDOW_MS`) and lets later requests in
+the same round reuse the slot. A distinct run consumes the next daily slot.
+
+Rejected validation, authorization, and server-error responses do not consume
+a successful-round slot. Legacy clients without a valid run ID keep the older
+per-request behavior. Premium-active tenants bypass this business cap, while
+the ordinary `posLimiter` still applies per request to every tier.
 
 ## `tenantRegistrationLimiter`
 
