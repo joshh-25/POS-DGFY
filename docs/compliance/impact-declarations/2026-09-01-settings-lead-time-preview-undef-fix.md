@@ -11,8 +11,8 @@ verification_evidence: npm --prefix apps/dgfy-ims run lint -- confirmed the 8 no
 rollback_note: Pure bugfix, zero behavior change to any working code path. `leadTimeMinRaw`/`leadTimeMaxRaw` were undefined identifiers (no such variable, const, or prop existed anywhere in this file) in the buyer-preview paragraph under the fulfillment lead-time fields; every reference is replaced with the existing `locationForm.fulfillment_lead_time_min_days`/`locationForm.fulfillment_lead_time_max_days` values already read two JSX blocks above for the same fields' `<Input>` elements. Rollback is a plain revert; the prior code did not run at all (a ReferenceError would throw the moment this JSX branch rendered), so reverting restores the same broken state, not a working one.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-PROMOTION-2026-09-01-SETTINGS-LEAD-TIME-UNDEF-FIX
+preflight_run_at: 2026-09-01T06:21:53.400Z
+preflight_request_ref: PREFLIGHT-33476890356-2026-09-01-SETTINGS-LEAD-TIME-PREVIEW-UNDEF-FIX
 ---
 
 # Fix undefined `leadTimeMinRaw`/`leadTimeMaxRaw` references in Settings.jsx buyer-preview text
